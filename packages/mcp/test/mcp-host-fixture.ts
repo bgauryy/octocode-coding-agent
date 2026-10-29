@@ -8,28 +8,28 @@ import { octocodePreset } from "../src/presets/octocode/index.ts";
 import type { McpExtensionOptions } from "../src/state.ts";
 import { StdioTransport } from "../src/client/index.ts";
 import { createDefaultTransport } from "../src/runtime.ts";
-import { fakeCtx, fakePi } from "../../coding-agent/test/octocode/fake-pi.ts";
+import { fakeCtx, fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 
 /** Runs the production host's lifecycle and tool registry against isolated stdio fixtures. */
 export function mcpHost(
 	options: McpExtensionOptions & { cwd?: string; servers?: McpServerEntry[]; hasUI?: boolean } = {},
 ) {
-	const fake = fakePi();
-	fake.pi.events = createEventBus();
-	fake.pi.getMcpServers = () => [];
-	fake.pi.registerToolRenderer = () => {};
-	fake.pi.getActiveTools = () =>
+	const fake = fakeHost();
+	fake.api.events = createEventBus();
+	fake.api.getMcpServers = () => [];
+	fake.api.registerToolRenderer = () => {};
+	fake.api.getActiveTools = () =>
 		[...fake.tools.values()]
 			.filter((tool) => tool.exposure !== "hidden" && tool.defaultActive !== false)
 			.map((tool) => tool.name);
 	const ctx = fakeCtx({ cwd: options.cwd ?? tmp(), hasUI: options.hasUI ?? true });
 	const transports: StdioTransport[] = [];
-	const state = registerMcpHost(fake.pi, {
+	const state = registerMcpHost(fake.api, {
 		credentials: new McpOAuthCredentialStore(new InMemoryAuthStorageBackend()),
 		logPath: `${tmp()}/mcp.log`,
 		loadConfig: (_ctx, defaults) => ({ servers: options.servers ?? [...defaults], errors: [] }),
-		presets: [octocodePreset(() => fake.pi.getSkillDirectories(), {})],
+		presets: [octocodePreset(() => fake.api.getSkillDirectories(), {})],
 		createTransport: (entry, cwd, auth) => {
 			const transport = createDefaultTransport(entry, cwd, auth);
 			if (transport instanceof StdioTransport) transports.push(transport);

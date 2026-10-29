@@ -7,7 +7,7 @@ import { resolveAnchoredEdits } from "../../src/octocode/files/tool/anchored.ts"
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { sha256 } from "../../src/utils/atomic-file.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 
 describe("optional anchored edit adapter", () => {
 	const dirs: string[] = [];
@@ -118,9 +118,9 @@ describe("optional anchored edit adapter", () => {
 
 	it("passes through the registered guarded file writer and refuses a stale competing write", async () => {
 		const f = fixture("first\nreturn null\nsecond\nreturn null\n");
-		const pi = fakePi();
-		registerFileTool(pi.pi, f.guard, fakePermission());
-		const tool = pi.tools.get("file")!;
+		const api = fakeHost();
+		registerFileTool(api.api, f.guard, fakePermission());
+		const tool = api.tools.get("file")!;
 		const run = (query: ReturnType<typeof f.edit>) =>
 			tool.execute("anchored", { queries: [query] }, undefined, undefined, fakeCtx({ cwd: join(f.file, "..") }));
 		const result = await run(f.edit(4, "return null", "return 42"));
@@ -135,9 +135,9 @@ describe("optional anchored edit adapter", () => {
 
 	it("commits a BOM and CRLF source through the guarded writer without changing unrelated bytes", async () => {
 		const f = fixture("\ufeffα\r\nβ\r\nα\r\n");
-		const pi = fakePi();
-		registerFileTool(pi.pi, f.guard, fakePermission());
-		const result = await pi.tools
+		const api = fakeHost();
+		registerFileTool(api.api, f.guard, fakePermission());
+		const result = await api.tools
 			.get("file")!
 			.execute(
 				"anchored-crlf",

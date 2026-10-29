@@ -45,9 +45,8 @@ it("loads one native command per canonical name through the real SDK", async () 
 		const runner = session.extensionRunner;
 		const commands = runner.getRegisteredCommands();
 		const inventory = new Set([...BUILTIN_SLASH_COMMANDS, ...commands].map((command) => command.name));
-		const aliases = new Set([...BUILTIN_SLASH_COMMANDS, ...commands].flatMap((command) => command.aliases ?? []));
 		const guide = fs.readFileSync(path.join(import.meta.dirname, "../../docs/commands.md"), "utf8");
-		expect(guide).toContain(`${inventory.size} canonical slash commands and ${aliases.size} compatibility aliases`);
+		expect(guide).toContain(`${inventory.size} slash commands`);
 		for (const name of inventory) expect(guide).toMatch(new RegExp("^\\| `/" + name + "(?:[ `])", "m"));
 		for (const name of [
 			"agents",
@@ -71,18 +70,8 @@ it("loads one native command per canonical name through the real SDK", async () 
 			expect(commands.some((command) => command.name === name)).toBe(false);
 			expect(runner.getCommand(name)).toBeUndefined();
 		}
-		for (const [alias, canonical] of [
-			["continue", "resume"],
-			["usage", "status"],
-			["cost", "status"],
-			["stats", "status"],
-			["allowed-tools", "permissions"],
-			["list-agents", "agents"],
-			["peers", "agents"],
-			["web", "octocode"],
-		]) {
-			expect(runner.getCommand(alias)?.handler).toBe(runner.getCommand(canonical)?.handler);
-		}
+		for (const removed of ["continue", "usage", "cost", "stats", "allowed-tools", "list-agents", "peers", "web"])
+			expect(runner.getCommand(removed)).toBeUndefined();
 		await session.controlPlan({ action: "enter" });
 		for (const toolName of ["file", "bash", "agent", "execute", "browser", "debug", "mcp__unknown__read"]) {
 			expect(await runner.emitToolCall({ type: "tool_call", toolCallId: toolName, toolName, input: {} })).toMatchObject(

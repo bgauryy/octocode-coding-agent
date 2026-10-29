@@ -10,7 +10,7 @@ import type { MutationReceipt } from "../../src/octocode/files/render.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { sha256 } from "../../src/utils/atomic-file.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 function fixture() {
@@ -315,8 +315,8 @@ it("records only committed queries and inspects the final repeated write", async
 	const f = fixture();
 	const guard = new FileGuard();
 	guard.record(f.file);
-	const fake = fakePi();
-	registerFileTool(fake.pi, guard, fakePermission(), undefined, undefined, { enabled: true });
+	const fake = fakeHost();
+	registerFileTool(fake.api, guard, fakePermission(), undefined, undefined, { enabled: true });
 	callable(f.ctx, { path: "source.ts", kind: "empty", category: "noDiagnostics", status: "empty" });
 	const before = currentMutationRevision(f.ctx.sessionManager.getSessionId());
 	const result = await fake.tools.get("file")!.execute(

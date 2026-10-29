@@ -10,20 +10,20 @@ import { tmp } from "./helpers.ts";
 
 describe("report delivery through the real session runtime", () => {
 	it("retries a rejected run preparation in the same session and acknowledges one recorded report", async () => {
-		let pi!: ExtensionAPI;
+		let host!: ExtensionAPI;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const harness = await createHarness({
 			sessionManager: manager,
 			extensionFactories: [
 				(api) => {
-					pi = api;
+					host = api;
 				},
 			],
 		});
 		const errors: string[] = [];
 		await harness.session.bindExtensions({ onError: (error) => errors.push(error.error) });
-		const queue = new ReportQueue(pi, 60_000);
+		const queue = new ReportQueue(host, 60_000);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
 		const preparation = vi
@@ -59,19 +59,19 @@ describe("report delivery through the real session runtime", () => {
 	});
 
 	it("does not treat buffered setup entries as a durable transcript receipt", async () => {
-		let pi!: ExtensionAPI;
+		let host!: ExtensionAPI;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const harness = await createHarness({
 			sessionManager: manager,
 			extensionFactories: [
 				(api) => {
-					pi = api;
+					host = api;
 				},
 			],
 		});
 		await harness.session.bindExtensions({});
-		const queue = new ReportQueue(pi, 60_000);
+		const queue = new ReportQueue(host, 60_000);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
 		try {

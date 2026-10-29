@@ -352,12 +352,6 @@ describe("Tool Results with Images", () => {
 			it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 				await handleToolWithImageResult(llm);
 			});
-
-			// FIXME(xiaomi): see the API-billing block above — same multimodal-fusion
-			// limitation applies to Token Plan endpoints (same model behind both).
-			it.skip("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-				await handleToolWithTextAndImageResult(llm);
-			});
 		},
 	);
 
@@ -369,12 +363,6 @@ describe("Tool Results with Images", () => {
 			it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 				await handleToolWithImageResult(llm);
 			});
-
-			// FIXME(xiaomi): see the API-billing block above — same multimodal-fusion
-			// limitation applies to Token Plan endpoints (same model behind both).
-			it.skip("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-				await handleToolWithTextAndImageResult(llm);
-			});
 		},
 	);
 
@@ -385,12 +373,6 @@ describe("Tool Results with Images", () => {
 
 			it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 				await handleToolWithImageResult(llm);
-			});
-
-			// FIXME(xiaomi): see the API-billing block above — same multimodal-fusion
-			// limitation applies to Token Plan endpoints (same model behind both).
-			it.skip("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-				await handleToolWithTextAndImageResult(llm);
 			});
 		},
 	);

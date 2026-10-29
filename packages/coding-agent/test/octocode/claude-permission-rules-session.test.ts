@@ -41,19 +41,6 @@ it("Claude source ask stays unresolved when full mode has no enabled hook resolv
 		await f.close();
 	}
 });
-it("source rules remain inactive without compatibility opt-in", async () => {
-	const f = await fixture("claude", {
-		mode: "full",
-		rules: { deny: ["Bash"] },
-		compatibility: false,
-	});
-	try {
-		await f.run();
-		expect(fs.readFileSync(f.marker, "utf8")).toBe("PERMISSION_EFFECT");
-	} finally {
-		await f.close();
-	}
-});
 it("source policy honors custom CLAUDE_CONFIG_DIR", async () => {
 	const f = await fixture("claude", {
 		mode: "full",

@@ -1,6 +1,6 @@
 /**
  * `octocode mcp compact`: the model-facing TypeScript file of each MCP server (see `../compact`) outside a session.
- * Agents and the `octocode-compact-mcp` skill use it to show a server's file, measure description overrides against the
+ * Agents and the `octocode-context-optimization` skill use it to show a server's file, measure description overrides against the
  * source catalog, store them, print them in a preset's per-tool form, and see which stored files are stale.
  */
 
@@ -14,7 +14,7 @@ import {
 	COMPACT_GENERATOR_VERSION,
 	type CompactServerInput,
 	type DescriptionOverrides,
-	generatedDir,
+	serverGeneratedDir,
 	type GeneratedMeta,
 	parseOverrides,
 	readGenerated,
@@ -50,6 +50,12 @@ interface CompactContext {
 }
 
 const SOURCE_FLAGS = { catalog: "value" } as const;
+
+/** The folder of a server's generated file, as a session in `cwd` uses it (`serverGeneratedDir`). */
+function dirOf(context: CompactContext, server: string): string {
+	const scope = context.loaded.servers.find((candidate) => candidate.name === server)?.scope;
+	return serverGeneratedDir(context.options.agentDir, context.options.cwd, scope);
+}
 
 function findEntry(context: CompactContext, server: string): McpServerEntry | undefined {
 	const entry = context.loaded.servers.find((candidate) => candidate.name === server);
@@ -96,7 +102,7 @@ async function show(context: CompactContext, args: string[]): Promise<number> {
 	if (!parsed) return 1;
 	const [server, ...extra] = parsed.positional;
 	if (!server || extra.length) return usage(context);
-	const dir = generatedDir(context.options.agentDir);
+	const dir = dirOf(context, server);
 	const stored = readGenerated(dir, server);
 	const plain = parsed.values.has("plain");
 	const fresh = plain || parsed.values.has("refresh") || parsed.values.has("catalog");
@@ -183,7 +189,7 @@ async function apply(context: CompactContext, args: string[]): Promise<number> {
 		return 1;
 	}
 	const model = parsed.values.get("optimized-by");
-	const dir = generatedDir(context.options.agentDir);
+	const dir = dirOf(context, server);
 	try {
 		writeGenerated(dir, server, text, {
 			...catalogHashes(input),
@@ -242,11 +248,10 @@ async function list(context: CompactContext, args: string[]): Promise<number> {
 	const parsed = parseOptions(args, { offline: "flag", json: "flag" }, context.error);
 	if (!parsed) return 1;
 	if (parsed.positional.length) return usage(context);
-	const dir = generatedDir(context.options.agentDir);
 	const offline = parsed.values.has("offline");
 	const rows = await Promise.all(
 		context.loaded.servers.map(async (entry): Promise<ListRow> => {
-			const stored = readGenerated(dir, entry.name);
+			const stored = readGenerated(dirOf(context, entry.name), entry.name);
 			const row: ListRow = {
 				server: entry.name,
 				configured: true,

@@ -93,8 +93,8 @@ describe("built-in composition", () => {
 			() => {
 				calls.push("first");
 			},
-			(pi) => {
-				pi.registerTool({
+			(api) => {
+				api.registerTool({
 					name: "probe",
 					label: "Probe",
 					description: "Test tool.",

@@ -31,7 +31,7 @@ describe("AgentSession tool registration", () => {
 
 	afterEach(() => rmSync(tempDir, { recursive: true, force: true }));
 
-	async function session(register: (pi: ExtensionAPI) => void) {
+	async function session(register: (api: ExtensionAPI) => void) {
 		const settingsManager = SettingsManager.create(tempDir, agentDir);
 		const resourceLoader = new DefaultResourceLoader({
 			cwd: tempDir,
@@ -53,9 +53,9 @@ describe("AgentSession tool registration", () => {
 	}
 
 	it("registerTools makes every tool of a catalog available with one registry refresh", async () => {
-		let pi: ExtensionAPI | undefined;
+		let host: ExtensionAPI | undefined;
 		const live = await session((api) => {
-			pi = api;
+			host = api;
 		});
 		let refreshes = 0;
 		// The runner keeps the shared runtime privately; wrap the refresh hook every registration calls.
@@ -66,22 +66,22 @@ describe("AgentSession tool registration", () => {
 			refresh();
 		};
 
-		pi!.registerTools(Array.from({ length: 25 }, (_, index) => tool(`catalog_${index}`)));
+		host!.registerTools(Array.from({ length: 25 }, (_, index) => tool(`catalog_${index}`)));
 
 		expect(refreshes).toBe(1);
 		for (let index = 0; index < 25; index++) expect(live.getActiveToolNames()).toContain(`catalog_${index}`);
-		pi!.registerTools([]);
+		host!.registerTools([]);
 		expect(refreshes).toBe(1);
 	});
 
 	it("registerTools stores nothing when one definition is invalid", async () => {
-		let pi: ExtensionAPI | undefined;
+		let host: ExtensionAPI | undefined;
 		const live = await session((api) => {
-			pi = api;
+			host = api;
 		});
 		const bad = { ...tool("bad_tool"), parameters: undefined } as unknown as ToolDefinition;
 
-		expect(() => pi!.registerTools([tool("good_tool"), bad])).toThrow(/object parameter schema/);
+		expect(() => host!.registerTools([tool("good_tool"), bad])).toThrow(/object parameter schema/);
 
 		expect(live.getAllTools().map((entry) => entry.name)).not.toContain("good_tool");
 	});
@@ -90,9 +90,9 @@ describe("AgentSession tool registration", () => {
 	// flips hidden -> direct as a new registration. The fix belongs there (held by another agent); `it.fails` turns
 	// into an error when it lands, so remove the `.fails` then.
 	it.fails("keeps a deselected direct tool inactive when it is withdrawn (hidden) and registered again", async () => {
-		let pi: ExtensionAPI | undefined;
+		let host: ExtensionAPI | undefined;
 		const live = await session((api) => {
-			pi = api;
+			host = api;
 			api.registerTool(tool("mcp__srv__a"));
 			api.registerTool(tool("mcp__srv__b"));
 		});
@@ -102,8 +102,8 @@ describe("AgentSession tool registration", () => {
 		expect(live.getActiveToolNames()).not.toContain("mcp__srv__a");
 
 		// What `registerTools`/`hideTools` in packages/mcp do when the server drops and re-offers its tools.
-		pi!.registerTool(tool("mcp__srv__a", "hidden"));
-		pi!.registerTool(tool("mcp__srv__a", "direct"));
+		host!.registerTool(tool("mcp__srv__a", "hidden"));
+		host!.registerTool(tool("mcp__srv__a", "direct"));
 
 		expect(live.getActiveToolNames()).toContain("mcp__srv__b");
 		expect(live.getActiveToolNames()).not.toContain("mcp__srv__a");

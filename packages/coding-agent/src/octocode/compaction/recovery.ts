@@ -32,14 +32,14 @@ export class TooLargeRecovery {
 			return undefined;
 		}
 		this.streak++;
-		const piRecovers = isContextOverflow(message as AssistantMessage, ctx.model?.contextWindow ?? 0);
-		const failed = piRecovers ? undefined : messageEntryId;
+		const recoversItself = isContextOverflow(message as AssistantMessage, ctx.model?.contextWindow ?? 0);
+		const failed = recoversItself ? undefined : messageEntryId;
 		const edits =
 			(this.streak === 1 ? planTooLargeRecovery(entries, failed, 1) : undefined) ??
 			planTooLargeRecovery(entries, failed, 0);
 		if (!edits) {
 			this.reset();
-			if (ctx.hasUI && !piRecovers) {
+			if (ctx.hasUI && !recoversItself) {
 				const kb = Math.round(contextChars(entries) / 1024);
 				notify(
 					ctx.ui,
@@ -49,7 +49,7 @@ export class TooLargeRecovery {
 			}
 			return undefined;
 		}
-		this.retryPending = !piRecovers;
+		this.retryPending = !recoversItself;
 		return edits;
 	}
 

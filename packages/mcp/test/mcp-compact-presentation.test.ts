@@ -151,7 +151,7 @@ describe("compact MCP presentation", () => {
 	it("reads mcpPresentation from the settings", async () => {
 		isolatedAgentDir();
 		const h = host();
-		h.pi.getSettings = () => ({ mcpPresentation: "json" }) as never;
+		h.api.getSettings = () => ({ mcpPresentation: "json" }) as never;
 		await h.start();
 		await h.prompt();
 		expect(h.tools.get("mcp__octocode__shout").validationParameters).toBeUndefined();
@@ -271,7 +271,7 @@ describe("servers outside the tool selection", () => {
 		const h = host({
 			servers: [{ name: "octocode", config: { command: "unused", defaultActive: false }, source: "test" }],
 		});
-		h.pi.selectsTools = (_prefix: string, activeByDefault: boolean) => activeByDefault;
+		h.api.selectsTools = (_prefix: string, activeByDefault: boolean) => activeByDefault;
 		await h.start();
 		const server = h.state.findServer("octocode")!;
 		expect(server.unselected).toBe(true);

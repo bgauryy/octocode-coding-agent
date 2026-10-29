@@ -9,7 +9,7 @@ import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Delivery } from "../../src/octocode/ui/delivery.ts";
-import { fakeCtx } from "./fake-pi.ts";
+import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const REPORT = "Unique background report: delivery-native";
@@ -27,7 +27,7 @@ describe("Delivery with the native Octocode session queue", () => {
 				provider: "faux",
 				models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 			});
-			let pi!: ExtensionAPI;
+			let host!: ExtensionAPI;
 			let delivery!: Delivery;
 			let release!: () => void;
 			let entered!: () => void;
@@ -38,7 +38,7 @@ describe("Delivery with the native Octocode session queue", () => {
 				entered = resolve;
 			});
 			const factory: ExtensionFactory = (api) => {
-				pi = api;
+				host = api;
 				delivery = Delivery.install(api);
 				api.registerProvider("faux", {
 					name: "Faux",
@@ -130,7 +130,7 @@ describe("Delivery with the native Octocode session queue", () => {
 					display: true,
 					details: { id: "report-1" },
 				};
-				pi.sendMessage(report, { deliverAs: "followUp", triggerTurn: true });
+				host.sendMessage(report, { deliverAs: "followUp", triggerTurn: true });
 				expect(delivery.pending).toBe(1);
 				expect(reports()).toHaveLength(0);
 				if (action !== "delivered") {

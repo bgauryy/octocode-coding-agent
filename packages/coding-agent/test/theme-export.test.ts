@@ -21,7 +21,7 @@ describe("getThemeExportColors", () => {
 	let previousAgentDir: string | undefined;
 
 	beforeEach(() => {
-		tempRoot = mkdtempSync(join(tmpdir(), "pi-theme-export-"));
+		tempRoot = mkdtempSync(join(tmpdir(), "octocode-theme-export-"));
 		previousAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
 		process.env.OCTOCODE_CODING_AGENT_DIR = join(tempRoot, "agent");
 		mkdirSync(join(process.env.OCTOCODE_CODING_AGENT_DIR, "themes"), { recursive: true });

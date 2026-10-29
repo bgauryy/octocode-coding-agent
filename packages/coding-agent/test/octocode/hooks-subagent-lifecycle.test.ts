@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 
@@ -30,7 +30,7 @@ it.each(["guidance", "guidance".repeat(4000)])(
 				},
 			}),
 		);
-		const fake = fakePi();
+		const fake = fakeHost();
 		const ctx = fakeCtx({
 			cwd: tmp(),
 			hasUI: false,
@@ -45,11 +45,10 @@ it.each(["guidance", "guidance".repeat(4000)])(
 				thinkingLevel: "off",
 			}) as never;
 		registerHooks(
-			fake.pi,
+			fake.api,
 			{
-				OCTOCODE_HOOKS: "1",
-				OCTOCODE_HOOKS_COMPAT: "1",
 				OCTOCODE_SUBAGENT: "1",
+				OCTOCODE_SUBAGENT_HOOKS: "1",
 				OCTOCODE_PARENT_SESSION: "parent",
 			},
 			home,
@@ -90,16 +89,15 @@ it("reports missing standalone child metadata without inventing permission or pa
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	try {
 		const hooks = registerHooks(
-			fake.pi,
+			fake.api,
 			{
-				OCTOCODE_HOOKS: "1",
-				OCTOCODE_HOOKS_COMPAT: "1",
 				OCTOCODE_SUBAGENT: "1",
+				OCTOCODE_SUBAGENT_HOOKS: "1",
 			},
 			home,
 		);
@@ -147,20 +145,16 @@ it("child source termination wins over native Stop continuation", async () => {
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({
 		cwd: tmp(),
 		hasUI: false,
 		model: { id: "fixture" },
 	});
 	ctx.getTurnId = () => "turn";
-	registerHooks(
-		fake.pi,
-		{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1", OCTOCODE_SUBAGENT: "1" },
-		home,
-		undefined,
-		() => ({ permissionMode: "full" }),
-	);
+	registerHooks(fake.api, { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" }, home, undefined, () => ({
+		permissionMode: "full",
+	}));
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const results = await fake.emit(
 		"agent_before_settle",
@@ -192,7 +186,7 @@ it("reads the live permission owner for each shell hook dispatch", async () => {
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({
 		cwd: tmp(),
 		hasUI: false,
@@ -200,13 +194,9 @@ it("reads the live permission owner for each shell hook dispatch", async () => {
 	});
 	ctx.getTurnId = () => "turn";
 	let permissionMode: "workspace" | "full" = "workspace";
-	registerHooks(
-		fake.pi,
-		{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1", OCTOCODE_SUBAGENT: "1" },
-		home,
-		undefined,
-		() => ({ permissionMode }),
-	);
+	registerHooks(fake.api, { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" }, home, undefined, () => ({
+		permissionMode,
+	}));
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
 		outcome: "completed",

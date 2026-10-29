@@ -163,6 +163,7 @@ export class AgentSession implements AgentSessionApi {
 		// (session persistence, extensions, auto-compaction, retry logic)
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		installSessionAgentHooks(c);
+		c.models.applyContextBudget();
 
 		buildExtensionRuntime(c.runtime, {
 			activeToolNames: config.initialActiveToolNames,
@@ -212,7 +213,7 @@ export class AgentSession implements AgentSessionApi {
 		return summarizationRetryCallbacks((event) => this._emit(event), source);
 	}
 
-	/** Generate Pi's built-in compaction summary for manual and automatic compaction. */
+	/** Generate Octocode's built-in compaction summary for manual and automatic compaction. */
 	private async _runDefaultCompaction(
 		preparation: CompactionPreparation,
 		model: Model<any>,
@@ -278,7 +279,7 @@ export class AgentSession implements AgentSessionApi {
 		}
 
 		this._extensionRunner.invalidate(
-			"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
+			"This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
 		// Disconnect from agent events.
 		this._unsubscribeAgent?.();

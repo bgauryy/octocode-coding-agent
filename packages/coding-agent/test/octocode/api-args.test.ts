@@ -5,12 +5,12 @@ import { WAIT_MS } from "../../src/octocode/api/protocol.ts";
 import { registerApi } from "../../src/octocode/api/register.ts";
 import { apiDir, type InstanceRecord } from "../../src/octocode/api/registry.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const instance = (id: string, cwd = "/w"): InstanceRecord => ({ id, pid: 1, cwd, startedAt: 1, protocol: 1 });
 
-describe("octocode-pi-api arguments", () => {
+describe("octocode-api arguments", () => {
 	it("reads value flags, boolean flags and words", () => {
 		const { flags, words } = parseArgs(["--to", "pi-1", "fix", "--wait", "the", "--mode", "steer", "tests"]);
 		expect(Object.fromEntries(flags)).toEqual({ to: "pi-1", wait: true, mode: "steer" });
@@ -79,9 +79,9 @@ describe("API start failure without a UI", () => {
 		vi.stubEnv("OCTOCODE_API", "1");
 		vi.stubEnv("OCTOCODE_API_HTTP", "abc");
 		fs.mkdirSync(apiDir(), { recursive: true });
-		const { pi } = fakePi();
+		const { api } = fakeHost();
 		const wired = registerApi(
-			pi,
+			api,
 			new Subcommands(),
 			{ list: () => [], tell: () => ({ sent: [] }), deliverable: (text) => text },
 			() => "1.2.3",

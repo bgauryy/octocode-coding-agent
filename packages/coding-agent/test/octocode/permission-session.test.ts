@@ -4,13 +4,13 @@ import { Permission } from "../../src/octocode/permission/ask.ts";
 import { parseGrants } from "../../src/octocode/permission/mode.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
 import { PERMISSION_GRANTS_ENV } from "../../src/octocode/shared/env.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A manual-mode session in an untrusted folder, whose dialog answers are scripted and whose titles and choices are recorded. */
 function manual(answers: Array<string | undefined>) {
-	const fake = fakePi();
-	const permission = new Permission({ pi: fake.pi, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
+	const fake = fakeHost();
+	const permission = new Permission({ api: fake.api, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
 	const asked: Array<{ title: string; choices: string[] }> = [];
 	const ctx = Object.assign(fakeCtx({ cwd: tmp() }), { isProjectTrusted: () => false });
 	Object.assign(ctx.ui, {
@@ -99,7 +99,7 @@ describe("allow a whole kind of action for the session", () => {
 			].sort(),
 		).toEqual(["file.outside", "shell", "web"]);
 		const child = new Permission({
-			pi: fakePi().pi,
+			api: fakeHost().api,
 			env: { OCTOCODE_PERMISSION: "manual", [PERMISSION_GRANTS_ENV]: "shell,web" },
 			isSubagent: true,
 		});
@@ -130,7 +130,7 @@ describe("allow a whole kind of action for the session", () => {
 
 describe("how far an allowed verdict reaches", () => {
 	it('lasts for the call when the mode or "Allow once" allowed it, and for the session when a grant or a session answer did', async () => {
-		const full = new Permission({ pi: fakePi().pi, env: { OCTOCODE_PERMISSION: "full" }, isSubagent: false });
+		const full = new Permission({ api: fakeHost().api, env: { OCTOCODE_PERMISSION: "full" }, isSubagent: false });
 		const fullCtx = Object.assign(fakeCtx({ cwd: tmp() }), { isProjectTrusted: () => true });
 		full.start(fullCtx);
 		expect(await full.check(fullCtx as never, shell("ls"))).toMatchObject({

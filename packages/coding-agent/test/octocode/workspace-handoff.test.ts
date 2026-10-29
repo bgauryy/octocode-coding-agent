@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 let dir: string;
 let db: AgentDb;
@@ -24,9 +24,9 @@ const add = (title = "Build it") =>
 	store.add({ title, goal: "Checks pass", reason: "Users need it", createdBy: "user" });
 
 function setup() {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: dir });
-	const runtime = new WorkspaceRuntime(fake.pi, {
+	const runtime = new WorkspaceRuntime(fake.api, {
 		database: () => db,
 		members: () => [],
 		traffic: () => [],
@@ -125,7 +125,7 @@ describe("backlog implementation handoff", () => {
 	it("rolls back the claim when agent message delivery fails", async () => {
 		const app = setup();
 		const item = add();
-		vi.spyOn(app.pi, "sendUserMessage").mockImplementation(() => {
+		vi.spyOn(app.api, "sendUserMessage").mockImplementation(() => {
 			throw new Error("Session unavailable");
 		});
 		expect(

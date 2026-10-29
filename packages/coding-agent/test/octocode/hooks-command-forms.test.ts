@@ -6,7 +6,7 @@ import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import type { HookCommand } from "../../src/octocode/hooks/contracts.ts";
 import { runHook } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 function parse(handler: Record<string, unknown>, protocol: "claude" | "codex" | "octocode" = "claude") {
@@ -109,9 +109,9 @@ describe("source command forms", () => {
 					},
 				}),
 			);
-			const { pi, fire } = fakePi();
+			const { api, fire } = fakeHost();
 			const audit = vi.fn();
-			const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home, audit);
+			const hooks = registerHooks(api, {}, home, audit);
 			const ctx = {
 				cwd: tmp(),
 				hasUI: false,
@@ -152,8 +152,8 @@ describe("source command forms", () => {
 					hooks: { PreCompact: [{ hooks: [{ type: "command", command, ...(onFailure ? { onFailure } : {}) }] }] },
 				}),
 			);
-			const { pi, fire } = fakePi();
-			registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			const { api, fire } = fakeHost();
+			registerHooks(api, {}, home);
 			const ctx = {
 				cwd: tmp(),
 				hasUI: false,

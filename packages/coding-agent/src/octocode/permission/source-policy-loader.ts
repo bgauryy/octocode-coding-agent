@@ -2,7 +2,6 @@ import os from "node:os";
 import type { ExtensionAPI, ExtensionContext, ToolInvocation } from "../../core/extensions/types.ts";
 import { nativeHost } from "../shared/host-api.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
-import { envFlag, HOOKS_COMPAT_ENV } from "../shared/env.ts";
 import { projectTrustForContents, preparePermissionTrustUpdate } from "../shared/trust.ts";
 import { say } from "../shared/commands.ts";
 import { errorMessage } from "../../utils/guards.ts";
@@ -21,12 +20,7 @@ import {
 	persistSettingsWrite,
 } from "./source-policy-storage.ts";
 
-export function registerSourcePolicy(
-	pi: ExtensionAPI,
-	env: NodeJS.ProcessEnv = process.env,
-	home = os.homedir(),
-	onChange?: () => void,
-) {
+export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onChange?: () => void) {
 	let policy: SourcePolicy = { rules: [], errors: [] };
 	let basePolicy: SourcePolicy = { rules: [], errors: [] };
 	let last = "";
@@ -34,7 +28,6 @@ export function registerSourcePolicy(
 	let sessionRules: SourceRuleArrays = { allow: [], deny: [], ask: [] };
 	let transient: SourcePolicy = { rules: [], errors: [] };
 	let revision = 0;
-	const enabled = envFlag(env, HOOKS_COMPAT_ENV);
 	const sessionSource = (ctx: ExtensionContext) => ({
 		path: "Claude session permission updates",
 		anchor: ctx.cwd,
@@ -53,7 +46,7 @@ export function registerSourcePolicy(
 		};
 		revision++;
 		onChange?.();
-		nativeHost(pi).setToolPolicy?.((name) => !sourceToolDenied(policy, name));
+		nativeHost(api).setToolPolicy?.((name) => !sourceToolDenied(policy, name));
 	};
 	const capture = async (ctx: ExtensionContext) => {
 		try {
@@ -122,7 +115,6 @@ export function registerSourcePolicy(
 		acceptedContents = snapshot.contents;
 	};
 	const load = async (ctx: ExtensionContext) => {
-		if (!enabled) return;
 		const snapshot = await capture(ctx);
 		if (snapshot.fingerprint === last) return;
 		install(snapshot);
@@ -135,13 +127,12 @@ export function registerSourcePolicy(
 		pending = current.catch(() => {});
 		return current;
 	};
-	pi.on("session_start", async (_event, ctx) => refresh(ctx));
-	pi.on("before_agent_start", async (_event, ctx) => {
+	api.on("session_start", async (_event, ctx) => refresh(ctx));
+	api.on("before_agent_start", async (_event, ctx) => {
 		await refresh(ctx);
 	});
 	return {
 		prepareUpdates: (ctx: ExtensionContext, updates: readonly SourcePermissionUpdate[]) => {
-			if (!enabled) throw new Error("Source permission updates require compatibility mode");
 			const nextSession = applySessionRuleUpdates(
 				sessionRules,
 				updates.filter((update) => update.destination === "session"),
@@ -258,8 +249,5 @@ export function registerSourcePolicy(
 		refresh,
 		unprojected: (toolName: string) => unprojectedSourcePolicy(policy, toolName),
 		evaluate: (invocation: ToolInvocation, cwd: string) => evaluateSourcePolicy(policy, invocation, cwd),
-		get enabled() {
-			return enabled;
-		},
 	};
 }

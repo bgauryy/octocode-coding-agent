@@ -65,7 +65,7 @@ function withoutReasons(value: unknown): unknown {
 	);
 }
 
-export function registerLoopGuard(pi: ExtensionAPI): void {
+export function registerLoopGuard(api: ExtensionAPI): void {
 	/** Call key and executed outcome of each top-level call of the current message, by tool call id. */
 	const calls = new Map<string, { key?: string; outcome?: string; checked?: boolean }>();
 	let lastCall: string | undefined;
@@ -79,13 +79,13 @@ export function registerLoopGuard(pi: ExtensionAPI): void {
 		last = undefined;
 		count = 0;
 	};
-	pi.on("session_start", reset);
+	api.on("session_start", reset);
 	// A new prompt is new information: what follows is not a retry of what came before it.
-	pi.on("before_agent_start", reset);
-	pi.on("tool_execution_start", async (event) => {
+	api.on("before_agent_start", reset);
+	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) calls.set(event.toolCallId, { key: loopCallKey(event.toolName, event.args) });
 	});
-	pi.on("tool_call", async (event) => {
+	api.on("tool_call", async (event) => {
 		const call = calls.get(event.toolCallId);
 		if (call) call.checked = true;
 		if (event.parentToolCallId || count < LOOP_HALT_AT) return undefined;
@@ -100,12 +100,12 @@ export function registerLoopGuard(pi: ExtensionAPI): void {
 			reason: refusal(event.toolName, count),
 		};
 	});
-	pi.on("tool_result", async (event) => {
+	api.on("tool_result", async (event) => {
 		const call = event.parentToolCallId ? undefined : calls.get(event.toolCallId);
 		if (call && !event.isError) call.outcome = sha256(plainText(event.content) ?? JSON.stringify(event.content));
 		return undefined;
 	});
-	pi.on("message_end", async (event, ctx) => {
+	api.on("message_end", async (event, ctx) => {
 		const message = event.message;
 		if (message.role !== "toolResult") return undefined;
 		const call = calls.get(message.toolCallId);

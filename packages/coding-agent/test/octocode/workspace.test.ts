@@ -7,7 +7,7 @@ import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { presentAgentReport } from "../../src/octocode/subagents/presentation.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 let dir: string;
 let db: AgentDb;
@@ -24,10 +24,10 @@ afterEach(() => {
 const actor = { id: "parent", kind: "agent" as const };
 const add = () => store.add({ title: "Build it", goal: "Checks pass", reason: "Users need it", createdBy: "user" });
 function setup() {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: dir });
 	const tell = vi.fn(async () => ({ sent: ["worker"], id: 1 }));
-	const runtime = new WorkspaceRuntime(fake.pi, {
+	const runtime = new WorkspaceRuntime(fake.api, {
 		database: () => db,
 		members: () => [{ id: "worker", role: "general", status: "working" } as never],
 		traffic: () => [],

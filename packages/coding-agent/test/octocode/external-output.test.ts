@@ -5,7 +5,7 @@ import { ApiCallError, ApiClient } from "../../src/octocode/api/client.ts";
 import { ExternalAgents } from "../../src/octocode/external/manager.ts";
 import { parseExternalCommand, registerExternal } from "../../src/octocode/external/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const token = `sk-ant-${"a".repeat(40)}`;
@@ -16,9 +16,9 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 });
 async function apiClient(externalCall: () => Promise<unknown>) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const api = new OctocodeApi(
-		fake.pi,
+		fake.api,
 		{ list: () => [], tell: () => undefined, deliverable: (text) => text },
 		() => "test",
 		{ OCTOCODE_HOME: tmp() },
@@ -31,11 +31,11 @@ async function apiClient(externalCall: () => Promise<unknown>) {
 
 describe("external evidence boundaries", () => {
 	it("redacts structured tool details as well as the rendered evidence", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		vi.spyOn(ExternalAgents.prototype, "call").mockResolvedValue({
 			reply: { text: token, updates: [{ text: "complete evidence" }] },
 		});
-		registerExternal(fake.pi, new Subcommands(), {
+		registerExternal(fake.api, new Subcommands(), {
 			authorize: async () => undefined,
 			beforeSend: async () => undefined,
 			afterReceive: async () => undefined,
@@ -51,7 +51,7 @@ describe("external evidence boundaries", () => {
 	});
 
 	it("marks failed tool calls as errors while retaining uncertain execution and redacted partial evidence", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		vi.spyOn(ExternalAgents.prototype, "call").mockRejectedValue(
 			Object.assign(new Error(`failed ${token}`), {
 				execution: "uncertain",
@@ -59,7 +59,7 @@ describe("external evidence boundaries", () => {
 				stderr: token,
 			}),
 		);
-		registerExternal(fake.pi, new Subcommands(), {
+		registerExternal(fake.api, new Subcommands(), {
 			authorize: async () => undefined,
 			beforeSend: async () => undefined,
 			afterReceive: async () => undefined,
@@ -121,19 +121,19 @@ describe("external evidence boundaries", () => {
 
 describe("external agent command syntax", () => {
 	it("combines local controls and external discovery under one registration", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
 		const local = vi.fn(async () => {});
 		commands.add("agents", { description: "Local agents", handler: local });
 		const external = vi.spyOn(ExternalAgents.prototype, "call").mockResolvedValue({ agents: [] });
-		registerExternal(fake.pi, commands, {
+		registerExternal(fake.api, commands, {
 			authorize: async () => undefined,
 			beforeSend: async () => undefined,
 			afterReceive: async () => undefined,
 			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
 			sender: () => "test",
 		});
-		commands.register(fake.pi);
+		commands.register(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		await fake.commands.get("agents")!.handler("", ctx);
 		// Nothing external to list: the local list stands alone, with no second notice.
@@ -149,7 +149,7 @@ describe("external agent command syntax", () => {
 	});
 
 	it("bare /agents shows the local list and, when something is connected, readable external rows in the same notice", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
 		commands.add("agents", {
 			description: "Local agents",
@@ -163,14 +163,14 @@ describe("external agent command syntax", () => {
 			],
 			instances: [{ id: "inst-9", pid: 4242, cwd: "/work/other", protocol: 1 }],
 		});
-		registerExternal(fake.pi, commands, {
+		registerExternal(fake.api, commands, {
 			authorize: async () => undefined,
 			beforeSend: async () => undefined,
 			afterReceive: async () => undefined,
 			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
 			sender: () => "test",
 		});
-		commands.register(fake.pi);
+		commands.register(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		await fake.commands.get("agents")!.handler("", ctx);
 		expect(external).toHaveBeenCalledOnce();
@@ -183,17 +183,17 @@ describe("external agent command syntax", () => {
 	});
 
 	it("/agents external renders results as sentences, never JSON or the untrusted fence", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
 		const external = vi.spyOn(ExternalAgents.prototype, "call");
-		registerExternal(fake.pi, commands, {
+		registerExternal(fake.api, commands, {
 			authorize: async () => undefined,
 			beforeSend: async () => undefined,
 			afterReceive: async () => undefined,
 			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
 			sender: () => "test",
 		});
-		commands.register(fake.pi);
+		commands.register(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		const agents = fake.commands.get("agents")!;
 		external.mockResolvedValueOnce({ connections: [], instances: [] });

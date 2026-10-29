@@ -272,7 +272,7 @@ export interface PendingRestore {
  * record once the message is delivered.
  */
 export function deliverRestoredFiles(
-	pi: Pick<ExtensionAPI, "sendMessage">,
+	api: Pick<ExtensionAPI, "sendMessage">,
 	pending: readonly WorkedFile[],
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model">>,
 	total: number,
@@ -301,12 +301,12 @@ export function deliverRestoredFiles(
 			...(partial.length > 0 ? { partial } : {}),
 			worked: restored.worked,
 		};
-		void pi.sendMessage(
+		void api.sendMessage(
 			{ customType: RESTORED_FILES_TYPE, content: restored.content, display: false, details },
 			{ triggerTurn: false },
 		);
 	} catch (error) {
-		// Octocode's ctx and pi throw this once the session was replaced; any other failure is a real error and goes on.
+		// Octocode's ctx and api throw this once the session was replaced; any other failure is a real error and goes on.
 		if (isStaleSessionError(error)) return undefined;
 		throw error;
 	}

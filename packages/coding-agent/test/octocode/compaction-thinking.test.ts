@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { bindsThinkingToPrefix, stripStaleThinking } from "../../src/octocode/compaction/thinking.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const T = 1_700_000_000_000;
@@ -94,8 +94,8 @@ describe("every request after a compaction", () => {
 	});
 
 	async function context(model: unknown) {
-		const fake = fakePi();
-		registerCompaction(fake.pi, { restore: () => undefined, forget: () => undefined } as unknown as FileGuard);
+		const fake = fakeHost();
+		registerCompaction(fake.api, { restore: () => undefined, forget: () => undefined } as unknown as FileGuard);
 		const ctx = fakeCtx({ cwd: "/repo", model });
 		Object.assign(ctx, { sessionManager: { getSessionId: () => "s1", getBranch: () => [], getEntries: () => [] } });
 		const out = (await fake.fire("context", { type: "context", messages: structuredClone(compacted) }, ctx)) as

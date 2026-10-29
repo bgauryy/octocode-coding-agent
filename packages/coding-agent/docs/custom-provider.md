@@ -11,7 +11,7 @@ Provider extensions run inside Octocode and can inspect credentials, prompts, to
 | Add models behind a supported API               | [`models.json`](models.md#configure-a-compatible-endpoint) |
 | Change an existing provider endpoint or headers | `models.json` or a small provider extension                |
 | Discover models dynamically                     | A provider with `refreshModels`                            |
-| Add a `/providers` flow                         | A provider with native or legacy OAuth configuration       |
+| Add a `/login` flow                             | A provider with native or legacy OAuth configuration       |
 | Implement an unsupported wire protocol          | A provider with `stream` or `streamSimple`                 |
 
 A provider extension is an [extension](extensions.md), so it follows the same loading, trust, reload, and error behavior.
@@ -134,7 +134,7 @@ Static providers can resolve an API key from a literal, environment interpolatio
 
 Use native provider authentication when the integration needs stored credentials, custom resolution, provider-scoped environment, or multiple login methods.
 
-An OAuth provider supplies a display name, login flow, token refresh, and access-token resolution. After registration it appears in `/providers`, and Octocode stores returned credentials in `~/.octocode/octocodecode/auth.json`.
+An OAuth provider supplies a display name, login flow, token refresh, and access-token resolution. After registration it appears in `/login`, and Octocode stores returned credentials in `~/.octocode/octocodecode/auth.json`.
 
 OAuth callbacks are UI-neutral. They can open an authorization URL, show a device code, report progress, request input, or ask the user to choose a login method. Honor cancellation and the supplied abort signal during network requests.
 

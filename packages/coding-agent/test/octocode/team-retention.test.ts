@@ -6,15 +6,15 @@ import type { Member } from "@octocodeai/octocode-contacts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { TeamTicker } from "../../src/octocode/team/ticker.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 function setup() {
 	const cwd = tmp();
 	const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
-	const { pi, sent } = fakePi();
+	const { api, sent } = fakeHost();
 	const ctx = fakeCtx({ cwd });
-	const team = new Team(pi, env);
+	const team = new Team(api, env);
 	team.start(ctx);
 	const id = team.join().id;
 	const store = TeamStore.open(cwd, env.OCTOCODE_AGENT_DB);

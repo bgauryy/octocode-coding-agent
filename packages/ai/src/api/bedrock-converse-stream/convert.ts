@@ -28,7 +28,8 @@ import { type TranscriptContext, withoutInitialSystemMessage } from "../../utils
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "../constrained-sampling.ts";
 import { splitErrorToolResultImages, transformMessages } from "../transform-messages.ts";
 import { getCachePoint } from "./cache-points.ts";
-import { isAnthropicClaudeModel, supportsThinkingSignature } from "./model-support.ts";
+import { isAnthropicClaudeModel } from "./model-match.ts";
+import { supportsThinkingSignature } from "./model-support.ts";
 import { type BedrockOptions, EMPTY_TEXT_PLACEHOLDER } from "./types.ts";
 
 /**

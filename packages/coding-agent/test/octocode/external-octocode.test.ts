@@ -6,7 +6,7 @@ import { ApiClient } from "../../src/octocode/api/client.ts";
 import { MAX_FRAME_BYTES } from "../../src/octocode/api/protocol.ts";
 import { apiDir, writeRecord } from "../../src/octocode/api/registry.ts";
 import { OctocodeBackend } from "../../src/octocode/external/octocode.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import type { ApiOperations } from "../../src/octocode/api/bridge/contracts.ts";
 
@@ -16,15 +16,15 @@ afterEach(async () => {
 });
 
 async function boot(http = false, operations: ApiOperations = {}) {
-	const cwd = fs.realpathSync(tmp("external-pi-work-"));
-	const env = { OCTOCODE_HOME: tmp("external-pi-home-") };
+	const cwd = fs.realpathSync(tmp("external-octocode-work-"));
+	const env = { OCTOCODE_HOME: tmp("external-octocode-home-") };
 	const state = { idle: true, pending: false, sessionId: "session-one" };
-	const fake = fakePi();
+	const fake = fakeHost();
 	const abort = vi.fn(() => {
 		state.idle = true;
 	});
 	const api = new OctocodeApi(
-		fake.pi,
+		fake.api,
 		{ list: () => [], tell: () => ({}), deliverable: (text) => text },
 		() => "test",
 		env,
@@ -87,7 +87,7 @@ describe("native external Octocode adapter", () => {
 
 	it("accepts the same canonical workspace through a symlink", async () => {
 		const { api, env, cwd } = await boot();
-		const alias = path.join(tmp("external-pi-alias-"), "workspace");
+		const alias = path.join(tmp("external-octocode-alias-"), "workspace");
 		fs.symlinkSync(cwd, alias, "dir");
 		const backend = await OctocodeBackend.connect({ instanceId: api.instance!.id, cwd: alias }, env);
 		expect(backend.cwd).toBe(cwd);

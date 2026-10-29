@@ -19,6 +19,7 @@ import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { createWorkspaceStore } from "../../state.ts";
 import { requestJson } from "../../request.ts";
+import { scopedRoute } from "../../scope.ts";
 import { BrowserConnection } from "../../transport.ts";
 import { createApplicationApi } from "./application-api.ts";
 import type { BacklogStore } from "../extension.ts";
@@ -48,16 +49,17 @@ function createApi(access: string) {
 	const headers = { Authorization: `Bearer ${access}`, "Content-Type": "application/json" };
 	return {
 		...createApplicationApi(access),
-		backlogs: async () => requestJson<Snapshot>(WORKSPACE_ROUTES.backlogs, { headers }, "Could not load the board"),
+		backlogs: async () =>
+			requestJson<Snapshot>(scopedRoute(WORKSPACE_ROUTES.backlogs), { headers }, "Could not load the board"),
 		mutate: async (payload: BacklogMutation) =>
 			requestJson<{ item: Pick<SnapshotItem, "ref" | "version"> }>(
-				WORKSPACE_ROUTES.backlogs,
+				scopedRoute(WORKSPACE_ROUTES.backlogs),
 				{ method: "POST", headers, body: JSON.stringify(payload) },
 				"Could not save",
 			),
 		command: async (payload: WorkspaceCommand): Promise<WorkspaceReceipt> => {
 			const result = await requestJson<{ receipt?: unknown }>(
-				WORKSPACE_ROUTES.workspace,
+				scopedRoute(WORKSPACE_ROUTES.workspace),
 				{ method: "POST", headers, body: JSON.stringify(payload) },
 				"Request failed",
 			);
@@ -77,7 +79,7 @@ function createApi(access: string) {
 		},
 		audit: async (params: { before?: number; backlogId?: string }, signal?: AbortSignal) =>
 			requestJson<{ events: BacklogAudit[]; before?: number }>(
-				`${WORKSPACE_ROUTES.audit}?${new URLSearchParams({
+				`${scopedRoute(WORKSPACE_ROUTES.audit)}?${new URLSearchParams({
 					...(params.before ? { before: String(params.before) } : {}),
 					...(params.backlogId ? { backlogId: params.backlogId } : {}),
 				})}`,
@@ -86,7 +88,7 @@ function createApi(access: string) {
 			),
 		reports: async (signal?: AbortSignal): Promise<ReportsIndex> => {
 			const value = await requestJson(
-				WORKSPACE_ROUTES.reports,
+				scopedRoute(WORKSPACE_ROUTES.reports),
 				{ headers: { Authorization: headers.Authorization }, signal },
 				"Could not load reports",
 			);
@@ -101,7 +103,7 @@ function createApi(access: string) {
 			signal?: AbortSignal,
 		): Promise<ReportFile> => {
 			const value = await requestJson(
-				`${WORKSPACE_ROUTES.reports}/file?${new URLSearchParams({ id, kind, name: file })}`,
+				`${scopedRoute(WORKSPACE_ROUTES.reports)}/file?${new URLSearchParams({ id, kind, name: file })}`,
 				{
 					headers: { Authorization: headers.Authorization },
 					signal,

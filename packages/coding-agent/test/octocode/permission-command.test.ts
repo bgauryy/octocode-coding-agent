@@ -5,20 +5,20 @@ import { registerPermissionCommand } from "../../src/octocode/permission/command
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
 import { registerEditor } from "../../src/octocode/ui/editor.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 function setup(options: { trusted?: boolean; env?: NodeJS.ProcessEnv; confirms?: boolean[] } = {}) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	// Sessions start in full; these fixtures export workspace, or manual for the strict (`trusted: false`) case.
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: options.env ?? { OCTOCODE_PERMISSION: options.trusted === false ? "manual" : "workspace" },
 		isSubagent: false,
 	});
 	const commands = new Subcommands();
 	registerPermissionCommand(commands, permission, () => 42);
-	registerEditor(fake.pi, permission);
+	registerEditor(fake.api, permission);
 	const ctx = Object.assign(fakeCtx({ cwd: tmp(), ui: { confirms: options.confirms ?? [] } }), {
 		isProjectTrusted: () => options.trusted ?? true,
 	});

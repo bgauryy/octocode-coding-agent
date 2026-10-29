@@ -1,4 +1,4 @@
-import type { Snapshot } from "@octocodeai/octocode-contacts/snapshot";
+import { STATES, type Snapshot } from "@octocodeai/octocode-contacts/snapshot";
 import { OCTOCODE_FAVICON_DATA_URI } from "./favicon.generated.ts";
 import { OFFLINE_PAGE_JS, WORKSPACE_STATE_JS } from "./state.generated.ts";
 import { PAGE_CSS } from "./styles.ts";
@@ -22,7 +22,7 @@ export function embeddedJson(value: unknown): string {
  * The backlog as one static page: the data in a JSON block, the style and script inline. Nothing from the data is placed
  * in the markup; React renders the page from the parsed data as text, never as HTML.
  */
-export function renderBacklogHtml(snapshot: Snapshot, live = false): string {
+export function renderBacklogHtml(snapshot: Snapshot, live = false, daemon = false): string {
 	return `<!doctype html>
 <html lang="en">
 <head>
@@ -35,7 +35,7 @@ export function renderBacklogHtml(snapshot: Snapshot, live = false): string {
 <title>Backlog</title>
 <style>${PAGE_CSS}</style>
 </head>
-<body data-live="${live}">
+<body data-live="${live}"${daemon ? ' data-daemon="true"' : ""}>
 <div id="app"></div>
 <noscript>This page needs JavaScript. The backlog data is in the page source, in the JSON block with id "data".</noscript>
 <script type="application/json" id="data">${embeddedJson(snapshot)}</script>
@@ -44,4 +44,13 @@ WorkspaceView.mountPage();</script>
 </body>
 </html>
 `;
+}
+
+/** The page the user-level daemon serves: live, with no data embedded; the scope (`?s=` or `?r=`) and token come from the URL. */
+export function renderDaemonHtml(): string {
+	return renderBacklogHtml(
+		{ repo: "Octocode", generatedAt: 0, states: STATES, idleMs: 604800000, items: [] },
+		true,
+		true,
+	);
 }

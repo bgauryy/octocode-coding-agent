@@ -25,7 +25,7 @@ describe("createAgentSession stream options", () => {
 	let agentDir: string;
 
 	beforeEach(() => {
-		tempDir = mkdtempSync(join(tmpdir(), "pi-sdk-stream-options-"));
+		tempDir = mkdtempSync(join(tmpdir(), "octocode-sdk-stream-options-"));
 		cwd = join(tempDir, "project");
 		agentDir = join(tempDir, "agent");
 		mkdirSync(cwd, { recursive: true });
@@ -361,8 +361,8 @@ describe("createAgentSession stream options", () => {
 			"openai-completions",
 			{},
 			{},
-			(pi) => {
-				pi.on("provider_stream_event", (event) => {
+			(api) => {
+				api.on("provider_stream_event", (event) => {
 					extensionEvents.push(event);
 				});
 			},
@@ -386,8 +386,8 @@ describe("createAgentSession stream options", () => {
 			"openai-completions",
 			{},
 			{ headers: { "x-explicit": "explicit" } },
-			(pi) => {
-				pi.on("before_provider_headers", (event) => {
+			(api) => {
+				api.on("before_provider_headers", (event) => {
 					event.headers["x-hook"] = [
 						event.headers["x-provider"],
 						event.headers["x-model"],

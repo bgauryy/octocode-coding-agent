@@ -43,8 +43,8 @@ it.each([false, true])("observes one full tool batch and applies block=%s before
 		settings: { retry: { enabled: false } },
 		tools: [tool],
 		extensionFactories: [
-			(pi) => {
-				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			(api) => {
+				registerHooks(api, {}, home);
 			},
 		],
 	});

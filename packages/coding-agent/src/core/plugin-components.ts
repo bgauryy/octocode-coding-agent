@@ -12,11 +12,54 @@ type PluginCommand =
 			definition: Record<string, unknown>;
 	  };
 
+/**
+ * Components a plugin can declare, per host, that Octocode does not load: the manifest key and the default location
+ * that announce one. Skills, Claude commands, hooks and MCP servers have owners; everything here is reported instead
+ * of silently ignored. Checked 2026-10-29 against the Claude Code plugin manifest reference and Codex `main` 3535c22b.
+ */
+const UNSUPPORTED_PLUGIN_COMPONENTS: Record<
+	PluginManifest["protocol"],
+	ReadonlyArray<{ key: string; path?: string }>
+> = {
+	claude: [
+		{ key: "agents", path: "./agents" },
+		{ key: "lspServers", path: "./.lsp.json" },
+		{ key: "outputStyles", path: "./output-styles" },
+		{ key: "workflows", path: "./workflows" },
+		{ key: "themes", path: "./themes" },
+		{ key: "monitors", path: "./monitors/monitors.json" },
+		{ key: "experimental" },
+		{ key: "userConfig" },
+		{ key: "channels" },
+		{ key: "dependencies" },
+		{ key: "settings", path: "./settings.json" },
+		{ key: "bin", path: "./bin" },
+	],
+	codex: [{ key: "commands" }, { key: "apps", path: "./.app.json" }, { key: "onboardingSkill" }],
+};
+
+/** The unsupported components a plugin declares or ships at their default location. */
+function unsupportedComponents(manifest: PluginManifest): string[] {
+	const present = (relative: string) => {
+		try {
+			lstatSync(path.resolve(manifest.root, relative));
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	return UNSUPPORTED_PLUGIN_COMPONENTS[manifest.protocol]
+		.filter(({ key, path: relative }) => manifest.settings[key] !== undefined || (relative && present(relative)))
+		.map(({ key }) => key);
+}
+
 /** Normalize component declarations without loading instructions or executing plugin code. */
 export function discoverPluginComponents(manifest: PluginManifest): {
 	skills: string[];
 	commands: PluginCommand[];
 	hooks: PluginComponent[];
+	/** Declared components Octocode does not load (see `UNSUPPORTED_PLUGIN_COMPONENTS`). */
+	unsupported: string[];
 	errors: string[];
 } {
 	const errors: string[] = [];
@@ -125,5 +168,5 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 				} else hookPaths(entry);
 			}
 	}
-	return { skills: [...skills], commands, hooks, errors };
+	return { skills: [...skills], commands, hooks, unsupported: unsupportedComponents(manifest), errors };
 }

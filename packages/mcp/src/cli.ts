@@ -2,7 +2,7 @@ import { presetEntries } from "./preset.ts";
 import { browserPreset } from "./presets/browser/index.ts";
 import { octocodePreset } from "./presets/octocode/index.ts";
 /**
- * `pi mcp`: add, remove, and check MCP servers and sign in to them outside a session. Agents run it
+ * `octocode mcp`: add, remove, and check MCP servers and sign in to them outside a session. Agents run it
  * through bash to configure servers, verify an `mcp.json` they wrote, and start an OAuth sign-in;
  * the user only approves access in the browser. Running sessions pick up new credentials on their
  * next turn.
@@ -81,7 +81,7 @@ Other options:
 
 const DEFAULT_LOGIN_TIMEOUT_SECONDS = 300;
 
-/** Run `pi mcp <args>` and return the exit code. */
+/** Run `octocode mcp <args>` and return the exit code. */
 export async function runMcpCommand(args: string[], options: McpCommandOptions): Promise<number> {
 	options = { ...options, presets: options.presets ?? [octocodePreset(), browserPreset()] };
 	const log = options.log ?? ((line: string) => console.log(line));

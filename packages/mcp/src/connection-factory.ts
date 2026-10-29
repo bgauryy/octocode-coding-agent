@@ -1,4 +1,4 @@
-/** The one way to build a configured server's connection, for sessions and for `pi mcp`. */
+/** The one way to build a configured server's connection, for sessions and for `octocode mcp`. */
 
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
@@ -11,7 +11,7 @@ export interface McpConnectionOptions {
 	cwd: string;
 	credentials: McpOAuthCredentialStore;
 	log?: McpServerLog;
-	/** The current token of a pi provider, for servers with `auth.provider`. */
+	/** The current token of an Octocode provider, for servers with `auth.provider`. */
 	providerToken?: (provider: string) => Promise<string | undefined>;
 	/** Adjusts the entry just before its server launches, for example to add default roots. */
 	prepareLaunch?: (entry: McpServerEntry, cwd: string) => McpServerEntry;

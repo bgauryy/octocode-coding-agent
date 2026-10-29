@@ -12,14 +12,14 @@ import { assignMcpToolNames, createMcpToolName } from "./tool-names.ts";
 type ToolDefinitions = Array<Parameters<McpExtensionState["definitions"]["set"]>[1]>;
 
 /** One registry refresh for the whole batch; a host without `registerTools` gets one `registerTool` per definition. */
-function registerAll(pi: McpExtensionState["pi"], definitions: ToolDefinitions): void {
+function registerAll(api: McpExtensionState["api"], definitions: ToolDefinitions): void {
 	if (definitions.length === 0) return;
-	if (typeof pi.registerTools === "function") pi.registerTools(definitions);
-	else for (const definition of definitions) pi.registerTool(definition);
+	if (typeof api.registerTools === "function") api.registerTools(definitions);
+	else for (const definition of definitions) api.registerTool(definition);
 }
 
 export function registerTools(state: McpExtensionState, connection: McpServerConnection): void {
-	const { pi, toolOwners, serverTools, definitions, registeredMetadata, cachedDefinitions } = state;
+	const { api, toolOwners, serverTools, definitions, registeredMetadata, cachedDefinitions } = state;
 	const server = connection.entry.name;
 	const entry = state.findServer(server)?.entry ?? connection.entry;
 	const description = entry.config.description?.trim();
@@ -31,7 +31,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 	// Off by default only where a selection names the server; a server started by hand outside the selection
 	// (`/mcp` enable) was chosen for this session, so its tools activate like any other. One a hook started stays
 	// unselected.
-	const defaultActive = isDefaultActive(entry) || (!state.findServer(server)?.unselected && !isSelected(pi, entry));
+	const defaultActive = isDefaultActive(entry) || (!state.findServer(server)?.unselected && !isSelected(api, entry));
 	const previous = serverTools.get(server) ?? new Set<string>();
 	const current = new Set<string>();
 	const owner = (tool: string) => `${server}\0${tool}`;
@@ -130,8 +130,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			batch.push(hidden);
 		}
 	}
-	registerAll(pi, batch);
-	if (demoted.length > 0) pi.setActiveTools(pi.getActiveTools().filter((active) => !demoted.includes(active)));
+	registerAll(api, batch);
+	if (demoted.length > 0) api.setActiveTools(api.getActiveTools().filter((active) => !demoted.includes(active)));
 }
 
 /** Make a disabled server's tools unreachable. */
@@ -146,6 +146,6 @@ export function hideTools(state: McpExtensionState, server: string): void {
 			batch.push(hidden);
 		}
 	}
-	registerAll(state.pi, batch);
+	registerAll(state.api, batch);
 	state.serverTools.set(server, new Set());
 }

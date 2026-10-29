@@ -1,6 +1,7 @@
 import { mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { parseHttpIdleTimeoutMs } from "../http-dispatcher.ts";
 import type { Settings } from "../settings-schema.ts";
+import { mergeToggles } from "../extensibility/toggles.ts";
 import { mergeDefaultTools } from "./tool-list.ts";
 
 export function isMergeableObject(value: unknown): value is Record<string, unknown> {
@@ -52,4 +53,11 @@ export function parseTimeoutSetting(value: unknown, settingName: string): number
 		throw new Error(`Invalid ${settingName} setting: ${typeof value === "string" ? value : JSON.stringify(value)}`);
 	}
 	return undefined;
+}
+
+/** Global settings overlaid by trusted project settings; project `toggles` keys keep their scope (see `mergeToggles`). */
+export function mergeScopedSettings(global: Settings, project: Settings): Settings {
+	const merged = deepMergeSettings(global, project);
+	const toggles = mergeToggles(global.toggles, project.toggles);
+	return toggles === undefined ? merged : { ...merged, toggles };
 }

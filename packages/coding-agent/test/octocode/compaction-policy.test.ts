@@ -5,7 +5,7 @@ import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { idleContinuation } from "../../src/octocode/compaction/cache.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCachePolicy } from "./fake-pi.ts";
+import { fakeCachePolicy } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
@@ -28,7 +28,7 @@ describe("turn_end", () => {
 	it("never edits the context of a turn the provider accepted, however large and old its results", async () => {
 		const handlers = new Map<string, Handler>();
 		const sendMessage = vi.fn(async () => undefined);
-		const pi = {
+		const api = {
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -39,7 +39,7 @@ describe("turn_end", () => {
 			sendMessage,
 		} as unknown as ExtensionAPI;
 		const guard = { restore: vi.fn(), forget: vi.fn() };
-		registerCompaction(pi, guard as unknown as FileGuard);
+		registerCompaction(api, guard as unknown as FileGuard);
 		const model = {
 			provider: "p",
 			id: "m",
@@ -114,7 +114,7 @@ describe("turn_end", () => {
 
 	it("keeps active refresh decisions but stops idle headless refreshes", async () => {
 		const handlers = new Map<string, Handler>();
-		const pi = {
+		const api = {
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -123,7 +123,7 @@ describe("turn_end", () => {
 			getSettings: () => ({}),
 			getThinkingLevel: () => "off",
 		} as unknown as ExtensionAPI;
-		registerCompaction(pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
+		registerCompaction(api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 		const decide = handlers.get("cache_warming_decision")!;
 		const event = {
 			type: "cache_warming_decision",
@@ -173,7 +173,7 @@ describe("context edits", () => {
 
 	it("are the only entries the turn_end handler returns, and only for a turn rejected as too large", async () => {
 		const handlers = new Map<string, Handler>();
-		const pi = {
+		const api = {
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -182,7 +182,7 @@ describe("context edits", () => {
 			getSettings: () => ({}),
 			getThinkingLevel: () => "off",
 		} as unknown as ExtensionAPI;
-		registerCompaction(pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
+		registerCompaction(api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 		const model = {
 			provider: "p",
 			id: "m",

@@ -70,27 +70,27 @@ function getAliases(): Record<HostModuleSpecifier, string> {
 		return fileURLToPath(import.meta.resolve(specifier));
 	};
 
-	const piCodingAgentEntry = packageIndex;
-	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@octocodeai/octocode-agent-core");
-	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@octocodeai/octocode-tui");
+	const octocodeCodingAgentEntry = packageIndex;
+	const octocodeAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@octocodeai/octocode-agent-core");
+	const octocodeTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@octocodeai/octocode-tui");
 	// Extensions resolve the octocode-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
-	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@octocodeai/octocode-ai/compat");
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@octocodeai/octocode-ai/oauth");
-	const piAiProvidersEntry = resolveWorkspaceOrImport(
+	const octocodeAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@octocodeai/octocode-ai/compat");
+	const octocodeAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@octocodeai/octocode-ai/oauth");
+	const octocodeAiProvidersEntry = resolveWorkspaceOrImport(
 		"ai/dist/providers/all.js",
 		"@octocodeai/octocode-ai/providers/all",
 	);
 
 	_aliases = {
-		"@octocodeai/octocodecode": piCodingAgentEntry,
-		"@octocodeai/octocode-agent-core": piAgentCoreEntry,
-		"@octocodeai/octocode-tui": piTuiEntry,
-		"@octocodeai/octocode-ai/providers/all": piAiProvidersEntry,
-		"@octocodeai/octocode-ai/compat": piAiCompatEntry,
-		"@octocodeai/octocode-ai/oauth": piAiOauthEntry,
-		"@octocodeai/octocode-ai": piAiCompatEntry,
+		"@octocodeai/octocodecode": octocodeCodingAgentEntry,
+		"@octocodeai/octocode-agent-core": octocodeAgentCoreEntry,
+		"@octocodeai/octocode-tui": octocodeTuiEntry,
+		"@octocodeai/octocode-ai/providers/all": octocodeAiProvidersEntry,
+		"@octocodeai/octocode-ai/compat": octocodeAiCompatEntry,
+		"@octocodeai/octocode-ai/oauth": octocodeAiOauthEntry,
+		"@octocodeai/octocode-ai": octocodeAiCompatEntry,
 		typebox: typeboxEntry,
 		"typebox/compile": typeboxCompileEntry,
 		"typebox/value": typeboxValueEntry,

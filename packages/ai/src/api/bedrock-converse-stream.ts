@@ -38,7 +38,7 @@ import {
 	normalizeDiagnosticValue,
 } from "./bedrock-converse-stream/errors.ts";
 import { addCustomHeadersMiddleware, addResponseHeadersMiddleware } from "./bedrock-converse-stream/middleware.ts";
-import { isAnthropicClaudeModel, supportsAdaptiveThinking } from "./bedrock-converse-stream/model-support.ts";
+import { isAnthropicClaudeModel, supportsAdaptiveThinking } from "./bedrock-converse-stream/model-match.ts";
 import { buildAdditionalModelRequestFields } from "./bedrock-converse-stream/request-fields.ts";
 import {
 	finalizeStreamingBlock,

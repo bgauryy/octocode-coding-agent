@@ -52,8 +52,8 @@ describe("automatic compaction cancellation regressions", () => {
 				retry: { enabled: false },
 			},
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", () => ({ cancel: true }));
+				(api) => {
+					api.on("session_before_compact", () => ({ cancel: true }));
 				},
 			],
 		});
@@ -147,8 +147,8 @@ describe("automatic compaction cancellation regressions", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", () => ({ cancel: true }));
+				(api) => {
+					api.on("session_before_compact", () => ({ cancel: true }));
 				},
 			],
 		});

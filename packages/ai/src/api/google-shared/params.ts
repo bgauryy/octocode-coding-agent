@@ -13,8 +13,8 @@ import {
 	resolveGoogleThinkingLevel,
 	toGoogleSdkThinkingLevel,
 	toGoogleThinkingLevel,
-	usesGoogleThinkingLevel,
 } from "./thinking.ts";
+import { usesGoogleThinkingLevel } from "./thinking-format.ts";
 import { convertTools, resolveGoogleFunctionCallingMode, supportsGoogleStrictToolSampling } from "./tools.ts";
 
 interface GoogleThinkingOptions {

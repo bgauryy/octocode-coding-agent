@@ -9,7 +9,7 @@ import type {
 } from "../types.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { getUserAgent } from "../utils/user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { buildGoogleParams, type GoogleBaseOptions, resolveGoogleSimpleThinking } from "./google-shared/params.ts";
 import { streamGoogle } from "./google-shared/stream.ts";
@@ -95,7 +95,7 @@ function buildHttpOptions(model: Model<"google-vertex">, optionsHeaders?: Provid
 		}
 	}
 
-	const headers = providerHeadersToRecord({ "User-Agent": getPiUserAgent(), ...model.headers, ...optionsHeaders });
+	const headers = providerHeadersToRecord({ "User-Agent": getUserAgent(), ...model.headers, ...optionsHeaders });
 	if (headers) {
 		httpOptions.headers = headers;
 	}

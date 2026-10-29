@@ -15,17 +15,17 @@ export type { McpTransportFactory } from "./runtime.ts";
 export type { McpExtensionOptions } from "./state.ts";
 
 export function createMcpExtension(options: McpExtensionOptions = {}): ExtensionFactory {
-	return (pi: ExtensionAPI) => {
-		registerMcpHost(pi, options);
+	return (api: ExtensionAPI) => {
+		registerMcpHost(api, options);
 	};
 }
 
-export function registerMcpHost(pi: ExtensionAPI, options: McpExtensionOptions = {}): McpExtensionState {
-	const state = new McpExtensionState(pi, options);
-	registerInheritedMcpServers(pi);
+export function registerMcpHost(api: ExtensionAPI, options: McpExtensionOptions = {}): McpExtensionState {
+	const state = new McpExtensionState(api, options);
+	registerInheritedMcpServers(api);
 
 	// A resumed session renders calls to MCP tools before their server connected, if it ever does.
-	pi.registerToolRenderer((toolName, next) => {
+	api.registerToolRenderer((toolName, next) => {
 		const match = /^mcp__(.+?)__(.+)$/.exec(toolName);
 		return next() ?? (match ? createMcpToolRenderers(`${match[1]}/${match[2]}`) : undefined);
 	});

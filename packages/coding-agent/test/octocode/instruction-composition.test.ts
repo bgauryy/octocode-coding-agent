@@ -15,7 +15,7 @@ import {
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { createHarness } from "../suite/harness.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 
 let root: string;
 beforeEach(() => {
@@ -45,8 +45,8 @@ it("composes a child role once alongside discovered user and project instruction
 		settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 	});
 	await loader.reload();
-	const fake = fakePi();
-	registerTurnSetup(fake.pi, {
+	const fake = fakeHost();
+	registerTurnSetup(fake.api, {
 		isSubagent: true,
 		profiles: () => new Map(),
 	});
@@ -69,8 +69,8 @@ it("composes a child role once alongside discovered user and project instruction
 });
 
 it("updates the named policy section when selected research tools change", async () => {
-	const fake = fakePi();
-	registerTurnSetup(fake.pi, {
+	const fake = fakeHost();
+	registerTurnSetup(fake.api, {
 		isSubagent: false,
 		profiles: () => new Map(),
 	});
@@ -94,15 +94,15 @@ it("sends the updated policy to the model through the real session pipeline", as
 	const harness = await createHarness({
 		initialActiveToolNames: ["read", name],
 		extensionFactories: [
-			(pi) => {
-				pi.registerTool({
+			(api) => {
+				api.registerTool({
 					name,
 					label: "Research fixture",
 					description: "Offline research fixture",
 					parameters: Type.Object({}),
 					execute: async () => ({ content: [], details: {} }),
 				});
-				registerTurnSetup(pi, {
+				registerTurnSetup(api, {
 					isSubagent: false,
 					profiles: () => new Map(),
 				});

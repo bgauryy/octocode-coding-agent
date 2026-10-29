@@ -6,7 +6,7 @@ import { CLAMP_NOTE, foregroundFailure } from "../../src/octocode/files/bash/res
 import { BashExecutionError } from "../../src/core/tools/bash/outcome.ts";
 import { renderBashResult } from "../../src/octocode/files/render.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 vi.mock("../../src/octocode/files/bash-run.ts", async (importOriginal) => ({
@@ -16,8 +16,8 @@ vi.mock("../../src/octocode/files/bash-run.ts", async (importOriginal) => ({
 
 describe("native Bash host notices", () => {
 	it("shows stray-process warnings, clamp notices and receipts to both model and TUI", async () => {
-		const { pi, tools } = fakePi();
-		registerBashTool(pi, new Subcommands(), new BashJobs(tmp()), () => ({}));
+		const { api, tools } = fakeHost();
+		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({}));
 		const result = await tools.get("bash").execute(
 			"t",
 			{

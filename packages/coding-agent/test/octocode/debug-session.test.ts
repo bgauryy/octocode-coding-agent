@@ -42,10 +42,60 @@ describe("optional DAP session", () => {
 		});
 		try {
 			await expect.poll(() => session.state).toBe("ended");
-			expect(session.protocol.child.killed).toBe(true);
+			expect(session.protocol.child?.killed).toBe(true);
 		} finally {
 			session.close();
 		}
+	});
+	it("keeps the final output and exit code after the debuggee ends", async () => {
+		const { session } = await DebugSession.launch({
+			adapter: process.execPath,
+			adapterArgs: [fixture, "--terminate-after-config"],
+			cwd: process.cwd(),
+			launch: { program: "fixture" },
+		});
+		try {
+			await expect(session.action("output", {})).resolves.toMatchObject({
+				state: "ended",
+				exitCode: 3,
+				output: expect.stringContaining("bye"),
+			});
+			await expect(session.action("stack", { generation: session.generation })).rejects.toThrow("ended");
+		} finally {
+			session.close();
+		}
+	});
+	it("waits for the next stop after a resume and names the top frame", async () => {
+		const { session } = await DebugSession.launch({
+			adapter: process.execPath,
+			adapterArgs: [fixture],
+			cwd: process.cwd(),
+			launch: { program: "fixture" },
+			breakpoints: [{ source: "fixture.js", lines: [7] }],
+		});
+		try {
+			const first = (await session.action("output", {})) as { generation: number };
+			expect(first).toMatchObject({ state: "stopped", reason: "breakpoint", threadId: 1, frame: { id: 11, line: 7 } });
+			const step = (await session.action("next", { generation: first.generation })) as { generation: number };
+			expect(step).toMatchObject({ state: "stopped", reason: "step", frame: { id: 11 } });
+			expect(step.generation).toBeGreaterThan(first.generation);
+			// The stop's frame is usable without a separate stack call.
+			await expect(session.action("scopes", { generation: step.generation, frameId: 11 })).resolves.toMatchObject({
+				scopes: [{ variablesReference: 22 }],
+			});
+		} finally {
+			await session.terminate();
+		}
+	});
+	it("treats an adapter that ends before answering terminate as terminated", async () => {
+		const { session } = await DebugSession.launch({
+			adapter: process.execPath,
+			adapterArgs: [fixture, "--end-before-terminate-response"],
+			cwd: process.cwd(),
+			launch: { program: "fixture" },
+		});
+		await expect(session.terminate()).resolves.toBeUndefined();
+		expect(session.state).toBe("ended");
 	});
 	it("rejects a stack response from a stop superseded while the request was in flight", async () => {
 		const { session } = await DebugSession.launch({

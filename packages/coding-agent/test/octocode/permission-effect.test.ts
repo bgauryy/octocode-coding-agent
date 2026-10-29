@@ -12,15 +12,15 @@ import {
 	UNKNOWN,
 } from "../../src/octocode/permission/effect.ts";
 import { ACTION_CLASSES, actionWhy, decide } from "../../src/octocode/permission/mode.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A started permission state in `mode` with a recording dialog: what each prompt showed, and its choices. */
 function setup(mode: "manual" | "workspace" | "full" = "manual", options: { snapshotMs?: number } = {}) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const err: string[] = [];
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: { OCTOCODE_PERMISSION: mode },
 		isSubagent: false,
 		stderr: (text) => {

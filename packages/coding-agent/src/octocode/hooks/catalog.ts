@@ -1,0 +1,216 @@
+/**
+ * The hook event catalog: the one owner of which events exist, which source profiles accept each, and what a profile's
+ * handlers may declare and receive there. Parsing, payload projection, `/hooks`, the generated hook-event reference
+ * and the conformance tests read it; the dispatchers in `register/` implement each event at runtime.
+ */
+
+/** Source dialects remain distinct even when their handlers use identical command text. */
+export type HookProtocol = "octocode" | "claude" | "codex";
+export type HookHandlerType = "command" | "http" | "prompt" | "mcp_tool";
+/** Host metadata a profile adds to the event input when it is available. */
+export type HookInputField = "model" | "permission_mode" | "turn_id" | "agent";
+
+/** What one profile accepts for one event. */
+export interface ProfileEventSupport {
+	/** Handler types besides `command`. */
+	handlers: readonly Exclude<HookHandlerType, "command">[];
+	/** Host metadata added to this event's input. */
+	input: readonly HookInputField[];
+	/** Default timeout in seconds; the profile default when absent. */
+	timeout?: number;
+	/** Largest accepted timeout in seconds; `HOOK_MAX_TIMEOUT_S` when absent. */
+	maxTimeout?: number;
+	/** The upstream host ignores matchers on this event, so every group matches. */
+	ignoresMatcher?: true;
+	/** Codex `additionalContextLimit` applies: the event can emit additional context. */
+	contextLimit?: true;
+	/** Asynchronous command handlers are rejected. */
+	synchronous?: true;
+}
+
+export interface HookEventSpec {
+	/** What the event does in Octocode, shown in the generated reference. */
+	behavior: string;
+	/** A required hook (`failClosed`, Claude `onFailure: "block"`) with invalid configuration still denies matching calls. */
+	gate?: true;
+	profiles: Partial<Record<HookProtocol, ProfileEventSupport>>;
+}
+
+/** Default command timeout per profile, in seconds. */
+export const PROFILE_TIMEOUT_S: Record<HookProtocol, number> = { octocode: 60, claude: 600, codex: 600 };
+
+/** Command-handler fields each profile accepts. */
+export const PROFILE_COMMAND_FIELDS: Record<HookProtocol, readonly string[]> = {
+	octocode: ["type", "command", "timeout", "failClosed", "statusMessage"],
+	claude: ["type", "command", "timeout", "failClosed", "statusMessage", "args", "onFailure", "async", "asyncRewake"],
+	codex: [
+		"type",
+		"command",
+		"timeout",
+		"failClosed",
+		"statusMessage",
+		"commandWindows",
+		"async",
+		"additionalContextLimit",
+	],
+};
+
+const native: ProfileEventSupport = { handlers: [], input: [] };
+const CLAUDE_INPUT = ["permission_mode", "agent"] as const;
+const claude = (
+	handlers: ProfileEventSupport["handlers"],
+	{ input = [], ...extra }: Partial<ProfileEventSupport> = {},
+): ProfileEventSupport => ({ handlers: [...handlers, "mcp_tool"], input: [...CLAUDE_INPUT, ...input], ...extra });
+const codex = (input: readonly HookInputField[], extra: Partial<ProfileEventSupport> = {}): ProfileEventSupport => ({
+	handlers: ["mcp_tool"],
+	input,
+	...extra,
+});
+const GATE = ["http", "prompt"] as const;
+const OBSERVER = ["http"] as const;
+const CODEX_TOOL = ["model", "permission_mode", "turn_id", "agent"] as const;
+
+/** Every event Octocode implements, in dispatch-report order. */
+export const HOOK_CATALOG = {
+	PreToolUse: {
+		behavior:
+			"Denies calls, supplies context and applies supported source-profile rewrites before normal permission checks.",
+		gate: true,
+		profiles: { octocode: native, claude: claude(GATE), codex: codex(CODEX_TOOL, { contextLimit: true }) },
+	},
+	PermissionRequest: {
+		behavior: "Allows or denies an approval that would otherwise be asked; an allow lasts for that request.",
+		gate: true,
+		profiles: { claude: claude(GATE), codex: codex(CODEX_TOOL) },
+	},
+	PostToolUse: {
+		behavior:
+			"Native/Claude append feedback; Codex can replace results. Successful file queries are handled individually.",
+		profiles: { octocode: native, claude: claude(GATE), codex: codex(CODEX_TOOL, { contextLimit: true }) },
+	},
+	PostToolUseFailure: {
+		behavior: "Observes failures and can add context.",
+		profiles: { claude: claude(GATE) },
+	},
+	PostToolBatch: {
+		behavior: "Observes the completed batch once; blocking prevents the next model request.",
+		profiles: { claude: claude(GATE, { ignoresMatcher: true }) },
+	},
+	SessionStart: {
+		behavior: "Supplies context for the next prompt, including after compaction.",
+		profiles: {
+			octocode: native,
+			claude: claude([], { input: ["model"] }),
+			codex: codex(["model", "permission_mode"], { contextLimit: true }),
+		},
+	},
+	SubagentStart: {
+		behavior: "Supplies child context when child hooks are enabled.",
+		profiles: {
+			claude: claude(OBSERVER),
+			codex: codex(["model", "permission_mode", "turn_id"], { contextLimit: true }),
+		},
+	},
+	SubagentStop: {
+		behavior: "Gates child completion when child hooks are enabled.",
+		profiles: { claude: claude(GATE), codex: codex(["model", "permission_mode", "turn_id"]) },
+	},
+	Interrupt: {
+		behavior: "Observes an explicitly interrupted main turn after cancellation; cannot continue it.",
+		profiles: {
+			codex: codex(["model", "permission_mode", "turn_id"], { timeout: 1, maxTimeout: 3, ignoresMatcher: true }),
+		},
+	},
+	SessionEnd: {
+		behavior: "Observes supported termination reasons within a separate cleanup deadline.",
+		profiles: {
+			claude: claude(OBSERVER, { timeout: 1.5, synchronous: true }),
+			codex: { handlers: [], input: [], timeout: 1, maxTimeout: 3 },
+		},
+	},
+	UserPromptSubmit: {
+		behavior: "Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed.",
+		gate: true,
+		profiles: {
+			claude: claude(GATE, { timeout: 30, ignoresMatcher: true }),
+			codex: codex(CODEX_TOOL, { contextLimit: true, ignoresMatcher: true }),
+		},
+	},
+	PreCompact: {
+		behavior: "Native is observational; supported source-profile vetoes reach the compaction owner.",
+		profiles: { octocode: native, claude: claude(OBSERVER), codex: codex(["model", "turn_id", "agent"]) },
+	},
+	PostCompact: {
+		behavior: "Claude observes; Codex can stop continuation after compaction.",
+		profiles: { claude: claude(OBSERVER), codex: codex(["model", "turn_id", "agent"]) },
+	},
+	Stop: {
+		behavior: "Can request continuation; explicit source-profile termination takes precedence.",
+		profiles: {
+			octocode: native,
+			claude: claude(GATE, { ignoresMatcher: true }),
+			codex: codex(["model", "permission_mode", "turn_id"], { ignoresMatcher: true }),
+		},
+	},
+	StopFailure: {
+		behavior: "Observes final error settlement; output cannot control the run.",
+		profiles: { claude: claude(OBSERVER) },
+	},
+	Notification: {
+		behavior: "Background observer; cannot block. Explicit Claude `async: true` can defer context.",
+		profiles: { octocode: native, claude: claude(OBSERVER) },
+	},
+	PreMessageSend: {
+		behavior: "Octocode message gate; can deny or ask before sending.",
+		gate: true,
+		profiles: { octocode: native },
+	},
+	PostMessageReceive: {
+		behavior: "Observes delivery; cannot rewrite messages or request a reply.",
+		profiles: { octocode: native },
+	},
+} as const satisfies Record<string, HookEventSpec>;
+
+export type HookEvent = keyof typeof HOOK_CATALOG;
+export const HOOK_EVENTS = Object.keys(HOOK_CATALOG) as HookEvent[];
+
+/**
+ * Events the upstream hosts document that Octocode does not implement yet, checked 2026-10-29 against the Claude Code
+ * hooks reference (changelog 2.1.312) and Codex `main` 3535c22b. They are reported as not implemented rather than unknown.
+ */
+export const UPSTREAM_ONLY_EVENTS: Record<Exclude<HookProtocol, "octocode">, readonly string[]> = {
+	claude: [
+		"Setup",
+		"UserPromptExpansion",
+		"PermissionDenied",
+		"MessageDisplay",
+		"TaskCreated",
+		"TaskCompleted",
+		"TeammateIdle",
+		"InstructionsLoaded",
+		"ConfigChange",
+		"CwdChanged",
+		"DirectoryAdded",
+		"FileChanged",
+		"WorktreeCreate",
+		"WorktreeRemove",
+		"PreModelSwitch",
+		"PostModelSwitch",
+		"Elicitation",
+		"ElicitationResult",
+	],
+	codex: ["PreModelRequest", "PostModelRequest"],
+};
+
+const isHookEvent = (event: string): event is HookEvent => Object.hasOwn(HOOK_CATALOG, event);
+
+/** What `protocol` accepts for `event`, or undefined when that profile rejects it. */
+export function profileSupport(protocol: HookProtocol, event: string): ProfileEventSupport | undefined {
+	if (!isHookEvent(event)) return undefined;
+	const profiles: HookEventSpec["profiles"] = HOOK_CATALOG[event].profiles;
+	return profiles[protocol];
+}
+
+/** The events a profile accepts, in catalog order. */
+export const profileEvents = (protocol: HookProtocol): HookEvent[] =>
+	HOOK_EVENTS.filter((event) => profileSupport(protocol, event));

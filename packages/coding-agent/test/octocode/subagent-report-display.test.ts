@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { displayReport, withoutOutcome } from "../../src/octocode/subagents/report-display.ts";
 import { renderAgentCall, renderAgentMessage } from "../../src/octocode/subagents/render.ts";
 import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
-import { rendered, theme } from "./fake-pi.ts";
+import { rendered, theme } from "./fake-host.ts";
 
 const SEP = "\n\n---\n\n";
 

@@ -6,7 +6,7 @@ import { formatAgo, formatDuration, formatSpan } from "../../src/octocode/shared
 import { recordCheck } from "../../src/octocode/shared/locks.ts";
 import { resultBlock, toolHeader } from "../../src/octocode/shared/render.ts";
 import { wholeSeconds } from "../../src/octocode/shared/util.ts";
-import { rendered, theme } from "./fake-pi.ts";
+import { rendered, theme } from "./fake-host.ts";
 import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/render/text.ts";
 import { livePaint, statusColor } from "../../src/octocode/shared/render/status.ts";
 import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/shared/render/rows.ts";

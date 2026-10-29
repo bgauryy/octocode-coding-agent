@@ -50,7 +50,7 @@ export interface CommandDeps extends BacklogOptions {
 }
 
 /** What the user does to backlog items from `/backlog`: add, edit, move, delete, and hand one to the agent. */
-export function createItemActions(pi: ExtensionAPI, deps: CommandDeps) {
+export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 	/** Runs one store change and repaints; returns the refusal text instead of throwing. */
 	const apply = (ctx: ExtensionCommandContext, change: () => void): string | undefined => {
 		try {
@@ -79,7 +79,7 @@ export function createItemActions(pi: ExtensionAPI, deps: CommandDeps) {
 		try {
 			backlog.store.dispatch(item.ref, item.version, { ...backlog.actor, kind: "human" }, (next) => {
 				claimed = next;
-				pi.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+				api.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
 			});
 		} catch (error) {
 			say(ctx, errorMessage(error), "warning");

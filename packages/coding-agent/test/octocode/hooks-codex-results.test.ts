@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 it.each([
@@ -30,9 +30,9 @@ it.each([
 				},
 			}),
 		);
-		const fake = fakePi();
+		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-		registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+		registerHooks(fake.api, {}, home);
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const results = await fake.emit(
 			"tool_result",

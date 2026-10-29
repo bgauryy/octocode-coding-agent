@@ -3,7 +3,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 it.each(["claude", "codex"] as const)("validates %s rewritten arguments before changing the call", async (protocol) => {
@@ -11,9 +11,9 @@ it.each(["claude", "codex"] as const)("validates %s rewritten arguments before c
 	vi.stubEnv("OCTOCODE_HOME", tmp());
 	const file = path.join(home, `.${protocol}`, protocol === "claude" ? "settings.json" : "hooks.json");
 	fs.mkdirSync(path.dirname(file), { recursive: true });
-	const fake = fakePi();
+	const fake = fakeHost();
 	fake.tools.set("bash", { name: "bash", description: "Run", parameters: Type.Object({ command: Type.String() }) });
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	for (const command of ["rewritten", { invalid: true }]) {
 		const output = {
@@ -58,7 +58,7 @@ it("applies Claude file rewrites through the registered native schema", async ()
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	fake.tools.set("file", {
 		name: "file",
 		description: "Files",
@@ -73,7 +73,7 @@ it("applies Claude file rewrites through the registered native schema", async ()
 			),
 		}),
 	});
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
@@ -103,13 +103,13 @@ it("projects Codex Bash command input and preserves native execution options on 
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	fake.tools.set("bash", {
 		name: "bash",
 		description: "Run",
 		parameters: Type.Object({ command: Type.String(), timeout: Type.Number(), background: Type.Boolean() }),
 	});
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {

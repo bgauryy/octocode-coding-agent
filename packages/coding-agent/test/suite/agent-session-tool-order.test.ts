@@ -5,8 +5,8 @@ import { orderToolNames } from "../../src/core/agent-session/tool-definitions.ts
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
-const register = (pi: ExtensionAPI, name: string, namespace?: string) =>
-	pi.registerTool({
+const register = (api: ExtensionAPI, name: string, namespace?: string) =>
+	api.registerTool({
 		name,
 		label: name,
 		description: `${name} tool.`,
@@ -18,8 +18,8 @@ const register = (pi: ExtensionAPI, name: string, namespace?: string) =>
 /** An extension standing in for an MCP server that registers its tools when its connection completes. */
 const server =
 	(namespace: string, tools: string[]): ExtensionFactory =>
-	(pi) => {
-		for (const tool of tools) register(pi, `${namespace}__${tool}`, namespace);
+	(api) => {
+		for (const tool of tools) register(api, `${namespace}__${tool}`, namespace);
 	};
 
 describe("declared tool order", () => {
@@ -38,7 +38,7 @@ describe("declared tool order", () => {
 	}
 
 	it("sorts MCP tools by namespace and name whichever server registers first", async () => {
-		const plain: ExtensionFactory = (pi) => register(pi, "plain_tool");
+		const plain: ExtensionFactory = (api) => register(api, "plain_tool");
 		const alpha = server("mcp__alpha", ["zeta", "beta"]);
 		const beta = server("mcp__beta", ["gamma", "alpha"]);
 		const forward = await declared([plain, alpha, beta]);

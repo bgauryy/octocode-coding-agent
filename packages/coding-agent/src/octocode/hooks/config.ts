@@ -1,4 +1,5 @@
-import { HOOK_EVENTS, type HookSource, type HookHandler, type HookConfig } from "./contracts.ts";
+import { HOOK_EVENTS } from "./catalog.ts";
+import type { HookSource, HookHandler, HookConfig } from "./contracts.ts";
 import { applyHttpPolicy } from "./http.ts";
 import fs from "node:fs";
 import { parseConfigDocument } from "../../utils/config-document.ts";
@@ -12,6 +13,7 @@ import path from "node:path";
 import { claudeSettingsSources, globalPaths, projectHookFiles } from "../shared/home.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
+import { applyHookToggles } from "./config/toggles.ts";
 
 /**
  * A command-hook subset read from Claude Code, Codex and Octocode configuration:
@@ -32,22 +34,17 @@ export function hookLabel(hook: HookHandler): string {
 }
 
 /**
- * User hook files always (`~/.claude/settings.json`, `~/.codex/hooks.json`, `<Octocode home>/hooks.json`); project files
- * (the same three names under the repo root, plus `.claude/settings.local.json`) only when Octocode trusts the project.
+ * User hook files always (Claude `settings.json`, Codex `hooks.json` and `config.toml`, `<Octocode home>/hooks.json`);
+ * project files (the same names under the repo root, plus `.claude/settings.local.json`) only when Octocode trusts the
+ * project.
  */
-export function hookFiles(cwd: string, projectTrusted: boolean, home = os.homedir(), sourceProfiles = false): string[] {
-	return hookSources(cwd, projectTrusted, home, sourceProfiles).map((source) => source.path);
+export function hookFiles(cwd: string, projectTrusted: boolean, home = os.homedir()): string[] {
+	return hookSources(cwd, projectTrusted, home).map((source) => source.path);
 }
 
-function hookSources(
-	cwd: string,
-	projectTrusted: boolean,
-	home: string,
-	sourceProfiles = false,
-	errors: string[] = [],
-): HookSource[] {
+function hookSources(cwd: string, projectTrusted: boolean, home: string, errors: string[] = []): HookSource[] {
 	let codexHome: string | undefined = path.join(home, ".codex");
-	if (sourceProfiles && process.env.CODEX_HOME) {
+	if (process.env.CODEX_HOME) {
 		try {
 			codexHome = codexConfigDir(home);
 		} catch {
@@ -57,33 +54,29 @@ function hookSources(
 	}
 	return [
 		{
-			path: path.join(
-				sourceProfiles ? path.dirname(claudeSettingsSources(cwd, false, home)[0].path) : path.join(home, ".claude"),
-				"settings.json",
-			),
+			path: path.join(path.dirname(claudeSettingsSources(cwd, false, home)[0].path), "settings.json"),
 			dialect: "claude",
 			scope: "user",
 		},
 		...(codexHome
-			? [{ path: path.join(codexHome, "hooks.json"), dialect: "codex" as const, scope: "user" as const }]
-			: []),
-		...(sourceProfiles && codexHome
-			? [{ path: path.join(codexHome, "config.toml"), dialect: "codex" as const, scope: "user" as const }]
+			? (["hooks.json", "config.toml"] as const).map((name): HookSource => ({
+					path: path.join(codexHome, name),
+					dialect: "codex",
+					scope: "user",
+				}))
 			: []),
 		{ path: globalPaths(process.env, home).hooks, dialect: "octocode", scope: "user" },
 		...(projectTrusted
-			? projectHookFiles(cwd)
-					.filter((file) => sourceProfiles || !file.endsWith(".toml"))
-					.map((file): HookSource => ({
-						path: file,
-						dialect:
-							path.basename(path.dirname(file)) === ".claude"
-								? "claude"
-								: path.basename(path.dirname(file)) === ".codex"
-									? "codex"
-									: "octocode",
-						scope: "project",
-					}))
+			? projectHookFiles(cwd).map((file): HookSource => ({
+					path: file,
+					dialect:
+						path.basename(path.dirname(file)) === ".claude"
+							? "claude"
+							: path.basename(path.dirname(file)) === ".codex"
+								? "codex"
+								: "octocode",
+					scope: "project",
+				}))
 			: []),
 	];
 }
@@ -92,7 +85,7 @@ export function loadHooks(
 	cwd: string,
 	projectTrusted: boolean,
 	home = os.homedir(),
-	options: { sourceProfiles?: boolean; plugins?: Settings["plugins"] } = {},
+	options: { plugins?: Settings["plugins"]; toggles?: Settings["toggles"] } = {},
 ): { config: HookConfig; errors: string[] } {
 	const config = emptyHooks();
 	const errors: string[] = [];
@@ -101,7 +94,7 @@ export function loadHooks(
 	const codexLayers = new Map<string, Set<string>>();
 	const httpPolicies: unknown[] = [];
 	const seen = new Set<string>();
-	for (const origin of hookSources(cwd, projectTrusted, home, options.sourceProfiles, errors)) {
+	for (const origin of hookSources(cwd, projectTrusted, home, errors)) {
 		const file = origin.path;
 		if (seen.has(file)) continue;
 		seen.add(file);
@@ -133,13 +126,7 @@ export function loadHooks(
 								}
 					}
 			}
-			if (
-				options.sourceProfiles &&
-				origin.dialect === "codex" &&
-				isRecord(value) &&
-				isRecord(value.hooks) &&
-				Object.keys(value.hooks).length
-			) {
+			if (origin.dialect === "codex" && isRecord(value) && isRecord(value.hooks) && Object.keys(value.hooks).length) {
 				const directory = path.dirname(file);
 				const kinds = codexLayers.get(directory) ?? new Set<string>();
 				kinds.add(path.extname(file));
@@ -149,17 +136,17 @@ export function loadHooks(
 						`${directory}: both hooks.json and inline TOML hooks are loaded; prefer one representation per layer`,
 					);
 			}
-			if (options.sourceProfiles && origin.dialect === "claude") httpPolicies.push(value);
+			if (origin.dialect === "claude") httpPolicies.push(value);
 			if (isRecord(value) && value.disableAllHooks === true) {
 				disabled = true;
 				errors.push(`${file}: disableAllHooks disables all loaded hook sources in Octocode`);
 			}
-			parseHooks(value, file, config, errors, origin, options.sourceProfiles ? origin.dialect : "octocode");
+			parseHooks(value, file, config, errors, origin, origin.dialect);
 		} catch (error) {
 			errors.push(`${file}: ${errorMessage(error)}`);
 		}
 	}
-	if (options.sourceProfiles && !disabled)
+	if (!disabled)
 		for (const entry of configuredPlugins(options.plugins, (message) => errors.push(message))) {
 			if (entry.enabled === false) continue;
 			const inspected = inspectPluginHooks(entry);
@@ -189,5 +176,6 @@ export function loadHooks(
 				.filter((group) => group.hooks.length > 0);
 		errors.push("Codex hooks disabled by features.hooks in loaded TOML configuration");
 	}
+	if (!disabled) applyHookToggles(config, options.toggles, cwd, home, errors);
 	return { config: disabled ? emptyHooks() : config, errors };
 }

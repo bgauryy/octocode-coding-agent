@@ -552,7 +552,7 @@ describe("parseCommandArgs + substituteArgs integration", () => {
 // ============================================================================
 
 describe("loadPromptTemplates - argument-hint", () => {
-	const testDir = join(tmpdir(), `pi-test-prompts-${Date.now()}`);
+	const testDir = join(tmpdir(), `octocode-test-prompts-${Date.now()}`);
 
 	function writeTemplate(name: string, content: string) {
 		mkdirSync(testDir, { recursive: true });
@@ -680,7 +680,7 @@ Analyze GitHub issue(s): $ARGUMENTS`,
 describe("loadPromptTemplates - diagnostics", () => {
 	// Regression test for #9354.
 	test("reports invalid YAML frontmatter and keeps valid siblings", () => {
-		const testDir = mkdtempSync(join(tmpdir(), "pi-test-prompts-invalid-"));
+		const testDir = mkdtempSync(join(tmpdir(), "octocode-test-prompts-invalid-"));
 		const invalidPromptPath = join(testDir, "invalid.md");
 		try {
 			writeFileSync(invalidPromptPath, "---\ndescription: Broken: unquoted colon\n---\nDo something.\n");

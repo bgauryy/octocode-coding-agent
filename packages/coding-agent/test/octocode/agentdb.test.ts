@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("agent state paths", () => {
-	it("keeps the database and session folders under <home>/agent/pi, never in agent/ itself", () => {
+	it("keeps the database and session folders at their own paths under <home>/agent and creates nothing on lookup", () => {
 		const home = tmp();
 		expect(agentDbPath({ OCTOCODE_HOME: home })).toBe(path.join(home, "agent", "octocode.db"));
 		expect(agentDbPath({ OCTOCODE_HOME: home, OCTOCODE_AGENT_DB: "x/y.db" })).toBe(path.resolve("x/y.db"));

@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { isRequestTooLarge, planTooLargeRecovery } from "../../src/octocode/compaction/images.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCachePolicy } from "./fake-pi.ts";
+import { fakeCachePolicy } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
@@ -66,7 +66,7 @@ const turnEnd = (
 
 function register(percent = 10) {
 	const handlers = new Map<string, Handler>();
-	const pi = {
+	const api = {
 		on: (name: string, handler: Handler) => {
 			handlers.set(name, handler);
 			return undefined;
@@ -75,7 +75,7 @@ function register(percent = 10) {
 		getThinkingLevel: () => "off",
 	} as unknown as ExtensionAPI;
 	const notify = vi.fn();
-	registerCompaction(pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
+	registerCompaction(api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 	const ctx = {
 		model: { promptCache: { short: 300 } },
 		modelRegistry: { getCachePolicy: fakeCachePolicy },

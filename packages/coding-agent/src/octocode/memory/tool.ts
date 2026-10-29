@@ -104,7 +104,7 @@ function listText(memories: readonly Memory[], empty: string): string {
  * auto-injection shows there. `/memory` is the user's own command and never asks.
  */
 export function registerMemoryTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	storeFor: (ctx: ExtensionContext) => MemoryStore,
 	options: { isSubagent: boolean; permission: Permission },
 ): void {
@@ -112,7 +112,7 @@ export function registerMemoryTool(
 		? (["search", "get", "list"] as const)
 		: (["search", "get", "list", "set", "delete"] as const);
 	const { ops: opsDescription, ...prompt } = memoryPrompt(options.isSubagent);
-	pi.registerTool(
+	api.registerTool(
 		timedTool(
 			{
 				name: "memory",

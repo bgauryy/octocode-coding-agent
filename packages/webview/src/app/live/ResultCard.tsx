@@ -4,6 +4,7 @@ import { stamp } from "../model/format.ts";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, type BadgeTone, cx } from "../ui/primitives.tsx";
+import { StateMark } from "../ui/StateMark.tsx";
 import { AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
 import { ContentBlocks, JsonDetails, ToolContent } from "./ContentBlocks.tsx";
 import { DiffView } from "./DiffView.tsx";
@@ -15,7 +16,8 @@ import { SessionActivityContent } from "./SessionActivityContent.tsx";
 const BADGE_TONES: Record<Tone, BadgeTone> = {
 	success: "success",
 	danger: "danger",
-	tool: "tool",
+	accent: "accent",
+	warning: "warning",
 	agent: "agent",
 	neutral: "neutral",
 };
@@ -53,7 +55,9 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 	return (
 		<article className={cx("result-card", `tone-${card.tone}`, compact && "is-compact", streaming && "is-streaming")}>
 			<div className="result-meta">
-				<Badge tone={BADGE_TONES[card.tone]}>{card.label}</Badge>
+				<Badge tone={BADGE_TONES[card.tone]} icon={card.ui && <StateMark state={card.ui} size={12} />}>
+					{card.label}
+				</Badge>
 				{card.status === "running" && event.type.startsWith("tool.") ? (
 					<span className="muted">
 						<Elapsed since={event.at} prefix="running · " />

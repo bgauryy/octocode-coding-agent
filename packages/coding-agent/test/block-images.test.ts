@@ -4,26 +4,11 @@ import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { processFileArguments } from "../src/cli/file-processor.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { createTinyBmp1x1Red24bpp } from "./image-fixtures.ts";
 
 // 1x1 red PNG image as base64 (smallest valid PNG)
 const TINY_PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
-
-function createTinyBmp1x1Red24bpp(): Buffer {
-	const buffer = Buffer.alloc(58);
-	buffer.write("BM", 0, "ascii");
-	buffer.writeUInt32LE(buffer.length, 2);
-	buffer.writeUInt32LE(54, 10);
-	buffer.writeUInt32LE(40, 14);
-	buffer.writeInt32LE(1, 18);
-	buffer.writeInt32LE(1, 22);
-	buffer.writeUInt16LE(1, 26);
-	buffer.writeUInt16LE(24, 28);
-	buffer.writeUInt32LE(0, 30);
-	buffer.writeUInt32LE(4, 34);
-	buffer[56] = 0xff;
-	return buffer;
-}
 
 describe("blockImages setting", () => {
 	describe("SettingsManager", () => {

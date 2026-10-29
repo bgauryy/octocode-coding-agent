@@ -17,7 +17,7 @@ import {
 } from "../../src/octocode/shared/archive.ts";
 import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 function repo(): string {
@@ -68,8 +68,8 @@ afterEach(() => {
 });
 
 function tool(cwd: string) {
-	const fake = fakePi();
-	registerArchiveTool(fake.pi);
+	const fake = fakeHost();
+	registerArchiveTool(fake.api);
 	const archive = fake.tools.get("archive");
 	const ctx = fakeCtx({ cwd });
 	return async (params: Record<string, unknown>) => {
@@ -188,8 +188,8 @@ describe("fork lineage (B155)", () => {
 
 	it("sets the lineage at session start, so the pointer names the source's archive and it reads as the session's own", async () => {
 		fileFor("source", "before the fork");
-		const fake = fakePi();
-		registerCompaction(fake.pi, new FileGuard());
+		const fake = fakeHost();
+		registerCompaction(fake.api, new FileGuard());
 		const ctx = fakeCtx({ cwd: repo() });
 		Object.assign(ctx.sessionManager, {
 			getHeader: () => ({
@@ -276,8 +276,8 @@ describe("session record", () => {
 
 	it("is written after each run", async () => {
 		const cwd = repo();
-		const fake = fakePi();
-		registerCompaction(fake.pi, new FileGuard());
+		const fake = fakeHost();
+		registerCompaction(fake.api, new FileGuard());
 		const ctx = fakeCtx({ cwd });
 		Object.assign(ctx.sessionManager, manager(cwd, "/t/me.jsonl"));
 		await fake.fire("agent_end", { type: "agent_end", messages: [] }, ctx);

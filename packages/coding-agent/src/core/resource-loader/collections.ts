@@ -5,6 +5,7 @@ import type { Theme } from "../../theme/theme.ts";
 import { canonicalizePath, isLocalPath } from "../../utils/paths.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { isSkillEnabledBySettings, type PathMetadata } from "../package-manager.ts";
+import { effectivePlugins } from "../extensibility/toggles.ts";
 import { loadConfiguredPluginPrompts, loadConfiguredPluginSkills } from "../plugin-resources.ts";
 import { loadPromptTemplates, type PromptTemplate } from "../prompt-templates.ts";
 import type { SettingsManager } from "../settings-manager.ts";
@@ -212,7 +213,9 @@ export class ResourceCollections {
 			});
 		}
 		if (!this.config.noSkills) {
-			const pluginSkills = loadConfiguredPluginSkills(this.config.settingsManager.getSettings().plugins);
+			const pluginSkills = loadConfiguredPluginSkills(
+				effectivePlugins(this.config.settingsManager.getSettings(), this.config.cwd),
+			);
 			skillsResult.skills.push(...pluginSkills.skills);
 			skillsResult.explicitSkills = [...(skillsResult.explicitSkills ?? []), ...(pluginSkills.explicitSkills ?? [])];
 			skillsResult.diagnostics.push(...pluginSkills.diagnostics);
@@ -280,7 +283,9 @@ export class ResourceCollections {
 			};
 		}
 		if (!this.config.noPromptTemplates) {
-			const plugins = loadConfiguredPluginPrompts(this.config.settingsManager.getSettings().plugins);
+			const plugins = loadConfiguredPluginPrompts(
+				effectivePlugins(this.config.settingsManager.getSettings(), this.config.cwd),
+			);
 			promptsResult.prompts.push(...plugins.prompts);
 			promptsResult.diagnostics.push(...plugins.diagnostics);
 		}

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -49,13 +49,13 @@ describe("tool schemas", () => {
 	for (const subagent of [false, true]) {
 		it(`carry no size or range bounds (${subagent ? "subagent" : "main session"})`, async () => {
 			if (subagent) process.env.OCTOCODE_SUBAGENT = "1";
-			const fake = fakePi();
-			Object.assign(fake.pi, { getSessionName: () => undefined });
-			await octocode(fake.pi);
+			const fake = fakeHost();
+			Object.assign(fake.api, { getSessionName: () => undefined });
+			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: !subagent });
 			Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-			const tools = fake.pi.getAllTools();
+			const tools = fake.api.getAllTools();
 			expect(tools.length).toBeGreaterThan(5);
 			const found = tools.flatMap((tool: { name: string; parameters: unknown }) =>
 				boundsIn(tool.parameters, tool.name, []),

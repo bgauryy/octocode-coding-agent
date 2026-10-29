@@ -1,4 +1,4 @@
-/** `pi mcp login`: the OAuth sign-in through the browser, with a pasted redirect URL as fallback. */
+/** `octocode mcp login`: the OAuth sign-in through the browser, with a pasted redirect URL as fallback. */
 
 import { createInterface } from "node:readline/promises";
 import { openBrowser } from "../../../coding-agent/src/utils/open-browser.ts";

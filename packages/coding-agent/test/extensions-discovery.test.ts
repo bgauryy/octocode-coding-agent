@@ -12,7 +12,7 @@ describe("extensions discovery", () => {
 	let extensionsDir: string;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ext-test-"));
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-ext-test-"));
 		extensionsDir = path.join(tempDir, "extensions");
 		fs.mkdirSync(extensionsDir);
 	});
@@ -22,15 +22,15 @@ describe("extensions discovery", () => {
 	});
 
 	const extensionCode = `
-		export default function(pi) {
-			pi.registerCommand("test", { handler: async () => {} });
+		export default function(api) {
+			api.registerCommand("test", { handler: async () => {} });
 		}
 	`;
 
 	const extensionCodeWithTool = (toolName: string) => `
 		import { Type } from "typebox";
-		export default function(pi) {
-			pi.registerTool({
+		export default function(api) {
+			api.registerTool({
 				name: "${toolName}",
 				label: "${toolName}",
 				description: "Test tool",
@@ -57,8 +57,8 @@ describe("extensions discovery", () => {
 			`
 				import { getAgentDir } from "@octocodeai/octocodecode";
 				void getAgentDir;
-				export default function(pi) {
-					pi.registerCommand("test", { handler: async () => {} });
+				export default function(api) {
+					api.registerCommand("test", { handler: async () => {} });
 				}
 			`,
 		);
@@ -90,8 +90,8 @@ describe("extensions discovery", () => {
 			path.join(extensionsDir, "compiled-esm-extension.js"),
 			`
 				import { physicalDependency } from "@octocodeai/octocodecode";
-				export default function(pi) {
-					if (physicalDependency) pi.registerCommand("physical-dependency", { handler: async () => {} });
+				export default function(api) {
+					if (physicalDependency) api.registerCommand("physical-dependency", { handler: async () => {} });
 				}
 			`,
 		);
@@ -110,8 +110,8 @@ describe("extensions discovery", () => {
 			`
 				import * as oauth from "@octocodeai/octocode-ai/oauth";
 				void oauth;
-				export default function(pi) {
-					pi.registerCommand("test", { handler: async () => {} });
+				export default function(api) {
+					api.registerCommand("test", { handler: async () => {} });
 				}
 			`,
 		);
@@ -433,14 +433,14 @@ describe("extensions discovery", () => {
 
 	it("registers message and entry renderers", async () => {
 		const extCode = `
-			export default function(pi) {
-				pi.registerMarkdownTransformer((markdown) => {
+			export default function(api) {
+				api.registerMarkdownTransformer((markdown) => {
 					return markdown;
 				});
-				pi.registerMessageRenderer("my-custom-type", (message, options, theme) => {
+				api.registerMessageRenderer("my-custom-type", (message, options, theme) => {
 					return null; // Use default rendering
 				});
-				pi.registerEntryRenderer("my-entry-type", (entry, options, theme) => {
+				api.registerEntryRenderer("my-entry-type", (entry, options, theme) => {
 					return null;
 				});
 			}
@@ -458,7 +458,7 @@ describe("extensions discovery", () => {
 
 	it("reports error when extension throws during initialization", async () => {
 		const extCode = `
-			export default function(pi) {
+			export default function(api) {
 				throw new Error("Initialization failed!");
 			}
 		`;
@@ -473,8 +473,8 @@ describe("extensions discovery", () => {
 
 	it("reports error when extension has no default export", async () => {
 		const extCode = `
-			export function notDefault(pi) {
-				pi.registerCommand("test", { handler: async () => {} });
+			export function notDefault(api) {
+				api.registerCommand("test", { handler: async () => {} });
 			}
 		`;
 		fs.writeFileSync(path.join(extensionsDir, "no-default.ts"), extCode);
@@ -507,10 +507,10 @@ describe("extensions discovery", () => {
 
 	it("loads extension with event handlers", async () => {
 		const extCode = `
-			export default function(pi) {
-				pi.on("agent_start", async () => {});
-				pi.on("tool_call", async (event) => undefined);
-				pi.on("agent_end", async () => {});
+			export default function(api) {
+				api.on("agent_start", async () => {});
+				api.on("tool_call", async (event) => undefined);
+				api.on("agent_end", async () => {});
 			}
 		`;
 		fs.writeFileSync(path.join(extensionsDir, "with-handlers.ts"), extCode);
@@ -526,8 +526,8 @@ describe("extensions discovery", () => {
 
 	it("loads extension with shortcuts", async () => {
 		const extCode = `
-			export default function(pi) {
-				pi.registerShortcut("ctrl+t", {
+			export default function(api) {
+				api.registerShortcut("ctrl+t", {
 					description: "Test shortcut",
 					handler: async (ctx) => {},
 				});
@@ -544,8 +544,8 @@ describe("extensions discovery", () => {
 
 	it("loads extension with flags", async () => {
 		const extCode = `
-			export default function(pi) {
-				pi.registerFlag("my-flag", {
+			export default function(api) {
+				api.registerFlag("my-flag", {
 					description: "My custom flag",
 					handler: async (value) => {},
 				});

@@ -11,7 +11,7 @@ vi.mock("../../../mcp/src/presets/octocode/launch.ts", async (importOriginal) =>
 }));
 
 const { mcpHost } = await import("../../../mcp/test/mcp-host-fixture.ts");
-const { fakeCtx } = await import("./fake-pi.ts");
+const { fakeCtx } = await import("./fake-host.ts");
 const { tmp } = await import("./helpers.ts");
 
 afterEach(() => {

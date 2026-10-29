@@ -1,5 +1,5 @@
 /**
- * Output files: files pi writes so the model can use output it was not shown in full, such as the
+ * Output files: files Octocode writes so the model can use output it was not shown in full, such as the
  * full text of truncated tool output, binary MCP resources, and images shown by programmatic tool callers.
  * Every output file is created here, so where they are stored can change in one place. Today they
  * go to the OS temp directory.

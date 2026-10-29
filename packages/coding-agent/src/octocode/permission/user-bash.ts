@@ -12,7 +12,7 @@ import type { GateVerdict } from "./gate.ts";
 import { catastrophicCommand } from "./shell/destructive.ts";
 
 interface UserBashGateOptions {
-	permission: Pick<Permission, "check" | "refused" | "typed" | "hasSourcePolicy">;
+	permission: Pick<Permission, "check" | "refused" | "typed" | "sourceDecision">;
 	/** The PreToolUse hook step of the `tool_call` pipeline; it sees the `!cmd` as a `bash` call. */
 	preToolUse: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<GateVerdict | undefined>;
 }
@@ -50,12 +50,15 @@ export function userBashGate({ permission, preToolUse }: UserBashGateOptions) {
 		}
 		const hook = verdict?.ask;
 		const destructive = catastrophicCommand(event.command, ctx.cwd) !== undefined;
-		if (!destructive && !hook && !permission.hasSourcePolicy) {
+		const invocation = captureToolInvocation(call.toolCallId, call.toolName, call.input);
+		// Claude permission rules that say nothing about this command (and name no shell target) leave typing it as consent.
+		const source = invocation && permission.sourceDecision(invocation, ctx.cwd);
+		if (!destructive && !hook && (!source || (source.decision === "none" && !source.shellTargets?.length))) {
 			permission.typed(event.command, ctx.cwd);
 			return undefined;
 		}
 		const checked = await permission.check(ctx, {
-			invocation: captureToolInvocation(call.toolCallId, call.toolName, call.input),
+			invocation,
 			...(destructive ? { action: "shell.destructive" as const } : {}),
 			title: destructive ? "Run this destructive command?" : "Run this command?",
 			what: [event.command, `cwd: ${ctx.cwd}`],

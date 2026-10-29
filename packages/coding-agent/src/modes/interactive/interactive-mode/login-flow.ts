@@ -1,5 +1,5 @@
 /**
- * Provider management and credential removal, including the /login compatibility alias.
+ * Provider management (/login) and credential removal (/logout).
  */
 
 import { showProviderManager, removeProviderCredential, type ProviderManagerHost } from "./provider-manager.ts";

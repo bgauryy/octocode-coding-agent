@@ -17,7 +17,7 @@ import {
 	PERMISSION_NONCE_FILE_ENV,
 	PERMISSION_RELAY_ENV,
 } from "../../src/octocode/shared/env.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
 import { ALLOW_ONCE, DENY, DENY_NOTE, NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
@@ -32,9 +32,9 @@ const shell: PermissionRequest = {
 /** A subagent session, as Octocode's RPC mode reports it (hasUI true), with the dialog titles it was asked. */
 const NONCE = "n0nce";
 function child(env: NodeJS.ProcessEnv) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const environment = { [PERMISSION_ENV]: "manual", [PERMISSION_NONCE_FILE_ENV]: nonceFile(NONCE), ...env };
-	const permission = new Permission({ pi: fake.pi, env: environment, isSubagent: true, stderr: () => undefined });
+	const permission = new Permission({ api: fake.api, env: environment, isSubagent: true, stderr: () => undefined });
 	const ctx = {
 		...fakeCtx({ cwd: tmp(), hasUI: true, mode: "rpc", ui: { selects: [ALLOW_ONCE] } }),
 		isProjectTrusted: () => true,
@@ -77,7 +77,7 @@ describe("a subagent session that relays its dialogs", () => {
 			[PERMISSION_NONCE_FILE_ENV]: file,
 		};
 		expect(fs.readFileSync(file, "utf8")).toBe(NONCE);
-		new Permission({ pi: fakePi().pi, env: environment, isSubagent: true, stderr: () => undefined });
+		new Permission({ api: fakeHost().api, env: environment, isSubagent: true, stderr: () => undefined });
 		expect(fs.existsSync(file)).toBe(false);
 		expect(environment).not.toHaveProperty(PERMISSION_NONCE_FILE_ENV);
 		expect(Object.values(environment)).not.toContain(NONCE);
@@ -91,12 +91,12 @@ describe("a subagent session that relays its dialogs", () => {
 			process.env[PERMISSION_RELAY_ENV] = "1";
 			const file = nonceFile("reload-nonce");
 			process.env[PERMISSION_NONCE_FILE_ENV] = file;
-			const first = new Permission({ pi: fakePi().pi, isSubagent: true, stderr: () => undefined });
+			const first = new Permission({ api: fakeHost().api, isSubagent: true, stderr: () => undefined });
 			expect(process.env[PERMISSION_NONCE_FILE_ENV]).toBeUndefined();
 			expect(fs.existsSync(file)).toBe(false);
 			void first;
-			const fake = fakePi();
-			const reloaded = new Permission({ pi: fake.pi, isSubagent: true, stderr: () => undefined });
+			const fake = fakeHost();
+			const reloaded = new Permission({ api: fake.api, isSubagent: true, stderr: () => undefined });
 			const ctx = {
 				...fakeCtx({ cwd: tmp(), hasUI: true, mode: "rpc", ui: { selects: [ALLOW_ONCE] } }),
 				isProjectTrusted: () => true,
@@ -128,10 +128,10 @@ describe("a subagent session that relays its dialogs", () => {
 	});
 
 	it("says once on stderr that its audit is not forwarded when it has no nonce, and still records it in its own log", () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const written: string[] = [];
 		const permission = new Permission({
-			pi: fake.pi,
+			api: fake.api,
 			env: { [PERMISSION_ENV]: "manual" },
 			isSubagent: true,
 			stderr: (text) => {

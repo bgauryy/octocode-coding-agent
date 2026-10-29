@@ -1,7 +1,7 @@
 import { Permission } from "../../../src/octocode/permission/ask.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../../src/octocode/shared/messages.ts";
 import { Team } from "../../../src/octocode/team/session.ts";
-import { fakeCtx, fakePi } from "../fake-pi.ts";
+import { fakeCtx, fakeHost } from "../fake-host.ts";
 
 /**
  * A Octocode process of the team, for a test that sends it mail from another process: `child` (a subagent: id, parent and
@@ -11,9 +11,9 @@ import { fakeCtx, fakePi } from "../fake-pi.ts";
  * stopped run settles, which is when held mail is handed over).
  */
 const [mode, cwd] = process.argv.slice(2) as ["child" | "peer", string];
-const fake = fakePi();
-const team = new Team(fake.pi);
-if (mode === "child") new Permission({ pi: fake.pi, isSubagent: true });
+const fake = fakeHost();
+const team = new Team(fake.api);
+if (mode === "child") new Permission({ api: fake.api, isSubagent: true });
 // A headless subagent is handed mail only while its run is going.
 let idle = mode === "peer";
 const ctx = fakeCtx({ cwd, hasUI: false });

@@ -286,9 +286,35 @@ function addCacheMissNotice(host: SessionRenderHost, miss: CacheMiss, message: A
 
 	const cost = miss.missedCost >= 0.01 ? ` (${formatCost({ cost: miss.missedCost, unpriced: false })})` : "";
 	const reBilled = `${formatTokens(miss.missedTokens)} tokens re-billed${cost}`;
-	const label = cacheMissLabel(miss, historyTtlMs(host, message));
+	const ttlMs = historyTtlMs(host, message);
+	const label = cacheMissLabel(miss, ttlMs);
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(noticeLine("warning", `${label}: ${reBilled}`, host.outputPad));
+	host.chatContainer.addChild(
+		noticeLine("warning", `${label}: ${reBilled}${idleWarmingHint(host, miss, message, ttlMs)}`, host.outputPad),
+	);
+}
+
+/**
+ * For a miss the idle gap alone explains, while idle warming is off: what one refresh would have cost, a read of the
+ * previous prompt, so the warning names the setting that prevents it.
+ */
+export function idleWarmingHint(
+	host: SessionRenderHost,
+	miss: CacheMiss,
+	message: AssistantMessage,
+	ttlMs: number | undefined,
+): string {
+	if (host.settingsManager.getCacheWarmingMode() === "idle") return "";
+	if (miss.apiReason || miss.modelChanged || miss.promptChanged || ttlMs === undefined || miss.idleMs < ttlMs)
+		return "";
+	const usage = message.usage;
+	const readPerToken =
+		usage.cacheRead > 0
+			? usage.cost.cacheRead / usage.cacheRead
+			: (host.session.modelRuntime.getModel(message.provider, message.model)?.cost.cacheRead ?? 0) / 1_000_000;
+	const refresh = (usage.cacheRead + miss.missedTokens) * readPerToken;
+	if (refresh <= 0) return ' · cacheWarming "idle" keeps it warm';
+	return ` · cacheWarming "idle" would have kept it for ${formatCost({ cost: refresh, unpriced: false })}`;
 }
 
 export function renderInitialMessages(host: SessionRenderHost): void {

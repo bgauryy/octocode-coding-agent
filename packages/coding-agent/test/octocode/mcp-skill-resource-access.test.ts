@@ -93,8 +93,8 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			extensionFactories: [
 				{
 					name: "faux",
-					factory: (pi) => {
-						pi.registerProvider("faux", {
+					factory: (api) => {
+						api.registerProvider("faux", {
 							name: "Faux",
 							api: faux.api,
 							baseUrl: "http://127.0.0.1:0",
@@ -102,8 +102,8 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 							models: faux.models,
 							streamSimple: faux.streamSimple,
 						} as never);
-						pi.on("session_start", () => {
-							commands = pi.getCommands().map((command) => command.name);
+						api.on("session_start", () => {
+							commands = api.getCommands().map((command) => command.name);
 						});
 					},
 				},

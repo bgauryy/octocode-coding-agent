@@ -16,6 +16,20 @@ export const WORKSPACE_ROUTES = {
 	live: "/api/backlogs/live",
 } as const;
 
+/**
+ * The user-level daemon's own routes. Scoped copies of the workspace routes live under `scope.session + "/<id>"` and
+ * `scope.repo + "/<repoId>"` (for example `/s/<id>/api/application`); the page itself is `GET /` and takes the scope as
+ * `?s=<id>` or `?r=<repoId>`. No route takes a filesystem path.
+ */
+export const DAEMON_ROUTES = {
+	health: "/api/health",
+	config: "/api/config",
+	sessions: "/api/sessions",
+	repos: "/api/repos",
+	drain: "/api/admin/drain",
+	scope: { session: "/s", repo: "/r" },
+} as const;
+
 /** Workspace report folders under `.octocode/`, mapped to their report kind. */
 export const REPORT_SOURCE_DIRS = {
 	"octocode-rfc-generator": "rfc",

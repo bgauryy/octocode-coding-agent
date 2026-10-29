@@ -39,15 +39,19 @@ export async function handleContextSize(host: Host, args: string): Promise<boole
 		) {
 			throw new Error("Model or session changed while choosing context size. Reopen /context size.");
 		}
-		if (selection !== full) tokens = sizes[labels.indexOf(selection) - 1];
+		tokens = selection === full ? capacity : sizes[labels.indexOf(selection) - 1];
+	} else if (args === "full") {
+		tokens = port.invoke("getContextWindowLimit");
+		if (!tokens) throw new Error("Select a physical model with /model before choosing its context size.");
 	} else if (args !== "reset") {
 		tokens = parseContextSize(args);
 		if (tokens === undefined)
-			throw new Error("Usage: /context [all|size|reset|tokens]. Examples: /context 32k, /context 128000.");
+			throw new Error("Usage: /context [all|size|reset|full|tokens]. Examples: /context 32k, /context 128000.");
 	}
 	const applied = port.invoke("setContextWindow", tokens);
+	const scope = tokens === undefined ? "the default working context" : "for this model in this session";
 	host.showStatus(
-		`Context budget: ${applied.toLocaleString()} tokens for this model in this session. Automatic compaction uses this budget. /context reset restores full capacity.`,
+		`Context budget: ${applied.toLocaleString()} tokens, ${scope}. Automatic compaction uses this budget. /context reset restores the default; /context full uses the whole capacity.`,
 	);
 	host.ui.requestRender();
 	return true;

@@ -84,18 +84,18 @@ async function fixture(patch: string, mode = "full", once = false, claudeGate = 
 		tools: [],
 		settings: { retry: { enabled: false } },
 		extensionFactories: [
-			(pi) => {
+			(api) => {
 				const permission = new Permission({
-					pi,
+					api,
 					env: { OCTOCODE_PERMISSION: mode },
 					isSubagent: false,
 					stderr: () => {},
 				});
-				pi.on("session_start", async (_event, ctx) => permission.start(ctx));
-				pi.registerTool(createReadToolDefinition(process.cwd()));
-				registerFileTool(pi, guard, permission, checkpoints);
-				const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
-				pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+				api.on("session_start", async (_event, ctx) => permission.start(ctx));
+				api.registerTool(createReadToolDefinition(process.cwd()));
+				registerFileTool(api, guard, permission, checkpoints);
+				const hooks = registerHooks(api, {}, home);
+				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 			},
 		],
 	});

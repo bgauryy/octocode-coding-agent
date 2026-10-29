@@ -95,8 +95,6 @@ async function fixture() {
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		CODEX_HOME: path.join(home, ".codex"),
 		OCTOCODE_MCP: "1",
-		OCTOCODE_HOOKS: "0",
-		OCTOCODE_HOOKS_COMPAT: "1",
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MODELS_DEV: "0",
 		OCTOCODE_PERMISSION: "full",
@@ -184,8 +182,8 @@ async function fixture() {
 		extensionFactories: [
 			{
 				name: "parent-fixture",
-				factory: (pi) => {
-					pi.registerProvider("faux-parent", {
+				factory: (api) => {
+					api.registerProvider("faux-parent", {
 						name: "Fixture parent",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -193,8 +191,8 @@ async function fixture() {
 						models: faux.models,
 						streamSimple: faux.streamSimple,
 					} as never);
-					pi.on("session_start", () => {
-						commands = pi.getCommands().map((c) => c.name);
+					api.on("session_start", () => {
+						commands = api.getCommands().map((c) => c.name);
 					});
 				},
 			},
@@ -417,7 +415,9 @@ it.each([[["review-kit:review"]], [[]]])(
 		try {
 			await f.run("Use $review-kit:review and $collision.", skills);
 			const child = JSON.stringify(f.requests[0]);
-			if (skills.length === 0) expect(child).not.toContain("<available_skills>");
+			// Explicit skills ride in the task; with none, no catalog is listed anywhere (the declared skill tool's own
+			// description still names the <available_skills> block).
+			if (skills.length === 0) expect(child).not.toContain("The following skills provide specialized instructions");
 			for (const name of ["model-only", "review-kit:review", "collision", "argument-kit:arguments", "aliased"])
 				if (skills.includes(name)) expect(child).toContain(`<name>${name}</name>`);
 				else expect(child).not.toContain(`<name>${name}</name>`);

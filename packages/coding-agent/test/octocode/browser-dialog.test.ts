@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import * as importedModule2 from "../../src/octocode/browser/session.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import * as importedModule3 from "../../src/octocode/shared/home.ts";
-import { fakePermission } from "./fake-pi.ts";
+import { fakePermission } from "./fake-host.ts";
 import { type CdpHandler, type CdpStub, NO_REPLY, type StubPage, startCdpStub } from "./fixtures/cdp-stub.ts";
 import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
@@ -88,14 +88,14 @@ async function setup(handle: CdpHandler) {
 	const browser = new BrowserTool(fakePermission());
 	tools.push(browser);
 	let tool: Tool | undefined;
-	const pi = {
+	const api = {
 		registerTool: (definition: Tool) => {
 			tool = definition;
 			return tool;
 		},
 		on: () => undefined,
 	} as unknown as ExtensionAPI;
-	registerBrowserTool(pi, browser);
+	registerBrowserTool(api, browser);
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-browser-dialog-"));
 	dirs.push(cwd);
 	const run = (params: Record<string, unknown>) => tool!.execute("id", params, undefined, undefined, { cwd });

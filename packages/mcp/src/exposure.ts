@@ -20,6 +20,8 @@ export function isDefaultActive(entry: McpServerEntry): boolean {
 const serverToolPrefix = (server: string): string => `${mcpNamespace(server)}__`;
 
 /** Whether the session's tool selection can declare the server's tools; a server it cannot is not started for it. */
-export function isSelected(pi: Pick<ExtensionAPI, "selectsTools">, entry: McpServerEntry): boolean {
-	return typeof pi.selectsTools !== "function" || pi.selectsTools(serverToolPrefix(entry.name), isDefaultActive(entry));
+export function isSelected(api: Pick<ExtensionAPI, "selectsTools">, entry: McpServerEntry): boolean {
+	return (
+		typeof api.selectsTools !== "function" || api.selectsTools(serverToolPrefix(entry.name), isDefaultActive(entry))
+	);
 }

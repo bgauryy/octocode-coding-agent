@@ -10,7 +10,7 @@ import {
 	TURN_MAX_CHARS,
 	TurnBudget,
 } from "../../src/octocode/shared/turn-budget.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let saved: string | undefined;
@@ -108,8 +108,8 @@ describe("budgetToolResult", () => {
 
 describe("tool results of one assistant message", () => {
 	const setup = () => {
-		const fake = fakePi();
-		registerTurnBudget(fake.pi);
+		const fake = fakeHost();
+		registerTurnBudget(fake.api);
 		const ctx = fakeCtx({ cwd: tmp() });
 		const turn = () => fake.fire("turn_start", { type: "turn_start" }, ctx);
 		/** What the agent loop does for each result, in tool-call order. */

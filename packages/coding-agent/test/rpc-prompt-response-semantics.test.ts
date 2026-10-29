@@ -87,7 +87,7 @@ async function createRuntimeHost(options: {
 	runtimeHost: AgentSessionRuntime;
 	cleanup: () => Promise<void>;
 }> {
-	const tempDir = join(tmpdir(), `pi-rpc-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const tempDir = join(tmpdir(), `octocode-rpc-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	mkdirSync(tempDir, { recursive: true });
 
 	const model = options.model ?? getBuiltinModel("anthropic", "claude-sonnet-4-5");
@@ -206,7 +206,7 @@ describe("RPC prompt response semantics", () => {
 					command: "prompt",
 					success: false,
 					error: expect.stringContaining(
-						"No API key found for fake-provider.\n\nUse /providers to connect an AI provider with an account or API key. See:",
+						"No API key found for fake-provider.\n\nUse /login to connect an AI provider with an account or API key. See:",
 					),
 				});
 			});
@@ -243,9 +243,9 @@ describe("RPC prompt response semantics", () => {
 			withAuth: false,
 			responseDelayMs: 0,
 			extensionsResult: await createTestExtensionsResult([
-				(pi) => {
-					pi.registerCommand("handled", { handler: async () => {} });
-					pi.on("input", (event) => {
+				(api) => {
+					api.registerCommand("handled", { handler: async () => {} });
+					api.on("input", (event) => {
 						if (event.text === "handled input") return { action: "handled" };
 					});
 				},
@@ -315,10 +315,10 @@ describe("RPC prompt response semantics", () => {
 				withAuth: true,
 				responseDelayMs: 500,
 				extensionsResult: await createTestExtensionsResult([
-					(pi) => {
-						pi.on("input", (event) => {
+					(api) => {
+						api.on("input", (event) => {
 							if (event.text === "A" && event.source === "rpc") {
-								pi.sendUserMessage("B", { deliverAs: type === "steer" ? "steer" : "followUp" });
+								api.sendUserMessage("B", { deliverAs: type === "steer" ? "steer" : "followUp" });
 								return { action: "handled" };
 							}
 						});
@@ -361,8 +361,8 @@ describe("RPC prompt response semantics", () => {
 			withAuth: false,
 			responseDelayMs: 0,
 			extensionsResult: await createTestExtensionsResult([
-				(pi) => {
-					pi.on("input", (event) => {
+				(api) => {
+					api.on("input", (event) => {
 						if (event.text === "A") return { action: "transform", text: "B" };
 					});
 				},

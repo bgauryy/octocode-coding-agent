@@ -10,6 +10,7 @@ import {
 	latestProgress,
 	mergeEvents,
 	runPhase,
+	sessionBadge,
 	settleToolStarts,
 	terminalEntries,
 } from "../src/app/live/model.ts";
@@ -31,7 +32,7 @@ const application: ApplicationSnapshot = {
 describe("activityCard", () => {
 	it("assigns tone and label by event family, passing unknown types through as their label", () => {
 		const card = (type: string) => activityCard(event(1, type, "line"));
-		expect([card("tool.start").tone, card("tool.start").label]).toEqual(["tool", "Tool started"]);
+		expect([card("tool.start").tone, card("tool.start").label]).toEqual(["accent", "Tool started"]);
 		expect([card("agent.start").tone, card("agent.start").label]).toEqual(["agent", "Agent started"]);
 		expect([card("tool.result").tone, card("agent.result").tone]).toEqual(["success", "success"]);
 		expect([card("session").tone, card("session").label]).toEqual(["neutral", "Session"]);
@@ -173,6 +174,49 @@ describe("feed shaping", () => {
 			{ kind: "thinking" },
 		);
 		expect(runPhase(undefined)).toEqual({ kind: "idle" });
+	});
+
+	it("runPhase reports compaction, retries and a blocking dialog ahead of the run's own phases", () => {
+		const idle = { ...application, streaming: false };
+		expect(runPhase({ ...idle, status: "compacting" })).toEqual({ kind: "compacting" });
+		expect(runPhase({ ...idle, status: "retrying" })).toEqual({ kind: "retrying" });
+		expect(runPhase({ ...idle, status: "idle" })).toEqual({ kind: "idle" });
+		const awaiting = { kind: "approval", title: "Run bash?" } as const;
+		expect(runPhase({ ...application, awaiting })).toEqual({ kind: "waiting", awaiting });
+		// A stale dialog marker on an idle session is not a wait.
+		expect(runPhase({ ...idle, awaiting })).toEqual({ kind: "idle" });
+	});
+
+	it("sessionBadge maps the phase to the shared run state, and is absent while idle", () => {
+		const idle = { streaming: false } as const;
+		expect(sessionBadge(idle)).toBeUndefined();
+		expect(sessionBadge({ streaming: true })).toEqual({ state: "running", label: "Running", warn: false });
+		expect(sessionBadge({ ...idle, status: "compacting" })).toEqual({
+			state: "running",
+			label: "Compacting",
+			warn: false,
+		});
+		expect(sessionBadge({ ...idle, status: "retrying" })).toEqual({ state: "running", label: "Retrying", warn: true });
+		expect(sessionBadge({ streaming: true, awaiting: { kind: "question" } })).toEqual({
+			state: "waiting",
+			label: "Waiting for you",
+			warn: true,
+		});
+	});
+
+	it("activityCard gives each state its shape: running, done, failed, stopped", () => {
+		const card = (type: string, extra: Partial<WorkspaceEvent> = {}) => activityCard(event(1, type, "x", extra));
+		expect(card("tool.start").ui).toBe("running");
+		expect(card("tool.result").ui).toBe("done");
+		expect(card("tool.result", { outcome: "failed" }).ui).toBe("failed");
+		expect(card("tool.result", { details: { status: "not_run" } }).ui).toBe("stopped");
+		expect(card("message", { details: { status: "streaming" } }).ui).toBe("running");
+		expect(card("message", { details: { status: "completed" } }).ui).toBeUndefined();
+		expect(card("session").ui).toBeUndefined();
+		const aborted = card("message", { details: { status: "aborted" } });
+		expect([aborted.ui, aborted.tone, aborted.label]).toEqual(["stopped", "warning", "Stopped"]);
+		const interrupted = card("message", { details: { status: "interrupted" } });
+		expect([interrupted.ui, interrupted.label]).toEqual(["stopped", "Stopped"]);
 	});
 
 	it("terminalEntries ignores non-tool events and reports failures from details status", () => {

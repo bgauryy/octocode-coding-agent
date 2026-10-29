@@ -2,8 +2,8 @@ import { type CompactionThinking, builtInCompactionSettings } from "../../core/c
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 
 /** The session's thinking level and custom budgets, which size the compaction reserve. */
-export function compactionThinking(pi: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings">): CompactionThinking {
-	return { level: pi.getThinkingLevel(), budgets: pi.getSettings().thinkingBudgets };
+export function compactionThinking(api: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings">): CompactionThinking {
+	return { level: api.getThinkingLevel(), budgets: api.getSettings().thinkingBudgets };
 }
 
 export function reserveTokensFor(

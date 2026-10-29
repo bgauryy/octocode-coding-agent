@@ -63,7 +63,7 @@ export function buildBedrockClientConfig(
 	model: Model<"bedrock-converse-stream">,
 	options: BedrockOptions,
 ): BedrockRuntimeClientConfig {
-	// A profile explicitly configured through pi's auth flow (the `profile`
+	// A profile explicitly configured through Octocode's auth flow (the `profile`
 	// option or scoped `AWS_PROFILE` on the stored credential's env) must win
 	// over ambient AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY. The SDK default
 	// chain already prefers a configured profile over env keys, but only when

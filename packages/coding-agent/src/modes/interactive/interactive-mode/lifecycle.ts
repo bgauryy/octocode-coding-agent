@@ -142,7 +142,7 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 
 	// Restore the terminal before the process dies on any uncaught throw.
 	// Without this, an unhandled exception from extension code (or anywhere
-	// in pi) leaves the terminal in raw mode with no cursor.
+	// in Octocode) leaves the terminal in raw mode with no cursor.
 	const uncaughtExceptionHandler = (error: Error) => host.uncaughtCrash(error);
 	process.prependListener("uncaughtException", uncaughtExceptionHandler);
 	host.signalCleanupHandlers.push(() => process.off("uncaughtException", uncaughtExceptionHandler));

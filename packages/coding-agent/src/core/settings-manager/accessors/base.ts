@@ -34,7 +34,11 @@ export abstract class SettingsAccessorBase {
 		this.persistence.save();
 	}
 
-	protected updateProjectSettings(field: keyof Settings, update: (settings: Settings) => void): void {
-		this.persistence.updateProjectSettings(field, update);
+	protected updateProjectSettings(
+		field: keyof Settings,
+		update: (settings: Settings) => void,
+		nestedKey?: string,
+	): void {
+		this.persistence.updateProjectSettings(field, update, nestedKey);
 	}
 }

@@ -78,7 +78,7 @@ export function getSubagentsDir(): string {
 	return join(getSourceOrDistDir(), "octocode", "instructions", "roles");
 }
 
-/** Skills this application ships itself, such as `octocode-compact-mcp`: `native-skills/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
+/** Skills this application ships itself, such as `octocode-context-optimization`: `native-skills/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
 export function getNativeSkillsDir(): string {
 	if (isBunBinary) return join(getPackageDir(), "native-skills");
 	return join(getSourceOrDistDir(), "octocode", "native-skills");
@@ -227,6 +227,15 @@ export function getLegacyConfigDirs(agentDir = getAgentDir()): string[] {
 /** Get path to user's custom themes directory */
 export function getCustomThemesDir(): string {
 	return join(getAgentDir(), "themes");
+}
+
+/**
+ * Where Octocode keeps what agents read of skills and MCP servers after optimization: `skills.json` and `skills.txt` for
+ * skill descriptions, `mcp/` for each MCP server's generated file. Sessions write it when the discovered skills or a
+ * server's catalog change; the `octocode-context-optimization` skill fills in the rewrites.
+ */
+export function getContextOptimizationDir(agentDir = getAgentDir()): string {
+	return join(agentDir, "context-optimization");
 }
 
 /** Get path to models.json */

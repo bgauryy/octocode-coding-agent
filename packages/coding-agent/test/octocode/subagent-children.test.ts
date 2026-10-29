@@ -8,7 +8,7 @@ import { runFooter } from "../../src/octocode/subagents/tracking.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
 import { agentsCommand } from "../../src/octocode/subagents/command.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const at = new Date().toISOString();
@@ -260,7 +260,7 @@ describe("the subagents a session started", () => {
 	});
 
 	it("are listed by `/agents history` for the user, each with its transcript and report", async () => {
-		const command = agentsCommand(new Team(fakePi().pi), new Map());
+		const command = agentsCommand(new Team(fakeHost().api), new Map());
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx.sessionManager, { getEntries: () => entries });
 		await command.handler("history", ctx);

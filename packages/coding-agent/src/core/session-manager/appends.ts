@@ -150,6 +150,7 @@ export function appendCustomMessageEntry<T = unknown>(
 	content: string | (TextContent | ImageContent)[],
 	display: boolean,
 	details?: T,
+	timestamp?: number,
 ): string {
 	const entry: CustomMessageEntry<T> = {
 		type: "custom_message",
@@ -159,10 +160,16 @@ export function appendCustomMessageEntry<T = unknown>(
 		details,
 		id: generateId(state.byId),
 		parentId: state.leafId,
-		timestamp: new Date().toISOString(),
+		timestamp: entryTimestamp(timestamp),
 	};
 	appendEntry(state, entry);
 	return entry.id;
+}
+
+/** The entry time for a message created at `createdAt`; now when it is absent or not a valid time. */
+function entryTimestamp(createdAt: number | undefined): string {
+	const at = new Date(createdAt ?? Date.now());
+	return (Number.isNaN(at.getTime()) ? new Date() : at).toISOString();
 }
 
 export function appendContextEdit(

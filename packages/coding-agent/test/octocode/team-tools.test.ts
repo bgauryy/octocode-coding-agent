@@ -10,31 +10,31 @@ import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { registerActivity } from "../../src/octocode/ui/activity.ts";
-import { fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** `/agents` as index.ts wires it: a direct native command. */
-function agentsCommand(pi: Parameters<Subcommands["register"]>[0], control: AgentControl): void {
+function agentsCommand(api: Parameters<Subcommands["register"]>[0], control: AgentControl): void {
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
-	commands.register(pi);
+	commands.register(api);
 }
 
 function member(dbFile: string, cwd: string) {
-	const fake = fakePi();
-	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: dbFile });
+	const fake = fakeHost();
+	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: dbFile });
 	// As index.ts wires it: the permission layer's bash parse names the paths a command writes.
-	const { reservationGate } = registerCollab(fake.pi, team, {
+	const { reservationGate } = registerCollab(fake.api, team, {
 		shellWrites: async (command) => {
 			await shellParserReady();
 			return reservationTargets(command);
 		},
 	});
 	// As index.ts wires it: the activity line reaches the team panel.
-	registerActivity(fake.pi, { workingLine: false, onChange: (line) => team.setActivity(line) });
+	registerActivity(fake.api, { workingLine: false, onChange: (line) => team.setActivity(line) });
 	agentsCommand(
-		fake.pi,
-		registerAgentTool(fake.pi, () => new Map(), team, fakePermission()),
+		fake.api,
+		registerAgentTool(fake.api, () => new Map(), team, fakePermission()),
 	);
 	const ctx = fakeCtx({ cwd });
 	// The reservation gate as index.ts runs it in the tool-call pipeline.
@@ -51,10 +51,10 @@ const text = (result: { content: Array<{ text: string }> }) => result.content.ma
 
 describe("team shutdown order", () => {
 	it("stops this session's subagents before leaving the team, so their last messages still reach it", async () => {
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 		const joinedWhileStopping: boolean[] = [];
-		registerCollab(fake.pi, team, {
+		registerCollab(fake.api, team, {
 			beforeLeave: async () => {
 				joinedWhileStopping.push(team.id !== undefined);
 				return undefined;
@@ -284,13 +284,13 @@ describe("team tools on a fake Octocode", () => {
 	});
 
 	it("offers join, leave and a goal only to an agent that joins by hand; a subagent joins and leaves with its run", () => {
-		const fake = fakePi();
-		registerCollab(fake.pi, new Team(fake.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }));
+		const fake = fakeHost();
+		registerCollab(fake.api, new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }));
 		const subagent = fake.tools.get("coordinate").parameters;
 		expect(subagent.properties.action.enum).toEqual(["list", "lock", "unlock", "changes"]);
 		expect(subagent.properties).not.toHaveProperty("goal");
-		const main = fakePi();
-		registerCollab(main.pi, new Team(main.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }), {
+		const main = fakeHost();
+		registerCollab(main.api, new Team(main.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }), {
 			stopAgent: () => undefined,
 		});
 		const parameters = main.tools.get("coordinate").parameters;
@@ -454,11 +454,11 @@ describe("team tools on a fake Octocode", () => {
 	});
 
 	it("/agents warns when the team database is unusable", async () => {
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 		agentsCommand(
-			fake.pi,
-			registerAgentTool(fake.pi, () => new Map(), team, fakePermission()),
+			fake.api,
+			registerAgentTool(fake.api, () => new Map(), team, fakePermission()),
 		);
 		vi.spyOn(team, "snapshot").mockReturnValue({ members: [], traffic: [], error: "schema v99 is newer" });
 		const ctx = fakeCtx({ cwd: tmp() });

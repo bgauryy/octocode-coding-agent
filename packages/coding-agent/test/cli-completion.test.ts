@@ -10,9 +10,9 @@ describe("CLI value completion", () => {
 	});
 	it("completes every reviewed native tool and the built-in MCP tools", async () => {
 		const { default: octocode } = await import("../src/octocode/index.ts");
-		const { fakePi } = await import("./octocode/fake-pi.ts");
-		const fake = fakePi();
-		octocode(fake.pi);
+		const { fakeHost } = await import("./octocode/fake-host.ts");
+		const fake = fakeHost();
+		octocode(fake.api);
 		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp"]));
 		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual(["file,browser"]);
 	});

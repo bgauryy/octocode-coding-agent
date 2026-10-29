@@ -9,7 +9,7 @@ import { BACKGROUND_AFTER_ENV, backgroundAfterSeconds, foregroundPlan } from "..
 import type { ShellSettings } from "../../src/octocode/files/bash-jobs/shell.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const posix = process.platform !== "win32";
@@ -23,9 +23,9 @@ const until = async (check: () => boolean, ms = 10_000) => {
 };
 
 const setup = (shell: ShellSettings) => {
-	const { pi, tools, sent } = fakePi();
+	const { api, tools, sent } = fakeHost();
 	const jobs = new BashJobs(tmp());
-	registerBashTool(pi, new Subcommands(), jobs, () => shell);
+	registerBashTool(api, new Subcommands(), jobs, () => shell);
 	const ctx = fakeCtx({ cwd: tmp() });
 	return { tool: tools.get("bash"), jobs, sent, ctx };
 };

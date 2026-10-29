@@ -14,13 +14,13 @@ import { type Item, parseRef } from "./store.ts";
 import { STATES } from "@octocodeai/octocode-contacts/snapshot";
 
 /** The `/backlog` subcommand. */
-export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand {
+export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand {
 	const doWeb = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
 		await deps.openView(ctx, backlog);
 		say(ctx, "Opened the live backlog board. Changes are saved; keep this session open.");
 	};
 
-	const { apply, handOff, move, remove, add, actions } = createItemActions(pi, deps);
+	const { apply, handOff, move, remove, add, actions } = createItemActions(api, deps);
 
 	const doExport = (ctx: ExtensionCommandContext, backlog: Backlog) => {
 		try {

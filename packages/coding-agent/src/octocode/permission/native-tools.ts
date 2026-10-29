@@ -43,14 +43,14 @@ function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, 
 }
 
 /** Fail before an unreviewed native tool enters the registry, including late registrations. */
-export function withNativePermissionOwners(pi: ExtensionAPI): ExtensionAPI {
+export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
 	const registerTool: ExtensionAPI["registerTool"] = (tool) => {
 		if (!isNativeTool(tool.name)) {
 			throw new Error(`Native tool ${tool.name} has no permission owner; register its gate or internal check first.`);
 		}
-		pi.registerTool(withReasonArgument(tool));
+		api.registerTool(withReasonArgument(tool));
 	};
-	return new Proxy(pi, {
+	return new Proxy(api, {
 		get(target, property, receiver) {
 			return property === "registerTool" ? registerTool : Reflect.get(target, property, receiver);
 		},

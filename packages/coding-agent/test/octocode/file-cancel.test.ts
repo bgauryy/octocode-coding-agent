@@ -6,7 +6,7 @@ import { withFileMutationQueue } from "../../src/core/tools/index.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
@@ -19,8 +19,8 @@ function setup() {
 	const checkpoints = new Checkpoints();
 	checkpoints.open(tmp());
 	checkpoints.beginTurn();
-	const fake = fakePi();
-	registerFileTool(fake.pi, guard, fakePermission(), checkpoints);
+	const fake = fakeHost();
+	registerFileTool(fake.api, guard, fakePermission(), checkpoints);
 	return { cwd, file, guard, checkpoints, tool: fake.tools.get("file"), ctx: fakeCtx({ cwd }) };
 }
 

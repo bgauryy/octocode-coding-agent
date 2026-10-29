@@ -72,22 +72,22 @@ async function fixture() {
 		additionalPromptTemplatePaths: [template],
 		settingsManager: SettingsManager.inMemory(),
 		extensionFactories: [
-			(pi) => {
-				pi.on("session_start", (_event, ctx) => {
+			(api) => {
+				api.on("session_start", (_event, ctx) => {
 					currentId = () => ctx.getTurnId();
 				});
-				pi.on("agent_settled", (_event, ctx) => {
+				api.on("agent_settled", (_event, ctx) => {
 					settledIds.push(ctx.getTurnId());
 				});
-				pi.on("input", (event) =>
+				api.on("input", (event) =>
 					event.text === "TRANSFORM" ? { action: "transform", text: "Use $alpha" } : { action: "continue" },
 				);
-				pi.on("before_agent_start", (event) => {
+				api.on("before_agent_start", (event) => {
 					if (event.messageType === "user") beforePrompts.push(event.prompt);
 				});
-				const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, root);
-				pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
-				pi.registerTool({
+				const hooks = registerHooks(api, {}, root);
+				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+				api.registerTool({
 					name: "wait",
 					label: "wait",
 					description: "Controlled wait",

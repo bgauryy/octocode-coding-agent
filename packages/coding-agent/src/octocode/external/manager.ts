@@ -7,10 +7,13 @@ import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { AcpBackend, type AcpPermission } from "../../../../acp/src/client/client.ts";
+import { type InstalledAcpAgent, installedAcpAgents } from "./discover.ts";
 import { OctocodeBackend } from "./octocode.ts";
 import { type ExternalBackend, type ExternalInfo, type ExternalParams, parseExternalParams } from "./protocol.ts";
 
 export const MAX_EXTERNAL_CONNECTIONS = 8;
+/** Model ids a connect result lists; the rest are counted in `modelsMore`. */
+const MAX_LISTED_MODELS = 100;
 
 /** A refusal before anything reached the external agent: `execution: "not-sent"` tells the model it may try again. */
 function notSent(message: string): Error {
@@ -36,9 +39,27 @@ function isBusy(entry: Connection): boolean {
 	return entry.info.busy || entry.backend?.isBusy === true;
 }
 
+/** The connection as callers see it: its current model is read from the backend, since the agent can change it. */
+function view(entry: Connection): ExternalInfo {
+	const model = entry.backend?.models?.current;
+	return { ...entry.info, busy: isBusy(entry), ...(model ? { model } : {}) };
+}
+
+/** The model ids a newly connected agent accepts as `model` on a later connect. */
+function offered(backend: ExternalBackend): { models?: string[]; modelsMore?: number } {
+	const ids = backend.models?.available ?? [];
+	if (!ids.length) return {};
+	return {
+		models: ids.slice(0, MAX_LISTED_MODELS),
+		...(ids.length > MAX_LISTED_MODELS ? { modelsMore: ids.length - MAX_LISTED_MODELS } : {}),
+	};
+}
+
 export interface ExternalFactories {
 	acp: typeof AcpBackend.connect;
 	octocode: typeof OctocodeBackend.connect;
+	/** Installed ACP agents for `list`; PATH lookup when omitted. */
+	discover?: () => InstalledAcpAgent[];
 }
 
 export class ExternalAgents {
@@ -72,7 +93,7 @@ export class ExternalAgents {
 		signal.throwIfAborted();
 		if (input.action === "list") {
 			return {
-				connections: [...this.connections.values()].map((entry) => ({ ...entry.info, busy: isBusy(entry) })),
+				connections: [...this.connections.values()].map(view),
 				instances: listInstances(apiDir()).map(({ id, pid, cwd, protocol, session }) => ({
 					id,
 					pid,
@@ -80,6 +101,7 @@ export class ExternalAgents {
 					protocol,
 					session,
 				})),
+				acpAgents: (this.factories.discover ?? installedAcpAgents)(),
 			};
 		}
 		if (input.action === "connect") return this.connect(input, ctx, signal);
@@ -158,14 +180,24 @@ export class ExternalAgents {
 			} catch (error) {
 				receiveHookError = errorMessage(error);
 			}
-			return { ...entry.info, busy: false, messageId: id, reply, ...(receiveHookError ? { receiveHookError } : {}) };
+			return {
+				...view(entry),
+				busy: false,
+				messageId: id,
+				reply,
+				...(receiveHookError ? { receiveHookError } : {}),
+			};
 		} finally {
 			entry.info.busy = false;
 			if (entry.pending === pending) entry.pending = undefined;
 		}
 	}
 
-	private async connect(input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal): Promise<ExternalInfo> {
+	private async connect(
+		input: ExternalParams,
+		ctx: ExtensionContext,
+		signal: AbortSignal,
+	): Promise<ExternalInfo & { models?: string[]; modelsMore?: number }> {
 		const id = input.id ?? randomUUID();
 		if (this.connections.has(id)) throw new Error(`External connection ${id} already exists.`);
 		if (this.connections.size >= MAX_EXTERNAL_CONNECTIONS)
@@ -200,6 +232,7 @@ export class ExternalAgents {
 								vendor: input.vendor!,
 								cwd,
 								sessionId: input.sessionId,
+								model: input.model,
 								timeoutMs: input.timeoutMs,
 							},
 							this.policy.permission(ctx),
@@ -209,7 +242,7 @@ export class ExternalAgents {
 			startup.throwIfAborted();
 			entry.info.sessionId = backend.sessionId;
 			entry.info.busy = false;
-			return { ...entry.info };
+			return { ...view(entry), ...offered(backend) };
 		} catch (error) {
 			if (this.connections.get(id) === entry) this.connections.delete(id);
 			await entry.backend?.close();

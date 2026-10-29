@@ -12,10 +12,10 @@ import { sessionOutputDir } from "../../src/octocode/shared/home.ts";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { RELAY_LIMIT_NOTE, type RelayHost } from "../../src/octocode/subagents/relay.ts";
-import { fakePermission, fakePi } from "./fake-pi.ts";
+import { fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 
@@ -28,8 +28,8 @@ beforeAll(() => {
 	});
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -41,10 +41,10 @@ const IDENTITY: Identity = { id: "a-relay", role: "implementer", goal: "fix logi
 const LABEL = "Subagent a-relay · implementer · fix login asks:";
 const OPTIONS = [ALLOW_ONCE, DENY, DENY_NOTE];
 
-/** A parent permission in `mode` with the pi that records its audit entries. */
+/** A parent permission in `mode` with the host that records its audit entries. */
 function parent(mode: PermissionMode) {
-	const fake = fakePi();
-	const permission = fakePermission(mode, { pi: fake.pi });
+	const fake = fakeHost();
+	const permission = fakePermission(mode, { api: fake.api });
 	return {
 		permission,
 		fake,

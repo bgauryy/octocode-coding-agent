@@ -124,9 +124,9 @@ describe("tool definitions in the estimate", () => {
 		sourceInfo: {},
 	});
 	it("serializes only the active tools", () => {
-		const pi = { getActiveTools: () => ["a"], getAllTools: () => [tool("a"), tool("b")] };
+		const api = { getActiveTools: () => ["a"], getAllTools: () => [tool("a"), tool("b")] };
 		const { name, description, parameters, promptGuidelines } = tool("a");
-		expect(toolDefinitionChars(pi as never)).toBe(
+		expect(toolDefinitionChars(api as never)).toBe(
 			JSON.stringify({ name, description, parameters, promptGuidelines }).length,
 		);
 		expect(toolDefinitionChars({ getActiveTools: () => [], getAllTools: () => [tool("a")] } as never)).toBe(0);
@@ -150,7 +150,7 @@ describe("pacing wired into the session", () => {
 	function session(tokens: number | null, tools: unknown[] = []) {
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
 		const notes: Array<{ customType: string; data: unknown }> = [];
-		const pi = {
+		const api = {
 			on: (name: string, handler: never) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -162,7 +162,7 @@ describe("pacing wired into the session", () => {
 			getAllTools: () => tools,
 			sendMessage: vi.fn(),
 		};
-		registerCompaction(pi as never, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
+		registerCompaction(api as never, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
 		const ctx = {
 			cwd: "/w",
 			hasUI: true,

@@ -64,7 +64,7 @@ describe("extension crash attribution", () => {
 
 	test("ignores extension paths in the error message", () => {
 		const extension = packageExtension("npm:memory", "/tmp/node_modules/memory");
-		const stack = `Error: Failed to read ${extension.resolvedPath}\n    at run (file:///opt/pi/dist/core.js:4:2)`;
+		const stack = `Error: Failed to read ${extension.resolvedPath}\n    at run (file:///opt/octocode/dist/core.js:4:2)`;
 
 		expect(findExtensionStackMatches(stack, [extension])).toEqual([]);
 	});

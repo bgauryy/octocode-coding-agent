@@ -4,7 +4,7 @@ import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, clearedResults, sessionCleared } from "../../src/octocode/files/reads.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { CACHE_RETENTION_ENV } from "../../src/octocode/shared/env.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -97,8 +97,8 @@ afterEach(() => {
 
 /** The `context` handler over a session with `entries`; `request(at)` is one model request made at `at`. */
 function harness(entries: Array<{ type: string; id: string }>) {
-	const fake = fakePi();
-	registerCompaction(fake.pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
+	const fake = fakeHost();
+	registerCompaction(fake.api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 	const ctx = fakeCtx({ cwd: "/repo", model });
 	Object.assign(ctx, { sessionManager: session(entries) });
 	const result = (callId: string) => ({

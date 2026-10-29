@@ -433,7 +433,7 @@ describe("SessionManager session file creation", () => {
 	let tempDir: string;
 
 	beforeEach(() => {
-		tempDir = mkdtempSync(join(tmpdir(), "pi-session-persist-"));
+		tempDir = mkdtempSync(join(tmpdir(), "octocode-session-persist-"));
 	});
 
 	afterEach(() => {

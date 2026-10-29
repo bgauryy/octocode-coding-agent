@@ -36,8 +36,8 @@ it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 			noThemes: true,
 			settingsManager,
 			extensionFactories: [
-				(pi) => {
-					pi.on("session_start", (event) => {
+				(api) => {
+					api.on("session_start", (event) => {
 						seen.push(event.reason);
 					});
 				},

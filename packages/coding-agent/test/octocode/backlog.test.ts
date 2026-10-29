@@ -11,7 +11,7 @@ import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogError, BacklogStore, type Item, parseRef } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
 const completed = () => ({
@@ -55,9 +55,9 @@ function repoDir(name = "repo"): string {
 }
 
 function setup(options: { isSubagent?: boolean; agentId?: string; parentSession?: string } = {}) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const commands = new Subcommands();
-	registerBacklog(fake.pi, {
+	registerBacklog(fake.api, {
 		commands,
 		isSubagent: options.isSubagent ?? false,
 		...(options.agentId ? { agentId: () => options.agentId } : {}),

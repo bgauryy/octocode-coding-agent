@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "../../src/core/extensions/index.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
-import { fakeCtx, fakePermission } from "./fake-pi.ts";
+import { fakeCtx, fakePermission } from "./fake-host.ts";
 import { type CdpStub, startCdpStub } from "./fixtures/cdp-stub.ts";
 import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 import { noteOrigin, ORIGINS_MAX } from "../../src/octocode/browser/cdp/browser-session.ts";
@@ -46,14 +46,14 @@ function register() {
 	const browser = new BrowserTool(fakePermission());
 	tools.push(browser);
 	let tool: Tool | undefined;
-	const pi = {
+	const api = {
 		registerTool: (definition: Tool) => {
 			tool = definition;
 			return tool;
 		},
 		on: () => undefined,
 	} as unknown as ExtensionAPI;
-	registerBrowserTool(pi, browser);
+	registerBrowserTool(api, browser);
 	const run = (params: Record<string, unknown>, model?: unknown) =>
 		tool!.execute(
 			"id",

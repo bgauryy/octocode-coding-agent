@@ -8,7 +8,7 @@ import { collapsedRows, shownWorking } from "../../src/octocode/team/panel-compa
 import { describeMembers } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;
@@ -384,8 +384,8 @@ describe("panel traffic", () => {
 
 describe("background subagents in the footer", () => {
 	it("counts them while the panel shows no rows (the team database is off or unused), and clears at zero", () => {
-		const f = fakePi();
-		const team = new Team(f.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "none", "team.sqlite") });
+		const f = fakeHost();
+		const team = new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "none", "team.sqlite") });
 		const ctx = fakeCtx({ cwd: tmp() });
 		team.start(ctx);
 		const view = new AgentsView(team);

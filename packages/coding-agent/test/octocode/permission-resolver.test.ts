@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 const request = {
 	action: "shell" as const,
@@ -10,9 +10,9 @@ const request = {
 	toolCallId: "one",
 };
 function setup() {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: { OCTOCODE_PERMISSION: "manual" },
 		isSubagent: false,
 	});

@@ -51,7 +51,7 @@ async function getRequiredRequestAuth(
 		throw new Error(
 			`Authentication failed for "${model.provider}". ` +
 				`Credentials may have expired or network is unavailable. ` +
-				`Run '/providers ${model.provider}' to re-authenticate.`,
+				`Run '/login ${model.provider}' to re-authenticate.`,
 		);
 	}
 	throw new Error(formatNoApiKeyFoundMessage(model.provider));

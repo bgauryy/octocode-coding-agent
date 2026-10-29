@@ -27,6 +27,7 @@ function checkTree(root: string, directory: string, seen = new Set<string>()): v
 function configuredComponents(
 	entries: Settings["plugins"],
 	diagnostics: ResourceDiagnostic[],
+	reportUnsupported = false,
 ): {
 	manifest: PluginManifest;
 	components: ReturnType<typeof discoverPluginComponents>;
@@ -53,6 +54,12 @@ function configuredComponents(
 			seen.add(identity);
 			const components = discoverPluginComponents(manifest);
 			for (const message of components.errors) error(message);
+			if (reportUnsupported && components.unsupported.length)
+				diagnostics.push({
+					type: "warning",
+					path: manifest.root,
+					message: `${manifest.name}: not loaded by Octocode yet: ${components.unsupported.join(", ")}`,
+				});
 			result.push({ manifest, components });
 		} catch (cause) {
 			error(String(cause));
@@ -69,7 +76,8 @@ export function loadConfiguredPluginSkills(entries: Settings["plugins"]): LoadSk
 		explicitSkills: [],
 	};
 	const names = new Set<string>();
-	for (const { manifest, components } of configuredComponents(entries, result.diagnostics)) {
+	// Skills load first, so this loader reports the components no owner loads (once per plugin).
+	for (const { manifest, components } of configuredComponents(entries, result.diagnostics, true)) {
 		const error = (message: string) => result.diagnostics.push({ type: "error", path: manifest.root, message });
 		try {
 			for (const directory of components.skills) checkTree(manifest.root, directory);

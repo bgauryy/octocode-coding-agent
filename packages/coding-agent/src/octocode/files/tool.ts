@@ -54,14 +54,14 @@ import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./fe
  */
 
 export function registerFileTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	guard: FileGuard,
 	permission: Permission,
 	checkpoints?: Checkpoints,
 	replacementOwner?: FileReplacementOwner,
 	feedback?: { enabled: boolean },
 ): void {
-	pi.registerTool(
+	api.registerTool(
 		timedTool(
 			{
 				name: "file",
@@ -310,7 +310,7 @@ export function registerFileTool(
 		),
 	);
 
-	pi.on("tool_result", async (event, ctx) => {
+	api.on("tool_result", async (event, ctx) => {
 		// A call another tool made may return content the script never showed the model, so only the model's own calls count as reads.
 		if (event.isError || event.parentToolCallId) return;
 		for (const read of recordedLocalReads(event.details)) guard.record(read.file, read, !read.whole, read.lines);

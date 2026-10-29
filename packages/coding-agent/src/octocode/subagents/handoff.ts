@@ -55,10 +55,10 @@ export class ReportQueue {
 	/** The pending folder of the Octocode session this queue serves: where a report that could not be sent is saved. */
 	pendingDir: string | undefined;
 
-	private readonly pi: ExtensionAPI;
+	private readonly api: ExtensionAPI;
 	private readonly windowMs: number;
-	constructor(pi: ExtensionAPI, windowMs = REPORT_BATCH_MS) {
-		this.pi = pi;
+	constructor(api: ExtensionAPI, windowMs = REPORT_BATCH_MS) {
+		this.api = api;
 		this.windowMs = windowMs;
 	}
 
@@ -212,7 +212,7 @@ export class ReportQueue {
 			if (!report.reportId || this.pending.get(report.reportId) !== report) return;
 			try {
 				// followUp: read once the current turn ends; triggerTurn wakes an idle parent, once per batch.
-				const sending = this.pi.sendMessage(
+				const sending = this.api.sendMessage(
 					{
 						customType: AGENT_RESULT_TYPE,
 						content: report.content,
@@ -251,7 +251,7 @@ export class ReportQueue {
 			this.noticed.add(id);
 			try {
 				void Promise.resolve(
-					this.pi.sendMessage(
+					this.api.sendMessage(
 						{ customType: NOTICE_TYPE, content: noticeText(report), display: false, details: { reportId: id } },
 						// triggerTurn false while streaming holds it for the end of the current step, never between a call and its result.
 						{ triggerTurn: false, deliverAs: "steer" },

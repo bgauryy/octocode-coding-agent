@@ -1,6 +1,7 @@
 import { registerGraphTools } from "./graph/register.ts";
 import { registerRunGuards } from "./run-guards.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
+import { registerExtensibilityCommands } from "./plugins/command.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
 import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
@@ -10,9 +11,10 @@ import { plural } from "./shared/render/text.ts";
 import { errorMessage } from "../utils/guards.ts";
 import { spilledMessage } from "./team/session/spilled-message.ts";
 import { webCommand } from "./workspace/command.ts";
+import { registerWebDaemon } from "./web-daemon/open.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
-import { WorkspaceRuntime } from "./workspace/runtime.ts";
+import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/extensions/index.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../mcp/src/status.ts";
 import { OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
@@ -34,7 +36,7 @@ import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
 import { contextReads } from "./files/reads.ts";
 import { registerFileTool } from "./files/tool.ts";
-import { registerHooks, registerHooksCommand } from "./hooks/register.ts";
+import { registerHooks } from "./hooks/register.ts";
 import { registerMemory } from "./memory/register.ts";
 import { registerSourcePolicy } from "./permission/source-policy-loader.ts";
 import { Permission } from "./permission/ask.ts";
@@ -87,29 +89,29 @@ import { registerWebTool } from "./web/web.ts";
  *   retried run is decided before the hold waits for background work.
  *
  */
-export default function octocode(pi: ExtensionAPI): void {
-	pi = withNativePermissionOwners(pi);
+export default function octocode(api: ExtensionAPI): void {
+	api = withNativePermissionOwners(api);
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
-	// First, so every feature's pi.sendMessage goes through it and its agent_settled handler runs before theirs.
-	Delivery.install(pi);
+	// First, so every feature's api.sendMessage goes through it and its agent_settled handler runs before theirs.
+	Delivery.install(api);
 	const commands = new Subcommands();
 	const guard = new FileGuard();
-	const team = new Team(pi);
+	const team = new Team(api);
 	let profiles = new Map<string, AgentProfile>();
 	/** Why each profile file was refused at load (`loadProfiles`' `onSkip`), by file name: the `agent` tool names it for an unknown profile. */
 	let refused = new Map<string, string>();
 	const updateReader = () => {
-		const server = getMcpSessionStatus(pi.events).find((server) => server.name === OCTOCODE_SERVER);
+		const server = getMcpSessionStatus(api.events).find((server) => server.name === OCTOCODE_SERVER);
 		guard.reader =
 			server?.enabled && !["failed", "stopped", "disabled"].includes(server.state) ? LOCAL_FETCH_READER : BASH_READER;
 	};
-	pi.events.on(MCP_STATUS_EVENT, updateReader);
-	pi.on("session_start", updateReader);
+	api.events.on(MCP_STATUS_EVENT, updateReader);
+	api.on("session_start", updateReader);
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
-	const permission = new Permission({ pi, isSubagent, agent: () => team.id });
+	const permission = new Permission({ api, isSubagent, agent: () => team.id });
 	const provenance = createProvenance();
 
-	pi.on("session_start", async (_event, ctx) => {
+	api.on("session_start", async (_event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
 		setCurrentSession(ctx.sessionManager.getSessionId());
 		// Every start (resume and fork included) re-applies the start mode, so `full` never comes back silently.
@@ -118,14 +120,14 @@ export default function octocode(pi: ExtensionAPI): void {
 		// Restore points older than a week go; off the start path, and never an error for the session.
 		void pruneSnapshots(ctx.cwd);
 	});
-	const localReads = registerReadReceipts(pi);
+	const localReads = registerReadReceipts(api);
 	// Every result, nested tool calls included, before any later call can repeat its text.
-	pi.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
+	api.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 
 	guard.reservedBy = (file) => team.reservation(file, file);
 	const checkpoints = new Checkpoints();
 	registerFileTool(
-		pi,
+		api,
 		guard,
 		permission,
 		checkpoints,
@@ -137,11 +139,11 @@ export default function octocode(pi: ExtensionAPI): void {
 		{ enabled: envFlag(process.env, "OCTOCODE_EDIT_DIAGNOSTICS", true) },
 	);
 	// Octocode's bash with a foreground deadline and background jobs.
-	const jobs = registerBashTool(pi, commands);
+	const jobs = registerBashTool(api, commands);
 	let agents: AgentControl | undefined;
 	let external: ExternalAgents | undefined;
-	registerGraphTools(pi);
-	const planning = registerPlanning(pi, commands, async () => {
+	registerGraphTools(api);
+	const planning = registerPlanning(api, commands, async () => {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
 	planning.readOnlyShell = planReadOnly;
@@ -160,40 +162,39 @@ export default function octocode(pi: ExtensionAPI): void {
 		);
 		return leave ? undefined : { cancel: true };
 	};
-	pi.on("session_before_switch", async (event, ctx) =>
+	api.on("session_before_switch", async (event, ctx) =>
 		confirmLeave(ctx, event.reason === "new" ? "start a new session" : "switch sessions"),
 	);
-	pi.on("session_before_fork", async (_event, ctx) => confirmLeave(ctx, "fork"));
-	registerCheckpoints(pi, checkpoints, (file) => guard.forget(file), commands);
-	registerSessions(pi, {
+	api.on("session_before_fork", async (_event, ctx) => confirmLeave(ctx, "fork"));
+	registerCheckpoints(api, checkpoints, (file) => guard.forget(file), commands);
+	registerSessions(api, {
 		commands,
 		isSubagent,
 		filesChanged: () => new Set(checkpoints.list().map((entry) => entry.path)).size,
 	});
 	const workspace = isSubagent
 		? undefined
-		: new WorkspaceRuntime(pi, {
+		: new WorkspaceRuntime(api, {
 				application: (ctx) => getApplicationPortForSession(ctx.sessionManager.getSessionId()),
-				members: () => team.members(),
-				traffic: () => team.snapshot().traffic,
+				...teamView(team),
 				tell: (to, text, signal) => team.send(to, text, { from: "user", signal }),
 				stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
 			});
-	const openWorkspace = registerBacklog(pi, {
+	const openWorkspace = registerBacklog(api, {
 		commands,
 		isSubagent,
 		agentId: () => team.id,
 		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
-	if (!isSubagent) commands.add("octocode", webCommand(openWorkspace));
-	registerMemory(pi, { commands, isSubagent, permission });
-	const skillCount = () => pi.getCommands().filter((command) => command.source === "skill").length;
-	commands.add("status", statusCommand(pi));
-	registerWebTool(pi, permission);
-	registerBrowserTool(pi, new BrowserTool(permission));
-	registerDebugTool(pi);
+	if (!isSubagent) commands.add("octocode", webCommand(openWorkspace, registerWebDaemon(api, workspace)));
+	registerMemory(api, { commands, isSubagent, permission });
+	const skillCount = () => api.getCommands().filter((command) => command.source === "skill").length;
+	commands.add("status", statusCommand(api));
+	registerWebTool(api, permission);
+	registerBrowserTool(api, new BrowserTool(permission));
+	registerDebugTool(api);
 	const agentTool = agentModes();
-	const collab = registerCollab(pi, team, {
+	const collab = registerCollab(api, team, {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
 		beforeLeave: async (reason) => agents?.stopAll(reason),
 		registerTool: agentTool.collect,
@@ -206,11 +207,11 @@ export default function octocode(pi: ExtensionAPI): void {
 	});
 	if (!isSubagent) {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
-		registerEditor(pi, permission);
+		registerEditor(api, permission);
 		registerTrustCommand(commands);
-		registerAskUser(pi);
+		registerAskUser(api);
 		agents = registerAgentTool(
-			pi,
+			api,
 			() => profiles,
 			team,
 			permission,
@@ -222,15 +223,15 @@ export default function octocode(pi: ExtensionAPI): void {
 		permission.setConfirmStop(stopConfirmation(() => agents?.running() ?? [], isSubagent));
 		registerModels(commands, () => profiles, agentTool.collect);
 	}
-	registerSkills(pi);
-	registerUi(pi, isSubagent);
+	registerSkills(api);
+	registerUi(api, isSubagent);
 	// What the agent does now: Octocode's working line (main session) and the team panel's activity column (every agent).
-	const activity = registerActivity(pi, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });
+	const activity = registerActivity(api, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });
 	// Every call a permission check lets through (full mode asks nothing) shows as a short line while its tool runs.
 	permission.onAction((event) => activity.consequential(event.action, event.what, event.warn));
-	const turn = registerTurnSetup(pi, { isSubagent, profiles: () => profiles });
+	const turn = registerTurnSetup(api, { isSubagent, profiles: () => profiles });
 	const hooks = registerHooks(
-		pi,
+		api,
 		process.env,
 		undefined,
 		(what, note, allowed) => permission.noted(what, note, { allowed, via: "hook" }),
@@ -241,10 +242,9 @@ export default function octocode(pi: ExtensionAPI): void {
 		}),
 		planning.blocked,
 	);
-	const sourcePolicy = registerSourcePolicy(pi, process.env, undefined, () =>
-		permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected),
-	);
-	if (sourcePolicy.enabled) permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected);
+	const applySourcePolicy = () => permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected);
+	const sourcePolicy = registerSourcePolicy(api, undefined, applySourcePolicy);
+	applySourcePolicy();
 	permission.setResolver((ctx, invocation, signal) =>
 		hooks.permissionRequest(invocation, ctx as ExtensionContext, signal),
 	);
@@ -275,7 +275,7 @@ export default function octocode(pi: ExtensionAPI): void {
 	team.setMessageHook(beforeMessage);
 	if (!isSubagent) {
 		external = registerExternal(
-			pi,
+			api,
 			commands,
 			{
 				sender: (ctx) => team.id ?? ctx.sessionManager.getSessionId(),
@@ -299,21 +299,21 @@ export default function octocode(pi: ExtensionAPI): void {
 		);
 		permission.onRevoke(() => void external?.reset());
 	}
-	agentTool.register(pi);
+	agentTool.register(api);
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
 	// paths to the file lists Octocode carries into its summary. Octocode writes the summary itself.
-	registerCompaction(pi, guard, isSubagent);
+	registerCompaction(api, guard, isSubagent);
 	registerArchiveCommand(commands);
-	registerArchiveTool(pi);
-	registerSkillTool(pi);
-	registerRunGuards(pi); // after the file guard and the Stop hook: see run-guards.ts
-	registerHooksCommand(commands, hooks);
+	registerArchiveTool(api);
+	registerSkillTool(api);
+	registerRunGuards(api); // after the file guard and the Stop hook: see run-guards.ts
+	registerExtensibilityCommands(commands, hooks, api);
 	// Subagents have no terminal of their own: their parent's row and report carry their state.
-	if (!isSubagent) registerNotify(pi, { onNotice: (notice, ctx) => hooks.notification(notice, ctx) });
-	const api = isSubagent
+	if (!isSubagent) registerNotify(api, { onNotice: hooks.notification });
+	const externalApi = isSubagent
 		? undefined
 		: registerApi(
-				pi,
+				api,
 				commands,
 				{
 					list: () => team.members(),
@@ -330,7 +330,7 @@ export default function octocode(pi: ExtensionAPI): void {
 				},
 			);
 
-	pi.on("session_start", async (_event, ctx) => {
+	api.on("session_start", async (_event, ctx) => {
 		// Per-session state first: a later step that throws (API port in use) must not carry the old session's over.
 		turn.reset();
 		await external?.reset();
@@ -361,13 +361,13 @@ export default function octocode(pi: ExtensionAPI): void {
 				`Ignored permissions a subagent profile cannot declare (only ${PROFILE_DECLARABLE.join(", ")}):\n${ignored.map((profile) => `${profile.name}: ${profile.ignoredPermissions!.join(", ")}`).join("\n")}`,
 				"warning",
 			);
-		await api?.start(ctx);
+		await externalApi?.start(ctx);
 		// The models.dev index, refreshed in the background, so the first subagent of the day routes with it.
 		if (!isSubagent) currentCatalog();
 	});
 
 	// The tool-call pipeline, its cleanup and the user's own `!cmd` (`tool-gates.ts`).
-	registerToolGates(pi, {
+	registerToolGates(api, {
 		permission,
 		provenance,
 		collab,
@@ -378,14 +378,14 @@ export default function octocode(pi: ExtensionAPI): void {
 		planning,
 	});
 
-	registerNativeSessionLifecycle(pi, { isSubagent, team, permission, jobs, agents, external, api });
+	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
 
 	// Register each native command once, after every feature has supplied its handler.
-	commands.register(pi, () =>
+	commands.register(api, () =>
 		[
 			`Octocode ${packageVersion() ?? ""}`.trim(),
 			`MCP: ${
-				getMcpSessionStatus(pi.events)
+				getMcpSessionStatus(api.events)
 					.filter((server) => server.enabled)
 					.map((server) => `${server.name} ${server.state}`)
 					.join(", ") || "none enabled"

@@ -18,6 +18,7 @@ export const ExternalParamsSchema = Type.Object(
 		instanceId: Type.Optional(Type.String()),
 		cwd: Type.Optional(Type.String()),
 		sessionId: Type.Optional(Type.String()),
+		model: Type.Optional(Type.String()),
 		text: Type.Optional(Type.String()),
 		timeoutMs: Type.Optional(Type.Integer()),
 	},
@@ -34,6 +35,7 @@ export function parseExternalParams(value: unknown): ExternalParams {
 		if (typeof field === "string" && !field.trim()) throw new Error(`${name} must be non-empty.`);
 	}
 	if (input.vendor && input.vendor.length > 64) throw new Error("vendor must have at most 64 characters.");
+	if (input.model && input.model.length > 200) throw new Error("model must have at most 200 characters.");
 	if (input.timeoutMs !== undefined && !promptTimeoutValid(input.timeoutMs))
 		throw new Error(`timeoutMs must be from ${PROMPT_TIMEOUT_MS.min} to ${PROMPT_TIMEOUT_MS.max}.`);
 	const fields =
@@ -42,7 +44,7 @@ export function parseExternalParams(value: unknown): ExternalParams {
 			: input.action === "connect"
 				? input.transport === "octocode"
 					? ["action", "id", "transport", "instanceId", "cwd"]
-					: ["action", "id", "transport", "vendor", "command", "args", "cwd", "sessionId", "timeoutMs"]
+					: ["action", "id", "transport", "vendor", "command", "args", "cwd", "sessionId", "model", "timeoutMs"]
 				: input.action === "prompt"
 					? ["action", "id", "text", "timeoutMs"]
 					: ["action", "id"];
@@ -66,6 +68,14 @@ export interface ExternalInfo {
 	cwd: string;
 	sessionId: string;
 	busy: boolean;
+	/** The model the external agent reports it runs on, when its protocol says. */
+	model?: string;
+}
+
+/** The model an external agent runs on and the ids its model option accepts, when its protocol reports them. */
+export interface ExternalModels {
+	current?: string;
+	available: string[];
 }
 
 export interface ExternalReply {
@@ -81,6 +91,8 @@ export interface ExternalBackend {
 	readonly isClosed?: boolean;
 	/** Remote work may remain active after the local prompt waiter times out. */
 	readonly isBusy?: boolean;
+	/** The agent's current model and the ids it accepts; it can change while the connection is open. */
+	readonly models?: ExternalModels;
 	prompt(text: string, options: { timeoutMs: number; signal?: AbortSignal; key?: string }): Promise<ExternalReply>;
 	cancel(): Promise<void>;
 	close(): Promise<void>;

@@ -4,7 +4,7 @@ import type { ToolInvocation, ToolCallEvent } from "../../src/core/extensions/in
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 const definition = {
 	name: "bash",
@@ -19,10 +19,10 @@ function setup(
 	updatedInput: unknown,
 	provenance: { check: (event: any) => { why: string } | undefined } = { check: () => undefined },
 ) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: { OCTOCODE_PERMISSION: "manual" },
 		isSubagent: false,
 	});

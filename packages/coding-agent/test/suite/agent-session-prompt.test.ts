@@ -168,10 +168,10 @@ describe("AgentSession prompt characterization", () => {
 		const harness = await createHarness({
 			models: [{ id: "wide" }, { id: "strict" }],
 			extensionFactories: [
-				(pi) => {
-					pi.on("before_agent_start", async () => {
+				(api) => {
+					api.on("before_agent_start", async () => {
 						if (!strictModel) throw new Error("Expected strict model");
-						await pi.setModel(strictModel);
+						await api.setModel(strictModel);
 					});
 				},
 			],
@@ -201,7 +201,7 @@ describe("AgentSession prompt characterization", () => {
 	});
 
 	it.each(["/skill:test", "/test"])("expands %s before sending the prompt", async (command) => {
-		const tempDir = join(tmpdir(), `pi-skill-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const tempDir = join(tmpdir(), `octocode-skill-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 		tempDirs.push(tempDir);
 		const skillPath = join(tempDir, "test-skill.md");
@@ -317,8 +317,8 @@ describe("AgentSession prompt characterization", () => {
 		const commandRuns: string[] = [];
 		const harness = await createHarness({
 			extensionFactories: [
-				(pi) => {
-					pi.registerCommand("testcmd", {
+				(api) => {
+					api.registerCommand("testcmd", {
 						description: "Test command",
 						handler: async (args) => {
 							commandRuns.push(args);
@@ -345,9 +345,9 @@ describe("AgentSession prompt characterization", () => {
 		});
 		const harness = await createHarness({
 			extensionFactories: [
-				(pi) => {
-					extensionApi = pi;
-					pi.registerCommand("testcmd", {
+				(api) => {
+					extensionApi = api;
+					api.registerCommand("testcmd", {
 						description: "Test command",
 						handler: async (args) => {
 							resolveCommandRun(args);
@@ -382,8 +382,8 @@ describe("AgentSession prompt characterization", () => {
 		const inputEvents: InputEvent[] = [];
 		const harness = await createHarness({
 			extensionFactories: [
-				(pi) => {
-					pi.on("input", (event) => {
+				(api) => {
+					api.on("input", (event) => {
 						inputEvents.push(event);
 					});
 				},
@@ -420,8 +420,8 @@ describe("AgentSession prompt characterization", () => {
 		const harness = await createHarness({
 			tools: [waitTool],
 			extensionFactories: [
-				(pi) => {
-					pi.on("input", (event) => {
+				(api) => {
+					api.on("input", (event) => {
 						inputEvents.push(event);
 					});
 				},
@@ -509,8 +509,8 @@ describe("AgentSession prompt characterization", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => {
+				(api) => {
+					api.on("session_before_compact", async (event) => {
 						markCompactionStarted();
 						await compactionReleased;
 						return {
@@ -573,8 +573,8 @@ describe("AgentSession prompt characterization", () => {
 			const harness = await createHarness({
 				tools: [noopTool],
 				extensionFactories: [
-					(pi) => {
-						pi.on("before_agent_start", (event) => {
+					(api) => {
+						api.on("before_agent_start", (event) => {
 							events.push(event);
 							event.systemPromptOptions.sections.extension_rules = "Answer in one word.";
 						});
@@ -612,8 +612,8 @@ describe("AgentSession prompt characterization", () => {
 			const handlerStarted = Promise.withResolvers<void>();
 			const harness = await createHarness({
 				extensionFactories: [
-					(pi) => {
-						pi.on("before_agent_start", async (event) => {
+					(api) => {
+						api.on("before_agent_start", async (event) => {
 							if (event.messageType !== "custom" || event.message.customType !== "first") return;
 							handlerStarted.resolve();
 							await new Promise<void>((resolve) => {
@@ -657,9 +657,9 @@ describe("AgentSession prompt characterization", () => {
 		it("includes a custom message sent without triggerTurn while the run starts in its first request", async () => {
 			const harness = await createHarness({
 				extensionFactories: [
-					(pi) => {
-						pi.on("before_agent_start", () => {
-							pi.sendMessage(
+					(api) => {
+						api.on("before_agent_start", () => {
+							api.sendMessage(
 								{ customType: "note", content: "context from handler", display: true },
 								{ triggerTurn: false },
 							);
@@ -687,8 +687,8 @@ describe("AgentSession prompt characterization", () => {
 			const handlerStarted = Promise.withResolvers<void>();
 			const harness = await createHarness({
 				extensionFactories: [
-					(pi) => {
-						pi.on("before_agent_start", async () => {
+					(api) => {
+						api.on("before_agent_start", async () => {
 							handlerStarted.resolve();
 							await new Promise<void>((resolve) => {
 								releaseHandler = resolve;

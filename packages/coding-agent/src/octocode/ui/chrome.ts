@@ -11,6 +11,7 @@ import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
 import { thinkingTranscript } from "./thinking.ts";
+import { registerAwaiting } from "./awaiting.ts";
 import { registerTurnLine } from "./turn-line.ts";
 
 let version: { value: string | undefined } | undefined;
@@ -162,13 +163,14 @@ export function bannerHeader(
  * spinner, and the generation speed of the last run. Only time spent streaming assistant
  * messages counts toward the speed, so tool calls, subagents and askUser waits don't drag the number down.
  */
-export function registerUi(pi: ExtensionAPI, isSubagent: boolean): void {
+export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
 	if (isSubagent) return;
-	registerFooter(pi);
-	registerTurnLine(pi);
+	registerFooter(api);
+	registerTurnLine(api);
+	registerAwaiting(api);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
 		if (!ctx.hasUI) return;
 		ctx.ui.setStatus(STATUS.speed, undefined);
 		// Shine once, on a fresh start with nothing below the banner. Module state cannot remember it: Octocode re-imports
@@ -178,20 +180,20 @@ export function registerUi(pi: ExtensionAPI, isSubagent: boolean): void {
 			event.reason === "startup" && !ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
 		if (ctx.mode === "tui") decorate(ctx, fresh ? Date.now() : undefined);
 	});
-	pi.on("agent_start", async () => {
+	api.on("agent_start", async () => {
 		generated = { output: 0, ms: 0 };
 		messageStartedAt = undefined;
 	});
-	pi.on("message_start", async (event) => {
+	api.on("message_start", async (event) => {
 		if (event.message.role === "assistant") messageStartedAt = Date.now();
 	});
-	pi.on("message_end", async (event) => {
+	api.on("message_end", async (event) => {
 		if (event.message.role !== "assistant" || messageStartedAt === undefined) return;
 		generated.ms += Date.now() - messageStartedAt;
 		generated.output += event.message.usage.output;
 		messageStartedAt = undefined;
 	});
-	pi.on("agent_end", async (_event, ctx) => {
+	api.on("agent_end", async (_event, ctx) => {
 		// Every call of the run ended. Octocode drops rows it never gave a result here; their clocks must not tick on.
 		stopRowTimers();
 		if (!ctx.hasUI) return;

@@ -10,7 +10,7 @@ import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { shellScript } from "../../src/octocode/files/bash-jobs/shell.ts";
 import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
 import octocode from "../../src/octocode/index.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const tool = "mcp__octocode__localFetch";
@@ -23,8 +23,8 @@ describe("local MCP read evidence", () => {
 		const cwd = fs.realpathSync(tmp());
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "one\n");
-		const fake = fakePi();
-		const snapshots = registerReadReceipts(fake.pi);
+		const fake = fakeHost();
+		const snapshots = registerReadReceipts(fake.api);
 		const read = await snapshotLocalReads(tool, { queries: [{ path: file }] }, cwd);
 		snapshots.set("blocked", read);
 		await fake.emit("tool_execution_end", { toolCallId: "blocked", isError: true }, { cwd });
@@ -186,7 +186,7 @@ describe("local MCP read evidence", () => {
 
 describe("unified agent", () => {
 	it("retains the selected mode's renderer for live updates", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const modes = agentModes();
 		const progress = { content: [{ type: "text" as const, text: "working" }], details: { elapsed: 1 } };
 		modes.collect({
@@ -199,7 +199,7 @@ describe("unified agent", () => {
 				return progress;
 			},
 		});
-		modes.register(fake.pi);
+		modes.register(fake.api);
 		const update = vi.fn();
 		await fake.tools
 			.get("agent")!
@@ -208,7 +208,7 @@ describe("unified agent", () => {
 	});
 
 	it("dispatches validated mode inputs and preserves cancellation and errors", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const modes = agentModes();
 		const execute = vi.fn(async (_id, _input, signal) => ({
 			content: [{ type: "text" as const, text: "failed" }],
@@ -222,7 +222,7 @@ describe("unified agent", () => {
 			parameters: Type.Object({ action: Type.Literal("list") }),
 			execute,
 		});
-		modes.register(fake.pi);
+		modes.register(fake.api);
 		expect([...fake.tools.keys()]).toEqual(["agent"]);
 		const agent = fake.tools.get("agent")!;
 		const signal = new AbortController().signal;
@@ -254,7 +254,7 @@ describe("unified agent", () => {
 	});
 
 	it("validates mode input like a directly registered tool: coercion, optional nulls and a named field", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const modes = agentModes();
 		const execute = vi.fn(async (_id, input) => ({
 			content: [{ type: "text" as const, text: "ok" }],
@@ -267,7 +267,7 @@ describe("unified agent", () => {
 			parameters: Type.Object({ task: Type.String(), background: Type.Optional(Type.Boolean()) }),
 			execute,
 		});
-		modes.register(fake.pi);
+		modes.register(fake.api);
 		const agent = fake.tools.get("agent")!;
 		const call = (input: unknown) =>
 			agent.execute("id", { type: "task", input }, new AbortController().signal, undefined, fakeCtx({ cwd: tmp() }));
@@ -285,7 +285,7 @@ describe("unified agent", () => {
 	});
 
 	it("gives a mode's renderers the mode input as context.args, also for an error result", () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const modes = agentModes();
 		const seen: unknown[] = [];
 		const component = { render: () => [], invalidate() {} } as never;
@@ -298,7 +298,7 @@ describe("unified agent", () => {
 			renderCall: (_args, _theme, context) => (seen.push(context.args), component),
 			renderResult: (_result, _options, _theme, context) => (seen.push(context.args), component),
 		});
-		modes.register(fake.pi);
+		modes.register(fake.api);
 		const agent = fake.tools.get("agent")!;
 		const args = { type: "message", input: { to: "inky" } };
 		agent.renderCall(args, {}, { args });
@@ -308,8 +308,8 @@ describe("unified agent", () => {
 	});
 
 	it("lists the commands this session registered in /status, not a fixed set", async () => {
-		const fake = fakePi();
-		octocode(fake.pi);
+		const fake = fakeHost();
+		octocode(fake.api);
 		const ctx = fakeCtx({ cwd: tmp() });
 		await fake.commands.get("status").handler("", ctx);
 		const line = ctx.ui.notes
@@ -324,8 +324,8 @@ describe("unified agent", () => {
 	it("keeps only communication modes in a child session", () => {
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		try {
-			const fake = fakePi();
-			octocode(fake.pi);
+			const fake = fakeHost();
+			octocode(fake.api);
 			expect(fake.tools.get("agent").parameters.properties.type.enum).toEqual(["coordinate", "message"]);
 			for (const old of ["externalAgent", "coordinate", "sendMessage", "read", "powershell"])
 				expect(fake.tools.has(old)).toBe(false);

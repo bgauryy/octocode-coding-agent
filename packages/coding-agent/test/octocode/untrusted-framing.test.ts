@@ -12,7 +12,7 @@ import { userProof, userProofValid } from "../../src/octocode/team/proof.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
 import { spilledMessage } from "../../src/octocode/team/session/spilled-message.ts";
@@ -144,14 +144,14 @@ describe("the user's message to a subagent", () => {
 
 	it('is framed as the user\'s only with a valid signature; a forged "user" and a peer stay untrusted', () => {
 		const sent: string[] = [];
-		const pi = {
+		const api = {
 			sendMessage: (message: { content: string }) => {
 				sent.push(message.content);
 				return undefined;
 			},
 		} as never;
 		const wrong = { ...signed({ id: 2 }), proof: userProof("wrong", { id: 2, to, text: "do it" }) };
-		new Mail(pi, () => secret).deliver(
+		new Mail(api, () => secret).deliver(
 			[signed({ id: 1 }), wrong, message({ id: 3, from: "user", to, text: "no proof" })],
 			undefined,
 		);
@@ -252,8 +252,8 @@ describe("Team.vouch", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const db = path.join(tmp(), "team.sqlite");
 		const open = (env: Record<string, string>) => {
-			const fake = fakePi();
-			const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db, ...env });
+			const fake = fakeHost();
+			const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db, ...env });
 			team.start(fakeCtx({ cwd, hasUI: false, idle: false }));
 			return { team, fake };
 		};
@@ -338,8 +338,8 @@ describe("across processes", () => {
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const db = path.join(tmp(), "team.sqlite");
-		const fake = fakePi();
-		const parent = new Team(fake.pi, { OCTOCODE_AGENT_DB: db });
+		const fake = fakeHost();
+		const parent = new Team(fake.api, { OCTOCODE_AGENT_DB: db });
 		parent.start(fakeCtx({ cwd }));
 		teams.push(parent);
 		const parentId = parent.join().id;

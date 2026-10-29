@@ -4,7 +4,8 @@ import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../shared/home/repo.ts";
 import { errorMessage, isRecord } from "../../../utils/guards.ts";
 import { commandsFor, hookIdentity } from "../config/calls.ts";
-import type { HookHandler, HookEvent, HookVerdict } from "../contracts.ts";
+import type { HookEvent } from "../catalog.ts";
+import type { HookHandler, HookVerdict } from "../contracts.ts";
 import { redactSecrets, visibleControls } from "../../shared/sanitize.ts";
 import { clipText, firstLine, optionalString, stringOrEmpty } from "../../shared/util.ts";
 import type { registerBackgroundHooks } from "../background.ts";
@@ -26,11 +27,11 @@ import {
 
 /** The shared hook runner: `dispatch` runs the hooks of one event, `reportFailure` says once per event that a dispatch itself failed. */
 export function createDispatcher(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	session: HookSession,
 	timings: Map<string, HookTiming>,
 	onFailure: HookFailureSink | undefined,
-	background: ReturnType<typeof registerBackgroundHooks> | undefined,
+	background: ReturnType<typeof registerBackgroundHooks>,
 	child: boolean,
 	metadata: (() => HookHostMetadata) | undefined,
 	paused?: () => boolean,
@@ -153,8 +154,7 @@ export function createDispatcher(
 				(hook.type === undefined || hook.type === "command") &&
 				hook.protocol !== "octocode" &&
 				event !== "SessionEnd" &&
-				(hook.async || hook.asyncRewake) &&
-				background
+				(hook.async || hook.asyncRewake)
 			) {
 				if (!signal?.aborted)
 					background.start(
@@ -181,7 +181,7 @@ export function createDispatcher(
 					ctx.cwd,
 					env,
 					signal,
-					boundMcpHookCaller(pi.events, ctx, event),
+					boundMcpHookCaller(api.events, ctx, event),
 					hook.type === "prompt" ? createPromptEvaluator(ctx) : undefined,
 				),
 			);

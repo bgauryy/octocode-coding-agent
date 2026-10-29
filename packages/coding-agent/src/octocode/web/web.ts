@@ -124,9 +124,9 @@ async function approveFetch(
 	return { private: privateHost };
 }
 
-export function registerWebTool(pi: ExtensionAPI, permission: Permission): void {
+export function registerWebTool(api: ExtensionAPI, permission: Permission): void {
 	const fetchUrl = pageFetcher();
-	pi.registerTool(
+	api.registerTool(
 		timedTool({
 			name: "web",
 			label: "Web",
@@ -192,7 +192,7 @@ export function registerWebTool(pi: ExtensionAPI, permission: Permission): void 
 						const file = saveFullOutput(text, "web");
 						if (file) {
 							// Octocode tools take an absolute path; without them the short form is enough to read.
-							const tools = savedPageTools(pi.getActiveTools());
+							const tools = savedPageTools(api.getActiveTools());
 							const where = tools.clasify || tools.localSearch || tools.localFetch ? file : shortPath(file);
 							const hint = `the whole page (${lines} lines, links included) is in ${where}: ${savedPageLead(tools)}`;
 							return textResult<WebDetails>(savedPreview(collapseLinkRuns(text), max, hint), { ...size, file });

@@ -5,7 +5,7 @@ import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octoco
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
 import { repoKey } from "../../src/octocode/shared/home/repo.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => {
@@ -16,9 +16,9 @@ afterEach(() => {
 function setup() {
 	const cwd = tmp();
 	const env = { OCTOCODE_AGENT_DB: path.join(cwd, "agent.db") };
-	const fake = fakePi();
+	const fake = fakeHost();
 	const changed = vi.fn();
-	registerBacklogTool(fake.pi, { isSubagent: false, env, changed });
+	registerBacklogTool(fake.api, { isSubagent: false, env, changed });
 	const tool = fake.tools.get("backlog");
 	const ctx = fakeCtx({ cwd });
 	const store = new BacklogStore(() => sharedAgentDb(env), repoKey(cwd).key);

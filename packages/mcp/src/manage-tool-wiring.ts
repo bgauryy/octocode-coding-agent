@@ -11,11 +11,11 @@ import { hideTools } from "./tool-registry.ts";
 
 // The model's `mcp` tool acts on this session's servers only; configuration files stay unchanged.
 export function registerMcpManageTool(state: McpExtensionState): void {
-	const { pi } = state;
+	const { api } = state;
 	/** Servers the `mcp` tool added for this session; only these can be removed through it. */
 	const addedHere = new Map<string, McpServerConfig>();
 	// Children inherit enabled extension registrations, including session additions; stopped servers stay out.
-	registerMcpAddedServers(pi.events, () =>
+	registerMcpAddedServers(api.events, () =>
 		Object.fromEntries(
 			state.servers
 				.filter(
@@ -28,7 +28,7 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		),
 	);
 	// Inactive on registration: the default tool selection includes it (`core/native-tools.ts`), so `noTools` and `--tools` apply.
-	pi.registerTool({
+	api.registerTool({
 		defaultActive: false,
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
@@ -61,13 +61,13 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 				return undefined;
 			},
 			add: (name, config) => {
-				pi.registerMcpServer(name, config);
+				api.registerMcpServer(name, config);
 				addedHere.set(name, config);
 			},
 			remove: async (name) => {
 				if (!addedHere.has(name))
 					return `MCP server "${name}" comes from configuration; stop it for this session instead.`;
-				pi.unregisterMcpServer(name);
+				api.unregisterMcpServer(name);
 				addedHere.delete(name);
 				return undefined;
 			},

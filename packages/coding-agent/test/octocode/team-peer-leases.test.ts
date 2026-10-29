@@ -9,7 +9,7 @@ import { PEER_APPLICATION_ID, PEER_SCHEMA_VERSION, PeerLeases } from "../../src/
 import { PEER_REGISTRY_GRACE_MS, PEER_REGISTRY_VERSION, PeerRegistry } from "../../src/octocode/team/peer-registry.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const PACKAGE = path.resolve(import.meta.dirname, "./fixtures/peer-communication");
@@ -381,9 +381,9 @@ describe("peer leases in the team reservation gate", () => {
 		// The package needs real git metadata; the team only a `.git` entry.
 		if (git) spawnSync("git", ["init", "-q", cwd]);
 		else fs.mkdirSync(path.join(cwd, ".git"));
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
-		const { reservationGate } = registerCollab(fake.pi, team);
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
+		const { reservationGate } = registerCollab(fake.api, team);
 		const ctx = fakeCtx({ cwd });
 		team.start(ctx);
 		return { cwd, team, gate: reservationGate, ctx, fake };

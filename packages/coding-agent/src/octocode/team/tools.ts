@@ -47,7 +47,7 @@ interface CoordinateParams {
  * the subagents it stops can still message it and release their reservations while it is a member.
  */
 export function registerCollab(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	team: Team,
 	options: {
 		stopAgent?: StopAgent;
@@ -61,10 +61,10 @@ export function registerCollab(
 		shellReadOnly?: (command: string) => boolean;
 	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
-	registerMessageRenderer(pi);
-	registerCoordinateTool(pi, team, options.stopAgent, options.registerTool);
-	registerSendMessageTool(pi, team, options.registerTool);
-	registerTeamEvents(pi, team, options.beforeLeave, options.shellChanges);
+	registerMessageRenderer(api);
+	registerCoordinateTool(api, team, options.stopAgent, options.registerTool);
+	registerSendMessageTool(api, team, options.registerTool);
+	registerTeamEvents(api, team, options.beforeLeave, options.shellChanges);
 	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
 	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
@@ -98,10 +98,10 @@ export function registerCollab(
 }
 
 function registerCoordinateTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	team: Team,
 	stopAgent: StopAgent | undefined,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
+	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
 ): void {
 	// `stop` exists only for an agent that can start subagents, which is also the one that joins and leaves by hand: a
 	// subagent joins when it starts and leaves when its run ends (`Team.start`, `onAgentSettled`), and would only be refused `stop`.
@@ -243,13 +243,13 @@ function registerCoordinateTool(
 }
 
 function registerTeamEvents(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	team: Team,
 	beforeLeave?: (reason: string) => Promise<unknown>,
 	shellChanges?: (command: string) => Promise<string[]>,
 ): void {
-	pi.on("session_start", async (_event, ctx) => team.start(ctx));
-	pi.on("session_shutdown", async (event) => {
+	api.on("session_start", async (_event, ctx) => team.start(ctx));
+	api.on("session_shutdown", async (event) => {
 		try {
 			// The shutdown's reason (`reload`, `quit`…) names what stopped the subagents in their reports.
 			await beforeLeave?.(event.reason);
@@ -257,17 +257,17 @@ function registerTeamEvents(
 			team.stop();
 		}
 	});
-	pi.on("agent_start", async () => team.onAgentStart());
-	pi.on("agent_settled", async () => team.onAgentSettled());
+	api.on("agent_start", async () => team.onAgentStart());
+	api.on("agent_settled", async () => team.onAgentSettled());
 	// Team mail is delivered when the model is called with it. Octocode emits `context` before every model call, whichever way
 	// a message entered the conversation (message_start reaches extensions only for steered and prompted messages).
-	pi.on("context", async (event) => {
+	api.on("context", async (event) => {
 		team.onContext(event.messages);
 		return undefined;
 	});
 	// Mail that reached the transcript and was then compacted away is carried by the summary: no later `context` event
 	// lists it, so it would stay unseen and hold back newer mail. Mail in the kept range is still seen by the next call.
-	pi.on("session_compact", async (event, ctx) => {
+	api.on("session_compact", async (event, ctx) => {
 		const summarized: Array<{ role: "custom"; customType: string; details: unknown }> = [];
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.id === event.compactionEntry.firstKeptEntryId || entry.id === event.compactionEntry.id) break;
@@ -282,7 +282,7 @@ function registerTeamEvents(
 	// for the end; a blocked or failed call ends as an error and records nothing.
 	const pending = new Map<string, string[]>();
 	const commands = new Map<string, string>();
-	pi.on("tool_execution_start", async (event) => {
+	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) team.onToolStart();
 		if (event.toolName === "edit" || event.toolName === "write")
 			pending.set(event.toolCallId, mutatedPaths(event.toolName, event.args));
@@ -291,7 +291,7 @@ function registerTeamEvents(
 			if (command !== undefined) commands.set(event.toolCallId, command);
 		}
 	});
-	pi.on("tool_execution_end", async (event, ctx) => {
+	api.on("tool_execution_end", async (event, ctx) => {
 		const args = pending.get(event.toolCallId);
 		pending.delete(event.toolCallId);
 		const command = commands.get(event.toolCallId);
@@ -325,7 +325,7 @@ function registerTeamEvents(
 			// A missing record only makes `coordinate changes` less complete.
 		}
 	});
-	pi.on("message_end", async (event, ctx) => {
+	api.on("message_end", async (event, ctx) => {
 		if (event.message.role === "assistant")
 			team.onUsage(
 				event.message.usage,

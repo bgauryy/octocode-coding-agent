@@ -6,7 +6,7 @@ import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 
 let root: string;
 let cwd: string;
@@ -26,11 +26,11 @@ afterEach(() => {
 });
 
 function memoryTool(mode: PermissionMode) {
-	const fake = fakePi();
-	registerMemory(fake.pi, {
+	const fake = fakeHost();
+	registerMemory(fake.api, {
 		commands: new Subcommands(),
 		isSubagent: false,
-		permission: fakePermission(mode, { pi: fake.pi }),
+		permission: fakePermission(mode, { api: fake.api }),
 	});
 	const tool = fake.tools.get("memory");
 	/** Runs the tool; `selects` answer the permission dialogs in order, and what is left of them shows how many were asked. */
@@ -128,11 +128,11 @@ describe("shared memory", () => {
 		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
 		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
 		for (const mode of ["manual", "workspace", "full"] as const) {
-			const fake = fakePi();
-			registerMemory(fake.pi, {
+			const fake = fakeHost();
+			registerMemory(fake.api, {
 				commands: new Subcommands(),
 				isSubagent: false,
-				permission: fakePermission(mode, { pi: fake.pi }),
+				permission: fakePermission(mode, { api: fake.api }),
 			});
 			const ctx = Object.assign(fakeCtx({ cwd, hasUI: true }), { isProjectTrusted: () => false });
 			await expect(

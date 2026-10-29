@@ -99,3 +99,24 @@ it("keeps the rest of the feed alive when one result card throws, and names the 
 	expect(screen.getByText("Healthy answer")).toBeInTheDocument();
 	spy.mockRestore();
 });
+
+it("marks results with the shared run-state shapes: stopped for not-run and cut-short replies, failed for failures", () => {
+	const events = project({
+		messages: [{ id: "m", role: "assistant", text: "Partial answer", complete: true, status: "aborted" }],
+		tools: [
+			{ toolCallId: "a", toolName: "read", text: "Not run: the model response failed", status: "failed", notRun: true },
+			{ toolCallId: "b", toolName: "bash", text: "boom", status: "failed" },
+			{ toolCallId: "c", toolName: "grep", text: "ok", status: "completed" },
+		],
+	});
+	const { container } = render(
+		<Wrapper>
+			{events.map((event) => (
+				<ResultCard key={event.id} event={event} />
+			))}
+		</Wrapper>,
+	);
+	const marks = (name: string) => container.querySelectorAll(`.result-meta .mark-${name}`).length;
+	expect([marks("stopped"), marks("failed"), marks("done")]).toEqual([2, 1, 1]);
+	expect(screen.getByText("Stopped")).toBeInTheDocument();
+});

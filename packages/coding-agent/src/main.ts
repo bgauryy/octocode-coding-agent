@@ -35,7 +35,6 @@ import { createSessionManager, validateForkFlags, validateSessionIdFlags } from 
 import {
 	EXTENSION_LOAD_FAILURE_HINT,
 	isPlainRuntimeMetadataCommand,
-	isTruthyEnvFlag,
 	prepareInitialMessage,
 	promptForMissingSessionCwd,
 	readPipedStdin,
@@ -48,6 +47,7 @@ import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./theme/theme.ts";
 import { validateThemeJson } from "./theme/theme-schema.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
+import { isTruthyEnvFlag } from "./utils/env-flag.ts";
 import { normalizePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
@@ -110,7 +110,7 @@ export async function main(args: string[], options?: MainOptions) {
 		if (process.platform === "win32" && exitCode === 0 && args[0] === "update") {
 			// We normally prefer process.exit(0) for package commands so bad extensions cannot keep
 			// one-shot commands alive. On Windows, Node can assert after fetch() if process.exit(0)
-			// runs during teardown; let successful `pi update` drain naturally instead.
+			// runs during teardown; let successful `octocode update` drain naturally instead.
 			// https://github.com/nodejs/node/issues/56645
 			return;
 		}
@@ -125,6 +125,12 @@ export async function main(args: string[], options?: MainOptions) {
 	if (args[0] === "mcp") {
 		const { runMcpCommand } = await loadMcpCommand();
 		process.exitCode = await runMcpCommand(args.slice(1), { cwd, agentDir });
+		return;
+	}
+
+	if (args[0] === "context") {
+		const { runContextCommand } = await import("./octocode/context-optimization/command.ts");
+		process.exitCode = await runContextCommand(args.slice(1), { agentDir, cwd });
 		return;
 	}
 

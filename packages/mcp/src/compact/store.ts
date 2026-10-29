@@ -1,11 +1,36 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { getContextOptimizationDir } from "../../../coding-agent/src/config.ts";
+import { contextOptimizationDirs } from "../../../coding-agent/src/octocode/shared/home.ts";
 import type { GeneratedMeta } from "./types.ts";
 
-/** Folder for generated files under an agent directory. */
+/**
+ * Folder for generated files under an agent directory: `context-optimization/mcp/`. The folder earlier releases used,
+ * `mcp-generated/`, moves there the first time, so its stored overrides keep applying.
+ */
 export function generatedDir(agentDir: string): string {
-	return join(agentDir, "mcp-generated");
+	const dir = join(getContextOptimizationDir(agentDir), "mcp");
+	const legacy = join(agentDir, "mcp-generated");
+	if (!existsSync(dir) && existsSync(legacy)) {
+		try {
+			mkdirSync(getContextOptimizationDir(agentDir), { recursive: true });
+			renameSync(legacy, dir);
+		} catch {
+			// Another process moved it first, or the move is not allowed; the files are rendered again when missing.
+		}
+	}
+	return dir;
+}
+
+/**
+ * The folder of one server's generated file: the project's (`contextOptimizationDirs`) for a server that the
+ * workspace `mcp.json` of `cwd` defines, else the user's (`generatedDir`), so two projects that define a same-named
+ * server keep separate files and overrides.
+ */
+export function serverGeneratedDir(agentDir: string, cwd: string, scope: string | undefined): string {
+	const project = scope === "project" ? contextOptimizationDirs(cwd, agentDir).project : undefined;
+	return project ? join(project.dir, "mcp") : generatedDir(agentDir);
 }
 
 /** File-safe stem for a server name. */

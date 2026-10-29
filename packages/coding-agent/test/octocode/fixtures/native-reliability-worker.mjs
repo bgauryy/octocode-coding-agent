@@ -13,7 +13,7 @@ os.homedir = () => privateHome;
 syncBuiltinESMExports();
 Object.assign(process.env, {
   OCTOCODE_CODING_AGENT_DIR: agentDir, OCTOCODE_HOME: path.join(root, 'octocode'),
-  OCTOCODE_API: '1', OCTOCODE_API_HTTP: '0', OCTOCODE_HOOKS: '0', OCTOCODE_MCP: '0',
+  OCTOCODE_API: '1', OCTOCODE_API_HTTP: '0', OCTOCODE_MCP: '0',
   OCTOCODE_MEMORY_AUTO: '0', OCTOCODE_EXTRA_SKILLS: '0', OCTOCODE_NOTIFY: 'off', OCTOCODE_PERMISSION: 'full',
 });
 const sdk = await import('@octocodeai/octocodecode');
@@ -50,7 +50,7 @@ async function boot() {
   const settingsManager = sdk.SettingsManager.create(cwd, agentDir);
   const loader = new sdk.DefaultResourceLoader({
     cwd, agentDir, settingsManager,
-    extensionFactories: [(pi) => pi.registerProvider(faux.provider)],
+    extensionFactories: [(api) => api.registerProvider(faux.provider)],
     noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
   });
   await loader.reload();

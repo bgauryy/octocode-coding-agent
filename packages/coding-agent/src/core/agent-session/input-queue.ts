@@ -232,6 +232,7 @@ export class SessionInputQueue {
 			appMessage.content,
 			appMessage.display,
 			appMessage.details,
+			appMessage.timestamp,
 		);
 		// Announce the message before the refresh: the first event after the refresh makes transcript views rebuild from
 		// every entry, so a view told about the message afterwards would show it twice.

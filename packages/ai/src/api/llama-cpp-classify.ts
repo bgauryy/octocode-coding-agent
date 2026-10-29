@@ -52,7 +52,7 @@ const READOUT_ESCALATION = [4096, 32768];
 /** llama-server reports an underflowed probability as the lowest float instead of -Infinity. */
 const UNDERFLOW_LOGPROB = -1e30;
 
-/** The server root: pi's llama.cpp models use the OpenAI-compatible `/v1` URL as their base URL. */
+/** The server root: Octocode's llama.cpp models use the OpenAI-compatible `/v1` URL as their base URL. */
 export function llamaServerRoot(baseUrl: string): string {
 	return baseUrl.replace(/\/+$/u, "").replace(/\/v1$/u, "");
 }

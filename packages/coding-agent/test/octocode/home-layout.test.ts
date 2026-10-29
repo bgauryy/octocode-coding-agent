@@ -113,12 +113,12 @@ describe("profiles, hooks and skills in .octocode", () => {
 		write(path.join(home, ".octocode", "octocodecode", "agents", "q.md"), profile("q", "octocode-user"));
 		expect(loadProfiles(tmp(), home, true, {}).get("p")?.prompt).toBe("octocode-user");
 		const { sub } = repo({
-			".octocode/agents/q.md": profile("q", "pi-project"),
+			".octocode/agents/q.md": profile("q", "octocode-project"),
 			".octocode/agents/p.md": profile("p", "octocode-project"),
 		});
 		const trusted = loadProfiles(sub, home, true, {});
 		expect(trusted.get("p")?.prompt).toBe("octocode-project");
-		expect(trusted.get("q")?.prompt).toBe("pi-project");
+		expect(trusted.get("q")?.prompt).toBe("octocode-project");
 		const untrusted = loadProfiles(sub, home, false, {});
 		expect(untrusted.get("p")?.prompt).toBe("octocode-user");
 		expect(untrusted.get("q")?.prompt).toBe("octocode-user");

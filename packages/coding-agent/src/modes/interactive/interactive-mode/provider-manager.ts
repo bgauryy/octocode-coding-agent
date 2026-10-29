@@ -60,7 +60,7 @@ export async function removeProviderCredential(host: ProviderManagerHost, id: st
 	} catch (error) {
 		host.showError(
 			error instanceof CredentialSynchronizationError
-				? `Credential removed for ${name}, but model availability could not be updated. Reopen /providers.`
+				? `Credential removed for ${name}, but model availability could not be updated. Reopen /login.`
 				: `Could not remove credential: ${errorMessage(error)}`,
 		);
 	}

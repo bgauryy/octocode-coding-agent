@@ -49,7 +49,7 @@ export function lastNoticedBand(messages: readonly Pick<MessageRef, "message">[]
  * turn; during a run it joins the context at the end of the turn, before the next request.
  */
 export function noticeContextUsage(
-	pi: Pick<ExtensionAPI, "sendMessage">,
+	api: Pick<ExtensionAPI, "sendMessage">,
 	ctx: Pick<ExtensionContext, "model" | "getContextUsage">,
 	messages: readonly Pick<MessageRef, "message">[],
 	thinking?: CompactionThinking,
@@ -63,7 +63,7 @@ export function noticeContextUsage(
 	const last = lastNoticedBand(messages);
 	if (last !== undefined && last >= band) return;
 	try {
-		void pi.sendMessage(
+		void api.sendMessage(
 			{
 				customType: CONTEXT_NOTICE_TYPE,
 				content: contextNoticeText(tokens, limit, model.contextWindow),

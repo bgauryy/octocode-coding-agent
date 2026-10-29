@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { lockAdvice } from "../../src/octocode/team/lock-advice.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A workspace with two packages: `packages/a` and `packages/b`. */
@@ -37,9 +37,9 @@ describe("the coordinate lock advisory", () => {
 
 	it("appends the advisory to the lock result", async () => {
 		const cwd = workspace();
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
-		registerCollab(fake.pi, team);
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
+		registerCollab(fake.api, team);
 		const ctx = fakeCtx({ cwd });
 		await fake.emit("session_start", {}, ctx);
 		stops.push(() => fake.emit("session_shutdown", {}, ctx));
@@ -60,9 +60,9 @@ describe("the reservation gate for PowerShell", () => {
 	});
 
 	async function member(db: string, cwd: string, readOnly?: (command: string) => boolean) {
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db });
-		const { reservationGate } = registerCollab(fake.pi, team, readOnly ? { shellReadOnly: readOnly } : {});
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db });
+		const { reservationGate } = registerCollab(fake.api, team, readOnly ? { shellReadOnly: readOnly } : {});
 		const ctx = fakeCtx({ cwd });
 		await fake.emit("session_start", {}, ctx);
 		stops.push(() => fake.emit("session_shutdown", {}, ctx));

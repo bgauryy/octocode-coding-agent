@@ -10,18 +10,18 @@ it("correlates nested extension sends through asynchronous preflight while prese
 	const release = Promise.withResolvers<void>();
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				pi.registerCommand("outer", {
+			(api) => {
+				api.registerCommand("outer", {
 					handler: async () => {
-						pi.sendUserMessage("/inner", { expandPromptTemplates: true });
+						api.sendUserMessage("/inner", { expandPromptTemplates: true });
 					},
 				});
-				pi.registerCommand("inner", {
+				api.registerCommand("inner", {
 					handler: async () => {
-						pi.sendUserMessage("generated");
+						api.sendUserMessage("generated");
 					},
 				});
-				pi.on("input", async (event) => {
+				api.on("input", async (event) => {
 					if (event.text === "generated") {
 						entered.resolve();
 						await release.promise;
@@ -67,8 +67,8 @@ it("correlates nested extension sends through asynchronous preflight while prese
 it("completes a handled command without model work", async () => {
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				pi.registerCommand("nothing", { handler: async () => {} });
+			(api) => {
+				api.registerCommand("nothing", { handler: async () => {} });
 			},
 		],
 	});
@@ -95,14 +95,14 @@ it("keeps a dispatch active through a deferred agent_settled follow-up", async (
 	let sent = false;
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				pi.on("agent_settled", () => {
+			(api) => {
+				api.on("agent_settled", () => {
 					if (!sent) {
 						sent = true;
-						pi.sendUserMessage("follow-up");
+						api.sendUserMessage("follow-up");
 					}
 				});
-				pi.on("input", async (event) => {
+				api.on("input", async (event) => {
 					if (event.text === "follow-up") {
 						entered.resolve();
 						await release.promise;
@@ -144,10 +144,10 @@ it("keeps a dispatch active through a deferred agent_settled follow-up", async (
 it("reports a nested send's preflight rejection even when the extension API consumes its promise", async () => {
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				pi.registerCommand("send", {
+			(api) => {
+				api.registerCommand("send", {
 					handler: async () => {
-						pi.sendUserMessage("generated");
+						api.sendUserMessage("generated");
 					},
 				});
 			},
@@ -174,8 +174,8 @@ it("cancels pending preflight before it can start a model run and preserves the 
 	const release = Promise.withResolvers<void>();
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				pi.on("input", async (event) => {
+			(api) => {
+				api.on("input", async (event) => {
 					if (event.text === "hold") {
 						entered.resolve();
 						await release.promise;

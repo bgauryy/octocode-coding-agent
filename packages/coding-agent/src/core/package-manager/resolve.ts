@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
+import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import type { PackageSource } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 import { addAutoDiscoveredResources } from "./auto-discovery.ts";
@@ -25,7 +26,6 @@ import {
 	resolvePathFromBase,
 } from "./sources.ts";
 import {
-	isOfflineModeEnabled,
 	type LocalSource,
 	type MissingSourceAction,
 	type PackageFilter,

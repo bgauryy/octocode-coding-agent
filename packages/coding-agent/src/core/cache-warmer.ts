@@ -50,7 +50,7 @@ export class CacheWarmer {
 	private readonly models: Pick<ModelRuntime, "streamSimple">;
 	private readonly sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">;
 	private readonly getMode: () => CacheWarmingMode;
-	/** Lets extensions override `event.action`; failures fall back to pi's decision. */
+	/** Lets extensions override `event.action`; failures fall back to Octocode's decision. */
 	private readonly decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction>;
 	/** Called with the persisted usage entry after each successful refresh. */
 	onWarmed?: (entry: UsageEntry) => void;
@@ -306,10 +306,12 @@ export class CacheWarmer {
 		// With layered lifetimes only the history entry expires; the instruction prefix is still read from its own entry.
 		const expiringTokens = Math.max(0, promptTokens - run.instructionTokens);
 		const cacheHitCost = price(model, { cacheRead: expiringTokens });
-		const cacheMissCost = price(
-			model,
-			model.cost.cacheWrite > 0 ? { cacheWrite: expiringTokens } : { input: expiringTokens },
-		);
+		// A miss rewrites the expiring history at the tier the next request uses, which is the long one after an idle gap.
+		const rewrite =
+			run.rewriteRetention === "long"
+				? { cacheWrite: expiringTokens, cacheWrite1h: expiringTokens }
+				: { cacheWrite: expiringTokens };
+		const cacheMissCost = price(model, model.cost.cacheWrite > 0 ? rewrite : { input: expiringTokens });
 		const warmCost = price(model, {
 			cacheRead: promptTokens,
 			...(model.cost.cacheWrite > model.cost.input ? { cacheWrite: input } : { input }),

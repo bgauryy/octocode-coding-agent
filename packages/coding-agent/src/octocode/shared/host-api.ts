@@ -10,6 +10,6 @@ interface NativeExtensionAPI extends ExtensionAPI {
 }
 
 /** View the factory argument as the native host API. */
-export function nativeHost(pi: ExtensionAPI): NativeExtensionAPI {
-	return pi;
+export function nativeHost(api: ExtensionAPI): NativeExtensionAPI {
+	return api;
 }

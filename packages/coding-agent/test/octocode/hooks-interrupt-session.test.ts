@@ -171,8 +171,6 @@ async function fixture(
 		OCTOCODE_HOME: path.join(home, ".octocode"),
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		CODEX_HOME: path.join(home, ".codex"),
-		OCTOCODE_HOOKS: "1",
-		OCTOCODE_HOOKS_COMPAT: "1",
 		OCTOCODE_MCP: "0",
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MODELS_DEV: "0",

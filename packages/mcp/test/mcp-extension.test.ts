@@ -85,7 +85,7 @@ describe("MCP config", () => {
 	});
 
 	function setup(global: unknown, project: unknown) {
-		const root = mkdtempSync(join(tmpdir(), "pi-mcp-config-"));
+		const root = mkdtempSync(join(tmpdir(), "octocode-mcp-config-"));
 		dirs.push(root);
 		const agentDir = join(root, "agent");
 		const cwd = join(root, "project");
@@ -725,7 +725,7 @@ describe("MCP connections", () => {
 	});
 
 	it.skipIf(process.platform === "win32")("expands ~ in the command, arguments, and cwd of stdio servers", async () => {
-		const home = mkdtempSync(join(tmpdir(), "pi-mcp-home-"));
+		const home = mkdtempSync(join(tmpdir(), "octocode-mcp-home-"));
 		const previousHome = process.env.HOME;
 		process.env.HOME = home;
 		mkdirSync(join(home, "work"));
@@ -935,7 +935,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 		try {
 			expect(connection.oauthUrl).toBeUndefined();
 			await expect(connection.getClient()).rejects.toThrow(
-				'MCP server "gateway" requires sign-in. Run /providers gateway to sign in.',
+				'MCP server "gateway" requires sign-in. Run /login gateway to sign in.',
 			);
 			expect(connection.state).toBe("needs-auth");
 			expect(authorizations).toEqual(["Bearer tok"]);
@@ -946,7 +946,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 	});
 
 	it("appends client and transport errors to the log file instead of dropping them", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "pi-mcp-log-"));
+		const dir = mkdtempSync(join(tmpdir(), "octocode-mcp-log-"));
 		try {
 			const path = join(dir, "mcp.log");
 			const { connection } = connect(
@@ -967,7 +967,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 	});
 
 	it("appends server log messages to the log file", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "pi-mcp-log-"));
+		const dir = mkdtempSync(join(tmpdir(), "octocode-mcp-log-"));
 		try {
 			const path = join(dir, "mcp.log");
 			const { connection } = connect(

@@ -12,7 +12,7 @@ vi.mock("../../src/config.ts", async (original) => ({
 	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 
@@ -25,8 +25,8 @@ beforeAll(() => {
 	});
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {

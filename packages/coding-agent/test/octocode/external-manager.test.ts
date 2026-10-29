@@ -20,7 +20,7 @@ import type {
 import { externalFailure, registerExternal } from "../../src/octocode/external/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { withDialog } from "../../src/octocode/shared/locks.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const managers: ExternalAgents[] = [];
 const roots: string[] = [];
@@ -465,7 +465,7 @@ describe("external manager policy and lifecycle", () => {
 
 	it("runs ACP permission dialogs while the registered external command waits for its reply", async () => {
 		const state = setup();
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
 		const decision = vi.fn<ReturnType<ExternalPolicy["permission"]>>(async (_request, signal) =>
 			withDialog(async () => {
@@ -474,9 +474,9 @@ describe("external manager policy and lifecycle", () => {
 			}, signal),
 		);
 		state.permission.mockReturnValue(decision);
-		const manager = registerExternal(fake.pi, commands, state.policy);
+		const manager = registerExternal(fake.api, commands, state.policy);
 		managers.push(manager);
-		commands.register(fake.pi, () => "status");
+		commands.register(fake.api, () => "status");
 		const journal = join(state.cwd, "acp-events.jsonl");
 		const fixture = fileURLToPath(new URL("./fixtures/external-acp-agent.mjs", import.meta.url));
 		const tool = fake.tools.get("externalAgent")!;

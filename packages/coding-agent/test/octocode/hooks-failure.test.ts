@@ -7,7 +7,7 @@ import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { failureOf } from "../../src/octocode/hooks/runner.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 beforeEach(() => {
@@ -20,9 +20,9 @@ type Hook = { type: "command"; command: string; timeout?: number; failClosed?: b
 function project(hook: Hook): string {
 	const dir = tmp("octocode-hookfail-");
 	fs.mkdirSync(path.join(dir, ".git"));
-	fs.mkdirSync(path.join(dir, ".codex"));
+	fs.mkdirSync(path.join(dir, ".octocode"));
 	fs.writeFileSync(
-		path.join(dir, ".codex", "hooks.json"),
+		path.join(dir, ".octocode", "hooks.json"),
 		JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [hook] }] } }),
 	);
 	saveDecision(dir, fingerprint(projectConfigFiles(dir)), true);
@@ -31,11 +31,9 @@ function project(hook: Hook): string {
 
 async function run(hook: Hook, options: { hasUI?: boolean } = {}) {
 	const cwd = project(hook);
-	const { pi, fire } = fakePi();
+	const { api, fire } = fakeHost();
 	const failures: Array<{ what: readonly string[]; note: string; allowed: boolean }> = [];
-	const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp(), (what, note, allowed) =>
-		failures.push({ what, note, allowed }),
-	);
+	const hooks = registerHooks(api, {}, tmp(), (what, note, allowed) => failures.push({ what, note, allowed }));
 	const notify = vi.fn();
 	const ctx = {
 		cwd,
@@ -162,14 +160,14 @@ describe("observer hook dispatch failures", () => {
 	async function failing(event: "Notification" | "PostMessageReceive", okCalls: number) {
 		const cwd = tmp("octocode-hookobs-");
 		fs.mkdirSync(path.join(cwd, ".git"));
-		fs.mkdirSync(path.join(cwd, ".codex"));
+		fs.mkdirSync(path.join(cwd, ".octocode"));
 		fs.writeFileSync(
-			path.join(cwd, ".codex", "hooks.json"),
+			path.join(cwd, ".octocode", "hooks.json"),
 			JSON.stringify({ hooks: { [event]: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 		);
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
-		const { pi, fire } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		const notify = vi.fn();
 		let calls = 0;
 		const ctx = {

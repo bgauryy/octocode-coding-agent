@@ -33,7 +33,7 @@ function agentStartQuery(event: BeforeAgentStartEvent): string {
  * from the transcript), and `/memory`. Project memories reach the model only in a trusted project.
  */
 export function registerMemory(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	options: { commands: Subcommands; isSubagent: boolean; permission: Permission; env?: NodeJS.ProcessEnv },
 ): void {
 	const env = options.env ?? process.env;
@@ -41,9 +41,9 @@ export function registerMemory(
 	const autoEnv = () => envFlag(env, MEMORY_AUTO_ENV, true);
 	let failedSession: string | undefined;
 
-	registerMemoryTool(pi, storeFor, { isSubagent: options.isSubagent, permission: options.permission });
+	registerMemoryTool(api, storeFor, { isSubagent: options.isSubagent, permission: options.permission });
 
-	pi.on("before_agent_start", async (event, ctx) => {
+	api.on("before_agent_start", async (event, ctx) => {
 		if (!autoEnv()) return undefined;
 		try {
 			const store = storeFor(ctx);
@@ -83,7 +83,7 @@ export function registerMemory(
 		}
 	});
 
-	pi.on("message_end", async (event, ctx) => {
+	api.on("message_end", async (event, ctx) => {
 		const { message } = event;
 		if (message.role !== "custom" || message.customType !== MEMORY_MESSAGE_TYPE) return;
 		const ids = (message.details as { ids?: unknown } | undefined)?.ids;

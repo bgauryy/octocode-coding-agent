@@ -57,14 +57,14 @@ export function parseMcpSessionServers(text: string): { servers: Record<string, 
  * In a subagent, registers the servers its parent's `mcp` tool added. Without the file, or when it cannot be read,
  * the child runs with its configured servers only.
  */
-export function registerInheritedMcpServers(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
+export function registerInheritedMcpServers(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
 	const file = env[MCP_SESSION_SERVERS_FILE_ENV];
 	if (!file || !envFlag(env, SUBAGENT_ENV)) return;
 	try {
 		if (fs.statSync(file).size > MAX_FILE_BYTES) throw new Error("file too large");
 		const { servers, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
 		for (const message of errors) process.stderr.write(`Ignored inherited MCP server: ${message}\n`);
-		for (const [name, config] of Object.entries(servers)) pi.registerMcpServer(name, config);
+		for (const [name, config] of Object.entries(servers)) api.registerMcpServer(name, config);
 	} catch (error) {
 		process.stderr.write(
 			`Inherited MCP servers unavailable: ${error instanceof Error ? error.message : String(error)}\n`,

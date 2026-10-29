@@ -3,11 +3,11 @@ import { expect, it, vi } from "vitest";
 import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { userBashGate } from "../../src/octocode/permission/user-bash.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 it("rejects an unreviewed native registration before activation, even with a read-only annotation", () => {
-	const fake = fakePi();
-	const pi = withNativePermissionOwners(fake.pi);
+	const fake = fakeHost();
+	const api = withNativePermissionOwners(fake.api);
 	const tool = {
 		name: "newNativeTool",
 		label: "New tool",
@@ -16,10 +16,10 @@ it("rejects an unreviewed native registration before activation, even with a rea
 		parameters: Type.Object({}),
 		execute: async () => ({ content: [], details: {} }),
 	};
-	expect(() => pi.registerTool(tool)).toThrow("has no permission owner");
+	expect(() => api.registerTool(tool)).toThrow("has no permission owner");
 	expect(fake.tools.size).toBe(0);
-	pi.registerTool({ ...tool, name: "file" });
-	expect(() => pi.registerTool({ ...tool, name: "mcp__octocode__localFetch" })).toThrow("has no permission owner");
+	api.registerTool({ ...tool, name: "file" });
+	expect(() => api.registerTool({ ...tool, name: "mcp__octocode__localFetch" })).toThrow("has no permission owner");
 	expect([...fake.tools.keys()]).toEqual(["file"]);
 });
 
@@ -27,7 +27,7 @@ it("user Bash calls carry explicit origin and independent opaque invocation IDs"
 	const preToolUse = vi.fn(async (_event: ToolCallEvent) => undefined);
 	const typed = vi.fn();
 	const gate = userBashGate({
-		permission: { check: vi.fn(), refused: vi.fn(), typed, hasSourcePolicy: false },
+		permission: { check: vi.fn(), refused: vi.fn(), typed, sourceDecision: () => undefined },
 		preToolUse,
 	});
 	const event = { type: "user_bash" as const, command: "printf hello", excludeFromContext: false, cwd: "/" };

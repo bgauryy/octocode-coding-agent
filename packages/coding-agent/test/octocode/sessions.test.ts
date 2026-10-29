@@ -14,7 +14,7 @@ import { pendingReportsDir, savePendingReport } from "../../src/octocode/subagen
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sessionDir, sessionsRoot, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { repoKey } from "../../src/octocode/shared/home/repo.ts";
 
@@ -31,13 +31,13 @@ beforeEach(() => {
 	cwd = tmp();
 	process.env.OCTOCODE_HOME = home;
 	delete process.env.OCTOCODE_AGENT_DB;
-	// Octocode's own session listing would read the real ~/.pi: tests give it per case.
-	piSessions = [];
-	vi.spyOn(SessionManager, "list").mockImplementation(async () => piSessions);
-	vi.spyOn(SessionManager, "listAll").mockImplementation(async () => piSessions);
+	// Octocode's own session listing would read the real session directories: tests give it per case.
+	listedSessions = [];
+	vi.spyOn(SessionManager, "list").mockImplementation(async () => listedSessions);
+	vi.spyOn(SessionManager, "listAll").mockImplementation(async () => listedSessions);
 });
 
-let piSessions: SessionInfo[] = [];
+let listedSessions: SessionInfo[] = [];
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -63,16 +63,16 @@ type Entry = {
 
 /** A Octocode host with the sessions feature and a session the test can shape. */
 function setup(options: { id?: string; entries?: Entry[]; hasUI?: boolean; name?: string; subagent?: boolean } = {}) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const names: string[] = [];
 	const switched: string[] = [];
-	Object.assign(fake.pi, {
+	Object.assign(fake.api, {
 		setSessionName: (name: string) => names.push(name),
 		getSessionName: () => names.at(-1) ?? options.name,
 	});
 	const commands = new Subcommands();
-	registerSessions(fake.pi, { commands, isSubagent: options.subagent ?? false, filesChanged: () => 3 });
-	if (!options.subagent) commands.register(fake.pi);
+	registerSessions(fake.api, { commands, isSubagent: options.subagent ?? false, filesChanged: () => 3 });
+	if (!options.subagent) commands.register(fake.api);
 	const id = options.id ?? "sess-1";
 	const file = path.join(tmp(), `${id}.jsonl`);
 	fs.writeFileSync(file, "{}\n");
@@ -98,7 +98,7 @@ function setup(options: { id?: string; entries?: Entry[]; hasUI?: boolean; name?
 	};
 	return {
 		...fake,
-		piCommands: fake.commands,
+		hostCommands: fake.commands,
 		commands,
 		ctx,
 		id,
@@ -621,7 +621,7 @@ describe("/octocode sessions", () => {
 			.prepare("INSERT INTO sessions (id, cost, files_changed, branch, unpriced) VALUES ('other', 1.5, 2, 'feat/x', 1)")
 			.run();
 		agent.db.prepare("INSERT INTO sessions (id, cost, unpriced) VALUES ('elsewhere', 0, 1)").run();
-		piSessions = [
+		listedSessions = [
 			info("cur", { path: current.file, name: "Current work", firstMessage: "hello", messageCount: 0 }),
 			info("other", {
 				firstMessage: "Old task",
@@ -636,10 +636,10 @@ describe("/octocode sessions", () => {
 			}),
 		];
 		vi.mocked(SessionManager.list).mockImplementation(async (dir: string) =>
-			piSessions.filter((each) => each.cwd === dir),
+			listedSessions.filter((each) => each.cwd === dir),
 		);
 		setCurrentSession("cur");
-		return { current, other: piSessions[1] };
+		return { current, other: listedSessions[1] };
 	}
 
 	it("lists Octocode's sessions of this directory newest first with their extras, all directories with `all`, and filters by a query", async () => {
@@ -731,7 +731,7 @@ describe("/octocode sessions", () => {
 		async (bad) => {
 			const { current } = await withSessions();
 			const ctx = current.ctx;
-			piSessions.push(info(bad, { firstMessage: "Odd id", modified: new Date(Date.now() - HOUR) }));
+			listedSessions.push(info(bad, { firstMessage: "Odd id", modified: new Date(Date.now() - HOUR) }));
 			const root = sessionsRoot();
 			const parent = path.dirname(root);
 			const [inside, outside] = [path.join(root, "keep", "x.txt"), path.join(parent, "marker.txt")] as [string, string];
@@ -769,7 +769,7 @@ describe("/octocode sessions", () => {
 	it("maps identical-looking rows to the row picked, not the first", async () => {
 		const { current } = await withSessions();
 		const at = new Date(Date.now() - 5 * HOUR);
-		piSessions.push(
+		listedSessions.push(
 			info("one-abcdef", { firstMessage: "Same", modified: at }),
 			info("two-abcdef", { firstMessage: "Same", modified: at }),
 		);
@@ -798,7 +798,7 @@ describe("/octocode sessions", () => {
 
 	it("titles a fork without a prompt by its parent's first message", async () => {
 		const { current, other } = await withSessions();
-		piSessions.push(info("fork", { parentSessionPath: other.path, modified: new Date(Date.now() - 4 * HOUR) }));
+		listedSessions.push(info("fork", { parentSessionPath: other.path, modified: new Date(Date.now() - 4 * HOUR) }));
 		const ctx = Object.assign(current.ctx, { hasUI: false });
 		await current.commands.get("resume")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/↳ Old task · .*\n\s+fork/);
@@ -837,8 +837,8 @@ describe("/octocode sessions", () => {
 	});
 
 	it("registers /resume under one name", () => {
-		const { piCommands } = setup();
-		expect(piCommands.has("resume")).toBe(true);
-		expect(piCommands.has("sessions")).toBe(false);
+		const { hostCommands } = setup();
+		expect(hostCommands.has("resume")).toBe(true);
+		expect(hostCommands.has("sessions")).toBe(false);
 	});
 });

@@ -57,9 +57,9 @@ function updateKeepingTrust(cwd: () => string): NonNullable<McpExtensionOptions[
 }
 
 /** The built-in MCP extension's options: project definitions load only under content-based trust. */
-export function trustedMcpOptions(pi: ExtensionAPI): Pick<McpExtensionOptions, "loadConfig" | "updateConfig"> {
+export function trustedMcpOptions(api: ExtensionAPI): Pick<McpExtensionOptions, "loadConfig" | "updateConfig"> {
 	let cwd = process.cwd();
-	pi.on("session_start", (_event, ctx) => {
+	api.on("session_start", (_event, ctx) => {
 		cwd = ctx.cwd;
 	});
 	return { loadConfig: loadTrustedMcpConfig, updateConfig: updateKeepingTrust(() => cwd) };

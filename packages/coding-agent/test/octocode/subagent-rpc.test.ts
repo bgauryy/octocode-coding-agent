@@ -5,11 +5,11 @@ import type * as NativeConfig from "../../src/config.ts";
 import octocode from "../../src/octocode/index.ts";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { ABORT_SETTLE_MS, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 
@@ -20,11 +20,11 @@ beforeAll(() => {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
 	});
-	// runSubagent re-runs the current `pi` script: point it at the scripted RPC stand-in.
+	// runSubagent re-runs the current `octocode` script: point it at the scripted RPC stand-in.
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -152,9 +152,9 @@ describe("the run-hold for background work in an RPC child", () => {
 	const held = async (env: Record<string, string | undefined>, hasUI: boolean): Promise<boolean> => {
 		const saved = { ...process.env };
 		Object.assign(process.env, { OCTOCODE_MCP: "0", OCTOCODE_HOME: tmp(), ...env });
-		const fake = fakePi();
+		const fake = fakeHost();
 		try {
-			octocode(fake.pi);
+			octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI, mode: hasUI ? "rpc" : "json" });
 			const controller = new AbortController();
 			Object.assign(ctx, { signal: controller.signal });
@@ -166,7 +166,13 @@ describe("the run-hold for background work in an RPC child", () => {
 				const pending = fake
 					.fire(
 						"agent_before_settle",
-						{ type: "agent_before_settle", outcome: "completed", entries: [], continue: false },
+						{
+							type: "agent_before_settle",
+							outcome: "completed",
+							entries: [],
+							context: { llmMessages: [] },
+							continue: false,
+						},
 						ctx,
 					)
 					.then(() => {

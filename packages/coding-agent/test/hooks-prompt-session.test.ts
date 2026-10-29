@@ -51,10 +51,10 @@ it.each([false, true])(
 				},
 			],
 			extensionFactories: [
-				(pi) => {
-					const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
-					pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
-					pi.on("turn_end", async (event) => {
+				(api) => {
+					const hooks = registerHooks(api, {}, home);
+					api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+					api.on("turn_end", async (event) => {
 						outcomes.push(event.outcome);
 					});
 				},
@@ -89,8 +89,8 @@ it("continues a rejected Stop evaluation once and finishes after an allowing eva
 		settings: { retry: { enabled: false } },
 		tools: [],
 		extensionFactories: [
-			(pi) => {
-				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			(api) => {
+				registerHooks(api, {}, home);
 			},
 		],
 	});

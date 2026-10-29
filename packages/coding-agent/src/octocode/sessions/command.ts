@@ -129,7 +129,7 @@ interface SessionsCommandOptions {
 
 /** `/resume [all|<query>]`: list, then resume, inspect, rename or forget one. */
 export function registerSessionsCommand(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	commands: Subcommands,
 	options: SessionsCommandOptions,
 ): void {
@@ -173,7 +173,7 @@ export function registerSessionsCommand(
 			const action = await ctx.ui.select(title(row), actions);
 			if (action === ACTIONS.resume) return resume(ctx, row, current);
 			if (action === ACTIONS.details) return say(ctx, details(row, current));
-			if (action === ACTIONS.rename) return rename(pi, ctx, row, current);
+			if (action === ACTIONS.rename) return rename(api, ctx, row, current);
 			if (action === ACTIONS.forget) return forget(ctx, index, row, current);
 		},
 	});
@@ -203,7 +203,7 @@ async function resume(ctx: ExtensionCommandContext, row: ListedSession, current:
 }
 
 async function rename(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	row: ListedSession,
 	current: string | undefined,
@@ -211,7 +211,7 @@ async function rename(
 	if (row.info.id !== current) return;
 	const name = shownLine((await ctx.ui.input("New session name", row.info.name ?? "")) ?? "", 200);
 	if (!name) return;
-	pi.setSessionName(name);
+	api.setSessionName(name);
 	notify(ctx.ui, `Renamed to "${name}".`, "info");
 }
 

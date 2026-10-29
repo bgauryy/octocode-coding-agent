@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { registerBrowserTool } from "../../src/octocode/browser/tool.ts";
 import type { AuditEntry } from "../../src/octocode/permission/audit.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
 /**
@@ -73,7 +73,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page
 		});
 		const pagePort = await listen(page);
 
-		const profile = fs.mkdtempSync(path.join(os.tmpdir(), "pi-net-chrome-"));
+		const profile = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-net-chrome-"));
 		const chrome = await launch({
 			startingUrl: "about:blank",
 			userDataDir: profile,
@@ -83,8 +83,8 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page
 		cleanups.push(() => chrome.kill());
 
 		vi.stubEnv("OCTOCODE_CHROME_PORT", String(chrome.port));
-		const fake = fakePi();
-		const browser = new BrowserTool(fakePermission("full", { pi: fake.pi }));
+		const fake = fakeHost();
+		const browser = new BrowserTool(fakePermission("full", { api: fake.api }));
 		cleanups.push(() => browser.close());
 		let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }> }> } | undefined;
 		registerBrowserTool(

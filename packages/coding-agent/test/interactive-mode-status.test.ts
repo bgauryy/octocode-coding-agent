@@ -604,75 +604,72 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 		]);
 	});
 
-	test.each(["providers", "login"])(
-		"matches /%s arguments by provider id, name and Pi configuration",
-		async (command) => {
-			type FakeInteractiveMode = {
-				session: {
-					scopedModels: [];
-					modelRuntime: { getAvailableSnapshot: () => [] };
-					promptTemplates: [];
-					extensionRunner: { getRegisteredCommands: () => [] };
-					resourceLoader: { getSkills: () => { skills: [] } };
-				};
-				settingsManager: { getEnableSkillCommands: () => boolean };
-				skillCommands: Map<string, string>;
-				sessionManager: { getCwd: () => string };
-				fdPath: null;
-				getLoginProviderOptions: () => AuthSelectorProvider[];
+	test.each(["login"])("matches /%s arguments by provider id, name and Pi configuration", async (command) => {
+		type FakeInteractiveMode = {
+			session: {
+				scopedModels: [];
+				modelRuntime: { getAvailableSnapshot: () => [] };
+				promptTemplates: [];
+				extensionRunner: { getRegisteredCommands: () => [] };
+				resourceLoader: { getSkills: () => { skills: [] } };
 			};
+			settingsManager: { getEnableSkillCommands: () => boolean };
+			skillCommands: Map<string, string>;
+			sessionManager: { getCwd: () => string };
+			fdPath: null;
+			getLoginProviderOptions: () => AuthSelectorProvider[];
+		};
 
-			const fakeThis: FakeInteractiveMode = {
-				session: {
-					scopedModels: [],
-					modelRuntime: { getAvailableSnapshot: () => [] },
-					promptTemplates: [],
-					extensionRunner: { getRegisteredCommands: () => [] },
-					resourceLoader: { getSkills: () => ({ skills: [] }) },
-				},
-				settingsManager: { getEnableSkillCommands: () => false },
-				skillCommands: new Map(),
-				sessionManager: { getCwd: () => "/tmp" },
-				fdPath: null,
-				getLoginProviderOptions: () => [
-					{ id: "anthropic", name: "Anthropic", authType: "oauth", subscription: true },
-					{ id: "anthropic", name: "Anthropic", authType: "api_key", subscription: true },
-					{ id: "openai", name: "OpenAI", authType: "api_key" },
-					{ id: "openrouter", name: "OpenRouter", authType: "oauth", subscription: false },
-				],
-			};
+		const fakeThis: FakeInteractiveMode = {
+			session: {
+				scopedModels: [],
+				modelRuntime: { getAvailableSnapshot: () => [] },
+				promptTemplates: [],
+				extensionRunner: { getRegisteredCommands: () => [] },
+				resourceLoader: { getSkills: () => ({ skills: [] }) },
+			},
+			settingsManager: { getEnableSkillCommands: () => false },
+			skillCommands: new Map(),
+			sessionManager: { getCwd: () => "/tmp" },
+			fdPath: null,
+			getLoginProviderOptions: () => [
+				{ id: "anthropic", name: "Anthropic", authType: "oauth", subscription: true },
+				{ id: "anthropic", name: "Anthropic", authType: "api_key", subscription: true },
+				{ id: "openai", name: "OpenAI", authType: "api_key" },
+				{ id: "openrouter", name: "OpenRouter", authType: "oauth", subscription: false },
+			],
+		};
 
-			const provider = autocomplete.createBaseAutocompleteProvider(createFakeHost(fakeThis));
-			const line = `/${command} subscription anthrop`;
-			const suggestions = await provider.getSuggestions([line], 0, line.length, {
-				signal: new AbortController().signal,
-			});
+		const provider = autocomplete.createBaseAutocompleteProvider(createFakeHost(fakeThis));
+		const line = `/${command} subscription anthrop`;
+		const suggestions = await provider.getSuggestions([line], 0, line.length, {
+			signal: new AbortController().signal,
+		});
 
-			expect(suggestions?.items).toEqual([
-				{
-					value: "anthropic",
-					label: "anthropic",
-					description: "Anthropic · subscription/API key",
-				},
-			]);
+		expect(suggestions?.items).toEqual([
+			{
+				value: "anthropic",
+				label: "anthropic",
+				description: "Anthropic · subscription/API key",
+			},
+		]);
 
-			// OAuth sign-in without a subscription, such as OpenRouter, is an account.
-			const accountLine = `/${command} openrouter`;
-			const accountSuggestions = await provider.getSuggestions([accountLine], 0, accountLine.length, {
-				signal: new AbortController().signal,
-			});
-			expect(accountSuggestions?.items).toEqual([
-				{ value: "openrouter", label: "openrouter", description: "OpenRouter · account" },
-			]);
-			const piLine = `/${command} config`;
-			const piSuggestions = await provider.getSuggestions([piLine], 0, piLine.length, {
-				signal: new AbortController().signal,
-			});
-			expect(piSuggestions?.items).toEqual([
-				{ value: "pi", label: "pi", description: "Pi (config) · import credentials and use configured models" },
-			]);
-		},
-	);
+		// OAuth sign-in without a subscription, such as OpenRouter, is an account.
+		const accountLine = `/${command} openrouter`;
+		const accountSuggestions = await provider.getSuggestions([accountLine], 0, accountLine.length, {
+			signal: new AbortController().signal,
+		});
+		expect(accountSuggestions?.items).toEqual([
+			{ value: "openrouter", label: "openrouter", description: "OpenRouter · account" },
+		]);
+		const piLine = `/${command} config`;
+		const piSuggestions = await provider.getSuggestions([piLine], 0, piLine.length, {
+			signal: new AbortController().signal,
+		});
+		expect(piSuggestions?.items).toEqual([
+			{ value: "pi", label: "pi", description: "Pi (config) · import credentials and use configured models" },
+		]);
+	});
 });
 describe("InteractiveMode.showLoadedResources", () => {
 	beforeAll(() => {
@@ -1368,7 +1365,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 	test("shows context paths relative to cwd while preserving full external paths", () => {
 		const home = homedir();
-		const cwd = path.join(home, "Development", "pi-mono");
+		const cwd = path.join(home, "Development", "octocodecode");
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
 			cwd,
@@ -1409,7 +1406,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 	test("shows full context paths when expanded", () => {
 		const home = homedir();
-		const cwd = path.join(home, "Development", "pi-mono");
+		const cwd = path.join(home, "Development", "octocodecode");
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
 			toolOutputExpanded: true,
@@ -1427,7 +1424,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
 		expect(output).toContain("[Context]");
 		expect(output).toContain("~/.octocode/agent/AGENTS.md");
-		expect(output).toContain("~/Development/pi-mono/AGENTS.md");
+		expect(output).toContain("~/Development/octocodecode/AGENTS.md");
 		expect(output).not.toContain("~/.octocode/agent/AGENTS.md, AGENTS.md");
 	});
 

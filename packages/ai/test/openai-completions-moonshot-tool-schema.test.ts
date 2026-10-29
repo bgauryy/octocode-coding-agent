@@ -247,7 +247,7 @@ describe("moonshot tool schema flavor detection", () => {
 	});
 
 	it("detects moonshot for Kimi model ids reached through gateways", () => {
-		const relay = { ...localModel, id: "kimi-k3", name: "Kimi K3", provider: "pi" };
+		const relay = { ...localModel, id: "kimi-k3", name: "Kimi K3", provider: "relay" };
 		expect(getCompat(relay).toolSchemaFlavor).toBe("moonshot");
 		const openrouter = getBuiltinModel("openrouter", "moonshotai/kimi-k2.6");
 		expect(getCompat(openrouter).toolSchemaFlavor).toBe("moonshot");
@@ -284,7 +284,7 @@ describe("moonshot tool schema flavor detection", () => {
 	});
 
 	it("sends repaired tool parameters to a Kimi model behind a gateway", async () => {
-		const model = { ...localModel, id: "kimi-k3", name: "Kimi K3", provider: "pi" };
+		const model = { ...localModel, id: "kimi-k3", name: "Kimi K3", provider: "relay" };
 		const parameters = await capturedToolParameters(model, tool);
 		expect(parameters.type).toBe("object");
 		const branch = (parameters.anyOf as Array<Record<string, unknown>>)[0];

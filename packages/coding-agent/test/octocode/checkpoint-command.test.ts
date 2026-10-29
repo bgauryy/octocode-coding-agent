@@ -5,7 +5,7 @@ import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { registerCheckpoints } from "../../src/octocode/files/checkpoint-command.ts";
 import { sha256 } from "../../src/utils/atomic-file.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("/rewind arguments", () => {
@@ -19,10 +19,10 @@ describe("/rewind arguments", () => {
 		const capture = await checkpoints.capture(file);
 		fs.writeFileSync(file, "two");
 		await checkpoints.settle(file, capture, true);
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
 		const forget = vi.fn();
-		registerCheckpoints(fake.pi, checkpoints, forget, commands);
+		registerCheckpoints(fake.api, checkpoints, forget, commands);
 		const ctx = fakeCtx({ cwd, hasUI: false });
 		const rewind = vi.spyOn(checkpoints, "rewind");
 		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
@@ -65,10 +65,10 @@ describe("/rewind when an older change cannot be undone", () => {
 		}
 		// The older change (v0 → v1) cannot be restored: its saved copy is corrupt. The newer one (v1 → v2) can.
 		fs.writeFileSync(path.join(store, "blobs", sha256("v0")), "evil");
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
 		const forget = vi.fn();
-		registerCheckpoints(fake.pi, checkpoints, forget, commands);
+		registerCheckpoints(fake.api, checkpoints, forget, commands);
 		const ctx = fakeCtx({ cwd });
 		await commands.get("rewind")!.handler("2", ctx);
 
@@ -90,12 +90,12 @@ describe("/rewind when an older change cannot be undone", () => {
 });
 
 it("offers rewind counts from the current branch instead of a fixed list", async () => {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const commands = new Subcommands();
 	const checkpoints = new Checkpoints();
 	vi.spyOn(checkpoints, "open").mockImplementation(() => undefined);
 	const turns = vi.spyOn(checkpoints, "turnsOn").mockReturnValue([4, 3, 2, 1]);
-	registerCheckpoints(fake.pi, checkpoints, () => undefined, commands);
+	registerCheckpoints(fake.api, checkpoints, () => undefined, commands);
 	await fake.fire("session_start", {}, fakeCtx({ cwd: tmp() }));
 	expect(commands.complete("rewind ")?.map((item) => item.value)).toEqual([
 		"rewind 1",

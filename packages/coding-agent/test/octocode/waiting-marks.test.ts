@@ -7,7 +7,7 @@ import { registerAskUser } from "../../src/octocode/ask/tool.ts";
 import { agentState } from "../../src/octocode/subagents/render-state.ts";
 import { renderAgentCall, renderAgentMessage, renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 /** Colours show as tags, so a mark's colour role is visible: `<warning>◇`. */
 const tagged = {
@@ -26,8 +26,8 @@ const row = (extra: Record<string, unknown> = {}) =>
 afterEach(() => animationClock.setReducedMotion(false));
 
 describe("waiting on you: the ask tool", () => {
-	const fake = fakePi();
-	registerAskUser(fake.pi);
+	const fake = fakeHost();
+	registerAskUser(fake.api);
 	const tool = fake.tools.get("askUser");
 	const args = { questions: [{ question: "Keep it?", header: "Export" }] };
 

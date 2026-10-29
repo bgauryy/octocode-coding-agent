@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Team } from "../../src/octocode/team/session.ts";
 import octocode from "../../src/octocode/index.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
@@ -13,7 +13,6 @@ let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
 	saved = { ...process.env };
 	process.env.OCTOCODE_HOME = tmp();
-	process.env.OCTOCODE_HOOKS = "1";
 	delete process.env.OCTOCODE_SUBAGENT;
 	// Hook discovery reads user-level files such as ~/.codex/hooks.json, which must not reach these tests.
 	vi.spyOn(os, "homedir").mockReturnValue(tmp());
@@ -37,9 +36,9 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 			}),
 		);
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
-		const fake = fakePi();
-		Object.assign(fake.pi, { getSessionName: () => undefined });
-		octocode(fake.pi);
+		const fake = fakeHost();
+		Object.assign(fake.api, { getSessionName: () => undefined });
+		octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		await fake.fire(
@@ -52,7 +51,6 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		);
 	});
 	it("checks rewritten Bash arguments through the native permission gate", async () => {
-		process.env.OCTOCODE_HOOKS_COMPAT = "1";
 		process.env.OCTOCODE_PERMISSION = "manual";
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
@@ -71,9 +69,9 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 			}),
 		);
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
-		const fake = fakePi();
-		Object.assign(fake.pi, { getSessionName: () => undefined });
-		octocode(fake.pi);
+		const fake = fakeHost();
+		Object.assign(fake.api, { getSessionName: () => undefined });
+		octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const event = {
@@ -89,7 +87,6 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 	});
 
 	it("enforces file reservations on the rewritten destination at execution", async () => {
-		process.env.OCTOCODE_HOOKS_COMPAT = "1";
 		process.env.OCTOCODE_PERMISSION = "full";
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
@@ -112,9 +109,9 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 			}),
 		);
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
-		const fake = fakePi();
-		Object.assign(fake.pi, { getSessionName: () => undefined });
-		octocode(fake.pi);
+		const fake = fakeHost();
+		Object.assign(fake.api, { getSessionName: () => undefined });
+		octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const event = {

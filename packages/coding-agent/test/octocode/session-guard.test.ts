@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
@@ -19,8 +19,8 @@ afterEach(() => {
 
 /** The composed extension on a fake Octocode, with a TUI session in a trusted-looking temp project. */
 function setup(options: { hasUI?: boolean } = {}) {
-	const fake = fakePi();
-	octocode(fake.pi);
+	const fake = fakeHost();
+	octocode(fake.api);
 	const cwd = tmp();
 	const ctx = fakeCtx({ cwd, hasUI: options.hasUI ?? true });
 	Object.assign(ctx, { isProjectTrusted: () => false });
@@ -29,7 +29,7 @@ function setup(options: { hasUI?: boolean } = {}) {
 
 /** A session_before_* outcome as Octocode's runner decides it: the first cancel wins, else the last defined result. */
 async function decide(
-	fake: ReturnType<typeof fakePi>,
+	fake: ReturnType<typeof fakeHost>,
 	event: string,
 	payload: unknown,
 	ctx: unknown,
@@ -47,6 +47,8 @@ describe("leaving a session with running work", () => {
 	it("asks before switching or forking while a timed-out ACP peer still works", async () => {
 		process.env.OCTOCODE_PERMISSION = "full";
 		const { fake, ctx, cwd } = setup();
+		Object.assign(ctx, { mode: "rpc" });
+		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		ctx.ui.selects.push("Allow once", "Allow once");
 		const agent = fake.tools.get("agent");
 		const call = (input: unknown) =>
@@ -146,7 +148,7 @@ describe("leaving a session with running work", () => {
 describe("user ! commands", () => {
 	const bash = (command: string) => ({ type: "user_bash", command, excludeFromContext: false, cwd: "/" });
 	type Refusal = { result: { output: string; cancelled: boolean } };
-	const audit = (fake: ReturnType<typeof fakePi>) =>
+	const audit = (fake: ReturnType<typeof fakeHost>) =>
 		fake.entries.map((entry) => entry.data as { action: string; allowed: boolean; via: string; mode: string });
 
 	async function started(mode: "manual" | "workspace" | "full", options: { hasUI?: boolean } = {}) {
@@ -208,20 +210,19 @@ describe("user ! commands and a PreToolUse hook", () => {
 	async function withHook(mode: "manual" | "full", command?: string) {
 		process.env.OCTOCODE_PERMISSION = mode;
 		process.env.OCTOCODE_MCP = "0";
-		process.env.OCTOCODE_HOOKS = "1";
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
 		if (command) {
-			fs.mkdirSync(path.join(cwd, ".codex"));
+			fs.mkdirSync(path.join(cwd, ".octocode"));
 			fs.writeFileSync(
-				path.join(cwd, ".codex", "hooks.json"),
+				path.join(cwd, ".octocode", "hooks.json"),
 				JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command }] }] } }),
 			);
 			saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		}
-		const fake = fakePi();
-		Object.assign(fake.pi, { getSessionName: () => undefined });
-		octocode(fake.pi);
+		const fake = fakeHost();
+		Object.assign(fake.api, { getSessionName: () => undefined });
+		octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const audit = () =>

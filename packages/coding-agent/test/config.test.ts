@@ -15,7 +15,7 @@ import {
 
 const execPathDescriptor = Object.getOwnPropertyDescriptor(process, "execPath");
 const originalPath = process.env.PATH;
-const originalPiPackageDir = process.env.OCTOCODE_PACKAGE_DIR;
+const originalPackageDir = process.env.OCTOCODE_PACKAGE_DIR;
 const originalArgv1 = process.argv[1];
 let tempDir: string | undefined;
 
@@ -35,10 +35,10 @@ afterEach(() => {
 	} else {
 		process.env.PATH = originalPath;
 	}
-	if (originalPiPackageDir === undefined) {
+	if (originalPackageDir === undefined) {
 		delete process.env.OCTOCODE_PACKAGE_DIR;
 	} else {
-		process.env.OCTOCODE_PACKAGE_DIR = originalPiPackageDir;
+		process.env.OCTOCODE_PACKAGE_DIR = originalPackageDir;
 	}
 	if (originalArgv1 === undefined) {
 		process.argv.splice(1, 1);
@@ -52,7 +52,7 @@ afterEach(() => {
 	}
 });
 
-function createNpmPrefixInstall(template = "pi-prefix-"): { prefix: string; packageDir: string } {
+function createNpmPrefixInstall(template = "octocode-prefix-"): { prefix: string; packageDir: string } {
 	const prefix = mkdtempSync(join(tmpdir(), template));
 	const root = join(prefix, "lib", "node_modules");
 	const scopeDir = join(root, "@octocodeai");
@@ -65,7 +65,7 @@ function createNpmPrefixInstall(template = "pi-prefix-"): { prefix: string; pack
 }
 
 function createPnpmGlobalInstall(): { root: string; packageDir: string } {
-	const temp = mkdtempSync(join(tmpdir(), "pi-pnpm-"));
+	const temp = mkdtempSync(join(tmpdir(), "octocode-pnpm-"));
 	const binDir = join(temp, "bin");
 	const root = join(temp, "pnpm", "global", "5", "node_modules");
 	const packageDir = join(root, "@octocodeai", "octocodecode");
@@ -92,7 +92,7 @@ function createPnpmGlobalInstall(): { root: string; packageDir: string } {
 }
 
 function createYarnGlobalInstall(): { globalDir: string; packageDir: string } {
-	const temp = mkdtempSync(join(tmpdir(), "pi-yarn-"));
+	const temp = mkdtempSync(join(tmpdir(), "octocode-yarn-"));
 	const binDir = join(temp, "bin");
 	const globalDir = join(temp, "yarn", "global");
 	const packageDir = join(globalDir, "node_modules", "@octocodeai", "octocodecode");
@@ -108,7 +108,7 @@ function createYarnGlobalInstall(): { globalDir: string; packageDir: string } {
 }
 
 function createBunGlobalInstall(): { packageDir: string } {
-	const temp = mkdtempSync(join(tmpdir(), "pi-bun-"));
+	const temp = mkdtempSync(join(tmpdir(), "octocode-bun-"));
 	const prefix = join(temp, ".bun");
 	const bunBin = join(prefix, "bin");
 	const root = join(prefix, "install", "global", "node_modules");
@@ -151,7 +151,7 @@ function createFakeBunScript(bunBin: string): string {
 
 describe("findNodePackageDir", () => {
 	test("skips binary metadata copied into dist", () => {
-		tempDir = mkdtempSync(join(tmpdir(), "pi-package-dir-"));
+		tempDir = mkdtempSync(join(tmpdir(), "octocode-package-dir-"));
 		const distDir = join(tempDir, "dist");
 		const bundleDir = join(distDir, "bundle");
 		mkdirSync(bundleDir, { recursive: true });
@@ -247,12 +247,12 @@ describe("detectInstallMethod", () => {
 	test("self-updates renamed packages from the current install prefix", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/pi");
+		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
 
 		expect(command).toEqual({
 			command: "npm",
-			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@new-scope/pi"],
-			display: `npm --prefix ${prefix} uninstall -g @octocodeai/octocodecode && npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @new-scope/pi`,
+			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@new-scope/octocode"],
+			display: `npm --prefix ${prefix} uninstall -g @octocodeai/octocodecode && npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @new-scope/octocode`,
 			steps: [
 				{
 					command: "npm",
@@ -261,8 +261,8 @@ describe("detectInstallMethod", () => {
 				},
 				{
 					command: "npm",
-					args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@new-scope/pi"],
-					display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @new-scope/pi`,
+					args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@new-scope/octocode"],
+					display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @new-scope/octocode`,
 				},
 			],
 		});
@@ -305,7 +305,7 @@ describe("detectInstallMethod", () => {
 	});
 
 	test("quotes npm self-update display paths", () => {
-		const { prefix } = createNpmPrefixInstall("pi prefix ");
+		const { prefix } = createNpmPrefixInstall("octocode prefix ");
 
 		const command = getSelfUpdateCommand("@octocodeai/octocodecode");
 
@@ -341,14 +341,14 @@ describe("detectInstallMethod", () => {
 	test("self-updates renamed pnpm global installs by removing the old package first", () => {
 		createPnpmGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/pi");
+		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
 
 		expect(detectInstallMethod()).toBe("pnpm");
 		expect(command).toEqual({
 			command: "pnpm",
-			args: ["install", "-g", "--ignore-scripts", "--config.minimumReleaseAge=0", "@new-scope/pi"],
+			args: ["install", "-g", "--ignore-scripts", "--config.minimumReleaseAge=0", "@new-scope/octocode"],
 			display:
-				"pnpm remove -g @octocodeai/octocodecode && pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @new-scope/pi",
+				"pnpm remove -g @octocodeai/octocodecode && pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @new-scope/octocode",
 			steps: [
 				{
 					command: "pnpm",
@@ -357,15 +357,15 @@ describe("detectInstallMethod", () => {
 				},
 				{
 					command: "pnpm",
-					args: ["install", "-g", "--ignore-scripts", "--config.minimumReleaseAge=0", "@new-scope/pi"],
-					display: "pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @new-scope/pi",
+					args: ["install", "-g", "--ignore-scripts", "--config.minimumReleaseAge=0", "@new-scope/octocode"],
+					display: "pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @new-scope/octocode",
 				},
 			],
 		});
 	});
 
 	test("self-updates pnpm v11 global installs resolved through the store", () => {
-		const temp = mkdtempSync(join(tmpdir(), "pi-pnpm11-"));
+		const temp = mkdtempSync(join(tmpdir(), "octocode-pnpm11-"));
 		const binDir = join(temp, "bin");
 		const root = join(temp, "Library", "pnpm", "global", "v11");
 		const packageName = "@octocodeai/octocodecode";
@@ -410,13 +410,13 @@ describe("detectInstallMethod", () => {
 	test("self-updates renamed yarn global installs by removing the old package first", () => {
 		createYarnGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/pi");
+		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
 
 		expect(detectInstallMethod()).toBe("yarn");
 		expect(command).toEqual({
 			command: "yarn",
-			args: ["global", "add", "--ignore-scripts", "@new-scope/pi"],
-			display: "yarn global remove @octocodeai/octocodecode && yarn global add --ignore-scripts @new-scope/pi",
+			args: ["global", "add", "--ignore-scripts", "@new-scope/octocode"],
+			display: "yarn global remove @octocodeai/octocodecode && yarn global add --ignore-scripts @new-scope/octocode",
 			steps: [
 				{
 					command: "yarn",
@@ -425,8 +425,8 @@ describe("detectInstallMethod", () => {
 				},
 				{
 					command: "yarn",
-					args: ["global", "add", "--ignore-scripts", "@new-scope/pi"],
-					display: "yarn global add --ignore-scripts @new-scope/pi",
+					args: ["global", "add", "--ignore-scripts", "@new-scope/octocode"],
+					display: "yarn global add --ignore-scripts @new-scope/octocode",
 				},
 			],
 		});
@@ -435,14 +435,14 @@ describe("detectInstallMethod", () => {
 	test("self-updates renamed bun global installs by removing the old package first", () => {
 		createBunGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/pi");
+		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
 
 		expect(detectInstallMethod()).toBe("bun");
 		expect(command).toEqual({
 			command: "bun",
-			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@new-scope/pi"],
+			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@new-scope/octocode"],
 			display:
-				"bun uninstall -g @octocodeai/octocodecode && bun install -g --ignore-scripts --minimum-release-age=0 @new-scope/pi",
+				"bun uninstall -g @octocodeai/octocodecode && bun install -g --ignore-scripts --minimum-release-age=0 @new-scope/octocode",
 			steps: [
 				{
 					command: "bun",
@@ -451,8 +451,8 @@ describe("detectInstallMethod", () => {
 				},
 				{
 					command: "bun",
-					args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@new-scope/pi"],
-					display: "bun install -g --ignore-scripts --minimum-release-age=0 @new-scope/pi",
+					args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@new-scope/octocode"],
+					display: "bun install -g --ignore-scripts --minimum-release-age=0 @new-scope/octocode",
 				},
 			],
 		});
@@ -472,7 +472,7 @@ describe("detectInstallMethod", () => {
 describe("detectInstallChange", () => {
 	// Regression test for #10439: a deleted pnpm install must not fall back to a package.json further up.
 	test("reports a removed install instead of reading a package.json further up", () => {
-		tempDir = mkdtempSync(join(tmpdir(), "pi-install-change-"));
+		tempDir = mkdtempSync(join(tmpdir(), "octocode-install-change-"));
 		const installDir = join(tempDir, "global", "hash");
 		mkdirSync(installDir, { recursive: true });
 		writeFileSync(join(tempDir, "package.json"), JSON.stringify({ version: "0.0.1" }));

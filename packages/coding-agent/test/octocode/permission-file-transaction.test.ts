@@ -5,17 +5,17 @@ import { expect, it, vi } from "vitest";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 function setup(queries: any[], replacements: any[]) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const cwd = tmp();
 	const ctx = Object.assign(fakeCtx({ cwd, hasUI: false }), {
 		invocation: undefined as ToolInvocation | undefined,
 	});
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: { OCTOCODE_PERMISSION: "manual" },
 		isSubagent: false,
 	});
@@ -29,7 +29,7 @@ function setup(queries: any[], replacements: any[]) {
 	permission.setResolver(resolver);
 	const guard = new FileGuard();
 	const refresh = vi.fn(async () => {});
-	registerFileTool(fake.pi, guard, permission, undefined, {
+	registerFileTool(fake.api, guard, permission, undefined, {
 		enabled: () => true,
 		refresh,
 	});

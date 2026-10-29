@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -26,9 +26,9 @@ it("observes final failures without continuing, running Stop, or observing succe
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
 		entries: [],

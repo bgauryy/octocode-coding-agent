@@ -39,7 +39,7 @@ export function checkAuthFileSafety(authPath: string, options: AuthFileSafetyOpt
 	const workTree = findGitWorkTree(dirname(authPath));
 	if (workTree) {
 		warnings.push(
-			`${authPath} is inside the git work tree ${workTree}; add it to .gitignore so API keys are not committed, or store keys in the system keychain with /providers.`,
+			`${authPath} is inside the git work tree ${workTree}; add it to .gitignore so API keys are not committed, or store keys in the system keychain with /login.`,
 		);
 	}
 	return warnings;

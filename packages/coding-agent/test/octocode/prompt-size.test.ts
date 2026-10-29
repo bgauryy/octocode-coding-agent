@@ -1,7 +1,7 @@
 import { EntityFields } from "@octocodeai/octocode-contacts/backlogs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let saved: NodeJS.ProcessEnv;
@@ -46,13 +46,13 @@ interface Size {
  */
 async function promptSize(options: { subagent: boolean; exclude?: string[] }): Promise<Size> {
 	if (options.subagent) process.env.OCTOCODE_SUBAGENT = "1";
-	const fake = fakePi();
-	Object.assign(fake.pi, { getSessionName: () => undefined });
-	await octocode(fake.pi);
+	const fake = fakeHost();
+	Object.assign(fake.api, { getSessionName: () => undefined });
+	await octocode(fake.api);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: !options.subagent });
 	Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 	await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-	const active = fake.pi.getActiveTools().filter((name) => !options.exclude?.includes(name));
+	const active = fake.api.getActiveTools().filter((name) => !options.exclude?.includes(name));
 	const sections: Record<string, string> = {};
 	await fake.fire(
 		"before_agent_start",
@@ -65,7 +65,7 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 	);
 	const perTool: Record<string, number> = {};
 	let backlogEntities = 0;
-	for (const tool of fake.pi.getAllTools().filter((candidate) => active.includes(candidate.name))) {
+	for (const tool of fake.api.getAllTools().filter((candidate) => active.includes(candidate.name))) {
 		const { description, parameters, promptGuidelines } = tool as {
 			description: string;
 			parameters: unknown;
@@ -131,7 +131,10 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 40_500 (2026-10-28, measured 40_226 without entity fields): deferred exposure and tool_search were removed, so the
 // graph tools are declared in every request: graphBuild 2_964 + graphQuery 9_171 = 12_135 characters, cached with the
 // tool declarations.
-const MAIN_CEILING = 40_500;
+// 41_300 (2026-10-29, measured 41_002 without entity fields): user-requested debugger pause, exception stops and
+// Node/TypeScript support through js-debug (the `pause` action, `tcp` and `exceptions` fields and their adapter line;
+// debug schema 2_879, after trimming), plus 136 for B173's agent external/models fields.
+const MAIN_CEILING = 41_300;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -140,7 +143,8 @@ const MAIN_CEILING = 40_500;
 // 20_700 (measured 20_363 without entity fields, with the real Octocode tool list): the same B89 and B90 growth
 // (18_894 before the tool list) plus 1_469 for the research-workflow lines.
 // 32_400 (2026-10-28, measured 32_154 without entity fields): the same 12_135 characters of declared graph tools.
-const SPECIALIST_CEILING = 32_400;
+// 32_800 (2026-10-29, measured 32_548 without entity fields): the same debugger pause, exception and js-debug schema.
+const SPECIALIST_CEILING = 32_800;
 
 describe("prompt size", () => {
 	it("main session", async () => {

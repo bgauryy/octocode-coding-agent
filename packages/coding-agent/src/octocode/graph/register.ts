@@ -38,14 +38,14 @@ function shapeOnly<T>(schema: T): T {
  * The CLI owns descriptions, validation, grammar support and execution. Both tools are declared directly; their
  * contracts (about 12k characters) sit in the cached tool declarations.
  */
-export function registerGraphTools(pi: ExtensionAPI): void {
+export function registerGraphTools(api: ExtensionAPI): void {
 	let binary: string;
 	let schemas: ReturnType<typeof graphSchema>[];
 	try {
 		binary = graphBinary();
 		schemas = GRAPH_TOOLS.map((name) => graphSchema(binary, name, process.cwd()));
 	} catch (error) {
-		pi.on("session_start", async (_event, ctx) => {
+		api.on("session_start", async (_event, ctx) => {
 			ctx.ui.notify(`Graph tools unavailable: ${errorMessage(error)}`, "warning");
 		});
 		return;
@@ -53,7 +53,7 @@ export function registerGraphTools(pi: ExtensionAPI): void {
 	for (const [index, name] of GRAPH_TOOLS.entries()) {
 		const schema = schemas[index];
 		const { $defs, ...requestSchema } = shapeOnly(schema.inputSchema);
-		pi.registerTool({
+		api.registerTool({
 			name,
 			label: name === "graphBuild" ? "Build graph" : "Query graph",
 			description: schema.description,

@@ -1,6 +1,6 @@
 import type { Model, OpenAIResponsesCompat, ProviderEnv, ProviderHeaders, TranscriptContext } from "../../types.ts";
 import { providerHeadersToRecord } from "../../utils/headers.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
+import { getUserAgent } from "../../utils/user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { resolveTranscriptTools } from "../../utils/transcript.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
@@ -43,7 +43,7 @@ export function createRequestHeaders(
 				Authorization: `Bearer ${apiKey}`,
 			},
 			environmentHeaders,
-			{ "User-Agent": getPiUserAgent() },
+			{ "User-Agent": getUserAgent() },
 			model.headers,
 		) ?? {};
 	if (model.provider === "github-copilot") {

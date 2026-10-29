@@ -206,8 +206,9 @@ export class SessionManager implements SessionManagerApi {
 		content: string | (TextContent | ImageContent)[],
 		display: boolean,
 		details?: T,
+		timestamp?: number,
 	): string {
-		return appends.appendCustomMessageEntry(this.state, customType, content, display, details);
+		return appends.appendCustomMessageEntry(this.state, customType, content, display, details, timestamp);
 	}
 
 	appendContextEdit(targetId: string, replacement: ContextEditEntry["replacement"]): string {

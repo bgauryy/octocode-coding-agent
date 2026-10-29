@@ -7,7 +7,7 @@ import { agentsCommand } from "../../src/octocode/subagents/command.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const repo = () => {
@@ -29,9 +29,9 @@ function agent(
 	env: Record<string, string> = {},
 	options: { hasUI?: boolean; idle?: boolean } = {},
 ) {
-	const fake = fakePi();
-	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db, ...env });
-	registerCollab(fake.pi, team);
+	const fake = fakeHost();
+	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db, ...env });
+	registerCollab(fake.api, team);
 	const ctx = fakeCtx({ cwd, hasUI: options.hasUI ?? true, idle: options.idle ?? true });
 	const abort = vi.spyOn(ctx, "abort");
 	team.start(ctx);
@@ -77,7 +77,7 @@ describe("interrupt", () => {
 			interrupt: true,
 		})) as { id: number };
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
-		const send = vi.spyOn(child.pi, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
+		const send = vi.spyOn(child.api, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
 		await child.emit("agent_settled", {}, child.ctx);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
 		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 4_000 });
@@ -105,7 +105,7 @@ describe("interrupt", () => {
 			interrupt: true,
 		})) as { id: number };
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
-		vi.spyOn(child.pi, "sendMessage").mockImplementationOnce(() => {
+		vi.spyOn(child.api, "sendMessage").mockImplementationOnce(() => {
 			throw new Error("session not ready");
 		});
 		await child.emit("agent_settled", {}, child.ctx);
@@ -199,10 +199,10 @@ describe("interrupt", () => {
 			OCTOCODE_AGENT_ID: "general-121212",
 			OCTOCODE_PARENT_ID: "main-aaaaaa",
 		});
-		const fake = fakePi();
+		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd, hasUI: false, idle: false });
 		try {
-			octocode(fake.pi);
+			octocode(fake.api);
 			await fake.emit("session_start", { type: "session_start" }, ctx);
 			await fake.tools
 				.get("bash")
@@ -230,7 +230,13 @@ describe("interrupt", () => {
 			const started = Date.now();
 			await fake.emit(
 				"agent_before_settle",
-				{ type: "agent_before_settle", outcome: "completed", entries: [], continue: false },
+				{
+					type: "agent_before_settle",
+					outcome: "completed",
+					entries: [],
+					context: { llmMessages: [] },
+					continue: false,
+				},
 				ctx,
 			);
 			expect(Date.now() - started).toBeLessThan(8_000);

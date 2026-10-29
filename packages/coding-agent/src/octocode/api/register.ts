@@ -8,14 +8,14 @@ import { OctocodeApi } from "./bridge.ts";
 
 /** Wire the external API into Octocode: event publishing, lifecycle and `/api`. Subagents never expose one. */
 export function registerApi(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	commands: Subcommands,
 	agents: AgentDirectory,
 	version: () => string | undefined,
 	operations?: ApiOperations,
 ): { api: OctocodeApi; start: (ctx: Parameters<OctocodeApi["start"]>[0]) => Promise<void>; stop: () => Promise<void> } {
-	const api = new OctocodeApi(pi, agents, version, process.env, operations);
-	api.observe();
+	const server = new OctocodeApi(api, agents, version, process.env, operations);
+	server.observe();
 
 	commands.add("api", {
 		description: "api [on [http] | off] — external API status, start or stop",
@@ -27,17 +27,17 @@ export function registerApi(
 			const [action, flag] = line.split(/\s+/);
 			try {
 				if (action === "on") {
-					await api.start(ctx, transportsFor(flag === "http" ? 0 : undefined));
+					await server.start(ctx, transportsFor(flag === "http" ? 0 : undefined));
 				} else if (action === "off") {
-					await api.stop();
+					await server.stop();
 					// stop() unbinds the session; bind again so a later `api on` works.
-					await api.start(ctx, undefined);
+					await server.start(ctx, undefined);
 				}
 			} catch (error) {
 				say(ctx, errorMessage(error), "error");
 				return;
 			}
-			const info = api.instance;
+			const info = server.instance;
 			say(
 				ctx,
 				info
@@ -45,7 +45,7 @@ export function registerApi(
 							`Octocode API ${info.id}`,
 							info.socket ? `socket: ${info.socket}` : "",
 							info.http ? `http: ${info.http.url} (token in the instance file)` : "",
-							`Discovery: ${api.directory}/instances/${info.id}.json`,
+							`Discovery: ${server.directory}/instances/${info.id}.json`,
 						]
 							.filter(Boolean)
 							.join("\n")
@@ -56,7 +56,7 @@ export function registerApi(
 	});
 
 	return {
-		api,
+		api: server,
 		start: async (ctx) => {
 			// A bad environment still binds the session (so `/api on` works) and says why the API is off.
 			let options: ReturnType<typeof optionsFromEnv>;
@@ -67,7 +67,7 @@ export function registerApi(
 				failure = error;
 			}
 			try {
-				await api.start(ctx, options);
+				await server.start(ctx, options);
 			} catch (error) {
 				failure = error;
 			}
@@ -76,6 +76,6 @@ export function registerApi(
 			if (ctx.hasUI) notify(ctx.ui, errorMessage(failure), "warning");
 			else process.stderr.write(`${sanitizeTerminalText(errorMessage(failure))}\n`);
 		},
-		stop: () => api.stop(),
+		stop: () => server.stop(),
 	};
 }

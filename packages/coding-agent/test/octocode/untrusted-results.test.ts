@@ -3,7 +3,7 @@ import { registerReadDedupe } from "../../src/octocode/files/dedupe.ts";
 import { fencedBody } from "../../src/octocode/shared/fence.ts";
 import { requestMessages } from "../../src/octocode/compaction/thinking.ts";
 import { fenceUntrustedResults } from "../../src/octocode/shared/untrusted-results.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const result = (toolName: string, text: string, id = `id-${toolName}`, extra: Record<string, unknown> = {}) => ({
 	role: "toolResult",
@@ -98,8 +98,8 @@ describe("fencing web and MCP results in a request", () => {
 
 describe("with the read dedupe", () => {
 	it("still replaces a repeated local read with its note, and the fence does not touch either result", async () => {
-		const fake = fakePi();
-		registerReadDedupe(fake.pi);
+		const fake = fakeHost();
+		registerReadDedupe(fake.api);
 		const text = "line of text\n".repeat(200);
 		const input = { path: "/repo/a.ts" };
 		const first = result("mcp__octocode__localFetch", text, "call1");

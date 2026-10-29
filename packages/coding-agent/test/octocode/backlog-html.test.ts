@@ -14,7 +14,7 @@ import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { openFile } from "../../src/octocode/shared/open.ts";
-import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 
 const SECRET = `ghp_${"a1B2c3D4e5".repeat(4)}`;
 const NOW = Date.UTC(2026, 9, 15, 12, 0, 0);
@@ -299,9 +299,9 @@ describe("openFile", () => {
 
 describe("/backlog html", () => {
 	function setup(open: (file: string) => Promise<void>) {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
-		const openWorkspace = registerBacklog(fake.pi, {
+		const openWorkspace = registerBacklog(fake.api, {
 			commands,
 			isSubagent: false,
 			open,

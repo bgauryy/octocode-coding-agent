@@ -9,6 +9,7 @@ import {
 } from "@octocodeai/octocode-contacts";
 import { ApplicationStream } from "./application-stream.ts";
 import { requestJson } from "./request.ts";
+import { scopedRoute } from "./scope.ts";
 
 interface Observer {
 	application(stream: ApplicationStream, frame: ApplicationFrame): void;
@@ -46,7 +47,7 @@ export class BrowserConnection {
 			return;
 		clearTimeout(this.timer);
 		this.authenticated = false;
-		const socket = new WebSocket(location.origin.replace(/^http/, "ws") + WORKSPACE_ROUTES.live);
+		const socket = new WebSocket(location.origin.replace(/^http/, "ws") + scopedRoute(WORKSPACE_ROUTES.live));
 		this.socket = socket;
 		let retiring = false;
 		const retire = (code?: number) => {
@@ -76,7 +77,10 @@ export class BrowserConnection {
 				return;
 			}
 			if (!record(message)) return;
-			if (message.type === "application") {
+			if (message.type === "daemon") {
+				if (record(message.data) && message.data.draining === true)
+					this.observer.status("A newer Octocode is taking over. Reopen /web when this page stops updating.");
+			} else if (message.type === "application") {
 				const result = this.stream.accept(message.data);
 				if (result === "resync") {
 					this.observer.status("Refreshing session state…");
@@ -136,7 +140,7 @@ export class BrowserConnection {
 			throw new Error("Session changed. Reopen the command before sending.");
 		const epoch = this.stream.cursor?.epoch;
 		if (!epoch) throw new Error("Session state is refreshing. Wait for the connection before sending.");
-		const result = await requestJson(WORKSPACE_ROUTES.application, {
+		const result = await requestJson(scopedRoute(WORKSPACE_ROUTES.application), {
 			method: "POST",
 			headers: { Authorization: "Bearer " + this.token, "Content-Type": "application/json" },
 			body: JSON.stringify(command),

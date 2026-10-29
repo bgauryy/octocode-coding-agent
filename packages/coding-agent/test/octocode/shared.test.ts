@@ -35,7 +35,7 @@ import {
 	stringOrEmpty,
 	unpricedModel,
 } from "../../src/octocode/shared/util.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
 
@@ -410,8 +410,8 @@ describe("native commands", () => {
 			handler,
 			complete: (prefix) => wordCompletions(["manual", "workspace"], prefix),
 		});
-		const fake = fakePi();
-		commands.register(fake.pi);
+		const fake = fakeHost();
+		commands.register(fake.api);
 		expect([...fake.commands.keys()]).toEqual(["permissions"]);
 		const command = fake.commands.get("permissions")!;
 		expect(command.getArgumentCompletions(" ma")).toEqual([{ value: "manual", label: "manual" }]);
@@ -421,13 +421,13 @@ describe("native commands", () => {
 		expect(commands.get("permission")).toBeUndefined();
 	});
 	it("registers status as one registry entry", () => {
-		const fake = fakePi();
-		new Subcommands().register(fake.pi, () => "status");
+		const fake = fakeHost();
+		new Subcommands().register(fake.api, () => "status");
 		expect([...fake.commands.keys()]).toEqual(["status"]);
 	});
 	it("handles retired namespace input before model execution and leaves ordinary text alone", async () => {
-		const fake = fakePi();
-		new Subcommands().register(fake.pi, () => "status");
+		const fake = fakeHost();
+		new Subcommands().register(fake.api, () => "status");
 		const ctx = fakeCtx({ cwd: ".", hasUI: true });
 		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });
 		expect(ctx.ui.notes.at(-1)?.message).toBe(
@@ -439,8 +439,8 @@ describe("native commands", () => {
 	it("lets bare /octocode execute while retaining namespaced migration guidance", async () => {
 		const commands = new Subcommands();
 		commands.add("octocode", { description: "Workspace", handler: vi.fn(async () => {}) });
-		const fake = fakePi();
-		commands.register(fake.pi);
+		const fake = fakeHost();
+		commands.register(fake.api);
 		const ctx = fakeCtx({ cwd: ".", hasUI: true });
 		expect(await fake.fire("input", { text: "/octocode" }, ctx)).toEqual({ action: "continue" });
 		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });

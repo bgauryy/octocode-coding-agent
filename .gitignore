@@ -21,6 +21,8 @@ packages/ai/src/providers/.model-generation-*/
 .zed/
 .idea/
 .claude/
+# Machine-specific Codex MCP path (sibling octocode checkout)
+.codex/config.toml
 *.swp
 *.swo
 *~

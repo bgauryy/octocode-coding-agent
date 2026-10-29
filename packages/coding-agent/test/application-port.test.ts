@@ -381,3 +381,24 @@ it("keeps both ends of a long tool output, with a marker where it was shortened"
 	expect(tool.hint).toBe("https://example.com");
 	service.dispose();
 });
+it("reports the dialog a run waits on in the snapshot and live frames, and clears it when the run settles", async () => {
+	const f = fixture();
+	const service = getApplicationPort(f.session);
+	const live = service.connect();
+	const iterator = live[Symbol.asyncIterator]();
+	await iterator.next();
+	f.emit({ type: "agent_start" });
+	await iterator.next();
+	const awaiting = { kind: "approval", title: "Run bash?" } as const;
+	service.publishDomain({ type: "session.awaiting", awaiting });
+	expect((await iterator.next()).value).toMatchObject({ type: "event", event: { type: "session.awaiting", awaiting } });
+	expect(service.getSnapshot().awaiting).toEqual(awaiting);
+	service.publishDomain({ type: "session.awaiting" });
+	await iterator.next();
+	expect(service.getSnapshot().awaiting).toBeUndefined();
+	expect("awaiting" in service.getSnapshot()).toBe(false);
+	service.publishDomain({ type: "session.awaiting", awaiting });
+	f.emit({ type: "agent_settled", aborted: true });
+	expect(service.getSnapshot().awaiting).toBeUndefined();
+	service.dispose();
+});

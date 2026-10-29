@@ -81,7 +81,7 @@ function backlogPrompt(subagent: boolean): {
 const SUBAGENT_STATES = ["ongoing", "done"] as const;
 
 export function registerBacklogTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	options: BacklogOptions & { changed?: (ctx: ExtensionContext) => void },
 ): void {
 	const subagent = options.isSubagent;
@@ -145,7 +145,7 @@ export function registerBacklogTool(
 		},
 		{ additionalProperties: false },
 	);
-	pi.registerTool(
+	api.registerTool(
 		timedTool(
 			{
 				name: "backlog",

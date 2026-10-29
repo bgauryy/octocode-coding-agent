@@ -21,7 +21,7 @@ export async function showPiProviders(
 		const ids = [...new Set([...entries.map((entry) => entry.providerId), ...definitions.keys()])];
 		if (!ids.length) {
 			host.showStatus(
-				"No Pi providers found in models.json or auth.json. Pi discovery is disabled with an explicit Octocode home or SDK directory. Use /providers to connect directly.",
+				"No Pi providers found in models.json or auth.json. Pi discovery is disabled with an explicit Octocode home or SDK directory. Use /login to connect directly.",
 			);
 			return;
 		}
@@ -83,7 +83,7 @@ export async function showPiProviders(
 	} catch (error) {
 		host.showError(
 			error instanceof CredentialSynchronizationError
-				? "Pi credential imported, but local model availability could not be updated. Reopen /providers."
+				? "Pi credential imported, but local model availability could not be updated. Reopen /login."
 				: `Could not import from Pi: ${errorMessage(error)}`,
 		);
 	}

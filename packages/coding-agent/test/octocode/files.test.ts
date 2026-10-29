@@ -16,7 +16,7 @@ import { sha256 } from "../../src/utils/atomic-file.ts";
 import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { capChars } from "../../src/octocode/shared/util.ts";
-import { fakeCtx, fakePermission, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("file input shape", () => {

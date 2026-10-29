@@ -2,7 +2,7 @@ import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octoc
 import { CONFIG_DIR_NAME } from "../../../../config.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { keyHint, rawKeyHint } from "../keybinding-hints.ts";
-import type { ConfigWriteScope } from "./groups.ts";
+import type { ConfigWriteScope } from "../../../../core/package-manager/resource-groups.ts";
 
 export class ConfigSelectorHeader implements Component {
 	private writeScope: ConfigWriteScope;

@@ -18,29 +18,29 @@ function writePackage(directory, manifest, files) {
 
 // #10633: Covers npm 12's package-keyed `npm pack --json` output only when npm 12 is on PATH.
 test("produces a verified, content-addressed artifact set", (t) => {
-	const temporaryRoot = mkdtempSync(join(tmpdir(), "pi-package-artifacts-test-"));
+	const temporaryRoot = mkdtempSync(join(tmpdir(), "octocode-package-artifacts-test-"));
 	t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
 	const repoRoot = join(temporaryRoot, "repo with spaces");
 	mkdirSync(repoRoot);
 	writeFileSync(join(repoRoot, "package.json"), '{"name":"fixture","private":true}\n');
 	writePackage(
 		join(repoRoot, "packages", "shared"),
-		{ name: "@pi-package-test/shared", version: "1.0.0", files: ["dist"] },
+		{ name: "@octocode-package-test/shared", version: "1.0.0", files: ["dist"] },
 		{ "dist/index.js": 'export const marker = "artifact";\n' },
 	);
 	writePackage(
 		join(repoRoot, "packages", "target"),
 		{
-			name: "@pi-package-test/target",
+			name: "@octocode-package-test/target",
 			version: "1.0.0",
 			files: ["dist"],
-			devDependencies: { "@pi-package-test/private": "workspace:*" },
+			devDependencies: { "@octocode-package-test/private": "workspace:*" },
 		},
 		{ "dist/index.js": "export const target = true;\n" },
 	);
 	writePackage(
 		join(repoRoot, "packages", "private"),
-		{ name: "@pi-package-test/private", version: "1.0.0", private: true },
+		{ name: "@octocode-package-test/private", version: "1.0.0", private: true },
 		{ "src/index.ts": "export const internal = true;\n" },
 	);
 	execFileSync("git", ["init", "--quiet"], { cwd: repoRoot });
@@ -56,7 +56,7 @@ test("produces a verified, content-addressed artifact set", (t) => {
 	});
 	assert.deepEqual(
 		artifactSet.packages.map((pkg) => pkg.name),
-		["@pi-package-test/shared", "@pi-package-test/target"],
+		["@octocode-package-test/shared", "@octocode-package-test/target"],
 	);
 	for (const pkg of artifactSet.packages) {
 		assert.match(pkg.tarball, /-[0-9a-f]{12}\.tgz$/);
@@ -72,8 +72,8 @@ test("produces a verified, content-addressed artifact set", (t) => {
 		repoRoot,
 	});
 	assert.notEqual(
-		changedArtifactSet.getPackage("@pi-package-test/shared").tarball,
-		artifactSet.getPackage("@pi-package-test/shared").tarball,
+		changedArtifactSet.getPackage("@octocode-package-test/shared").tarball,
+		artifactSet.getPackage("@octocode-package-test/shared").tarball,
 	);
 
 	appendFileSync(artifactSet.packages[0].tarballPath, "corrupt");

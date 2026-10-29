@@ -10,7 +10,7 @@ import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
@@ -32,8 +32,8 @@ const inbound = (extra: Partial<MessageEnvelope> = {}): MessageEnvelope =>
 function project(hooks: unknown): string {
 	const cwd = tmp("octocode-message-hooks-");
 	fs.mkdirSync(path.join(cwd, ".git"));
-	fs.mkdirSync(path.join(cwd, ".codex"));
-	fs.writeFileSync(path.join(cwd, ".codex", "hooks.json"), JSON.stringify({ hooks }));
+	fs.mkdirSync(path.join(cwd, ".octocode"));
+	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
 	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 	return cwd;
 }
@@ -46,10 +46,10 @@ afterEach(() => {
 
 async function setup(config: unknown, enabled = true) {
 	const cwd = project(config);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	const failures: unknown[] = [];
-	const hooks = registerHooks(fake.pi, enabled ? { OCTOCODE_HOOKS: "1" } : {}, tmp(), (...failure) =>
+	const hooks = registerHooks(fake.api, enabled ? {} : { OCTOCODE_SUBAGENT: "1" }, tmp(), (...failure) =>
 		failures.push(failure),
 	);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -199,14 +199,14 @@ describe("message hooks", () => {
 	});
 
 	it("denies direct, tool and API-origin Team sends before storage or finished-agent resume", async () => {
-		const { hooks, pi, ctx, tools, cwd } = await setup({
+		const { hooks, api, ctx, tools, cwd } = await setup({
 			PreMessageSend: group("echo forbidden >&2; exit 2", "internal"),
 		});
 		const dbFile = path.join(tmp(), "team.sqlite");
-		const team = new Team(pi, { OCTOCODE_AGENT_DB: dbFile });
-		const other = new Team(fakePi().pi, { OCTOCODE_AGENT_DB: dbFile });
+		const team = new Team(api, { OCTOCODE_AGENT_DB: dbFile });
+		const other = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
 		teams.push(team, other);
-		registerCollab(pi, team);
+		registerCollab(api, team);
 		team.start(ctx);
 		other.start(ctx);
 		team.join();
@@ -247,12 +247,12 @@ describe("message hooks", () => {
 	});
 
 	it("cancels a Team send hook on the tool signal before its own timeout", async () => {
-		const { hooks, pi, ctx, fire, cwd } = await setup({
+		const { hooks, api, ctx, fire, cwd } = await setup({
 			PreMessageSend: group("echo running > hook-started; sleep 10; echo done > hook-finished", "", { timeout: 2 }),
 		});
 		const dbFile = path.join(tmp(), "team.sqlite");
-		const team = new Team(pi, { OCTOCODE_AGENT_DB: dbFile });
-		const peer = new Team(fakePi().pi, { OCTOCODE_AGENT_DB: dbFile });
+		const team = new Team(api, { OCTOCODE_AGENT_DB: dbFile });
+		const peer = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
 		teams.push(team, peer);
 		team.start(ctx);
 		peer.start(ctx);

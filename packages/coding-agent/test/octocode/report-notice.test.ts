@@ -9,7 +9,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { noticeText, NOTICE_TYPE, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
 
@@ -37,9 +37,9 @@ describe("the mid-turn notice of a background report (B11)", () => {
 	});
 
 	it("is sent once, without waking the parent, when it is mid-turn; the report still follows as a follow-up", () => {
-		const f = fakePi();
+		const f = fakeHost();
 		let idle = false;
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = new ReportQueue(f.api, 60_000);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => idle);
 		queue.add(report("a"));
 		queue.flush();
@@ -56,8 +56,8 @@ describe("the mid-turn notice of a background report (B11)", () => {
 	});
 
 	it("stays silent for an idle parent: the report itself wakes it", () => {
-		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const f = fakeHost();
+		const queue = new ReportQueue(f.api, 60_000);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => true);
 		queue.add(report("a"));
 		queue.flush();
@@ -66,7 +66,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 	});
 
 	it("reaches the model at its next step of a running turn, before the turn ends", async () => {
-		let pi!: ExtensionAPI;
+		let host!: ExtensionAPI;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const finishInTurn: AgentTool = {
@@ -85,12 +85,12 @@ describe("the mid-turn notice of a background report (B11)", () => {
 			tools: [finishInTurn],
 			extensionFactories: [
 				(api) => {
-					pi = api;
+					host = api;
 				},
 			],
 		});
 		await harness.session.bindExtensions({});
-		const queue = new ReportQueue(pi, 60_000);
+		const queue = new ReportQueue(host, 60_000);
 		queue.start(manager, () => !harness.session.isStreaming);
 		queue.pendingDir = path.join(root, "reports");
 		let secondRequest: string[] = [];

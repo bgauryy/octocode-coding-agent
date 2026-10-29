@@ -14,7 +14,7 @@ describe("saveConfig", () => {
 	});
 
 	function setup(entry: Partial<McpServerEntry>) {
-		const dir = mkdtempSync(join(tmpdir(), "pi-mcp-persistence-"));
+		const dir = mkdtempSync(join(tmpdir(), "octocode-mcp-persistence-"));
 		dirs.push(dir);
 		const file = join(dir, "mcp.json");
 		writeFileSync(file, JSON.stringify({ mcpServers: { octocode: { command: "octocode-mcp", exposure: "hidden" } } }));

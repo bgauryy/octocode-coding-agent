@@ -71,13 +71,17 @@ export function Badge({
 	tone = "neutral",
 	children,
 	title,
+	icon,
 }: {
 	tone?: BadgeTone;
 	children: ReactNode;
 	title?: string;
+	/** A decorative shape before the label, such as a `StateMark`. */
+	icon?: ReactNode;
 }) {
 	return (
 		<span className={cx("badge", `tone-${tone}`)} title={title}>
+			{icon}
 			{children}
 		</span>
 	);

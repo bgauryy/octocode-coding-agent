@@ -13,7 +13,7 @@ process.env.OCTOCODE_HOME = home;
 delete process.env.OCTOCODE_AGENT_DB;
 // Nor the user's real ~/.octocode/agent: Octocode's `/trust` store lives there. Like a developer who trusted their code folder, the
 // suite saves one decision trusting the temp folder every test project is created in; untrusted cases use their own dir.
-const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-test-pi-agent-"));
+const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-test-agent-"));
 fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(os.tmpdir())]: true }));
 process.env.OCTOCODE_CODING_AGENT_DIR = agentDir;
 // A fake Octocode never runs the Octocode server: no server process or first-prompt wait unless a test opts in (e2e runs the

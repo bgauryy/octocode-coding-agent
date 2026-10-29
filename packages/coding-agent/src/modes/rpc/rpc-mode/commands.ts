@@ -305,7 +305,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			for (const command of host.session.extensionRunner.getRegisteredCommands()) {
 				commands.push({
 					name: command.invocationName,
-					aliases: command.invocationAliases,
 					description: command.description,
 					source: "extension",
 					sourceInfo: command.sourceInfo,

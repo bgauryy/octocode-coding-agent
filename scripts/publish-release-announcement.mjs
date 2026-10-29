@@ -269,7 +269,7 @@ async function main() {
 		publishedAt: new Date().toISOString(),
 		packages: publishedPackages,
 	};
-	const temporaryDirectory = mkdtempSync(join(tmpdir(), "pi-release-announcement-"));
+	const temporaryDirectory = mkdtempSync(join(tmpdir(), "octocode-release-announcement-"));
 	try {
 		const releasePath = join(temporaryDirectory, "release.json");
 		const latestPath = join(temporaryDirectory, "latest.json");

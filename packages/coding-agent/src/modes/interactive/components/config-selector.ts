@@ -4,12 +4,16 @@
 
 import { Container, type Focusable, Spacer } from "@octocodeai/octocode-tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
-import { buildGroups, type ConfigWriteScope, type ScopedResolvedPaths } from "./config-selector/groups.ts";
+import {
+	buildGroups,
+	type ConfigWriteScope,
+	type ScopedResolvedPaths,
+} from "../../../core/package-manager/resource-groups.ts";
 import { ConfigSelectorHeader } from "./config-selector/header.ts";
 import { ResourceList } from "./config-selector/resource-list.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
-export type { ScopedResolvedPaths } from "./config-selector/groups.ts";
+export type { ScopedResolvedPaths } from "../../../core/package-manager/resource-groups.ts";
 
 export class ConfigSelectorComponent extends Container implements Focusable {
 	private header: ConfigSelectorHeader;

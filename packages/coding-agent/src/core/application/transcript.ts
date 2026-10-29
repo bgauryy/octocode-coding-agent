@@ -19,6 +19,7 @@ import {
 	record,
 } from "./normalize.ts";
 import { keepEnds, OUTPUT_CHARS, toolResultText } from "./service/projection.ts";
+import { sameMessage, transcriptHistory } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
 
 type MessageEvent = Extract<AgentSessionEvent, { type: "message_start" | "message_end" | "message_update" }>;
@@ -355,27 +356,22 @@ export class ApplicationTranscript {
 	}
 
 	history(options: { before?: string; limit?: number } = {}): ApplicationHistory {
-		const all = [...this.messages.values()];
-		const end = options.before === undefined ? all.length : all.findIndex((message) => message.id === options.before);
-		if (end < 0) throw new Error("History cursor is not in this session");
-		const limit = Math.max(1, Math.min(100, options.limit ?? 50));
-		const messages = all.slice(Math.max(0, end - limit), end);
-		const ids = new Set(messages.map((message) => message.id));
-		const calls = new Set(messages.flatMap((message) => (message.toolCallId ? [message.toolCallId] : [])));
-		const firstOrder = messages[0]?.order ?? 0;
-		const endOrder = all[end]?.order ?? Number.POSITIVE_INFINITY;
-		const tools = [...this.tools.values()].filter(
-			(tool) =>
-				(tool.messageId && ids.has(tool.messageId)) ||
-				calls.has(tool.toolCallId) ||
-				((tool.order ?? -1) >= firstOrder && (tool.order ?? -1) < endOrder),
-		);
-		return cloneDisplay({
-			messages,
-			tools,
-			...(messages.length ? { before: messages[0].id } : {}),
-			hasMore: end > messages.length,
-		});
+		return transcriptHistory(this.messages, this.tools, options);
+	}
+	/**
+	 * Take over a rebuilt context array whose messages equal `previous`: keep their ids and displayed state, so views
+	 * need no reset. False when any message differs.
+	 */
+	adopt(previous: readonly unknown[], next: readonly unknown[]): boolean {
+		if (previous.length !== next.length || !previous.every((message, index) => sameMessage(message, next[index])))
+			return false;
+		for (const [index, message] of next.entries()) {
+			const id = this.identities.get(record(previous[index]));
+			if (id === undefined || message === previous[index]) continue;
+			this.identities.set(record(message), id);
+			if (this.sources.has(id)) this.sources.set(id, message);
+		}
+		return true;
 	}
 
 	window(): { messages: ApplicationMessage[]; tools: ApplicationTool[] } {

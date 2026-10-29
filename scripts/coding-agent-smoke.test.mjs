@@ -91,8 +91,8 @@ export function getCliInvocation() {
 	return { command: process.execPath, prefix: [fileURLToPath(new URL("./bundle/cli.js", import.meta.url))] };
 }
 `,
-			"dist/octocode/native-skills/octocode-compact-mcp/SKILL.md":
-				"---\nname: octocode-compact-mcp\ndescription: Test\n---\n",
+			"dist/octocode/native-skills/octocode-context-optimization/SKILL.md":
+				"---\nname: octocode-context-optimization\ndescription: Test\n---\n",
 			"dist/octocode/instructions/roles/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
 		},
 	);
@@ -124,10 +124,10 @@ test("rejects a package missing its bundled subagent profiles", (t) => {
 	assert.throws(() => smokeTestCodingAgent(directory), /missing bundled subagent profiles/);
 });
 
-test("rejects a package missing the bundled octocode-compact-mcp skill", (t) => {
+test("rejects a package missing the bundled octocode-context-optimization skill", (t) => {
 	const directory = createFixture(t);
 	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native-skills"), { recursive: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled octocode-compact-mcp skill/);
+	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled octocode-context-optimization skill/);
 });
 
 test("rejects a broken API executable despite a working agent CLI", (t) => {

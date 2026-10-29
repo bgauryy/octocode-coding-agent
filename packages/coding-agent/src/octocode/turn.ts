@@ -2,10 +2,11 @@ import type { ExtensionAPI } from "../core/extensions/index.ts";
 import type { Skill } from "../core/skills.ts";
 import { currentEnvironment } from "../core/system-prompt.ts";
 import { GRAPH_TOOLS } from "./graph/cli.ts";
+import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
-import { envFlag, READ_ONLY_ENV } from "./shared/env.ts";
+import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "./shared/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
 import { isOctocodeTool, OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { BROWSER_SERVER } from "../../../mcp/src/presets/browser/names.ts";
@@ -14,7 +15,7 @@ import { type AgentProfile, profileSelectsTool } from "./subagents/profiles.ts";
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	options: {
 		isSubagent: boolean;
 		profiles: () => Map<string, AgentProfile>;
@@ -24,11 +25,14 @@ export function registerTurnSetup(
 	let promptKey: string | undefined;
 	const role = options.isSubagent ? readRolePrompt() : undefined;
 	const readOnlyRole = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
+	const lean = options.isSubagent && envFlag(process.env, LEAN_ENV);
+	// Skills the parent chose ride in the task (`subagents/task-skills.ts`), so the cached prompt does not depend on them.
+	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 
-	pi.on("before_agent_start", async (event) => {
-		const selected = event.systemPromptOptions.selectedTools ?? pi.getActiveTools();
-		const servers = getMcpSessionStatus(pi.events);
+	api.on("before_agent_start", async (event) => {
+		const selected = event.systemPromptOptions.selectedTools ?? api.getActiveTools();
+		const servers = getMcpSessionStatus(api.events);
 		const server = servers.find((server) => server.name === OCTOCODE_SERVER);
 		// The built-in browser server selected for this agent, declared or still connecting, means this agent can browse
 		// itself. Only enablement and selection count, not connection state or the declared tools, so the delegation text
@@ -68,7 +72,9 @@ export function registerTurnSetup(
 		const key = JSON.stringify(inputs);
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
-			prompt = octocodePromptSections(inputs);
+			prompt = lean
+				? leanPromptSections({ canShell: inputs.canShell, canSave: inputs.canSave, readOnly: readOnlyRole })
+				: octocodePromptSections(inputs);
 		}
 		// A named section (not a whole-prompt override) lets Octocode record a small transcript delta. The policy and the
 		// role stay session sections, after project context: the profile list and a project-defined role are project
@@ -89,7 +95,7 @@ export function registerTurnSetup(
 		if (options.isSubagent) {
 			// Keep skill routing metadata; task-specific bodies are read only when needed.
 			event.systemPromptOptions.sections.docs = "";
-			event.systemPromptOptions.skills = childSkills(event.systemPromptOptions.skills ?? []);
+			event.systemPromptOptions.skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
 		}
 		return undefined;
 	});

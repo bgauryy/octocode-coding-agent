@@ -14,9 +14,9 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 	});
 
 	/** Tools that registration does not activate: only naming them does. */
-	const registerOptIn = (pi: ExtensionAPI, names: readonly string[]) => {
+	const registerOptIn = (api: ExtensionAPI, names: readonly string[]) => {
 		for (const name of names) {
-			pi.registerTool({
+			api.registerTool({
 				name,
 				label: name,
 				description: `Opt-in tool ${name}.`,
@@ -26,7 +26,7 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 			});
 		}
 	};
-	const optInTools = (pi: ExtensionAPI) => registerOptIn(pi, ["gem_one", "gem_two"]);
+	const optInTools = (api: ExtensionAPI) => registerOptIn(api, ["gem_one", "gem_two"]);
 
 	async function start(options: {
 		allowedToolNames?: string[];
@@ -74,7 +74,7 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 
 	it("resumes a transcript that recorded tool_search without declaring it", async () => {
 		const first = await createHarness({
-			extensionFactories: [(pi) => registerOptIn(pi, ["gem_one", "tool_search"])],
+			extensionFactories: [(api) => registerOptIn(api, ["gem_one", "tool_search"])],
 		});
 		harnesses.push(first);
 		first.session.setActiveToolsByName(["gem_one", "tool_search"]);
@@ -97,7 +97,7 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 		expect(second.session.getActiveToolNames()).toEqual([]);
 	});
 
-	// The tool policy is set after construction (an extension calls `pi.setToolPolicy` once the session is bound), so
+	// The tool policy is set after construction (an extension calls `api.setToolPolicy` once the session is bound), so
 	// these tests check the loadout after the policy is applied to the resumed session.
 	describe("after setToolPolicy is applied to a resumed session", () => {
 		async function resume(allowedToolNames: string[], allows: ((name: string) => boolean) | undefined) {
@@ -110,8 +110,8 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 				// Native features own the tool policy, so the extensions load under the native feature path.
 				builtinCompactionFactories: [
 					optInTools,
-					(pi) => {
-						api = pi;
+					(host) => {
+						api = host;
 					},
 				],
 			});

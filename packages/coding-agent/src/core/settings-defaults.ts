@@ -5,6 +5,8 @@ export const SETTINGS_DEFAULTS = {
 	transport: "auto",
 	steeringMode: "one-at-a-time",
 	followUpMode: "one-at-a-time",
+	/** Working context for a session: this many tokens, at most 90% of the model's capacity. */
+	contextBudget: 300_000,
 	compaction: {
 		enabled: true,
 		reserveTokens: 16384,
@@ -56,7 +58,7 @@ export const SETTINGS_DEFAULTS = {
 	warnings: {
 		anthropicExtraUsage: true,
 	},
-	cacheWarming: "streaming",
+	cacheWarming: "idle",
 	cacheRetention: "short",
 	instructionCacheRetention: "long",
 	tuiMode: "fullscreen",

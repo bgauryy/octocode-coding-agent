@@ -15,12 +15,12 @@ const shellQuote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
 async function fixture(
 	rewrite: string,
 	mode = "full",
-	compatibility = true,
 	options: {
 		post?: boolean;
 		deny?: boolean;
 		claudeRewrite?: boolean;
 		postOnly?: boolean;
+		noHooks?: boolean;
 	} = {},
 ) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-patch-session-"));
@@ -97,19 +97,20 @@ async function fixture(
 							],
 						}
 					: {}),
-				PreToolUse: options.postOnly
-					? []
-					: [
-							{
-								matcher: "^apply_patch$",
-								hooks: [
-									{
-										type: "command",
-										command: `${shellQuote(process.execPath)} ${shellQuote(script)}`,
-									},
-								],
-							},
-						],
+				PreToolUse:
+					options.postOnly || options.noHooks
+						? []
+						: [
+								{
+									matcher: "^apply_patch$",
+									hooks: [
+										{
+											type: "command",
+											command: `${shellQuote(process.execPath)} ${shellQuote(script)}`,
+										},
+									],
+								},
+							],
 			},
 		}),
 	);
@@ -118,24 +119,17 @@ async function fixture(
 		settings: { retry: { enabled: false } },
 		tools: [],
 		extensionFactories: [
-			(pi) => {
+			(api) => {
 				const permission = new Permission({
-					pi,
+					api,
 					env: { OCTOCODE_PERMISSION: mode },
 					isSubagent: false,
 					stderr: () => {},
 				});
-				pi.on("session_start", async (_event, ctx) => permission.start(ctx));
-				registerFileTool(pi, guard, permission);
-				const hooks = registerHooks(
-					pi,
-					{
-						OCTOCODE_HOOKS: "1",
-						OCTOCODE_HOOKS_COMPAT: compatibility ? "1" : "0",
-					},
-					home,
-				);
-				pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+				api.on("session_start", async (_event, ctx) => permission.start(ctx));
+				registerFileTool(api, guard, permission);
+				const hooks = registerHooks(api, {}, home);
+				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 			},
 		],
 	});
@@ -262,29 +256,9 @@ it("rejects an invalid replacement patch without falling back to the original na
 	}
 });
 
-it("keeps native mutations unchanged when source compatibility is disabled", async () => {
-	const f = await fixture(patch("rewritten.txt"), "full", false);
-	try {
-		f.harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("file", structuredClone(original))], {
-				stopReason: "toolUse",
-			}),
-			fauxAssistantMessage("done"),
-		]);
-		await f.harness.session.prompt("Apply the fixture changes.");
-		expect(fs.existsSync(f.captured)).toBe(false);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "rewritten.txt"))).toBe(false);
-		expect(fs.readFileSync(path.join(f.harness.tempDir, "first.txt"), "utf8")).toBe("first\n");
-		expect(fs.readFileSync(path.join(f.harness.tempDir, "second.txt"), "utf8")).toBe("second\n");
-		expect(getToolResult(f.harness, "file").isError).toBe(false);
-	} finally {
-		f.cleanup();
-	}
-});
-
 it("reports the executed rewritten patch once to Codex PostToolUse", async () => {
 	const rewritten = patch("post-rewritten.txt");
-	const f = await fixture(rewritten, "full", true, { post: true });
+	const f = await fixture(rewritten, "full", { post: true });
 	try {
 		f.harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("file", structuredClone(original))], {
@@ -311,7 +285,7 @@ it("reports the executed rewritten patch once to Codex PostToolUse", async () =>
 it.each(["denied", "invalid", "unread", "conflict"])(
 	"does not run Codex PostToolUse for a %s call",
 	async (failure) => {
-		const f = await fixture(failure === "invalid" ? "not a patch" : patch("protected.txt"), "full", true, {
+		const f = await fixture(failure === "invalid" ? "not a patch" : patch("protected.txt"), "full", {
 			post: true,
 			deny: failure === "denied",
 			claudeRewrite: failure === "conflict",
@@ -341,7 +315,7 @@ it.each(["denied", "invalid", "unread", "conflict"])(
 it("preverifies every rewritten patch target before mutation and suppresses success posts on failure", async () => {
 	const rewrite =
 		"*** Begin Patch\n*** Add File: created.txt\n+created\n*** Add File: protected.txt\n+replacement\n*** End Patch";
-	const f = await fixture(rewrite, "full", true, { post: true });
+	const f = await fixture(rewrite, "full", { post: true });
 	try {
 		fs.writeFileSync(path.join(f.harness.tempDir, "protected.txt"), "keep\n");
 		f.harness.setResponses([
@@ -363,7 +337,7 @@ it("preverifies every rewritten patch target before mutation and suppresses succ
 });
 
 it("retains a native delete's pre-call patch for a post-only Codex observer", async () => {
-	const f = await fixture(patch("unused.txt"), "full", true, {
+	const f = await fixture(patch("unused.txt"), "full", {
 		post: true,
 		postOnly: true,
 	});
@@ -407,7 +381,7 @@ it("retains a native delete's pre-call patch for a post-only Codex observer", as
 });
 
 it("preserves native query batches' continue-after-failure behavior independently of Codex patch mode", async () => {
-	const f = await fixture(patch("unused.txt"), "full", false);
+	const f = await fixture(patch("unused.txt"), "full", { noHooks: true });
 	try {
 		const first = path.join(f.harness.tempDir, "first.txt"),
 			second = path.join(f.harness.tempDir, "second.txt");

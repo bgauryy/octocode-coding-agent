@@ -1,9 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { webLauncher } from "../../src/octocode/shared/web.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 
 it("revalidates a cached shared endpoint and replaces an unhealthy owner", async () => {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const opened: string[] = [];
 	const first = {
 		url: "http://one",
@@ -15,7 +15,7 @@ it("revalidates a cached shared endpoint and replaces an unhealthy owner", async
 		close: vi.fn(async () => undefined),
 		validate: vi.fn(async () => true),
 	};
-	const launch = webLauncher(fake.pi, async (url) => {
+	const launch = webLauncher(fake.api, async (url) => {
 		opened.push(url);
 	});
 	await launch("repo", async () => first, "activity");

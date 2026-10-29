@@ -32,7 +32,7 @@ import {
 import { ApiServer, type Connection } from "./server.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 
-/** Session entry (`pi.appendEntry`, never sent to the model) written for every turn an API client starts. */
+/** Session entry (`api.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";
 /** `messages.list` page size: the default, and the most one page holds (a larger `limit` gets this many; `earlier` reaches the rest). */
 const HISTORY_PAGE = 20;
@@ -56,19 +56,19 @@ export class OctocodeApi {
 	private lastAssistantText = "";
 	private pendingDelta = "";
 
-	private readonly pi: ExtensionAPI;
+	private readonly api: ExtensionAPI;
 	private readonly agents: AgentDirectory;
 	private readonly version: () => string | undefined;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly operations: ApiOperations;
 	constructor(
-		pi: ExtensionAPI,
+		api: ExtensionAPI,
 		agents: AgentDirectory,
 		version: () => string | undefined,
 		env: NodeJS.ProcessEnv = process.env,
 		operations: ApiOperations = {},
 	) {
-		this.pi = pi;
+		this.api = api;
 		this.agents = agents;
 		this.version = version;
 		this.env = env;
@@ -91,21 +91,21 @@ export class OctocodeApi {
 
 	/** Publish Octocode's events to subscribers. Cheap when nobody listens: the log only keeps a short ring buffer. */
 	observe(): void {
-		const { pi, log } = this;
+		const { api, log } = this;
 		const flushDelta = (): void => {
 			if (!this.pendingDelta) return;
 			const delta = boundedText(this.pendingDelta);
 			this.pendingDelta = "";
 			log.publish("message.delta", { delta });
 		};
-		registerExternalMessageRenderer(pi);
-		pi.on("agent_start", () => {
+		registerExternalMessageRenderer(api);
+		api.on("agent_start", () => {
 			// A new run: `wait` must never answer with the previous run's text.
 			this.lastResult = undefined;
 			this.pendingDelta = "";
 			if (this.server) log.publish("agent.start", {});
 		});
-		pi.on("agent_end", (event) => {
+		api.on("agent_end", (event) => {
 			if (!this.server) return;
 			flushDelta();
 			const last = [...event.messages].reverse().find((message) => message.role === "assistant");
@@ -117,25 +117,25 @@ export class OctocodeApi {
 		});
 		// `wait` answers once Octocode has settled: after agent_end it may still continue (a queued follow-up, a compaction
 		// retry), and the caller wants the final answer, not an intermediate one.
-		pi.on("agent_settled", (event) => {
+		api.on("agent_settled", (event) => {
 			if (!this.server) return;
 			const result = { ...(this.lastResult ?? { text: "" }), ...(event.aborted ? { stopReason: "aborted" } : {}) };
 			this.receipts.settle(result);
 			log.publish("agent.settled", result);
 		});
-		pi.on("message_end", (event) => {
+		api.on("message_end", (event) => {
 			if (!this.server) return;
 			const { role } = event.message;
 			if (role === "assistant") flushDelta();
 			if (role === "assistant" || role === "user")
 				log.publish("message", { role, text: boundedText(contentText(event.message.content, { separator: "" })) });
 		});
-		pi.on("message_update", (event) => {
+		api.on("message_update", (event) => {
 			if (!this.server) return;
 			const inner = event.assistantMessageEvent as { type?: string; delta?: unknown };
 			if (inner.type === "text_delta" && typeof inner.delta === "string") this.pendingDelta += inner.delta;
 		});
-		pi.on("tool_execution_start", (event) => {
+		api.on("tool_execution_start", (event) => {
 			if (!this.server) return;
 			log.publish("tool.start", {
 				id: event.toolCallId,
@@ -144,7 +144,7 @@ export class OctocodeApi {
 				...nesting(event.parentToolCallId),
 			});
 		});
-		pi.on("tool_execution_end", (event) => {
+		api.on("tool_execution_end", (event) => {
 			if (!this.server) return;
 			log.publish("tool.end", {
 				id: event.toolCallId,
@@ -154,7 +154,7 @@ export class OctocodeApi {
 				...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
 			});
 		});
-		pi.on("session_compact", () => {
+		api.on("session_compact", () => {
 			if (this.server) log.publish("compaction", {});
 			return undefined;
 		});
@@ -346,7 +346,7 @@ export class OctocodeApi {
 	/** Records an API-started turn in the session (a `octocode-external` entry), so what an outside program caused can be reviewed. */
 	private audit(data: Record<string, unknown>): void {
 		try {
-			this.pi.appendEntry(EXTERNAL_AUDIT_TYPE, { at: Date.now(), ...data });
+			this.api.appendEntry(EXTERNAL_AUDIT_TYPE, { at: Date.now(), ...data });
 		} catch {
 			// The session ended: nothing to record in.
 		}
@@ -356,7 +356,7 @@ export class OctocodeApi {
 	private send(params: Record<string, unknown>): Promise<unknown> {
 		return sendMessage(
 			{
-				pi: this.pi,
+				api: this.api,
 				agents: this.agents,
 				operations: this.operations,
 				receipts: this.receipts,

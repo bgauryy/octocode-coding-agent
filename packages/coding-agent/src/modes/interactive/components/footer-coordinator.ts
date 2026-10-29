@@ -12,7 +12,7 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 		thinking,
 	];
 	const identity = identityLabels.find((label) => visibleWidth(label) <= width) ?? thinking;
-	const selection = model ? `${model.provider}/${model.id}` : "No model selected · /providers";
+	const selection = model ? `${model.provider}/${model.id}` : "No model selected · /login";
 	const combined = `${identity} · ${selection}`;
 	const lines =
 		visibleWidth(combined) <= width

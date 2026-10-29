@@ -38,8 +38,8 @@ describe("issue #7253: manual compaction during an active response", () => {
 			compactionPolicy: { enabled: true, reserveTokens: 200, keepRecentTokens: 2 },
 			tools: [createNoopTool()],
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: `${event.reason} summary`,
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { Model, ProviderHeaders, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { getUserAgent } from "../utils/user-agent.ts";
 import { buildGoogleParams, type GoogleBaseOptions, resolveGoogleSimpleThinking } from "./google-shared/params.ts";
 import { streamGoogle } from "./google-shared/stream.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -54,7 +54,7 @@ function createClient(
 		httpOptions.baseUrl = model.baseUrl;
 		httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
 	}
-	const headers = providerHeadersToRecord({ "User-Agent": getPiUserAgent(), ...model.headers, ...optionsHeaders });
+	const headers = providerHeadersToRecord({ "User-Agent": getUserAgent(), ...model.headers, ...optionsHeaders });
 	if (headers) {
 		httpOptions.headers = headers;
 	}

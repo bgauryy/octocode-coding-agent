@@ -176,6 +176,18 @@ it("restores tools from a snapshot, updates progress, and retains retry status",
 	]);
 	expect(stream.snapshot?.status).toBe("retrying");
 });
+it("tracks the dialog a run waits on, and drops it when the dialog closes or the run settles", () => {
+	const stream = new ApplicationStream();
+	stream.accept(frame(0, { type: "snapshot", snapshot: { ...snapshot, streaming: true, runId: "r" } }));
+	const awaiting = { kind: "approval", title: "Run bash?" };
+	expect(stream.accept(frame(1, { type: "event", event: { type: "session.awaiting", awaiting } }))).toBe("applied");
+	expect(stream.snapshot?.awaiting).toEqual(awaiting);
+	stream.accept(frame(2, { type: "event", event: { type: "session.awaiting" } }));
+	expect(stream.snapshot?.awaiting).toBeUndefined();
+	stream.accept(frame(3, { type: "event", event: { type: "session.awaiting", awaiting } }));
+	stream.accept(frame(4, { type: "event", event: { type: "run.settled", runId: "r", aborted: true } }));
+	expect(stream.snapshot?.awaiting).toBeUndefined();
+});
 it("keeps a tool call's hint after progress and completion replace its text", () => {
 	const stream = new ApplicationStream();
 	stream.accept(frame(0, { type: "snapshot", snapshot }));

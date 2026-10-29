@@ -13,7 +13,7 @@ export interface CatalogSkill {
 const REFRESH_MS = 2_000;
 
 /**
- * The skills this session loaded, read through the host's resource snapshot (`pi.getSkillResourceSnapshot`): the same
+ * The skills this session loaded, read through the host's resource snapshot (`api.getSkillResourceSnapshot`): the same
  * inventory a subagent inherits, with extension, plugin and Claude/Codex skills included. Every `skill` call re-reads
  * it, so a skill installed or removed in the session shows on the next call.
  */

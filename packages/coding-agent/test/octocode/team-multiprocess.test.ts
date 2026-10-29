@@ -6,7 +6,7 @@ import { processStartTime } from "../../src/octocode/shared/process.ts";
 import type { Member } from "@octocodeai/octocode-contacts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 
@@ -136,8 +136,8 @@ describe("joining the team", () => {
 			}
 			return real.call(this, inUse);
 		});
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db });
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db });
 		team.start(fakeCtx({ cwd }));
 		const me = team.join();
 		expect(me.id).not.toBe("taken");
@@ -149,7 +149,7 @@ describe("joining the team", () => {
 		).toEqual([me.id, "taken"].sort());
 		expect(store.list().find((each) => each.id === "taken")?.pid).toBe(process.ppid);
 
-		const child = new Team(fakePi().pi, { OCTOCODE_AGENT_DB: db, [AGENT_ID_ENV]: "taken" });
+		const child = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: db, [AGENT_ID_ENV]: "taken" });
 		// A subagent's name is its parent's choice: it joins at start, and a name a running process holds is an error.
 		expect(() => child.start(fakeCtx({ cwd }))).toThrow(/held by another running agent/);
 		store.close();

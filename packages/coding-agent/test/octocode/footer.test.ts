@@ -6,7 +6,7 @@ import { STATUS } from "../../src/octocode/shared/status.ts";
 import * as importedModule2 from "../../src/octocode/ui/footer.ts";
 import { contextBar, type FooterState, footerLines } from "../../src/octocode/ui/footer.ts";
 import { reasoningTwin } from "../../src/octocode/ui/footer/notices.ts";
-import * as importedModule1 from "./fake-pi.ts";
+import * as importedModule1 from "./fake-host.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
 /** Records which colour token painted which text. */
@@ -241,13 +241,13 @@ describe("footer under a busy status row", () => {
 
 describe("footer wiring", () => {
 	it("replaces Octocode's footer, sums the session usage and samples context on events", async () => {
-		const { fakeCtx, fakePi } = await Promise.resolve(importedModule1);
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
-		const fake = fakePi();
-		(fake.pi as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "medium";
+		const fake = fakeHost();
+		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "medium";
 		// No compaction reserve: the gauge reads against the whole window.
-		(fake.pi as unknown as { getSettings: () => unknown }).getSettings = () => ({ compaction: { reserveTokens: 0 } });
-		registerFooter(fake.pi);
+		(fake.api as unknown as { getSettings: () => unknown }).getSettings = () => ({ compaction: { reserveTokens: 0 } });
+		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		let percent = 10;
 		ctx.model = { id: "model-x", reasoning: true, contextWindow: 100_000 };
@@ -307,13 +307,13 @@ describe("footer wiring", () => {
 	});
 
 	it("rebuilds the footer only when an input changed, samples context on replies and tree moves, not on tool results", async () => {
-		const { fakeCtx, fakePi } = await Promise.resolve(importedModule1);
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
-		const fake = fakePi();
-		(fake.pi as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "medium";
+		const fake = fakeHost();
+		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "medium";
 		// No compaction reserve: the gauge reads against the whole window.
-		(fake.pi as unknown as { getSettings: () => unknown }).getSettings = () => ({ compaction: { reserveTokens: 0 } });
-		registerFooter(fake.pi);
+		(fake.api as unknown as { getSettings: () => unknown }).getSettings = () => ({ compaction: { reserveTokens: 0 } });
+		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		let percent = 10;
 		let samples = 0;
@@ -372,15 +372,15 @@ describe("footer wiring", () => {
 	});
 
 	it("reads the gauge against the auto-compaction point and counts background subagent reports in the cost", async () => {
-		const { fakeCtx, fakePi } = await Promise.resolve(importedModule1);
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
-		const fake = fakePi();
-		(fake.pi as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
+		const fake = fakeHost();
+		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
 		// A 1M window uses the built-in reserve even if legacy overrides remain on disk.
-		(fake.pi as unknown as { getSettings: () => unknown }).getSettings = () => ({
+		(fake.api as unknown as { getSettings: () => unknown }).getSettings = () => ({
 			compaction: { reserveTokens: 40_000, modelOverrides: { "gw/big": { reserveTokens: 800_000 } } },
 		});
-		registerFooter(fake.pi);
+		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		ctx.model = { provider: "gw", id: "big", reasoning: false, contextWindow: 1_000_000 };
 		ctx.getContextUsage = () => ({ tokens: 150_000, contextWindow: 1_000_000, percent: 15 });
@@ -420,11 +420,11 @@ describe("footer wiring", () => {
 	});
 
 	it("marks usage from a model without pricing instead of counting it as free, and says so once", async () => {
-		const { fakeCtx, fakePi } = await Promise.resolve(importedModule1);
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
-		const fake = fakePi();
-		(fake.pi as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
-		registerFooter(fake.pi);
+		const fake = fakeHost();
+		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
+		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		const rates = (rate: number) => ({ cost: { input: rate, output: rate, cacheRead: rate, cacheWrite: rate } });
 		ctx.modelRegistry = { find: (provider: string) => (provider === "local" ? rates(0) : rates(3)) };
@@ -464,7 +464,7 @@ describe("footer wiring", () => {
 	});
 
 	it("says once when the model leaves out the reasoning its built-in twin declares", async () => {
-		const { fakeCtx, fakePi } = await Promise.resolve(importedModule1);
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
 		const builtIn = {
 			provider: "anthropic",
@@ -476,9 +476,9 @@ describe("footer wiring", () => {
 		expect(reasoningTwin(copy as never, [copy, builtIn] as never)).toBe(builtIn);
 		expect(reasoningTwin(builtIn as never, [copy, builtIn] as never)).toBeUndefined();
 		expect(reasoningTwin({ ...copy, id: "llama" } as never, [copy, builtIn] as never)).toBeUndefined();
-		const fake = fakePi();
-		(fake.pi as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
-		registerFooter(fake.pi);
+		const fake = fakeHost();
+		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
+		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		ctx.modelRegistry = { getAll: () => [copy, builtIn], find: () => undefined };
 		ctx.model = { ...copy, contextWindow: 200_000 };
@@ -510,7 +510,7 @@ describe("footer wiring", () => {
 describe("summary usage", () => {
 	const usage = (input: number, output: number, total: number) => ({ input, output, cacheRead: 0, cost: { total } });
 	it("counts compaction and branch summary spend on replay and as they happen", async () => {
-		const fake = importedModule1.fakePi();
+		const fake = importedModule1.fakeHost();
 		const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as any;
 		ctx.sessionManager.getEntries = () => [
 			{ type: "message", message: { role: "assistant", usage: usage(1_000, 100, 0.1) } },
@@ -518,7 +518,7 @@ describe("summary usage", () => {
 			{ type: "branch_summary", usage: usage(500, 50, 0.05) },
 			{ type: "compaction" },
 		];
-		importedModule2.registerFooter(fake.pi);
+		importedModule2.registerFooter(fake.api);
 		await fake.emit("session_start", {}, ctx);
 		const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
 			getGitBranch: () => null,
@@ -541,11 +541,11 @@ describe("run metrics", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
 		try {
-			const fake = importedModule1.fakePi();
+			const fake = importedModule1.fakeHost();
 			const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as any;
 			let entries: any[] = [{ type: "compaction" }];
 			ctx.sessionManager.getEntries = () => entries;
-			importedModule2.registerFooter(fake.pi);
+			importedModule2.registerFooter(fake.api);
 			await fake.emit("session_start", {}, ctx);
 			const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
 				getGitBranch: () => null,

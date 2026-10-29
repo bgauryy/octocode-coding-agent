@@ -10,7 +10,7 @@ import { runMcpCommand } from "../src/cli.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
 
-describe("pi mcp", () => {
+describe("octocode mcp", () => {
 	const dirs: string[] = [];
 
 	afterEach(() => {
@@ -18,7 +18,7 @@ describe("pi mcp", () => {
 	});
 
 	async function run(args: string[], servers: Record<string, unknown> | undefined, dir?: string) {
-		const agentDir = dir ?? mkdtempSync(join(tmpdir(), "pi-mcp-command-"));
+		const agentDir = dir ?? mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
 		if (!dir) dirs.push(agentDir);
 		if (servers) writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: servers }));
 		const output: string[] = [];
@@ -36,7 +36,7 @@ describe("pi mcp", () => {
 
 	const servers = {
 		fixture: { command: process.execPath, args: [FIXTURE] },
-		broken: { command: "pi-test-missing-mcp-server" },
+		broken: { command: "octocode-test-missing-mcp-server" },
 		parked: { command: process.execPath, args: [FIXTURE], enabled: false },
 		bad: { args: ["no command"] },
 	};
@@ -69,7 +69,7 @@ describe("pi mcp", () => {
 		expect(output).toContain("fixture: connected, 1 tool (direct, global) · enabled\n");
 		expect(output).toContain("  tools: echo");
 		expect(output).toContain(
-			`broken: failed (direct, global) · enabled\n  pi-test-missing-mcp-server\n  source: ${join(agentDir, "mcp.json")}\n  spawn pi-test-missing-mcp-server ENOENT`,
+			`broken: failed (direct, global) · enabled\n  octocode-test-missing-mcp-server\n  source: ${join(agentDir, "mcp.json")}\n  spawn octocode-test-missing-mcp-server ENOENT`,
 		);
 		expect(output).toContain("parked: disabled (direct, global)");
 		expect(output).toContain("config error: ");
@@ -88,7 +88,7 @@ describe("pi mcp", () => {
 		});
 		await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
 		const { port } = gateway.address() as AddressInfo;
-		const agentDir = mkdtempSync(join(tmpdir(), "pi-mcp-command-"));
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
 		dirs.push(agentDir);
 		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ anthropic: { type: "api_key", key: "stored-token" } }));
 		try {

@@ -12,7 +12,7 @@ import {
 	themeRamp,
 	tokensPerSecond,
 } from "../../src/octocode/ui/chrome.ts";
-import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 
 /** A theme with concrete colours, styled as a truecolor terminal would be. */
 const colorTheme = {
@@ -32,8 +32,8 @@ const colorTheme = {
 describe("chrome", () => {
 	it("expands the real transcript before its message rows render", async () => {
 		initTheme("dark", false);
-		const fake = fakePi();
-		registerUi(fake.pi, false);
+		const fake = fakeHost();
+		registerUi(fake.api, false);
 		const ctx = fakeCtx({ cwd: "/work/app" });
 		await fake.emit("session_start", { reason: "resume" }, ctx);
 		const chat = new Container();
@@ -56,8 +56,8 @@ describe("chrome", () => {
 	it("tells a fullscreen transcript its reasoning stubs can be clicked, and no other", async () => {
 		initTheme("dark", false);
 		const stub = async (mode?: "fullscreen" | "regular") => {
-			const fake = fakePi();
-			registerUi(fake.pi, false);
+			const fake = fakeHost();
+			registerUi(fake.api, false);
 			const ctx = fakeCtx({ cwd: "/work/app" });
 			await fake.emit("session_start", { reason: "resume" }, ctx);
 			const chat = new Container();
@@ -88,8 +88,8 @@ describe("chrome", () => {
 	});
 
 	it("dresses the TUI once per session start: banner header, footer, spinner; speed after a run", async () => {
-		const fake = fakePi();
-		registerUi(fake.pi, false);
+		const fake = fakeHost();
+		registerUi(fake.api, false);
 		expect(packageVersion()).toMatch(/^\d+\.\d+\.\d+/);
 		expect([...fake.handlers.keys()]).toEqual(
 			expect.arrayContaining(["agent_end", "agent_start", "message_end", "message_start", "session_start"]),
@@ -133,14 +133,14 @@ describe("chrome", () => {
 		expect(rpc.ui.header).toBeUndefined();
 
 		// Subagents get no chrome at all.
-		const child = fakePi();
-		registerUi(child.pi, true);
+		const child = fakeHost();
+		registerUi(child.api, true);
 		expect(child.handlers.size).toBe(0);
 	});
 
 	it("stops row clocks at run end", async () => {
-		const fake = fakePi();
-		registerUi(fake.pi, false);
+		const fake = fakeHost();
+		registerUi(fake.api, false);
 		const ctx = fakeCtx({ cwd: "/work/app" });
 		await fake.emit("session_start", { reason: "resume" }, ctx);
 		vi.useFakeTimers();
@@ -162,8 +162,8 @@ describe("chrome", () => {
 	it("shines the banner only on a fresh startup, never on /resume, /new, /fork, /reload or over a resumed transcript", async () => {
 		const frames = async (reason: string, branch: unknown[] = []): Promise<number> => {
 			// Octocode re-imports extensions for every runtime, so each session start meets fresh module state.
-			const fake = fakePi();
-			registerUi(fake.pi, false);
+			const fake = fakeHost();
+			registerUi(fake.api, false);
 			const ctx = fakeCtx({ cwd: "/work/app" });
 			ctx.sessionManager.getBranch = () => branch as never;
 			await fake.emit("session_start", { reason }, ctx);
@@ -177,7 +177,7 @@ describe("chrome", () => {
 			return requestRender.mock.calls.length;
 		};
 		expect(await frames("startup")).toBeGreaterThan(0);
-		// `pi -c`: the history renders first, so the banner sits above the viewport and a frame would redraw everything.
+		// `octocode -c`: the history renders first, so the banner sits above the viewport and a frame would redraw everything.
 		expect(await frames("startup", [{ type: "message" }])).toBe(0);
 		for (const reason of ["resume", "new", "fork", "reload"]) expect(await frames(reason)).toBe(0);
 	});

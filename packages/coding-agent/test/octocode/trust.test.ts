@@ -193,17 +193,17 @@ describe("project trust", () => {
 
 	it("trusts a project Octocode resolved trust for (it holds Octocode-protected resources) without asking", async () => {
 		const cwd = project({ ".octocode/agents/a.md": "# agent", ".octocode/settings.json": "{}" });
-		const piTrusted = ctx(cwd);
-		expect(await projectTrust(piTrusted)).toBe(true);
-		expect(piTrusted.ui.confirm).not.toHaveBeenCalled();
+		const trustedCtx = ctx(cwd);
+		expect(await projectTrust(trustedCtx)).toBe(true);
+		expect(trustedCtx.ui.confirm).not.toHaveBeenCalled();
 	});
 
 	it("does not extend Octocode's trust to hooks that start commands: they wait for /trust, which shows them", async () => {
 		const cwd = project({ ".codex/hooks.json": MCP, ".octocode/settings.json": "{}" });
-		const piTrusted = ctx(cwd);
-		expect(projectTrustNow(piTrusted)).toBeUndefined();
-		expect(await projectTrust(piTrusted)).toBe(false);
-		expect(piTrusted.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/trust/), "warning");
+		const trustedCtx = ctx(cwd);
+		expect(projectTrustNow(trustedCtx)).toBeUndefined();
+		expect(await projectTrust(trustedCtx)).toBe(false);
+		expect(trustedCtx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/trust/), "warning");
 		expect(describeProjectConfig(cwd)).toMatch(/hooks\.json:/);
 	});
 
@@ -220,10 +220,10 @@ describe("project trust", () => {
 			},
 		});
 		const cwd = project({ ".codex/hooks.json": hook, ".octocode/settings.json": "{}" });
-		const piTrusted = ctx(cwd);
-		expect(projectTrustNow(piTrusted)).toBeUndefined();
-		expect(await projectTrust(piTrusted)).toBe(false);
-		expect(piTrusted.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/trust/), "warning");
+		const trustedCtx = ctx(cwd);
+		expect(projectTrustNow(trustedCtx)).toBeUndefined();
+		expect(await projectTrust(trustedCtx)).toBe(false);
+		expect(trustedCtx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/trust/), "warning");
 		// /trust shows what it would call, with the input it sends.
 		expect(describeProjectConfig(cwd)).toContain("MCP github/create_issue");
 		expect(describeProjectConfig(cwd)).toContain("tool_input.command");

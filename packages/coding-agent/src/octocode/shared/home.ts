@@ -2,9 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
-import { getAgentDir, getOctocodeHome } from "../../config.ts";
+import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
-import { dirsToRepoRoot, repoKey } from "./home/repo.ts";
+import { sha256 } from "../../utils/atomic-file.ts";
+import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
 
 /** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */
 export const OCTOCODE_DIR = ".octocode";
@@ -232,6 +233,40 @@ interface WorkspacePaths {
 	hooks: string;
 	/** Scratch space for agent hand-offs (see `workspaceScratchDir`). */
 	tmp: string;
+}
+
+export interface ContextOptimizationDirs {
+	/** User-level skills and MCP servers, shared by every project. */
+	user: string;
+	/** Skills inside the repository of `cwd` and servers its `.octocode/mcp.json` defines; absent outside a repository. */
+	project?: { dir: string; root: string };
+}
+
+/**
+ * Where optimized skill descriptions and MCP files live, by the scope of what they describe. Both are in the agent
+ * directory, never in the repository: a project's folder is `projects/<name>-<hash>`, keyed by `repoKey(cwd).key`, so
+ * worktrees of one repository share it and two repositories with a same-named skill or server do not overwrite each
+ * other. Nothing is created.
+ */
+export function contextOptimizationDirs(cwd: string | undefined, agentDir = getAgentDir()): ContextOptimizationDirs {
+	const user = getContextOptimizationDir(agentDir);
+	const root = cwd === undefined ? undefined : workspaceRoot(cwd);
+	if (cwd === undefined || root === undefined) return { user };
+	const { key, name } = repoKey(cwd);
+	const slug = name.replace(/[^\w.-]/g, "_").slice(0, 40) || "project";
+	return { user, project: { dir: path.join(user, "projects", `${slug}-${sha256(key).slice(0, 12)}`), root } };
+}
+
+/** Whether `file` (symlinks resolved) belongs to the project of `dirs`, so its optimized text is stored there. */
+export function inContextProject(dirs: ContextOptimizationDirs, file: string): boolean {
+	if (!dirs.project) return false;
+	let real = file;
+	try {
+		real = fs.realpathSync(file);
+	} catch {
+		// A missing file keeps its own path.
+	}
+	return isWithin(real, dirs.project.root);
 }
 
 /** `<repo root>/.octocode` paths for `cwd`. Nothing is created. */

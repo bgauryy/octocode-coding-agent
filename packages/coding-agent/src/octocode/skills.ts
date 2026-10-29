@@ -5,6 +5,7 @@ import { getAgentDir, getNativeSkillsDir } from "../config.ts";
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { loadSkillsFromDir } from "../core/skills.ts";
 import { claudeConfigDir, codexConfigDir } from "../utils/host-config.ts";
+import { registerSkillDescriptions } from "./context-optimization/skills.ts";
 import { EXTRA_SKILLS_ENV, envFlag, SUBAGENT_ENV } from "./shared/env.ts";
 import { globalPaths, projectSkillDirs, workspacePaths } from "./shared/home.ts";
 import { projectTrust } from "./shared/trust.ts";
@@ -83,15 +84,16 @@ export function extraSkillsEnabled(env: NodeJS.ProcessEnv = process.env): boolea
 }
 
 /**
- * Skills the application ships (`octocode-compact-mcp`). A native subagent adopts its parent's inventory, so only a root
+ * Skills the application ships (`octocode-context-optimization`). A native subagent adopts its parent's inventory, so only a root
  * session discovers them; `OCTOCODE_EXTRA_SKILLS=0` does not remove them, because they are not another agent's folders.
  */
 export function bundledSkillDirs(env: NodeJS.ProcessEnv = process.env): string[] {
 	return envFlag(env, SUBAGENT_ENV) ? [] : [getNativeSkillsDir()].filter(isDirectory);
 }
 
-export function registerSkills(pi: ExtensionAPI): void {
-	pi.on("resources_discover", async (event, ctx) => {
+export function registerSkills(api: ExtensionAPI): void {
+	registerSkillDescriptions(api, { isSubagent: envFlag(process.env, SUBAGENT_ENV) });
+	api.on("resources_discover", async (event, ctx) => {
 		const bundled = bundledSkillDirs();
 		if (!extraSkillsEnabled()) return { skillPaths: bundled };
 		const trusted = await projectTrust({

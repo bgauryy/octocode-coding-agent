@@ -91,8 +91,8 @@ export function formatAnswers(result: AskResult): string {
 	return [...answered, declined, recovery].join("\n");
 }
 
-export function registerAskUser(pi: ExtensionAPI): void {
-	pi.registerTool(
+export function registerAskUser(api: ExtensionAPI): void {
+	api.registerTool(
 		timedTool({
 			name: "askUser",
 			label: "Ask user",

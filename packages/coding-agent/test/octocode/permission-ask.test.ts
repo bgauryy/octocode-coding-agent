@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
 import { PERMISSION_ENV, PERMISSION_GRANTS_ENV, PERMISSION_NONCE_FILE_ENV } from "../../src/octocode/shared/env.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
 
@@ -23,10 +23,10 @@ function setup(
 		inputs?: Array<string | undefined>;
 	} = {},
 ) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	// Sessions start in full; these fixtures export workspace, or manual for the strict (`trusted: false`) case.
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: options.env ?? { OCTOCODE_PERMISSION: options.trusted === false ? "manual" : "workspace" },
 		isSubagent: options.isSubagent ?? false,
 	});

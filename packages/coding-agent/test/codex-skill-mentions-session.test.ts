@@ -223,8 +223,8 @@ it("keeps existing slash invocation from injecting the same skill twice", async 
 it("runs input transformation on original text before selecting the transformed mentions", async () => {
 	const seen: string[] = [];
 	const f = await fixture(undefined, [
-		(pi) => {
-			pi.on("input", (event) => {
+		(api) => {
+			api.on("input", (event) => {
 				seen.push(event.text);
 				return {
 					action: "transform",
@@ -247,8 +247,8 @@ it("runs input transformation on original text before selecting the transformed 
 
 it("does not read a skill or request a provider after an input handler consumes the prompt", async () => {
 	const f = await fixture(undefined, [
-		(pi) => {
-			pi.on("input", () => ({ action: "handled" }));
+		(api) => {
+			api.on("input", () => ({ action: "handled" }));
 		},
 	]);
 	const read = vi.spyOn(fs, "readFileSync");
@@ -366,8 +366,8 @@ it.each(["steer", "followUp"] as const)(
 				release = resolve;
 			});
 		const f = await fixture(undefined, [
-			(pi) => {
-				pi.registerTool({
+			(api) => {
+				api.registerTool({
 					name: "wait",
 					label: "wait",
 					description: "Controlled fixture wait",

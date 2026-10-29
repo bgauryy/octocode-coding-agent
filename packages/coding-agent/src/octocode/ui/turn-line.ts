@@ -4,7 +4,7 @@ import { setToolInterruptShown } from "../../core/application/interrupted-tools.
 import { isRecord } from "../../utils/guards.ts";
 import { formatDuration } from "../shared/format.ts";
 
-/** The session entry (`pi.appendEntry`, never sent to the model) that carries one turn's summary line. */
+/** The session entry (`api.appendEntry`, never sent to the model) that carries one turn's summary line. */
 export const TURN_LINE_TYPE = "octocode-turn";
 
 /** A turn shorter than this, with no tool, is not worth a line. */
@@ -26,28 +26,28 @@ export function turnLineText(data: unknown): string | undefined {
  * Also records whether a tool of the run ended under an interrupt, which the message that follows the aborted row
  * reads so the interrupt is said once.
  */
-export function registerTurnLine(pi: ExtensionAPI): void {
+export function registerTurnLine(api: ExtensionAPI): void {
 	let startedAt = 0;
 	let tools = 0;
-	pi.registerEntryRenderer(TURN_LINE_TYPE, (entry, _options, theme) => {
+	api.registerEntryRenderer(TURN_LINE_TYPE, (entry, _options, theme) => {
 		const text = turnLineText(entry.data);
 		return text ? new Text(theme.fg("dim", text), 1, 0) : undefined;
 	});
-	pi.on("agent_start", async () => {
+	api.on("agent_start", async () => {
 		startedAt = Date.now();
 		tools = 0;
 		setToolInterruptShown(false);
 	});
-	pi.on("tool_execution_start", async (event) => {
+	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) tools += 1;
 	});
-	pi.on("tool_execution_end", async (event, ctx) => {
+	api.on("tool_execution_end", async (event, ctx) => {
 		if (!event.parentToolCallId && event.isError && ctx.signal?.aborted) setToolInterruptShown(true);
 	});
-	pi.on("agent_end", async (_event, ctx) => {
+	api.on("agent_end", async (_event, ctx) => {
 		const ms = Date.now() - startedAt;
 		if (!ctx.hasUI || startedAt === 0 || (ms < MIN_TURN_MS && tools === 0)) return;
-		pi.appendEntry(TURN_LINE_TYPE, { ms, tools });
+		api.appendEntry(TURN_LINE_TYPE, { ms, tools });
 		startedAt = 0;
 	});
 }

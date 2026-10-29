@@ -19,7 +19,7 @@ import {
 	profileReach,
 	profileSelectsTool,
 } from "../../src/octocode/subagents/profiles.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("profile selectors against native Octocode tool exposure", () => {
@@ -161,7 +161,11 @@ describe("the spawn grant for a session", () => {
 	const text = (body: string, front = "") => `---\nname: worker\ndescription: Works\n${front}---\n${body}`;
 
 	it("is keyed by the profile's content: an edit under the same name asks again, the same content does not", async () => {
-		const permission = new Permission({ pi: fakePi().pi, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
+		const permission = new Permission({
+			api: fakeHost().api,
+			env: { OCTOCODE_PERMISSION: "manual" },
+			isSubagent: false,
+		});
 		const ctx = fakeCtx({ cwd: tmp() });
 		permission.start(ctx);
 		const grant = sessionOption("worker subagents");

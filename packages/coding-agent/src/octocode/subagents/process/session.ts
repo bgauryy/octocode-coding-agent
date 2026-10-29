@@ -46,8 +46,9 @@ export function buildAgentArgs(
 ): string[] {
 	const args = ["--mode", "rpc", "--session-dir", session.dir, "--session-id", session.id];
 	// `--no-extensions` also turns off Octocode's built-in MCP extension, which serves Octocode's research tools and the
-	// user's own MCP servers: every specialist needs local research.
-	args.push("--no-extensions", "-e", "builtin:mcp");
+	// user's own MCP servers: every specialist needs local research. A lean child runs without any MCP server.
+	if (profile?.lean) args.push("--no-extensions", "--no-mcp");
+	else args.push("--no-extensions", "-e", "builtin:mcp");
 	// `model` is already resolved (`provider/id`, optionally `:thinking`); none means the parent's model. The profile's own
 	// preference is routed by `routeModel` before this, so an unavailable one never reaches Octocode.
 	if (model) args.push("--model", model);

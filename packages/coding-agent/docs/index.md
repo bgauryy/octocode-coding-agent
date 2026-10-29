@@ -4,9 +4,10 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 ## Native agent
 
-- [All commands and aliases](commands.md)
+- [All commands](commands.md)
 - [Native features and migration from the Pi extension](native-features.md)
 - [Configuration locations and controls](../../../CONFIGURATIONS.md)
+- [Add hooks, plugins and extensions](../../../PLUGINS.md)
 - [Configuration and Pi compatibility](configuration.md)
 - [Permissions and source-rule compatibility](permissions.md)
 - [Agent instructions and subagent roles](instructions.md)
@@ -31,6 +32,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Optional native debugger](debugging.md)
 - [Extensions](extensions.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
+- [Hook events: what each source profile accepts](hook-events.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
 - [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md)
 - [Packages](packages.md)
@@ -50,7 +52,8 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Agent communication and worker lifecycle](../../../docs/AGENT_COMMUNICATION.md)
 - [Native feature architecture and flows](../../../docs/FEATURES.md)
 - [Shared entities and contracts](../../../docs/ENTITIES.md)
-- [Data and presentation architecture](../../../docs/DATA_PRESENTATION.md)
+- [Context management: request contents, caching and compaction](../../../docs/CONTEXT.md)
+- [Data and presentation architecture (historical snapshot; superseded by the application and interface boundaries page)](../../../docs/DATA_PRESENTATION.md)
 - [Browser workspace review](../../../docs/WEBVIEW_REVIEW.md)
 - [Provider protocol and authentication audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md)
 

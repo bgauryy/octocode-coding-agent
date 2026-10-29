@@ -1,3 +1,0 @@
-[mcp_servers.octocode-local]
-command = "node"
-args = ["/Users/bgaryy/code/octocode/packages/octocode-mcp/dist/index.js"]

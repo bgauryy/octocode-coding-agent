@@ -1,4 +1,4 @@
-import type { Api, Model, StreamOptions } from "@octocodeai/octocode-ai";
+import { type Api, type Model, resolveModelCapabilities, type StreamOptions } from "@octocodeai/octocode-ai";
 import {
 	type CachePreferenceLayer,
 	cacheEnvironmentPreferences,
@@ -49,21 +49,6 @@ function describeProviderManaged(api: Api, history: Policy["cacheRetention"]): s
 	}
 }
 
-/** Whether the request carries Anthropic-style cache markers: Anthropic Messages, Bedrock Claude, OpenRouter Claude. */
-export function usesAnthropicMarkers(model: Model<Api>): boolean {
-	const openRouterClaude =
-		model.api === "openai-completions" &&
-		((model as Model<"openai-completions">).compat?.cacheControlFormat === "anthropic" ||
-			(model.provider === "openrouter" && /^~?anthropic\//.test(model.id)));
-	const bedrockClaude = model.api === "bedrock-converse-stream" && /anthropic[./]claude/i.test(model.id);
-	return model.api === "anthropic-messages" || bedrockClaude || openRouterClaude;
-}
-
-/** Whether a marker-based model accepts the one-hour tier (its compat does not turn long retention off). */
-export function supportsOneHourCache(model: Model<Api>): boolean {
-	return (model.compat as { supportsLongCacheRetention?: boolean } | undefined)?.supportsLongCacheRetention !== false;
-}
-
 /** Anthropic marker semantics, shared by Anthropic, Bedrock Claude and OpenRouter Claude. */
 function describeMarkers({ cacheRetention: history, instructionCacheRetention: instructions }: Policy, long: boolean) {
 	if (history === "none") return "No cache markers are sent, so nothing is written to the cache.";
@@ -84,11 +69,9 @@ function describeMarkers({ cacheRetention: history, instructionCacheRetention: i
 function describeOpenAIResponses(model: Model<"openai-responses">, policy: Policy, subscription: boolean): string {
 	const { cacheRetention: history, instructionCacheRetention: instructions } = policy;
 	if (subscription) return "Subscription credentials: API-only retention controls omitted.";
-	const compat = model.compat;
-	const long =
-		compat?.supportsLongCacheRetention ??
-		(model.provider === "openai" || new URL(model.baseUrl).hostname === "api.openai.com");
-	if (compat?.supportsExplicitPromptCacheMode) {
+	const cache = resolveModelCapabilities(model).cache;
+	const long = cache.lifetimes.long !== undefined;
+	if (cache.mechanism === "explicit-breakpoint") {
 		const instruction = instructions === "none" ? undefined : instructions === "long" && long ? "12h" : "30m";
 		if (history === "none") {
 			return instruction
@@ -112,8 +95,9 @@ export function describeCachePolicy(
 ): string {
 	const { cacheRetention: history, instructionCacheRetention: instructions } = policy.options;
 	let effective: string;
-	if (usesAnthropicMarkers(model)) {
-		effective = describeMarkers(policy.options, supportsOneHourCache(model));
+	const cache = resolveModelCapabilities(model).cache;
+	if (cache.mechanism === "markers") {
+		effective = describeMarkers(policy.options, cache.lifetimes.long !== undefined);
 	} else if (model.api === "openai-responses") {
 		effective = describeOpenAIResponses(model as Model<"openai-responses">, policy.options, subscription);
 	} else {

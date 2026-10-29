@@ -55,8 +55,8 @@ it("reports parser regressions and LSP issues after native file edits through li
 		extensionFactories: [
 			{
 				name: "faux",
-				factory: (pi) =>
-					pi.registerProvider("faux", {
+				factory: (api) =>
+					api.registerProvider("faux", {
 						name: "Faux",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",

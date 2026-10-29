@@ -48,7 +48,7 @@ const reply = (model: TestModel, usage: Record<string, number>, extra: Record<st
 });
 
 /** A Octocode double whose registry composes `registerProvider` models the way Octocode does: a registration replaces the provider's models. */
-function fakePi(models: TestModel[]) {
+function fakeHost(models: TestModel[]) {
 	const handlers = new Map<string, Handler>();
 	let catalog = [...models];
 	const registerProvider = vi.fn((name: string, config: { models: TestModel[] }) => {
@@ -57,7 +57,7 @@ function fakePi(models: TestModel[]) {
 			...config.models.map((model) => ({ ...model, provider: name })),
 		];
 	});
-	const pi = {
+	const api = {
 		on: (name: string, handler: Handler) => {
 			handlers.set(name, handler);
 			return undefined;
@@ -83,7 +83,7 @@ function fakePi(models: TestModel[]) {
 		getContextUsage: () => ({ tokens: 1, contextWindow: 1_000_000, percent: usage.percent }),
 	};
 	return {
-		pi,
+		api,
 		ctx,
 		handlers,
 		registerProvider,
@@ -106,9 +106,9 @@ const turnEnd = (entries: Array<{ id: string; message: unknown }>, message: unkn
 });
 
 function compaction(models: TestModel[]) {
-	const pi = fakePi(models);
-	registerCompaction(pi.pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
-	return pi;
+	const api = fakeHost(models);
+	registerCompaction(api.api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
+	return api;
 }
 
 describe("request size", () => {
@@ -198,14 +198,14 @@ describe("prompt-cache lifetimes for models that declare none", () => {
 
 	it("keeps the inferred lifetime for idle-warming decisions when the registry refuses the registration, and does not retry it every turn", () => {
 		const model = opus();
-		const pi = fakePi([model]);
-		pi.registerProvider.mockImplementation(() => {
+		const api = fakeHost([model]);
+		api.registerProvider.mockImplementation(() => {
 			throw new Error("refused");
 		});
 		const lifetimes = new PromptCacheLifetimes();
-		lifetimes.observe(pi.pi, pi.ctx as never, reply(model, { cacheRead: 5 }));
-		lifetimes.observe(pi.pi, pi.ctx as never, reply(model, { cacheRead: 5 }));
-		expect(pi.registerProvider).toHaveBeenCalledOnce();
+		lifetimes.observe(api.api, api.ctx as never, reply(model, { cacheRead: 5 }));
+		lifetimes.observe(api.api, api.ctx as never, reply(model, { cacheRead: 5 }));
+		expect(api.registerProvider).toHaveBeenCalledOnce();
 		expect(lifetimes.of(model as never)).toEqual({ short: 300, long: 3600 });
 		expect(lifetimes.of(opus({ id: "never-cached" }) as never)).toBeUndefined();
 	});
@@ -223,18 +223,18 @@ describe("granted tier and warming", () => {
 
 	it("learns from cacheWrite1h that the provider granted only 5 minutes, and supplies a 300 s long tier", () => {
 		const model = opus();
-		const pi = fakePi([model]);
+		const api = fakeHost([model]);
 		const lifetimes = new PromptCacheLifetimes();
 		const long = { [CACHE_RETENTION_ENV]: "long" };
-		lifetimes.observe(pi.pi, pi.ctx as never, reply(model, { cacheWrite: 900, cacheWrite1h: 900 }), long);
-		expect(pi.ctx.model?.promptCache).toEqual({ short: 300, long: 3600 });
-		lifetimes.observe(pi.pi, pi.ctx as never, reply(model, { cacheWrite: 900, cacheWrite1h: 0 }), long);
-		expect(pi.registerProvider).toHaveBeenCalledTimes(2);
-		expect(pi.ctx.model?.promptCache).toEqual({ short: 300, long: 300 });
-		expect(lifetimes.of(pi.ctx.model as never)).toEqual({ short: 300, long: 300 });
+		lifetimes.observe(api.api, api.ctx as never, reply(model, { cacheWrite: 900, cacheWrite1h: 900 }), long);
+		expect(api.ctx.model?.promptCache).toEqual({ short: 300, long: 3600 });
+		lifetimes.observe(api.api, api.ctx as never, reply(model, { cacheWrite: 900, cacheWrite1h: 0 }), long);
+		expect(api.registerProvider).toHaveBeenCalledTimes(2);
+		expect(api.ctx.model?.promptCache).toEqual({ short: 300, long: 300 });
+		expect(lifetimes.of(api.ctx.model as never)).toEqual({ short: 300, long: 300 });
 		// Learned once: later replies change nothing.
-		lifetimes.observe(pi.pi, pi.ctx as never, reply(model, { cacheWrite: 900, cacheWrite1h: 0 }), long);
-		expect(pi.registerProvider).toHaveBeenCalledTimes(2);
+		lifetimes.observe(api.api, api.ctx as never, reply(model, { cacheWrite: 900, cacheWrite1h: 0 }), long);
+		expect(api.registerProvider).toHaveBeenCalledTimes(2);
 	});
 
 	it("decides an idle refresh from the session's own idle gaps, and leaves streaming refreshes to Octocode", () => {

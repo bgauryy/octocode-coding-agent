@@ -152,12 +152,12 @@ it("connects a reviewed plugin server through the MCP owner and makes it callabl
 		agentDir,
 		nativeFeatures: false,
 		extensionFactories: [
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 				return createMcpExtension({
 					loadConfig: () => ({ servers: [], errors: [] }),
 					createTransport: () => pair.client,
-				})(pi);
+				})(host);
 			},
 		],
 	});
@@ -249,8 +249,8 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
 		agentDir,
 		settingsManager: settings,
 		extensionFactories: [
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 			},
 		],
 	});

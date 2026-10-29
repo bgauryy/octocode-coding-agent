@@ -137,7 +137,7 @@ Skill content here.`,
 		});
 
 		it("should ignore extra markdown files in auto-discovered skill dirs", async () => {
-			const skillDir = join(agentDir, "skills", "pi-skills", "browser-tools");
+			const skillDir = join(agentDir, "skills", "octocode-skills", "browser-tools");
 			mkdirSync(skillDir, { recursive: true });
 			writeFileSync(
 				join(skillDir, "SKILL.md"),
@@ -283,8 +283,8 @@ Project skill`,
 			mkdirSync(sharedExtDir, { recursive: true });
 			writeFileSync(
 				join(sharedExtDir, "shared.ts"),
-				`export default function(pi) {
-	pi.registerCommand("shared", {
+				`export default function(api) {
+	api.registerCommand("shared", {
 		description: "shared command",
 		handler: async () => {},
 	});
@@ -318,15 +318,15 @@ Project skill`,
 			const projectExtDir = join(cwd, ".octocode", "extensions");
 			mkdirSync(userExtDir, { recursive: true });
 			mkdirSync(projectExtDir, { recursive: true });
-			const loadCountKey = `__piTrustPreloadCount_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			const loadCountKey = `__trustPreloadCount_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			const globalState = globalThis as typeof globalThis & Record<string, number | undefined>;
 
 			writeFileSync(
 				join(userExtDir, "user.ts"),
 				`globalThis[${JSON.stringify(loadCountKey)}] = (globalThis[${JSON.stringify(loadCountKey)}] ?? 0) + 1;
-export default function(pi) {
-	pi.on("project_trust", () => ({ trusted: "yes" }));
-	pi.registerCommand("user-trust", {
+export default function(api) {
+	api.on("project_trust", () => ({ trusted: "yes" }));
+	api.registerCommand("user-trust", {
 		description: "user trust",
 		handler: async () => {},
 	});
@@ -334,8 +334,8 @@ export default function(pi) {
 			);
 			writeFileSync(
 				join(projectExtDir, "project.ts"),
-				`export default function(pi) {
-	pi.registerCommand("project-trusted", {
+				`export default function(api) {
+	api.registerCommand("project-trusted", {
 		description: "project trusted",
 		handler: async () => {},
 	});
@@ -371,12 +371,12 @@ export default function(pi) {
 
 			writeFileSync(
 				join(projectExtDir, "project.ts"),
-				`export default function(pi) {
-	pi.registerCommand("deploy", {
+				`export default function(api) {
+	api.registerCommand("deploy", {
 		description: "project deploy",
 		handler: async () => {},
 	});
-	pi.registerCommand("project-only", {
+	api.registerCommand("project-only", {
 		description: "project only",
 		handler: async () => {},
 	});
@@ -385,12 +385,12 @@ export default function(pi) {
 
 			writeFileSync(
 				join(userExtDir, "user.ts"),
-				`export default function(pi) {
-	pi.registerCommand("deploy", {
+				`export default function(api) {
+	api.registerCommand("deploy", {
 		description: "user deploy",
 		handler: async () => {},
 	});
-	pi.registerCommand("user-only", {
+	api.registerCommand("user-only", {
 		description: "user only",
 		handler: async () => {},
 	});
@@ -558,10 +558,10 @@ Content`,
 			expect(agentsFiles).toEqual([]);
 		});
 
-		it("should discover SYSTEM.md from cwd/.pi", async () => {
-			const piDir = join(cwd, ".octocode");
-			mkdirSync(piDir, { recursive: true });
-			writeFileSync(join(piDir, "SYSTEM.md"), "You are a helpful assistant.");
+		it("should discover SYSTEM.md from cwd/.octocode", async () => {
+			const octocodeDir = join(cwd, ".octocode");
+			mkdirSync(octocodeDir, { recursive: true });
+			writeFileSync(join(octocodeDir, "SYSTEM.md"), "You are a helpful assistant.");
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -575,16 +575,16 @@ Content`,
 		});
 
 		it("should skip project resources that require trust when project is not trusted", async () => {
-			const piDir = join(cwd, ".octocode");
-			const extensionsDir = join(piDir, "extensions");
-			const skillDir = join(piDir, "skills", "project-skill");
-			const promptsDir = join(piDir, "prompts");
-			const themesDir = join(piDir, "themes");
+			const octocodeDir = join(cwd, ".octocode");
+			const extensionsDir = join(octocodeDir, "extensions");
+			const skillDir = join(octocodeDir, "skills", "project-skill");
+			const promptsDir = join(octocodeDir, "prompts");
+			const themesDir = join(octocodeDir, "themes");
 			mkdirSync(extensionsDir, { recursive: true });
 			mkdirSync(skillDir, { recursive: true });
 			mkdirSync(promptsDir, { recursive: true });
 			mkdirSync(themesDir, { recursive: true });
-			writeFileSync(join(piDir, "SYSTEM.md"), "Project system prompt.");
+			writeFileSync(join(octocodeDir, "SYSTEM.md"), "Project system prompt.");
 			writeFileSync(join(agentDir, "SYSTEM.md"), "Global system prompt.");
 			writeFileSync(join(agentDir, "AGENTS.md"), "Global instructions");
 			writeFileSync(join(cwd, "AGENTS.md"), "Project instructions");
@@ -619,9 +619,9 @@ Project skill content`,
 		});
 
 		it("should discover APPEND_SYSTEM.md", async () => {
-			const piDir = join(cwd, ".octocode");
-			mkdirSync(piDir, { recursive: true });
-			writeFileSync(join(piDir, "APPEND_SYSTEM.md"), "Additional instructions.");
+			const octocodeDir = join(cwd, ".octocode");
+			mkdirSync(octocodeDir, { recursive: true });
+			writeFileSync(join(octocodeDir, "APPEND_SYSTEM.md"), "Additional instructions.");
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -637,9 +637,9 @@ Project skill content`,
 
 	describe("system prompt sources", () => {
 		it("exposes discovered project SYSTEM.md as the system prompt source", async () => {
-			const piDir = join(cwd, ".octocode");
-			const systemPromptPath = join(piDir, "SYSTEM.md");
-			mkdirSync(piDir, { recursive: true });
+			const octocodeDir = join(cwd, ".octocode");
+			const systemPromptPath = join(octocodeDir, "SYSTEM.md");
+			mkdirSync(octocodeDir, { recursive: true });
 			writeFileSync(systemPromptPath, "Project system prompt.");
 
 			const loader = new DefaultResourceLoader({
@@ -702,9 +702,9 @@ Project skill content`,
 		});
 
 		it("exposes discovered APPEND_SYSTEM.md as an append system prompt source", async () => {
-			const piDir = join(cwd, ".octocode");
-			const appendSystemPromptPath = join(piDir, "APPEND_SYSTEM.md");
-			mkdirSync(piDir, { recursive: true });
+			const octocodeDir = join(cwd, ".octocode");
+			const appendSystemPromptPath = join(octocodeDir, "APPEND_SYSTEM.md");
+			mkdirSync(octocodeDir, { recursive: true });
 			writeFileSync(appendSystemPromptPath, "Project append prompt.");
 
 			const loader = new DefaultResourceLoader({
@@ -1174,8 +1174,8 @@ Content`,
 				`
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(api: ExtensionAPI) {
+  api.registerTool({
     name: "duplicate-tool",
     description: "First",
     parameters: Type.Object({}),
@@ -1189,8 +1189,8 @@ export default function(pi: ExtensionAPI) {
 				`
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(api: ExtensionAPI) {
+  api.registerTool({
     name: "duplicate-tool",
     description: "Second",
     parameters: Type.Object({}),
@@ -1221,14 +1221,14 @@ export default function(pi: ExtensionAPI) {
 				`
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(api: ExtensionAPI) {
+  api.registerTool({
     name: "duplicate-tool",
     description: "global tool",
     parameters: Type.Object({}),
     execute: async () => ({ result: "global" }),
   });
-  pi.registerCommand("deploy", {
+  api.registerCommand("deploy", {
     description: "global command",
     handler: async () => {},
   });
@@ -1240,14 +1240,14 @@ export default function(pi: ExtensionAPI) {
 				`
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(api: ExtensionAPI) {
+  api.registerTool({
     name: "duplicate-tool",
     description: "explicit tool",
     parameters: Type.Object({}),
     execute: async () => ({ result: "explicit" }),
   });
-  pi.registerCommand("deploy", {
+  api.registerCommand("deploy", {
     description: "explicit command",
     handler: async () => {},
   });
@@ -1290,8 +1290,8 @@ export default function(pi: ExtensionAPI) {
 				join(globalExtDir, "other-mcp.ts"),
 				`
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
-export default function(pi: ExtensionAPI) {
-  pi.registerCommand("mcp", { description: "other mcp", handler: async () => {} });
+export default function(api: ExtensionAPI) {
+  api.registerCommand("mcp", { description: "other mcp", handler: async () => {} });
 }`,
 			);
 
@@ -1304,12 +1304,12 @@ export default function(pi: ExtensionAPI) {
 					{
 						name: "mcp",
 						replaceable: true,
-						factory: (pi) => pi.registerCommand("mcp", { description: "built-in mcp", handler: async () => {} }),
+						factory: (api) => api.registerCommand("mcp", { description: "built-in mcp", handler: async () => {} }),
 					},
 					{
 						name: "llama",
 						replaceable: true,
-						factory: (pi) => pi.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
+						factory: (api) => api.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
 					},
 				],
 			});

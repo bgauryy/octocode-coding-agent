@@ -135,7 +135,7 @@ export function timed<A extends unknown[], R>(execute: (...args: A) => Promise<R
 }
 
 /**
- * `pi.registerTool(timedTool({ ... }))`: the tool with its `execute` wrapped by `timed`. Prefer this to
+ * `api.registerTool(timedTool({ ... }))`: the tool with its `execute` wrapped by `timed`. Prefer this to
  * `execute: timed(...)`, which loses the parameter types Octocode's generic `registerTool` would infer. `exclusive` adds the
  * one-call-at-a-time lock of `exclusive()`; its wait is included in `queuedMs`.
  */

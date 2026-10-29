@@ -4,7 +4,7 @@ import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts"
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp, allSections } from "./helpers.ts";
 
 /**
@@ -33,8 +33,8 @@ describe("read-only subagent roles", () => {
 		const policy = async (readOnly: boolean) => {
 			vi.stubEnv(ROLE_PROMPT_FILE_ENV, writeRolePrompt("Review the diff.", tmp()));
 			vi.stubEnv(READ_ONLY_ENV, readOnly ? "1" : "");
-			const fake = fakePi();
-			registerTurnSetup(fake.pi, {
+			const fake = fakeHost();
+			registerTurnSetup(fake.api, {
 				isSubagent: true,
 				profiles: () => new Map(),
 			});
@@ -56,8 +56,8 @@ describe("read-only subagent roles", () => {
 
 	it("does not infer a read-only role from a main session without file tools", async () => {
 		for (const selectedTools of [["bash"], ["debug"]]) {
-			const fake = fakePi();
-			registerTurnSetup(fake.pi, {
+			const fake = fakeHost();
+			registerTurnSetup(fake.api, {
 				isSubagent: false,
 				profiles: () => new Map(),
 			});

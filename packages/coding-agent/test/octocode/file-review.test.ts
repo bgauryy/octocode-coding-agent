@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { askReview, describeChange } from "../../src/octocode/files/review.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
@@ -155,9 +155,9 @@ describe("file change review", () => {
 
 	it("closes a revoked file review without writing and lets the next review open", async () => {
 		const cwd = tmp();
-		const fake = fakePi();
+		const fake = fakeHost();
 		const permission = fakePermission("manual");
-		registerFileTool(fake.pi, new FileGuard(), permission);
+		registerFileTool(fake.api, new FileGuard(), permission);
 		const tool = fake.tools.get("file")!;
 		const ctx = fakeCtx({ cwd });
 		let reviewSignal: AbortSignal | undefined;

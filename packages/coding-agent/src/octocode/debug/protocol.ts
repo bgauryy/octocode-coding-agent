@@ -1,13 +1,39 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { Socket } from "node:net";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 const MAX_HEADER = 1024;
 const MAX_BODY = 1024 * 1024;
 const MAX_BUFFER = MAX_BODY + MAX_HEADER;
 const DEADLINE_MS = 10_000;
+/** Cap on items read from any DAP list: frames, scopes, variables, threads, breakpoints. */
+export const MAX_ITEMS = 100;
 
 export type DapMessage = Record<string, unknown>;
+/** Answers one reverse request with a response body, or returns undefined to refuse it. */
+export type ReverseRequestHandler = (
+	command: string,
+	args: Record<string, unknown>,
+) => Promise<Record<string, unknown>> | undefined;
 
-/** One bounded stdio DAP connection; never interprets reverse requests as authority to run commands. */
+export function body(message: DapMessage): Record<string, unknown> {
+	return isRecord(message.body) ? message.body : {};
+}
+
+export function objects(value: unknown): Record<string, unknown>[] {
+	return Array.isArray(value) ? value.slice(0, MAX_ITEMS).filter(isRecord) : [];
+}
+
+/** Asks a process to exit, then kills it if it is still running a second later. */
+export function stopProcess(child: ChildProcessWithoutNullStreams): void {
+	if (child.exitCode !== null) return;
+	if (!child.killed) child.kill();
+	setTimeout(() => {
+		if (child.exitCode === null) child.kill("SIGKILL");
+	}, 1000).unref();
+}
+
+/** One bounded DAP connection; it answers only the reverse requests its owner opts into, never `runInTerminal`. */
 export class DapProtocol {
 	#buffer = Buffer.alloc(0);
 	#sequence = 0;
@@ -16,19 +42,30 @@ export class DapProtocol {
 		number,
 		{ command: string; resolve: (message: DapMessage) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
 	>();
-	#killTimer?: NodeJS.Timeout;
 	#events = new Map<string, Array<(message: DapMessage) => void>>();
 	#closedListeners: Array<() => void> = [];
-	readonly child: ChildProcessWithoutNullStreams;
-	constructor(child: ChildProcessWithoutNullStreams) {
+	#reverse?: ReverseRequestHandler;
+	#output: NodeJS.WritableStream;
+	/** The adapter process this connection owns (stdio adapters). */
+	readonly child?: ChildProcessWithoutNullStreams;
+	/** The loopback socket of a TCP adapter connection. */
+	readonly socket?: Socket;
+	constructor(channel: ChildProcessWithoutNullStreams | Socket) {
+		if (channel instanceof Socket) {
+			this.socket = channel;
+			this.#output = channel;
+			channel.on("data", (chunk: Buffer) => this.#feed(chunk));
+			channel.on("error", (error) => this.close(error));
+			channel.on("close", () => this.close(new Error("DAP connection closed")));
+			return;
+		}
+		const child = channel;
 		this.child = child;
+		this.#output = child.stdin;
 		child.stdout.on("data", (chunk: Buffer) => this.#feed(chunk));
 		for (const stream of [child.stdin, child.stdout, child.stderr]) stream.on("error", (error) => this.close(error));
 		child.on("error", (error) => this.close(error));
-		child.on("exit", (code, signal) => {
-			if (this.#killTimer) clearTimeout(this.#killTimer);
-			this.close(new Error(`DAP adapter exited (${signal ?? code ?? "unknown"})`));
-		});
+		child.on("exit", (code, signal) => this.close(new Error(`DAP adapter exited (${signal ?? code ?? "unknown"})`)));
 	}
 
 	on(event: string, listener: (message: DapMessage) => void): () => void {
@@ -45,6 +82,11 @@ export class DapProtocol {
 	onClose(listener: () => void): void {
 		if (this.#closed) listener();
 		else this.#closedListeners.push(listener);
+	}
+
+	/** Opts into answering reverse requests; everything the handler refuses is rejected. */
+	handleReverseRequests(handler: ReverseRequestHandler): void {
+		this.#reverse = handler;
 	}
 
 	request(command: string, args: Record<string, unknown> = {}, signal?: AbortSignal): Promise<DapMessage> {
@@ -78,7 +120,7 @@ export class DapProtocol {
 			signal?.addEventListener("abort", abort, { once: true });
 			try {
 				this.#send({ seq, type: "request", command, arguments: args });
-			} catch (error) {
+			} catch {
 				abort();
 			}
 		});
@@ -87,7 +129,22 @@ export class DapProtocol {
 	#send(message: DapMessage): void {
 		const body = Buffer.from(JSON.stringify(message), "utf8");
 		if (body.byteLength > MAX_BODY) throw new Error("DAP request exceeds byte limit");
-		this.child.stdin.write(Buffer.concat([Buffer.from(`Content-Length: ${body.byteLength}\r\n\r\n`), body]));
+		this.#output.write(Buffer.concat([Buffer.from(`Content-Length: ${body.byteLength}\r\n\r\n`), body]));
+	}
+
+	#reply(request: DapMessage, result: { body: Record<string, unknown> } | { error: string }): void {
+		if (this.#closed) return;
+		try {
+			this.#send({
+				seq: ++this.#sequence,
+				type: "response",
+				request_seq: request.seq,
+				command: request.command,
+				...("body" in result ? { success: true, body: result.body } : { success: false, message: result.error }),
+			});
+		} catch {
+			this.close(new Error("DAP reverse request response failed"));
+		}
 	}
 
 	#feed(chunk: Buffer): void {
@@ -112,8 +169,8 @@ export class DapProtocol {
 			let message: DapMessage;
 			try {
 				const parsed: unknown = JSON.parse(bytes.toString("utf8"));
-				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid DAP message");
-				message = parsed as DapMessage;
+				if (!isRecord(parsed)) throw new Error("Invalid DAP message");
+				message = parsed;
 			} catch {
 				return this.close(new Error("Invalid DAP JSON message"));
 			}
@@ -139,19 +196,12 @@ export class DapProtocol {
 		} else if (message.type === "event" && typeof message.event === "string") {
 			for (const listener of this.#events.get(message.event) ?? []) listener(message);
 		} else if (message.type === "request" && typeof message.seq === "number") {
-			// In particular, never honor runInTerminal from an adapter.
-			try {
-				this.#send({
-					seq: ++this.#sequence,
-					type: "response",
-					request_seq: message.seq,
-					command: message.command,
-					success: false,
-					message: "Reverse requests are unsupported",
-				});
-			} catch {
-				this.close(new Error("DAP reverse request rejection failed"));
-			}
+			const handled = this.#reverse?.(String(message.command), isRecord(message.arguments) ? message.arguments : {});
+			if (!handled) return this.#reply(message, { error: "Reverse requests are unsupported" });
+			handled.then(
+				(result) => this.#reply(message, { body: result }),
+				(error: unknown) => this.#reply(message, { error: errorMessage(error) }),
+			);
 		}
 	}
 
@@ -164,15 +214,15 @@ export class DapProtocol {
 			pending.reject(error);
 		}
 		this.#pending.clear();
-		this.child.stdin.destroy();
-		this.child.stdout.destroy();
-		this.child.stderr.destroy();
-		if (this.child.exitCode === null) {
-			if (!this.child.killed) this.child.kill();
-			this.#killTimer = setTimeout(() => {
-				if (this.child.exitCode === null) this.child.kill("SIGKILL");
-			}, 1000);
-			this.#killTimer.unref();
+		if (this.socket) {
+			this.socket.destroy();
+			return;
 		}
+		const child = this.child;
+		if (!child) return;
+		child.stdin.destroy();
+		child.stdout.destroy();
+		child.stderr.destroy();
+		stopProcess(child);
 	}
 }

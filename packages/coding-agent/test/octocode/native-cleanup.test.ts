@@ -11,7 +11,7 @@ import { CHIPS, chipText, shortChip } from "../../src/octocode/permission/mode.t
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { appKey, expandKey } from "../../src/octocode/shared/render/text.ts";
 import { hintText } from "../../src/octocode/ui/editor.ts";
-import { fakeCtx, theme } from "./fake-pi.ts";
+import { fakeCtx, theme } from "./fake-host.ts";
 
 describe("native cleanup regressions", () => {
 	it("paints the permission chip by risk: manual muted, workspace accent, full warning (never error)", () => {

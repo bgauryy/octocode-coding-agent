@@ -9,14 +9,14 @@ import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
 import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { commandsFor, hookCalls, toolAliases } from "../../src/octocode/hooks/config/calls.ts";
 import { matchesHook } from "../../src/octocode/hooks/profiles.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
-function project(hooks: unknown, file = path.join(".codex", "hooks.json")): string {
+function project(hooks: unknown, file = path.join(".octocode", "hooks.json")): string {
 	const dir = tmp("octocode-hooks-");
 	fs.mkdirSync(path.join(dir, ".git"));
 	fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
@@ -113,7 +113,7 @@ describe("hooks config", () => {
 			JSON.stringify({ hooks: { PreToolUse: command("global") } }),
 		);
 		const cwd = project({ PreToolUse: command("project") });
-		fs.writeFileSync(path.join(cwd, ".codex/hooks.json"), JSON.stringify({ disableAllHooks: true }));
+		fs.writeFileSync(path.join(cwd, ".octocode/hooks.json"), JSON.stringify({ disableAllHooks: true }));
 		expect(commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"])).toHaveLength(1);
 		const disabled = loadHooks(cwd, true, home);
 		expect(commandsFor(disabled.config, "PreToolUse", ["Bash"])).toEqual([]);
@@ -122,8 +122,8 @@ describe("hooks config", () => {
 	it("reads project hook files only in trusted projects", () => {
 		const cwd = project({ PreToolUse: command("true") });
 		const home = tmp();
-		// ~/.claude/settings.json, ~/.codex/hooks.json, ~/.octocode/hooks.json
-		expect(hookFiles(path.join(cwd), false, home)).toHaveLength(3);
+		// ~/.claude/settings.json, ~/.codex/hooks.json, ~/.codex/config.toml, <Octocode home>/hooks.json
+		expect(hookFiles(path.join(cwd), false, home)).toHaveLength(4);
 		expect(loadHooks(cwd, false, home).config.PreToolUse).toHaveLength(0);
 		expect(loadHooks(cwd, true, home).config.PreToolUse).toHaveLength(1);
 	});
@@ -388,9 +388,9 @@ describe("registerHooks", () => {
 				},
 			],
 		});
-		const { pi, fire } = fakePi();
+		const { api, fire } = fakeHost();
 		const audit = vi.fn();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp(), audit);
+		const hooks = registerHooks(api, {}, tmp(), audit);
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(
@@ -404,8 +404,8 @@ describe("registerHooks", () => {
 		const cwd = project({
 			PreToolUse: command('echo \'{"decision":"block","hookSpecificOutput":{"additionalContext":"hidden"}}\''),
 		});
-		const { pi, fire, sent } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire, sent } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(
@@ -422,8 +422,8 @@ describe("registerHooks", () => {
 			),
 			PostToolUse: command("cat > post.json", "Bash"),
 		});
-		const { pi, fire, sent } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire, sent } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		const event = { toolName: "bash", toolCallId: "call-123", input: { command: "true" } };
@@ -446,8 +446,8 @@ describe("registerHooks", () => {
 		// A typical Claude Code guard: refuse any edit or write to a .env file.
 		const guard = `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s).tool_input.file_path||'';if(p.endsWith('.env')){console.error('no .env: '+p);process.exit(2)}})"`;
 		const cwd = project({ PreToolUse: command(guard, "Edit|Write") });
-		const { pi, fire } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		const call = (...paths: string[]) => ({
@@ -465,8 +465,8 @@ describe("registerHooks", () => {
 
 	it("shows a status while the first prompt waits for SessionStart hooks", async () => {
 		const cwd = project({ SessionStart: command("while [ ! -f go ]; do sleep 0.02; done; echo ready") });
-		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const statuses: Array<string | undefined> = [];
 		const ctx = {
 			...context(cwd),
@@ -485,10 +485,10 @@ describe("registerHooks", () => {
 		await fire("session_shutdown", {}, ctx);
 	}, 10_000);
 
-	it("is off unless OCTOCODE_HOOKS is set", () => {
-		const { pi, handlers } = fakePi();
-		registerHooks(pi, {});
-		expect(handlers.size).toBe(0);
+	it("is off in a subagent whose profile does not opt in", () => {
+		const { api, handlers } = fakeHost();
+		registerHooks(api, { OCTOCODE_SUBAGENT: "1" });
+		expect([...handlers.keys()].filter((event) => event !== "message_end" && event !== "session_start")).toEqual([]);
 	});
 
 	it("maps PreToolUse, PostToolUse, SessionStart and PreCompact to Octocode events", async () => {
@@ -498,8 +498,8 @@ describe("registerHooks", () => {
 			SessionStart: command('echo "repo notes"', "startup"),
 			PreCompact: command("cat > compact.json", "manual"),
 		});
-		const { pi, fire } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 
@@ -556,8 +556,8 @@ describe("registerHooks", () => {
 				`while [ ! -f go ]; do sleep 0.02; done; node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log('source=' + JSON.parse(s).source))"`,
 			),
 		});
-		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		// A second session starts before the first one's hook finished: only the new session's context reaches its prompt.
@@ -576,8 +576,8 @@ describe("registerHooks", () => {
 				"startup|compact",
 			),
 		});
-		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		expect(((await fire("before_agent_start", {}, ctx)) as { message: { content: string } }).message.content).toContain(
@@ -593,17 +593,17 @@ describe("registerHooks", () => {
 	it("reports hooks off with the files it would read, and on with what loaded", async () => {
 		const cwd = project({ PreToolUse: command("echo pre", "Bash") });
 		const home = tmp();
-		const off = registerHooks(fakePi().pi, {}, home);
-		expect(off.summary()).toBe("off (OCTOCODE_HOOKS=1 to enable)");
-		expect(off.report(cwd)).toMatch(/^Hooks: off\. Start Octocode with OCTOCODE_HOOKS=1/);
+		const off = registerHooks(fakeHost().api, { OCTOCODE_SUBAGENT: "1" }, home);
+		expect(off.summary()).toBe("off in this subagent (its profile does not set hooks: true)");
+		expect(off.report(cwd)).toMatch(/^Hooks: off in this subagent/);
 		expect(off.report(cwd)).toContain(`· ~${path.sep}${path.join(".claude", "settings.json")}`);
 		expect(off.report(cwd)).toMatch(/✓ .*hooks\.json \(project: loads only when trusted/);
 
-		const { pi, fire } = fakePi();
-		const on = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, home);
+		const { api, fire } = fakeHost();
+		const on = registerHooks(api, {}, home);
 		await fire("session_start", { reason: "startup" }, context(cwd));
 		expect(on.summary()).toBe("on, 1 commands");
-		expect(on.report(cwd)).toContain("[source codex; runtime octocode]");
+		expect(on.report(cwd)).toContain("[source octocode; runtime octocode]");
 		expect(on.report(cwd)).toMatch(/Loaded \(1\):\n {2}PreToolUse \[Bash\] echo pre \(.*hooks\.json\)/);
 
 		const commands = new Subcommands();
@@ -615,8 +615,8 @@ describe("registerHooks", () => {
 
 	it("warns once when SessionStart hooks cannot run", async () => {
 		const cwd = project({ SessionStart: command("echo hi") });
-		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const notify = vi.fn();
 		const broken = {
 			...context(cwd),
@@ -640,8 +640,8 @@ describe("registerHooks", () => {
 
 	it("skips project hooks in an untrusted project", async () => {
 		const cwd = project({ PreToolUse: command("exit 2") });
-		const { pi, fire } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		await fire("session_start", { reason: "startup" }, context(cwd, false));
 		expect(
 			await hooks.preToolUse({ toolName: "bash", input: {} } as never, context(cwd, false) as never),
@@ -661,8 +661,8 @@ describe("Stop, Notification and hook timing", () => {
 	it("continues a completed run once a Stop hook blocks, with Claude Code loop guards", async () => {
 		const stop = `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const i=JSON.parse(s);require('fs').appendFileSync('stop.log',JSON.stringify(i)+'\\n');if(!i.stop_hook_active)console.log(JSON.stringify({decision:'block',reason:'run the tests'}))})"`;
 		const cwd = project({ Stop: command(stop) });
-		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(await fire("agent_before_settle", settle("aborted"), ctx)).toBeUndefined();
@@ -718,9 +718,9 @@ describe("Stop, Notification and hook timing", () => {
 			},
 			"fixture",
 		);
-		const { pi, fire } = fakePi();
+		const { api, fire } = fakeHost();
 		const work = Promise.withResolvers<HookVerdict>();
-		registerStopHook(pi, { config, errors: [], root: undefined }, () => work.promise);
+		registerStopHook(api, { config, errors: [], root: undefined }, () => work.promise);
 		const statuses: Array<string | undefined> = [];
 		const ctx = {
 			...context(tmp()),
@@ -745,8 +745,8 @@ describe("Stop, Notification and hook timing", () => {
 	}, 10_000);
 
 	it("draws Stop feedback as a sanitized, collapsible block under a ⚑ header, even with hooks off", () => {
-		const { pi, renderers } = fakePi();
-		registerHooks(pi, {}, tmp());
+		const { api, renderers } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const render = renderers.get("octocode-hook-stop");
 		const tail = Array.from({ length: 12 }, (_, index) => `note ${index + 1}`).join("\n");
 		const content = `Stop hook feedback:\n# not a heading\n\u001b]52;c;evil\u0007two\nthree\n${tail}\nfive`;
@@ -770,8 +770,8 @@ describe("Stop, Notification and hook timing", () => {
 			const cwd = project({
 				Stop: [{ hooks: outputs.map((output) => ({ type: "command", command: `echo '${JSON.stringify(output)}'` })) }],
 			});
-			const { pi, fire } = fakePi();
-			registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+			const { api, fire } = fakeHost();
+			registerHooks(api, {}, tmp());
 			const ctx = context(cwd);
 			await fire("session_start", { reason: "startup" }, ctx);
 			expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
@@ -780,8 +780,8 @@ describe("Stop, Notification and hook timing", () => {
 
 	it("stops continuing after 8 blocks in a row unless a tool runs; continue:false is not a block", async () => {
 		const cwd = project({ Stop: command('echo \'{"decision":"block","reason":"again"}\'') });
-		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		registerHooks(api, {}, tmp());
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		for (let index = 0; index < 8; index += 1) expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
@@ -792,16 +792,16 @@ describe("Stop, Notification and hook timing", () => {
 		expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
 
 		const quiet = project({ Stop: command('echo \'{"continue":false,"stopReason":"done"}\'') });
-		const other = fakePi();
-		registerHooks(other.pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const other = fakeHost();
+		registerHooks(other.api, {}, tmp());
 		await other.fire("session_start", { reason: "startup" }, context(quiet));
 		expect(await other.fire("agent_before_settle", settle(), context(quiet))).toBeUndefined();
 	}, 20_000);
 
 	it("runs Notification hooks matching the type, in the background", async () => {
 		const cwd = project({ Notification: command("cat > note.json", "permission_prompt") });
-		const { pi, fire } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		await fire("session_start", { reason: "startup" }, context(cwd));
 		// Background: an aborted run (its signal) does not cancel the hook.
 		const aborted = { ...context(cwd), signal: AbortSignal.abort() };
@@ -837,8 +837,8 @@ describe("Stop, Notification and hook timing", () => {
 				},
 			],
 		});
-		const { pi, fire } = fakePi();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, {}, tmp());
 		await fire("session_start", { reason: "startup" }, context(cwd));
 		const started = Date.now();
 		expect(
@@ -857,8 +857,8 @@ describe("Stop, Notification and hook timing", () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		try {
 			const cwd = project({ PreToolUse: command("true", "Bash") });
-			const { pi, fire } = fakePi();
-			const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+			const { api, fire } = fakeHost();
+			const hooks = registerHooks(api, {}, tmp());
 			const notes: string[] = [];
 			const ctx = {
 				...context(cwd),
@@ -886,9 +886,9 @@ describe("Stop, Notification and hook timing", () => {
 
 it("pauses executable hooks during planning and permits them after leaving", async () => {
 	const cwd = project({ PreToolUse: command("touch ran", "Bash") });
-	const { pi, fire } = fakePi();
+	const { api, fire } = fakeHost();
 	let paused = true;
-	const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp(), undefined, undefined, () => paused);
+	const hooks = registerHooks(api, {}, tmp(), undefined, undefined, () => paused);
 	const ctx = context(cwd);
 	await fire("session_start", { reason: "startup" }, ctx);
 	const event = { toolName: "bash", toolCallId: "test", input: { command: "true" } } as never;

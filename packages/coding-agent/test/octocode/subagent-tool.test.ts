@@ -19,13 +19,13 @@ import { createWorktree } from "../../src/octocode/subagents/worktree.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCachePolicy, fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { exitReason, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
@@ -56,11 +56,11 @@ beforeAll(() => {
 		"OCTOCODE_TEAM_WORKSPACE",
 	])
 		delete process.env[key];
-	// runSubagent re-runs the current `pi` script: point it at the scripted stand-in.
+	// runSubagent re-runs the current `octocode` script: point it at the scripted stand-in.
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -90,10 +90,10 @@ const profiles = new Map<string, AgentProfile>([
 const refused = new Map<string, string>();
 
 function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
-	const f = fakePi();
-	const team = new Team(f.pi);
+	const f = fakeHost();
+	const team = new Team(f.api);
 	const control = registerAgentTool(
-		f.pi,
+		f.api,
 		() => profiles,
 		team,
 		fakePermission(),
@@ -102,13 +102,15 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 	// As index.ts wires it: `/octocode agents`, with the `/agents` shortcut.
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
-	commands.register(f.pi);
+	commands.register(f.api);
 	const ctx = fakeCtx({ cwd, hasUI });
 	// The parent's models: `faux/model` is the session's, `faux/other` and `alt/shared` are also available.
 	const models = [
 		{ provider: "faux", id: "model" },
 		{ provider: "faux", id: "other" },
 		{ provider: "alt", id: "shared" },
+		// Authenticated only by this session's --api-key: a child cannot receive that key.
+		{ provider: "session-only", id: "keyed" },
 	];
 	Object.assign(ctx, {
 		model: models[0],
@@ -116,6 +118,10 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 			getAvailable: () => models,
 			find: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 			getCachePolicy: fakeCachePolicy,
+			getProviderAuthStatus: (provider: string) => ({
+				configured: true,
+				source: provider === "session-only" ? "runtime" : "stored",
+			}),
 		},
 	});
 	team.start(ctx);
@@ -168,7 +174,7 @@ describe("subagent scratch sweep", () => {
 	});
 });
 
-describe("agent tool with a scripted pi child", () => {
+describe("agent tool with a scripted child", () => {
 	let s: ReturnType<typeof setup>;
 	beforeEach(() => {
 		s = setup();
@@ -221,7 +227,7 @@ describe("agent tool with a scripted pi child", () => {
 	it("inherits the parent's skill files without rediscovery and rejects unknown selections before spawning", async () => {
 		const file = path.join(tmp(), "SKILL.md");
 		fs.writeFileSync(file, "---\nname: release\ndescription: Release notes\n---\nUse the house format.");
-		s.pi.getCommands = () => [
+		s.api.getCommands = () => [
 			{
 				name: "release",
 				source: "skill",
@@ -233,11 +239,11 @@ describe("agent tool with a scripted pi child", () => {
 				},
 			},
 		];
-		s.pi.getSkillResourceSnapshot = (names) =>
+		s.api.getSkillResourceSnapshot = (names) =>
 			captureSkillResourceSnapshot(
 				loadSkills({ cwd: s.ctx.cwd, agentDir: tmp(), skillPaths: [file], includeDefaults: false }),
 				names,
-				s.pi.getCommands(),
+				s.api.getCommands(),
 			);
 		const inherited = reportOf((await s.run({ task: "report back" })).content[0].text);
 		expect(inherited.args).toContain("--no-skills");
@@ -388,6 +394,21 @@ describe("agent tool with a scripted pi child", () => {
 			await expect(s.run({ task: "report", profile: "scout", model: "faux/mdoel" })).rejects.toThrow(
 				/Model "faux\/mdoel" is not available\. .*faux\/model, faux\/other/,
 			);
+			// A provider known only through --api-key is never routed to a child, by name or by a bare id.
+			await expect(s.run({ task: "report", model: "session-only/keyed" })).rejects.toThrow(
+				/session-only is authenticated by this session's --api-key/,
+			);
+			await expect(s.run({ task: "report", model: "keyed" })).rejects.toThrow(/Model "keyed" is not available/);
+			// Without a model argument the child runs on this session's model: refused when that is session-only.
+			const parentModel = s.ctx.model;
+			Object.assign(s.ctx, { model: { provider: "session-only", id: "keyed" } });
+			try {
+				await expect(s.run({ task: "report" })).rejects.toThrow(
+					/session-only is authenticated by this session's --api-key/,
+				);
+			} finally {
+				Object.assign(s.ctx, { model: parentModel });
+			}
 		} finally {
 			profiles.delete("scout");
 			profiles.delete("absent");
@@ -402,7 +423,7 @@ describe("agent tool with a scripted pi child", () => {
 			const footer = fencedParts(refused.content[0].text)?.footer ?? "";
 			expect(footer).toContain("Ran on alt/shared (profile scout: shared).");
 			expect(footer).toContain('model: "faux/model"');
-			expect(footer).toContain("/providers");
+			expect(footer).toContain("/login");
 			expect(footer).not.toContain("narrower task");
 			await s.run({ task: "auth error please", profile: "scout", background: true });
 			await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
@@ -414,7 +435,7 @@ describe("agent tool with a scripted pi child", () => {
 			const own = await s.run({ task: "auth error please" });
 			const ownFooter = fencedParts(own.content[0].text)?.footer ?? "";
 			expect(ownFooter).toContain("Ran on faux/model (this session's model).");
-			expect(ownFooter).toContain("/providers");
+			expect(ownFooter).toContain("/login");
 			expect(ownFooter).not.toContain('model: "faux/model"');
 			// Any other failure keeps the usual advice and still names the model.
 			const down = await s.run({ task: "error please", model: "other" });
@@ -635,7 +656,7 @@ describe("agent tool with a scripted pi child", () => {
 
 	it("gives the slot and the name back when setup throws after the run is claimed", async () => {
 		process.env[MAX_SUBAGENTS_ENV] = "1";
-		const { events } = s.pi;
+		const { events } = s.api;
 		const registry = s.ctx.modelRegistry;
 		// Within one 2 s window: a leaked slot makes the next run wait forever instead.
 		const within = <T>(work: Promise<T>) =>
@@ -645,7 +666,7 @@ describe("agent tool with a scripted pi child", () => {
 			]);
 		try {
 			// After claimRun: reading the session's added MCP servers fails.
-			Object.assign(s.pi, {
+			Object.assign(s.api, {
 				events: {
 					...events,
 					emit: () => {
@@ -655,7 +676,7 @@ describe("agent tool with a scripted pi child", () => {
 			});
 			await expect(s.run({ task: "report" })).rejects.toThrow("event bus broke");
 			expect(s.control.running()).toEqual([]);
-			Object.assign(s.pi, { events });
+			Object.assign(s.api, { events });
 			// Inside claimRun, after the name is taken: the child model's cache policy cannot be read.
 			Object.assign(s.ctx, {
 				modelRegistry: {
@@ -668,14 +689,14 @@ describe("agent tool with a scripted pi child", () => {
 			await expect(s.run({ task: "report" })).rejects.toThrow("settings broke");
 			expect(s.control.running()).toEqual([]);
 			// The name it took is given back too, so it is not listed as running or avoided by later names.
-			const runs = { pi: s.pi, team: s.team, running: new Map(), slots: new Slots() } as unknown as AgentRuns;
+			const runs = { api: s.api, team: s.team, running: new Map(), slots: new Slots() } as unknown as AgentRuns;
 			const plan = { profile: undefined, route: { model: "faux/model" } };
 			expect(() => claimRun(runs, plan, { goal: "g" }, s.ctx)).toThrow("settings broke");
 			expect([...runs.running.keys()]).toEqual([]);
 			Object.assign(s.ctx, { modelRegistry: registry });
 			await expect(within(s.run({ task: "report" }))).resolves.toMatchObject({ details: { status: "done" } });
 		} finally {
-			Object.assign(s.pi, { events });
+			Object.assign(s.api, { events });
 			Object.assign(s.ctx, { modelRegistry: registry });
 			delete process.env[MAX_SUBAGENTS_ENV];
 		}
@@ -801,7 +822,7 @@ describe("agent tool with a scripted pi child", () => {
 	});
 
 	it("lets the parent agent stop only the background subagents it started, with coordinate stop", async () => {
-		registerCollab(s.pi, s.team, { stopAgent: (id, by) => s.control.stop(id, by) });
+		registerCollab(s.api, s.team, { stopAgent: (id, by) => s.control.stop(id, by) });
 		const coordinate = s.tools.get("coordinate");
 		const stop = (id?: string) =>
 			coordinate.execute("c1", { action: "stop", ...(id ? { id } : {}) }, undefined, undefined, s.ctx);
@@ -822,8 +843,8 @@ describe("agent tool with a scripted pi child", () => {
 		expect(s.sent.at(-1)!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 		await expect(stop(id)).rejects.toThrow(/No background subagent/);
 		// A subagent has no children to stop: `stop` is not offered to it at all (a stray call is still refused).
-		const child = fakePi();
-		registerCollab(child.pi, new Team(child.pi));
+		const child = fakeHost();
+		registerCollab(child.api, new Team(child.api));
 		const childTool = child.tools.get("coordinate");
 		expect(childTool.parameters.properties.action.enum).not.toContain("stop");
 		expect(childTool.parameters.properties.id).toBeUndefined();
@@ -1142,11 +1163,11 @@ describe("runSubagent", () => {
 	);
 
 	describe.skipIf(process.platform === "win32")("after a natural exit", () => {
-		// A stand-in `pi` that answers, leaves a holder in its own process group (like an MCP or dev server) and exits.
+		// A stand-in `octocode` that answers, leaves a holder in its own process group (like an MCP or dev server) and exits.
 		const withScript = async (body: string, run: (holderFile: string) => Promise<void>) => {
 			const dir = tmp();
 			const holderFile = path.join(dir, "holder.pid");
-			const script = path.join(dir, "pi");
+			const script = path.join(dir, "octocode");
 			fs.writeFileSync(script, `const { spawn } = require('node:child_process');\n${body}`);
 			const before = process.argv[1];
 			process.argv[1] = script;
@@ -1520,8 +1541,8 @@ describe("subagent watchdog and exits", () => {
 
 describe("background report delivery", () => {
 	it("batches reports so only the last of a batch may start a turn", () => {
-		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const f = fakeHost();
+		const queue = new ReportQueue(f.api, 60_000);
 		const report = (id: string, wake: boolean) => ({
 			content: id,
 			details: { id, status: "done" as const, summary: "Done" },

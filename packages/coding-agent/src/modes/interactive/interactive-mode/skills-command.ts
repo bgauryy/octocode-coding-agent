@@ -8,8 +8,8 @@ import { loadSkillFromFile } from "../../../core/skills/load-dir.ts";
 import { isSyntheticPath } from "../../../core/source-info.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { canonicalizePath } from "../../../utils/paths.ts";
-import { buildGroups } from "../components/config-selector/groups.ts";
-import { ResourceSettings } from "../components/config-selector/resource-settings.ts";
+import { buildGroups } from "../../../core/package-manager/resource-groups.ts";
+import { ResourceSettings } from "../../../core/package-manager/resource-settings.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 type SkillsHost = Pick<

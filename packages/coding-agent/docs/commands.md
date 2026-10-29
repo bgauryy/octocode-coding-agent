@@ -1,54 +1,52 @@
-# Commands and aliases
+# Commands
 
-The shipped command inventory contains **45 canonical slash commands and 17 compatibility aliases**: 35 core descriptors, eight additional native commands, and two bundled extension commands. Availability depends on the host, enabled extensions and whether this is a main or child session. Loaded skills, prompt templates and third-party extensions add their own commands.
+The shipped command inventory contains **46 slash commands**: 35 core descriptors, nine additional native commands, and two bundled extension commands. Each command has exactly one name; there are no aliases. Availability depends on the host, enabled extensions and whether this is a main or child session. Loaded skills, prompt templates and third-party extensions add their own commands.
 
 Run `/help [search]` for the current terminal inventory. `/skills` opens the skill manager with source and load state; `/skills <search>` finds loaded skill commands. Selecting a command inserts it into the editor. Type a command followed by a space to see argument completions. In the syntax below, `[value]` is optional and `<value>` is required; do not type the brackets.
 
 ## Provider and model setup
 
-Use `/providers` to connect an AI account or save an API key, then `/model` to choose what runs this chat. `/models` is an alias for the same picker; the former model-management menu is now `/modelsettings`. `/login` remains an alias for provider management. `/github` controls code research access independently of AI subscriptions and API keys.
+Use `/login` to connect an AI account or save an API key, then `/model` to choose what runs this chat. The former model-management menu is now `/modelsettings`. `/github` controls code research access independently of AI subscriptions and API keys.
 
 ## Core commands
 
-Every compatibility alias appears in the second column. Aliases preserve the canonical command's arguments, permissions and cleanup; they do not add another implementation.
-
-| Command                                         | Aliases                     | Purpose                                                                                                                 |
-| ----------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `/agents [operation]`                           | `/list-agents`, `/peers`    | List, message or control local and external agents; requires native features                                            |
-| `/btw [question]`                               | —                           | Ask a tool-free side question outside conversation history; no argument reopens the side thread; `--clear` discards it  |
-| `/bug [description]`                            | `/feedback`                 | Run the bug-report flow, including its consent steps                                                                    |
-| `/changelog`                                    | `/release-notes`            | View changelog entries                                                                                                  |
-| `/clone`                                        | —                           | Duplicate the session at its current position                                                                           |
-| `/compact [instructions]`                       | —                           | Compact context, optionally adding focus for this manual summary                                                        |
-| `/context [all\|size\|reset\|tokens]`           | —                           | Inspect context usage; `size` selects a session budget, `32k` sets one directly, and `reset` restores the model limit   |
-| `/copy`                                         | —                           | Copy the last assistant message to the clipboard                                                                        |
-| `/debug`                                        | —                           | Save terminal and session diagnostics; this is separate from the optional debugger tool                                 |
-| `/diff [path]`                                  | —                           | Inspect staged, unstaged and untracked repository changes                                                               |
-| `/effort [level]`                               | `/thinking`                 | Inspect or change the coordinator’s reasoning effort                                                                    |
-| `/export [path]`                                | —                           | Export the session as HTML, or JSONL when the destination uses `.jsonl`                                                 |
-| `/fork`                                         | —                           | Create a new session from a selected historical user message                                                            |
-| `/github [status\|login\|logout]`               | —                           | Manage GitHub code-search access; GitHub Copilot AI access is configured through `/providers`                           |
-| `/help [search]`                                | —                           | Find commands in the terminal picker                                                                                    |
-| `/import <path>`                                | —                           | Import and resume a JSONL session                                                                                       |
-| `/keys`                                         | —                           | Show keyboard shortcuts                                                                                                 |
-| `/providers [provider\|pi]`                     | `/login`                    | View AI provider status and models; sign in, add/replace an API key, remove a saved credential, or use Pi configuration |
-| `/logout`                                       | —                           | Select provider credentials to remove                                                                                   |
-| `/model [provider/model]`                       | `/models`                   | Select this chat’s model from provider groups; Ctrl+S saves a default                                                   |
-| `/modelsettings`                                | —                           | Configure keyboard model shortcuts; inspect the native catalog, prices and agent routing; access local-model controls   |
-| `/new [previous-name]`                          | `/clear`, `/reset`          | Start a fresh session; optionally name the previous session after a successful switch                                   |
-| `/permissions [operation]`                      | `/allowed-tools`            | Inspect or change native permissions and the independent planning constraint                                            |
-| `/plan [description]`                           | —                           | Enter native planning and optionally submit a task; see planning controls below                                         |
-| `/queue`                                        | —                           | Edit, remove or reorder queued messages                                                                                 |
-| `/quit`                                         | `/exit`                     | Shut down and clean up the session                                                                                      |
-| `/reload`                                       | —                           | Reload keybindings, extensions, skills, prompts, themes and context files                                               |
-| `/rename <name>`                                | —                           | Set the current session's display name                                                                                  |
-| `/resume [all\|query]`                          | `/continue`                 | Browse saved sessions; native lookup supports a query or `all` directories                                              |
-| `/settings`                                     | `/config`                   | Open settings; direct `key=value` setters are not supported                                                             |
-| `/share`                                        | —                           | Share the session through the existing private GitHub gist flow                                                         |
-| `/skills [search\|list\|info\|enable\|disable]` | —                           | Inspect discovered skills, enable or disable them, or select a loaded skill command                                     |
-| `/status`                                       | `/usage`, `/cost`, `/stats` | Show session statistics, usage, native activity, skills and MCP status; not subscription quotas                         |
-| `/tree`                                         | —                           | Navigate branches of the current session                                                                                |
-| `/trust [project\|config\|off]`                 | —                           | Manage project resource trust and native configuration trust                                                            |
+| Command                                         | Purpose                                                                                                                                                                             |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/agents [operation]`                           | List, message or control local and external agents; requires native features                                                                                                        |
+| `/btw [question]`                               | Ask a tool-free side question outside conversation history; no argument reopens the side thread; `--clear` discards it                                                              |
+| `/bug [description]`                            | Run the bug-report flow, including its consent steps                                                                                                                                |
+| `/changelog`                                    | View changelog entries                                                                                                                                                              |
+| `/clone`                                        | Duplicate the session at its current position                                                                                                                                       |
+| `/compact [instructions]`                       | Compact context, optionally adding focus for this manual summary                                                                                                                    |
+| `/context [all\|size\|reset\|full\|tokens]`     | Inspect context usage; `size` selects a session budget, `32k` sets one directly, `full` uses the model capacity, and `reset` restores the default working context (`contextBudget`) |
+| `/copy`                                         | Copy the last assistant message to the clipboard                                                                                                                                    |
+| `/debug`                                        | Save terminal and session diagnostics; this is separate from the optional debugger tool                                                                                             |
+| `/diff [path]`                                  | Inspect staged, unstaged and untracked repository changes                                                                                                                           |
+| `/effort [level]`                               | Inspect or change the coordinator’s reasoning effort                                                                                                                                |
+| `/export [path]`                                | Export the session as HTML, or JSONL when the destination uses `.jsonl`                                                                                                             |
+| `/fork`                                         | Create a new session from a selected historical user message                                                                                                                        |
+| `/github [status\|login\|logout]`               | Manage GitHub code-search access; GitHub Copilot AI access is configured through `/login`                                                                                           |
+| `/help [search]`                                | Find commands in the terminal picker                                                                                                                                                |
+| `/import <path>`                                | Import and resume a JSONL session                                                                                                                                                   |
+| `/keys`                                         | Show keyboard shortcuts                                                                                                                                                             |
+| `/login [provider\|pi]`                         | View AI provider status and models; sign in, add/replace an API key, remove a saved credential, or use Pi configuration                                                             |
+| `/logout`                                       | Select provider credentials to remove                                                                                                                                               |
+| `/model [provider/model]`                       | Select this chat’s model from provider groups; Ctrl+S saves a default                                                                                                               |
+| `/modelsettings [check]`                        | Model shortcuts; native catalog, prices and agent routing; `check` tests provider credentials; local-model controls                                                                 |
+| `/new [previous-name]`                          | Start a fresh session; optionally name the previous session after a successful switch                                                                                               |
+| `/permissions [operation]`                      | Inspect or change native permissions and the independent planning constraint                                                                                                        |
+| `/plan [description]`                           | Enter native planning and optionally submit a task; see planning controls below                                                                                                     |
+| `/queue`                                        | Edit, remove or reorder queued messages                                                                                                                                             |
+| `/quit`                                         | Shut down and clean up the session                                                                                                                                                  |
+| `/reload`                                       | Reload keybindings, extensions, skills, prompts, themes and context files                                                                                                           |
+| `/rename <name>`                                | Set the current session's display name                                                                                                                                              |
+| `/resume [all\|query]`                          | Browse saved sessions; native lookup supports a query or `all` directories                                                                                                          |
+| `/settings`                                     | Open settings; direct `key=value` setters are not supported                                                                                                                         |
+| `/share`                                        | Share the session through the existing private GitHub gist flow                                                                                                                     |
+| `/skills [search\|list\|info\|enable\|disable]` | Inspect discovered skills, enable or disable them, or select a loaded skill command                                                                                                 |
+| `/status`                                       | Show session statistics, usage, native activity, skills and MCP status; not subscription quotas                                                                                     |
+| `/tree`                                         | Navigate branches of the current session                                                                                                                                            |
+| `/trust [project\|config\|off]`                 | Manage project resource trust and native configuration trust                                                                                                                        |
 
 `/agents`, `/permissions` and `/plan` require native features. `/modelsettings`, `/resume`, `/status` and `/trust` combine terminal controls with native handlers when available. Without native features, `/resume` opens the basic session selector. In a native SDK/headless session, `/modelsettings` prints the catalog and agent-routing report; model selection remains an SDK API operation.
 
@@ -56,24 +54,25 @@ See [session workflows](native-features.md#session-workflow-commands) for side-q
 
 ## Additional native commands
 
-These eight commands extend the native inventory. `/web` is a compatibility alias for `/octocode`.
+These nine commands extend the native inventory.
 
-| Command                | Arguments and purpose                                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/api`                 | Inspect the local session API; `on [http]` starts it, `off` stops it                                                |
-| `/archive [segment]`   | List compacted-history segments or show one segment's file path                                                     |
-| `/backlog`             | Deprecated for opening the live workspace; retained for task-board operations listed below                          |
-| `/hooks`               | Inspect hook enablement, loaded definitions, sources and diagnostics; no arguments                                  |
-| `/jobs`                | List background shell jobs; `kill <id>` stops one                                                                   |
-| `/memory`              | Browse durable memories; accepts `list`, `search <words>`, `add [title — body]`, `auto on`, `auto off`, `last`      |
-| `/rewind [turns]`      | Restore checkpointed file changes from the last N turns on this branch; default 1; does not rewind the conversation |
-| `/octocode [backlogs]` | Open the live workspace on Activity, or its task board with `backlogs`; `/web` is the compatibility alias           |
+| Command                           | Arguments and purpose                                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `/api`                            | Inspect the local session API; `on [http]` starts it, `off` stops it                                                |
+| `/archive [segment]`              | List compacted-history segments or show one segment's file path                                                     |
+| `/backlog`                        | Deprecated for opening the live workspace; retained for task-board operations listed below                          |
+| `/hooks [events]`                 | Inspect loaded hook definitions, sources and diagnostics; `events` lists what each source profile accepts           |
+| `/plugins [enable\|disable <id>]` | List plugins, extensions and hooks per host and switch each on or off (`--local` for this project)                  |
+| `/jobs`                           | List background shell jobs; `kill <id>` stops one                                                                   |
+| `/memory`                         | Browse durable memories; accepts `list`, `search <words>`, `add [title — body]`, `auto on`, `auto off`, `last`      |
+| `/rewind [turns]`                 | Restore checkpointed file changes from the last N turns on this branch; default 1; does not rewind the conversation |
+| `/octocode [backlogs]`            | Open the live workspace on Activity, or its task board with `backlogs`                                              |
 
 See [native features](native-features.md), [hooks](hooks.md), [permissions](permissions.md), and the [backlog view](native-features.md#backlog-view) for feature-specific behavior.
 
 ## Bundled extension commands
 
-These commands appear when their bundled extension is enabled. They have no built-in aliases; a configured replacement extension can supply different behavior.
+These commands appear when their bundled extension is enabled. A configured replacement extension can supply different behavior.
 
 | Command            | Extension           | Purpose                                                                                    |
 | ------------------ | ------------------- | ------------------------------------------------------------------------------------------ |
@@ -84,13 +83,13 @@ See [MCP](mcp.md) and [models](models.md).
 
 ## Command operations
 
-All aliases accept the same operations as their canonical command. These are arguments after the command, not additional slash-command aliases.
+These are arguments after the command, not additional slash commands.
 
 | Command family     | Supported forms                                                                                                                                                                                                                                                                               |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/skills`          | No argument opens the manager; `list [search]` lists sources and load states, `info <name-or-path>` inspects a skill, `enable <name-or-path>` and `disable <name-or-path>` save settings and reload; other text searches loaded skill commands                                                |
 | `/agents`          | No argument lists agents; `tell <agent\|all> <message>`, `interrupt <id> <message>`, `kill <id>`, `merge <id>`, `stats`, `external ...`                                                                                                                                                       |
-| `/agents external` | `list`, `connect octocode <instanceId>`, `connect acp <vendor> <command> [args...]`, `prompt <id> <text>`, `cancel <id>`, `disconnect <id>`; a JSON object can supply advanced connection options                                                                                             |
+| `/agents external` | `list`, `connect octocode <instanceId>`, `connect acp <vendor> <command> [args...]`, `prompt <id> <text>`, `cancel <id>`, `disconnect <id>`; `list` includes ACP adapters installed on PATH; a JSON object can supply advanced connection options such as `model`                             |
 | `/permissions`     | No argument shows status; `manual`, `workspace`, `full`, `grants`, `grants clear`, `log`, `plan`, `plan off`                                                                                                                                                                                  |
 | `/plan`            | No argument enters or shows planning; a description enters and submits it; `--show` only inspects; `--off` leaves; `--approve <revision>` approves the current revision and requests implementation                                                                                           |
 | `/backlog`         | `web`, `tui`, `add <title>`, `do <id>`, `export`, `html`, `<id>`, `<id> <backlog\|todo\|ongoing\|done>`, `<id> delete`; transitions still require their normal metadata and deletion requires interactive confirmation                                                                        |
@@ -98,9 +97,9 @@ All aliases accept the same operations as their canonical command. These are arg
 
 ## Skills, prompts and user extensions
 
-These commands depend on loaded resources and are separate from the 45 built-in names. `/skills`, `/help` and `/status` show what is available. Skills with `user-invocable: false` have no user command. Disabling autocomplete suggestions does not remove eligible explicit skill invocations.
+These commands depend on loaded resources and are separate from the 46 shipped names. `/skills`, `/help` and `/status` show what is available. Skills with `user-invocable: false` have no user command. Disabling autocomplete suggestions does not remove eligible explicit skill invocations.
 
-The currently installed research package supplies these 14 bundled skill commands. Resource selection and collision rules can change their availability or invocation names; they have no fixed built-in aliases.
+The currently installed research package supplies these 14 bundled skill commands. Resource selection and collision rules can change their availability or invocation names.
 
 | Skill command               | Skill command                    |
 | --------------------------- | -------------------------------- |
@@ -116,19 +115,19 @@ The currently installed research package supplies these 14 bundled skill command
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Skill](skills.md)                     | `/name [arguments]`; `/skill:name` is an explicit fallback. Collisions use qualified names; duplicate skills supplied by an SDK override can use `/skill:name:1`. |
 | [Prompt template](prompt-templates.md) | `/name [arguments]`; reserved or duplicate names receive `/prompt:name` or a numbered form.                                                                       |
-| [Extension](extensions.md)             | Its registered name and declared aliases; conflicts receive resolved names such as `/clear:1`. Discovery reports the actual spellings.                            |
+| [Extension](extensions.md)             | Its registered name; conflicts receive resolved names such as `/new:1`. `registerCommand` refuses an `aliases` option. Discovery reports the actual names.        |
 
-`/octocode ...` is a migration message, not an executable alias. It points to direct commands such as `/agents external ...` and `/mcp reconnect octocode`; it does not perform the requested operation. Optional example extensions are not built-in commands.
+`/octocode <subcommand> ...` is a migration message, not a command of its own. It points to direct commands such as `/agents external ...` and `/mcp reconnect octocode`; it does not perform the requested operation. Optional example extensions are not built-in commands.
 
 ## Hosts and other input forms
 
-The terminal's `/help` combines core, native, extension, prompt and skill commands. The extension API's `pi.getCommands()` and RPC `get_commands` expose registered extension/native commands plus prompts and skills, including resolved aliases; they do not manufacture terminal dialogs. SDK hosts can inspect registered handlers through `session.extensionRunner.getRegisteredCommands()`. Known terminal-only commands submitted through `prompt` return an unavailable-command error. Native commands can also require a UI for particular operations. See [SDK workflow operations](sdk.md#session-workflow-operations) for structured compaction, planning and report APIs.
+The terminal's `/help` combines core, native, extension, prompt and skill commands. The extension API's `octocode.getCommands()` and RPC `get_commands` expose registered extension/native commands plus prompts and skills under their resolved names; they do not manufacture terminal dialogs. SDK hosts can inspect registered handlers through `session.extensionRunner.getRegisteredCommands()`. Known terminal-only commands submitted through `prompt` return an unavailable-command error. In the terminal, a command-shaped `/name` that no command owns is not sent to the model: the editor keeps the text and a warning names the closest command, or suggests `/help name` when none is close. Native commands can also require a UI for particular operations. See [SDK workflow operations](sdk.md#session-workflow-operations) for structured compaction, planning and report APIs.
 
 In the terminal, `!<command>` runs a shell command and includes its result in context; `!!<command>` runs it with the result excluded from model context. Both retain the normal execution checks. These prefixes are not slash commands. Keyboard shortcuts are listed by `/keys` and in [keybindings](keybindings.md).
 
 ## Shell entry points
 
-Shell commands run outside the conversation. `octocode config` manages resource configuration; `/config` is the in-session settings alias. `--continue` resumes the previous session; `/continue` opens the saved-session browser. Use `octocode --help` for all flags and their short aliases, and `octocode <command> --help` for subcommand options.
+Shell commands run outside the conversation. `octocode config` manages resource configuration; `/settings` opens the in-session settings. `--continue` resumes the previous session; `/resume` opens the saved-session browser. Use `octocode --help` for all flags and their short aliases, and `octocode <command> --help` for subcommand options.
 
 | Shell command                           | Purpose                                                                                    |
 | --------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -150,7 +149,7 @@ The separate `octocode-api` executable exposes `completion`, `list`, `status`, `
 
 ## Model prompts and verification
 
-Aliases use the canonical handler and prompt unchanged. Most commands perform host actions without asking the model anything. Configuration, memory and resource changes can affect later normal turns.
+Most commands perform host actions without asking the model anything. Configuration, memory and resource changes can affect later normal turns.
 
 | Command or operation                                           | Model behavior and instruction contract                                                                                                                                                                                                                                                                                                                                      | Regression coverage                                                                                                                                                                                                                              |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -162,9 +161,9 @@ Aliases use the canonical handler and prompt unchanged. Most commands perform ho
 | `/backlog do <id>`                                             | Sends the task's saved context and comments, requires a fresh read of all pages before acting, and requires verification before completion. Saved task text does not grant additional permissions. Other backlog operations use host controls.                                                                                                                               | [Task handoff, version checks and delivery](../test/octocode/workspace-handoff.test.ts), [backlog command operations](../test/octocode/backlog.test.ts)                                                                                          |
 | `/agents tell`, `/agents interrupt`, `/agents external prompt` | Forwards the user's message to the selected agent through existing permission and delivery controls. These operations do not supply a separate summarization or planning prompt. Other agent operations use host controls.                                                                                                                                                   | [Team controls](../test/octocode/team-tools.test.ts), [external agent manager](../test/octocode/external-manager.test.ts)                                                                                                                        |
 
-**The remaining commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/providers`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
+**The remaining commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/login`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
 
-[Dispatch tests](../test/slash-command-dispatch.test.ts) compare every alias in the shared metadata with its canonical handler's arguments and effects. [Collision tests](../test/command-aliases.test.ts) cover extensions, prompts and skills. The native SDK test checks every native command registration and both bundled extension command registrations. Loaded skill bodies and user prompt templates remain separate, source-specific instructions; their argument expansion and collision handling are tested, but this audit is not a quality evaluation of every third-party resource.
+[Dispatch tests](../test/slash-command-dispatch.test.ts) check that each built-in has one name and that removed names do not dispatch. [Command-name tests](../test/command-names.test.ts) cover collisions between extensions, prompts and skills, and the refusal of extension `aliases`. The native SDK test checks every native command registration and both bundled extension command registrations. Loaded skill bodies and user prompt templates remain separate, source-specific instructions; their argument expansion and collision handling are tested, but this audit is not a quality evaluation of every third-party resource.
 
 Offline tests verify request construction, routing, state and enforcement. They do not prove that every live model will follow a prompt, or replace manual terminal/browser acceptance testing.
 
@@ -180,4 +179,4 @@ The final repository-wide `yarn run check` passed TypeScript, then stopped on li
 
 Verified on 2026-10-24 against [core metadata](../src/core/slash-commands.ts), [terminal dispatch](../src/modes/interactive/interactive-mode/command-dispatch.ts), [native registration](../src/octocode/index.ts), [native command registration rules](../src/octocode/shared/commands.ts), and [built-in composition](../src/core/resource-loader/builtins.ts). Argument forms were checked against their handlers, and the skill list against the installed research package selected by [the bundle resolver](../src/config.ts). Shell entry points come from [CLI help](../src/cli/args/help.ts) and the [API CLI](../src/octocode/api/cli.ts).
 
-Update this reference when a command registration or alias changes. The static inventory is not a promise that every host loads every command.
+Update this reference when a command registration changes. The static inventory is not a promise that every host loads every command.

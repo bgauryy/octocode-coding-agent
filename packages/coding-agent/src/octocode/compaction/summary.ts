@@ -231,7 +231,10 @@ function paidKey(model: Model<Api>, preparation: CompactionPreparation, instruct
 
 /** Octocode's compaction result, or undefined to let Octocode write its default summary (the reason is recorded in the session). */
 export async function writeSummary(
-	pi: Pick<ExtensionAPI, "getThinkingLevel" | "getActiveTools" | "getSettings" | "appendEntry" | "createUsageRecorder">,
+	api: Pick<
+		ExtensionAPI,
+		"getThinkingLevel" | "getActiveTools" | "getSettings" | "appendEntry" | "createUsageRecorder"
+	>,
 	event: SessionBeforeCompactEvent,
 	ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
 	summaryModel?: Model<Api>,
@@ -242,12 +245,12 @@ export async function writeSummary(
 	const model = summaryModel ?? ctx.model;
 	if (event.signal.aborted) return undefined;
 	if (!model) {
-		recordCompactionNote(pi, "default-summary", "no model is selected for the summary");
+		recordCompactionNote(api, "default-summary", "no model is selected for the summary");
 		return undefined;
 	}
 	try {
 		// Through the model registry, as Octocode's own session streams: request-time auth, and providers an extension registered.
-		const recordUsage = pi.createUsageRecorder("compaction_attempt");
+		const recordUsage = api.createUsageRecorder("compaction_attempt");
 		const stream = (request: typeof model, context: Context, options?: SimpleStreamOptions) => {
 			const response = ctx.modelRegistry.streamSimple(request, context, options);
 			const result = response.result().then((message) => {
@@ -291,7 +294,7 @@ export async function writeSummary(
 							: "the prompt cache had expired, so sharing it would rewrite the whole context";
 			const shared = share
 				? await sharedSummary(
-						pi,
+						api,
 						event,
 						ctx,
 						model,
@@ -312,7 +315,7 @@ export async function writeSummary(
 					undefined,
 					instructions,
 					event.signal,
-					pi.getThinkingLevel(),
+					api.getThinkingLevel(),
 					stream,
 				));
 			// A cancelled compaction saves nothing, so a summary that returned after the cancel is not kept either.
@@ -331,7 +334,7 @@ export async function writeSummary(
 		);
 		const note = transcriptNote(
 			ctx.sessionManager.getSessionFile(),
-			pi.getActiveTools().includes("backlog"),
+			api.getActiveTools().includes("backlog"),
 			archivePointer(segment),
 		);
 		// Every file saved from the summarized results (and by earlier summaries), named once, like the file lists.
@@ -373,13 +376,13 @@ export async function writeSummary(
 		};
 	} catch (error) {
 		if (error instanceof CheckpointPersistenceError || error instanceof UsagePersistenceError) {
-			recordCompactionNote(pi, "checkpoint-not-saved", error.message);
+			recordCompactionNote(api, "checkpoint-not-saved", error.message);
 			if (ctx.hasUI) notify(ctx.ui, error.message, "error");
 			// Not the user's cancel: a failure, so the automatic failure limit counts it.
 			return { cancel: true, failure: error.message };
 		}
 		if (event.signal.aborted) return undefined;
-		recordCompactionNote(pi, "default-summary", `Octocode's compaction summary failed (${errorMessage(error)})`);
+		recordCompactionNote(api, "default-summary", `Octocode's compaction summary failed (${errorMessage(error)})`);
 		if (ctx.hasUI)
 			notify(
 				ctx.ui,

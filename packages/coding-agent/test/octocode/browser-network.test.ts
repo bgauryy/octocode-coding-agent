@@ -11,7 +11,7 @@ import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import type { AuditEntry } from "../../src/octocode/permission/audit.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 import type { HostLookup } from "../../src/octocode/web/guard.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { type CdpHandler, type CdpStub, startCdpStub } from "./fixtures/cdp-stub.ts";
 import { AUDIT_KEYS_MAX, BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
@@ -264,8 +264,8 @@ async function setup(
 	});
 	stubs.push(cdp);
 	vi.stubEnv("OCTOCODE_CHROME_PORT", String(cdp.port));
-	const fake = fakePi();
-	const browser = new BrowserTool(fakePermission(options.mode ?? "full", { pi: fake.pi }), {
+	const fake = fakeHost();
+	const browser = new BrowserTool(fakePermission(options.mode ?? "full", { api: fake.api }), {
 		...(options.lookup ? { lookup: options.lookup } : {}),
 		...(options.flushMs ? { flushMs: options.flushMs } : {}),
 	});
@@ -852,8 +852,8 @@ describe("browser launched Chrome behind the filtering proxy", () => {
 		launch.mockResolvedValue({ port: cdp.port, kill: vi.fn(async () => undefined), process: { unref: vi.fn() } });
 		vi.stubEnv("OCTOCODE_HOME", fakeHome());
 		vi.stubEnv("OCTOCODE_CHROME_PORT", "");
-		const fake = fakePi();
-		const browser = new BrowserTool(fakePermission(mode, { pi: fake.pi }), lookup ? { lookup } : {});
+		const fake = fakeHost();
+		const browser = new BrowserTool(fakePermission(mode, { api: fake.api }), lookup ? { lookup } : {});
 		tools.push(browser);
 		return { cdp, browser, audit: () => fake.entries.map((entry) => entry.data as AuditEntry) };
 	}
@@ -961,7 +961,7 @@ describe("browser launched Chrome behind the filtering proxy", () => {
 });
 
 function fakeHome(): string {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-net-"));
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-net-"));
 	closers.push(() => fs.rmSync(dir, { recursive: true, force: true }));
 	return dir;
 }

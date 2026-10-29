@@ -19,4 +19,8 @@ export interface ResourceSettingsApi {
 	setProjectThemePaths(paths: string[]): void;
 	getEnableSkillCommands(): boolean;
 	setEnableSkillCommands(enabled: boolean): void;
+	/** Plugin and hook switches by ID; project keys appear with the `project:` prefix (see `mergeToggles`). */
+	getToggles(): Record<string, boolean>;
+	/** Switch one ID in global or project settings; `undefined` removes the key. */
+	setToggle(scope: "global" | "project", id: string, on: boolean | undefined): void;
 }

@@ -172,7 +172,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 	// Process Alibaba Cloud Model Studio Token Plan models. International and
 	// China use separate endpoints and API keys (sk-sp- prefix). The Individual
 	// provider reuses the international source and endpoint with a narrower catalog.
-	// models.dev keys are "alibaba-token-plan[-cn]"; pi exposes them as
+	// models.dev keys are "alibaba-token-plan[-cn]"; Octocode exposes them as
 	// "qwen-token-plan[-cn]" plus the Individual catalog view.
 	const qwenTokenPlanCompat: OpenAICompletionsCompat = {
 		thinkingFormat: "qwen",

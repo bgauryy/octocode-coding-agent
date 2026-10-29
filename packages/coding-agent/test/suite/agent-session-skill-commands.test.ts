@@ -40,9 +40,9 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 	let extensionCalls = 0;
 	const extensionsResult = await createTestExtensionsResult(
 		[
-			(pi) => {
-				api = pi;
-				pi.registerCommand("custom", {
+			(host) => {
+				api = host;
+				host.registerCommand("custom", {
 					handler: async () => {
 						extensionCalls++;
 					},

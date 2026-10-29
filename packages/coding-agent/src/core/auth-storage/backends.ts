@@ -16,7 +16,7 @@ import { normalizePath } from "../../utils/paths.ts";
 export type AuthStorageData = Record<string, Credential>;
 
 // On Windows, a just-removed lock directory can stay "delete pending" while another process
-// (antivirus, indexer, another pi checking the lock) still has it open. mkdir then fails with
+// (antivirus, indexer, another Octocode process checking the lock) still has it open. mkdir then fails with
 // EPERM until that handle closes. Retry this briefly so real permission errors still fail fast.
 const MAX_EPERM_RETRIES = 5;
 

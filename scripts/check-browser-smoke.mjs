@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { rolldown } from "rolldown";
 
-const errorLogPath = join(tmpdir(), "pi-browser-smoke-errors.log");
+const errorLogPath = join(tmpdir(), "octocode-browser-smoke-errors.log");
 const generatedCatalogDataDir = join(process.cwd(), "packages/ai/src/providers/data");
 const EMPTY_CATALOG = "\0empty-generated-model-catalog:";
 

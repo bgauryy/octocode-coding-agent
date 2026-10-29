@@ -23,14 +23,14 @@ type CompactionNoteKind =
 	/** Complete checkpoint content could not be persisted, so compaction was cancelled. */
 	| "checkpoint-not-saved";
 
-/** Appends a compaction note to the session; a session replaced meanwhile (a stale `pi`) records nothing. */
+/** Appends a compaction note to the session; a session replaced meanwhile (a stale `api`) records nothing. */
 export function recordCompactionNote(
-	pi: Pick<ExtensionAPI, "appendEntry">,
+	api: Pick<ExtensionAPI, "appendEntry">,
 	kind: CompactionNoteKind,
 	reason: string,
 ): void {
 	try {
-		pi.appendEntry(COMPACTION_NOTE_TYPE, { kind, reason });
+		api.appendEntry(COMPACTION_NOTE_TYPE, { kind, reason });
 	} catch (error) {
 		if (!isStaleSessionError(error)) throw error;
 	}

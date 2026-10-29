@@ -11,7 +11,7 @@ import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
 	for (const fn of cleanup.reverse()) await fn();
@@ -23,7 +23,7 @@ function setup() {
 	const db = openAgentDb(path.join(dir, "db"));
 	cleanup.push(() => db.close());
 	const store = new BacklogStore(() => db, "repo");
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: dir });
 	const listeners = new Set<(event: AgentSessionEvent) => void>();
 	const prompt = vi.fn(async () => {});
@@ -42,7 +42,7 @@ function setup() {
 	} as unknown as AgentSession;
 	const application = new ApplicationService(session);
 	cleanup.push(() => application.dispose());
-	const runtime = new WorkspaceRuntime(fake.pi, {
+	const runtime = new WorkspaceRuntime(fake.api, {
 		database: () => db,
 		members: () => [],
 		traffic: () => [],

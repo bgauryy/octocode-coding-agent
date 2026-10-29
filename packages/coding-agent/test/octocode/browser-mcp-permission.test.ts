@@ -8,7 +8,7 @@ import { browserMcpUrls } from "../../src/octocode/shared/browser-mcp.ts";
 import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** DNS without the network: example.com is public, everything else fails to resolve. */
@@ -72,8 +72,8 @@ describe("browser MCP navigation targets", () => {
 	it("lets public navigation run in workspace mode and asks before a private one", async () => {
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
-		const fake = fakePi();
-		const permission = new Permission({ pi: fake.pi, env: { [PERMISSION_ENV]: "workspace" }, isSubagent: false });
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: "workspace" }, isSubagent: false });
 		const ctx = fakeCtx({ cwd, hasUI: true, ui: { selects: [] } });
 		permission.start(ctx);
 		const asked: string[] = [];

@@ -12,6 +12,8 @@ async function harness(options: HarnessOptions = {}) {
 			{ id: "small", name: "Small", contextWindow: 64_000, maxTokens: 8192 },
 		],
 		...options,
+		// These cases exercise explicit /context choices; the default working context has its own cases below.
+		settings: { contextBudget: "full", ...options.settings },
 	});
 	harnesses.push(result);
 	return result;
@@ -53,7 +55,7 @@ describe("session context controls", () => {
 		});
 		expect(prepared?.model?.contextWindow).toBe(32_000);
 	});
-	it("remembers independent budgets across model switches and restores full capacity on reset", async () => {
+	it("remembers independent budgets across model switches and restores the default on reset", async () => {
 		const { session, getModel } = await harness();
 		session.setContextWindow(32_000);
 		await session.setModel(getModel("small")!);
@@ -142,5 +144,65 @@ describe("session context controls", () => {
 		await expect(handleContextSize(host, "size")).rejects.toThrow("Model or session changed");
 		expect(host.session.model?.contextWindow).toBe(change === "model" ? 64_000 : 200_000);
 		expect(status).not.toHaveBeenCalled();
+	});
+});
+
+describe("default working context", () => {
+	async function withBudget(contextBudget?: number | "full") {
+		const result = await createHarness({
+			models: [
+				{ id: "huge", name: "Huge", contextWindow: 1_000_000, maxTokens: 64_000 },
+				{ id: "large", name: "Large", contextWindow: 200_000, maxTokens: 16_384 },
+			],
+			settings: { contextBudget },
+		});
+		harnesses.push(result);
+		return result;
+	}
+	it("starts at 300k on a 1M model and keeps the catalog capacity visible", async () => {
+		const { session, getModel } = await withBudget();
+		expect(session.model?.contextWindow).toBe(300_000);
+		expect(session.getContextWindowLimit()).toBe(1_000_000);
+		expect(getModel("huge")?.contextWindow).toBe(1_000_000);
+	});
+	it("caps the default at 90% of a smaller model's capacity", async () => {
+		const { session, getModel } = await withBudget();
+		await session.setModel(getModel("large")!);
+		expect(session.model?.contextWindow).toBe(180_000);
+		expect(session.getContextReport().catalogCapacity).toBe(200_000);
+	});
+	it("uses the configured budget and the full capacity on request", async () => {
+		const { session, getModel } = await withBudget(500_000);
+		expect(session.model?.contextWindow).toBe(500_000);
+		await session.setModel(getModel("large")!);
+		expect(session.model?.contextWindow).toBe(180_000);
+		expect(session.setContextWindow(200_000)).toBe(200_000);
+		expect(session.setContextWindow()).toBe(180_000);
+	});
+	it('uses the whole capacity when the setting is "full"', async () => {
+		const { session } = await withBudget("full");
+		expect(session.model?.contextWindow).toBe(1_000_000);
+	});
+	it("keeps an unregistered model's own capacity and definition across /context changes", async () => {
+		const { session, getModel } = await withBudget();
+		const own = { ...getModel("large")!, id: "private-large", baseUrl: "https://own.example/v1" };
+		session.agent.state.model = own;
+		session.setContextWindow(64_000);
+		expect(session.getContextWindowLimit()).toBe(200_000);
+		for (let index = 0; index < 3; index++) expect(session.setContextWindow()).toBe(180_000);
+		expect(session.setContextWindow(200_000)).toBe(200_000);
+		expect(session.model?.baseUrl).toBe("https://own.example/v1");
+	});
+	it("ignores an invalid hand-edited budget", async () => {
+		const { session } = await withBudget("lots" as never);
+		expect(session.model?.contextWindow).toBe(300_000);
+	});
+	it("supports /context full and /context reset", async () => {
+		const { session } = await withBudget();
+		const host = createFakeHost({ session, showStatus: vi.fn(), ui: { requestRender: vi.fn() } });
+		await handleContextSize(host, "full");
+		expect(session.model?.contextWindow).toBe(1_000_000);
+		await handleContextSize(host, "reset");
+		expect(session.model?.contextWindow).toBe(300_000);
 	});
 });

@@ -13,7 +13,7 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
 import { octocodeHome, sessionFolder } from "../../src/octocode/shared/home.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { RECORD_FILE } from "../../src/octocode/shared/archive/record.ts";
@@ -41,7 +41,7 @@ function repo(): string {
 /** A manual-mode session whose select records each dialog text and answers from `replies`. */
 function asking(replies: Array<string | undefined>) {
 	const cwd = repo();
-	const permission = new Permission({ pi: fakePi().pi, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });
+	const permission = new Permission({ api: fakeHost().api, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });
 	const ctx = fakeCtx({ cwd });
 	permission.start(ctx);
 	const shown: string[] = [];
@@ -273,8 +273,8 @@ describe("shared memory moves", () => {
 	});
 
 	it("unpins a pinned memory and moves a global one into the project at once: narrowing shared memory has no prompt", async () => {
-		const fake = fakePi();
-		registerMemory(fake.pi, { commands: new Subcommands(), isSubagent: false, permission: fakePermission("manual") });
+		const fake = fakeHost();
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission("manual") });
 		const tool = fake.tools.get("memory");
 		// Saving each shared memory asks once; the moves that narrow them do not.
 		const ctx = fakeCtx({ cwd: root, ui: { selects: ["Allow once", "Allow once"] } });

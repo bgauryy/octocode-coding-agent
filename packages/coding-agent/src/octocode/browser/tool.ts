@@ -21,8 +21,8 @@ const PAGE_ACTIONS = new Set([
 	"download",
 ]);
 
-export function registerBrowserTool(pi: ExtensionAPI, browser: BrowserTool): void {
-	pi.registerTool(
+export function registerBrowserTool(api: ExtensionAPI, browser: BrowserTool): void {
+	api.registerTool(
 		timedTool(
 			{
 				name: "browser",
@@ -77,5 +77,5 @@ export function registerBrowserTool(pi: ExtensionAPI, browser: BrowserTool): voi
 			{ exclusive: true },
 		),
 	);
-	pi.on("session_shutdown", async () => browser.close({ keepVisible: true }));
+	api.on("session_shutdown", async () => browser.close({ keepVisible: true }));
 }

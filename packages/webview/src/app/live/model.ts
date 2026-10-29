@@ -1,11 +1,14 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { UiState } from "../model/ui-state.ts";
 import type { FeedEvent } from "./application-projection.ts";
 export { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
 
-export type Tone = "success" | "danger" | "tool" | "agent" | "neutral";
+export type Tone = "success" | "danger" | "accent" | "warning" | "agent" | "neutral";
 interface ActivityCard {
 	tone: Tone;
+	/** The run-state shape beside the label; absent for events that are not a state (requests, session notes). */
+	ui?: UiState;
 	label: string;
 	status?: string;
 	title: string;
@@ -54,29 +57,48 @@ function isFailed(event: WorkspaceEvent): boolean {
 	return event.outcome === "failed" || FAILED_STATUSES.includes(String(record(event.details).status));
 }
 
+/** A reply the user cut short or the run abandoned: stopped, not a failure and not a normal answer. */
+function isStopped(event: WorkspaceEvent): boolean {
+	return event.type === "message" && ["aborted", "interrupted"].includes(String(record(event.details).status));
+}
+
+/** The shape a card shows: running until its result arrives, then done, failed or stopped. */
+function cardState(event: WorkspaceEvent, failed: boolean, notRun: boolean, stopped: boolean): UiState | undefined {
+	if (failed) return "failed";
+	if (notRun || stopped) return "stopped";
+	if (record(event.details).status === "streaming") return "running";
+	if (event.type === "tool.start" || event.type === "agent.start" || event.type === "agent.progress") return "running";
+	return event.type.endsWith(".result") || event.type === "agent.settled" ? "done" : undefined;
+}
+
 /** How one feed event reads: agent results use their structured summary; tool output splits its first line off as a title. */
 export function activityCard(event: FeedEvent): ActivityCard {
 	const details = record(event.details);
 	const failed = isFailed(event);
 	const notRun = isNotRun(event);
+	const stopped = isStopped(event);
 	const structured = event.type === "agent.result";
 	const prose = event.type === "message" || event.type === "agent.progress";
 	const [firstLine, ...rest] = event.type.startsWith("tool.") ? toolHeadline(event) : event.text.split("\n");
 	const hint = event.type.startsWith("tool.") ? hintOf(event) : "";
+	const ui = cardState(event, failed, notRun, stopped);
 	return {
 		failed,
+		...(ui ? { ui } : {}),
 		tone: failed
 			? "danger"
-			: notRun
-				? "neutral"
-				: event.type.endsWith(".result")
-					? "success"
-					: event.type.startsWith("tool.")
-						? "tool"
-						: event.type.startsWith("agent.")
-							? "agent"
-							: "neutral",
-		label: failed ? "Needs attention" : notRun ? "Not run" : (LABELS[event.type] ?? event.type),
+			: stopped
+				? "warning"
+				: notRun
+					? "neutral"
+					: event.type.endsWith(".result")
+						? "success"
+						: event.type.startsWith("tool.")
+							? "accent"
+							: event.type.startsWith("agent.")
+								? "agent"
+								: "neutral",
+		label: failed ? "Needs attention" : notRun ? "Not run" : stopped ? "Stopped" : (LABELS[event.type] ?? event.type),
 		status: notRun ? "not run" : scalarText(details.status),
 		title: prose
 			? event.type === "message"
@@ -180,15 +202,38 @@ export function connectionTone(message: string): ConnectionTone {
 	return /reconnecting|refreshing|connecting/i.test(message) ? "connecting" : "error";
 }
 
-export type RunPhase = { kind: "idle" } | { kind: "thinking" } | { kind: "writing" } | { kind: "tool"; name: string };
-/** What a run is doing now: a running tool wins, then a partial answer, otherwise the model is still thinking. */
+export type RunPhase =
+	| { kind: "idle" }
+	| { kind: "thinking" }
+	| { kind: "writing" }
+	| { kind: "tool"; name: string }
+	| { kind: "compacting" }
+	| { kind: "retrying" }
+	| { kind: "waiting"; awaiting: NonNullable<ApplicationSnapshot["awaiting"]> };
+/**
+ * What the session is doing now. A dialog that waits for the terminal user wins, then compaction or a retry (which
+ * start after the run settled, so `streaming` is already false), then a running tool, a partial answer, and last the
+ * model still thinking.
+ */
 export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
+	if (snapshot?.streaming && snapshot.awaiting) return { kind: "waiting", awaiting: snapshot.awaiting };
+	if (snapshot?.status === "compacting" || snapshot?.status === "retrying") return { kind: snapshot.status };
 	if (!snapshot?.streaming) return { kind: "idle" };
 	const tool = snapshot.tools?.findLast((candidate) => candidate.status === "running");
 	if (tool) return { kind: "tool", name: tool.toolName };
 	const last = snapshot.messages.at(-1);
 	if (last?.role === "assistant" && !last.complete && last.text) return { kind: "writing" };
 	return { kind: "thinking" };
+}
+
+/** The session panel's badge: the shared run state and its label, or nothing while the session is idle. */
+export function sessionBadge(
+	snapshot: Pick<ApplicationSnapshot, "streaming" | "status" | "awaiting"> | undefined,
+): { state: UiState; label: string; warn: boolean } | undefined {
+	if (snapshot?.streaming && snapshot.awaiting) return { state: "waiting", label: "Waiting for you", warn: true };
+	if (snapshot?.status === "compacting") return { state: "running", label: "Compacting", warn: false };
+	if (snapshot?.status === "retrying") return { state: "running", label: "Retrying", warn: true };
+	return snapshot?.streaming ? { state: "running", label: "Running", warn: false } : undefined;
 }
 
 // The ESC that starts a terminal colour code, then its parameters and final letter.

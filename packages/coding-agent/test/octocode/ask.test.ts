@@ -4,7 +4,7 @@ import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showAskDialog } from "../../src/octocode/ask/dialog.ts";
 import { formatAnswers, registerAskUser } from "../../src/octocode/ask/tool.ts";
 import { promptTitle, withDialog } from "../../src/octocode/shared/locks.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import type { AskQuestion, AskResult } from "../../src/octocode/ask/dialog/answers.ts";
 
 const KEY = {
@@ -322,8 +322,8 @@ describe("askUser", () => {
 });
 
 describe("askUser tool", () => {
-	const fake = fakePi();
-	registerAskUser(fake.pi);
+	const fake = fakeHost();
+	registerAskUser(fake.api);
 	const tool = fake.tools.get("askUser");
 	const params = { questions: [{ ...scope, header: "A very long header" }, extras] };
 

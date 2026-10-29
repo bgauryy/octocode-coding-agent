@@ -2,16 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { gt, maxSatisfying, rcompare, satisfies } from "semver";
 import { CONFIG_DIR_NAME } from "../../config.ts";
+import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { markPathIgnoredByCloudSync } from "../../utils/paths.ts";
 import { stripBom } from "../../utils/text.ts";
 import { assertProjectTrustedForScope, getTemporaryDir } from "./sources.ts";
-import {
-	isOfflineModeEnabled,
-	NETWORK_TIMEOUT_MS,
-	type NpmSource,
-	type PackageManagerHost,
-	type SourceScope,
-} from "./types.ts";
+import { NETWORK_TIMEOUT_MS, type NpmSource, type PackageManagerHost, type SourceScope } from "./types.ts";
 
 /** The global npm root, resolved once per configured npm command. */
 export interface GlobalNpmRootCache {
@@ -87,7 +82,7 @@ function runNpmCommandSync(host: PackageManagerHost, args: string[]): string {
 
 export function getNpmInstallArgs(host: PackageManagerHost, specs: string[], installRoot: string): string[] {
 	const packageManagerName = getPackageManagerName(host);
-	// Extension packages run inside pi and resolve pi APIs through loader aliases/virtual modules.
+	// Extension packages run inside Octocode and resolve Octocode APIs through loader aliases/virtual modules.
 	// Disable peer dependency resolution for managed installs (npm's --legacy-peer-deps, and
 	// equivalent bun/pnpm settings) so package managers do not install or solve host-provided
 	// @octocodeai/octocode-* peers. Stale auto-installed host peers can otherwise block updates.

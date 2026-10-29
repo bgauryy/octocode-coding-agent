@@ -147,7 +147,7 @@ describe("azure deepseek-v4-pro over Chat Completions", () => {
 		expect(mockState.lastParams?.messages?.[0]).toMatchObject({ role: "system", content: "sys" });
 	});
 
-	// The deployment honours system messages sent mid-conversation, so pi must not collapse them.
+	// The deployment honours system messages sent mid-conversation, so Octocode must not collapse them.
 	it("keeps mid-conversation system messages in place", async () => {
 		const resumed = normalizeContext({
 			systemPrompt: "first",

@@ -14,8 +14,8 @@ async function harnessWhoseHookReturns(result: { cancel: true; failure?: string 
 	const harness = await createHarness({
 		compactionPolicy: { keepRecentTokens: 1 },
 		builtinCompactionFactories: [
-			(pi) => {
-				pi.on("session_before_compact", async () => {
+			(api) => {
+				api.on("session_before_compact", async () => {
 					calls.push(calls.length);
 					return result;
 				});

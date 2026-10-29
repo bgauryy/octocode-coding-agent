@@ -5,7 +5,7 @@ import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { hookCalls } from "../../src/octocode/hooks/config/calls.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 function setup(content = "A\nA\n", partial = false) {
 	const cwd = fs.realpathSync(tmp()),
@@ -16,8 +16,8 @@ function setup(content = "A\nA\n", partial = false) {
 	const checkpoints = new Checkpoints();
 	checkpoints.open(tmp());
 	checkpoints.beginTurn();
-	const fake = fakePi();
-	registerFileTool(fake.pi, guard, fakePermission(), checkpoints);
+	const fake = fakeHost();
+	registerFileTool(fake.api, guard, fakePermission(), checkpoints);
 	const tool = fake.tools.get("file")!,
 		ctx = fakeCtx({ cwd });
 	const edit = (replaceAll = true, signal?: AbortSignal) =>

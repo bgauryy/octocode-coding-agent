@@ -110,8 +110,8 @@ async function createAbortableCompactionHarness(): Promise<{
 	const harness = await createHarness({
 		compactionPolicy: { keepRecentTokens: 1 },
 		builtinCompactionFactories: [
-			(pi) => {
-				pi.on("session_before_compact", async (event) => {
+			(api) => {
+				api.on("session_before_compact", async (event) => {
 					return await new Promise<{ cancel: true }>((resolve) => {
 						event.signal.addEventListener("abort", () => resolve({ cancel: true }), { once: true });
 						markCompactionStarted();
@@ -130,8 +130,8 @@ describe("AgentSession compaction characterization", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			extensionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => {
+				(api) => {
+					api.on("session_before_compact", async (event) => {
 						seen.push(event.customInstructions);
 					});
 				},
@@ -207,8 +207,8 @@ describe("AgentSession compaction characterization", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "summary from extension",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -251,9 +251,9 @@ describe("AgentSession compaction characterization", () => {
 	it("checkpoints the replayed system state and folds summarized and retained system patches into it", async () => {
 		const harness = await createHarness({
 			extensionFactories: [
-				(pi) => {
+				(api) => {
 					for (const name of ["kept_tool", "retired_tool"])
-						pi.registerTool({
+						api.registerTool({
 							name,
 							label: name,
 							description: name,
@@ -314,8 +314,8 @@ describe("AgentSession compaction characterization", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "manual compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -357,7 +357,7 @@ describe("AgentSession compaction characterization", () => {
 	it("throws when compacting without configured auth", async () => {
 		const harness = await createHarness({ withConfiguredAuth: false });
 		harnesses.push(harness);
-		// Auth is resolved only when Pi summarizes itself, after checking there is something to compact.
+		// Auth is resolved only when Octocode summarizes itself, after checking there is something to compact.
 		seedCompactableSession(harness);
 
 		await expect(harness.session.compact()).rejects.toThrow(`No API key found for ${harness.getModel().provider}.`);
@@ -486,8 +486,8 @@ describe("AgentSession compaction characterization", () => {
 		}> = [];
 		const harness = await createHarness({
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_compact_failed", async (event) => {
+				(api) => {
+					api.on("session_compact_failed", async (event) => {
 						failedEvents.push(event);
 					});
 				},
@@ -526,8 +526,8 @@ describe("AgentSession compaction characterization", () => {
 			tools: [],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "overflow compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -576,8 +576,8 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 			tools: [largeTool],
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", (event) => {
+				(api) => {
+					api.on("session_before_compact", (event) => {
 						order.push("compaction");
 						observedSettings.push(event.preparation.settings);
 						return {
@@ -646,8 +646,8 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 			tools: [largeTool],
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => {
+				(api) => {
+					api.on("session_before_compact", async (event) => {
 						markCompactionStarted();
 						await compactionReleased;
 						return {
@@ -704,8 +704,8 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 			tools: [terminatingTool],
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", (event) => ({
+				(api) => {
+					api.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "unexpected compaction",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -751,8 +751,8 @@ describe("AgentSession compaction characterization", () => {
 			models: [{ id: "faux-1", contextWindow: 1_000_000, maxTokens: 100 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "overflow compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -846,8 +846,8 @@ describe("AgentSession compaction characterization", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "auto compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -907,8 +907,8 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			models: [{ id: "faux-1", contextWindow: 1, maxTokens: 100 }],
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "successful overflow compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

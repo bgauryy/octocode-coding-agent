@@ -42,9 +42,9 @@ Native extensions use the existing loader and API. They can listen to events wit
 
 ### Hooks: event contracts and execution
 
-Hooks use `OCTOCODE_HOOKS=1`; the developing source-specific adapters additionally require `OCTOCODE_HOOKS_COMPAT=1`. The default mode reads supported entries from Claude/Codex files but applies Octocode behavior. The preview selects a profile by source and implements only the capabilities marked in the event/configuration matrix. Native extension event handlers are not this subsystem and do not require these flags.
+Hooks are always on in main sessions (since 2026-10-29; earlier they required `OCTOCODE_HOOKS=1`, and the source profiles `OCTOCODE_HOOKS_COMPAT=1`). Each source uses its own profile: Claude files the Claude profile, Codex files the Codex profile, Octocode files the native contract. Any loaded `disableAllHooks: true` turns them off. Native extension event handlers are not this subsystem.
 
-The runtime discovers the seven files listed in the hook guide, merges supported entries, applies native project trust, and exposes diagnostics through `/hooks`. It additionally reads reviewed hooks from explicitly configured plugins. The source-profile preview also reads user and trusted project Codex `config.toml`, including inline hooks, Windows command aliases and the hooks feature switch. Arbitrary script discovery and managed Codex policy remain unsupported.
+The runtime discovers the seven files listed in the hook guide, merges supported entries, applies native project trust, and exposes diagnostics through `/hooks`. It additionally reads reviewed hooks from explicitly configured plugins. Discovery also reads user and trusted project Codex `config.toml`, including inline hooks, Windows command aliases and the hooks feature switch. Arbitrary script discovery and managed Codex policy remain unsupported.
 
 ### Implementation boundary
 

@@ -106,7 +106,7 @@ export class Delivery {
 	/**
 	 * Octocode swallows a refused turn start (no model selected, no sign-in): the message then stays handed but unseen until the
 	 * agent leaves, when it becomes a dead letter. An idle agent that still has not reached the model with a waking message
-	 * after `WAKE_STUCK_MS` is reported to its user once, so the cause (`/model`, `/providers`) is not a silent wait.
+	 * after `WAKE_STUCK_MS` is reported to its user once, so the cause (`/model`, `/login`) is not a silent wait.
 	 */
 	private checkWake(): void {
 		if (this.wakeHandedAt === undefined) return;
@@ -122,7 +122,7 @@ export class Delivery {
 		if (ctx.hasUI)
 			notify(
 				ctx.ui,
-				"A team message should have started a turn, but Octocode did not run one (select a model with /model and sign in with /providers). The message stays queued; its sender is told it went unread if this session ends first.",
+				"A team message should have started a turn, but Octocode did not run one (select a model with /model and sign in with /login). The message stays queued; its sender is told it went unread if this session ends first.",
 				"warning",
 			);
 	}

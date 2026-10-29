@@ -61,7 +61,7 @@ const BACKGROUND_OUTPUT = Type.Object({
 });
 
 export function registerBashTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	commands?: Subcommands,
 	jobs = new BashJobs(),
 	settingsFor: (ctx: ExtensionContext) => ShellSettings = (ctx) => shellSettings(ctx.cwd, ctx.isProjectTrusted()),
@@ -99,7 +99,7 @@ export function registerBashTool(
 		};
 		try {
 			// Follow-up records output after this turn; the log distinguishes job IDs reused by a later instance.
-			const sending = pi.sendMessage(
+			const sending = api.sendMessage(
 				{
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
@@ -122,7 +122,7 @@ export function registerBashTool(
 		report(job, exit, !closing && job.stopped !== "user");
 	};
 
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
 		sessionGeneration++;
 		current = ctx;
 		closing = false;
@@ -144,7 +144,7 @@ export function registerBashTool(
 		const orphans = await reapOrphanJobs(jobs.recordDirs());
 		if (orphans.length > 0) say(ctx, orphanNotice(orphans), "warning");
 	});
-	pi.on("session_shutdown", async (event) => {
+	api.on("session_shutdown", async (event) => {
 		closing = true;
 		const reason = event?.reason === "reload" ? "reload" : "session end";
 		const now = Date.now();
@@ -163,7 +163,7 @@ export function registerBashTool(
 		await Promise.all([jobs.stopAll(reason), ...ending]);
 		current = undefined;
 	});
-	pi.registerMessageRenderer(JOB_TYPE, (message, { expanded, outputPad }, theme) =>
+	api.registerMessageRenderer(JOB_TYPE, (message, { expanded, outputPad }, theme) =>
 		renderJobMessage(contentText(message.content), expanded, theme, outputPad ?? 1),
 	);
 
@@ -193,7 +193,7 @@ export function registerBashTool(
 		},
 	});
 
-	pi.registerTool(
+	api.registerTool(
 		timedTool({
 			name: "bash",
 			label: "bash",

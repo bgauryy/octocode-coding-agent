@@ -239,7 +239,7 @@ it("uses one plugin data identity for skills, commands and reviewed hooks", asyn
 		nativeFeatures: false,
 	});
 	await loader.reload();
-	const hooks = loadHooks(f.cwd, false, undefined, { sourceProfiles: true, plugins: [entry] });
+	const hooks = loadHooks(f.cwd, false, undefined, { plugins: [entry] });
 	const data = commandsFor(hooks.config, "PreToolUse", ["Bash"])[0]?.plugin?.data;
 	expect(typeof data).toBe("string");
 	expect(loader.getSkills().skills.find((s) => s.name === "review-kit:review")?.claudePluginData).toBe(data);

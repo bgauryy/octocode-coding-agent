@@ -29,7 +29,7 @@ import {
 } from "../../src/octocode/team/routing.ts";
 import * as importedModule2 from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakePermission, theme } from "./fake-pi.ts";
+import { fakePermission, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
@@ -425,14 +425,14 @@ describe("Team", () => {
 		const ctx = { cwd, isIdle: () => false } as never;
 		const inbox = () => [] as Array<{ message: { content: string; details?: unknown }; options: unknown }>;
 		const [mainLog, childLog] = [inbox(), inbox()];
-		const fakePi = (log: ReturnType<typeof inbox>) =>
+		const fakeHost = (log: ReturnType<typeof inbox>) =>
 			({ sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }) }) as never;
 		try {
-			const main = new Team(fakePi(mainLog), env);
+			const main = new Team(fakeHost(mainLog), env);
 			main.start(ctx);
 			expect(main.members()).toEqual([]);
 			const parent = main.join("coordinating");
-			const child = new Team(fakePi(childLog), {
+			const child = new Team(fakeHost(childLog), {
 				...env,
 				OCTOCODE_AGENT_ID: "researcher-1234",
 				OCTOCODE_PARENT_ID: parent.id,
@@ -591,13 +591,13 @@ describe("Team safety", () => {
 		const ctx = { cwd, isIdle: () => true } as never;
 		const log: Array<{ message: { content: string }; options: unknown }> = [];
 		let failing = false;
-		const pi = {
+		const api = {
 			sendMessage: (message: { content: string }, options: unknown) => {
 				if (failing) throw new Error("not ready");
 				log.push({ message, options });
 			},
 		} as never;
-		const main = new Team(pi, env);
+		const main = new Team(api, env);
 		main.start(ctx);
 		const me = main.join();
 		return {

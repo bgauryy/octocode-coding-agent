@@ -14,7 +14,7 @@ interface CachePayload {
 const providers = ["openai", "anthropic", "xai", "opencode", "opencode-go"] as const;
 afterEach(() => vi.unstubAllGlobals());
 
-describe.each(providers)("Pi catalog cache policy: %s", (provider) => {
+describe.each(providers)("Catalog cache policy: %s", (provider) => {
 	const models: Model<Api>[] = getBuiltinModels(provider);
 	it("retains an available model catalog", () => {
 		expect(models.length).toBeGreaterThan(0);

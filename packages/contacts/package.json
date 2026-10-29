@@ -35,6 +35,16 @@
 			"types": "./dist/protocol.d.ts",
 			"import": "./dist/protocol.js"
 		},
+		"./daemon": {
+			"source": "./src/daemon.ts",
+			"types": "./dist/daemon.d.ts",
+			"import": "./dist/daemon.js"
+		},
+		"./config": {
+			"source": "./src/config.ts",
+			"types": "./dist/config.d.ts",
+			"import": "./dist/config.js"
+		},
 		"./schema": {
 			"source": "./src/schema.ts",
 			"types": "./dist/schema.d.ts",

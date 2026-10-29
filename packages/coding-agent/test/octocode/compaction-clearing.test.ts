@@ -8,7 +8,7 @@ import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
 import { CACHE_RETENTION_ENV } from "../../src/octocode/shared/env.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const HOUR = 3_600_000;
@@ -96,9 +96,9 @@ function setup(
 		guard?: Pick<FileGuard, "restore" | "forget">;
 	} = {},
 ) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const guard = options.guard ?? { restore: vi.fn(), forget: vi.fn() };
-	registerCompaction(fake.pi, guard as FileGuard);
+	registerCompaction(fake.api, guard as FileGuard);
 	const cwd = options.cwd ?? "/repo";
 	const ctx = fakeCtx({ cwd, model: options.withModel === false ? { ...model, promptCache: undefined } : model });
 	const branch = () => [
@@ -390,12 +390,12 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 
 		it("clears an old read-only command to the file Octocode saved, and never one that writes, has no saved file, or whose file is gone", async () => {
 			const spilled = Array.from({ length: 8 }, (_, index) => ({
-				item: bash(`cat src/a${index}.ts | head -50`, spill(`pi-bash-${index}.log`)),
+				item: bash(`cat src/a${index}.ts | head -50`, spill(`octocode-bash-${index}.log`)),
 				file: "",
 			}));
-			const writes = bash("npm install > install.log", spill("pi-bash-w.log"));
+			const writes = bash("npm install > install.log", spill("octocode-bash-w.log"));
 			const unsaved = bash("git status", undefined);
-			const gone = bash("ls -la", path.join(tmp(), "pi-bash-missing.log"));
+			const gone = bash("ls -la", path.join(tmp(), "octocode-bash-missing.log"));
 			const items = [writes, unsaved, gone, ...spilled.map(({ item }) => item)];
 			const s = setup([
 				{ role: "user", content: "go", timestamp: T0 },
@@ -418,7 +418,9 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		});
 
 		it("leaves them alone while the cache is warm", async () => {
-			const items = Array.from({ length: 12 }, (_, index) => bash(`cat a${index}.ts`, spill(`pi-bash-${index}.log`)));
+			const items = Array.from({ length: 12 }, (_, index) =>
+				bash(`cat a${index}.ts`, spill(`octocode-bash-${index}.log`)),
+			);
 			const s = setup([{ role: "user", content: "go", timestamp: T0 }, ...flat(items), reply(T0 + 100)]);
 			await s.start(T0 + 100 + HOUR - 1_000);
 			expect(s.entries).toEqual([]);

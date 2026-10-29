@@ -35,7 +35,7 @@ export interface ToolGatesOptions {
 
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	{ permission, provenance, collab, hooks, sourcePolicy, activity, localReads, env, planning }: ToolGatesOptions,
 ): void {
 	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (a subagent in the shared
@@ -76,7 +76,7 @@ export function registerToolGates(
 					provenance,
 					network: (toolName, input) => browserMcpRequest(toolName, input),
 					replacement: {
-						definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
+						definition: (name) => api.getAllTools().find((tool) => tool.name === name),
 						refresh: (ctx) => sourcePolicy.refresh(ctx),
 						reserved: invariants,
 					},
@@ -94,7 +94,7 @@ export function registerToolGates(
 	// A Notification hook fires for the ask this gate raises; its own MCP call would ask and notify again without end, so a
 	// call made while a hook call is being decided is refused.
 	const deciding = new AsyncLocalStorage<true>();
-	registerHookMcpGate(pi.events, async (call, ctx) => {
+	registerHookMcpGate(api.events, async (call, ctx) => {
 		if (deciding.getStore()) return "a hook MCP call made while another is being decided is refused";
 		await sourcePolicy.refresh(ctx);
 		const event: ToolCallEvent = {
@@ -107,7 +107,7 @@ export function registerToolGates(
 		const verdict = await deciding.run(true, () => permissionStep(event, ctx));
 		return verdict?.block ? (verdict.reason ?? "blocked") : undefined;
 	});
-	pi.on("tool_call", async (event, ctx) => {
+	api.on("tool_call", async (event, ctx) => {
 		const started = Date.now();
 		await sourcePolicy.refresh(ctx);
 		activity.checking(event.toolCallId, true);
@@ -130,10 +130,10 @@ export function registerToolGates(
 			activity.checking(event.toolCallId, false);
 		}
 	});
-	pi.on("tool_execution_end", async (event) => forgetCheck(event.toolCallId));
+	api.on("tool_execution_end", async (event) => forgetCheck(event.toolCallId));
 
 	// The user's own `!cmd`: the hooks and the permission check decide, as for an agent's `bash` call (`permission/user-bash`).
-	pi.on("user_bash", async (event, ctx) => {
+	api.on("user_bash", async (event, ctx) => {
 		await sourcePolicy.refresh(ctx);
 		return userBashGate({
 			permission,

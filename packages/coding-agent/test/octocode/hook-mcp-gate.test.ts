@@ -6,7 +6,7 @@ import { boundMcpHookCaller } from "../../src/octocode/hooks/mcp-gate.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const hints: Record<string, ToolAnnotations> = {
@@ -16,14 +16,14 @@ const hints: Record<string, ToolAnnotations> = {
 
 /** The MCP owner as `mcp/events.ts` drives it: the tool is authorized before the server is reached. */
 function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } = {}) {
-	const fake = fakePi();
-	fake.pi.events = createEventBus();
+	const fake = fakeHost();
+	fake.api.events = createEventBus();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true, ui: { selects: [] } });
-	const permission = new Permission({ pi: fake.pi, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
+	const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
 	permission.start(ctx);
 	const preToolUse: string[] = [];
 	const gateCalls: ToolCallEvent[] = [];
-	registerToolGates(fake.pi, {
+	registerToolGates(fake.api, {
 		permission,
 		provenance: {
 			check: (event: ToolCallEvent) => {
@@ -44,12 +44,12 @@ function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } 
 		localReads: new Map(),
 	} as unknown as ToolGatesOptions);
 	const reached: string[] = [];
-	registerMcpHookCaller(fake.pi.events, async (request) => {
+	registerMcpHookCaller(fake.api.events, async (request) => {
 		await request.authorize({ toolName: `mcp__${request.server}__${request.tool}`, input: request.input });
 		reached.push(request.tool);
 		return { content: [{ type: "text", text: "ok" }] };
 	});
-	const call = boundMcpHookCaller(fake.pi.events, ctx)!;
+	const call = boundMcpHookCaller(fake.api.events, ctx)!;
 	const run = (tool: string) =>
 		call({
 			server: "db",
@@ -105,7 +105,7 @@ describe("hook-initiated MCP calls and the permission gate", () => {
 
 	it("exempts a PermissionRequest hook, which answers an ask and could not wait on its own", async () => {
 		const { fake, reached, ctx } = setup("manual");
-		const call = boundMcpHookCaller(fake.pi.events, ctx, "PermissionRequest")!;
+		const call = boundMcpHookCaller(fake.api.events, ctx, "PermissionRequest")!;
 		await call({
 			server: "db",
 			tool: "drop",
@@ -118,7 +118,7 @@ describe("hook-initiated MCP calls and the permission gate", () => {
 
 	it("refuses a hook call made while another is being decided (a Notification hook for the ask)", async () => {
 		const { run, fake, reached, ctx } = setup("manual");
-		const nested = boundMcpHookCaller(fake.pi.events, ctx, "Notification")!;
+		const nested = boundMcpHookCaller(fake.api.events, ctx, "Notification")!;
 		let inner: unknown;
 		ctx.ui.select = async () => {
 			// The ask announces itself; a Notification hook's MCP call arrives while it waits.

@@ -2,7 +2,7 @@ import type { Model } from "../../types.ts";
 import { combineAbortSignals } from "../../utils/abort-signals.ts";
 import { safeJsonStringify, truncateErrorText } from "../../utils/error-body.ts";
 import { headersToRecord } from "../../utils/headers.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
+import { getUserAgent } from "../../utils/user-agent.ts";
 import { shouldUsePromptCaching } from "./request.ts";
 import type {
 	MistralChatMessage,
@@ -90,7 +90,7 @@ class MistralHttpError extends Error {
 
 function buildMistralHeaders(model: Model<"mistral-conversations">, apiKey: string, options?: MistralOptions): Headers {
 	const headers = new Headers({
-		"User-Agent": getPiUserAgent(),
+		"User-Agent": getUserAgent(),
 		accept: "text/event-stream",
 		authorization: `Bearer ${apiKey}`,
 		"content-type": "application/json",

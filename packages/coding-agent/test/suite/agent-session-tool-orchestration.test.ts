@@ -9,22 +9,22 @@ import { createHarness, type Harness } from "./harness.ts";
  * A tool that calls other tools, built only on the extension API: its own name, exposure, loadout
  * hook, and ctx.executeTool(). It hides the declarations of the tools only it should call.
  */
-function orchestratorExtension(pi: ExtensionAPI): void {
-	pi.registerTool({
+function orchestratorExtension(api: ExtensionAPI): void {
+	api.registerTool({
 		name: "echo",
 		label: "echo",
 		description: "Echo text.",
 		parameters: Type.Object({ text: Type.String() }),
 		execute: async (_id, { text }) => ({ content: [{ type: "text", text: `echo: ${text}` }], details: {} }),
 	});
-	pi.registerTool({
+	api.registerTool({
 		name: "helper",
 		label: "helper",
 		description: "Only reachable from other tools.",
 		parameters: Type.Object({}),
 		execute: async () => ({ content: [{ type: "text", text: "helped" }], details: {} }),
 	});
-	pi.registerTool({
+	api.registerTool({
 		name: "run_tools",
 		label: "run_tools",
 		description: "Runs tools.",
@@ -62,8 +62,8 @@ describe("AgentSession tool orchestration", () => {
 			initialActiveToolNames: [],
 			extensionFactories: [
 				orchestratorExtension,
-				(pi) => {
-					pi.on("tool_call", (event) => {
+				(api) => {
+					api.on("tool_call", (event) => {
 						toolCalls.push(`${event.toolName}:${event.parentToolCallId ?? "top"}`);
 					});
 				},
@@ -111,8 +111,8 @@ describe("AgentSession tool orchestration", () => {
 
 	it("registers defaultActive: false tools inactive until they are named", async () => {
 		const extensionFactories = [
-			(pi: ExtensionAPI) =>
-				pi.registerTool({
+			(api: ExtensionAPI) =>
+				api.registerTool({
 					name: "probe",
 					label: "probe",
 					description: "Opt-in tool.",
@@ -144,8 +144,8 @@ describe("AgentSession tool orchestration", () => {
 		const harness = await createHarness({
 			initialActiveToolNames: [],
 			extensionFactories: [
-				(pi) => {
-					pi.registerTool({
+				(api) => {
+					api.registerTool({
 						name: "protected_child",
 						label: "Child",
 						description: "A protected nested tool.",
@@ -155,7 +155,7 @@ describe("AgentSession tool orchestration", () => {
 							return { content: [], details: {} };
 						},
 					});
-					pi.registerTool({
+					api.registerTool({
 						name: "parent",
 						label: "Parent",
 						description: "Call a protected tool with a deadline.",
@@ -169,7 +169,7 @@ describe("AgentSession tool orchestration", () => {
 							};
 						},
 					});
-					pi.on("tool_call", async (event, ctx) => {
+					api.on("tool_call", async (event, ctx) => {
 						if (event.toolName !== "protected_child") return;
 						observed = ctx.signal;
 						await new Promise<void>((resolve) => {

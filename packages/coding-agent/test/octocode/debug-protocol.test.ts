@@ -66,6 +66,6 @@ describe("bounded DAP stdio protocol", () => {
 		abort.abort();
 		await expect(waiting).rejects.toThrow("aborted");
 		protocol.close();
-		expect(protocol.child.killed).toBe(true);
+		expect(protocol.child?.killed).toBe(true);
 	});
 });

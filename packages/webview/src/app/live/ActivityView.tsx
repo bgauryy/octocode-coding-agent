@@ -3,16 +3,18 @@ import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { type ActivityFilter, selectEvents } from "../../state.ts";
 import type { ViewProps } from "../extension.ts";
-import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import { plural } from "../model/format.ts";
 import { SegmentedControl } from "../ui/fields.tsx";
-import { AlertIcon, CheckIcon, FeedIcon, PauseIcon, PlayIcon, PulseIcon, TerminalIcon } from "../ui/icons.tsx";
+import { AlertIcon, FeedIcon, PauseIcon, PlayIcon, PulseIcon, TerminalIcon } from "../ui/icons.tsx";
 import { Button, cx, EmptyState } from "../ui/primitives.tsx";
-import { EVENT_LIMIT, type FeedEntry, groupFeed, runPhase, terminalEntries } from "./model.ts";
+import { StateMark } from "../ui/StateMark.tsx";
+import type { UiState } from "../model/ui-state.ts";
+import { type ConnectionTone, EVENT_LIMIT, type FeedEntry, groupFeed, runPhase, terminalEntries } from "./model.ts";
 import { RunIndicator } from "./RunIndicator.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
 import { ResultCard } from "./ResultCard.tsx";
 import { SessionComposer } from "./SessionComposer.tsx";
+import { SessionUnavailable } from "./SessionUnavailable.tsx";
 import { useLive } from "./session.tsx";
 import { TerminalTranscript } from "./TerminalView.tsx";
 
@@ -29,7 +31,8 @@ const LAYOUTS = [
 ] as const;
 
 export function ActivityView({ index, params, setParams }: ViewProps) {
-	const { workspace } = useLive();
+	const { workspace, session } = useLive();
+	const tone = useStore(session, (state) => state.status.tone);
 	const available = useStore(workspace, (state) => state.snapshot !== null);
 	const { filter, paused, displayedEvents } = useStore(
 		workspace,
@@ -47,8 +50,7 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 	if (!available)
 		return (
 			<div className="view activity-view">
-				<ListSkeleton label="Connecting to the session" />
-				<p className="muted">Open /octocode from a running Octocode session to message that agent.</p>
+				<SessionUnavailable hint="Open /octocode from a running Octocode session to message that agent." />
 			</div>
 		);
 	return (
@@ -88,9 +90,13 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 							value={filter}
 							onChange={(value) => workspace.getState().setFilter(value)}
 						/>
-						<p className="muted feed-status">
-							<span className={cx("live-dot", paused && "is-paused")} aria-hidden="true" />
-							{paused ? "Paused" : "Live"} · {plural(events.length, "event")} · latest {EVENT_LIMIT} retained
+						<p className="muted feed-status" title={`The latest ${EVENT_LIMIT} events are retained.`}>
+							{tone === "error" ? (
+								<AlertIcon size={12} />
+							) : (
+								<span className={cx("live-dot", (paused || tone !== "live") && "is-paused")} aria-hidden="true" />
+							)}
+							{feedStatus(paused, tone)} · {plural(events.length, "event")}
 						</p>
 					</div>
 					<HistoryPanel />
@@ -118,12 +124,21 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 
 /** The current run's phase and elapsed time; renders nothing while the session is idle. */
 function LiveRun() {
-	const { application, run } = useStore(
+	const { application, run, tone } = useStore(
 		useLive().session,
-		useShallow((state) => ({ application: state.application, run: state.run })),
+		useShallow((state) => ({ application: state.application, run: state.run, tone: state.status.tone })),
 	);
-	if (!run) return null;
-	return <RunIndicator phase={runPhase(application)} startedAt={run.startedAt} />;
+	const phase = runPhase(application);
+	return (
+		<RunIndicator key={run ? "run" : phase.kind} phase={phase} startedAt={run?.startedAt} stale={tone !== "live"} />
+	);
+}
+
+/** The feed's own status follows the connection: cached events are never labelled live. */
+function feedStatus(paused: boolean, tone: ConnectionTone): string {
+	if (tone === "error") return "Disconnected · showing cached feed";
+	if (tone === "connecting") return "Reconnecting · showing cached feed";
+	return paused ? "Paused" : "Live";
 }
 
 function Overview({ ongoing }: { ongoing: number }) {
@@ -156,19 +171,15 @@ function Overview({ ongoing }: { ongoing: number }) {
 /** Two or more consecutive tool calls read as one step; a group with a failure opens so the error is visible. */
 const ToolGroup = memo(function ToolGroup({ entry }: { entry: Extract<FeedEntry, { kind: "tools" }> }) {
 	const { total, running, failed, done, notRun } = entry.summary;
+	const mark: UiState = running ? "running" : failed ? "failed" : notRun === total ? "stopped" : "done";
 	return (
 		<details className={cx("tool-group", failed > 0 && "has-failure")} open={failed > 0}>
 			<summary>
-				<span
-					className={cx("tool-group-icon", running ? "is-running" : failed ? "is-failed" : "is-done")}
-					aria-hidden="true"
-				>
-					{running ? null : failed ? <AlertIcon size={14} /> : <CheckIcon size={14} />}
-				</span>
+				<StateMark state={mark} />
 				<span className="tool-group-title">{plural(total, "tool call")}</span>
 				<span className="muted">
 					{running
-						? `Running · ${done}/${total} done`
+						? `Running · ${done}/${total} done${failed ? ` · ${failed} failed` : ""}`
 						: failed || notRun
 							? [
 									failed ? `${failed} failed` : "",

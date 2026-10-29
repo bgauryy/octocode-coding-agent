@@ -11,7 +11,7 @@ import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { Delivery as UiDelivery } from "../../src/octocode/ui/delivery.ts";
-import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { parentProcessGone } from "../../src/octocode/team/session/parent.ts";
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
@@ -51,9 +51,9 @@ const fakeClock = () =>
 
 const teams: Array<{ team: Team; ctx: ReturnType<typeof fakeCtx> }> = [];
 function agent(dbFile: string, cwd: string, env: Record<string, string> = {}, hasUI = true, idle = true) {
-	const fake = fakePi();
-	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: dbFile, ...env });
-	registerCollab(fake.pi, team);
+	const fake = fakeHost();
+	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: dbFile, ...env });
+	registerCollab(fake.api, team);
 	const ctx = fakeCtx({ cwd, hasUI, idle });
 	team.start(ctx);
 	teams.push({ team, ctx });
@@ -172,15 +172,15 @@ describe("delivery acknowledgement", () => {
 		const db = path.join(tmp(), "team.sqlite");
 		const sender = agent(db, cwd);
 		sender.team.join();
-		const fake = fakePi();
+		const fake = fakeHost();
 		let rejectHandoff!: (error: Error) => void;
 		const handoff = new Promise<void>((_resolve, reject) => {
 			rejectHandoff = reject;
 		});
-		const hostSend = vi.spyOn(fake.pi, "sendMessage").mockReturnValueOnce(handoff);
-		UiDelivery.install(fake.pi);
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db });
-		registerCollab(fake.pi, team);
+		const hostSend = vi.spyOn(fake.api, "sendMessage").mockReturnValueOnce(handoff);
+		UiDelivery.install(fake.api);
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db });
+		registerCollab(fake.api, team);
 		const ctx = fakeCtx({ cwd });
 		await fake.emit("session_start", {}, ctx);
 		teams.push({ team, ctx });
@@ -208,7 +208,7 @@ describe("delivery acknowledgement", () => {
 		const receiver = agent(db, cwd);
 		sender.team.join();
 		receiver.team.join();
-		const send = vi.spyOn(receiver.pi, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
+		const send = vi.spyOn(receiver.api, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
 		const { id } = (await sender.team.send(receiver.team.id, "please answer", { replyRequired: true })) as {
 			id: number;
 		};
@@ -232,8 +232,8 @@ describe("delivery acknowledgement", () => {
 		const deferred = new Promise<void>((_, fail) => {
 			reject = fail;
 		});
-		const original = receiver.pi.sendMessage.bind(receiver.pi);
-		const send = vi.spyOn(receiver.pi, "sendMessage").mockImplementationOnce((message, options) => {
+		const original = receiver.api.sendMessage.bind(receiver.api);
+		const send = vi.spyOn(receiver.api, "sendMessage").mockImplementationOnce((message, options) => {
 			original(message, options);
 			return deferred;
 		});
@@ -471,7 +471,7 @@ describe("dead letters", () => {
 		recipient.team.join();
 		const store = open(cwd, db);
 		const { id } = (await sender.team.send(recipient.team.id, "unread")) as { id: number };
-		const send = vi.spyOn(sender.pi, "sendMessage").mockRejectedValueOnce(new Error("session not ready"));
+		const send = vi.spyOn(sender.api, "sendMessage").mockRejectedValueOnce(new Error("session not ready"));
 		recipient.team.leave();
 		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1), { timeout: 8_000 });
 		expect(store.deadLetters(sender.team.id!).map((letter) => letter.id)).toEqual([id]);
@@ -584,8 +584,8 @@ describe("headless subagent exit", () => {
 		});
 		try {
 			// No agent id: the child does not join, and the team database is never opened.
-			const fake = fakePi();
-			const team = new Team(fake.pi, {
+			const fake = fakeHost();
+			const team = new Team(fake.api, {
 				OCTOCODE_AGENT_DB: path.join(tmp(), "missing", "team.sqlite"),
 				OCTOCODE_PARENT_PID: String(2 ** 22 + 12345),
 			});

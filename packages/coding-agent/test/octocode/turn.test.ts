@@ -5,20 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp, allSections } from "./helpers.ts";
 
 describe("registerTurnSetup", () => {
 	const setup = () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		for (const name of ["read", "bash", "file"]) fake.tools.set(name, { name });
-		const turn = registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		const turn = registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		turns.set(fake, turn);
 		return { fake, turn };
 	};
-	const turns = new Map<ReturnType<typeof fakePi>, ReturnType<typeof registerTurnSetup>>();
-	const setupTurn = (fake: ReturnType<typeof fakePi>) => turns.get(fake)!;
-	const run = async (fake: ReturnType<typeof fakePi>, selectedTools?: string[]) => {
+	const turns = new Map<ReturnType<typeof fakeHost>, ReturnType<typeof registerTurnSetup>>();
+	const setupTurn = (fake: ReturnType<typeof fakeHost>) => turns.get(fake)!;
+	const run = async (fake: ReturnType<typeof fakeHost>, selectedTools?: string[]) => {
 		const event = {
 			systemPromptOptions: {
 				sections: {} as Record<string, string>,
@@ -44,7 +44,7 @@ describe("registerTurnSetup", () => {
 	it("routes declared Octocode research tools without suggesting scripts or discovery", async () => {
 		const { fake } = setup();
 		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "direct" });
-		fake.pi.setActiveTools(["mcp__octocode__ghSearchCode"]);
+		fake.api.setActiveTools(["mcp__octocode__ghSearchCode"]);
 		const prompt = await run(fake);
 		expect(prompt).toContain("Use Octocode MCP");
 		expect(prompt).not.toContain("are called from `codemode`");
@@ -53,8 +53,8 @@ describe("registerTurnSetup", () => {
 
 	it("uses the core tool set at session start and leaves the active set alone per turn", async () => {
 		const { fake } = setup();
-		process.argv = ["node", "pi"];
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
+		process.argv = ["node", "octocode"];
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
 		const event = {
 			systemPromptOptions: {
 				sections: {} as Record<string, string>,
@@ -69,8 +69,8 @@ describe("registerTurnSetup", () => {
 	it("keeps read-only shell restrictions for a read-only role when PowerShell is the only shell", async () => {
 		vi.stubEnv(ROLE_PROMPT_FILE_ENV, writeRolePrompt("Review the diff.", tmp()));
 		vi.stubEnv(READ_ONLY_ENV, "1");
-		const fake = fakePi();
-		registerTurnSetup(fake.pi, {
+		const fake = fakeHost();
+		registerTurnSetup(fake.api, {
 			isSubagent: true,
 			profiles: () => new Map(),
 		});
@@ -81,61 +81,61 @@ describe("registerTurnSetup", () => {
 
 	it("keeps custom tools across reload and resume without name-based pruning", async () => {
 		const { fake } = setup();
-		process.argv = ["node", "pi"];
+		process.argv = ["node", "octocode"];
 		await fake.emit("session_start", { type: "session_start", reason: "startup" }, {});
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
-		fake.pi.setActiveTools(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
+		fake.api.setActiveTools(["read", "bash", "edit", "write", "file"]);
 		await fake.emit("session_start", { type: "session_start", reason: "reload" }, {});
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
 		// Custom tools remain registered even if they use former built-in names.
 		await fake.emit("session_start", { type: "session_start", reason: "resume" }, {});
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
 	});
 
 	it("keeps edit/write explicitly selected by the session", async () => {
 		const { fake } = setup();
-		fake.pi.setActiveTools(["read", "bash", "edit", "write", "file"]);
-		process.argv = ["node", "pi", "--tools", "read,edit,write,file"];
+		fake.api.setActiveTools(["read", "bash", "edit", "write", "file"]);
+		process.argv = ["node", "octocode", "--tools", "read,edit,write,file"];
 		await run(fake);
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
 	});
 
 	it.each(["edit", "+edit"])("does not synthesize a removed tool from the %s setting", async (entry) => {
 		const { fake } = setup();
-		vi.spyOn(fake.pi, "getSettings").mockReturnValue({ defaultTools: [entry, "-write"] });
+		vi.spyOn(fake.api, "getSettings").mockReturnValue({ defaultTools: [entry, "-write"] });
 		await run(fake);
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
 	});
 
 	it("does not inherit another session's tool choices from the host command line", async () => {
 		const { fake } = setup();
 		process.argv = ["node", "host", "--tools", "read,edit,write,file"];
 		await run(fake);
-		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
+		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
 	});
 
 	it.each([false, true])("preserves browser and web selections for isSubagent=%s", async (isSubagent) => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const selected = ["read", "file", "browser", "web", "agent"];
 		for (const name of selected) fake.tools.set(name, { name });
-		registerTurnSetup(fake.pi, {
+		registerTurnSetup(fake.api, {
 			isSubagent,
 			profiles: () => new Map([["browser", { name: "browser", description: "", prompt: "", tools: "read,browser" }]]),
 		});
 		for (const reason of ["startup", "reload", "resume"]) {
 			await fake.emit("session_start", { type: "session_start", reason }, {});
 			await run(fake);
-			expect(fake.pi.getActiveTools()).toEqual(selected);
+			expect(fake.api.getActiveTools()).toEqual(selected);
 		}
-		fake.pi.setActiveTools(["read"]);
+		fake.api.setActiveTools(["read"]);
 		await run(fake);
-		expect(fake.pi.getActiveTools()).toEqual(["read"]);
+		expect(fake.api.getActiveTools()).toEqual(["read"]);
 	});
 
 	it("routes browser work to the specialist only when the main agent can delegate and has no browser", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		registerTurnSetup(fake.pi, {
+		registerTurnSetup(fake.api, {
 			isSubagent: false,
 			profiles: () => profiles,
 		});
@@ -155,8 +155,8 @@ describe("registerTurnSetup", () => {
 			const file = writeRolePrompt(profile.prompt, tmp());
 			vi.stubEnv(ROLE_PROMPT_FILE_ENV, file);
 			vi.stubEnv("OCTOCODE_BROWSER_VISIBLE", headless ? "" : "1");
-			const fake = fakePi();
-			registerTurnSetup(fake.pi, {
+			const fake = fakeHost();
+			registerTurnSetup(fake.api, {
 				isSubagent: true,
 				profiles: () => new Map(),
 			});
@@ -211,9 +211,9 @@ describe("registerTurnSetup", () => {
 			vi.stubEnv("OCTOCODE_AGENT_ID", id);
 			vi.stubEnv("OCTOCODE_PARENT_ID", parent);
 			vi.stubEnv("OCTOCODE_AGENT_SCRATCH", scratch);
-			const fake = fakePi();
+			const fake = fakeHost();
 			for (const name of ["read", "bash", "file"]) fake.tools.set(name, { name });
-			registerTurnSetup(fake.pi, {
+			registerTurnSetup(fake.api, {
 				isSubagent: true,
 				profiles: () => new Map(),
 			});
@@ -230,9 +230,9 @@ describe("registerTurnSetup", () => {
 		const promptFor = async (worktree: string) => {
 			vi.stubEnv("OCTOCODE_WORKTREE_ROOT", worktree);
 			vi.stubEnv("OCTOCODE_PROMPT_ROOT", main);
-			const fake = fakePi();
+			const fake = fakeHost();
 			for (const name of ["read", "bash", "file"]) fake.tools.set(name, { name });
-			registerTurnSetup(fake.pi, {
+			registerTurnSetup(fake.api, {
 				isSubagent: true,
 				profiles: () => new Map(),
 			});

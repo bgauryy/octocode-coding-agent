@@ -153,7 +153,7 @@ export function resolveServerFile(
 	return { text, meta, rendered: true };
 }
 
-/** Tools of `input` whose description no override rewrites: candidates for the `octocode-compact-mcp` skill. */
+/** Tools of `input` whose description no override rewrites: candidates for the `octocode-context-optimization` skill. */
 export function unoptimizedTools(input: CompactServerInput, overrides: DescriptionOverrides | undefined): string[] {
 	return input.tools
 		.filter((tool) => overrides?.tools?.[tool.name] === undefined && overrides?.triggers?.[tool.name] === undefined)

@@ -12,7 +12,7 @@ import { SkillCatalog, closeNames, setActiveSkillCatalog } from "../../src/octoc
 import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
 import { createHarness, getToolResult, type Harness } from "../suite/harness.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** Skill folders under `root`: alpha (with a reference file), a similarly named one, and one only the user may run. */
@@ -38,9 +38,9 @@ function fixtures() {
 }
 
 function setup(snapshot: () => unknown) {
-	const fp = fakePi();
-	(fp.pi as unknown as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = snapshot;
-	registerSkillTool(withNativePermissionOwners(fp.pi));
+	const fp = fakeHost();
+	(fp.api as unknown as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = snapshot;
+	registerSkillTool(withNativePermissionOwners(fp.api));
 	const tool = fp.tools.get("skill");
 	const cwd = tmp("skill-cwd-");
 	const ctx = fakeCtx({ cwd });
@@ -313,8 +313,8 @@ describe("a session with skills", () => {
 			[
 				{
 					path: NATIVE_FEATURE_PATH,
-					factory: (pi) => {
-						const wrapped = withNativePermissionOwners(pi);
+					factory: (api) => {
+						const wrapped = withNativePermissionOwners(api);
 						registerSkillTool(wrapped);
 					},
 				},

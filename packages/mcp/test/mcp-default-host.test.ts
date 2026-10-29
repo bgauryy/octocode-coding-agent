@@ -71,14 +71,14 @@ describe("default MCP in the shared host", () => {
 			presets: [{ name: "note-kit", config: { command: process.execPath, args: [echo] } }],
 			prepareLaunch: (entry) => entry,
 		});
-		let registered: ReturnType<typeof h.pi.getMcpServers> = [
+		let registered: ReturnType<typeof h.api.getMcpServers> = [
 			{
 				name: "note_kit",
 				extensionPath: "extension",
 				config: { command: process.execPath, args: [echo], env: { ECHO_INSTRUCTIONS: "EXTENSION" } },
 			},
 		];
-		h.pi.getMcpServers = () => registered;
+		h.api.getMcpServers = () => registered;
 		await h.start();
 		await h.prompt();
 		expect(h.state.servers).toHaveLength(1);
@@ -124,7 +124,7 @@ describe("default MCP in the shared host", () => {
 		await h.prompt();
 		const name = "mcp__octocode__localFetch";
 		const definition = { ...h.tools.get(name), sourceInfo: { path: "builtin:mcp" } };
-		const status = getMcpSessionStatus(h.pi.events);
+		const status = getMcpSessionStatus(h.api.events);
 		expect(planningRefusal({ toolName: name, input: {} }, definition, status)).toBeUndefined();
 		expect(
 			planningRefusal(
@@ -141,10 +141,10 @@ describe("default MCP in the shared host", () => {
 		await configured.start();
 		await configured.prompt();
 		expect(
-			planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(configured.pi.events)),
+			planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(configured.api.events)),
 		).toContain("blocks");
 		await h.call("mcp", { intent: "stop", server: "octocode" });
-		expect(planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(h.pi.events))).toContain(
+		expect(planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(h.api.events))).toContain(
 			"blocks",
 		);
 	});
@@ -193,7 +193,7 @@ describe("default MCP in the shared host", () => {
 		await h.start();
 		await h.prompt();
 		expect(await h.call("mcp", { intent: "stop", server: "octocode" })).not.toMatchObject({ isError: true });
-		expect(getMcpSessionStatus(h.pi.events)).toMatchObject([{ name: "octocode", state: "stopped" }]);
+		expect(getMcpSessionStatus(h.api.events)).toMatchObject([{ name: "octocode", state: "stopped" }]);
 		expect((await h.prompt()).mcp_status).toContain("- mcp__octocode: stopped");
 		expect(h.transports).toHaveLength(1);
 		expect(h.tools.get("mcp__octocode__shout").exposure).toBe("hidden");
@@ -217,7 +217,7 @@ describe("default MCP in the shared host", () => {
 		await h.prompt();
 		expect(h.transports).toHaveLength(0);
 		expect(h.tools.has("mcp__octocode__localFetch")).toBe(false);
-		expect(getMcpSessionStatus(h.pi.events)).toMatchObject([{ name: "octocode", enabled: false, state: "disabled" }]);
+		expect(getMcpSessionStatus(h.api.events)).toMatchObject([{ name: "octocode", enabled: false, state: "disabled" }]);
 	});
 	it("bounds startup, cancels a prompt wait, and cleans up a connecting process on shutdown", async () => {
 		const h = host({

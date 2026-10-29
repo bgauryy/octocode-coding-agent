@@ -150,7 +150,7 @@ export interface Harness {
 }
 
 function createTempDir(): string {
-	const tempDir = join(tmpdir(), `pi-suite-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const tempDir = join(tmpdir(), `octocode-suite-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	mkdirSync(tempDir, { recursive: true });
 	return tempDir;
 }
@@ -169,7 +169,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
 
 	const sessionManager = options.sessionManager ?? SessionManager.inMemory();
-	const settingsManager = SettingsManager.inMemory(options.settings);
+	// Characterization runs against each model's whole window; tests of the default working context pass
+	// `contextBudget: undefined` to use it.
+	const settingsManager = SettingsManager.inMemory({ contextBudget: "full", ...options.settings });
 	if (options.compactionPolicy) {
 		const policy = { ...settingsManager.getCompactionSettings(model), ...options.compactionPolicy };
 		settingsManager.getCompactionSettings = () => ({ ...policy });

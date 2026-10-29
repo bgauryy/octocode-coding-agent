@@ -3,7 +3,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 import { projectCodexPatch, rewriteCodexPatch } from "../../src/octocode/hooks/patch.ts";
@@ -96,7 +96,7 @@ async function fixture(matcher = "apply_patch", rewrite?: string) {
 			hooks: { PreToolUse: hooks, ...(rewrite ? {} : { PostToolUse: hooks }) },
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	fake.tools.set("file", {
 		name: "file",
 		description: "Files",
@@ -111,7 +111,7 @@ async function fixture(matcher = "apply_patch", rewrite?: string) {
 			),
 		}),
 	});
-	const view = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const view = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { fake, view, ctx, capture };

@@ -34,6 +34,7 @@ import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask } from "./childre
 import { Isolation } from "./isolation.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { runForeground, startBackground } from "./run-execution.ts";
+import { prefixKey, taskSkillPlan, taskSkillText } from "./task-skills.ts";
 import { type AgentUpdate, recordRun, runDetails, tracker, waitingUpdate } from "./tracking.ts";
 
 /** What the rest of the extension may do with the subagents this session started. */
@@ -59,22 +60,22 @@ export interface AgentControl {
 const SHUTDOWN_WAIT_MS = SUBAGENT_STOP_GRACE_MS + 1_000;
 
 export function registerAgentTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	getProfiles: () => Map<string, AgentProfile>,
 	team: Team,
 	permission: Permission,
 	getRefused?: () => ReadonlyMap<string, string>,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
+	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
 ): AgentControl {
-	registerAgentMessageRenderer(pi);
+	registerAgentMessageRenderer(api);
 	// Per registration, not per module: a replaced session starts clean.
 	const panel = new AgentsView(team);
 	const runs: AgentRuns = {
-		pi,
+		api,
 		team,
 		background: new Map(),
 		foreground: new Map(),
-		reports: new ReportQueue(pi),
+		reports: new ReportQueue(api),
 		read: new ReadReports(),
 		running: new Map(),
 		slots: new Slots(),
@@ -82,7 +83,7 @@ export function registerAgentTool(
 		changed: () => panel.setBackground(runs.background.size),
 	};
 	const { background } = runs;
-	pi.on("tool_result", async (event, ctx) => {
+	api.on("tool_result", async (event, ctx) => {
 		if (!event.isError && background.size > 0) runs.read.observe(event.toolName, event.input, ctx.cwd, event.details);
 		return undefined;
 	});
@@ -90,11 +91,11 @@ export function registerAgentTool(
 	const questions = new UserQuestions();
 	// Live agent and goal pairs the launch result already named (`team/overlap.ts`): each is named once.
 	const overlapWarned = new Set<string>();
-	pi.on("tool_execution_start", async (event) => {
+	api.on("tool_execution_start", async (event) => {
 		if (event.toolName === "askUser") questions.begin(event.toolCallId);
 		return undefined;
 	});
-	pi.on("tool_execution_end", async (event) => {
+	api.on("tool_execution_end", async (event) => {
 		if (event.toolName === "askUser") questions.end(event.toolCallId);
 		return undefined;
 	});
@@ -182,8 +183,8 @@ export function registerAgentTool(
 		cancelLaunches();
 		void stopRuns(PERMISSION_STOP);
 	});
-	pi.on("agent_settled", async () => late.take());
-	pi.on("session_shutdown", async (event, ctx) => {
+	api.on("agent_settled", async () => late.take());
+	api.on("session_shutdown", async (event, ctx) => {
 		cancelLaunches();
 		late.stop();
 		// Usually done already: index.ts runs it before the team leaves.
@@ -197,11 +198,11 @@ export function registerAgentTool(
 		panel.stop(ctx);
 	});
 	// Worktrees left by a Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
 		// A fork's in-flight children stopped with the session it forked from: the model learns which, and how to continue them.
 		const forked = event.reason === "fork" ? forkNote(ctx.sessionManager.getEntries()) : undefined;
 		if (forked)
-			void pi.sendMessage(
+			void api.sendMessage(
 				{ customType: FORK_NOTE_TYPE, content: forked, display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -235,7 +236,6 @@ export function registerAgentTool(
 				if (params.workingCopy && !params.isolate) throw new Error("workingCopy requires isolate: true.");
 				const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
 				const goal = checkGoal(params.goal);
-				const skillResources = pi.getSkillResourceSnapshot(params.skills);
 				// A continued child is one this session recorded, on its own transcript and profile (`children.ts`).
 				const resumed = params.resume
 					? resumableChild(ctx.sessionManager.getEntries(), params.resume, new Set(runs.running.keys()))
@@ -250,6 +250,8 @@ export function registerAgentTool(
 					ctx,
 					getRefused?.(),
 				);
+				const skillPlan = taskSkillPlan(plan.profile, params.skills);
+				const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
 				await startGate.wait(launchSignal); // a child just failed on a rate limit: the next start would meet it too
 				await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
 				let claimed: Run | undefined;
@@ -261,7 +263,7 @@ export function registerAgentTool(
 						plan.profile,
 						params.task,
 						launchSignal,
-						pi.getSettings().defaultTools,
+						api.getSettings().defaultTools,
 						{ toolCallId: id, goal },
 					);
 					// An isolated run's name must not repeat a saved ref: `/agents merge <name>` would be ambiguous.
@@ -285,9 +287,11 @@ export function registerAgentTool(
 				// From the claim on, every failure goes through `finish`: the slot and the name are given back.
 				try {
 					if (resultContract) run.identity.resultContract = resultContract;
-					run.identity.skillResources = skillResources;
+					// A lean child reads its skills inlined in the task; it loads none itself.
+					if (!skillPlan.inline) run.identity.skillResources = skillResources;
+					run.identity.skillsInTask = skillPlan.inTask;
 					// Servers the model added with `mcp` (the user confirmed each) reach the child as a transient file.
-					const addedServers = getMcpAddedServers(pi.events);
+					const addedServers = getMcpAddedServers(api.events);
 					if (Object.keys(addedServers).length > 0) run.identity.mcpServers = addedServers;
 					// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
 					// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
@@ -305,8 +309,8 @@ export function registerAgentTool(
 					const onSpawn = worktree ? (pid: number) => recordWorktreePid(worktree, pid) : undefined;
 					const library = existingLibrary();
 					const browserMode = run.profile?.headless;
-					const taskInput =
-						browserMode === undefined ? params.task : `${params.task}\n\nBrowser mode: headless=${browserMode}.`;
+					const skillText = skillPlan.inTask && !resumed ? taskSkillText(skillResources, skillPlan.inline) : "";
+					const taskInput = `${params.task}${browserMode === undefined ? "" : `\n\nBrowser mode: headless=${browserMode}.`}${skillText ? `\n\n${skillText}` : ""}`;
 					const contractTask = resultContract
 						? `${taskInput}\n\nResult contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
 						: taskInput;
@@ -336,7 +340,7 @@ export function registerAgentTool(
 						);
 					};
 					// Siblings with the same profile and model share a prompt prefix: the later ones wait (bounded) for the first one's reply, which writes the cache.
-					const prefix = [run.identity.role, run.route.model ?? run.route.parent, params.skills?.join(",")].join("\0");
+					const prefix = prefixKey(run.identity.role, run.route.model ?? run.route.parent, skillPlan);
 					const stopping = () => {
 						details.stopping = true;
 						onUpdate?.({ content: [{ type: "text", text: "stopping…" }], details: { ...details } });

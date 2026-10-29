@@ -1,5 +1,7 @@
 # RFC: expose Octocode through ACP
 
+Implemented; current reference: [packages/coding-agent/docs/acp.md](../packages/coding-agent/docs/acp.md)
+
 Date: 2026-10-23; updated 2026-10-25. Implemented locally. A real configured provider session and independent ACP compatibility checks now supplement the source CLI lifecycle tests. See [dated validation](FEATURE_VALIDATION.md) for exact scope; editor and cross-platform interoperability remain unverified.
 
 ## Decision and ownership

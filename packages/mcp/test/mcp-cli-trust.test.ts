@@ -7,7 +7,7 @@ import { saveDecision } from "../../coding-agent/src/octocode/shared/trust.ts";
 import { fingerprint, projectConfigFiles } from "../../coding-agent/src/octocode/shared/trust/files.ts";
 import { runMcpCommand } from "../src/cli.ts";
 
-describe("pi mcp project trust", () => {
+describe("octocode mcp project trust", () => {
 	const dirs: string[] = [];
 	const temp = (prefix: string) => {
 		const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -20,9 +20,9 @@ describe("pi mcp project trust", () => {
 	});
 
 	it("loads project servers only when the trusted content still matches, as a session does", async () => {
-		vi.stubEnv("OCTOCODE_HOME", temp("pi-mcp-trust-home-"));
-		const agentDir = temp("pi-mcp-trust-agent-");
-		const cwd = temp("pi-mcp-trust-project-");
+		vi.stubEnv("OCTOCODE_HOME", temp("octocode-mcp-trust-home-"));
+		const agentDir = temp("octocode-mcp-trust-agent-");
+		const cwd = temp("octocode-mcp-trust-project-");
 		writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: { project: { command: "never-started" } } }));
 		const run = async (args: string[]) => {
 			const output: string[] = [];

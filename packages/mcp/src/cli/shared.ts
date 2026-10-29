@@ -1,4 +1,4 @@
-/** Options, argument parsing and connections shared by the `pi mcp` subcommands. */
+/** Options, argument parsing and connections shared by the `octocode mcp` subcommands. */
 
 import { join } from "node:path";
 import chalk from "chalk";
@@ -24,7 +24,7 @@ export interface McpCommandOptions {
 	/** Defaults to console output. */
 	log?: (line: string) => void;
 	error?: (line: string) => void;
-	/** The token of a model provider. Defaults to the stored `/providers` credentials of the agent directory. */
+	/** The token of a model provider. Defaults to the stored `/login` credentials of the agent directory. */
 	providerToken?: (provider: string) => Promise<string | undefined>;
 	/** Defaults to the roots a session gives the local `octocode` server, without skill directories. */
 	prepareLaunch?: (entry: McpServerEntry, cwd: string) => McpServerEntry;
@@ -57,7 +57,7 @@ export function createConnection(
 	});
 }
 
-/** Short spellings of options. `-l`/`--local` match `pi install`. */
+/** Short spellings of options. `-l`/`--local` match `octocode install`. */
 const OPTION_ALIASES = new Map([["-l", "--local"]]);
 
 interface ParsedOptions {

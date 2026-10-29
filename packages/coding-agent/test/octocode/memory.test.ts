@@ -17,7 +17,7 @@ import { ftsQuery, jaccard, normalizeTitle, parseMemoryId, terms } from "../../s
 import { memoryStore, registerMemory } from "../../src/octocode/memory/register.ts";
 import { MemoryError, type MemoryInput, MemoryStore, memoryLine } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 
 let root: string;
 let cwd: string;
@@ -361,9 +361,9 @@ describe("memory injection selection", () => {
 
 describe("memory tool", () => {
 	const setup = (isSubagent = false) => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
-		registerMemory(fake.pi, { commands, isSubagent, permission: fakePermission() });
+		registerMemory(fake.api, { commands, isSubagent, permission: fakePermission() });
 		return { ...fake, subcommands: commands, tool: fake.tools.get("memory") };
 	};
 	const run = (tool: any, params: Record<string, unknown>, ctx = ctxFor().ctx) =>
@@ -555,8 +555,8 @@ describe("memory tool", () => {
 
 describe("memory lines the model reads", () => {
 	const setup = () => {
-		const fake = fakePi();
-		registerMemory(fake.pi, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() });
+		const fake = fakeHost();
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() });
 		return fake.tools.get("memory");
 	};
 	const run = (tool: any, params: Record<string, unknown>, ctx = ctxFor().ctx) =>
@@ -602,8 +602,8 @@ describe("memory lines the model reads", () => {
 
 describe("memory auto-injection", () => {
 	const setup = (isSubagent = false) => {
-		const fake = fakePi();
-		registerMemory(fake.pi, { commands: new Subcommands(), isSubagent, permission: fakePermission() });
+		const fake = fakeHost();
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent, permission: fakePermission() });
 		return fake;
 	};
 	const seed = () => {
@@ -675,9 +675,9 @@ describe("memory auto-injection", () => {
 
 describe("/memory", () => {
 	const setup = () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const commands = new Subcommands();
-		registerMemory(fake.pi, { commands, isSubagent: false, permission: fakePermission() });
+		registerMemory(fake.api, { commands, isSubagent: false, permission: fakePermission() });
 		const command = commands.get("memory")!;
 		return { command, commands };
 	};

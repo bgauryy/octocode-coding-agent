@@ -9,7 +9,7 @@ import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { sha256 } from "../../src/utils/atomic-file.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sessionDir } from "../../src/octocode/shared/home.ts";
-import { fakePermission } from "./fake-pi.ts";
+import { fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** One change through the checkpoint protocol the file tool uses. */
@@ -460,7 +460,7 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 	const commands = new Subcommands();
 	let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 	const sent: Array<{ message: { customType: string; content: string; display: boolean }; options: unknown }> = [];
-	const pi = {
+	const api = {
 		on: (name: string, handler: (event: unknown, ctx: unknown) => Promise<unknown>) => handlers.set(name, handler),
 		registerTool: (definition: typeof tool) => {
 			tool = definition;
@@ -475,9 +475,9 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 	// These tests are about checkpoints: the agent has read the workspace files it changes (the guard requires it).
 	for (const name of fs.readdirSync(cwd)) guard.record(path.join(cwd, name));
 	const checkpoints = new Checkpoints();
-	registerFileTool(pi, guard, fakePermission(), checkpoints);
+	registerFileTool(api, guard, fakePermission(), checkpoints);
 	const forgotten: string[] = [];
-	registerCheckpoints(pi, checkpoints, (target) => forgotten.push(target), commands);
+	registerCheckpoints(api, checkpoints, (target) => forgotten.push(target), commands);
 	const branch: Array<{ id: string; type: string; message: { role: string } }> = [
 		{ id: "u1", type: "message", message: { role: "user" } },
 	];
@@ -752,7 +752,7 @@ describe("/rewind and the fork offer", () => {
 		expect(fs.readFileSync(file, "utf8")).toBe("one");
 	});
 
-	it("inherits the parent session checkpoints for a `pi --fork` start, named by the session header", async () => {
+	it("inherits the parent session checkpoints for a `octocode --fork` start, named by the session header", async () => {
 		process.env.OCTOCODE_HOME = tmp();
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
@@ -764,7 +764,7 @@ describe("/rewind and the fork offer", () => {
 		const sessionFile = path.join(tmp(), "parent.jsonl");
 		fs.writeFileSync(sessionFile, `${JSON.stringify({ type: "session", id: "parent/2" })}\n`);
 
-		// `pi --fork <file>` starts the child with reason 'startup'; only its header names the parent.
+		// `octocode --fork <file>` starts the child with reason 'startup'; only its header names the parent.
 		const child = host(cwd, "child/2", { parentSession: sessionFile });
 		child.branch.push({ id: "a1", type: "message", message: { role: "assistant" } });
 		await child.handlers.get("session_start")!({ type: "session_start", reason: "startup" }, child.ctx);

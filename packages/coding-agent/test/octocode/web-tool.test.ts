@@ -13,7 +13,7 @@ import type { PublicFetchInit } from "../../src/octocode/web/guard.ts";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
 import { search } from "../../src/octocode/web/search.ts";
 import { registerWebTool, webSummary } from "../../src/octocode/web/web.ts";
-import { fakeCtx, fakePermission, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
 import { asText, noisyPng, pixelSize, tmp } from "./helpers.ts";
 
 type ToolResult = {

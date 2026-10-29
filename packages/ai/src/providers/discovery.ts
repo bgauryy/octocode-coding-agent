@@ -113,6 +113,29 @@ function discoveryHeaders(
 	return providerHeadersToRecord(defaults, headers, auth.headers) ?? defaults;
 }
 
+/** A credential check answered by the provider's model list. */
+export type ListCredentialCheck = { ok: true; models: DiscoveredVendorModel[] } | { ok: false; detail: string };
+
+/**
+ * Check a credential with the provider's model list instead of an inference request: free, and the list comes back
+ * with it. Undefined when the provider has no list route, or only a public one (a public list proves no credential).
+ * Failures carry the HTTP status, never the response body.
+ */
+export async function checkCredentialByList(
+	provider: Pick<Provider, "id" | "baseUrl" | "getModels" | "headers">,
+	auth: ModelAuth,
+	options: { signal?: AbortSignal; fetch?: typeof fetch; chatGPT?: boolean } = {},
+): Promise<ListCredentialCheck | undefined> {
+	const source = MODEL_DISCOVERY_SOURCES[provider.id];
+	if (!source?.path || source.public) return undefined;
+	try {
+		return { ok: true, models: await requestVendorModels(provider, auth, options) };
+	} catch (error) {
+		options.signal?.throwIfAborted();
+		return { ok: false, detail: error instanceof Error ? error.message : "Vendor model list failed" };
+	}
+}
+
 export async function discoverProviderModels(
 	models: Pick<Models, "getProvider" | "getAuth" | "getAllModels">,
 	providerId: string,

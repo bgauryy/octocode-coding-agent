@@ -1,18 +1,18 @@
 import { expect, it, vi } from "vitest";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 it("warns in the active session when a finished job report is rejected asynchronously", async () => {
-	const { pi, tools, fire } = fakePi();
+	const { api, tools, fire } = fakeHost();
 	let rejectDelivery!: (reason: Error) => void;
 	const delivery = new Promise<void>((_resolve, reject) => {
 		rejectDelivery = reject;
 	});
-	const sending = vi.spyOn(pi, "sendMessage").mockReturnValue(delivery);
+	const sending = vi.spyOn(api, "sendMessage").mockReturnValue(delivery);
 	const jobs = new BashJobs(tmp());
-	registerBashTool(pi, undefined, jobs, () => ({}));
+	registerBashTool(api, undefined, jobs, () => ({}));
 	const ctx = fakeCtx({ cwd: tmp() });
 	try {
 		await fire("session_start", { reason: "startup" }, ctx);
@@ -31,14 +31,14 @@ it("warns in the active session when a finished job report is rejected asynchron
 });
 
 it("does not show a rejected report in a later session", async () => {
-	const { pi, tools, fire } = fakePi();
+	const { api, tools, fire } = fakeHost();
 	let rejectDelivery!: (reason: Error) => void;
 	const delivery = new Promise<void>((_resolve, reject) => {
 		rejectDelivery = reject;
 	});
-	const sending = vi.spyOn(pi, "sendMessage").mockReturnValue(delivery);
+	const sending = vi.spyOn(api, "sendMessage").mockReturnValue(delivery);
 	const jobs = new BashJobs(tmp());
-	registerBashTool(pi, undefined, jobs, () => ({}));
+	registerBashTool(api, undefined, jobs, () => ({}));
 	const previous = fakeCtx({ cwd: tmp() });
 	const next = fakeCtx({ cwd: tmp() });
 	try {
@@ -56,14 +56,14 @@ it("does not show a rejected report in a later session", async () => {
 });
 
 it("does not notify a closing session after its report is rejected", async () => {
-	const { pi, tools, fire } = fakePi();
+	const { api, tools, fire } = fakeHost();
 	let rejectDelivery!: (reason: Error) => void;
 	const delivery = new Promise<void>((_resolve, reject) => {
 		rejectDelivery = reject;
 	});
-	const sending = vi.spyOn(pi, "sendMessage").mockReturnValue(delivery);
+	const sending = vi.spyOn(api, "sendMessage").mockReturnValue(delivery);
 	const jobs = new BashJobs(tmp());
-	registerBashTool(pi, undefined, jobs, () => ({}));
+	registerBashTool(api, undefined, jobs, () => ({}));
 	const ctx = fakeCtx({ cwd: tmp() });
 	try {
 		await fire("session_start", { reason: "startup" }, ctx);

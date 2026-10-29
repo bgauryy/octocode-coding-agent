@@ -1,29 +1,40 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contacts";
 import { memo, useState } from "react";
 import { useStore } from "zustand";
-import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import { stamp } from "../model/format.ts";
+import type { UiState } from "../model/ui-state.ts";
 import { AgentIcon, StopIcon } from "../ui/icons.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, type BadgeTone, cx, EmptyState } from "../ui/primitives.tsx";
+import { StateMark } from "../ui/StateMark.tsx";
 import { CommandButton, ConnectionNotice, MessageForm } from "./controls.tsx";
+import { SessionUnavailable } from "./SessionUnavailable.tsx";
 import { useLive } from "./session.tsx";
 
-const TRAFFIC_TONES: Record<Traffic["state"], BadgeTone> = {
-	queued: "neutral",
-	delivered: "accent",
-	"awaiting reply": "warning",
-	answered: "success",
-	"dead-lettered": "danger",
+/** Delivery states as the terminal's panel shows them: a tone, and the shared run-state shape where one applies (delivered is only muted). */
+const TRAFFIC: Record<Traffic["state"], { tone: BadgeTone; mark?: UiState }> = {
+	queued: { tone: "neutral", mark: "pending" },
+	delivered: { tone: "neutral" },
+	"awaiting reply": { tone: "warning", mark: "waiting" },
+	answered: { tone: "success", mark: "done" },
+	"dead-lettered": { tone: "danger", mark: "failed" },
 };
+
+function TrafficBadge({ state }: { state: Traffic["state"] }) {
+	const { tone, mark } = TRAFFIC[state];
+	return (
+		<Badge tone={tone} icon={mark && <StateMark state={mark} size={12} />}>
+			{state}
+		</Badge>
+	);
+}
 
 export function AgentsView() {
 	const snapshot = useStore(useLive().workspace, (state) => state.snapshot);
 	if (!snapshot)
 		return (
 			<div className="view agents-view">
-				<ListSkeleton label="Connecting to the session" />
-				<p className="muted">Open /backlog from a running Octocode session to use agent controls.</p>
+				<SessionUnavailable hint="Open /backlog from a running Octocode session to use agent controls." />
 			</div>
 		);
 	const working = snapshot.agents.filter((agent) => agent.status === "working").length;
@@ -58,7 +69,7 @@ export function AgentsView() {
 								<div className="timeline-meta">
 									<strong>{message.from}</strong>
 									<span className="muted">→ {message.to.join(", ")}</span>
-									<Badge tone={TRAFFIC_TONES[message.state]}>{message.state}</Badge>
+									<TrafficBadge state={message.state} />
 									<time dateTime={new Date(message.at).toISOString()}>{stamp(message.at)}</time>
 								</div>
 								<LongText text={message.text} label="message" />
@@ -90,8 +101,10 @@ const AgentCard = memo(function AgentCard({ agent }: { agent: Member }) {
 						{agent.model ? ` · ${agent.model}` : ""}
 					</p>
 				</div>
-				<Badge tone={working ? "accent" : "neutral"}>
-					{working && <span className="live-dot" aria-hidden="true" />}
+				<Badge
+					tone={working ? "accent" : "neutral"}
+					icon={<StateMark state={working ? "running" : "pending"} size={12} />}
+				>
 					{agent.status}
 				</Badge>
 			</header>

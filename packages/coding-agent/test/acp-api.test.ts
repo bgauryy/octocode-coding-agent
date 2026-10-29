@@ -64,7 +64,6 @@ export default function(api) {
 		OCTOCODE_HOME: join(directory, "home"),
 		OCTOCODE_CODING_AGENT_DIR: join(directory, "home"),
 		OCTOCODE_AGENT_DB: join(directory, "agent.sqlite"),
-		PI_CODING_AGENT_DIR: join(directory, "pi"),
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MCP: "0",
 		OCTOCODE_MODELS_DEV: "0",

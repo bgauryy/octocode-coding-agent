@@ -86,7 +86,7 @@ describe("layered provider caching", () => {
 		expect(payload.prompt_cache_retention).toBeUndefined();
 		expect(payload.prompt_cache_key).toBe("session-1");
 	});
-	it("keeps legacy Pi options working without adding a long instruction write", async () => {
+	it("keeps legacy cache options working without adding a long instruction write", async () => {
 		const payload = await capture(model, { instructionCacheRetention: undefined, cacheRetention: "long" });
 		expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
 		expect(payload.input[0].content).toBe("Stable agent instructions");

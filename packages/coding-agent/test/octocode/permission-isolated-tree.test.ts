@@ -8,7 +8,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { isolatedTreeRefusal } from "../../src/octocode/permission/isolated-tree.ts";
 import { PERMISSION_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV, TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
 
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -33,9 +33,9 @@ function isolated(mode: "full" | "workspace" | "manual") {
 		[TEAM_WORKSPACE_ENV]: main,
 		[AGENT_SCRATCH_ENV]: scratch,
 	};
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: worktree, hasUI: false });
-	const permission = new Permission({ pi: fake.pi, env, isSubagent: true });
+	const permission = new Permission({ api: fake.api, env, isSubagent: true });
 	permission.start(ctx);
 	const gate = permissionGate({
 		permission,

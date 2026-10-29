@@ -31,7 +31,7 @@ import type { BeforeAgentStartCombinedResult, BeforeAgentStartTrigger, RunnerHos
 
 /**
  * Run the request-time transforms in two phases. `context` handlers see the conversation
- * only and Pi restores the prompt and tool state after each; `context_with_system`
+ * only and Octocode restores the prompt and tool state after each; `context_with_system`
  * handlers then see the full transcript and their output is used as returned.
  */
 export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]): Promise<AgentMessage[]> {

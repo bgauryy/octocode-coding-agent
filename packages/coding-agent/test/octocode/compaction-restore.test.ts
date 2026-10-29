@@ -208,7 +208,7 @@ describe("file restore after compaction", () => {
 		expect(
 			deliver(
 				new Error(
-					"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx.",
+					"This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx.",
 				),
 			),
 		).toBeUndefined();
@@ -223,7 +223,7 @@ describe("file restore after compaction", () => {
 			message: { customType: string; details: { id: string; files: string[] } };
 			options: unknown;
 		}> = [];
-		const pi = {
+		const api = {
 			sendMessage: (message: never, options: unknown) => {
 				sent.push({ message, options });
 				return undefined;
@@ -237,7 +237,7 @@ describe("file restore after compaction", () => {
 			sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
 		};
 		const pending = deliverRestoredFiles(
-			pi as never,
+			api as never,
 			[{ file, workedAt: 3, line: 1 }],
 			ctx as never,
 			RESTORE_TOTAL_CHARS,
@@ -339,7 +339,7 @@ describe("file restore after compaction", () => {
 		const file = path.join(dir, "big.txt");
 		fs.writeFileSync(file, Array.from({ length: 400 }, (_, i) => `z${i}`.padEnd(60, "z")).join("\n"));
 		const sent: Array<{ message: { details: { id: string; files: string[]; partial?: string[] } } }> = [];
-		const pi = {
+		const api = {
 			sendMessage: (message: never) => {
 				sent.push({ message });
 				return undefined;
@@ -351,7 +351,7 @@ describe("file restore after compaction", () => {
 			cwd: dir,
 			sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
 		};
-		const pending = deliverRestoredFiles(pi as never, [{ file, workedAt: 3 }], ctx as never, RESTORE_TOTAL_CHARS)!;
+		const pending = deliverRestoredFiles(api as never, [{ file, workedAt: 3 }], ctx as never, RESTORE_TOTAL_CHARS)!;
 		expect(pending.files[0]).toMatchObject({ file, whole: false });
 		expect(sent[0].message.details.partial).toEqual([file]);
 		expect(settleRestoredFiles([{ role: "custom", ...(sent[0].message as object) }], pending, guard)).toBe(true);
@@ -498,7 +498,7 @@ describe("file restore after compaction", () => {
 				result("3", "read", at, { details: { truncation: { outputLines: 5 } } }),
 			];
 			const sent: Array<{ details: { files: string[] } }> = [];
-			const pi = {
+			const api = {
 				sendMessage: (message: { details: { files: string[] } }) => {
 					sent.push(message);
 					return undefined;
@@ -513,7 +513,7 @@ describe("file restore after compaction", () => {
 					}),
 				},
 			};
-			const pending = deliverRestoredFiles(pi as never, plain(held, stale, cut), ctx as never, RESTORE_TOTAL_CHARS)!;
+			const pending = deliverRestoredFiles(api as never, plain(held, stale, cut), ctx as never, RESTORE_TOTAL_CHARS)!;
 			expect(pending.files.map((entry) => entry.file)).toEqual([stale, cut]);
 			expect(sent[0].details.files).toEqual([stale, cut]);
 			// Everything the context holds already: no message at all.
@@ -528,7 +528,7 @@ describe("file restore after compaction", () => {
 					}),
 				},
 			};
-			expect(deliverRestoredFiles(pi as never, plain(held), everything as never, RESTORE_TOTAL_CHARS)).toBeUndefined();
+			expect(deliverRestoredFiles(api as never, plain(held), everything as never, RESTORE_TOTAL_CHARS)).toBeUndefined();
 			expect(sent).toHaveLength(1);
 		});
 	});

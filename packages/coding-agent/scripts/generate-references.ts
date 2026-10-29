@@ -9,6 +9,13 @@ import type { TSchema } from "typebox";
 import { ModelsJsonSchemas } from "../src/core/model-config.ts";
 import { SettingsSchema } from "../src/core/settings-schema.ts";
 import { RpcCommandSchema } from "../src/modes/rpc/rpc-command-schema.ts";
+import {
+	hookEventsIntro,
+	hookEventTable,
+	hookFieldsList,
+	hookInputTable,
+	hookUpstreamOnlyList,
+} from "./reference-pages/hook-events.ts";
 import { rpcCommandDescriptions, rpcIntro, rpcProtocol } from "./reference-pages/rpc.ts";
 import {
 	settingDefaults,
@@ -145,6 +152,17 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 		sections: [
 			{ heading: "Protocol", body: rpcProtocol },
 			{ heading: "Commands", body: rpcCommandTable },
+		],
+	},
+	{
+		path: "docs/hook-events.md",
+		title: "Hook Events",
+		intro: hookEventsIntro,
+		sections: [
+			{ heading: "Events and handler types", body: hookEventTable },
+			{ heading: "Host metadata in the input", body: hookInputTable },
+			{ heading: "Command handler fields", body: hookFieldsList },
+			{ heading: "Upstream events not implemented yet", body: hookUpstreamOnlyList },
 		],
 	},
 ];

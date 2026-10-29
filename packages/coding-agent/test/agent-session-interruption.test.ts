@@ -32,8 +32,8 @@ it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(
 				},
 			],
 			extensionFactories: [
-				(pi) => {
-					pi.on("agent_interrupted", async (event, ctx) => {
+				(api) => {
+					api.on("agent_interrupted", async (event, ctx) => {
 						seen.push(event);
 						durable = ctx.sessionManager
 							.getEntries()
@@ -97,8 +97,8 @@ it("keeps external abort callers waiting while allowing the interruption observe
 			},
 		],
 		extensionFactories: [
-			(pi) => {
-				pi.on("agent_interrupted", async () => {
+			(api) => {
+				api.on("agent_interrupted", async () => {
 					await h.session.abort();
 					observing();
 					await observerHeld;
@@ -137,8 +137,8 @@ it("saves pending records before observing interruption when preparation fails",
 	const seen: string[] = [];
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				pi.on("agent_interrupted", (_event, ctx) => {
+			(api) => {
+				api.on("agent_interrupted", (_event, ctx) => {
 					for (const entry of ctx.sessionManager.getEntries())
 						if (entry.type === "custom_message") seen.push(entry.customType);
 				});

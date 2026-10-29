@@ -75,6 +75,7 @@ const commands: Record<string, readonly string[]> = {
 	models: ["discover"],
 	auth: ["check", "print-api-key", "print-bearer-token"],
 	mcp: ["add", "remove", "enable", "disable", "exposure", "list", "tools", "config", "login", "logout"],
+	context: ["list", "check", "apply"],
 	install: [],
 	remove: [],
 	update: ["self"],
@@ -207,6 +208,11 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 						? ["--min-expiry"]
 						: []),
 			);
+		if (command === "context") {
+			if (action === "list") flags.push("--json");
+			if (action === "check" || action === "apply") flags.push("--overrides");
+			if (action === "apply") flags.push("--optimized-by");
+		}
 		if (command === "mcp") {
 			if (["add", "remove", "enable", "disable", "exposure"].includes(action)) flags.push("--local", "-l");
 			if (["list", "tools", "config"].includes(action)) flags.push("--json");

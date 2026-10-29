@@ -26,7 +26,7 @@ import type { EntryRenderer, MarkdownTransformer, MessageRenderer, RegisteredCom
 import type { ToolDefinition, ToolInfo, ToolRendererResolver } from "./tools.ts";
 
 /** Extension factory function type. Supports both sync and async initialization. */
-export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
+export type ExtensionFactory = (api: ExtensionAPI) => void | Promise<void>;
 
 export type InlineExtension =
 	| ExtensionFactory
@@ -49,7 +49,7 @@ export type InlineExtension =
 			replaceable?: boolean;
 			/**
 			 * Supply the code of the `builtin:<name>` extension instead of loading as an inline extension.
-			 * `builtin:<name>` is an extension resource like a file: it loads by default, `pi config` lists
+			 * `builtin:<name>` is an extension resource like a file: it loads by default, `octocode config` lists
 			 * it, `-builtin:<name>` in the `extensions` setting and `--no-extensions` disable it, and
 			 * `-e builtin:<name>` loads it explicitly. It is hidden from the startup Extensions list and
 			 * loads after project trust is resolved, so it cannot handle `project_trust`. The CLI's built-in
@@ -150,14 +150,14 @@ interface ExtensionRuntimeState {
 	registerProvider: (name: string, config: ProviderConfig, extensionPath?: string) => void;
 	registerNativeProvider: (provider: Provider, extensionPath?: string) => void;
 	unregisterProvider: (name: string, extensionPath?: string) => void;
-	/** Servers registered with `pi.registerMcpServer()`. */
+	/** Servers registered with `api.registerMcpServer()`. */
 	mcpServers: McpServerRegistry;
 	registerVirtualModel: (definition: VirtualModelDefinition, extensionPath?: string) => void;
 	unregisterVirtualModel: (provider: string, id: string) => void;
 }
 
 /**
- * Action implementations for pi.* API methods.
+ * Action implementations for ExtensionAPI methods.
  * Provided to runner.initialize(), copied into the shared runtime.
  */
 export interface ExtensionActions {

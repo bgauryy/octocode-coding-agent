@@ -50,7 +50,7 @@ describe("lossless compaction references", () => {
 	});
 	it("keeps the evidence inline, cut with a marker, when the session has no file to persist it in; the messages stay whole", async () => {
 		const messages = [{ role: "toolResult", content: [{ type: "text", text: "complete evidence ".repeat(1000) }] }];
-		const pi = {
+		const api = {
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
@@ -86,7 +86,7 @@ describe("lossless compaction references", () => {
 				}),
 			},
 		};
-		const out = await writeSummary(pi as never, event as never, ctx as never, ctx.model as never);
+		const out = await writeSummary(api as never, event as never, ctx as never, ctx.model as never);
 		expect(out?.cancel).toBeUndefined();
 		expect(out?.compaction?.summary).toContain("## Goal\nsummary");
 		expect(messages[0].content[0].text).toBe("complete evidence ".repeat(1000));
@@ -99,7 +99,7 @@ describe("lossless compaction references", () => {
 		const words = Array.from({ length: 10 }, (_, i) => `${i} ${"pasted spec line ".repeat(260)}`);
 		const reserveTokens = 16_384;
 		const body = `## Goal\n${"summary detail ".repeat(2_000)}`;
-		const pi = {
+		const api = {
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
@@ -136,7 +136,7 @@ describe("lossless compaction references", () => {
 			},
 		};
 		try {
-			const out = await writeSummary(pi as never, event as never, ctx as never, ctx.model as never);
+			const out = await writeSummary(api as never, event as never, ctx as never, ctx.model as never);
 			const summary = out?.compaction?.summary ?? "";
 			expect(summary).toContain(body);
 			expect(summary).toContain("Complete text saved at");

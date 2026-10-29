@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getMessageText, getUserTexts, type Harness } from "./harness.ts";
 
-async function createWaitingHarness(extensionFactories: Array<(pi: ExtensionAPI) => void> = []) {
+async function createWaitingHarness(extensionFactories: Array<(api: ExtensionAPI) => void> = []) {
 	let release: () => void = () => {};
 	const released = new Promise<void>((resolve) => {
 		release = resolve;
@@ -46,8 +46,8 @@ describe("AgentSession queue management", () => {
 	it("lists queued inputs in delivery order with kind, text, source and attachment count", async () => {
 		let api: ExtensionAPI | undefined;
 		const { harness, release, promptPromise } = await createWaitingHarness([
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 			},
 		]);
 		harnesses.push(harness);
@@ -241,8 +241,8 @@ describe("AgentSession queue management", () => {
 	it("shows the edited text to input handlers", async () => {
 		const seen: string[] = [];
 		const { harness, release, promptPromise } = await createWaitingHarness([
-			(pi) => {
-				pi.on("user_input", (event) => {
+			(api) => {
+				api.on("user_input", (event) => {
 					seen.push(event.text);
 				});
 			},

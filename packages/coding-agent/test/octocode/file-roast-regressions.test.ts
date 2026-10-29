@@ -7,7 +7,7 @@ import { nonInteractiveEnv } from "../../src/octocode/files/bash-jobs/shell.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { sha256 } from "../../src/utils/atomic-file.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -70,8 +70,8 @@ it("edits an unchanged LF anchor inside a stale CRLF file without overwriting th
 	const guard = new FileGuard();
 	guard.record(file, { sha256: sha256(original), size: Buffer.byteLength(original) });
 	fs.appendFileSync(file, "outside\r\n");
-	const { pi, tools } = fakePi();
-	registerFileTool(pi, guard, fakePermission());
+	const { api, tools } = fakeHost();
+	registerFileTool(api, guard, fakePermission());
 	await tools.get("file").execute(
 		"edit",
 		{

@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { bashReads } from "../../src/octocode/files/bash-reads.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
-import { fakeCtx, fakePermission } from "./fake-pi.ts";
+import { fakeCtx, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "../../src/octocode/files/tool/guard.ts";
 

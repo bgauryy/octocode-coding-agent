@@ -30,7 +30,6 @@ export type RpcCommand = Static<typeof RpcCommandSchema>;
 
 /** A command available for invocation via prompt */
 export interface RpcSlashCommand {
-	aliases?: readonly string[];
 	/** Command name (without leading slash) */
 	name: string;
 	/** Human-readable description */

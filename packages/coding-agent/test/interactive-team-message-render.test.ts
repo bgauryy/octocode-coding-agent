@@ -71,7 +71,7 @@ describe("interactive transcript: a delivered team message renders once", () => 
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 	});
 
-	const create = async (extra: Array<(pi: ExtensionAPI) => void> = [], tools: AgentTool[] = []) => {
+	const create = async (extra: Array<(api: ExtensionAPI) => void> = [], tools: AgentTool[] = []) => {
 		const harness = await createHarness({ tools, extensionFactories: [registerMessageRenderer, ...extra] });
 		harnesses.push(harness);
 		const view = await attach(harness);
@@ -136,11 +136,11 @@ describe("interactive transcript: a delivered team message renders once", () => 
 	it("sent when a run settles (held interrupt mail)", async () => {
 		let sent = false;
 		const { harness, view } = await create([
-			(pi) =>
-				pi.on("agent_settled", async () => {
+			(api) =>
+				api.on("agent_settled", async () => {
 					if (sent) return;
 					sent = true;
-					await pi.sendMessage(
+					await api.sendMessage(
 						{ customType: INTERNAL_MESSAGE_TYPE, ...mail() },
 						{ triggerTurn: true, deliverAs: "steer" },
 					);
@@ -157,8 +157,8 @@ describe("interactive transcript: a delivered team message renders once", () => 
 	it("recorded as a boundary draft", async () => {
 		let drafted = false;
 		const { harness, view } = await create([
-			(pi) =>
-				pi.on("turn_end", () => {
+			(api) =>
+				api.on("turn_end", () => {
 					if (drafted) return;
 					drafted = true;
 					return { entries: [{ type: "custom_message", customType: INTERNAL_MESSAGE_TYPE, ...mail() }] };

@@ -11,7 +11,7 @@ import { EXTERNAL_SENDER } from "../../src/octocode/shared/messages.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
@@ -24,12 +24,12 @@ afterEach(async () => {
 async function hookRuntime(hooks: unknown) {
 	const cwd = tmp("octocode-message-integration-");
 	fs.mkdirSync(path.join(cwd, ".git"));
-	fs.mkdirSync(path.join(cwd, ".codex"));
-	fs.writeFileSync(path.join(cwd, ".codex", "hooks.json"), JSON.stringify({ hooks }));
+	fs.mkdirSync(path.join(cwd, ".octocode"));
+	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
 	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
-	const view = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1" }, tmp());
+	const view = registerHooks(fake.api, {}, tmp());
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const beforeSend = async (message: MessageEnvelope, context: ExtensionContext, signal?: AbortSignal) => {
 		const verdict = await view.messageSend(message, signal ? { ...context, signal } : context);
@@ -49,7 +49,7 @@ describe("message hook integration", () => {
 			return text;
 		});
 		const api = new OctocodeApi(
-			runtime.pi,
+			runtime.api,
 			{ list: () => [], tell: () => ({ error: "unused" }), deliverable },
 			() => "test",
 			{ OCTOCODE_HOME: tmp() },
@@ -69,8 +69,8 @@ describe("message hook integration", () => {
 	it("routes API agents.tell through the Team gate before persistence", async () => {
 		const runtime = await hookRuntime({ PreMessageSend: commands("echo denied internal >&2; exit 2") });
 		const dbFile = path.join(tmp(), "team.sqlite");
-		const team = new Team(runtime.pi, { OCTOCODE_AGENT_DB: dbFile });
-		const peer = new Team(fakePi().pi, { OCTOCODE_AGENT_DB: dbFile });
+		const team = new Team(runtime.api, { OCTOCODE_AGENT_DB: dbFile });
+		const peer = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
 		cleanup.push(
 			() => team.stop(),
 			() => peer.stop(),
@@ -81,7 +81,7 @@ describe("message hook integration", () => {
 		const receiver = peer.join().id;
 		team.setMessageHook(runtime.beforeSend);
 		const api = new OctocodeApi(
-			runtime.pi,
+			runtime.api,
 			{
 				list: () => team.members(),
 				tell: (to, text) => team.send(to, text, { from: EXTERNAL_SENDER }),

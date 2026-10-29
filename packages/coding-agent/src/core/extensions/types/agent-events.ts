@@ -24,7 +24,7 @@ import type { NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts"
  * Fired before each LLM call. Can modify messages.
  *
  * `messages` holds the conversation without system messages. The prompt and tool state
- * belong to Pi: it restores them after the handler returns, so a handler cannot drop
+ * belong to Octocode: it restores them after the handler returns, so a handler cannot drop
  * them and does not need to preserve them.
  */
 export interface ContextEvent {
@@ -33,7 +33,7 @@ export interface ContextEvent {
 }
 
 /**
- * Fired before each LLM call, after every `context` handler has run and Pi has restored
+ * Fired before each LLM call, after every `context` handler has run and Octocode has restored
  * the prompt and tool state. `messages` is the full transcript including system messages,
  * and the result is sent as returned: the handler owns the prompt and tool declarations.
  */
@@ -65,7 +65,7 @@ export interface AfterProviderResponseEvent {
 	headers: Record<string, string>;
 }
 
-/** Fired for a parsed provider stream event before Pi normalizes it. */
+/** Fired for a parsed provider stream event before Octocode normalizes it. */
 export interface ProviderStreamEvent {
 	type: "provider_stream_event";
 	provider: ProviderId;
@@ -82,7 +82,7 @@ interface BeforeAgentStartEventBase {
 	systemPromptOptions: NormalizedBuildSystemPromptOptions;
 }
 
-/** A run started by a submitted prompt, RPC prompt, or `pi.sendUserMessage()`. */
+/** A run started by a submitted prompt, RPC prompt, or `api.sendUserMessage()`. */
 export interface BeforeAgentStartUserEvent extends BeforeAgentStartEventBase {
 	messageType: "user";
 	/** The raw user prompt text (after expansion). */
@@ -91,7 +91,7 @@ export interface BeforeAgentStartUserEvent extends BeforeAgentStartEventBase {
 	images?: ImageContent[];
 }
 
-/** A run started by `pi.sendMessage(..., { triggerTurn: true })` while idle. */
+/** A run started by `api.sendMessage(..., { triggerTurn: true })` while idle. */
 export interface BeforeAgentStartCustomEvent extends BeforeAgentStartEventBase {
 	messageType: "custom";
 	/** The custom message that starts the run. */
@@ -180,7 +180,7 @@ export interface AgentSettledEvent {
 
 export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom";
 
-/** Fired when Pi starts waiting on a blocking user-facing extension UI prompt. */
+/** Fired when Octocode starts waiting on a blocking user-facing extension UI prompt. */
 export interface UIPromptStartEvent {
 	type: "ui_prompt_start";
 	reason: "ui_prompt";
@@ -188,7 +188,7 @@ export interface UIPromptStartEvent {
 	title?: string;
 }
 
-/** Fired when Pi is no longer waiting on a blocking user-facing extension UI prompt. */
+/** Fired when Octocode is no longer waiting on a blocking user-facing extension UI prompt. */
 export interface UIPromptEndEvent {
 	type: "ui_prompt_end";
 	reason: "ui_prompt";

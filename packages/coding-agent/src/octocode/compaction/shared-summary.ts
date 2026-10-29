@@ -97,7 +97,7 @@ function summaryCapTokens(model: Pick<Model<Api>, "maxTokens">, reserveTokens: n
  * blocked images, the user's own setting, which needs no warning. A cancel (abort) reports nothing.
  */
 export async function sharedSummary(
-	pi: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings">,
+	api: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings">,
 	event: Pick<SessionBeforeCompactEvent, "preparation" | "signal">,
 	ctx: Pick<ExtensionContext, "modelRegistry" | "sessionManager">,
 	model: Model<Api>,
@@ -110,7 +110,7 @@ export async function sharedSummary(
 		return undefined;
 	};
 	try {
-		const settings = pi.getSettings();
+		const settings = api.getSettings();
 		// Octocode replaces images with a note in a session's requests; this request cannot show them, so it is not made.
 		if (settings.images?.blockImages) return fail("images are blocked in settings", true);
 		const { preparation } = event;
@@ -127,7 +127,7 @@ export async function sharedSummary(
 			.filter(Boolean)
 			.join("\n\n");
 		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
-		const level = pi.getThinkingLevel();
+		const level = api.getThinkingLevel();
 		const options: SimpleStreamOptions = {
 			...ctx.modelRegistry.getCachePolicy(model, [{ source: "session settings", values: settings }]).options,
 			// The session's own thinking level, budgets, transport and routing id: each one changes what the provider caches.

@@ -7,7 +7,7 @@ import type { Fetched } from "../../src/octocode/web/fetch.ts";
 const created: string[] = [];
 
 /** A fresh temporary directory, removed when the test process exits. */
-export function tmp(prefix = "octocode-pi-"): string {
+export function tmp(prefix = "octocode-"): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 	created.push(dir);
 	return dir;

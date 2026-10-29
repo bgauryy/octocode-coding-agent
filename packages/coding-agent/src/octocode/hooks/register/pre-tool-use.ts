@@ -8,7 +8,7 @@ import { rewriteFileQuery } from "../../shared/claude-file.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { commandsFor, hookCalls } from "../config/calls.ts";
 import { CODEX_PATCH_NAMES, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
-import type { HookProtocol } from "../profiles.ts";
+import type { HookProtocol } from "../catalog.ts";
 import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from "./types.ts";
 
@@ -17,7 +17,12 @@ import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from ".
  * All pre-call decisions run in parallel; any denial blocks the native batch.
  */
 export const preToolUseGate =
-	(pi: ExtensionAPI, dispatch: Dispatch, session: HookSession, patches: Map<string, string>): HooksView["preToolUse"] =>
+	(
+		api: ExtensionAPI,
+		dispatch: Dispatch,
+		session: HookSession,
+		patches: Map<string, string>,
+	): HooksView["preToolUse"] =>
 	async (event, ctx) => {
 		if (event.toolName === "file") {
 			try {
@@ -106,7 +111,7 @@ export const preToolUseGate =
 					block: true,
 					reason: "Input rewrite requires an unavailable reverse adapter for this tool; call not executed",
 				};
-			const definition = pi.getAllTools().find((tool) => tool.name === event.toolName);
+			const definition = api.getAllTools().find((tool) => tool.name === event.toolName);
 			if (!definition) return { block: true, reason: "Cannot validate rewritten input for an unknown tool" };
 			try {
 				let replacement: Record<string, unknown> = rewrites[0];
@@ -167,7 +172,7 @@ export const preToolUseGate =
 			.filter(Boolean)
 			.join("\n\n");
 		if (context && !ctx.signal?.aborted) {
-			await pi.sendMessage(
+			await api.sendMessage(
 				{ customType: CONTEXT_TYPE, content: capContext(`Context from PreToolUse hooks:\n${context}`), display: false },
 				{ triggerTurn: false },
 			);

@@ -34,7 +34,7 @@ import type { ActionEvent, Asker, Dialog, PermissionResolver, PrepareReplacement
  * Every call that reaches a check, and every refusal an invariant makes, is audited.
  */
 export class Permission {
-	readonly #pi: ExtensionAPI;
+	readonly #api: ExtensionAPI;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #isSubagent: boolean;
 	/** A subagent whose parent can ask a person: its dialogs are relayed to the parent (RPC) instead of denied. */
@@ -122,14 +122,14 @@ export class Permission {
 	readonly #host: CheckHost;
 
 	constructor(options: {
-		pi: ExtensionAPI;
+		api: ExtensionAPI;
 		env?: NodeJS.ProcessEnv;
 		isSubagent: boolean;
 		agent?: () => string | undefined;
 		stderr?: (text: string) => void;
 		snapshotMs?: number;
 	}) {
-		this.#pi = options.pi;
+		this.#api = options.api;
 		this.#env = options.env ?? process.env;
 		this.#isSubagent = options.isSubagent;
 		this.#relay = options.isSubagent && envFlag(this.#env, PERMISSION_RELAY_ENV);
@@ -146,7 +146,7 @@ export class Permission {
 		this.#snapshotMs = options.snapshotMs;
 		this.#spawnGrants = options.isSubagent ? parseGrants(this.#env) : new Set();
 		this.#trail = new PermissionTrail({
-			pi: this.#pi,
+			api: this.#api,
 			isSubagent: this.#isSubagent,
 			nonce: this.#nonce,
 			mode: () => this.#mode,
@@ -248,7 +248,7 @@ export class Permission {
 		if (interactive(ctx, this.#isSubagent))
 			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, mode === "full" ? "warning" : "info");
 		// Hidden and turn-neutral: during a run Octocode appends it after the current turn's results, so the model reads it next.
-		void this.#pi.sendMessage(
+		void this.#api.sendMessage(
 			{
 				customType: PERMISSION_ID,
 				content: `[${PERMISSION_ID}] mode is now ${mode}: ${modeSummary(mode)}`,

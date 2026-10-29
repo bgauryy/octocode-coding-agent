@@ -17,6 +17,7 @@ export function externalRows(data: unknown): string[] {
 		row(
 			`${GLYPH.live} ${cell(entry.id, 64)}`,
 			[cell(entry.transport, 16), cell(entry.vendor, 32)].filter(Boolean).join(" "),
+			cell(entry.model, 64),
 			entry.busy === true ? "busy" : "idle",
 			cell(entry.cwd),
 		),
@@ -28,10 +29,25 @@ export function externalRows(data: unknown): string[] {
 			cell(entry.cwd),
 		),
 	);
+	const installed = asRecords(found.acpAgents).map((entry) =>
+		row(
+			`${GLYPH.pending} ${cell(entry.vendor, 32)}`,
+			[cell(entry.command, 64), ...(Array.isArray(entry.args) ? entry.args.map((arg) => cell(arg, 32)) : [])]
+				.filter(Boolean)
+				.join(" "),
+			cell(entry.path),
+		),
+	);
 	return [
 		...(connections.length ? ["Connected external agents", ...connections] : []),
 		...(instances.length
 			? ["Available Octocode instances (/agents external connect octocode <id>)", ...instances]
+			: []),
+		...(installed.length
+			? [
+					"Installed ACP agents, not started or signed-in checked (/agents external connect acp <vendor> <command> [args...])",
+					...installed,
+				]
 			: []),
 	];
 }
@@ -45,7 +61,7 @@ export function describeExternal(data: unknown): string {
 	const found = isRecord(safe) ? safe : {};
 	const id = cell(found.id, 64);
 	const text = (() => {
-		if ("connections" in found || "instances" in found)
+		if ("connections" in found || "instances" in found || "acpAgents" in found)
 			return externalRows(found).join("\n") || "No external agents connected or available.";
 		if (isRecord(found.reply)) {
 			const reply = found.reply;
@@ -54,11 +70,14 @@ export function describeExternal(data: unknown): string {
 		}
 		if (found.disconnected !== undefined) return `Disconnected ${cell(found.disconnected, 64)}.`;
 		if (found.cancelled !== undefined) return `Cancelled ${cell(found.cancelled, 64)}.`;
-		if (id && found.transport !== undefined)
-			return `Connected ${id} · ${cell(found.transport, 16)} ${cell(found.vendor, 32)} · ${cell(found.cwd)}`.replace(
+		if (id && found.transport !== undefined) {
+			const offered = Array.isArray(found.models) ? found.models.length + Number(found.modelsMore ?? 0) : 0;
+			const model = found.model ? ` · model ${cell(found.model, 64)}${offered ? ` (${offered} available)` : ""}` : "";
+			return `Connected ${id} · ${cell(found.transport, 16)} ${cell(found.vendor, 32)} · ${cell(found.cwd)}${model}`.replace(
 				/ {2,}/g,
 				" ",
 			);
+		}
 		return JSON.stringify(found, null, 2);
 	})();
 	return capOutputToFile(redactSecrets(text), { label: "external-agent" });

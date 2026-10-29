@@ -6,7 +6,12 @@ describe("generated reference pages", () => {
 	// Regression for #10790: models.json fields lost their reference documentation.
 	it("matches the committed pages", () => {
 		const rendered = renderReferences();
-		expect([...rendered.keys()]).toEqual(["docs/models-configuration.md", "docs/settings.md", "docs/rpc.md"]);
+		expect([...rendered.keys()]).toEqual([
+			"docs/models-configuration.md",
+			"docs/settings.md",
+			"docs/rpc.md",
+			"docs/hook-events.md",
+		]);
 		for (const [relativePath, expected] of rendered) {
 			expect(
 				readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf-8"),

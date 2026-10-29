@@ -51,7 +51,7 @@ export interface ResourcesDiscoverResult {
 /**
  * Fired when an extension registers or unregisters an MCP server after the extensions are bound
  * (see {@link ExtensionAPI.registerMcpServer}). Servers registered while extensions load are read
- * with `pi.getMcpServers()` on `session_start`. Handling this event marks an extension as the one
+ * with `api.getMcpServers()` on `session_start`. Handling this event marks an extension as the one
  * that connects registered servers.
  */
 export interface McpServersChangeEvent {

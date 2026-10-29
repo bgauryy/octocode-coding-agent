@@ -391,6 +391,6 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 };
 
 /** Draws background subagent reports (`AGENT_RESULT_TYPE` custom messages) in the transcript. */
-export function registerAgentMessageRenderer(pi: Pick<ExtensionAPI, "registerMessageRenderer">): void {
-	pi.registerMessageRenderer(AGENT_RESULT_TYPE, renderAgentMessage);
+export function registerAgentMessageRenderer(api: Pick<ExtensionAPI, "registerMessageRenderer">): void {
+	api.registerMessageRenderer(AGENT_RESULT_TYPE, renderAgentMessage);
 }

@@ -62,8 +62,8 @@ function pattern(query: string): RegExp {
 	}
 }
 
-export function registerArchiveTool(pi: ExtensionAPI): void {
-	pi.registerTool(
+export function registerArchiveTool(api: ExtensionAPI): void {
+	api.registerTool(
 		timedTool({
 			name: "archive",
 			label: "Archive",

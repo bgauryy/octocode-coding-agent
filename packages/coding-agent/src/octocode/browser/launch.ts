@@ -10,7 +10,7 @@ import { type FilteringProxy, type FilteringProxyOptions, startFilteringProxy } 
 
 /** Starting Chrome for a session, and finding the Chrome already running on a persistent profile. */
 
-/** The persistent profile visible mode uses: `<Octocode home>/pi-browser-profile`. */
+/** The persistent profile visible mode uses: `<Octocode home>/browser-profile`. */
 export const persistentProfileDir = (env: NodeJS.ProcessEnv): string => outputDir(HOME_NAMES.browserProfile, env);
 
 /**
@@ -57,7 +57,7 @@ export function restrictWebRtc(userDataDir: string): void {
 }
 
 /**
- * A launched Chrome: `profile` (kept, visible mode) or a fresh profile folder under `<Octocode home>/pi-browser/` (not
+ * A launched Chrome: `profile` (kept, visible mode) or a fresh profile folder under `<Octocode home>/browser/` (not
  * the temp dir) that is removed when it closes. A fresh Chrome runs behind a filtering proxy that stops with it. One on
  * a kept profile does not: it outlives the session and is reused by the next one, so its coverage is the CDP guard's only.
  */

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import type { Backlog, BacklogWeb } from "../../src/octocode/backlog/context.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -270,6 +270,26 @@ describe("sharedWorkspaceWeb with startWorkspaceWeb", () => {
 		// A second close is a no-op because only the first invocation owned the server.
 		await second.close();
 		expect(await readRegistryRecord(dir, "session-test")).toBeUndefined();
+	});
+
+	it("validates a server this process owns from local state, without a loopback request", async () => {
+		const store = new BacklogStore(() => db, "repo");
+		const backlog: Backlog = { store, actor: { id: "parent" }, session: "local", repoName: "repo", repoRoot: dir };
+		const helper = sharedWorkspaceWeb(async (_ctx, current, changed) => startWorkspaceWeb(current, changed));
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+		try {
+			const first = await helper({} as never, backlog, () => undefined);
+			const reused = await helper({} as never, backlog, () => undefined);
+			expect(reused.url).toBe(first.url);
+			expect(await first.validate?.()).toBe(true);
+			expect(await reused.validate?.()).toBe(true);
+			expect(fetchSpy).not.toHaveBeenCalled();
+			await first.close();
+			expect(await reused.validate?.()).toBe(false);
+			expect(await first.validate?.()).toBe(false);
+		} finally {
+			fetchSpy.mockRestore();
+		}
 	});
 
 	it("keeps each session's live workspace separate while sharing repository entities", async () => {

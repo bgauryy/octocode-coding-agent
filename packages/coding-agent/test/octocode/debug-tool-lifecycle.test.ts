@@ -2,13 +2,14 @@ import { expect, it, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { DebugSession } from "../../src/octocode/debug/session.ts";
 import { registerDebugTool } from "../../src/octocode/debug/tool.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/dap-adapter.mjs", import.meta.url));
+const NO_EXCEPTIONS = { available: [], enabled: [], unknown: [] };
 
 it("does not launch an adapter for an already cancelled call", async () => {
-	const fake = fakePi();
-	registerDebugTool(fake.pi);
+	const fake = fakeHost();
+	registerDebugTool(fake.api);
 	const launch = vi.spyOn(DebugSession, "launch").mockRejectedValue(new Error("unexpected adapter launch"));
 	const reason = new Error("cancelled before execution");
 	try {
@@ -30,24 +31,24 @@ it("does not launch an adapter for an already cancelled call", async () => {
 });
 
 it("replaces a naturally ended session on the next launch", async () => {
-	const fake = fakePi();
-	registerDebugTool(fake.pi);
+	const fake = fakeHost();
+	registerDebugTool(fake.api);
 	const ctx = fakeCtx({ cwd: process.cwd() });
 	const tool = fake.tools.get("debug")!;
 	const params = { action: "launch", adapter: process.execPath, launch: { program: "fixture" } } as const;
 	try {
-		await tool.execute(
+		const first = await tool.execute(
 			"first",
 			{ ...params, adapterArgs: [fixture, "--terminate-after-config"] },
 			undefined,
 			undefined,
 			ctx,
 		);
-		await vi.waitFor(async () => {
-			await expect(tool.execute("status", { action: "output" }, undefined, undefined, ctx)).rejects.toThrow(
-				"Debug session ended",
-			);
-		});
+		// The launch waits for the end and reports it, with the program's last output and exit code.
+		expect(JSON.parse(first.content[0].text)).toMatchObject({ state: "ended", exitCode: 3 });
+		await expect(tool.execute("next", { action: "next", generation: 0 }, undefined, undefined, ctx)).rejects.toThrow(
+			"Debug session ended",
+		);
 		await expect(
 			tool.execute("second", { ...params, adapterArgs: [fixture] }, undefined, undefined, ctx),
 		).resolves.toMatchObject({ content: [{ type: "text" }] });
@@ -59,8 +60,8 @@ it("replaces a naturally ended session on the next launch", async () => {
 it.each(["session_shutdown", "session_before_switch", "session_before_fork"])(
 	"expires and closes a pending launch on %s",
 	async (event) => {
-		const fake = fakePi();
-		registerDebugTool(fake.pi);
+		const fake = fakeHost();
+		registerDebugTool(fake.api);
 		const ctx = fakeCtx({ cwd: process.cwd() });
 		let finish: (value: Awaited<ReturnType<typeof DebugSession.launch>>) => void = () => undefined;
 		let launchSignal: AbortSignal | undefined;
@@ -84,7 +85,7 @@ it.each(["session_shutdown", "session_before_switch", "session_before_fork"])(
 			await vi.waitFor(() => expect(launch).toHaveBeenCalledOnce());
 			await fake.emit(event, {}, ctx);
 			expect(launchSignal?.aborted).toBe(true);
-			finish({ session: { close } as unknown as DebugSession, breakpoints: [] });
+			finish({ session: { close } as unknown as DebugSession, breakpoints: [], exceptions: NO_EXCEPTIONS });
 			await expect(running).rejects.toThrow("expired");
 			expect(close).toHaveBeenCalledOnce();
 		} finally {
@@ -94,8 +95,8 @@ it.each(["session_shutdown", "session_before_switch", "session_before_fork"])(
 );
 
 it("terminate aborts an in-flight launch and rejects a concurrent second launch", async () => {
-	const fake = fakePi();
-	registerDebugTool(fake.pi);
+	const fake = fakeHost();
+	registerDebugTool(fake.api);
 	const ctx = fakeCtx({ cwd: process.cwd() });
 	let finish: (value: Awaited<ReturnType<typeof DebugSession.launch>>) => void = () => undefined;
 	const close = vi.fn();
@@ -115,7 +116,7 @@ it("terminate aborts an in-flight launch and rejects a concurrent second launch"
 		);
 		const terminated = await tool.execute("terminate", { action: "terminate" }, undefined, undefined, ctx);
 		expect(terminated.content[0].text).toContain("cancelled");
-		finish({ session: { close } as unknown as DebugSession, breakpoints: [] });
+		finish({ session: { close } as unknown as DebugSession, breakpoints: [], exceptions: NO_EXCEPTIONS });
 		await expect(running).rejects.toThrow("expired");
 		expect(close).toHaveBeenCalledOnce();
 	} finally {

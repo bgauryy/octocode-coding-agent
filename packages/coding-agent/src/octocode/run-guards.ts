@@ -9,8 +9,8 @@ import { registerLoopGuard } from "./loop-guard.ts";
  * read returned) and after the Stop hook (the verify nudge steps aside for a continuation that hook already asked for).
  * `OCTOCODE_VERIFY_NUDGE=0` turns the nudge off.
  */
-export function registerRunGuards(pi: ExtensionAPI): void {
-	registerReadDedupe(pi);
-	registerLoopGuard(pi);
-	if (envFlag(process.env, "OCTOCODE_VERIFY_NUDGE", true)) registerVerifyNudge(pi);
+export function registerRunGuards(api: ExtensionAPI): void {
+	registerReadDedupe(api);
+	registerLoopGuard(api);
+	if (envFlag(process.env, "OCTOCODE_VERIFY_NUDGE", true)) registerVerifyNudge(api);
 }

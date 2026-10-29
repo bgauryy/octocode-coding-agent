@@ -30,7 +30,7 @@ export interface AgentProfile {
 	linger?: number;
 	/** Legacy opt-out, rejected because specialists require local research. */
 	mcp?: false;
-	/** True: the child runs the user's command hooks (`OCTOCODE_HOOKS`); by default subagents do not. */
+	/** True: the child runs the user's command hooks (`OCTOCODE_SUBAGENT_HOOKS`); by default subagents do not. */
 	hooks?: true;
 	/**
 	 * True: the child investigates and reports without changing source (`OCTOCODE_READ_ONLY`). Its prompt says so, and the
@@ -45,7 +45,17 @@ export interface AgentProfile {
 	ignoredPermissions?: string[];
 	/** Hash of the profile file's content (set when it is read from a file): any change to it (prompt, model, tools, permissions, flags) is a new question for the user. */
 	hash?: string;
+	/**
+	 * True: a lean child for small models. It runs exactly `tools` (default `LEAN_DEFAULT_TOOLS`) without the specialist
+	 * floor, MCP or extensions, and a short subagent prompt replaces the native policy (`instructions/lean.ts`).
+	 */
+	lean?: true;
+	/** Skills the child gets when the task names none (`skills:` front matter); they ride in its task (`task-skills.ts`). */
+	skills?: string[];
 }
+
+/** A lean profile's tools when its front matter names none. */
+export const LEAN_DEFAULT_TOOLS = "bash,file";
 
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";
@@ -117,29 +127,34 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 	const model = field("model");
 	const { declared, ignored } = declaredPermissions(frontmatter.permissions);
 	const name = field("name") ?? fallbackName;
-	// A bad `tools` selector fails the profile when it is loaded, not when it first runs.
-	const selected = selectedTools(tools);
-	refuseCoreRemoval(name, selected, excludeTools);
 	// Switches take YAML booleans only: a quoted "false" is a string, and a string never flips a switch.
 	const flag = (key: string) => {
 		const value = frontmatter[key];
 		if (value === undefined || typeof value === "boolean") return value;
 		throw new Error(`${key} must be true or false, not ${JSON.stringify(value)}`);
 	};
+	const lean = flag("lean") === true;
+	const skills = skillNames(frontmatter.skills);
+	// A bad `tools` selector fails the profile when it is loaded, not when it first runs.
+	const selected = selectedTools(tools);
+	if (lean) leanTools(name, tools);
+	else refuseCoreRemoval(name, selected, excludeTools);
 	const requests = frontmatter.maxRequests;
 	if (requests !== undefined && (typeof requests !== "number" || !Number.isInteger(requests) || requests < 0))
 		throw new Error(`maxRequests must be a non-negative integer, not ${JSON.stringify(requests)}`);
 	const linger = frontmatter.linger;
 	if (linger !== undefined && (typeof linger !== "number" || !Number.isInteger(linger) || linger < 0))
 		throw new Error(`linger must be a non-negative integer of seconds, not ${JSON.stringify(linger)}`);
-	if (flag("mcp") === false) throw new Error(mcpRequired(name));
+	if (flag("mcp") === false && !lean) throw new Error(mcpRequired(name));
 	const visibleBrowser = flag("visibleBrowser");
 	const headless = flag("headless") ?? (visibleBrowser === undefined ? undefined : !visibleBrowser);
 	return {
 		name,
 		description: field("description") ?? "",
 		prompt: body.trim(),
-		...(tools ? { tools: withCoreTools(tools, selected) } : {}),
+		...(lean ? { lean: true as const, tools: tools ?? LEAN_DEFAULT_TOOLS } : {}),
+		...(tools && !lean ? { tools: withCoreTools(tools, selected) } : {}),
+		...(skills ? { skills } : {}),
 		...(excludeTools ? { excludeTools } : {}),
 		...(model ? { model } : {}),
 		...(headless === undefined ? {} : { headless }),
@@ -181,6 +196,25 @@ const matchesTool = (patterns: readonly string[], name: string): boolean =>
 const isRelative = (selected: readonly string[] | undefined): boolean =>
 	selected?.some((name) => /^[+-]/.test(name)) === true;
 
+/** `skills:` front matter: a comma-separated string or a YAML list of skill names. */
+function skillNames(value: unknown): string[] | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value === "string") return toolList(value);
+	if (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
+		return value.map((entry) => entry.trim()).filter(Boolean);
+	throw new Error("skills must be a comma-separated string or a list of skill names");
+}
+
+/** A lean profile's tool list: explicit names only, since a relative selector would inherit the full default set. */
+function leanTools(profile: string, tools: string | undefined): string {
+	const list = tools ?? LEAN_DEFAULT_TOOLS;
+	if (isRelative(selectedTools(list)))
+		throw new Error(
+			`Profile "${profile}" is lean: give it an explicit tool list such as ${LEAN_DEFAULT_TOOLS}, without + or - entries.`,
+		);
+	return list;
+}
+
 const mcpRequired = (name: string): string =>
 	`Profile "${name}" disables MCP, but every specialist needs Octocode local research. Remove mcp: false.`;
 
@@ -219,6 +253,7 @@ function refuseCoreRemoval(
 
 /** Resolve the same child selection for launch and permission reach, including programmatic profiles. */
 export function profileTools(profile?: AgentProfile): string {
+	if (profile?.lean) return leanTools(profile.name, profile.tools);
 	const selected = selectedTools(profile?.tools);
 	refuseCoreRemoval(profile?.name ?? GENERAL_PROFILE, selected, profile?.excludeTools);
 	if (profile?.mcp === false) throw new Error(mcpRequired(profile.name));

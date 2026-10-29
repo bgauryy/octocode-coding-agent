@@ -14,22 +14,22 @@ vi.mock("../src/config.ts", async (importOriginal) => {
 import { shouldRunFirstTimeSetup } from "../src/cli/startup-ui.ts";
 
 describe("shouldRunFirstTimeSetup in forked distributions", () => {
-	const originalPiExperimental = process.env.OCTOCODE_EXPERIMENTAL;
+	const originalExperimental = process.env.OCTOCODE_EXPERIMENTAL;
 	let tempDir: string;
 	let settingsPath: string;
 
 	beforeEach(() => {
-		tempDir = mkdtempSync(join(tmpdir(), "pi-first-time-setup-fork-"));
+		tempDir = mkdtempSync(join(tmpdir(), "octocode-first-time-setup-fork-"));
 		settingsPath = join(tempDir, "settings.json");
 		process.env.OCTOCODE_EXPERIMENTAL = "1";
 	});
 
 	afterEach(() => {
 		rmSync(tempDir, { recursive: true, force: true });
-		if (originalPiExperimental === undefined) {
+		if (originalExperimental === undefined) {
 			delete process.env.OCTOCODE_EXPERIMENTAL;
 		} else {
-			process.env.OCTOCODE_EXPERIMENTAL = originalPiExperimental;
+			process.env.OCTOCODE_EXPERIMENTAL = originalExperimental;
 		}
 	});
 

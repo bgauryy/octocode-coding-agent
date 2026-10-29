@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 
 describe("agent context boundaries", () => {
 	it("starts children with a fresh identity and browser mode while retaining user settings", () => {
@@ -14,7 +14,7 @@ describe("agent context boundaries", () => {
 			OCTOCODE_AGENT_SCRATCH: "/old",
 			OCTOCODE_TRUST_ROOT: "/old-trust",
 			OCTOCODE_BROWSER_VISIBLE: "1",
-			OCTOCODE_HOOKS: "1",
+			OCTOCODE_SUBAGENT_HOOKS: "1",
 			OCTOCODE_MCP: "0",
 			PATH: "/bin",
 		};
@@ -31,7 +31,7 @@ describe("agent context boundaries", () => {
 			"OCTOCODE_AGENT_SCRATCH",
 			"OCTOCODE_TRUST_ROOT",
 			"OCTOCODE_BROWSER_VISIBLE",
-			"OCTOCODE_HOOKS",
+			"OCTOCODE_SUBAGENT_HOOKS",
 		]) {
 			expect(child).not.toHaveProperty(key);
 		}
@@ -82,13 +82,13 @@ describe("agent context boundaries", () => {
 
 	it("projects only active capabilities and refreshes changed profile guidance", async () => {
 		// With no Octocode server running, guidance follows the Octocode tools present.
-		const fake = fakePi();
+		const fake = fakeHost();
 		let description = "first profile";
-		registerTurnSetup(fake.pi, {
+		registerTurnSetup(fake.api, {
 			isSubagent: false,
 			profiles: () => new Map([["reviewer", { name: "reviewer", description, prompt: "" }]]),
 		});
-		(fake.pi as unknown as { getCommands: () => unknown[] }).getCommands = () => [{ name: "mcp" }];
+		(fake.api as unknown as { getCommands: () => unknown[] }).getCommands = () => [{ name: "mcp" }];
 		const prompt = async (selectedTools: string[]) => {
 			const event = {
 				systemPromptOptions: {

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
 import { OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { defineOctocodeTool, octocodeToolName } from "../../../mcp/src/presets/octocode/tools.ts";
-import { fakeCtx } from "./fake-pi.ts";
+import { fakeCtx } from "./fake-host.ts";
 
 const inputSchema = {
 	type: "object" as const,

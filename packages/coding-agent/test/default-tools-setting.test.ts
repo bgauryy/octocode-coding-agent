@@ -16,9 +16,9 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
  * Octocode's only core tool is `bash`. These inactive extension tools stand in for further built-in tools: a
  * `defaultTools` entry, `--tools` or a recorded loadout activates them by name like any registered tool.
  */
-const extraTools: InlineExtension = (pi) => {
+const extraTools: InlineExtension = (api) => {
 	for (const name of ["alpha", "beta", "gamma"]) {
-		pi.registerTool({
+		api.registerTool({
 			name,
 			label: name,
 			description: `Extra tool ${name}`,
@@ -37,7 +37,7 @@ describe("defaultTools setting", () => {
 	let agentDir: string;
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `pi-default-tools-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDir = join(tmpdir(), `octocode-default-tools-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		agentDir = join(tempDir, "agent");
 		mkdirSync(agentDir, { recursive: true });
 	});
@@ -222,8 +222,8 @@ describe("defaultTools setting", () => {
 			["file"],
 			{},
 			[
-				(pi) =>
-					pi.registerTool({
+				(api) =>
+					api.registerTool({
 						name,
 						label: "localFetch",
 						description: "Read a source file",
@@ -276,8 +276,8 @@ describe("defaultTools setting", () => {
 
 	it("activates an inactive extension tool with +name", async () => {
 		const session = await createSession(["+inactive_tool"], {}, [
-			(pi) => {
-				pi.registerTool({
+			(api) => {
+				api.registerTool({
 					name: "inactive_tool",
 					label: "Inactive Tool",
 					description: "Extension tool registered inactive",
@@ -307,16 +307,16 @@ describe("defaultTools setting", () => {
 				],
 			},
 			[
-				(pi) => {
-					pi.registerTool({
+				(api) => {
+					api.registerTool({
 						name: "static_tool",
 						label: "Static Tool",
 						description: "Statically registered extension tool",
 						parameters: Type.Object({}),
 						execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 					});
-					pi.on("session_start", () => {
-						pi.registerTool({
+					api.on("session_start", () => {
+						api.registerTool({
 							name: "dynamic_tool",
 							label: "Dynamic Tool",
 							description: "Dynamically registered extension tool",
@@ -352,8 +352,8 @@ describe("defaultTools setting", () => {
 	});
 
 	it("applies +name and -name tool options to the default selection", async () => {
-		const inactiveTool: InlineExtension = (pi) => {
-			pi.registerTool({
+		const inactiveTool: InlineExtension = (api) => {
+			api.registerTool({
 				name: "inactive_tool",
 				label: "Inactive Tool",
 				description: "Extension tool registered inactive",
@@ -361,7 +361,7 @@ describe("defaultTools setting", () => {
 				execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 				defaultActive: false,
 			});
-			pi.registerTool({
+			api.registerTool({
 				name: "active_tool",
 				label: "Active Tool",
 				description: "Extension tool registered active",
@@ -396,8 +396,8 @@ describe("defaultTools setting", () => {
 	});
 
 	describe("reload", () => {
-		const inactiveTool: InlineExtension = (pi) => {
-			pi.registerTool({
+		const inactiveTool: InlineExtension = (api) => {
+			api.registerTool({
 				name: "inactive_tool",
 				label: "Inactive Tool",
 				description: "Extension tool registered inactive",
@@ -487,8 +487,8 @@ describe("defaultTools setting", () => {
 
 	// #10785
 	describe("resume", () => {
-		const extensionTools: InlineExtension = (pi) => {
-			pi.registerTool({
+		const extensionTools: InlineExtension = (api) => {
+			api.registerTool({
 				name: "inactive_tool",
 				label: "Inactive Tool",
 				description: "Extension tool registered inactive",
@@ -496,7 +496,7 @@ describe("defaultTools setting", () => {
 				execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 				defaultActive: false,
 			});
-			pi.registerTool({
+			api.registerTool({
 				name: "active_tool",
 				label: "Active Tool",
 				description: "Extension tool registered active",

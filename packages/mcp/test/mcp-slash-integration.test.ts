@@ -34,13 +34,13 @@ describe("unified MCP slash management", () => {
 		const harness = await createHarness({
 			initialActiveToolNames: [],
 			extensionFactories: [
-				(pi) => {
+				(api) => {
 					state = registerMcpHost(
 						{
-							...pi,
+							...api,
 							registerCommand: (name, definition) => {
 								command = definition;
-								pi.registerCommand(name, {
+								api.registerCommand(name, {
 									...definition,
 									handler: (args, ctx) => definition.handler(args, tui ? { ...ctx, mode: "tui" } : ctx),
 								});
@@ -241,7 +241,7 @@ describe("unified MCP slash management", () => {
 			),
 		).rejects.toThrow('MCP server "docs-server" already exists');
 		expect(confirm).not.toHaveBeenCalled();
-		expect(state.pi.getMcpServers()).toEqual([]);
+		expect(state.api.getMcpServers()).toEqual([]);
 		expect(state.servers.map((server) => server.entry.name)).toEqual(["docs-server"]);
 		expect(state.overridden).toEqual([]);
 	});

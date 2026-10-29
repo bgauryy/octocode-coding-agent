@@ -281,7 +281,7 @@ describe("azure provider stream events", () => {
 });
 
 describe("azure user agent", () => {
-	it("uses pi's User-Agent by default", async () => {
+	it("uses the default User-Agent", async () => {
 		expect((await captureClientHeaders())["User-Agent"]).toBe(OCTOCODE_USER_AGENT);
 	});
 

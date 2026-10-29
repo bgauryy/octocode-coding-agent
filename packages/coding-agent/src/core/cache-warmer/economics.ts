@@ -120,7 +120,7 @@ export function lastPromptTokens(entries: SessionEntry[]): { cached: number; inp
 
 export function price(
 	model: Model<Api>,
-	tokens: Partial<Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite">>,
+	tokens: Partial<Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite" | "cacheWrite1h">>,
 ): number {
 	const usage: Usage = {
 		input: 0,

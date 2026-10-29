@@ -185,7 +185,7 @@ export interface ExtensionAPI {
 	/** Register a custom renderer for CustomMessageEntry. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
-	/** Register a transformer for user and assistant Markdown before Pi renders it in the interactive transcript. */
+	/** Register a transformer for user and assistant Markdown before Octocode renders it in the interactive transcript. */
 	registerMarkdownTransformer(transformer: MarkdownTransformer): void;
 
 	/** Register a custom renderer for CustomEntry. Custom entries do not participate in LLM context. */
@@ -287,7 +287,7 @@ export interface ExtensionAPI {
 	 *
 	 * If `models` is provided: replaces all existing models for this provider.
 	 * If only `baseUrl` is provided: overrides the URL for existing models.
-	 * If `oauth` is provided: registers OAuth provider for /providers support.
+	 * If `oauth` is provided: registers OAuth provider for /login support.
 	 * If `streamSimple` is provided: registers a custom API stream handler.
 	 *
 	 * During initial extension load this call is queued and applied once the
@@ -297,7 +297,7 @@ export interface ExtensionAPI {
 	 *
 	 * @example
 	 * // Register a new provider with custom models
-	 * pi.registerProvider("my-proxy", {
+	 * api.registerProvider("my-proxy", {
 	 *   baseUrl: "https://proxy.example.com",
 	 *   apiKey: "$PROXY_API_KEY",
 	 *   api: "anthropic-messages",
@@ -316,13 +316,13 @@ export interface ExtensionAPI {
 	 *
 	 * @example
 	 * // Override baseUrl for an existing provider
-	 * pi.registerProvider("anthropic", {
+	 * api.registerProvider("anthropic", {
 	 *   baseUrl: "https://proxy.example.com"
 	 * });
 	 *
 	 * @example
 	 * // Register provider with OAuth support
-	 * pi.registerProvider("corporate-ai", {
+	 * api.registerProvider("corporate-ai", {
 	 *   baseUrl: "https://ai.corp.com",
 	 *   api: "openai-responses",
 	 *   models: [...],
@@ -348,7 +348,7 @@ export interface ExtensionAPI {
 	 * the initial load phase.
 	 *
 	 * @example
-	 * pi.unregisterProvider("my-proxy");
+	 * api.unregisterProvider("my-proxy");
 	 */
 	unregisterProvider(name: string): void;
 
@@ -368,7 +368,7 @@ export interface ExtensionAPI {
 	 * extension replaced the built-in one), the registration is reported as an extension error.
 	 *
 	 * @example
-	 * pi.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
+	 * api.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
 	 */
 	registerMcpServer(name: string, config: McpServerConfig): void;
 

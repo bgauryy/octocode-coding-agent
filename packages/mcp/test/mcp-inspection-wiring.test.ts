@@ -5,17 +5,17 @@ import { mcpNamespace } from "../src/servers.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import type { McpServer } from "../src/server.ts";
 import { McpExtensionState } from "../src/state.ts";
-import { fakeCtx, fakePi } from "../../coding-agent/test/octocode/fake-pi.ts";
+import { fakeCtx, fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
 
 const schema = { type: "object" as const, properties: { path: { type: "string" } }, required: ["path"] };
 const description = "Read a known path.\nKeep the returned cursor unchanged.";
 const outputSchema = { type: "object" as const, properties: { content: { type: "string" } } };
 
 function setup() {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const events = createEventBus();
-	Object.assign(fake.pi, { events });
-	const state = new McpExtensionState(fake.pi, {});
+	Object.assign(fake.api, { events });
+	const state = new McpExtensionState(fake.api, {});
 	registerMcpManageTool(state);
 	const tool = fake.tools.get("mcp");
 	const ctx = fakeCtx({ cwd: "/workspace", hasUI: false });
@@ -45,7 +45,7 @@ function configured(state: McpExtensionState, connected = true) {
 function automatic(f: ReturnType<typeof setup>, connected = true) {
 	const execute = vi.fn();
 	const namespace = mcpNamespace("octocode");
-	f.fake.pi.registerTool({
+	f.fake.api.registerTool({
 		name: `${namespace}__localFetch`,
 		label: "Read",
 		description,

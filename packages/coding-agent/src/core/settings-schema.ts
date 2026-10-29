@@ -23,10 +23,23 @@ export const SettingsSchema = Type.Object(
 		lastChangelogVersion: Type.Optional(Type.String()),
 		defaultProvider: Type.Optional(Type.String()),
 		defaultModel: Type.Optional(Type.String()),
+		providerModels: Type.Optional(
+			Type.Record(Type.String(), Type.String(), {
+				description:
+					'Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults.',
+			}),
+		),
 		defaultThinkingLevel: Type.Optional(ModelThinkingLevelSchema),
 		modelThinkingLevels: Type.Optional(
 			Type.Record(Type.String(), ModelThinkingLevelSchema, {
 				description: 'Per-model default thinking level overrides keyed by "provider/modelId".',
+			}),
+		),
+		contextBudget: Type.Optional(
+			Type.Union([Type.Integer({ minimum: 8192 }), Type.Literal("full")], {
+				description:
+					'Working context per session in tokens, capped at 90% of the model\'s capacity; "full" uses the whole capacity. /context overrides it for one session.',
+				default: SETTINGS_DEFAULTS.contextBudget,
 			}),
 		),
 		transport: Type.Optional(
@@ -147,6 +160,12 @@ export const SettingsSchema = Type.Object(
 						"Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters.",
 				},
 			),
+		),
+		toggles: Type.Optional(
+			Type.Record(Type.String(), Type.Boolean(), {
+				description:
+					"Plugin and hook switches by ID, as `/plugins` writes them: `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
+			}),
 		),
 		packages: Type.Optional(
 			Type.Array(PackageSourceSchema, {

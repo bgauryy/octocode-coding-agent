@@ -100,15 +100,15 @@ describe("project MCP definitions and content-based trust", () => {
 		const harness = await createHarness({
 			initialActiveToolNames: [],
 			extensionFactories: [
-				(pi) =>
+				(api) =>
 					createMcpExtension({
-						...trustedMcpOptions(pi),
+						...trustedMcpOptions(api),
 						loadConfig: (ctx) => loadTrustedMcpConfig({ cwd, isProjectTrusted: ctx.isProjectTrusted }),
 						createTransport: (entry) => {
 							transports.push(entry.name);
 							throw new Error("must not start");
 						},
-					})(pi),
+					})(api),
 			],
 		});
 		harness.settingsManager.setProjectTrusted(true);

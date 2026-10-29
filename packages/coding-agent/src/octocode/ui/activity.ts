@@ -289,7 +289,7 @@ interface ActivityControl {
 }
 
 export function registerActivity(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	options: { onChange?: (line: string | undefined) => void; workingLine: boolean },
 ): ActivityControl {
 	const activity = new Activity();
@@ -323,20 +323,20 @@ export function registerActivity(
 		paint();
 	};
 
-	pi.on("session_start", async (_event, next) => {
+	api.on("session_start", async (_event, next) => {
 		ctx = next;
 		shown = undefined;
 		unsubscribe?.();
 		unsubscribe = onDialogsChange(paint);
 		stop();
 	});
-	pi.on("session_shutdown", async () => {
+	api.on("session_shutdown", async () => {
 		unsubscribe?.();
 		unsubscribe = undefined;
 		stop();
 		ctx = undefined;
 	});
-	pi.on("agent_start", async (_event, next) => {
+	api.on("agent_start", async (_event, next) => {
 		ctx = next;
 
 		const now = Date.now();
@@ -344,35 +344,35 @@ export function registerActivity(
 		if (options.workingLine) setRunClock(now);
 		paint();
 	});
-	pi.on("message_update", async (event) => {
+	api.on("message_update", async (event) => {
 		if (event.message.role !== "assistant" || !activity.ticking()) return;
 		const update = event.assistantMessageEvent;
 		if (activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined)) paint();
 	});
-	pi.on("message_end", async (event) => {
+	api.on("message_end", async (event) => {
 		if (!activity.ticking()) return;
 		if (event.message.role === "assistant") activity.messageDone(Date.now());
 		paint();
 	});
-	pi.on("tool_execution_start", async (event) => {
+	api.on("tool_execution_start", async (event) => {
 		if (event.parentToolCallId) return;
 		activity.toolStart(event.toolCallId, event.toolName, event.args, Date.now());
 		paint();
 	});
-	pi.on("tool_execution_end", async (event) => {
+	api.on("tool_execution_end", async (event) => {
 		if (event.parentToolCallId) return;
 		activity.toolEnd(event.toolCallId, Date.now());
 		paint();
 	});
-	pi.on("ui_prompt_start", async (event) => {
+	api.on("ui_prompt_start", async (event) => {
 		activity.promptStart(promptTitle(event), Date.now());
 		paint();
 	});
-	pi.on("ui_prompt_end", async () => {
+	api.on("ui_prompt_end", async () => {
 		activity.promptEnd();
 		paint();
 	});
-	pi.on("agent_settled", async () => stop());
+	api.on("agent_settled", async () => stop());
 	return {
 		activity,
 		consequential: (action, what, warn) => {

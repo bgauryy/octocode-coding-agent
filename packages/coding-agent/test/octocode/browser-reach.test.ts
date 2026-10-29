@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { registerBrowserTool } from "../../src/octocode/browser/tool.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 import { checkBrowserUrl, checkUploadPaths } from "../../src/octocode/browser/tool/checks.ts";
 
@@ -135,8 +135,8 @@ describe("browser reach", () => {
 		const browser = new BrowserTool(permission);
 		const page = { send: vi.fn() };
 		vi.spyOn(browser, "session").mockResolvedValue({ page } as never);
-		const fake = fakePi();
-		registerBrowserTool(fake.pi, browser);
+		const fake = fakeHost();
+		registerBrowserTool(fake.api, browser);
 		const ctx = fakeCtx({ cwd: "/private/tmp/browser-workspace" });
 		const turn = new AbortController();
 		let approvalSignal: AbortSignal | undefined;

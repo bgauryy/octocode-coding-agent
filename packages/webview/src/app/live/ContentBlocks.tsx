@@ -8,7 +8,9 @@ import type {
 import { memo, useEffect, useState } from "react";
 import { safeMarkdownLink } from "../../markdown.ts";
 import { errorMessage } from "../model/format.ts";
+import { toolState } from "../model/ui-state.ts";
 import { Button } from "../ui/primitives.tsx";
+import { StateMark } from "../ui/StateMark.tsx";
 import { AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
 import { Markdown } from "./Markdown.tsx";
 
@@ -301,7 +303,7 @@ export function ToolContent({
 			<header>
 				<strong>{name}</strong>
 				<span>
-					{tool?.status ?? "Preparing"}
+					<StateMark state={toolState(tool)} size={12} /> {tool?.notRun ? "not run" : (tool?.status ?? "Preparing")}
 					{tool?.durationMs === undefined ? "" : ` · ${Math.round(tool.durationMs)} ms`}
 				</span>
 			</header>

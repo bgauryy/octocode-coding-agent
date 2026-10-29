@@ -15,7 +15,7 @@ describe("AgentSession dynamic tool registration", () => {
 	let agentDir: string;
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `pi-dynamic-tool-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDir = join(tmpdir(), `octocode-dynamic-tool-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		agentDir = join(tempDir, "agent");
 		mkdirSync(agentDir, { recursive: true });
 	});
@@ -36,8 +36,8 @@ describe("AgentSession dynamic tool registration", () => {
 			agentDir,
 			settingsManager,
 			extensionFactories: [
-				(pi) => {
-					pi.registerTool(
+				(api) => {
+					api.registerTool(
 						createBashTool(tempDir, {
 							spawnHook: (ctx) => {
 								sessionEnv = ctx.env;
@@ -45,7 +45,7 @@ describe("AgentSession dynamic tool registration", () => {
 							},
 						}),
 					);
-					pi.registerTool({
+					api.registerTool({
 						...createBashTool(tempDir, {
 							exposeSessionEnvironment: false,
 							spawnHook: (ctx) => {
@@ -103,9 +103,9 @@ describe("AgentSession dynamic tool registration", () => {
 			agentDir,
 			settingsManager,
 			extensionFactories: [
-				(pi) => {
-					pi.on("session_start", () => {
-						pi.registerTool({
+				(api) => {
+					api.on("session_start", () => {
+						api.registerTool({
 							name: "dynamic_tool",
 							label: "Dynamic Tool",
 							description: "Tool registered from session_start",
@@ -213,9 +213,9 @@ describe("AgentSession dynamic tool registration", () => {
 			agentDir,
 			settingsManager,
 			extensionFactories: [
-				(pi) => {
-					pi.on("session_start", () => {
-						pi.registerTool({
+				(api) => {
+					api.on("session_start", () => {
+						api.registerTool({
 							name: "hidden_tool",
 							label: "Hidden Tool",
 							description: "Description should not appear in available tools",

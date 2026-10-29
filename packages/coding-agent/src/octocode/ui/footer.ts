@@ -259,9 +259,9 @@ export function footerLines(
  * Octocode repaints the footer on every streamed token, so a frame whose inputs are unchanged reuses the built lines. It also
  * warns once when a reply's model has no pricing, and when the model declares no reasoning that a built-in twin declares.
  */
-export function registerFooter(pi: ExtensionAPI): void {
-	registerUnpricedNotice(pi);
-	registerReasoningNotice(pi);
+export function registerFooter(api: ExtensionAPI): void {
+	registerUnpricedNotice(api);
+	registerReasoningNotice(api);
 	const state: FooterState = { usage: emptyTotals(), cwd: process.cwd(), home: os.homedir() };
 	/** Moves whenever `state` changes, so the render cache knows its lines are stale. */
 	let version = 0;
@@ -293,9 +293,9 @@ export function registerFooter(pi: ExtensionAPI): void {
 		version += 1;
 		const model = ctx.model;
 		state.model = model?.id;
-		state.thinking = model?.reasoning ? pi.getThinkingLevel() : undefined;
+		state.thinking = model?.reasoning ? api.getThinkingLevel() : undefined;
 		const usage = ctx.getContextUsage();
-		const limit = model ? autoCompactAt(model, compactionThinking(pi)) : usage?.contextWindow;
+		const limit = model ? autoCompactAt(model, compactionThinking(api)) : usage?.contextWindow;
 		state.context = limit
 			? { percent: typeof usage?.tokens === "number" ? (usage.tokens / limit) * 100 : null, limit }
 			: undefined;
@@ -308,7 +308,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 		if (ctx.hasUI && ctx.mode === "tui") sample(ctx);
 	};
 
-	pi.on("session_start", async (_event, ctx) => {
+	api.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		stop();
 		state.runMs = undefined;
@@ -339,7 +339,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 			};
 		});
 	});
-	pi.on("message_end", async (event, ctx) => {
+	api.on("message_end", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		const spend = spendOf(event.message);
 		add(spend, ctx);
@@ -347,27 +347,27 @@ export function registerFooter(pi: ExtensionAPI): void {
 		if (event.message.role === "assistant") sample(ctx);
 		else if (spend) repaint?.();
 	});
-	pi.on("session_tree", async (event, ctx) => {
+	api.on("session_tree", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		addSummary(event.summaryEntry, ctx);
 		await refresh(event, ctx);
 	});
-	pi.on("model_select", refresh);
-	pi.on("thinking_level_select", refresh);
-	pi.on("session_compact", async (event, ctx) => {
+	api.on("model_select", refresh);
+	api.on("thinking_level_select", refresh);
+	api.on("session_compact", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		countCompactions(ctx);
 		addSummary(event.compactionEntry, ctx);
 		await refresh(event, ctx);
 	});
-	pi.on("agent_start", async (_event, ctx) => {
+	api.on("agent_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui" || startedAt !== undefined) return;
 		startedAt = Date.now();
 		state.running = true;
 		sampleRun();
 	});
-	pi.on("agent_settled", async () => stop());
-	pi.on("session_shutdown", async () => stop());
-	pi.on("agent_end", refresh);
-	pi.on("session_info_changed", refresh);
+	api.on("agent_settled", async () => stop());
+	api.on("session_shutdown", async () => stop());
+	api.on("agent_end", refresh);
+	api.on("session_info_changed", refresh);
 }

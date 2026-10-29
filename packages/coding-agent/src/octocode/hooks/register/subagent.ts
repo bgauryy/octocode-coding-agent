@@ -22,7 +22,7 @@ import {
  * Code's loop guards: `stop_hook_active` while continuing, at most 8 continuations in a row unless a tool runs).
  */
 export function registerSubagentHooks(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	session: HookSession,
 	dispatch: Dispatch,
 	env: NodeJS.ProcessEnv,
@@ -66,11 +66,11 @@ export function registerSubagentHooks(
 		}
 		return valid;
 	};
-	pi.on("session_start", async (event) => {
+	api.on("session_start", async (event) => {
 		codexStart = event.reason === "startup" || event.reason === "fork";
 		stopContinues = 0;
 	});
-	pi.on("before_agent_start", async (_event, ctx) => {
+	api.on("before_agent_start", async (_event, ctx) => {
 		stopContinues = 0;
 		const contexts: string[] = [];
 		const contextKeys: string[] = [];
@@ -118,10 +118,10 @@ export function registerSubagentHooks(
 				},
 			};
 	});
-	pi.on("tool_execution_start", async (event) => {
+	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) stopContinues = 0;
 	});
-	pi.on("agent_before_settle", async (event, ctx) => {
+	api.on("agent_before_settle", async (event, ctx) => {
 		if (event.outcome !== "completed") return;
 		const last = [...event.context.llmMessages].reverse().find((message) => message.role === "assistant");
 		const verdicts: HookVerdict[] = [

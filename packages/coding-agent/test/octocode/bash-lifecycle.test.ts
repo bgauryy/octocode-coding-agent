@@ -15,7 +15,7 @@ import {
 	signalTree,
 	stopTree,
 } from "../../src/octocode/shared/process.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
 import { reapOrphanJobs } from "../../src/octocode/files/bash-jobs/records.ts";
@@ -32,9 +32,9 @@ const posix = process.platform !== "win32";
 const hasPerl = posix && spawnSync("perl", ["-e", "1"]).status === 0;
 
 const setup = () => {
-	const { pi, tools, sent, fire } = fakePi();
+	const { api, tools, sent, fire } = fakeHost();
 	const jobs = new BashJobs(tmp());
-	registerBashTool(pi, new Subcommands(), jobs, () => ({}));
+	registerBashTool(api, new Subcommands(), jobs, () => ({}));
 	const cwd = tmp();
 	return { tool: tools.get("bash"), jobs, sent, fire, cwd, ctx: fakeCtx({ cwd }) };
 };
@@ -127,10 +127,10 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 	});
 
 	it("is stopped by /octocode jobs kill, with SIGTERM first so it can clean up", async () => {
-		const { pi, tools, sent } = fakePi();
+		const { api, tools, sent } = fakeHost();
 		const commands = new Subcommands();
 		const jobs = new BashJobs(tmp());
-		registerBashTool(pi, commands, jobs, () => ({}));
+		registerBashTool(api, commands, jobs, () => ({}));
 		const ctx = fakeCtx({ cwd: tmp() });
 		await tools
 			.get("bash")
@@ -191,9 +191,9 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 	it("falls back to stopping the command when it cannot become a job", async () => {
 		const dir = path.join(tmp(), "gone");
 		fs.writeFileSync(dir, "a file where the log folder should be");
-		const { pi, tools } = fakePi();
+		const { api, tools } = fakeHost();
 		const jobs = new BashJobs(dir);
-		registerBashTool(pi, new Subcommands(), jobs, () => ({}));
+		registerBashTool(api, new Subcommands(), jobs, () => ({}));
 		const message = await tools
 			.get("bash")
 			.execute("t1", { command: "echo x; sleep 30", timeout: 1 }, undefined, undefined, fakeCtx({ cwd: tmp() }))
@@ -230,8 +230,8 @@ describe.runIf(posix)("background job lifecycle", () => {
 		expect(sent[0].message.content).toMatch(/bash-1 stopped \(reload\)/);
 		expect(jobs.jobs.size).toBe(0);
 		// The next extension instance (same process, same session folder) reads the note once.
-		const next = fakePi();
-		registerBashTool(next.pi, new Subcommands(), new BashJobs(jobs.logDir()), () => ({}));
+		const next = fakeHost();
+		registerBashTool(next.api, new Subcommands(), new BashJobs(jobs.logDir()), () => ({}));
 		const fresh = fakeCtx({ cwd: ctx.cwd });
 		await next.fire("session_start", { reason: "reload" }, fresh);
 		expect(fresh.ui.notes.map((note) => note.message).join("\n")).toMatch(
@@ -275,8 +275,8 @@ describe.runIf(posix)("background job lifecycle", () => {
 			record,
 			JSON.stringify({ ...owned, owner: { pid: deadPid(), started: "Mon Jan  1 00:00:00 2001" } }),
 		);
-		const { pi, fire } = fakePi();
-		registerBashTool(pi, new Subcommands(), new BashJobs(dir), () => ({}));
+		const { api, fire } = fakeHost();
+		registerBashTool(api, new Subcommands(), new BashJobs(dir), () => ({}));
 		const ctx = fakeCtx({ cwd: tmp() });
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(groupAlive(job.pid)).toBe(false);

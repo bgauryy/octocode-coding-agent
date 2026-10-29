@@ -12,8 +12,8 @@ describe("built-in compaction ownership", () => {
 	it("ignores external replacements and cancellation and isolates preparation", async () => {
 		const runtime = createExtensionRuntime();
 		const external = await loadExtensionFromFactory(
-			(pi) => {
-				pi.on("session_before_compact", async (event) => {
+			(api) => {
+				api.on("session_before_compact", async (event) => {
 					event.preparation.tokensBefore = 0;
 					event.preparation.fileOps.read.add("injected");
 					event.branchEntries.length = 0;
@@ -25,8 +25,8 @@ describe("built-in compaction ownership", () => {
 			runtime,
 		);
 		const native = await loadExtensionFromFactory(
-			(pi) => {
-				pi.on("session_before_compact", async () => ({
+			(api) => {
+				api.on("session_before_compact", async () => ({
 					compaction: { summary: "built-in", firstKeptEntryId: "a", tokensBefore: 42 },
 				}));
 			},

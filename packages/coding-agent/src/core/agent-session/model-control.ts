@@ -15,10 +15,15 @@ import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
 
 export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 
+/** Share of a model's capacity the default working context may use. */
+const DEFAULT_BUDGET_SHARE = 0.9;
+
 export class SessionModelControl {
 	scopedModels: ScopedModel[];
 	private contextBudgets = new Map<string, { tokens: number; capacity: number }>();
 	private budgetSessionId?: string;
+	/** The selected model as given, before its working context was applied: it holds the capacity and the definition. */
+	private selected?: Model<any>;
 
 	private readonly host: Pick<SessionInternals, "session" | "emit">;
 
@@ -41,23 +46,54 @@ export class SessionModelControl {
 		return `${model.provider}/${model.id}`;
 	}
 
+	/**
+	 * The working context for a catalog model: this session's `/context` choice, else the `contextBudget` setting capped
+	 * at 90% of capacity (the margin absorbs tokenizer drift between the estimate and the provider's count).
+	 */
+	private budgetFor(model: Model<any>): number {
+		const chosen = this.contextBudgets.get(this.contextKey(model));
+		if (chosen) return Math.min(model.contextWindow, chosen.tokens);
+		const setting = this.host.session.settingsManager.getContextBudget();
+		if (setting === "full") return model.contextWindow;
+		return Math.min(setting, Math.floor(model.contextWindow * DEFAULT_BUDGET_SHARE));
+	}
+
 	private withContextBudget(model: Model<any>): Model<any> {
-		const budget = this.contextBudgets.get(this.contextKey(model));
-		return budget ? { ...model, contextWindow: Math.min(model.contextWindow, budget.tokens) } : model;
+		if (isVirtualModel(model) || !(model.contextWindow > 0)) return model;
+		this.selected = model;
+		const tokens = this.budgetFor(model);
+		return tokens < model.contextWindow ? { ...model, contextWindow: tokens } : model;
+	}
+
+	/**
+	 * Apply the working context to the model the session started with, selected before this control existed. That model
+	 * is kept as given (SDK callers may pass their own definition); only its working context changes.
+	 */
+	applyContextBudget(): void {
+		const { session } = this.host;
+		const model = session.model;
+		if (model) session.agent.state.model = this.withContextBudget(model);
+	}
+
+	/** The selected model as given (its own definition and full capacity), else its catalog entry. */
+	private unbudgeted(model: Model<any>): Model<any> | undefined {
+		const selected = this.selected;
+		if (selected && selected.provider === model.provider && selected.id === model.id) return selected;
+		return this.host.session.modelRuntime.getModel(model.provider, model.id);
 	}
 
 	/** The catalog limit, independent of this session's smaller working budget. */
 	getContextWindowLimit(): number | undefined {
-		const { session } = this.host;
-		const model = session.model;
+		const model = this.host.session.model;
 		if (!model || isVirtualModel(model)) return undefined;
 		const budget = this.contextBudgets.get(this.contextKey(model));
-		return (
-			session.modelRuntime.getModel(model.provider, model.id)?.contextWindow ?? budget?.capacity ?? model.contextWindow
-		);
+		return this.unbudgeted(model)?.contextWindow ?? budget?.capacity ?? model.contextWindow;
 	}
 
-	/** Set a session-only compaction/request budget without changing the provider's advertised capacity. */
+	/**
+	 * Set a session-only compaction/request budget without changing the provider's advertised capacity. Undefined returns
+	 * to the default working context; the capacity itself is a valid choice.
+	 */
 	setContextWindow(tokens?: number): number {
 		const { session } = this.host;
 		if (!session.isIdle || session.isCompacting)
@@ -72,9 +108,9 @@ export class SessionModelControl {
 			);
 		}
 		const key = this.contextKey(model);
-		if (tokens === undefined || tokens === capacity) this.contextBudgets.delete(key);
+		if (tokens === undefined) this.contextBudgets.delete(key);
 		else this.contextBudgets.set(key, { tokens, capacity });
-		session.agent.state.model = { ...model, contextWindow: tokens ?? capacity };
+		session.agent.state.model = this.withContextBudget(this.unbudgeted(model) ?? { ...model, contextWindow: capacity });
 		this.host.emit({ type: "session_context_changed" });
 		return session.agent.state.model.contextWindow;
 	}

@@ -8,7 +8,7 @@ import {
 } from "../../env-api-keys.ts";
 import { hasProviderHeader } from "../../utils/headers.ts";
 import type { Model, ProviderEnv, ProviderHeaders } from "../../types.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
+import { getUserAgent } from "../../utils/user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { claudeCodeVersion } from "./claude-code.ts";
 import { getAnthropicCompat } from "./compat.ts";
@@ -24,7 +24,7 @@ function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): Provid
 }
 
 function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-	return mergeHeaders({ "User-Agent": getPiUserAgent() }, ...headerSources);
+	return mergeHeaders({ "User-Agent": getUserAgent() }, ...headerSources);
 }
 
 function hasRequestAuth(apiKey: string | undefined, headers: ProviderHeaders | undefined): boolean {
@@ -48,9 +48,9 @@ export function assertRequestAuth(
  * Anthropic SDK client that never runs the SDK's own credential chain
  * (ANTHROPIC_PROFILE config files, federation env vars). Without this, every
  * client built with `apiKey: null, authToken: null` for header-owned auth would
- * also resolve and exchange SDK credentials behind pi's auth resolver.
+ * also resolve and exchange SDK credentials behind Octocode's auth resolver.
  */
-class PiAnthropic extends Anthropic {
+class HeaderAuthAnthropic extends Anthropic {
 	protected override _shouldResolveDefaultCredentials(): boolean {
 		return false;
 	}
@@ -88,7 +88,7 @@ export function getAnthropicFederation(
 }
 
 /**
- * The SDK caches the federated access token per client, but pi creates a client
+ * The SDK caches the federated access token per client, but Octocode creates a client
  * per request. Keep one client for the current federation config and fetch, and
  * clone it per request with `withOptions()`, which shares the token cache.
  */
@@ -109,7 +109,7 @@ export function createClient(
 ): { client: Anthropic; isOAuthToken: boolean } {
 	// Copilot: Bearer auth.
 	if (model.provider === "github-copilot") {
-		const client = new PiAnthropic({
+		const client = new HeaderAuthAnthropic({
 			apiKey: null,
 			authToken: apiKey ?? null,
 			baseURL: model.baseUrl,
@@ -131,7 +131,7 @@ export function createClient(
 
 	// OAuth: Bearer auth, Claude Code identity headers
 	if (apiKey && isOAuthToken(apiKey)) {
-		const client = new PiAnthropic({
+		const client = new HeaderAuthAnthropic({
 			apiKey: null,
 			authToken: apiKey,
 			baseURL: model.baseUrl,
@@ -171,7 +171,7 @@ export function createClient(
 	if (federation) {
 		const key = JSON.stringify([model.baseUrl, federation]);
 		if (federationClient?.key !== key || federationClient.fetch !== fetch) {
-			const client = new PiAnthropic({
+			const client = new HeaderAuthAnthropic({
 				apiKey: null,
 				authToken: null,
 				config: federation,
@@ -184,7 +184,7 @@ export function createClient(
 		return { client: federationClient.client.withOptions({ defaultHeaders }), isOAuthToken: false };
 	}
 
-	const client = new PiAnthropic({
+	const client = new HeaderAuthAnthropic({
 		apiKey: apiKey ?? null,
 		authToken: null,
 		baseURL: model.baseUrl,

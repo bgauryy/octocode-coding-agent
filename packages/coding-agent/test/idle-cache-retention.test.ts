@@ -31,6 +31,16 @@ describe("idle history cache retention", () => {
 		expect(idle.apply(anthropic, policy(), START + SHORT_HISTORY_TTL_MS + 2_000).cacheRetention).toBe("long");
 	});
 
+	it("reports the tier a request after an idle gap uses, without recording a request", () => {
+		expect(IdleHistoryCache.afterIdle(anthropic, policy()).cacheRetention).toBe("long");
+		expect(IdleHistoryCache.afterIdle(openai, policy(openai)).cacheRetention).toBe(
+			policy(openai).options.cacheRetention,
+		);
+		const idle = new IdleHistoryCache();
+		IdleHistoryCache.afterIdle(anthropic, policy());
+		expect(idle.apply(anthropic, policy(), START).cacheRetention).toBe("short");
+	});
+
 	it("does not count the first request as a gap", () => {
 		expect(new IdleHistoryCache().apply(anthropic, policy(), START + 10 * SHORT_HISTORY_TTL_MS).cacheRetention).toBe(
 			"short",

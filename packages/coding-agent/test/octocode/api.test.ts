@@ -11,7 +11,7 @@ import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
 import { nesting } from "../../src/octocode/api/bridge/contracts.ts";
 import { optionsFromEnv } from "../../src/octocode/api/bridge/options.ts";
 import { spilledMessage } from "../../src/octocode/team/session/spilled-message.ts";
-import { fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const fakeCtx = (idle: { value: boolean }, extra: unknown[] = []) =>
@@ -39,14 +39,14 @@ const fakeCtx = (idle: { value: boolean }, extra: unknown[] = []) =>
 const running: OctocodeApi[] = [];
 async function boot(options: { http?: number } = {}, idle = { value: true }, branch: unknown[] = []) {
 	const env = { OCTOCODE_HOME: tmp("octo-api-") } as NodeJS.ProcessEnv;
-	const { pi, sent, entries, emit: fire } = fakePi();
+	const { api: host, sent, entries, emit: fire } = fakeHost();
 	const emit = (name: string, event: unknown) => {
 		fire(name, event, undefined);
 		return undefined;
 	};
 	const told: Array<[string, string]> = [];
 	const api = new OctocodeApi(
-		pi,
+		host,
 		{
 			list: () => [{ id: "main-1" }],
 			tell: (to, text) => {
@@ -375,9 +375,9 @@ describe("external API", () => {
 	});
 
 	it("draws an API message under a ✉ header with the text sanitized and collapsed, not as Markdown", () => {
-		const { pi, renderers } = fakePi();
+		const { api, renderers } = fakeHost();
 		new OctocodeApi(
-			pi,
+			api,
 			{ list: () => [], tell: () => ({ sent: [] }), deliverable: spilledMessage },
 			() => "1.0.0",
 			{},

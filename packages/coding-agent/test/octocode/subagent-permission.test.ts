@@ -8,11 +8,11 @@ import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { doneSummary } from "../../src/octocode/subagents/render.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCachePolicy, fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
@@ -25,11 +25,11 @@ beforeAll(() => {
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
 		OCTOCODE_FAKE_DENIAL: `${NEEDS_APPROVAL} running a shell command (npm test) needs the user's approval (manual mode) and no one can be asked here.`,
 	});
-	// runSubagent re-runs the current `pi` script: point it at the scripted stand-in.
+	// runSubagent re-runs the current `octocode` script: point it at the scripted stand-in.
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -47,9 +47,9 @@ describe("a child's refused actions", () => {
 	});
 
 	it("show on the parent's agent row and in its result", async () => {
-		const f = fakePi();
-		const team = new Team(f.pi);
-		registerAgentTool(f.pi, () => new Map(), team, fakePermission());
+		const f = fakeHost();
+		const team = new Team(f.api);
+		registerAgentTool(f.api, () => new Map(), team, fakePermission());
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
@@ -69,9 +69,9 @@ describe("a child's refused actions", () => {
 	}, 20_000);
 
 	it("name the child's outcome in a background report's header and row", async () => {
-		const f = fakePi();
-		const team = new Team(f.pi);
-		registerAgentTool(f.pi, () => new Map(), team, fakePermission());
+		const f = fakeHost();
+		const team = new Team(f.api);
+		registerAgentTool(f.api, () => new Map(), team, fakePermission());
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
@@ -96,10 +96,10 @@ describe("a child's refused actions", () => {
 
 describe("kinds allowed for the session", () => {
 	it("reach a child, which cannot ask anyone", async () => {
-		const f = fakePi();
-		const team = new Team(f.pi);
-		const permission = new Permission({ pi: f.pi, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
-		registerAgentTool(f.pi, () => new Map(), team, permission);
+		const f = fakeHost();
+		const team = new Team(f.api);
+		const permission = new Permission({ api: f.api, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
+		registerAgentTool(f.api, () => new Map(), team, permission);
 		// Untrusted, so manual: the web ask takes "all web requests", the spawn ask is allowed once.
 		const ctx = Object.assign(
 			fakeCtx({ cwd: tmp(), ui: { selects: ["Allow all web requests for this session", "Allow once"] } }),
@@ -137,7 +137,7 @@ describe("an isolated child in a worktree of its parent's repository", () => {
 		return { repo, tree };
 	}
 	const start = (env: NodeJS.ProcessEnv, cwd: string) => {
-		const permission = new Permission({ pi: fakePi().pi, env, isSubagent: true });
+		const permission = new Permission({ api: fakeHost().api, env, isSubagent: true });
 		// Octocode has never seen the worktree path: it does not trust it.
 		permission.start({ cwd, isProjectTrusted: () => false, hasUI: false } as never);
 		return permission.mode;

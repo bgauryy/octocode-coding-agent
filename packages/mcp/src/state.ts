@@ -24,6 +24,7 @@ import { setMcpSessionStatus } from "./status.ts";
 import type { McpToolDetails } from "./tools.ts";
 
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
+import { serverGeneratedDir } from "./compact/store.ts";
 import { DEFAULT_MCP_PRESENTATION, McpPresentation, type McpPresentationMode } from "./presentation/index.ts";
 
 export interface McpExtensionOptions {
@@ -61,7 +62,7 @@ const DEFAULT_STARTUP_WAIT_MS = 10_000;
  * configuration persistence, `/mcp` command and `mcp` tool.
  */
 export class McpExtensionState {
-	readonly pi: ExtensionAPI;
+	readonly api: ExtensionAPI;
 	readonly options: McpExtensionOptions;
 	servers: McpServer[] = [];
 	/** Servers from `mcp.json`, which take precedence over registered servers of the same name. */
@@ -99,7 +100,7 @@ export class McpExtensionState {
 	readonly backgroundActions = new Set<Promise<void>>();
 	readonly listeners = new Set<() => void>();
 
-	/** pi tool name to the `<server>\0<tool>` it was assigned to, so names stay unique and stable. */
+	/** Octocode tool name to the `<server>\0<tool>` it was assigned to, so names stay unique and stable. */
 	readonly toolOwners = new Map<string, string>();
 	/** Tool names currently offered by each server. */
 	readonly serverTools = new Map<string, Set<string>>();
@@ -112,21 +113,22 @@ export class McpExtensionState {
 
 	/**
 	 * Stored tokens of servers waiting for a sign-in, as they were when the sign-in was needed.
-	 * `pi mcp login` in another process (for example run by the agent) changes them.
+	 * `octocode mcp login` in another process (for example run by the agent) changes them.
 	 */
 	readonly tokensAtSignIn = new Map<McpServerConnection, string>();
 	readonly preparedLaunches = new WeakMap<McpServerConnection, McpServerEntry>();
 
-	constructor(pi: ExtensionAPI, options: McpExtensionOptions) {
-		this.pi = pi;
+	constructor(api: ExtensionAPI, options: McpExtensionOptions) {
+		this.api = api;
 		this.options = options;
 		this.startupWaitMs = options.startupWaitMs ?? DEFAULT_STARTUP_WAIT_MS;
 		this.credentials = options.credentials;
 		this.presentation = new McpPresentation({
 			agentDir: getAgentDir,
+			dir: (name) => serverGeneratedDir(getAgentDir(), this.sessionCwd, this.findServer(name)?.entry.scope),
 			mode: () =>
 				options.presentation ??
-				(typeof pi.getSettings === "function" ? pi.getSettings().mcpPresentation : undefined) ??
+				(typeof api.getSettings === "function" ? api.getSettings().mcpPresentation : undefined) ??
 				DEFAULT_MCP_PRESENTATION,
 			presetOverrides: (name, input) => findMcpPreset(options.presets, name)?.compactOverrides?.(input),
 		});
@@ -152,7 +154,7 @@ export class McpExtensionState {
 
 	readonly emitChange = (): void => {
 		setMcpSessionStatus(
-			this.pi.events,
+			this.api.events,
 			this.servers.map((server) => ({
 				name: server.entry.name,
 				enabled: isEnabled(server),
@@ -204,7 +206,7 @@ export class McpExtensionState {
 	registeredServers(): { servers: McpServer[]; overridden: string[] } {
 		const registered: McpServer[] = [];
 		const overriddenNames: string[] = [];
-		for (const { name, config, extensionPath } of this.pi.getMcpServers()) {
+		for (const { name, config, extensionPath } of this.api.getMcpServers()) {
 			const configured = this.configuredEntries.find((entry) => mcpNamespace(entry.name) === mcpNamespace(name));
 			if (configured && (configured.scope !== "default" || configured.override)) {
 				overriddenNames.push(

@@ -38,7 +38,7 @@ describe("ExtensionRunner", () => {
 	const defaultKeybindings = new KeybindingsManager().getEffectiveConfig();
 
 	beforeEach(async () => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-runner-test-"));
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-runner-test-"));
 		extensionsDir = path.join(tempDir, "extensions");
 		fs.mkdirSync(extensionsDir);
 		sessionManager = SessionManager.inMemory();
@@ -165,14 +165,14 @@ describe("ExtensionRunner", () => {
 			const decidedPath = path.join(extensionsDir, "decided.ts");
 			fs.writeFileSync(
 				undecidedPath,
-				`export default function(pi) {
-	pi.on("project_trust", () => ({ trusted: "undecided", remember: true }));
+				`export default function(api) {
+	api.on("project_trust", () => ({ trusted: "undecided", remember: true }));
 }`,
 			);
 			fs.writeFileSync(
 				decidedPath,
-				`export default function(pi) {
-	pi.on("project_trust", () => ({ trusted: "no", remember: true }));
+				`export default function(api) {
+	api.on("project_trust", () => ({ trusted: "no", remember: true }));
 }`,
 			);
 
@@ -201,8 +201,8 @@ describe("ExtensionRunner", () => {
 	describe("shortcut conflicts", () => {
 		it("warns when extension shortcut conflicts with built-in", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+c", {
+				export default function(api) {
+					api.registerShortcut("ctrl+c", {
 						description: "Conflicts with built-in",
 						handler: async () => {},
 					});
@@ -224,8 +224,8 @@ describe("ExtensionRunner", () => {
 
 		it("allows a shortcut when the reserved set no longer contains the default key", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+p", {
+				export default function(api) {
+					api.registerShortcut("ctrl+p", {
 						description: "Uses freed default",
 						handler: async () => {},
 					});
@@ -251,8 +251,8 @@ describe("ExtensionRunner", () => {
 				? (defaultKeybindings["app.clipboard.pasteImage"][0] ?? "")
 				: defaultKeybindings["app.clipboard.pasteImage"];
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("${pasteImageKey}", {
+				export default function(api) {
+					api.registerShortcut("${pasteImageKey}", {
 						description: "Overrides non-reserved",
 						handler: async () => {},
 					});
@@ -274,8 +274,8 @@ describe("ExtensionRunner", () => {
 
 		it("blocks shortcuts for reserved actions even when rebound", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+x", {
+				export default function(api) {
+					api.registerShortcut("ctrl+x", {
 						description: "Conflicts with rebound reserved",
 						handler: async () => {},
 					});
@@ -298,8 +298,8 @@ describe("ExtensionRunner", () => {
 
 		it("blocks shortcuts when reserved key is also bound to non-reserved actions", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+p", {
+				export default function(api) {
+					api.registerShortcut("ctrl+p", {
 						description: "Conflicts with shared reserved default",
 						handler: async () => {},
 					});
@@ -321,8 +321,8 @@ describe("ExtensionRunner", () => {
 
 		it("blocks shortcuts when reserved action has multiple keys", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+y", {
+				export default function(api) {
+					api.registerShortcut("ctrl+y", {
 						description: "Conflicts with multi-key reserved",
 						handler: async () => {},
 					});
@@ -345,8 +345,8 @@ describe("ExtensionRunner", () => {
 
 		it("warns but allows when non-reserved action has multiple keys", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+y", {
+				export default function(api) {
+					api.registerShortcut("ctrl+y", {
 						description: "Overrides multi-key non-reserved",
 						handler: async () => {},
 					});
@@ -370,16 +370,16 @@ describe("ExtensionRunner", () => {
 		it("warns when two extensions register same shortcut", async () => {
 			// Use a non-reserved shortcut
 			const extCode1 = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+shift+x", {
+				export default function(api) {
+					api.registerShortcut("ctrl+shift+x", {
 						description: "First extension",
 						handler: async () => {},
 					});
 				}
 			`;
 			const extCode2 = `
-				export default function(pi) {
-					pi.registerShortcut("ctrl+shift+x", {
+				export default function(api) {
+					api.registerShortcut("ctrl+shift+x", {
 						description: "Second extension",
 						handler: async () => {},
 					});
@@ -406,8 +406,8 @@ describe("ExtensionRunner", () => {
 		it("collects tools from multiple extensions", async () => {
 			const toolCode = (name: string) => `
 				import { Type } from "typebox";
-				export default function(pi) {
-					pi.registerTool({
+				export default function(api) {
+					api.registerTool({
 						name: "${name}",
 						label: "${name}",
 						description: "Test tool",
@@ -432,8 +432,8 @@ describe("ExtensionRunner", () => {
 			const extensionPath = path.join(extensionsDir, "missing-parameters.js");
 			fs.writeFileSync(
 				extensionPath,
-				`export default function(pi) {
-	pi.registerTool({
+				`export default function(api) {
+	api.registerTool({
 		name: "noop",
 		label: "No-op",
 		description: "Do nothing",
@@ -456,8 +456,8 @@ describe("ExtensionRunner", () => {
 		it("keeps first tool when two extensions register the same name", async () => {
 			const first = `
 				import { Type } from "typebox";
-				export default function(pi) {
-					pi.registerTool({
+				export default function(api) {
+					api.registerTool({
 						name: "shared",
 						label: "shared",
 						description: "first",
@@ -468,8 +468,8 @@ describe("ExtensionRunner", () => {
 			`;
 			const second = `
 				import { Type } from "typebox";
-				export default function(pi) {
-					pi.registerTool({
+				export default function(api) {
+					api.registerTool({
 						name: "shared",
 						label: "shared",
 						description: "second",
@@ -494,9 +494,9 @@ describe("ExtensionRunner", () => {
 		it("registers one name per command and qualifies built-in collisions", async () => {
 			fs.writeFileSync(
 				path.join(extensionsDir, "names.ts"),
-				`export default function(pi) {
-				pi.registerCommand("first", { handler: async () => {}, getArgumentCompletions: () => [{value:"ok", label:"ok"}] });
-				pi.registerCommand("model", { handler: async () => {} });
+				`export default function(api) {
+				api.registerCommand("first", { handler: async () => {}, getArgumentCompletions: () => [{value:"ok", label:"ok"}] });
+				api.registerCommand("model", { handler: async () => {} });
 			}`,
 			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
@@ -511,8 +511,8 @@ describe("ExtensionRunner", () => {
 		it("keeps the native implementation of built-in commands unqualified", async () => {
 			fs.writeFileSync(
 				path.join(extensionsDir, "native.ts"),
-				`export default function(pi) {
-				pi.registerCommand("model", { handler: async () => {} });
+				`export default function(api) {
+				api.registerCommand("model", { handler: async () => {} });
 			}`,
 			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
@@ -526,8 +526,8 @@ describe("ExtensionRunner", () => {
 
 		it("collects commands from multiple extensions", async () => {
 			const cmdCode = (name: string) => `
-				export default function(pi) {
-					pi.registerCommand("${name}", {
+				export default function(api) {
+					api.registerCommand("${name}", {
 						description: "Test command",
 						handler: async () => {},
 					});
@@ -547,8 +547,8 @@ describe("ExtensionRunner", () => {
 
 		it("gets command by invocation name", async () => {
 			const cmdCode = `
-				export default function(pi) {
-					pi.registerCommand("my-cmd", {
+				export default function(api) {
+					api.registerCommand("my-cmd", {
 						description: "My command",
 						handler: async () => {},
 					});
@@ -571,8 +571,8 @@ describe("ExtensionRunner", () => {
 
 		it("suffixes duplicate extension commands in insertion order", async () => {
 			const cmdCode = (description: string) => `
-				export default function(pi) {
-					pi.registerCommand("shared-cmd", {
+				export default function(api) {
+					api.registerCommand("shared-cmd", {
 						description: "${description}",
 						handler: async () => {},
 					});
@@ -669,8 +669,8 @@ describe("ExtensionRunner", () => {
 	describe("error handling", () => {
 		it("calls error listeners when handler throws", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.on("context", async () => {
+				export default function(api) {
+					api.on("context", async () => {
 						throw new Error("Handler error!");
 					});
 				}
@@ -696,8 +696,8 @@ describe("ExtensionRunner", () => {
 		// Regression test for #9068.
 		it("fails closed when a user_bash handler throws", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.on("user_bash", async () => {
+				export default function(api) {
+					api.on("user_bash", async () => {
 						throw new Error("Routing failed");
 					});
 				}
@@ -728,8 +728,8 @@ describe("ExtensionRunner", () => {
 			],
 		])("fails closed when a user_bash handler returns %s", async (_description, handlerResult) => {
 			const extCode = `
-				export default function(pi) {
-					pi.on("user_bash", async () => (${handlerResult}));
+				export default function(api) {
+					api.on("user_bash", async () => (${handlerResult}));
 				}
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "invalid-result.ts"), extCode);
@@ -749,8 +749,8 @@ describe("ExtensionRunner", () => {
 
 		it("accepts valid user_bash operations and result overrides", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.on("user_bash", async (event) => {
+				export default function(api) {
+					api.on("user_bash", async (event) => {
 						if (event.command === "operations") {
 							return { operations: { exec: async () => ({ exitCode: 0 }) } };
 						}
@@ -775,8 +775,8 @@ describe("ExtensionRunner", () => {
 	describe("message and entry renderers", () => {
 		it("gets Markdown transformers in extension load order", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerMarkdownTransformer((markdown) => markdown);
+				export default function(api) {
+					api.registerMarkdownTransformer((markdown) => markdown);
 				}
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "markdown-renderer-a.ts"), extCode);
@@ -790,8 +790,8 @@ describe("ExtensionRunner", () => {
 
 		it("gets message renderer by type", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerMessageRenderer("my-type", (message, options, theme) => null);
+				export default function(api) {
+					api.registerMessageRenderer("my-type", (message, options, theme) => null);
 				}
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "renderer.ts"), extCode);
@@ -808,8 +808,8 @@ describe("ExtensionRunner", () => {
 
 		it("gets entry renderer by type", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerEntryRenderer("my-entry", (entry, options, theme) => null);
+				export default function(api) {
+					api.registerEntryRenderer("my-entry", (entry, options, theme) => null);
 				}
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "entry-renderer.ts"), extCode);
@@ -825,8 +825,8 @@ describe("ExtensionRunner", () => {
 	describe("flags", () => {
 		it("collects flags from extensions", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerFlag("my-flag", {
+				export default function(api) {
+					api.registerFlag("my-flag", {
 						description: "My flag",
 						handler: async () => {},
 					});
@@ -843,8 +843,8 @@ describe("ExtensionRunner", () => {
 
 		it("keeps first flag when two extensions register the same name", async () => {
 			const first = `
-				export default function(pi) {
-					pi.registerFlag("shared-flag", {
+				export default function(api) {
+					api.registerFlag("shared-flag", {
 						description: "first",
 						type: "boolean",
 						default: true,
@@ -852,8 +852,8 @@ describe("ExtensionRunner", () => {
 				}
 			`;
 			const second = `
-				export default function(pi) {
-					pi.registerFlag("shared-flag", {
+				export default function(api) {
+					api.registerFlag("shared-flag", {
 						description: "second",
 						type: "boolean",
 						default: false,
@@ -873,8 +873,8 @@ describe("ExtensionRunner", () => {
 
 		it("rejects default values that do not match the flag type", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerFlag("safe-mode", {
+				export default function(api) {
+					api.registerFlag("safe-mode", {
 						type: "boolean",
 						default: "false",
 					});
@@ -891,8 +891,8 @@ describe("ExtensionRunner", () => {
 
 		it("can set flag values", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.registerFlag("test-flag", {
+				export default function(api) {
+					api.registerFlag("test-flag", {
 						description: "Test flag",
 						handler: async () => {},
 					});
@@ -914,8 +914,8 @@ describe("ExtensionRunner", () => {
 	describe("before_agent_start", () => {
 		it("keeps ctx.getSystemPrompt() in sync with chained system prompt updates", async () => {
 			const extCode1 = `
-				export default function(pi) {
-					pi.on("before_agent_start", async (_event, ctx) => {
+				export default function(api) {
+					api.on("before_agent_start", async (_event, ctx) => {
 						return {
 							systemPrompt: ctx.getSystemPrompt() + "\\nfirst",
 						};
@@ -923,8 +923,8 @@ describe("ExtensionRunner", () => {
 				}
 			`;
 			const extCode2 = `
-				export default function(pi) {
-					pi.on("before_agent_start", async (_event, ctx) => {
+				export default function(api) {
+					api.on("before_agent_start", async (_event, ctx) => {
 						return {
 							systemPrompt: ctx.getSystemPrompt() + "\\nsecond",
 						};
@@ -962,13 +962,13 @@ describe("ExtensionRunner", () => {
 		const eventBus = createEventBus();
 		const renderCall = () => ({ render: () => [], invalidate: () => {} });
 		const first = await loadExtensionFromFactory(
-			(pi) => pi.registerToolRenderer((toolName, next) => (toolName === "a" ? { renderCall } : next())),
+			(api) => api.registerToolRenderer((toolName, next) => (toolName === "a" ? { renderCall } : next())),
 			tempDir,
 			eventBus,
 			runtime,
 		);
 		const second = await loadExtensionFromFactory(
-			(pi) => pi.registerToolRenderer((_toolName, next) => next() ?? { renderShell: "self" }),
+			(api) => api.registerToolRenderer((_toolName, next) => next() ?? { renderShell: "self" }),
 			tempDir,
 			eventBus,
 			runtime,
@@ -986,8 +986,8 @@ describe("ExtensionRunner", () => {
 			const eventBus = createEventBus();
 			const observations: Array<{ entries: number; continuation: boolean; preview: number }> = [];
 			const first = await loadExtensionFromFactory(
-				(pi) => {
-					pi.on("agent_before_settle", (event) => {
+				(api) => {
+					api.on("agent_before_settle", (event) => {
 						observations.push({
 							entries: event.entries.length,
 							continuation: event.continue,
@@ -1003,8 +1003,8 @@ describe("ExtensionRunner", () => {
 				"<inline:first>",
 			);
 			const second = await loadExtensionFromFactory(
-				(pi) => {
-					pi.on("agent_before_settle", (event) => {
+				(api) => {
+					api.on("agent_before_settle", (event) => {
 						observations.push({
 							entries: event.entries.length,
 							continuation: event.continue,
@@ -1049,8 +1049,8 @@ describe("ExtensionRunner", () => {
 			const runtime = createExtensionRuntime();
 			let secondRan = false;
 			const first = await loadExtensionFromFactory(
-				(pi) => {
-					pi.on("agent_before_settle", () => ({
+				(api) => {
+					api.on("agent_before_settle", () => ({
 						entries: [{ type: "context_edit", targetId: "missing", replacement: null }],
 					}));
 				},
@@ -1060,8 +1060,8 @@ describe("ExtensionRunner", () => {
 				"<inline:invalid>",
 			);
 			const second = await loadExtensionFromFactory(
-				(pi) => {
-					pi.on("agent_before_settle", (event) => {
+				(api) => {
+					api.on("agent_before_settle", (event) => {
 						secondRan = true;
 						expect(event.entries).toHaveLength(1);
 						return { entries: [] };
@@ -1096,8 +1096,8 @@ describe("ExtensionRunner", () => {
 		it("keeps shared mutations made before a handler throws", async () => {
 			const runtime = createExtensionRuntime();
 			const extension = await loadExtensionFromFactory(
-				(pi) => {
-					pi.on("agent_before_settle", (event) => {
+				(api) => {
+					api.on("agent_before_settle", (event) => {
 						event.entries.push({ type: "custom", customType: "kept" });
 						throw new Error("boundary failed");
 					});
@@ -1126,8 +1126,8 @@ describe("ExtensionRunner", () => {
 	describe("tool_result chaining", () => {
 		it("chains content modifications across handlers", async () => {
 			const extCode1 = `
-				export default function(pi) {
-					pi.on("tool_result", async (event) => {
+				export default function(api) {
+					api.on("tool_result", async (event) => {
 						return {
 							content: [...event.content, { type: "text", text: "ext1" }],
 						};
@@ -1135,8 +1135,8 @@ describe("ExtensionRunner", () => {
 				}
 			`;
 			const extCode2 = `
-				export default function(pi) {
-					pi.on("tool_result", async (event) => {
+				export default function(api) {
+					api.on("tool_result", async (event) => {
 						return {
 							content: [...event.content, { type: "text", text: "ext2" }],
 						};
@@ -1173,8 +1173,8 @@ describe("ExtensionRunner", () => {
 
 		it("preserves previous modifications when later handlers return partial patches", async () => {
 			const extCode1 = `
-				export default function(pi) {
-					pi.on("tool_result", async () => {
+				export default function(api) {
+					api.on("tool_result", async () => {
 						return {
 							content: [{ type: "text", text: "first" }],
 							details: { source: "ext1" },
@@ -1183,8 +1183,8 @@ describe("ExtensionRunner", () => {
 				}
 			`;
 			const extCode2 = `
-				export default function(pi) {
-					pi.on("tool_result", async () => {
+				export default function(api) {
+					api.on("tool_result", async () => {
 						return {
 							isError: true,
 						};
@@ -1322,12 +1322,12 @@ describe("ExtensionRunner", () => {
 
 		it("allows self-removal without skipping neighboring handlers", async () => {
 			const calls: string[] = [];
-			const { runner } = await loadSubscriptionExtension((pi) => {
-				const unsubscribe = pi.on("agent_end", () => {
+			const { runner } = await loadSubscriptionExtension((api) => {
+				const unsubscribe = api.on("agent_end", () => {
 					calls.push("A");
 					unsubscribe();
 				});
-				pi.on("agent_end", () => {
+				api.on("agent_end", () => {
 					calls.push("B");
 				});
 			});
@@ -1342,17 +1342,17 @@ describe("ExtensionRunner", () => {
 		it("removes duplicate registrations independently and cleans up the last handler", async () => {
 			const calls: string[] = [];
 			const unsubscribers: Array<() => void> = [];
-			const { extension, runner } = await loadSubscriptionExtension((pi) => {
+			const { extension, runner } = await loadSubscriptionExtension((api) => {
 				const shared = () => {
 					calls.push("shared");
 				};
-				unsubscribers.push(pi.on("agent_end", shared));
+				unsubscribers.push(api.on("agent_end", shared));
 				unsubscribers.push(
-					pi.on("agent_end", () => {
+					api.on("agent_end", () => {
 						calls.push("B");
 					}),
 				);
-				unsubscribers.push(pi.on("agent_end", shared));
+				unsubscribers.push(api.on("agent_end", shared));
 			});
 			const [stopFirst, stopB, stopSecond] = unsubscribers;
 
@@ -1371,15 +1371,15 @@ describe("ExtensionRunner", () => {
 
 		it("keeps removed pending handlers in the current dispatch", async () => {
 			const calls: string[] = [];
-			const { runner } = await loadSubscriptionExtension((pi) => {
-				pi.on("agent_end", () => {
+			const { runner } = await loadSubscriptionExtension((api) => {
+				api.on("agent_end", () => {
 					calls.push("A");
 					stopB();
 				});
-				const stopB = pi.on("agent_end", () => {
+				const stopB = api.on("agent_end", () => {
 					calls.push("B");
 				});
-				pi.on("agent_end", () => {
+				api.on("agent_end", () => {
 					calls.push("C");
 				});
 			});
@@ -1392,14 +1392,14 @@ describe("ExtensionRunner", () => {
 
 		it("defers registrations made during dispatch until the next dispatch", async () => {
 			const calls: string[] = [];
-			const { runner } = await loadSubscriptionExtension((pi) => {
-				pi.on("agent_end", () => {
+			const { runner } = await loadSubscriptionExtension((api) => {
+				api.on("agent_end", () => {
 					calls.push("A");
-					pi.on("agent_end", () => {
+					api.on("agent_end", () => {
 						calls.push("C");
 					});
 				});
-				pi.on("agent_end", () => {
+				api.on("agent_end", () => {
 					calls.push("B");
 				});
 			});
@@ -1412,17 +1412,17 @@ describe("ExtensionRunner", () => {
 
 		it("uses a fresh handler list for nested dispatches", async () => {
 			const calls: string[] = [];
-			const { runner } = await loadSubscriptionExtension((pi) => {
-				const stopA = pi.on("agent_end", async () => {
+			const { runner } = await loadSubscriptionExtension((api) => {
+				const stopA = api.on("agent_end", async () => {
 					calls.push("A");
 					stopA();
 					stopB();
-					pi.on("agent_end", () => {
+					api.on("agent_end", () => {
 						calls.push("C");
 					});
 					await runner.emit({ type: "agent_end", messages: [] });
 				});
-				const stopB = pi.on("agent_end", () => {
+				const stopB = api.on("agent_end", () => {
 					calls.push("B");
 				});
 			});
@@ -1435,8 +1435,8 @@ describe("ExtensionRunner", () => {
 	describe("hasHandlers", () => {
 		it("returns true when handlers exist for event type", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.on("tool_call", async () => undefined);
+				export default function(api) {
+					api.on("tool_call", async () => undefined);
 				}
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "handler.ts"), extCode);
@@ -1452,8 +1452,8 @@ describe("ExtensionRunner", () => {
 	describe("before_provider_headers", () => {
 		it("lets a handler mutate headers in place and preserves existing headers", async () => {
 			const extCode = `
-				export default function(pi) {
-					pi.on("before_provider_headers", (event) => {
+				export default function(api) {
+					api.on("before_provider_headers", (event) => {
 						event.headers["X-Turn-Index"] = "3";
 					});
 				}
@@ -1472,15 +1472,15 @@ describe("ExtensionRunner", () => {
 
 		it("isolates a throwing handler and still applies the others", async () => {
 			const throwing = `
-				export default function(pi) {
-					pi.on("before_provider_headers", () => {
+				export default function(api) {
+					api.on("before_provider_headers", () => {
 						throw new Error("header handler boom");
 					});
 				}
 			`;
 			const good = `
-				export default function(pi) {
-					pi.on("before_provider_headers", (event) => {
+				export default function(api) {
+					api.on("before_provider_headers", (event) => {
 						event.headers["X-Good"] = "yes";
 					});
 				}

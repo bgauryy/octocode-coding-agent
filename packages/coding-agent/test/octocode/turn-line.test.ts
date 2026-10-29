@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setToolInterruptShown, toolInterruptShown } from "../../src/core/application/interrupted-tools.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import { registerTurnLine, TURN_LINE_TYPE, turnLineText } from "../../src/octocode/ui/turn-line.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -20,8 +20,8 @@ describe("turn line", () => {
 
 	async function run(ms: number, tools: number, options: { hasUI?: boolean } = {}) {
 		vi.useFakeTimers({ now: 10_000 });
-		const fake = fakePi();
-		registerTurnLine(fake.pi);
+		const fake = fakeHost();
+		registerTurnLine(fake.api);
 		const ctx = fakeCtx({ cwd: "/x", ...options });
 		await fake.emit("agent_start", {}, ctx);
 		for (let index = 0; index < tools; index++)
@@ -55,8 +55,8 @@ describe("turn line", () => {
 	});
 
 	it("notes a tool that ended under an interrupt, and forgets it at the next run", async () => {
-		const fake = fakePi();
-		registerTurnLine(fake.pi);
+		const fake = fakeHost();
+		registerTurnLine(fake.api);
 		const ctx = fakeCtx({ cwd: "/x" });
 		const aborted = new AbortController();
 		const live = { ...ctx, signal: aborted.signal } as never;

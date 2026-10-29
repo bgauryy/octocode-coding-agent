@@ -9,14 +9,14 @@ import { octocodePreset } from "../src/presets/octocode/index.ts";
 const STDIO_FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
 const OCTOCODE_CATALOG = resolve(import.meta.dirname, "./fixtures/compact/octocode-catalog.json");
 
-describe("pi mcp compact", () => {
+describe("octocode mcp compact", () => {
 	const dirs: string[] = [];
 	afterEach(() => {
 		while (dirs.length > 0) rmSync(dirs.pop() ?? "", { recursive: true, force: true });
 	});
 
 	function setup() {
-		const agentDir = mkdtempSync(join(tmpdir(), "pi-mcp-compact-"));
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-compact-"));
 		dirs.push(agentDir);
 		writeFileSync(
 			join(agentDir, "mcp.json"),

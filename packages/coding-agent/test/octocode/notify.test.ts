@@ -7,16 +7,16 @@ import {
 	notifyMethod,
 	registerNotify,
 } from "../../src/octocode/ui/notify.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 function setup(env: NodeJS.ProcessEnv, mode = "tui", hasUI = true) {
-	const fake = fakePi();
-	(fake.pi as unknown as { getSessionName: () => string | undefined }).getSessionName = () => undefined;
+	const fake = fakeHost();
+	(fake.api as unknown as { getSessionName: () => string | undefined }).getSessionName = () => undefined;
 	const writes: string[] = [];
 	const notices: Notice[] = [];
 	let input: ((data: string) => unknown) | undefined;
 	let unsubscribed = false;
-	registerNotify(fake.pi, { env, write: (data) => writes.push(data), onNotice: (notice) => notices.push(notice) });
+	registerNotify(fake.api, { env, write: (data) => writes.push(data), onNotice: (notice) => notices.push(notice) });
 	const ctx = fakeCtx({
 		cwd: "/work/repo",
 		mode,
@@ -84,15 +84,18 @@ describe("registerNotify", () => {
 		const s = setup({ TERM_PROGRAM: "iTerm.app" });
 		await s.fake.fire("session_start", {}, s.ctx);
 		expect(s.writes).toEqual(["\x1b[?1004h"]);
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
 		expect(s.type("\x1b[I")).toEqual({ consume: true });
 		await run(s);
 		expect(s.writes).toHaveLength(1);
+		// Watching: the outcome is already seen.
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
 		expect(s.type("\x1b[O")).toEqual({ consume: true });
 		await run(s);
 		expect(s.writes.at(-1)).toBe("\x1b]9;Octocode: answer ready: All done.\x07");
-		expect(s.ctx.ui.title).toBe("● octocode · repo");
+		expect(s.ctx.ui.title).toBe("✓ Octocode · repo");
 		s.type("\x1b[I");
-		expect(s.ctx.ui.title).toBe("octocode · repo");
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
 		await s.fake.fire("session_shutdown", {}, s.ctx);
 		expect(s.writes.at(-1)).toBe("\x1b[?1004l");
 		expect(s.unsubscribed()).toBe(true);
@@ -143,8 +146,47 @@ describe("registerNotify", () => {
 			title: "Octocode: waiting for you",
 			message: "A question needs your answer",
 		});
+		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
+		// A keypress clears only a finished outcome; the run still waits on its dialog.
 		s.type("x");
-		expect(s.ctx.ui.title).toBe("octocode · repo");
+		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
+	});
+
+	it("shows thinking, a running tool, and the outcome until a keypress; coalesces quick tool swaps", async () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const s = setup({ OCTOCODE_NOTIFY: "off" });
+		const titles: string[] = [];
+		const setTitle = s.ctx.ui.setTitle.bind(s.ctx.ui);
+		s.ctx.ui.setTitle = (title: string) => {
+			titles.push(title);
+			setTitle(title);
+		};
+		await s.fake.fire("session_start", {}, s.ctx);
+		await s.fake.fire("agent_start", {}, s.ctx);
+		expect(s.ctx.ui.title).toBe("✻ Octocode · repo");
+		// A tool that finishes within the window never reaches the tab.
+		await s.fake.fire("tool_execution_start", { toolCallId: "a", toolName: "read" }, s.ctx);
+		await s.fake.fire("tool_execution_end", { toolCallId: "a", toolName: "read" }, s.ctx);
+		vi.advanceTimersByTime(300);
+		expect(titles).toEqual(["Octocode · repo", "✻ Octocode · repo"]);
+		await s.fake.fire("tool_execution_start", { toolCallId: "b", toolName: "bash" }, s.ctx);
+		vi.advanceTimersByTime(300);
+		expect(s.ctx.ui.title).toBe("◐ Octocode · repo");
+		await s.fake.fire("tool_execution_end", { toolCallId: "b", toolName: "bash" }, s.ctx);
+		await s.fake.fire("agent_end", answer("", "error", "rate limited"), s.ctx);
+		await s.fake.fire("agent_settled", { aborted: false }, s.ctx);
+		expect(s.ctx.ui.title).toBe("✗ Octocode · repo");
+		s.type("k");
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
+		// An interrupted run goes straight back to idle.
+		await s.fake.fire("agent_start", {}, s.ctx);
+		await s.fake.fire("agent_end", answer("partial", "aborted"), s.ctx);
+		await s.fake.fire("agent_settled", { aborted: true }, s.ctx);
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
+		// A dialog opened between runs is the user's own and changes nothing.
+		await s.fake.fire("ui_prompt_start", { kind: "select" }, s.ctx);
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
+		await s.fake.fire("ui_prompt_end", { kind: "select" }, s.ctx);
 	});
 
 	it("fires the idle_prompt hook after a minute without input, and none after a keypress", async () => {

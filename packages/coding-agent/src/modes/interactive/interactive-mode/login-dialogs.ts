@@ -47,7 +47,7 @@ export async function completeProviderAuthentication(
 	host.showStatus(`${actionLabel}. Choose a model; Esc keeps the current model.`);
 	if (host.session.modelRuntime.getProviderAuthStatus(providerId).source === "runtime") {
 		host.showWarning(
-			"The session API key override still takes priority. Clear it in /providers to use the saved credential.",
+			"The session API key override still takes priority. Clear it in /login to use the saved credential.",
 		);
 	}
 	// The picker owns its bounded catalog refresh and cancellation. Connecting never silently changes the default.

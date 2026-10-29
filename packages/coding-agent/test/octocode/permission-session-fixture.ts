@@ -17,7 +17,6 @@ import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 type Options = {
 	rules?: { deny?: string[]; ask?: string[]; allow?: string[] };
-	compatibility?: boolean;
 	hooksEnabled?: boolean;
 	customClaudeHome?: boolean;
 	projectRules?: { deny?: string[]; ask?: string[]; allow?: string[] };
@@ -49,8 +48,6 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		CODEX_HOME: path.join(home, ".codex"),
 		OCTOCODE_PERMISSION: options.mode ?? "manual",
-		OCTOCODE_HOOKS: options.hooksEnabled === false ? "0" : "1",
-		OCTOCODE_HOOKS_COMPAT: options.compatibility === false ? "0" : "1",
 		OCTOCODE_MCP: "0",
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_SUBAGENT: "0",
@@ -71,41 +68,44 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 		path.join(configDir, protocol === "claude" ? "settings.json" : "hooks.json"),
 		JSON.stringify({
 			permissions: options.rules,
-			hooks: {
-				...(options.preDeny
-					? {
-							PreToolUse: [
+			hooks:
+				options.hooksEnabled === false
+					? {}
+					: {
+							...(options.preDeny
+								? {
+										PreToolUse: [
+											{
+												hooks: [
+													{
+														type: "command",
+														command: `${quote(process.execPath)} -e ${quote("console.log(" + JSON.stringify(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "PRE_GATE_DENIAL" } })) + ")")}`,
+													},
+												],
+											},
+										],
+									}
+								: {}),
+							PermissionRequest: [
 								{
+									matcher: options.matcher ?? "",
 									hooks: [
 										{
 											type: "command",
-											command: `${quote(process.execPath)} -e ${quote("console.log(" + JSON.stringify(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "PRE_GATE_DENIAL" } })) + ")")}`,
+											command: `${quote(process.execPath)} ${quote(script)}`,
 										},
+										...(options.secondOutput === undefined
+											? []
+											: [
+													{
+														type: "command",
+														command: `${quote(process.execPath)} -e ${quote("console.log(" + JSON.stringify(JSON.stringify(options.secondOutput)) + ")")}`,
+													},
+												]),
 									],
 								},
 							],
-						}
-					: {}),
-				PermissionRequest: [
-					{
-						matcher: options.matcher ?? "",
-						hooks: [
-							{
-								type: "command",
-								command: `${quote(process.execPath)} ${quote(script)}`,
-							},
-							...(options.secondOutput === undefined
-								? []
-								: [
-										{
-											type: "command",
-											command: `${quote(process.execPath)} -e ${quote("console.log(" + JSON.stringify(JSON.stringify(options.secondOutput)) + ")")}`,
-										},
-									]),
-						],
-					},
-				],
-			},
+						},
 		}),
 	);
 	if (options.projectRules) {
@@ -156,9 +156,9 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 			extensionFactories: [
 				{
 					name: "permission-fixture",
-					factory(pi) {
+					factory(api) {
 						if (options.nestedMcp)
-							pi.registerTool({
+							api.registerTool({
 								name: "nested_mcp_policy_fixture",
 								label: "Nested MCP fixture",
 								description: "Read through the configured fixture MCP server",
@@ -171,7 +171,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 									};
 								},
 							});
-						pi.registerTool({
+						api.registerTool({
 							name: "nested_permission_fixture",
 							label: "Nested permission fixture",
 							description: "Run two safe fixture file writes",
@@ -198,7 +198,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 							},
 						});
 						if (options.nestedBash)
-							pi.registerTool({
+							api.registerTool({
 								name: "nested_bash_rewrite_fixture",
 								label: "Nested Bash fixture",
 								description: "Run two owned acceptance commands",
@@ -218,7 +218,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 									};
 								},
 							});
-						pi.registerProvider("permission-fixture", {
+						api.registerProvider("permission-fixture", {
 							name: "Fixture",
 							api: faux.api,
 							baseUrl: "http://127.0.0.1:0",

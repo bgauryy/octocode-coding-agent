@@ -5,7 +5,7 @@ import { agentModes } from "../../src/octocode/agent-tool.ts";
 import { renameReasoning } from "../../src/octocode/files/tool/queries.ts";
 import { isNativeTool, withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { callReason, withoutReason, withReason } from "../../src/octocode/shared/reason.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 
 type Result = { content: { type: "text"; text: string }[]; details: object };
 const empty = async (..._args: unknown[]): Promise<Result> => ({ content: [], details: {} });
@@ -26,9 +26,9 @@ const validate = (definition: { name: string; parameters: unknown }, args: Recor
 
 describe("the required reason on native tools", () => {
 	it("adds a required reason to a native tool and strips it before the tool runs", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const execute = vi.fn(empty);
-		withNativePermissionOwners(fake.pi).registerTool(tool("bash", execute));
+		withNativePermissionOwners(fake.api).registerTool(tool("bash", execute));
 		const registered = fake.tools.get("bash");
 		expect(registered.parameters.required).toEqual(["command", "reason"]);
 		expect(registered.parameters.properties.reason.description).toMatch(/goal/);
@@ -42,10 +42,10 @@ describe("the required reason on native tools", () => {
 	});
 
 	it("refuses MCP registrations from every server and any unreviewed native name", () => {
-		const fake = fakePi();
-		const pi = withNativePermissionOwners(fake.pi);
+		const fake = fakeHost();
+		const api = withNativePermissionOwners(fake.api);
 		for (const name of ["mcp__octocode__localSearch", "mcp__other__thing", "unreviewed"]) {
-			expect(() => pi.registerTool(tool(name))).toThrow("no permission owner");
+			expect(() => api.registerTool(tool(name))).toThrow("no permission owner");
 			expect(fake.tools.has(name)).toBe(false);
 			expect(isNativeTool(name)).toBe(false);
 		}
@@ -53,7 +53,7 @@ describe("the required reason on native tools", () => {
 	});
 
 	it("keeps a reason the tool declares itself, and its other hooks", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const execute = vi.fn(empty);
 		const prepareArguments = vi.fn((args: unknown) => args as never);
 		const renderCall = vi.fn();
@@ -63,7 +63,7 @@ describe("the required reason on native tools", () => {
 			prepareArguments,
 			renderCall,
 		};
-		withNativePermissionOwners(fake.pi).registerTool(own as never);
+		withNativePermissionOwners(fake.api).registerTool(own as never);
 		const registered = fake.tools.get("file");
 		expect(registered.parameters).toBe(own.parameters);
 		expect(registered.prepareArguments).toBe(prepareArguments);
@@ -73,25 +73,25 @@ describe("the required reason on native tools", () => {
 	});
 
 	it("keeps the prepareArguments and rendering of a wrapped tool", () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const prepareArguments = (args: unknown) => args as never;
 		const renderCall = vi.fn();
-		withNativePermissionOwners(fake.pi).registerTool({ ...tool("web"), prepareArguments, renderCall } as never);
+		withNativePermissionOwners(fake.api).registerTool({ ...tool("web"), prepareArguments, renderCall } as never);
 		const registered = fake.tools.get("web");
 		expect(registered.prepareArguments).toBe(prepareArguments);
 		expect(registered.renderCall).toBe(renderCall);
 	});
 
 	it("lets the agent envelope take a reason and hands its mode no unknown key", async () => {
-		const fake = fakePi();
-		const pi = withNativePermissionOwners(fake.pi);
+		const fake = fakeHost();
+		const api = withNativePermissionOwners(fake.api);
 		const agent = agentModes();
 		const modeExecute = vi.fn(async (..._args: unknown[]): Promise<Result> => ({
 			content: [{ type: "text", text: "ok" }],
 			details: {},
 		}));
 		agent.collect(tool("coordinate", modeExecute) as never);
-		agent.register(pi);
+		agent.register(api);
 		const registered = fake.tools.get("agent");
 		const args = { type: "coordinate", input: { command: "list" }, reason: "see who is running" };
 		expect(validate(registered, args)).toEqual(args);

@@ -1,6 +1,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type {
 	ApplicationActivity,
+	ApplicationAwaiting,
 	ApplicationError,
 	ApplicationEvent,
 	ApplicationMessage,
@@ -20,6 +21,8 @@ export interface ApplicationRuntimeState {
 	runId: string | undefined;
 	streaming: boolean;
 	status: "idle" | "compacting" | "retrying";
+	/** The blocking dialog the run waits on, until it closes. */
+	awaiting?: ApplicationAwaiting;
 	steering: string[];
 	followUp: string[];
 	errors: ApplicationError[];
@@ -59,10 +62,13 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 			store.setState({ runId: event.runId, streaming: true });
 			break;
 		case "run.settled":
-			store.setState({ runId: undefined, streaming: false });
+			store.setState({ runId: undefined, streaming: false, awaiting: undefined });
 			break;
 		case "session.status":
 			store.setState({ status: event.status });
+			break;
+		case "session.awaiting":
+			store.setState({ awaiting: event.awaiting ? { ...event.awaiting } : undefined });
 			break;
 		case "queue.changed":
 			store.setState({ steering: [...event.steering], followUp: [...event.followUp] });

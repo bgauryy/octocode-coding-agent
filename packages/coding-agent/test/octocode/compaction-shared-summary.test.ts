@@ -60,7 +60,7 @@ function setup(options: Setup = {}) {
 	const notices: string[] = [];
 	const notes: Array<{ customType: string; data: unknown }> = [];
 	const recordedUsage: unknown[] = [];
-	const pi = {
+	const api = {
 		getThinkingLevel: () => options.thinking ?? "high",
 		createUsageRecorder: () => (message: unknown) => recordedUsage.push(message),
 		getActiveTools: () => [],
@@ -113,7 +113,7 @@ function setup(options: Setup = {}) {
 		customInstructions: options.customInstructions,
 		signal: options.signal ?? { aborted: false },
 	} as never;
-	return { calls, notices, notes, pi, ctx, event, fileOps, recordedUsage };
+	return { calls, notices, notes, api, ctx, event, fileOps, recordedUsage };
 }
 
 const finalPrompt = (call: { context: Context }): string => {
@@ -125,8 +125,8 @@ const finalPrompt = (call: { context: Context }): string => {
 
 describe("cache-sharing compaction summary", () => {
 	it("sends the session request plus one final user message, with the session own model, thinking level and routing id", async () => {
-		const { calls, pi, ctx, event } = setup();
-		const out = await sharedSummary(pi, event, ctx, model as never, "Focus on parsing.");
+		const { calls, api, ctx, event } = setup();
+		const out = await sharedSummary(api, event, ctx, model as never, "Focus on parsing.");
 		expect(out).toBeDefined();
 		expect(calls).toHaveLength(1);
 		const [{ context, options, model: requested }] = calls;
@@ -151,16 +151,16 @@ describe("cache-sharing compaction summary", () => {
 	});
 
 	it("uses the session cache preferences for the summary request", async () => {
-		const { calls, pi, ctx, event } = setup({
+		const { calls, api, ctx, event } = setup({
 			settings: { cacheRetention: "long", instructionCacheRetention: "short" },
 		});
-		await sharedSummary(pi, event, ctx, model as never, "");
+		await sharedSummary(api, event, ctx, model as never, "");
 		expect(calls[0]?.options).toMatchObject({ cacheRetention: "long", instructionCacheRetention: "short" });
 	});
 
 	it("leaves reasoning off when the session thinking level is off", async () => {
-		const { calls, pi, ctx, event } = setup({ thinking: "off" });
-		await sharedSummary(pi, event, ctx, model as never, "x");
+		const { calls, api, ctx, event } = setup({ thinking: "off" });
+		await sharedSummary(api, event, ctx, model as never, "x");
 		expect(calls[0].options.reasoning).toBeUndefined();
 	});
 
@@ -172,8 +172,8 @@ describe("cache-sharing compaction summary", () => {
 				data: { results: [{ id: "c1", saved: "/tmp/saved.txt" }] },
 			},
 		];
-		const { calls, pi, ctx, event } = setup({ branch });
-		await sharedSummary(pi, event, ctx, model as never, "x");
+		const { calls, api, ctx, event } = setup({ branch });
+		await sharedSummary(api, event, ctx, model as never, "x");
 		const sent = calls[0].context.messages.find((message) => message.role === "toolResult");
 		expect(sent?.content[0]).toMatchObject({
 			text: expect.stringMatching(/^\[Old tool result cleared .*\/tmp\/saved\.txt/),
@@ -199,18 +199,18 @@ describe("cache-sharing compaction summary", () => {
 		const projection = () => ({ entries: projected, messages: projected.flatMap((item) => item.messages) });
 		const binding = { ...model, compat: { supportsMidConvoEffort: true } };
 		const strips = setup({ firstKeptEntryId: "e2", projection });
-		await sharedSummary(strips.pi, strips.event, strips.ctx, binding as never, "x");
+		await sharedSummary(strips.api, strips.event, strips.ctx, binding as never, "x");
 		const sent = (call: { context: Context }) =>
 			call.context.messages.find((message) => message.role === "assistant")?.content;
 		expect(sent(strips.calls[0])).toEqual([{ type: "text", text: "kept turn" }]);
 		const keeps = setup({ firstKeptEntryId: "e2", projection });
-		await sharedSummary(keeps.pi, keeps.event, keeps.ctx, model as never, "x");
+		await sharedSummary(keeps.api, keeps.event, keeps.ctx, model as never, "x");
 		expect(sent(keeps.calls[0])).toHaveLength(2);
 	});
 
 	it("returns Octocode-shaped compaction: summary with file lists, details, usage, cut point and size before", async () => {
-		const { pi, ctx, event } = setup();
-		const out = await sharedSummary(pi, event, ctx, model as never, "x");
+		const { api, ctx, event } = setup();
+		const out = await sharedSummary(api, event, ctx, model as never, "x");
 		expect(out).toEqual({
 			summary:
 				"## Goal\nfix the parser\n\n<read-files>\nsrc/a.ts\n</read-files>\n\n<modified-files>\nsrc/b.ts\nsrc/new.ts\n</modified-files>",
@@ -222,29 +222,29 @@ describe("cache-sharing compaction summary", () => {
 	});
 
 	it("omits file blocks when no file was touched", async () => {
-		const { pi, ctx, event, fileOps } = setup();
+		const { api, ctx, event, fileOps } = setup();
 		fileOps.read.clear();
 		fileOps.written.clear();
 		fileOps.edited.clear();
-		const out = await sharedSummary(pi, event, ctx, model as never, "x");
+		const out = await sharedSummary(api, event, ctx, model as never, "x");
 		expect(out?.summary).toBe("## Goal\nfix the parser");
 		expect(out?.details).toEqual({ readFiles: [], modifiedFiles: [] });
 	});
 
 	it("names where the kept messages begin so the model summarizes what comes before", async () => {
-		const { calls, pi, ctx, event } = setup({ firstKeptEntryId: "e3" });
-		await sharedSummary(pi, event, ctx, model as never, "x");
+		const { calls, api, ctx, event } = setup({ firstKeptEntryId: "e3" });
+		await sharedSummary(api, event, ctx, model as never, "x");
 		expect(finalPrompt(calls[0])).toMatch(/result of the read tool call/);
 		const other = setup({ firstKeptEntryId: "e1" });
-		await sharedSummary(other.pi, other.event, other.ctx, model as never, "x");
+		await sharedSummary(other.api, other.event, other.ctx, model as never, "x");
 		expect(finalPrompt(other.calls[0])).toContain('user message beginning "fix the parser in src/a.ts"');
 		const call2 = setup({ firstKeptEntryId: "e2" });
-		await sharedSummary(call2.pi, call2.event, call2.ctx, model as never, "x");
+		await sharedSummary(call2.api, call2.event, call2.ctx, model as never, "x");
 		expect(finalPrompt(call2.calls[0])).toContain(
 			'assistant message that calls the read tool with {"path":"src/a.ts"}',
 		);
 		const unknown = setup({ firstKeptEntryId: "missing" });
-		await sharedSummary(unknown.pi, unknown.event, unknown.ctx, model as never, "x");
+		await sharedSummary(unknown.api, unknown.event, unknown.ctx, model as never, "x");
 		expect(finalPrompt(unknown.calls[0])).not.toMatch(/stay in the conversation/);
 	});
 
@@ -252,11 +252,11 @@ describe("cache-sharing compaction summary", () => {
 		// The emoji straddles the 120-character cut: a plain slice would leave a lone high surrogate before the ellipsis.
 		const long = { role: "user", content: `${"a".repeat(119)}😀 and more text after it`, timestamp: at };
 		const projected = [entry("e0", system), entry("e1", long), entry("e2", answer)];
-		const { calls, pi, ctx, event } = setup({
+		const { calls, api, ctx, event } = setup({
 			firstKeptEntryId: "e1",
 			projection: () => ({ entries: projected, messages: projected.flatMap((item) => item.messages) }),
 		});
-		await sharedSummary(pi, event, ctx, model as never, "x");
+		await sharedSummary(api, event, ctx, model as never, "x");
 		const prompt = finalPrompt(calls[0]);
 		expect(prompt).toContain(`user message beginning "${"a".repeat(119)}…"`);
 		expect(prompt).not.toMatch(/\p{Surrogate}/u);
@@ -264,10 +264,10 @@ describe("cache-sharing compaction summary", () => {
 
 	it("tells the model to carry a previous summary forward without copying the sections code appends", async () => {
 		const first = setup();
-		await sharedSummary(first.pi, first.event, first.ctx, model as never, "x");
+		await sharedSummary(first.api, first.event, first.ctx, model as never, "x");
 		expect(finalPrompt(first.calls[0])).not.toMatch(/earlier summary/);
 		const next = setup({ previousSummary: "## Goal\nold" });
-		await sharedSummary(next.pi, next.event, next.ctx, model as never, "x");
+		await sharedSummary(next.api, next.event, next.ctx, model as never, "x");
 		const prompt = finalPrompt(next.calls[0]);
 		expect(prompt).toMatch(/earlier summary/);
 		expect(prompt).toContain("## User Messages");
@@ -288,11 +288,11 @@ describe("cache-sharing compaction summary", () => {
 			messages: [reference],
 		};
 		const projected = [compaction, ...entries.slice(1)];
-		const { calls, pi, ctx, event } = setup({
+		const { calls, api, ctx, event } = setup({
 			previousSummary: full,
 			projection: () => ({ entries: projected, messages: projected.flatMap((item) => item.messages) }),
 		});
-		await sharedSummary(pi, event, ctx, model as never, "x");
+		await sharedSummary(api, event, ctx, model as never, "x");
 		const prompt = finalPrompt(calls[0]);
 		expect(prompt).toContain("ship the parser rewrite");
 		expect(prompt).toContain("keep the old tokenizer");
@@ -302,7 +302,7 @@ describe("cache-sharing compaction summary", () => {
 			previousSummary: reference.summary,
 			projection: () => ({ entries: plain, messages: plain.flatMap((item) => item.messages) }),
 		});
-		await sharedSummary(without.pi, without.event, without.ctx, model as never, "x");
+		await sharedSummary(without.api, without.event, without.ctx, model as never, "x");
 		expect(finalPrompt(without.calls[0])).not.toContain("<previous-summary>");
 		expect(calls[0].context.messages.slice(0, -1)).toEqual(without.calls[0].context.messages.slice(0, -1));
 	});
@@ -336,8 +336,8 @@ describe("cache-sharing compaction summary", () => {
 		],
 		["a summary over the cap", () => reply([text("x".repeat(8_000 * CHARS_PER_TOKEN + 100))])],
 	])("gives up on %s", async (_name, build) => {
-		const { pi, ctx, event } = setup({ reply: build });
-		expect(await sharedSummary(pi, event, ctx, model as never, "x")).toBeUndefined();
+		const { api, ctx, event } = setup({ reply: build });
+		expect(await sharedSummary(api, event, ctx, model as never, "x")).toBeUndefined();
 	});
 
 	it.each([
@@ -366,16 +366,16 @@ describe("cache-sharing compaction summary", () => {
 			"down",
 		],
 	])("says why it gave up on %s", async (_name, build, reason) => {
-		const { pi, ctx, event } = setup({ reply: build });
+		const { api, ctx, event } = setup({ reply: build });
 		const reasons: string[] = [];
-		expect(await sharedSummary(pi, event, ctx, model as never, "x", (why) => reasons.push(why))).toBeUndefined();
+		expect(await sharedSummary(api, event, ctx, model as never, "x", (why) => reasons.push(why))).toBeUndefined();
 		expect(reasons).toEqual([reason]);
 	});
 
 	it("reports blocked images as the user's own choice, and says nothing when the compaction was cancelled", async () => {
 		const reasons: Array<[string, boolean | undefined]> = [];
 		const blocked = setup({ settings: { images: { blockImages: true } } });
-		await sharedSummary(blocked.pi, blocked.event, blocked.ctx, model as never, "x", (why, userChoice) =>
+		await sharedSummary(blocked.api, blocked.event, blocked.ctx, model as never, "x", (why, userChoice) =>
 			reasons.push([why, userChoice]),
 		);
 		expect(reasons).toEqual([["images are blocked in settings", true]]);
@@ -385,7 +385,7 @@ describe("cache-sharing compaction summary", () => {
 			},
 			signal: { aborted: true },
 		});
-		await sharedSummary(cancelled.pi, cancelled.event, cancelled.ctx, model as never, "x", (why, userChoice) =>
+		await sharedSummary(cancelled.api, cancelled.event, cancelled.ctx, model as never, "x", (why, userChoice) =>
 			reasons.push([why, userChoice]),
 		);
 		expect(reasons).toHaveLength(1);
@@ -397,46 +397,46 @@ describe("cache-sharing compaction summary", () => {
 				throw new Error("down");
 			},
 		});
-		expect(await sharedSummary(throwing.pi, throwing.event, throwing.ctx, model as never, "x")).toBeUndefined();
+		expect(await sharedSummary(throwing.api, throwing.event, throwing.ctx, model as never, "x")).toBeUndefined();
 		const broken = setup({
 			projection: () => {
 				throw new Error("no projection");
 			},
 		});
-		expect(await sharedSummary(broken.pi, broken.event, broken.ctx, model as never, "x")).toBeUndefined();
+		expect(await sharedSummary(broken.api, broken.event, broken.ctx, model as never, "x")).toBeUndefined();
 		const blocked = setup({ settings: { images: { blockImages: true } } });
-		expect(await sharedSummary(blocked.pi, blocked.event, blocked.ctx, model as never, "x")).toBeUndefined();
+		expect(await sharedSummary(blocked.api, blocked.event, blocked.ctx, model as never, "x")).toBeUndefined();
 		expect(blocked.calls).toHaveLength(0);
 	});
 
 	it("keeps the summary within the model cap when the model has none", async () => {
-		const { calls, pi, ctx, event } = setup();
-		await sharedSummary(pi, event, ctx, { ...model, maxTokens: 0 } as never, "x");
+		const { calls, api, ctx, event } = setup();
+		await sharedSummary(api, event, ctx, { ...model, maxTokens: 0 } as never, "x");
 		expect(calls[0].options.maxTokens).toBe(8_000);
 	});
 });
 
 describe("writeSummary with the shared path", () => {
 	it("keys paid summaries by manual focus and never carries that focus into automatic compaction", async () => {
-		const { calls, pi, ctx, event } = setup({ customInstructions: "Keep parser boundaries." });
-		await writeSummary(pi, event, ctx);
-		await writeSummary(pi, event, ctx);
+		const { calls, api, ctx, event } = setup({ customInstructions: "Keep parser boundaries." });
+		await writeSummary(api, event, ctx);
+		await writeSummary(api, event, ctx);
 		expect(calls).toHaveLength(1);
 		Object.assign(event, { customInstructions: "Keep the release checklist." });
-		await writeSummary(pi, event, ctx);
+		await writeSummary(api, event, ctx);
 		expect(calls).toHaveLength(2);
 		expect(finalPrompt(calls[1])).toContain("Keep the release checklist.");
 		expect(finalPrompt(calls[1])).not.toContain("Keep parser boundaries.");
 		Object.assign(event, { customInstructions: undefined });
-		await writeSummary(pi, event, ctx);
+		await writeSummary(api, event, ctx);
 		expect(calls).toHaveLength(3);
 		expect(finalPrompt(calls[2])).not.toContain("Keep parser boundaries.");
 		expect(finalPrompt(calls[2])).not.toContain("Keep the release checklist.");
 	});
 
 	it("uses the shared request for the session model and still appends the user messages and the note", async () => {
-		const { calls, pi, ctx, event, recordedUsage } = setup({ customInstructions: "Retain the release checklist." });
-		const out = await writeSummary(pi, event, ctx);
+		const { calls, api, ctx, event, recordedUsage } = setup({ customInstructions: "Retain the release checklist." });
+		const out = await writeSummary(api, event, ctx);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("Retain the release checklist.");
 		expect(finalPrompt(calls[0])).toContain("## Errors & Fixes");
@@ -455,14 +455,14 @@ describe("writeSummary with the shared path", () => {
 	});
 
 	it("falls back to the standalone summary request when the shared reply is unusable", async () => {
-		const { calls, pi, ctx, event, notices } = setup({
+		const { calls, api, ctx, event, notices } = setup({
 			customInstructions: "Retain the release checklist.",
 			reply: (n) =>
 				n === 1
 					? reply([{ type: "toolCall", id: "x", name: "read", arguments: {} }], "toolUse")
 					: reply([text("## Goal\nfallback")]),
 		});
-		const out = await writeSummary(pi, event, ctx);
+		const out = await writeSummary(api, event, ctx);
 		expect(calls).toHaveLength(2);
 		expect(finalPrompt(calls[1])).toContain("<conversation>");
 		for (const call of calls) {
@@ -483,8 +483,8 @@ describe("writeSummary with the shared path", () => {
 	});
 
 	it("names blocked images as the reason for the standalone request, without a warning", async () => {
-		const { pi, ctx, event, notices } = setup({ settings: { images: { blockImages: true } } });
-		const out = await writeSummary(pi, event, ctx);
+		const { api, ctx, event, notices } = setup({ settings: { images: { blockImages: true } } });
+		const out = await writeSummary(api, event, ctx);
 		expect(out?.compaction?.details).toMatchObject({
 			[SUMMARY_METHOD_DETAILS]: { method: "standalone", reason: "images are blocked in settings" },
 		});
@@ -492,8 +492,8 @@ describe("writeSummary with the shared path", () => {
 	});
 
 	it("summarizes a downshift on the previous model with the standalone request only", async () => {
-		const { calls, pi, ctx, event } = setup();
-		const out = await writeSummary(pi, event, ctx, { ...model, id: "previous" } as never);
+		const { calls, api, ctx, event } = setup();
+		const out = await writeSummary(api, event, ctx, { ...model, id: "previous" } as never);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
 		expect(out?.compaction?.summary).toContain("## Goal");
@@ -506,8 +506,8 @@ describe("writeSummary with the shared path", () => {
 	});
 
 	it("skips the shared request when the prompt cache has expired, without a warning", async () => {
-		const { calls, pi, ctx, event, notices } = setup();
-		const out = await writeSummary(pi, event, ctx, undefined, { cacheCold: true });
+		const { calls, api, ctx, event, notices } = setup();
+		const out = await writeSummary(api, event, ctx, undefined, { cacheCold: true });
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
 		expect(out?.compaction?.details).toMatchObject({
@@ -517,8 +517,8 @@ describe("writeSummary with the shared path", () => {
 	});
 
 	it("skips the shared request after a context overflow, which would only overflow again", async () => {
-		const { calls, pi, ctx, event, notices } = setup();
-		const out = await writeSummary(pi, { ...(event as object), reason: "overflow" } as never, ctx);
+		const { calls, api, ctx, event, notices } = setup();
+		const out = await writeSummary(api, { ...(event as object), reason: "overflow" } as never, ctx);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
 		expect(out?.compaction?.details).toMatchObject({
@@ -528,12 +528,12 @@ describe("writeSummary with the shared path", () => {
 	});
 
 	it("warns about the fallback and then about the failure when both paths fail", async () => {
-		const { notices, notes, pi, ctx, event } = setup({
+		const { notices, notes, api, ctx, event } = setup({
 			reply: () => {
 				throw new Error("down");
 			},
 		});
-		expect(await writeSummary(pi, event, ctx)).toBeUndefined();
+		expect(await writeSummary(api, event, ctx)).toBeUndefined();
 		expect(notices).toEqual([
 			expect.stringContaining("prompt cache (down)"),
 			expect.stringContaining("compaction summary failed (down)"),
@@ -553,14 +553,14 @@ describe("summary attempt accounting", () => {
 		const s = setup({
 			reply: (call) => reply([text(call === 1 ? "cut" : "complete summary")], call === 1 ? "length" : "stop"),
 		});
-		const result = await writeSummary(s.pi, s.event, s.ctx);
+		const result = await writeSummary(s.api, s.event, s.ctx);
 		expect(s.calls).toHaveLength(2);
 		expect(s.recordedUsage).toHaveLength(2);
 		expect(result?.compaction?.usage).toBeUndefined();
 	});
 	it("records returned aborted usage even when no summary is accepted", async () => {
 		const s = setup({ reply: () => reply([], "aborted") });
-		const result = await writeSummary(s.pi, s.event, s.ctx);
+		const result = await writeSummary(s.api, s.event, s.ctx);
 		expect(s.recordedUsage.length).toBeGreaterThan(0);
 		expect(result).toBeUndefined();
 	});
@@ -575,11 +575,11 @@ describe("summary attempt accounting", () => {
 				return reply([text("## Goal\npartial")], "aborted");
 			},
 		});
-		expect(await writeSummary(s.pi, s.event, s.ctx)).toBeUndefined();
+		expect(await writeSummary(s.api, s.event, s.ctx)).toBeUndefined();
 		const cancelledCalls = s.calls.length;
 		signal.aborted = false;
 		cancel = false;
-		const result = await writeSummary(s.pi, s.event, s.ctx);
+		const result = await writeSummary(s.api, s.event, s.ctx);
 		expect(s.calls.length).toBeGreaterThan(cancelledCalls);
 		expect(result?.compaction?.summary).toContain("full summary");
 		expect(result?.compaction?.summary).not.toContain("partial");
@@ -593,9 +593,9 @@ describe("summary attempt accounting", () => {
 				return reply([text(`## Goal\nsummary ${call}`)]);
 			},
 		});
-		expect(await writeSummary(s.pi, s.event, s.ctx)).toBeUndefined();
+		expect(await writeSummary(s.api, s.event, s.ctx)).toBeUndefined();
 		signal.aborted = false;
-		const result = await writeSummary(s.pi, s.event, s.ctx);
+		const result = await writeSummary(s.api, s.event, s.ctx);
 		expect(s.calls).toHaveLength(2);
 		expect(result?.compaction?.summary).toContain("summary 2");
 	});

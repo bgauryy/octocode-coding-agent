@@ -10,7 +10,7 @@ import type { BashToolDetails, BashToolInput } from "../../tools/index.ts";
 interface ToolCallEventBase {
 	type: "tool_call";
 	/**
-	 * The call's id. For calls another tool made (with `parentToolCallId` set), pi assigns
+	 * The call's id. For calls another tool made (with `parentToolCallId` set), Octocode assigns
 	 * `<parent id>/<n>`; such ids never appear as tool calls or tool results in the transcript, only
 	 * in the parent result's `nestedCalls` record.
 	 */

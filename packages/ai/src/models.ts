@@ -21,6 +21,12 @@ export type {
 } from "./models/contracts.ts";
 export { type CreateProviderOptions, createProvider } from "./models/create-provider.ts";
 export {
+	type CacheMechanism,
+	type ModelCapabilities,
+	resolveModelCapabilities,
+	type ThinkingControl,
+} from "./models/capabilities.ts";
+export {
 	calculateCost,
 	clampThinkingLevel,
 	getSupportedThinkingLevels,

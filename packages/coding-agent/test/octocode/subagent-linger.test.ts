@@ -10,10 +10,10 @@ import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts"
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 
@@ -26,8 +26,8 @@ beforeAll(() => {
 	});
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -40,10 +40,10 @@ function setup(
 	cwd = tmp(),
 	profiles = new Map<string, AgentProfile>(),
 ) {
-	const f = fakePi();
-	const team = new Team(f.pi);
+	const f = fakeHost();
+	const team = new Team(f.api);
 	const permission = fakePermission(mode);
-	const control = registerAgentTool(f.pi, () => profiles, team, permission);
+	const control = registerAgentTool(f.api, () => profiles, team, permission);
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },
@@ -299,7 +299,7 @@ describe("a lingering background subagent", () => {
 		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
 		const t = setup("full");
 		let servers: Record<string, unknown> = { old: { command: "echo", env: { TOKEN: "SECRET-PARKED-123" } } };
-		Object.assign(t.f.pi, {
+		Object.assign(t.f.api, {
 			events: { on: () => () => undefined, emit: (_name: string, reply: (added: unknown) => void) => reply(servers) },
 		});
 		try {

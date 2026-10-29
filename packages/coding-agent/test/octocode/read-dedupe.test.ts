@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { registerReadDedupe } from "../../src/octocode/files/dedupe.ts";
 import { CLEARED_RESULTS_TYPE, seenFiles } from "../../src/octocode/files/reads.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const CONTENT = "line of text\n".repeat(500);
 let counter = 0;
@@ -43,8 +43,8 @@ const event = (
 });
 
 function setup(earlier: Array<{ messages: unknown[] }>, cleared: string[] = []) {
-	const fake = fakePi();
-	registerReadDedupe(fake.pi);
+	const fake = fakeHost();
+	registerReadDedupe(fake.api);
 	const messages = earlier.flatMap((item) => item.messages);
 	const ctx = fakeCtx({ cwd: "/repo" });
 	const branch = [

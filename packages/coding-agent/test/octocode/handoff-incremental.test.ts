@@ -5,7 +5,7 @@ import type { SessionEntry } from "../../src/core/session-manager.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const entry = (id: string, customType: string, details: unknown = {}): SessionEntry => ({
@@ -29,7 +29,7 @@ describe("incremental report receipts", () => {
 				return "unrelated";
 			},
 		}));
-		const queue = new ReportQueue(fakePi().pi, 60_000);
+		const queue = new ReportQueue(fakeHost().api, 60_000);
 		const getEntries = vi.fn(() => entries);
 		queue.start({ getSessionFile: () => undefined, getEntries, getEntryCount: () => entries.length });
 		queue.pendingDir = tmp();
@@ -66,13 +66,13 @@ describe("incremental report receipts", () => {
 
 	it("settles a rejected send with a memory receipt before the transcript flushes", async () => {
 		vi.useFakeTimers();
-		const fake = fakePi();
+		const fake = fakeHost();
 		const send = vi.fn(() => Promise.reject(new Error("response lost")));
-		fake.pi.sendMessage = send;
+		fake.api.sendMessage = send;
 		const entries: SessionEntry[] = [];
 		const file = path.join(tmp(), "session.jsonl");
 		fs.writeFileSync(file, "");
-		const queue = new ReportQueue(fake.pi, 60_000);
+		const queue = new ReportQueue(fake.api, 60_000);
 		queue.start({ getSessionFile: () => file, getEntries: () => entries });
 		queue.pendingDir = tmp();
 		try {

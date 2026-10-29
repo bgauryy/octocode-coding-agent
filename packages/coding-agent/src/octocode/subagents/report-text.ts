@@ -60,7 +60,7 @@ export function failedNext(route: RunRoute, error: string, partial: boolean): st
 		return [`${RATE_LIMIT_NEXT}${unverified}`, ran].filter(Boolean).join("\n");
 	if (!MODEL_REFUSED.test(error)) return [`${FAILED_NEXT}${unverified}`, ran].filter(Boolean).join("\n");
 	const provider = route.model ? providerOf(route.model) : "";
-	const fix = `ask the user to fix ${provider ? `the ${provider} credential` : "the provider credential"} with /providers`;
+	const fix = `ask the user to fix ${provider ? `the ${provider} credential` : "the provider credential"} with /login`;
 	const other = route.parent && provider !== providerOf(route.parent);
 	const advice = other
 		? `The provider refused the credential or the model, so the same route fails again. Retry with model: "${route.parent}" (this session's model) or ${fix}.`

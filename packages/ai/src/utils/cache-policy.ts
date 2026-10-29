@@ -74,7 +74,7 @@ export function resolveLayeredCacheRetention(options?: StreamOptions): {
 	return { history, instructions };
 }
 
-/** Explicit Pi retention still controls the whole prompt unless a separate instruction preference is supplied. */
+/** Explicit `cacheRetention` still controls the whole prompt unless a separate instruction preference is supplied. */
 export function resolveInstructionCacheRetention(options?: StreamOptions): CacheRetention | undefined {
 	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
 	if (history === "none") return "none";

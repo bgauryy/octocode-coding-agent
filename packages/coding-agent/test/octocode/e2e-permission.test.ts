@@ -89,8 +89,8 @@ async function headless(env: Record<string, string>) {
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
-	const provider: ExtensionFactory = (pi) => {
-		pi.registerProvider("faux", {
+	const provider: ExtensionFactory = (api) => {
+		api.registerProvider("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",

@@ -1,5 +1,4 @@
-import type { Api, Model } from "@octocodeai/octocode-ai";
-import { supportsOneHourCache, usesAnthropicMarkers } from "./cache-configuration.ts";
+import { type Api, type Model, resolveModelCapabilities } from "@octocodeai/octocode-ai";
 import type { resolveConfiguredCache } from "./cache-configuration.ts";
 
 /** How long a short-lived history cache entry lasts: a gap between requests above this found it already expired. */
@@ -28,17 +27,26 @@ export class IdleHistoryCache {
 	apply(model: Model<Api>, policy: ResolvedCache, now: number = Date.now()): ResolvedCache["options"] {
 		if (this.lastRequestAt !== undefined && now - this.lastRequestAt > SHORT_HISTORY_TTL_MS) this.idleSeen = true;
 		this.lastRequestAt = now;
+		return this.idleSeen ? IdleHistoryCache.afterIdle(model, policy) : policy.options;
+	}
+
+	/** The options a request sent after an idle gap uses; the history it rewrites is priced at this tier. */
+	static afterIdle(model: Model<Api>, policy: ResolvedCache): ResolvedCache["options"] {
 		const { options, sources } = policy;
 		if (
-			!this.idleSeen ||
 			options.cacheRetention !== "short" ||
 			options.instructionCacheRetention !== "long" ||
 			sources.cacheRetention !== "defaults" ||
-			!usesAnthropicMarkers(model) ||
-			!supportsOneHourCache(model)
+			!hasLongMarkers(model)
 		) {
 			return options;
 		}
 		return { ...options, cacheRetention: "long" };
 	}
+}
+
+/** Anthropic-style markers with a one-hour tier: the only caches whose history can move to the long tier. */
+function hasLongMarkers(model: Model<Api>): boolean {
+	const { cache } = resolveModelCapabilities(model);
+	return cache.mechanism === "markers" && cache.lifetimes.long !== undefined;
 }

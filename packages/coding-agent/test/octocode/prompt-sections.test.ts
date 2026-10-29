@@ -9,7 +9,7 @@ import {
 } from "../../src/core/system-prompt.ts";
 import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 
 describe("native prompt section updates", () => {
 	const input = {
@@ -72,10 +72,10 @@ describe("native prompt section updates", () => {
 	it.each([false, true])(
 		"assembles behavioral testing once and leaves messaging to the agent tool for child=%s",
 		async (isSubagent) => {
-			const fake = fakePi();
+			const fake = fakeHost();
 			const selectedTools = ["agent", "bash", "file"];
 			for (const name of selectedTools) fake.tools.set(name, { name });
-			registerTurnSetup(fake.pi, { isSubagent, profiles: () => new Map() });
+			registerTurnSetup(fake.api, { isSubagent, profiles: () => new Map() });
 			const options = normalizeBuildSystemPromptOptions({ cwd: "/workspace", selectedTools });
 			await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 			const prompt = buildSystemPrompt(options);

@@ -5,7 +5,6 @@ import { getSlashCommands } from "../src/modes/interactive/interactive-mode/auto
 import { setupEditorSubmitHandler } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
-import { NATIVE_FEATURE_PATH } from "../src/core/native-tools.ts";
 
 function mode() {
 	const instance: any = {};
@@ -21,65 +20,56 @@ function mode() {
 }
 
 describe("built-in slash commands", () => {
-	it.each(BUILTIN_SLASH_COMMANDS.flatMap((command) => (command.aliases ?? []).map((alias) => ({ alias, command }))))(
-		"dispatches /$alias with the same arguments and effects as its canonical command",
-		async ({ alias, command }) => {
-			const instance = mode();
-			const effects: unknown[][] = [];
-			for (const method of [
-				"handleClearCommand",
-				"shutdown",
-				"showSettingsSelector",
-				"handleChangelogCommand",
-				"handleBugCommand",
-				"handleSessionCommand",
-				"handleLoginCommand",
-				"handleModelCommand",
-				"handleThinkingCommand",
-			])
-				instance[method] = (...args: unknown[]) => effects.push([method, ...args]);
-			instance.session.extensionRunner.getRegisteredCommands = () =>
-				["resume", "status", "permissions", "agents"].map((name) => ({
-					name,
-					sourceInfo: { path: NATIVE_FEATURE_PATH },
-					handler: (args: string) => effects.push([name, args]),
-				}));
-			const args = command.argumentHint ? " preserved  argument" : "";
-			await instance.defaultEditor.onSubmit(`/${command.name}${args}`);
-			const expected = structuredClone(effects);
-			expect(expected.length).toBeGreaterThan(0);
-			effects.length = 0;
-			await instance.defaultEditor.onSubmit(`/${alias}${args}`);
-			expect(effects).toEqual(expected);
-			expect(instance.showError).not.toHaveBeenCalled();
-			expect(instance.showWarning).not.toHaveBeenCalled();
-		},
-	);
-
-	it("resolves canonical names and their declared aliases", () => {
+	it("resolves only canonical names", () => {
 		const names = BUILTIN_SLASH_COMMANDS.map((command) => command.name);
 		expect(new Set(names).size).toBe(names.length);
 		for (const command of BUILTIN_SLASH_COMMANDS) {
 			expect(command.name).toMatch(/^[a-z]+$/);
+			expect(Object.keys(command)).not.toContain("aliases");
 			expect(getBuiltinCommand(command.name)).toBe(command);
-			for (const alias of command.aliases ?? []) expect(getBuiltinCommand(alias)).toBe(command);
 		}
-		for (const name of ["qui", "Settings", "sessions"]) expect(getBuiltinCommand(name)).toBeUndefined();
+		for (const name of ["qui", "Settings", "sessions", "providers", "models", "thinking", "clear", "exit", "config"])
+			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
-	it("routes aliases through canonical handlers and refuses unavailable native commands", async () => {
+	it("does not dispatch removed command names and hints at the closest canonical command", async () => {
 		const instance = mode();
-		instance.handleClearCommand = vi.fn();
-		instance.shutdown = vi.fn();
-		instance.showSettingsSelector = vi.fn();
-		await instance.defaultEditor.onSubmit("/clear Release plan");
-		await instance.defaultEditor.onSubmit("/reset");
-		expect(instance.handleClearCommand.mock.calls).toEqual([["Release plan"], [undefined]]);
-		await instance.defaultEditor.onSubmit("/exit");
-		expect(instance.shutdown).toHaveBeenCalledOnce();
-		await instance.defaultEditor.onSubmit("/config");
-		expect(instance.showSettingsSelector).toHaveBeenCalledOnce();
-		await instance.defaultEditor.onSubmit("/peers");
+		const effects: string[] = [];
+		for (const method of [
+			"handleClearCommand",
+			"shutdown",
+			"showSettingsSelector",
+			"handleLoginCommand",
+			"handleModelCommand",
+			"handleThinkingCommand",
+			"handleSessionCommand",
+		])
+			instance[method] = () => effects.push(method);
+		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
+		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
+		for (const removed of ["/models", "/thinking high", "/providers", "/clear", "/reset", "/exit", "/config", "/stats"])
+			await instance.defaultEditor.onSubmit(removed);
+		expect(effects).toEqual([]);
+		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
+			"Unknown command /models. Did you mean /model?",
+			"Unknown command /thinking. Search commands with /help thinking.",
+			"Unknown command /providers. Search commands with /help providers.",
+			"Unknown command /clear. Search commands with /help clear.",
+			"Unknown command /reset. Search commands with /help reset.",
+			"Unknown command /exit. Did you mean /quit?",
+			"Unknown command /config. Search commands with /help config.",
+			"Unknown command /stats. Did you mean /status?",
+		]);
+		expect(instance.editor.setText).toHaveBeenLastCalledWith("/stats");
+	});
+
+	it("dispatches /login to the provider manager and refuses unavailable native commands", async () => {
+		const instance = mode();
+		instance.handleLoginCommand = vi.fn();
+		await instance.defaultEditor.onSubmit("/login");
+		await instance.defaultEditor.onSubmit("/login anthropic");
+		expect(instance.handleLoginCommand.mock.calls).toEqual([[undefined], ["anthropic"]]);
+		await instance.defaultEditor.onSubmit("/agents");
 		expect(instance.showWarning).toHaveBeenCalledWith("/agents requires native features.");
 	});
 

@@ -26,8 +26,8 @@ it("delivers the persisted provider error once at the real session settlement bo
 	const harness = await createHarness({
 		settings: { retry: { enabled: false } },
 		extensionFactories: [
-			(pi) => {
-				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			(api) => {
+				registerHooks(api, {}, home);
 			},
 		],
 	});

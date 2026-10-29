@@ -18,7 +18,7 @@ import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** Feature checks through the SDK defaults with a scripted model and isolated configuration. */
@@ -140,22 +140,21 @@ beforeAll(async () => {
 		OCTOCODE_CODING_AGENT_DIR: path.join(root, "agent"),
 		OCTOCODE_HOME: path.join(home, ".octocode"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
-		OCTOCODE_HOOKS: "1",
 		OCTOCODE_MCP: "1",
 		OCTOCODE_PERMISSION: "workspace",
 	});
-	// Subagents re-run the current `pi` script: point it at the scripted stand-in.
+	// Subagents re-run the current `octocode` script: point it at the scripted stand-in.
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(path.join(HERE, "subagent-fake-pi.cjs"), path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(path.join(HERE, "subagent-fake-host.cjs"), path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 
 	faux = createFauxCore({
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
-	const provider: ExtensionFactory = (pi) => {
-		pi.registerProvider("faux", {
+	const provider: ExtensionFactory = (api) => {
+		api.registerProvider("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -350,8 +349,8 @@ describe("Native features through the SDK", () => {
 	});
 
 	it("coordinates with a peer: locks, refused edits on held paths and messages both ways", async () => {
-		const peerPi = fakePi();
-		const peer = new Team(peerPi.pi);
+		const peerHost = fakeHost();
+		const peer = new Team(peerHost.api);
 		peer.start(fakeCtx({ cwd }));
 		peer.join("peer reviewer");
 		expect(peer.lock(["held.txt"], "review").ok).toBe(true);
@@ -370,13 +369,13 @@ describe("Native features through the SDK", () => {
 		expect(t[3].results[0].text).toMatch(/held\.txt/);
 		expect(t[4].results[0].text).toContain(peer.id);
 		expect(t[5].results[0].isError).toBe(false);
-		await vi.waitFor(() => expect(JSON.stringify(peerPi.sent)).toContain("please release held.txt"), {
+		await vi.waitFor(() => expect(JSON.stringify(peerHost.sent)).toContain("please release held.txt"), {
 			timeout: 5_000,
 		});
 		const requests = turns.length;
 		await session.prompt(`/agents tell ${peer.id} ${"q".repeat(9_000)}`);
 		// Over the limit it is delivered, not refused: the head and the path of a file holding all 9,000 characters.
-		await vi.waitFor(() => expect(JSON.stringify(peerPi.sent)).toContain("[Full message (9000 characters): "), {
+		await vi.waitFor(() => expect(JSON.stringify(peerHost.sent)).toContain("[Full message (9000 characters): "), {
 			timeout: 5_000,
 		});
 		expect(turns).toHaveLength(requests);

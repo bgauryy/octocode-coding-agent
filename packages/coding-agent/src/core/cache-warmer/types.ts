@@ -16,12 +16,12 @@ export interface CacheWarmingDecision {
 	expectedSavings: number;
 	/** False when the prompt size or the model's prices are unknown. */
 	economicsAvailable: boolean;
-	/** Pi's decision: "warm" when `expectedSavings` is at least $0.05. */
+	/** Octocode's decision: "warm" when `expectedSavings` is at least $0.05. */
 	action: CacheWarmingAction;
 }
 
 /**
- * Fired before each refresh with pi's decision filled in. Everything else an
+ * Fired before each refresh with Octocode's decision filled in. Everything else an
  * extension might want (model, idle state, context size) is on the context.
  */
 export interface CacheWarmingDecisionEvent extends Pick<
@@ -53,6 +53,11 @@ export interface CacheWarmRequest {
 	model: Model<Api>;
 	context: Context;
 	options: ModelsSimpleStreamOptions;
+	/**
+	 * Tier the history is rewritten at when the entry expires: a request after an idle gap moves to the long tier
+	 * (`IdleHistoryCache`), so a miss costs a long write. Unset: the request's own tier.
+	 */
+	rewriteRetention?: "short" | "long";
 }
 
 export interface ActiveRun extends CacheWarmRequest {

@@ -9,7 +9,7 @@ import {
 	recordMutation,
 } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let counter = 0;
@@ -43,8 +43,8 @@ describe("a mutating shell command stales verification receipts", () => {
 	});
 
 	it("through the bash tool: an edit after a passing check makes it stale, the check's own writes do not", async () => {
-		const { pi, tools } = fakePi();
-		registerBashTool(pi, new Subcommands(), new BashJobs(tmp()), () => ({}));
+		const { api, tools } = fakeHost();
+		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({}));
 		const tool = tools.get("bash");
 		const cwd = tmp();
 		const id = session();

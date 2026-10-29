@@ -965,7 +965,7 @@ describe("TUI fake cursor", () => {
 		tui.setShowHardwareCursor(true);
 		await terminal.waitForRender();
 		assert.ok(!terminal.getWrites().includes("\x1b[7m"));
-		assert.ok(!terminal.getWrites().includes("\x1b_pi:"));
+		assert.ok(!terminal.getWrites().includes("\x1b_octo:"));
 
 		tui.stop();
 	});

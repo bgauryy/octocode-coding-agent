@@ -1,14 +1,7 @@
 import { permissionOutput } from "./permission-output.ts";
 import { usesCodexSpecificDecision } from "./codex-output.ts";
 import { runPromptHook, type PromptEvaluator } from "./prompt.ts";
-import {
-	type HookRun,
-	type HookVerdict,
-	HOOK_OUTPUT_MAX_BYTES,
-	type HookBase,
-	type HookHandler,
-	type HookEvent,
-} from "./contracts.ts";
+import { type HookRun, type HookVerdict, HOOK_OUTPUT_MAX_BYTES, type HookBase, type HookHandler } from "./contracts.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import { runMcpHook } from "./mcp.ts";
 import type { BoundMcpHookCaller } from "../../../../mcp/src/hook-caller.ts";
@@ -20,7 +13,8 @@ import { KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { firstLine, parseJson } from "../shared/util.ts";
-import { type HookProtocol, unsupportedOutput } from "./profiles.ts";
+import type { HookEvent, HookProtocol } from "./catalog.ts";
+import { unsupportedOutput } from "./profiles.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 /** How long output pipes may stay open after the hook process exited (a background child can hold them) before its result stands. */

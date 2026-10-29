@@ -4,12 +4,12 @@ import { Type } from "typebox";
 import { expect, it } from "vitest";
 import { executeToolCalls } from "../../../agent/src/agent-loop/tool-batch.ts";
 import { LOOP_HALT_AT, registerLoopGuard } from "../../src/octocode/loop-guard.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
 
 it.each(["invalid", "unknown", "valid"])("halts repeated %s calls through the real tool pipeline", async (kind) => {
-	const fake = fakePi();
-	registerLoopGuard(fake.pi);
+	const fake = fakeHost();
+	registerLoopGuard(fake.api);
 	const ctx = fakeCtx({ cwd: "/repo" });
 	const controller = new AbortController();
 	ctx.abort = () => controller.abort();

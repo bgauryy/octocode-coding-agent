@@ -181,7 +181,7 @@ describe("AgentSession MCP integration", () => {
 			[builtinCompactionFactories ? "builtinCompactionFactories" : "extensionFactories"]: [
 				...(builtinCompactionFactories ?? []),
 				...extensionFactories,
-				(pi: ExtensionAPI) =>
+				(api: ExtensionAPI) =>
 					createMcpExtension({
 						loadConfig: () => ({ servers: [entry], errors: [], ...configOptions }),
 						...(presentation ? { presentation } : {}),
@@ -195,15 +195,15 @@ describe("AgentSession MCP integration", () => {
 							return pair.client;
 						},
 					})({
-						...pi,
+						...api,
 						registerTool: (definition) => {
 							registrations.push(definition);
-							pi.registerTool(definition);
+							api.registerTool(definition);
 						},
 						// A connection's tools register as one batch; record each definition.
 						registerTools: (definitions) => {
 							registrations.push(...definitions);
-							pi.registerTools(definitions);
+							api.registerTools(definitions);
 						},
 					}),
 			],
@@ -252,8 +252,8 @@ describe("AgentSession MCP integration", () => {
 		let api: ExtensionAPI | undefined;
 		const { harness, notifications, saved, servers } = await setup("direct", undefined, {
 			extensionFactories: [
-				(pi) => {
-					api = pi;
+				(host) => {
+					api = host;
 				},
 			],
 		});
@@ -287,8 +287,8 @@ describe("AgentSession MCP integration", () => {
 	it("includes extension registrations alongside configured servers in the common status list", async () => {
 		const { harness, notifications } = await setup("direct", undefined, {
 			extensionFactories: [
-				(pi) => {
-					pi.registerMcpServer("octocode", { command: "fixture", exposure: "direct" });
+				(api) => {
+					api.registerMcpServer("octocode", { command: "fixture", exposure: "direct" });
 				},
 			],
 		});
@@ -315,8 +315,8 @@ describe("AgentSession MCP integration", () => {
 			allowedToolNames: ["bash"],
 			waitForTools: false,
 			extensionFactories: [
-				(pi) => {
-					api = pi;
+				(host) => {
+					api = host;
 				},
 			],
 		});
@@ -774,8 +774,8 @@ describe("AgentSession MCP integration", () => {
 	it("keeps MCP tools callable after compaction and resume", async () => {
 		const { harness, calls } = await setup("direct", undefined, {
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async ({ preparation }) => ({
+				(api) => {
+					api.on("session_before_compact", async ({ preparation }) => ({
 						compaction: {
 							summary: "Found the documentation tool; continue the lookup.",
 							firstKeptEntryId: preparation.firstKeptEntryId,
@@ -857,8 +857,8 @@ describe("AgentSession MCP servers registered by extensions", () => {
 	}
 
 	it("connects servers registered while extensions load", async () => {
-		const { harness, connected } = await setup((pi) => {
-			pi.registerMcpServer("plugin", { url: "http://plugin.invalid", exposure: "direct" });
+		const { harness, connected } = await setup((api) => {
+			api.registerMcpServer("plugin", { url: "http://plugin.invalid", exposure: "direct" });
 		});
 		harness.setResponses([fauxAssistantMessage("ready")]);
 		await harness.session.prompt("start");
@@ -869,19 +869,19 @@ describe("AgentSession MCP servers registered by extensions", () => {
 
 	it("connects and disconnects servers registered during the session", async () => {
 		let api: ExtensionAPI | undefined;
-		const { harness, connected } = await setup((pi) => {
-			api = pi;
+		const { harness, connected } = await setup((host) => {
+			api = host;
 		});
 		if (!api) throw new Error("No extension API");
-		const pi = api;
+		const host = api;
 
-		pi.registerMcpServer("late", { url: "http://late.invalid" });
+		host.registerMcpServer("late", { url: "http://late.invalid" });
 		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).toContain("mcp__late__search"));
 		expect(connected.map((entry) => entry.name)).toEqual(["late"]);
 		// Small catalogs on the default model are directly callable.
 		expect(harness.session.getActiveToolNames()).toContain("mcp__late__search");
 
-		pi.unregisterMcpServer("late");
+		host.unregisterMcpServer("late");
 		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).not.toContain("mcp__late__search"));
 	});
 
@@ -893,8 +893,8 @@ describe("AgentSession MCP servers registered by extensions", () => {
 			source: "mcp.json",
 		};
 		const { connected } = await setup(
-			(pi) => {
-				pi.registerMcpServer(name, { url: "http://plugin.invalid" });
+			(api) => {
+				api.registerMcpServer(name, { url: "http://plugin.invalid" });
 			},
 			[configured],
 		);
@@ -906,16 +906,16 @@ describe("AgentSession MCP servers registered by extensions", () => {
 	it("rejects names another extension registered", async () => {
 		const errors: string[] = [];
 		await setup([
-			(pi) => {
-				pi.registerMcpServer("taken", { url: "http://x.invalid" });
+			(api) => {
+				api.registerMcpServer("taken", { url: "http://x.invalid" });
 				// Registering again replaces the extension's own registration.
-				pi.registerMcpServer("taken", { url: "http://y.invalid" });
-				pi.registerMcpServer("my-server", { url: "http://x.invalid" });
+				api.registerMcpServer("taken", { url: "http://y.invalid" });
+				api.registerMcpServer("my-server", { url: "http://x.invalid" });
 			},
-			(pi) => {
+			(api) => {
 				for (const name of ["taken", "my_server"]) {
 					try {
-						pi.registerMcpServer(name, { url: "http://z.invalid" });
+						api.registerMcpServer(name, { url: "http://z.invalid" });
 					} catch (caught) {
 						errors.push(String(caught));
 					}
@@ -931,7 +931,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 
 	it("reports registered servers when no extension connects them", async () => {
 		const harness = await createHarness({
-			extensionFactories: [(pi) => pi.registerMcpServer("orphan", { url: "http://orphan.invalid" })],
+			extensionFactories: [(api) => api.registerMcpServer("orphan", { url: "http://orphan.invalid" })],
 		});
 		harnesses.push(harness);
 		const errors: string[] = [];
@@ -1030,8 +1030,10 @@ describe("AgentSession MCP tools after resume and reload", () => {
 		await declareDocs(first.harness);
 
 		// Like plan mode restoring its tools, or an extension adding one to the current loadout.
-		const setLoadout: ExtensionFactory = (pi) => {
-			pi.on("session_start", () => pi.setActiveTools(loadout ? [...loadout] : [...pi.getActiveTools(), "extra_tool"]));
+		const setLoadout: ExtensionFactory = (api) => {
+			api.on("session_start", () =>
+				api.setActiveTools(loadout ? [...loadout] : [...api.getActiveTools(), "extra_tool"]),
+			);
 		};
 		const second = await setup(first.harness.sessionManager, [setLoadout]);
 		await vi.waitFor(() =>

@@ -85,7 +85,7 @@ export class ApplicationStream {
 				next = { ...next, runId: event.runId, streaming: true };
 				break;
 			case "run.settled":
-				next = { ...next, runId: undefined, streaming: false };
+				next = { ...next, runId: undefined, streaming: false, awaiting: undefined };
 				break;
 			case "queue.changed":
 				next = { ...next, steering: event.steering, followUp: event.followUp };
@@ -151,6 +151,9 @@ export class ApplicationStream {
 				break;
 			case "session.status":
 				next = { ...next, status: event.status };
+				break;
+			case "session.awaiting":
+				next = { ...next, awaiting: event.awaiting };
 				break;
 		}
 		this.snapshot = next;

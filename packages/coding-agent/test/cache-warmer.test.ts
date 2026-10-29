@@ -255,6 +255,16 @@ describe("cache warming", () => {
 		]).toEqual([false, true, true, true]);
 	});
 
+	it("prices a miss at the long tier when the history would be rewritten there after an idle gap", async () => {
+		vi.useFakeTimers();
+		const { warmer, events } = fakeRuntime();
+		warmer.start({ ...request(adaptiveModel), rewriteRetention: "long" }, current);
+		await vi.advanceTimersByTimeAsync(270_000);
+		// 100k expiring tokens rewritten at the 1-hour rate ($10/M) instead of the 5-minute rate ($6.25/M), less the read.
+		expect(events[0].missCost).toBeCloseTo(0.95);
+		warmer.cancel();
+	});
+
 	it("replays profitable requests and preserves options across repeated refreshes", async () => {
 		vi.useFakeTimers();
 		const { warmer, calls, events, appendUsage, warmedEntries } = fakeRuntime();
@@ -621,11 +631,11 @@ describe("ExtensionRunner.emitCacheWarmingDecision", () => {
 		const runtime = createExtensionRuntime();
 		const eventBus = createEventBus();
 		const factories: ExtensionFactory[] = [
-			(pi) => {
-				pi.on("cache_warming_decision", () => ({ action: "warm" }));
+			(api) => {
+				api.on("cache_warming_decision", () => ({ action: "warm" }));
 			},
-			(pi) => {
-				pi.on("cache_warming_decision", () => ({ action: "stop" }));
+			(api) => {
+				api.on("cache_warming_decision", () => ({ action: "stop" }));
 			},
 		];
 		const extensions = [];

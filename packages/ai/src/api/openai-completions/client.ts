@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { Model, ProviderHeaders } from "../../types.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
+import { getUserAgent } from "../../utils/user-agent.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
 import { getCompat } from "./compat.ts";
@@ -15,7 +15,7 @@ export function createClient(
 	sessionId?: string,
 	compat: ResolvedOpenAICompletionsCompat = getCompat(model),
 ) {
-	const headers: ProviderHeaders = { "User-Agent": getPiUserAgent(), ...model.headers };
+	const headers: ProviderHeaders = { "User-Agent": getUserAgent(), ...model.headers };
 	if (model.provider === "github-copilot") {
 		const hasImages = hasCopilotVisionInput(context.messages);
 		const copilotHeaders = buildCopilotDynamicHeaders({

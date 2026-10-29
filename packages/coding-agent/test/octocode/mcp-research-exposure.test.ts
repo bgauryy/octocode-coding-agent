@@ -41,8 +41,8 @@ async function declaredTools(
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow, maxTokens: 4096 }],
 	});
-	const provider: ExtensionFactory = (pi) => {
-		pi.registerProvider("faux", {
+	const provider: ExtensionFactory = (api) => {
+		api.registerProvider("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",

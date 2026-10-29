@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
@@ -16,6 +16,13 @@ import {
 } from "./catalog.ts";
 import { isModelTier, MODEL_TIERS, type ModelRef, resolveTier, routeModel } from "./model.ts";
 import type { AgentProfile } from "./profiles.ts";
+import {
+	checkProviders,
+	checkTargets,
+	describeHealth,
+	providerHealth,
+	type ProviderStatus,
+} from "./provider-health.ts";
 
 /**
  * `/modelsettings`: the models this session can use, what each costs and can do, and which one each subagent
@@ -31,12 +38,13 @@ const describe = (text: string) => {
 };
 const name = (model: ModelRef) => `${model.provider}/${model.id}`;
 
-/** One line per available model, the parent's marked, cheapest first. */
+/** One line per available model, the parent's marked, cheapest first; each provider's credential status when known. */
 export function describeModels(
 	available: readonly ModelRef[],
 	parent: ModelRef | undefined,
 	profiles: Map<string, AgentProfile>,
 	catalog: Catalog | undefined,
+	health: (provider: string) => ProviderStatus | undefined = () => undefined,
 ): string {
 	if (available.length === 0) return "No models are configured.";
 	const rows = available.map((model) => {
@@ -92,7 +100,9 @@ export function describeModels(
 	return [
 		"Models this session can use (● this session; price per million tokens in/out; context window):",
 		...rows.flatMap((row, index) =>
-			index === 0 || rows[index - 1].provider !== row.provider ? ["", `${row.provider}:`, row.line] : [row.line],
+			index === 0 || rows[index - 1].provider !== row.provider
+				? ["", `${row.provider}:${describeHealth(health(row.provider))}`, row.line]
+				: [row.line],
 		),
 		"",
 		"Subagent purposes:",
@@ -119,7 +129,8 @@ async function modelListing(
 		: catalog
 			? `Capabilities and missing prices from models.dev (fetched ${new Date(catalog.fetchedAt).toISOString().slice(0, 10)}).`
 			: "models.dev could not be reached now or within the last hour; Octocode's metadata only.";
-	return `${describeModels(available, parent, profiles, catalog)}\n\n${source}`;
+	const listing = describeModels(available, parent, profiles, catalog, (provider) => providerHealth.get(provider));
+	return `${listing}\n\n${source}\nCredential marks come from this process's subagent runs and checks; no mark means not yet tried.`;
 }
 
 /**
@@ -135,25 +146,78 @@ function registerModelsMode(
 		name: "agentModels",
 		label: "Models",
 		description:
-			"Models a task can run on: provider/id for its model, price, context, abilities, small/medium and profile routes; query filters.",
+			"Models a task can run on: provider/id, price, context, abilities, small/medium and profile routes, credential status; query filters; check tests credentials; scope catalog adds unconnected ones.",
 		parameters: Type.Object({
 			query: Type.Optional(Type.String()),
+			check: Type.Optional(Type.Boolean()),
+			scope: Type.Optional(Type.Union([Type.Literal("connected"), Type.Literal("catalog")])),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();
 			const query = params.query?.trim().toLowerCase();
+			const matches = (model: ModelRef) => !query || `${model.provider}/${model.id}`.toLowerCase().includes(query);
 			const all = ctx.modelRegistry.getAvailable();
-			const available = query
-				? all.filter((model) => `${model.provider}/${model.id}`.toLowerCase().includes(query))
-				: all;
-			if (query && available.length === 0)
+			const available = all.filter(matches);
+			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
+			if (query && available.length === 0 && unconnected.length === 0)
 				return textResult(`No model matches "${params.query}". Call again without query to list all ${all.length}.`);
+			if (params.check)
+				await checkProviders(ctx.modelRegistry, checkTargets(available, ctx.model), providerHealth, signal);
 			const listing = await modelListing(available, ctx.model, getProfiles());
 			return textResult(
-				`${listing}\n\nPass one as \`model\` ("provider/id") when you start a task; append :low, :medium or :high to set its thinking.`,
+				[
+					sessionHeader(ctx),
+					listing,
+					...sessionOnlyNote(ctx.modelRegistry, available),
+					...catalogRows(unconnected),
+					'Pass one as `model` ("provider/id") when you start a task; append :low, :medium or :high to set its thinking.',
+				].join("\n\n"),
 			);
 		},
 	});
+}
+
+type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRegistry">;
+
+/** This session's model, thinking level and working context: the call is the agent's only view of them. */
+function sessionHeader(ctx: ModelsContext): string {
+	const model = ctx.model;
+	if (!model) return "This session: no model selected.";
+	const capacity = ctx.modelRegistry.find?.(model.provider, model.id)?.contextWindow ?? model.contextWindow;
+	const budget =
+		capacity > model.contextWindow
+			? `context budget ${formatTokens(model.contextWindow)} of ${formatTokens(capacity)} capacity`
+			: `context ${formatTokens(model.contextWindow)}`;
+	return `This session: ${model.provider}/${model.id} · thinking ${ctx.thinkingLevel ?? "off"} · ${budget}.`;
+}
+
+/** Providers authenticated only by this session's --api-key: listed, but a task cannot run on them. */
+function sessionOnlyNote(registry: ModelsContext["modelRegistry"], available: readonly ModelRef[]): string[] {
+	const providers = [...new Set(available.map((model) => model.provider))].filter(
+		(provider) => registry.getProviderAuthStatus?.(provider).source === "runtime",
+	);
+	return providers.length
+		? [`Session only (--api-key; subagents do not receive it, so tasks cannot use them): ${providers.join(", ")}.`]
+		: [];
+}
+
+/** Catalog models of providers that are not connected: what the user could connect, not what a task can run on. */
+function catalogOnly(registry: ModelsContext["modelRegistry"], connected: readonly ModelRef[]): ModelRef[] {
+	const providers = new Set(connected.map((model) => model.provider));
+	return (registry.getAll?.() ?? []).filter((model) => !providers.has(model.provider));
+}
+
+function catalogRows(models: readonly ModelRef[]): string[] {
+	if (models.length === 0) return [];
+	return [
+		[
+			"Not connected (not runnable; the user connects a provider with /login):",
+			...models.map(
+				(model) =>
+					`  ${model.provider}/${model.id}${model.contextWindow ? ` · ${formatTokens(model.contextWindow)} context` : ""}`,
+			),
+		].join("\n"),
+	];
 }
 
 /** `/modelsettings` for the user and the `agent` tool's `models` mode for the model: the same listing. */
@@ -164,8 +228,14 @@ export function registerModels(
 ): void {
 	commands.add("modelsettings", {
 		description:
-			"modelsettings — the models you can use, their price and abilities, and which one each subagent purpose runs on",
-		handler: async (_args, ctx: ExtensionCommandContext) => {
+			"modelsettings [check] — the models you can use, their price and abilities, and which one each subagent purpose runs on; check tests each provider's credential first",
+		handler: async (args, ctx: ExtensionCommandContext) => {
+			if (args.trim() === "check") {
+				const available = ctx.modelRegistry.getAvailable();
+				const targets = checkTargets(available, ctx.model);
+				say(ctx, `Checking ${targets.length} provider credential${targets.length === 1 ? "" : "s"}…`);
+				await checkProviders(ctx.modelRegistry, targets, providerHealth, ctx.signal);
+			} else if (args.trim()) return say(ctx, "Usage: /modelsettings [check]", "warning");
 			const listing = await modelListing(ctx.modelRegistry.getAvailable(), ctx.model, getProfiles(), () =>
 				say(ctx, "Fetching model data from models.dev…"),
 			);

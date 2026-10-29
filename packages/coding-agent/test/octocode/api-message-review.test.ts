@@ -8,7 +8,7 @@ import { EventLog } from "../../src/octocode/api/events.ts";
 import { apiDir, socketPath, writeRecord } from "../../src/octocode/api/registry.ts";
 import { ApiServer } from "../../src/octocode/api/server.ts";
 import { OctocodeBackend } from "../../src/octocode/external/octocode.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -18,7 +18,7 @@ async function boot(branch: unknown[] = [], operations = {}) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "api-review-"));
 	const cwd = fs.realpathSync(root);
 	const env = { OCTOCODE_HOME: path.join(cwd, "home") };
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = {
 		cwd,
 		isIdle: () => true,
@@ -32,7 +32,7 @@ async function boot(branch: unknown[] = [], operations = {}) {
 		},
 	};
 	const api = new OctocodeApi(
-		fake.pi,
+		fake.api,
 		{ list: () => [], tell: () => ({}), deliverable: (text) => text },
 		() => "test",
 		env,
@@ -110,7 +110,7 @@ describe("API messaging review regressions", () => {
 	);
 
 	it("native preflight cancellation rejects the prompt before any send", async () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-preflight-review-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-preflight-review-"));
 		const cwd = fs.realpathSync(root);
 		const env = { OCTOCODE_HOME: path.join(cwd, "home") };
 		let statusCalls = 0;
@@ -171,8 +171,8 @@ describe("API messaging review regressions", () => {
 	});
 	it("retains an uncertain keyed handoff instead of executing its retry again", async () => {
 		const { fake, client } = await boot();
-		const send = fake.pi.sendMessage;
-		fake.pi.sendMessage = (message, options) => {
+		const send = fake.api.sendMessage;
+		fake.api.sendMessage = (message, options) => {
 			send(message, options);
 			throw new Error("failure after handoff");
 		};

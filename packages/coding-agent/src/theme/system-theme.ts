@@ -1,5 +1,5 @@
 /**
- * The `system` theme: pi's colors derived from the terminal's own theme.
+ * The `system` theme: Octocode's colors derived from the terminal's own theme.
  *
  * Every token belongs to a color family (its hue) and has contrast rules: it must reach a contrast level
  * on the background and on the panels it is drawn on. Hue and saturation come from the terminal's palette

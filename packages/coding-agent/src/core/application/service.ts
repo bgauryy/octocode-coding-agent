@@ -29,6 +29,7 @@ import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
 import { ApplicationActivities } from "./service/activities.ts";
 import { ApplicationDelivery } from "./service/delivery.ts";
+import { ContextSource } from "./service/context-source.ts";
 import { cloneDisplay } from "./normalize.ts";
 import {
 	appendReplayFrame,
@@ -48,6 +49,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private readonly transcript = new ApplicationTranscript(this.state);
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
 	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());
+	private readonly source = new ContextSource();
 	setToolOutputProjector(project: ToolOutputProjector): () => void {
 		this.assertOpen();
 		let active = true;
@@ -85,7 +87,6 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private get currentSession(): string {
 		return this.state.getState().sessionId;
 	}
-	private sourceMessages: readonly unknown[];
 	private unsubscribe?: () => void;
 	private closes = new Set<() => void>();
 	private sinks = new Set<(frame: ApplicationFrame) => void>();
@@ -100,7 +101,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.onDispose = onDispose;
 		this.session = session;
 		this.state.setState({ sessionId: session.sessionId, model: applicationModel(session) });
-		this.sourceMessages = session.messages;
+		this.source.reset(session);
 	}
 	get sessionId(): string {
 		return this.session.sessionId;
@@ -161,9 +162,9 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 	private checkSession(): void {
 		const changedSession = this.currentSession !== this.session.sessionId;
-		if (!changedSession && this.sourceMessages === this.session.messages) return;
+		if (!changedSession && this.source.unchanged(this.session, this.transcript)) return;
 		this.state.setState({ sessionId: this.session.sessionId, model: applicationModel(this.session) });
-		this.sourceMessages = this.session.messages;
+		this.source.reset(this.session);
 		this.epoch = randomUUID();
 		this.sequence = 0;
 		this.clearReplay();
@@ -392,7 +393,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.state.setState(initialApplicationState(this.sessionId));
 		this.sinks.clear();
 		this.clearReplay();
-		this.sourceMessages = [];
+		this.source.clear();
 		this.receiptStore = undefined;
 		this.onDispose?.(this);
 	}

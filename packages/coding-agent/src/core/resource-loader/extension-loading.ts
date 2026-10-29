@@ -19,6 +19,7 @@ import {
 	type ResolvedPaths,
 	type ResolvedResource,
 } from "../package-manager.ts";
+import { effectivePlugins } from "../extensibility/toggles.ts";
 import { loadConfiguredPluginMcp } from "../plugin-mcp.ts";
 import { SettingsManager } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX, isSyntheticPath } from "../source-info.ts";
@@ -234,14 +235,17 @@ export class ExtensionSetLoader {
 			.map((path) => loadedByPath.get(this.resolveExtensionLoadPath(path)))
 			.filter((extension): extension is Extension => extension !== undefined);
 		orderedExtensions.push(...inlineExtensions.extensions);
-		const pluginMcp = loadConfiguredPluginMcp(this.config.settingsManager.getSettings().plugins, this.config.cwd);
+		const pluginMcp = loadConfiguredPluginMcp(
+			effectivePlugins(this.config.settingsManager.getSettings(), this.config.cwd),
+			this.config.cwd,
+		);
 		for (const error of pluginMcp.errors) inlineExtensions.errors.push({ path: "settings.plugins", error });
 		if (pluginMcp.servers.length) {
 			try {
 				orderedExtensions.push(
 					await this.loadFactory(
-						(pi) => {
-							for (const server of pluginMcp.servers) pi.registerMcpServer(server.name, server.config);
+						(api) => {
+							for (const server of pluginMcp.servers) api.registerMcpServer(server.name, server.config);
 						},
 						"<inline:plugin-mcp>",
 						remainingExtensions.runtime,

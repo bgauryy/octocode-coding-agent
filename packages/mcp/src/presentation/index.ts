@@ -1,6 +1,7 @@
 /**
  * What the model reads of an MCP server: a generated TypeScript file per server (see `../compact`). The file is
- * rendered when the server's catalog changes and stored under `<agentDir>/mcp-generated/`. Providers get thin tool
+ * rendered when the server's catalog changes and stored under `<agentDir>/context-optimization/mcp/` (a
+ * workspace-defined server: the project's folder, `serverGeneratedDir`). Providers get thin tool
  * declarations; calls are still validated against the server's own JSON Schema.
  *
  * A tool whose block fails the fidelity check (`checkToolBlock`: a part the renderer cannot express) keeps its full
@@ -31,6 +32,8 @@ export const DEFAULT_MCP_PRESENTATION: McpPresentationMode = "compact";
 
 export interface McpPresentationOptions {
 	agentDir: () => string;
+	/** The folder of a server's generated file, by configured name (`serverGeneratedDir`); defaults to the user folder. */
+	dir?: (name: string) => string;
 	mode: () => McpPresentationMode;
 	/** Overrides shipped with the server's preset that describe this catalog (see `McpServerPreset.compactOverrides`). */
 	presetOverrides?: (name: string, input: CompactServerInput) => DescriptionOverrides | undefined;
@@ -116,7 +119,8 @@ export class McpPresentation {
 			};
 			// The stored files are a cache for the next session and for tooling; this session reads the text from memory, so
 			// a failed write changes nothing here.
-			const file = resolveServerFile(generatedDir(this.#options.agentDir()), name, input, {
+			const dir = this.#options.dir?.(name) ?? generatedDir(this.#options.agentDir());
+			const file = resolveServerFile(dir, name, input, {
 				preset: this.#options.presetOverrides?.(name, input),
 			});
 			const { text } = file;
@@ -201,7 +205,7 @@ export class McpPresentation {
 
 	/**
 	 * Servers whose file was rendered in this session (a new or changed catalog) with tools no override rewrites, each
-	 * reported once: the `octocode-compact-mcp` skill writes their descriptions.
+	 * reported once: the `octocode-context-optimization` skill writes their descriptions.
 	 */
 	takeUnoptimized(): Array<{ server: string; tools: string[] }> {
 		const pending = [...this.#unoptimized].map(([server, tools]) => ({ server, tools }));

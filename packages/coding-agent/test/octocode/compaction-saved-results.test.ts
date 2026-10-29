@@ -54,7 +54,7 @@ function summarize(
 	messages: unknown[],
 	options: { branch?: unknown[]; previousSummary?: string; standalone?: boolean; answer?: string } = {},
 ) {
-	const pi = {
+	const api = {
 		getThinkingLevel: () => "off",
 		getActiveTools: () => [],
 		getSettings: () => ({}),
@@ -97,7 +97,7 @@ function summarize(
 		signal: { aborted: false },
 	} as never;
 	// A summary on another model (a downshift) is the standalone request; on the session's own it is the cache-sharing one.
-	return writeSummary(pi, event, ctx, options.standalone ? ({ ...model, id: "previous" } as never) : undefined);
+	return writeSummary(api, event, ctx, options.standalone ? ({ ...model, id: "previous" } as never) : undefined);
 }
 
 describe("saved results carried into the compaction summary", () => {

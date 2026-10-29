@@ -6,7 +6,7 @@ import { discoverAndLoadExtensions } from "../src/core/extensions/loader.ts";
 import { discoverExtensionsInDir } from "../src/core/extensions/loader/discovery.ts";
 import { collectResourceFiles } from "../src/core/package-manager/auto-entries.ts";
 
-const extensionCode = `export default function(pi) { pi.registerCommand("probe", { handler: async () => {} }); }`;
+const extensionCode = `export default function(api) { api.registerCommand("probe", { handler: async () => {} }); }`;
 
 /** SDK discovery and CLI auto-discovery apply one set of rules; each rule is pinned for both entry points. */
 describe("extension directory discovery rules", () => {

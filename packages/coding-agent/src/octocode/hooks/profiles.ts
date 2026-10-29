@@ -1,39 +1,21 @@
 import { projectClaudeBash } from "../shared/claude-bash.ts";
 import { isRecord } from "../../utils/guards.ts";
+import { type HookProtocol, profileSupport } from "./catalog.ts";
 import { validateCodexOutput } from "./codex-output.ts";
-/** Source dialects remain distinct even when their handlers use identical command text. */
-export type HookProtocol = "octocode" | "claude" | "codex";
+/** Whether `protocol` accepts `event` (see the catalog). */
+export const supportsHookEvent = (protocol: HookProtocol, event: string): boolean =>
+	profileSupport(protocol, event) !== undefined;
 
-/** Host-specific event exclusions within the currently wired native event set. */
-export function supportsHookEvent(protocol: HookProtocol, event: string): boolean {
-	if (event === "PermissionRequest") return protocol !== "octocode";
-	if (event === "Interrupt") return protocol === "codex";
-	if (event === "PostToolUseFailure" || event === "StopFailure" || event === "PostToolBatch")
-		return protocol === "claude";
-	if (protocol === "octocode")
-		return (
-			event !== "SubagentStart" &&
-			event !== "SubagentStop" &&
-			event !== "UserPromptSubmit" &&
-			event !== "PostCompact" &&
-			event !== "SessionEnd"
-		);
-	if (event === "PreMessageSend" || event === "PostMessageReceive") return false;
-	return protocol !== "codex" || event !== "Notification";
-}
+/** Empty, `*`, or an event whose upstream host ignores matchers: every group matches. */
+const matchesAll = (protocol: HookProtocol, event: string, matcher: string): boolean =>
+	!matcher || matcher === "*" || profileSupport(protocol, event)?.ignoresMatcher === true;
 
 export function hookMatcher(
 	protocol: HookProtocol,
 	event: string,
 	matcher: string,
 ): ((name: string) => boolean) | undefined {
-	if (
-		!matcher ||
-		matcher === "*" ||
-		(protocol !== "octocode" &&
-			(event === "Interrupt" || event === "Stop" || event === "UserPromptSubmit" || event === "PostToolBatch"))
-	)
-		return () => true;
+	if (matchesAll(protocol, event, matcher)) return () => true;
 	if (protocol === "claude" && /^[\w\- ,|]+$/.test(matcher)) {
 		const alternatives = matcher.split(/[|,]/).map((name) => name.trim());
 		return (name) => alternatives.includes(name);
@@ -49,14 +31,7 @@ export function hookMatcher(
 export function matchesHook(protocol: HookProtocol, event: string, matcher: string, names: string[]): boolean {
 	const test = hookMatcher(protocol, event, matcher);
 	if (!test) return false;
-	if (
-		!matcher ||
-		matcher === "*" ||
-		(protocol !== "octocode" &&
-			(event === "Interrupt" || event === "Stop" || event === "UserPromptSubmit" || event === "PostToolBatch"))
-	)
-		return true;
-	return names.some(test);
+	return matchesAll(protocol, event, matcher) || names.some(test);
 }
 
 /** Validate source output before the dispatcher applies its failure policy. */
@@ -87,72 +62,19 @@ export function hookPayload(
 	if (protocol === "octocode") return payload;
 	const { pi_tool_name, ...projected } = payload;
 	const event = String(payload.hook_event_name);
-	if (
-		metadata.child &&
-		(protocol === "claude" ||
-			["PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "UserPromptSubmit"].includes(
-				event,
-			))
-	) {
+	const input = profileSupport(protocol, event)?.input ?? [];
+	if (metadata.child && input.includes("agent")) {
 		projected.agent_id ??=
 			protocol === "codex" ? metadata.child.sessionId : metadata.child.agentName || metadata.child.sessionId;
 		projected.agent_type ??= metadata.child.agentType;
 	}
-	if (
-		metadata.permissionMode &&
-		(protocol === "claude" ||
-			[
-				"PermissionRequest",
-				"PreToolUse",
-				"PostToolUse",
-				"SessionStart",
-				"UserPromptSubmit",
-				"Stop",
-				"SubagentStart",
-				"SubagentStop",
-				"Interrupt",
-			].includes(event))
-	)
+	if (metadata.permissionMode && input.includes("permission_mode"))
 		projected.permission_mode = metadata.permissionMode === "full" ? "bypassPermissions" : "default";
-	if (
-		metadata.model &&
-		(protocol === "claude"
-			? event === "SessionStart"
-			: [
-					"PermissionRequest",
-					"PreToolUse",
-					"PostToolUse",
-					"SessionStart",
-					"UserPromptSubmit",
-					"PreCompact",
-					"PostCompact",
-					"Stop",
-					"SubagentStart",
-					"SubagentStop",
-					"Interrupt",
-				].includes(event))
-	) {
-		projected.model = metadata.model;
-	}
+	if (metadata.model && input.includes("model")) projected.model = metadata.model;
 	if (protocol === "claude" && pi_tool_name === "bash" && isRecord(payload.tool_input))
 		projected.tool_input = projectClaudeBash(payload.tool_input);
 	if (protocol === "codex") {
-		if (
-			metadata.turnId &&
-			[
-				"PermissionRequest",
-				"PreToolUse",
-				"PostToolUse",
-				"UserPromptSubmit",
-				"PreCompact",
-				"PostCompact",
-				"Stop",
-				"SubagentStart",
-				"SubagentStop",
-				"Interrupt",
-			].includes(event)
-		)
-			projected.turn_id = metadata.turnId;
+		if (metadata.turnId && input.includes("turn_id")) projected.turn_id = metadata.turnId;
 		if (!projected.transcript_path) projected.transcript_path = null;
 		if (pi_tool_name === "bash" && isRecord(payload.tool_input)) {
 			projected.tool_input = { command: payload.tool_input.command };

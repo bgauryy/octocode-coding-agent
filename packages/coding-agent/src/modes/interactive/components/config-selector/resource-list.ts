@@ -15,8 +15,8 @@ import type {
 	ResourceGroup,
 	ResourceItem,
 	ResourceSubgroup,
-} from "./groups.ts";
-import { ResourceSettings } from "./resource-settings.ts";
+} from "../../../../core/package-manager/resource-groups.ts";
+import { ResourceSettings } from "../../../../core/package-manager/resource-settings.ts";
 
 export class ResourceList implements Component, Focusable {
 	private groupsByScope: Record<ConfigWriteScope, ResourceGroup[]>;

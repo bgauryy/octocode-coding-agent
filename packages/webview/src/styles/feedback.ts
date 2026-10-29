@@ -11,13 +11,18 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 .view-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .segmented button .icon { opacity: .8; }
 .run-indicator { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); font-size: 13px; font-weight: 500; }
-.run-orb { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
-.run-orb::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ping 1.6s var(--ease) infinite; }
-.phase-tool .run-orb { background: var(--teal); } .phase-tool .run-orb::after { border-color: var(--teal); }
+.run-orb { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--orb, var(--accent)); }
+.run-orb::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--orb, var(--accent)); opacity: 0; animation: ping 1.6s var(--ease) infinite; }
+.phase-retrying { --orb: var(--warning); }
+.phase-writing .phase-cursor { color: var(--accent); }
+.phase-waiting { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); }
+.phase-waiting .shimmer, .run-indicator.is-stale .shimmer { background: none; color: var(--text); animation: none; }
+.run-indicator.is-stale { opacity: .75; }
+.run-indicator.is-stale .run-orb::after { animation: none; }
 @keyframes ping { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
 .shimmer { background: linear-gradient(90deg, var(--text-2) 0%, var(--text) 40%, var(--accent) 50%, var(--text) 60%, var(--text-2) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer-text 2.2s linear infinite; }
 @keyframes shimmer-text { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-.run-elapsed, .elapsed { color: var(--text-3); font-variant-numeric: tabular-nums; font-weight: 400; }
+.run-elapsed, .elapsed { color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 400; }
 .run-elapsed { margin-left: auto; }
 .thought-for { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 12px; font-weight: 500; }
 
@@ -54,7 +59,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 .status-done .terminal-status { color: var(--term-ok); }
 .status-failed .terminal-status { color: var(--term-bad); }
 .status-failed .prompt-symbol { color: var(--term-bad); }
-.status-running .terminal-status { color: var(--term-warn); }
+.status-running .terminal-status { color: var(--term-accent); }
 .terminal-output { margin: 0; padding-left: 18px; color: #c9d1d9; white-space: pre; }
 .terminal-body.is-wrapped .terminal-output { white-space: pre-wrap; overflow-wrap: anywhere; }
 .terminal-empty { place-items: center; padding: 48px 16px; text-align: center; font-family: var(--font); }
@@ -90,7 +95,14 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 }
 @media (forced-colors: active) {
 	.badge, .btn, .card, .tab.active::after { border: 1px solid CanvasText; }
-	.live-dot, .status-icon, .priority-icon { forced-color-adjust: auto; }
+	.live-dot, .run-orb { background: CanvasText; forced-color-adjust: none; }
+	.live-dot.is-paused { background: GrayText; }
+	.run-orb::after { border-color: Highlight; }
+	.shimmer { background: none; color: CanvasText; animation: none; }
+	.skeleton-line { background: none; border: 1px solid GrayText; }
+	.spinner { border-color: GrayText; border-top-color: Highlight; }
+	.status-icon path[stroke], .priority-icon path[stroke] { stroke: Canvas; }
+	input:focus, select:focus, textarea:focus, .card:focus-within { outline: 2px solid Highlight; outline-offset: 2px; }
 }
 @media print {
 	header.top { position: static; backdrop-filter: none; }

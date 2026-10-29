@@ -19,7 +19,7 @@ export interface InstanceRecord {
 	session?: string;
 }
 
-/** The instance records: `<Octocode home>/pi-api` (OCTOCODE_HOME moves it with everything else). */
+/** The instance records: `<Octocode home>/api` (OCTOCODE_HOME moves it with everything else). */
 export const apiDir = (env: NodeJS.ProcessEnv = process.env): string => globalPaths(env).api;
 
 export const instancesDir = (dir: string): string => path.join(dir, "instances");

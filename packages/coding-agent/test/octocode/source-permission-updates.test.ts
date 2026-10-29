@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
 import { applySessionRuleUpdates, parsePermissionUpdates } from "../../src/octocode/shared/permission-updates.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const empty = () => ({ allow: [], deny: [], ask: [] });
 const add = (ruleContent: string, type = "addRules", behavior = "allow") => ({
@@ -46,9 +46,9 @@ async function fixture() {
 	fs.mkdirSync(home, { recursive: true });
 	fs.mkdirSync(cwd);
 	vi.stubEnv("CLAUDE_CONFIG_DIR", home);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const changed = vi.fn();
-	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: "1" }, home, changed);
+	const owner = registerSourcePolicy(fake.api, home, changed);
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	await owner.refresh(ctx);
 	const decision = () =>

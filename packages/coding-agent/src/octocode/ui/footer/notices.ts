@@ -7,12 +7,12 @@ import { isRecord } from "../../../utils/guards.ts";
  * Says once per session, as a warning, that a reply came from a model without pricing: the cost shown leaves its usage
  * out (the displays mark it `n/a`). Not only in the TUI: an RPC client shows notifications too.
  */
-export function registerUnpricedNotice(pi: ExtensionAPI): void {
+export function registerUnpricedNotice(api: ExtensionAPI): void {
 	let warned = false;
-	pi.on("session_start", async () => {
+	api.on("session_start", async () => {
 		warned = false;
 	});
-	pi.on("message_end", async (event, ctx) => {
+	api.on("message_end", async (event, ctx) => {
 		if (warned || !ctx.hasUI || event.message.role !== "assistant") return;
 		const model = unpricedModel(event.message, modelLookup(ctx));
 		if (!model) return;
@@ -33,7 +33,7 @@ export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): Mode
  * Says once per model and session when the model declares no `reasoning` but a model with its id does: Octocode then never
  * asks it to think, so there are no thinking blocks, no thinking level, and no thought on the working line.
  */
-export function registerReasoningNotice(pi: ExtensionAPI): void {
+export function registerReasoningNotice(api: ExtensionAPI): void {
 	const warned = new Set<string>();
 	const check = async (_event: unknown, ctx: ExtensionContext) => {
 		const model = ctx.model;
@@ -52,9 +52,9 @@ export function registerReasoningNotice(pi: ExtensionAPI): void {
 			"warning",
 		);
 	};
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
 		warned.clear();
 		await check(event, ctx);
 	});
-	pi.on("model_select", check);
+	api.on("model_select", check);
 }

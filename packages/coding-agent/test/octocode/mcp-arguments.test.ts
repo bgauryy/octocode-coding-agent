@@ -3,7 +3,7 @@ import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
-import { fakeCtx } from "./fake-pi.ts";
+import { fakeCtx } from "./fake-host.ts";
 
 const inputSchema = {
 	type: "object" as const,

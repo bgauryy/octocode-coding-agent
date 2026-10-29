@@ -3,7 +3,6 @@ import {
 	APPLICATION_PROTOCOL_VERSION,
 	type ApplicationConnection,
 	type ApplicationCursor,
-	type ApplicationFrame,
 } from "@octocodeai/octocode-contacts";
 import { redactData } from "../shared/sanitize.ts";
 import { renderBacklogHtml } from "@octocodeai/octocode-webview";
@@ -13,7 +12,6 @@ import {
 	WORKSPACE_ROUTES,
 	type WorkspaceServerEvent,
 } from "@octocodeai/octocode-contacts/protocol";
-import type { WorkspaceConnection } from "@octocodeai/octocode-contacts/workspace";
 import { STATES } from "@octocodeai/octocode-contacts/snapshot";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
@@ -25,16 +23,15 @@ import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { BacklogError } from "../backlog/store.ts";
 import { handleApplicationDataRequest } from "./application-data.ts";
+import { pumpApplicationFrames } from "./application-stream.ts";
 import { handleReportsRequest } from "./reports.ts";
-
-/** Streamed text reaches a browser at most this often per message (about 20 updates a second). */
-const DELTA_WINDOW_MS = 50;
+import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 
 /** A loopback board with a per-launch capability; the general session API stays browser-inaccessible. */
 export async function startWorkspaceWeb(
 	backlog: Backlog,
 	changed: () => void = () => {},
-	workspace?: WorkspaceConnection,
+	workspace?: RevisedWorkspace,
 ): Promise<BacklogWeb> {
 	const token = randomBytes(32).toString("hex");
 	const notifyChanged = () => {
@@ -58,63 +55,9 @@ export async function startWorkspaceWeb(
 			return;
 		}
 		applicationStreams.set(socket, connection);
-		const send = (frame: ApplicationFrame) => {
-			if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "application", data: frame }));
-		};
-		// A delta frame carries the whole redacted text (redacting a fragment could miss a secret split across tokens), so
-		// only the latest per window matters: the first goes out at once, later ones in the window collapse into one.
-		let pendingDelta: ApplicationFrame | undefined;
-		let deltaWindow: ReturnType<typeof setTimeout> | undefined;
-		const flushDelta = () => {
-			const frame = pendingDelta;
-			pendingDelta = undefined;
-			if (frame) send(frame);
-		};
-		const tick = () => {
-			deltaWindow = undefined;
-			if (!pendingDelta) return;
-			flushDelta();
-			deltaWindow = setTimeout(tick, DELTA_WINDOW_MS);
-		};
 		try {
-			for await (const frame of connection) {
-				if (socket.readyState !== WebSocket.OPEN) break;
-				if (socket.bufferedAmount > 1048576) {
-					socket.close(1013, "Reconnect to synchronize");
-					break;
-				}
-				const safe = redactData(frame);
-				if (safe.type === "event" && safe.event.type === "message.delta" && safe.event.text !== undefined) {
-					safe.event.delta = "";
-					const previous =
-						pendingDelta?.type === "event" && pendingDelta.event.type === "message.delta"
-							? pendingDelta.event.messageId
-							: undefined;
-					if (previous !== undefined && previous !== safe.event.messageId) flushDelta();
-					if (deltaWindow) {
-						if (pendingDelta?.type === "event")
-							safe.fromSequence = pendingDelta.fromSequence ?? pendingDelta.cursor.sequence;
-						pendingDelta = safe;
-						continue;
-					}
-					send(safe);
-					deltaWindow = setTimeout(tick, DELTA_WINDOW_MS);
-					continue;
-				}
-				// Anything else keeps its order behind the text streamed so far.
-				flushDelta();
-				send(safe);
-				if (frame.type === "resync") {
-					socket.close(1013, "Reconnect to synchronize");
-					break;
-				}
-			}
-			flushDelta();
-		} catch {
-			socket.close(1011, "Reopen the workspace");
+			await pumpApplicationFrames(socket, connection);
 		} finally {
-			clearTimeout(deltaWindow);
-			connection.close();
 			applicationStreams.delete(socket);
 		}
 	};
@@ -143,18 +86,15 @@ export async function startWorkspaceWeb(
 			}
 		}
 	};
-	let workspaceStamp = "";
+	const workspaceChanged = workspace && workspaceChanges(workspace);
 	const workspaceUpdates = () => {
-		if (!workspace || !authenticated.size) return;
-		let next: string;
+		if (!workspaceChanged || !authenticated.size) return;
 		try {
-			next = JSON.stringify(workspace.snapshot());
+			if (!workspaceChanged()) return;
 		} catch {
 			for (const socket of authenticated) socket.terminate();
 			return;
 		}
-		if (next === workspaceStamp) return;
-		workspaceStamp = next;
 		for (const socket of authenticated) {
 			try {
 				sendWorkspace(socket);
@@ -384,10 +324,13 @@ export async function startWorkspaceWeb(
 	});
 	server.unref();
 	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	let closed = false;
 	return {
 		url: `${origin}/#access=${token}`,
+		isUp: () => !closed && server.listening,
 		close: () =>
 			new Promise<void>((resolve) => {
+				closed = true;
 				clearInterval(updates);
 				unsubscribe?.();
 				workspace?.close();

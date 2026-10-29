@@ -24,8 +24,8 @@ describe("getNativeModuleCandidates", () => {
 	});
 
 	it("keeps standalone binary fallbacks when the TUI package is unavailable", () => {
-		const bundledModule = resolve("virtual", "pi", "bundle", "chunks", "chunk.js");
-		const execPath = resolve("virtual", "pi", "pi.exe");
+		const bundledModule = resolve("virtual", "octocode", "bundle", "chunks", "chunk.js");
+		const execPath = resolve("virtual", "octocode", "octocode.exe");
 		const nativePath = join("native", "darwin", "prebuilds", "darwin-arm64", "darwin-platform.node");
 
 		const candidates = getNativeModuleCandidates(nativePath, {

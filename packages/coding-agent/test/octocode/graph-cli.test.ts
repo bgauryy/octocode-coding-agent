@@ -8,13 +8,13 @@ import { withNativePermissionOwners } from "../../src/octocode/permission/native
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { planningRefusal } from "../../src/octocode/plan/gate.ts";
 import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("native graph CLI tools", () => {
 	it("hoists CLI definitions once and rejects unknown envelope fields", () => {
-		const fake = fakePi();
-		registerGraphTools(withNativePermissionOwners(fake.pi));
+		const fake = fakeHost();
+		registerGraphTools(withNativePermissionOwners(fake.api));
 		for (const name of ["graphBuild", "graphQuery"]) {
 			const tool = fake.tools.get(name);
 			expect(tool.parameters.$defs).toBeDefined();
@@ -33,8 +33,8 @@ describe("native graph CLI tools", () => {
 			path.join(cwd, "a.ts"),
 			"export function first() { return 1; }\nexport function final() { return first(); }\n",
 		);
-		const fake = fakePi();
-		registerGraphTools(withNativePermissionOwners(fake.pi));
+		const fake = fakeHost();
+		registerGraphTools(withNativePermissionOwners(fake.api));
 		const build = fake.tools.get("graphBuild");
 		const query = fake.tools.get("graphQuery");
 		expect(build).toBeDefined();
@@ -83,8 +83,8 @@ describe("native graph CLI tools", () => {
 		const binary = graphBinary();
 		const invalid = await runGraphCli(binary, "graphQuery", { queries: [{ operation: "unknown" }] }, cwd, false);
 		expect(invalid.isError).toBe(true);
-		const fake = fakePi();
-		registerGraphTools(withNativePermissionOwners(fake.pi));
+		const fake = fakeHost();
+		registerGraphTools(withNativePermissionOwners(fake.api));
 		const query = fake.tools.get("graphQuery");
 		const invalidRows: Record<string, string>[] = [
 			{ operation: "find" },

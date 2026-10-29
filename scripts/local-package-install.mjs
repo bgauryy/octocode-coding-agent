@@ -176,9 +176,9 @@ export function smokeTestNpmConsumer({ directory, artifactSet, packageName }) {
 		throw new Error(`${packageName} version mismatch: expected ${artifact.version}, found ${manifest.version}`);
 	}
 	if (typeof manifest.main !== "string")
-		throw new Error(`Public Pi package ${packageName} must declare a string main field`);
+		throw new Error(`Public Octocode package ${packageName} must declare a string main field`);
 	if (typeof manifest.types !== "string")
-		throw new Error(`Public Pi package ${packageName} must declare a string types field`);
+		throw new Error(`Public Octocode package ${packageName} must declare a string types field`);
 	assertPackageFile(installedDirectory, manifest.main, `${packageName} main`);
 	assertPackageFile(installedDirectory, manifest.types, `${packageName} types`);
 

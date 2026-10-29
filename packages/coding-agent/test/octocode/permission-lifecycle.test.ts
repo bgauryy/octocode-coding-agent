@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import type { Answer } from "../../src/octocode/permission/ask/types.ts";
 
@@ -12,8 +12,8 @@ const request = (): PermissionRequest => ({
 	grant: { key: "npm test", label: "`npm test`" },
 });
 function setup(mode = "manual") {
-	const fake = fakePi();
-	const permission = new Permission({ pi: fake.pi, env: { OCTOCODE_PERMISSION: mode }, isSubagent: false });
+	const fake = fakeHost();
+	const permission = new Permission({ api: fake.api, env: { OCTOCODE_PERMISSION: mode }, isSubagent: false });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 	permission.start(ctx);
 	return { permission, ctx };
@@ -104,7 +104,7 @@ describe("permission lifecycle", () => {
 		expect(await permission.check(ctx, destructive, async () => "kind")).toMatchObject({ allowed: false });
 		expect(await permission.check(ctx, destructive, async () => "session")).toMatchObject({ allowed: false });
 		const child = new Permission({
-			pi: fakePi().pi,
+			api: fakeHost().api,
 			env: { OCTOCODE_PERMISSION: "workspace", OCTOCODE_PERMISSION_GRANTS: "mcp.destructive" },
 			isSubagent: true,
 		});

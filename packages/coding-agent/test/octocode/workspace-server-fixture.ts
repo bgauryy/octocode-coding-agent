@@ -13,7 +13,7 @@ import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 interface Packet {
 	type: string;
@@ -50,7 +50,7 @@ export async function workspaceServerFixture() {
 	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-handler-"));
 	const db = openAgentDb(path.join(directory, "db"));
 	const store = new BacklogStore(() => db, "repo");
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: directory });
 	const listeners = new Set<(event: AgentSessionEvent) => void>();
 	const session = {
@@ -68,13 +68,14 @@ export async function workspaceServerFixture() {
 		abort: vi.fn(async () => {}),
 	};
 	const application = new ApplicationService(session as unknown as AgentSession);
-	const runtime = new WorkspaceRuntime(fake.pi, {
+	const runtime = new WorkspaceRuntime(fake.api, {
 		application: () => application,
 		database: () => db,
 		members: () => [],
 		traffic: () => [],
 		tell: async () => ({}),
 		stop: () => undefined,
+		expiry: () => "fixed",
 	});
 	const backlog = {
 		store,

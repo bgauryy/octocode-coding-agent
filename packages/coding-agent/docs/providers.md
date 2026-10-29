@@ -5,15 +5,15 @@ Most hosted providers support one or both of these authentication methods:
 - Sign in through a browser or device flow backed by OAuth.
 - Provide an API key.
 
-Use `/providers [provider]` (`/login` is an alias) to see status and the methods supported by a provider. Amazon Bedrock and Google Vertex AI can also use ambient cloud credentials.
+Use `/login [provider]` to see status and the methods supported by a provider. Amazon Bedrock and Google Vertex AI can also use ambient cloud credentials.
 
-GitHub Copilot model access uses `/providers github-copilot`. The separate `/github` command manages GitHub code-search credentials; signing in there does not configure Copilot inference.
+GitHub Copilot model access uses `/login github-copilot`. The separate `/github` command manages GitHub code-search credentials; signing in there does not configure Copilot inference.
 
 For instruction and conversation retention, see [Prompt caching](prompt-caching.md).
 
 ## Authenticate interactively
 
-Run `/providers` and choose a provider. Each provider appears once with its credential source and available model count. “Configured” means credentials are present; it does not verify that the provider will accept a request. Choose **Sign in** for the provider’s browser/device authentication flow, or **Add API key** / **Replace API key** for a key. Only supported methods appear. Choose **Choose a model for this chat** to open that provider’s models. Successful sign-in opens this picker automatically; Esc keeps the current model and Ctrl+S explicitly changes the default. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
+Run `/login` and choose a provider. Each provider appears once with its credential source and available model count. “Configured” means credentials are present; it does not verify that the provider will accept a request. Choose **Sign in** for the provider’s browser/device authentication flow, or **Add API key** / **Replace API key** for a key. Only supported methods appear. Choose **Choose a model for this chat** to open that provider’s models. Successful sign-in opens this picker automatically; Esc keeps the current model and Ctrl+S explicitly changes the default. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
 
 On a remote or headless machine, an OAuth callback may not reach the local process. When prompted, paste the final redirect URL or authorization code back into Octocode.
 
@@ -23,13 +23,13 @@ Secret input and pasted authorization codes are hidden. When macOS Keychain or L
 
 ## Use Pi configuration
 
-Select **Pi (config)** in `/providers`, or run `/providers pi`. It lists providers found in Pi’s `models.json` and saved sign-ins from `auth.json`. Model definitions follow the existing [Pi fallback precedence](configuration.md#pi-configuration-fallback); models retain their real provider IDs and use those providers’ APIs, authentication and pricing. Pi is a setup source, not a network model service.
+Select **Pi (config)** in `/login`, or run `/login pi`. It lists providers found in Pi’s `models.json` and saved sign-ins from `auth.json`. Model definitions follow the existing [Pi fallback precedence](configuration.md#pi-configuration-fallback); models retain their real provider IDs and use those providers’ APIs, authentication and pricing. Pi is a setup source, not a network model service.
 
 Saved Pi sign-ins are copied only after you select a provider and confirm import. Existing Octocode credentials can be replaced; Pi files are never modified. API keys can be imported into the system keychain. File imports preserve environment references; keychain imports resolve the key once and reject missing values. Command-based Pi keys are not executed or imported by this flow; configure those providers directly. Explicit home overrides and custom SDK directories disable discovery. After import, the model picker shows only that provider. Providers defined only in Pi’s model file remain usable through the normal fallback loader.
 
 ## Use OpenCode and choose a model
 
-Run `/providers opencode` for OpenCode Console (Zen), or `/providers opencode-go` for Go. Choose **Add API key** (or **Replace API key**) and paste your key when prompted. After saving it, Octocode opens the model picker with that provider as the search term; your current model stays selected until you choose another. Press Esc to keep it.
+Run `/login opencode` for OpenCode Console (Zen), or `/login opencode-go` for Go. Choose **Add API key** (or **Replace API key**) and paste your key when prompted. After saving it, Octocode opens the model picker with that provider as the search term; your current model stays selected until you choose another. Press Esc to keep it.
 
 To choose later, run `/model opencode/` or `/model opencode-go/`; the trailing slash restricts the picker to that exact provider. You can also select an exact model with `/model <provider>/<model-id>`. Both providers support `OPENCODE_API_KEY` for environment-based authentication. A saved key takes precedence over that variable.
 
@@ -124,11 +124,11 @@ A stored API-key credential can include an `env` object. Its values take priorit
 
 ### OpenRouter
 
-Authenticate with `/providers openrouter` or `OPENROUTER_API_KEY`.
+Authenticate with `/login openrouter` or `OPENROUTER_API_KEY`.
 
 With a key, Octocode lists only the OpenRouter chat models that key may use, with the key's context size, max output, and prices. These come from OpenRouter's `/models/user` endpoint and reflect guardrails and provider restrictions set in OpenRouter. Image and classifier models are not filtered.
 
-Octocode refreshes the list in the background at startup in interactive mode, when `/model` opens, after provider sign-in, and on `octocode update --models`. The last list is saved and used offline and in `octocode -p` and RPC mode. After switching keys outside `/providers`, the previous key's list stays until the next refresh.
+Octocode refreshes the list in the background at startup in interactive mode, when `/model` opens, after provider sign-in, and on `octocode update --models`. The last list is saved and used offline and in `octocode -p` and RPC mode. After switching keys outside `/login`, the previous key's list stays until the next refresh.
 
 Regional endpoints filter models to their region. To use one, set the base URL in [`models.json`](models.md#configure-a-compatible-endpoint):
 
@@ -167,7 +167,7 @@ export AZURE_OPENAI_DEPLOYMENT_NAME_MAP=gpt-5.4=my-gpt-deployment,deepseek-v4-pr
 
 `AZURE_OPENAI_API_VERSION` overrides the API version for OpenAI models (default `v1`).
 
-Azure login also offers an Entra bearer token. Set `AZURE_OPENAI_AD_TOKEN` or select that option in `/providers`; acquire the token through Azure Identity or Azure CLI. Stored API keys take precedence. This token is short-lived and must be renewed externally; Octocode does not refresh a manually supplied Entra token. SDK users can supply `azureADTokenProvider` to the Azure Responses adapter for automatic credential acquisition. Bearer auth suppresses the SDK's ambient API-key default.
+Azure login also offers an Entra bearer token. Set `AZURE_OPENAI_AD_TOKEN` or select that option in `/login`; acquire the token through Azure Identity or Azure CLI. Stored API keys take precedence. This token is short-lived and must be renewed externally; Octocode does not refresh a manually supplied Entra token. SDK users can supply `azureADTokenProvider` to the Azure Responses adapter for automatic credential acquisition. Bearer auth suppresses the SDK's ambient API-key default.
 
 To use a Foundry model that Octocode does not include, add it under `azure` in [`models.json`](models.md#configure-a-compatible-endpoint) with `api: "openai-completions"`. Custom models require a `baseUrl`; `AZURE_OPENAI_BASE_URL` and `AZURE_OPENAI_RESOURCE_NAME` take priority over it when set:
 

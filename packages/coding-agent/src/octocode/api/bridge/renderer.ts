@@ -8,8 +8,8 @@ import { contentText } from "../../shared/util.ts";
 import { clip } from "../../shared/render/text.ts";
 
 /** `✉ from <client>`, then the client's text: untrusted, so resultBlock sanitizes and previews it instead of Markdown. */
-export function registerExternalMessageRenderer(pi: ExtensionAPI): void {
-	pi.registerMessageRenderer(EXTERNAL_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) => {
+export function registerExternalMessageRenderer(api: ExtensionAPI): void {
+	api.registerMessageRenderer(EXTERNAL_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) => {
 		const details = message.details as { from?: unknown; at?: unknown } | undefined;
 		const from = clip(typeof details?.from === "string" ? details.from : "API client", 60);
 		const text = contentText(message.content);

@@ -254,7 +254,6 @@ for (const mixed of [false, true]) {
 			fileReadTool: true,
 			hooksEnabled: false,
 			mode: "full",
-			compatibility: false,
 		});
 		try {
 			const target = path.join(f.cwd, "original.txt"),

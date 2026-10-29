@@ -1,4 +1,4 @@
-/** `pi mcp add` and `pi mcp remove`: edit the global or project `mcp.json`. */
+/** `octocode mcp add` and `octocode mcp remove`: edit the global or project `mcp.json`. */
 
 import { APP_NAME } from "../../../coding-agent/src/config.ts";
 import { globalMcpConfigPath } from "../paths.ts";

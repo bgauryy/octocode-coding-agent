@@ -47,7 +47,6 @@ export type EntryRenderer<T = unknown> = (
 
 export interface RegisteredCommand {
 	name: string;
-	aliases?: readonly string[];
 	sourceInfo: SourceInfo;
 	description?: string;
 	getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null | Promise<AutocompleteItem[] | null>;
@@ -56,5 +55,4 @@ export interface RegisteredCommand {
 
 export interface ResolvedCommand extends RegisteredCommand {
 	invocationName: string;
-	invocationAliases?: readonly string[];
 }

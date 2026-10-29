@@ -135,4 +135,26 @@ describe("workspace WebSocket handlers without network I/O", () => {
 		});
 		expect(app.session.sendUserMessage).toHaveBeenCalledOnce();
 	});
+
+	it("builds no workspace snapshot on idle ticks and still pushes after a change", async () => {
+		const socket = app.upgrade().client!;
+		socket.hello({ token: app.token, protocolVersion: 1 });
+		await vi.waitFor(() => expect(socket.packets.some((packet) => packet.type === "workspace")).toBe(true));
+		const snapshot = vi.spyOn(app.workspace, "snapshot");
+		// Two 500 ms ticks. The first sees a stamp it has not recorded: one snapshot to compare plus one to send to the
+		// view. The second finds the stamp unchanged and builds nothing.
+		await new Promise((resolve) => setTimeout(resolve, 1200));
+		expect(snapshot.mock.calls.length).toBeLessThanOrEqual(2);
+		const sent = socket.packets.filter((packet) => packet.type === "workspace").length;
+
+		const item = app.store.add({ title: "Stamp", goal: "Push", reason: "Stale page", createdBy: "user" });
+		const command = { id: "stamp-push", action: "work", backlogId: item.ref, version: item.version };
+		expect(await app.request("/api/workspace", command)).toMatchObject({ status: 200 });
+		await vi.waitFor(() =>
+			expect(socket.packets.filter((packet) => packet.type === "workspace").length).toBeGreaterThan(sent),
+		);
+		expect(socket.packets.filter((packet) => packet.type === "workspace").at(-1)?.data).toMatchObject({
+			receipts: [expect.objectContaining({ id: command.id })],
+		});
+	});
 });

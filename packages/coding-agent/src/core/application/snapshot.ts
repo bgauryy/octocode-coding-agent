@@ -17,6 +17,7 @@ export function applicationSnapshot(
 		...activities.window(),
 		errors: cloneDisplay(state.errors),
 		status: state.status,
+		...(state.awaiting ? { awaiting: { ...state.awaiting } } : {}),
 		...(state.runId === undefined ? {} : { runId: state.runId }),
 		streaming: state.streaming,
 		steering: [...state.steering],

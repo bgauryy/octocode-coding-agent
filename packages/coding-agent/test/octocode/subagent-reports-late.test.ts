@@ -5,14 +5,14 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { pendingReportsDir, savePendingReport } from "../../src/octocode/subagents/handoff/pending.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-function recordMessages(f: ReturnType<typeof fakePi>, ctx: ReturnType<typeof fakeCtx>): void {
+function recordMessages(f: ReturnType<typeof fakeHost>, ctx: ReturnType<typeof fakeCtx>): void {
 	const session = SessionManager.inMemory();
 	ctx.sessionManager.getEntries = () => session.getEntries();
-	const send = f.pi.sendMessage;
-	f.pi.sendMessage = (message, options) => {
+	const send = f.api.sendMessage;
+	f.api.sendMessage = (message, options) => {
 		session.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
 		send(message, options);
 	};
@@ -28,11 +28,11 @@ describe("late background reports", () => {
 		});
 		const [file] = fs.readdirSync(dir);
 		if (process.platform !== "win32") expect(fs.statSync(path.join(dir, file)).mode & 0o777).toBe(0o600);
-		const f = fakePi();
+		const f = fakeHost();
 		registerAgentTool(
-			f.pi,
+			f.api,
 			() => new Map(),
-			new Team(f.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+			new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
 			fakePermission(),
 		);
 		const ctx = fakeCtx({ cwd: tmp() });
@@ -52,11 +52,11 @@ describe("late background reports", () => {
 	});
 
 	it("delivers a report saved after the session started (a stop slower than the reload's wait), without another restart", async () => {
-		const f = fakePi();
+		const f = fakeHost();
 		registerAgentTool(
-			f.pi,
+			f.api,
 			() => new Map(),
-			new Team(f.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+			new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
 			fakePermission(),
 		);
 		const ctx = fakeCtx({ cwd: tmp() });
@@ -97,11 +97,11 @@ describe("late background reports", () => {
 			wake: true,
 		});
 		const [saved] = fs.readdirSync(dir);
-		const f = fakePi();
+		const f = fakeHost();
 		registerAgentTool(
-			f.pi,
+			f.api,
 			() => new Map(),
-			new Team(f.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+			new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
 			fakePermission(),
 		);
 		const ctx = fakeCtx({ cwd: tmp() });

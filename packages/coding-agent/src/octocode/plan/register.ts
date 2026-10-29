@@ -8,18 +8,18 @@ import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanSt
 import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";
 
 /** User controls are commands, never model tools. Plan text lives in branch-aware custom entries. */
-export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWork: () => Promise<void>) {
+export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopWork: () => Promise<void>) {
 	let state: PlanState = { active: false, revision: 0, text: "" };
 	let transitioning = false;
 	const blocked = () => transitioning || state.active;
 	let unbind: (() => void) | undefined;
-	pi.on("session_shutdown", async () => {
+	api.on("session_shutdown", async () => {
 		unbind?.();
 	});
 	const display = (ctx: ExtensionContext) =>
 		ctx.ui.setStatus("plan", state.active ? `Plan · revision ${state.revision}` : undefined);
 	const write = (next: PlanState, ctx: ExtensionContext) => {
-		pi.appendEntry(PLAN_ENTRY, { version: 1, ...next });
+		api.appendEntry(PLAN_ENTRY, { version: 1, ...next });
 		state = next;
 		display(ctx);
 	};
@@ -32,16 +32,16 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 		restore(ctx);
 		unbind = bindPlanConstraint(ctx.sessionManager.getSessionId(), blocked);
 	};
-	pi.registerFlag("plan", { type: "boolean", description: "Start with the native planning constraint" });
-	pi.on("session_start", async (_event, ctx) => {
+	api.registerFlag("plan", { type: "boolean", description: "Start with the native planning constraint" });
+	api.on("session_start", async (_event, ctx) => {
 		restore(ctx);
 		unbind?.();
 		unbind = bindPlanConstraint(ctx.sessionManager.getSessionId(), blocked);
-		if (_event.reason === "startup" && pi.getFlag("plan") === true && !state.active)
+		if (_event.reason === "startup" && api.getFlag("plan") === true && !state.active)
 			write({ ...state, active: true }, ctx);
 	});
-	pi.on("session_tree", async (_event, ctx) => restore(ctx));
-	pi.on("before_agent_start", async (event, ctx) => {
+	api.on("session_tree", async (_event, ctx) => restore(ctx));
+	api.on("before_agent_start", async (event, ctx) => {
 		ensureState(ctx);
 		if (!blocked()) {
 			delete event.systemPromptOptions.sections.planning;
@@ -50,11 +50,11 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 		event.systemPromptOptions.sections.planning = PLANNING_INSTRUCTIONS;
 	});
 	// The summary may drop the plan's wording: put the current revision back at the tail, outside the cached prefix.
-	pi.on("session_compact", async (_event, ctx) => {
+	api.on("session_compact", async (_event, ctx) => {
 		ensureState(ctx);
 		if (!state.active || !state.text) return;
 		try {
-			void pi.sendMessage(
+			void api.sendMessage(
 				{ customType: PLAN_REMINDER_TYPE, content: planReminder(state), display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -62,7 +62,7 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 			// The session was replaced.
 		}
 	});
-	pi.on("agent_end", async (event, ctx) => {
+	api.on("agent_end", async (event, ctx) => {
 		if (!state.active || transitioning) return;
 		const last = event.messages.findLast((message) => message.role === "assistant");
 		if (last?.role !== "assistant" || last.stopReason !== "stop") return;
@@ -100,14 +100,14 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 				if (!/^--approve [1-9]\d*$/.test(args)) throw new Error("Usage: /plan --approve <revision>");
 				const approved = { ...state };
 				await control({ action: "approve", revision: Number(args.split(" ")[1]) }, ctx);
-				pi.sendUserMessage(approvedPlanPrompt(approved), {
+				api.sendUserMessage(approvedPlanPrompt(approved), {
 					expandPromptTemplates: false,
 				});
 			} else {
 				if (args.startsWith("--")) throw new Error("Usage: /plan [description|--off|--approve <revision>]");
 				if (args.length > 8000) throw new Error("Plan descriptions must be at most 8000 characters.");
 				await control({ action: "enter" }, ctx);
-				if (args) pi.sendUserMessage(args, { expandPromptTemplates: false });
+				if (args) api.sendUserMessage(args, { expandPromptTemplates: false });
 			}
 			say(
 				ctx,
@@ -115,7 +115,7 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 			);
 		},
 	});
-	const api = {
+	const planning = {
 		/** The host's read-only shell classifier (the permission layer depends on this module, so it cannot import it); unset, plan mode blocks every shell command. */
 		readOnlyShell: undefined as ShellReader | undefined,
 		blocked,
@@ -124,12 +124,12 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 			if (!blocked()) return undefined;
 			const reason = planningRefusal(
 				event,
-				pi.getAllTools().find((tool) => tool.name === event.toolName),
-				getMcpSessionStatus(pi.events),
-				api.readOnlyShell,
+				api.getAllTools().find((tool) => tool.name === event.toolName),
+				getMcpSessionStatus(api.events),
+				planning.readOnlyShell,
 			);
 			return reason ? { block: true, reason } : undefined;
 		},
 	};
-	return api;
+	return planning;
 }

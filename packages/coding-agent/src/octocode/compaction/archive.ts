@@ -211,9 +211,9 @@ export const ARCHIVE_POINTER_TYPE = "octocode-archive";
  * and so has no pointer in its Recovery section: one hidden message after the compaction, which no turn waits for. It
  * rides at the end of the new context, behind the summary and the kept messages, so no cached prefix changes.
  */
-export function deliverArchivePointer(pi: Pick<ExtensionAPI, "sendMessage">, current: number): void {
+export function deliverArchivePointer(api: Pick<ExtensionAPI, "sendMessage">, current: number): void {
 	try {
-		void pi.sendMessage(
+		void api.sendMessage(
 			{
 				customType: ARCHIVE_POINTER_TYPE,
 				content: `[After compaction]\n${archivePointer(current)

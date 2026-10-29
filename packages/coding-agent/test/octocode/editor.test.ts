@@ -24,7 +24,7 @@ import {
 	withHint,
 } from "../../src/octocode/ui/editor.ts";
 import { thinkingTranscript } from "../../src/octocode/ui/thinking.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const identity = (text: string): string => text;
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
@@ -51,9 +51,9 @@ function terminal() {
 describe("permission shortcut in the Octocode editor", () => {
 	it("toggles thinking with the configured binding once per press without changing the draft", async () => {
 		initTheme("dark", false);
-		const fake = fakePi();
+		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
-		registerEditor(fake.pi, { cycle: vi.fn() });
+		registerEditor(fake.api, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
 		const chat = new Container();
@@ -81,10 +81,10 @@ describe("permission shortcut in the Octocode editor", () => {
 	});
 
 	it("cycles once per press, leaves text and thinking intact, and delegates Tab and other actions", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const cycle = vi.fn();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
-		registerEditor(fake.pi, { cycle });
+		registerEditor(fake.api, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
@@ -124,10 +124,10 @@ describe("permission shortcut in the Octocode editor", () => {
 
 	it("keeps permission unchanged while a real Octocode approval selector owns focus", async () => {
 		initTheme("dark", false);
-		const fake = fakePi();
+		const fake = fakeHost();
 		const cycle = vi.fn();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
-		registerEditor(fake.pi, { cycle });
+		registerEditor(fake.api, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
@@ -148,7 +148,7 @@ describe("permission shortcut in the Octocode editor", () => {
 	});
 
 	it("chains a prior factory without replacing its editor or input behavior", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const cycle = vi.fn();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
 		const { tui, input, keys } = terminal();
@@ -156,7 +156,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const originalInput = vi.spyOn(original, "handleInput");
 		const factory: EditorFactory = vi.fn(() => original);
 		ctx.ui.setEditorComponent(factory);
-		registerEditor(fake.pi, { cycle });
+		registerEditor(fake.api, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
 		expect(editor).toBe(original);
@@ -171,10 +171,10 @@ describe("permission shortcut in the Octocode editor", () => {
 	});
 
 	it("keeps the installed factory across session changes and uses the latest context", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const cycle = vi.fn<(ctx: ExtensionContext) => void>();
 		const ctx = fakeCtx({ cwd: "/private/tmp/first" });
-		registerEditor(fake.pi, { cycle });
+		registerEditor(fake.api, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const factory = ctx.ui.getEditorComponent()!;
 		const { tui, input, keys } = terminal();
@@ -192,10 +192,10 @@ describe("permission shortcut in the Octocode editor", () => {
 	});
 
 	it("shows the hint in a fresh session until the first run, and not in a session with messages", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
 		Reflect.set(ctx.ui, "theme", { fg: (_color: string, text: string) => text });
-		registerEditor(fake.pi, { cycle: vi.fn() });
+		registerEditor(fake.api, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
@@ -216,10 +216,10 @@ describe("permission shortcut in the Octocode editor", () => {
 		{ mode: "rpc", hasUI: true },
 		{ mode: "print", hasUI: false },
 	])("does not install an editor in $mode", async (options) => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor", ...options });
 		const install = vi.spyOn(ctx.ui, "setEditorComponent");
-		registerEditor(fake.pi, { cycle: vi.fn() });
+		registerEditor(fake.api, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		expect(install).not.toHaveBeenCalled();
 		expect(ctx.ui.getEditorComponent()).toBeUndefined();

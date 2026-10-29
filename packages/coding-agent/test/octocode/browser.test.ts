@@ -7,7 +7,7 @@ import { initTheme } from "../../src/theme/theme.ts";
 import * as importedModule2 from "../../src/octocode/browser/render.ts";
 import * as importedModule4 from "../../src/octocode/browser/session.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
-import { fakeCtx, fakePermission, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
 import { type CdpHandler, type CdpStub, NO_REPLY, startCdpStub } from "./fixtures/cdp-stub.ts";
 import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 import { pressKey } from "../../src/octocode/browser/input/keyboard.ts";
@@ -119,13 +119,13 @@ function register() {
 	tools.push(browser);
 	let tool: Tool | undefined;
 	const handlers = new Map<string, () => Promise<void>>();
-	const pi = {
+	const api = {
 		registerTool: (definition: Tool) => {
 			tool = definition;
 		},
 		on: (event: string, handler: () => Promise<void>) => handlers.set(event, handler),
 	} as unknown as ExtensionAPI;
-	registerBrowserTool(pi, browser);
+	registerBrowserTool(api, browser);
 	const run = (params: Record<string, unknown>) =>
 		tool!.execute("id", params, undefined, undefined, fakeCtx({ cwd: process.cwd(), hasUI: false }));
 	const text = async (params: Record<string, unknown>) =>

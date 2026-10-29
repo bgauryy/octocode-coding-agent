@@ -11,7 +11,7 @@ type Message = Parameters<Send>[0];
 type Options = Parameters<Send>[1];
 
 /**
- * Keeps extension messages (subagent reports, background job reports, teammate messages) that `pi.sendMessage` queued
+ * Keeps extension messages (subagent reports, background job reports, teammate messages) that `api.sendMessage` queued
  * during a run from being lost.
  *
  * While a run is active, a message that may start a turn joins Octocode's steering or follow-up queue. Octocode shows only the
@@ -21,7 +21,7 @@ type Options = Parameters<Send>[1];
  * queue, it is appended to the conversation without starting a turn: the user interrupted, so nothing restarts, but
  * nothing is lost. A status segment shows how many messages wait meanwhile.
  *
- * Installed on `pi` itself, before any feature registers, so every `pi.sendMessage` call goes through it. Messages
+ * Installed on `api` itself, before any feature registers, so every `api.sendMessage` call goes through it. Messages
  * without a details object, `nextTurn` messages and `triggerTurn: false` messages are not queued this way and pass
  * through untracked.
  */
@@ -36,21 +36,21 @@ export class Delivery {
 		this.send = send;
 	}
 
-	static install(pi: ExtensionAPI): Delivery {
-		const delivery = new Delivery(pi.sendMessage.bind(pi));
-		(pi as { sendMessage: Send }).sendMessage = (message, options) => delivery.deliver(message, options);
-		pi.on("session_start", async (_event, ctx) => delivery.reset(ctx));
-		pi.on("session_shutdown", async () => delivery.reset(undefined));
-		pi.on("agent_start", async (_event, ctx) => {
+	static install(api: ExtensionAPI): Delivery {
+		const delivery = new Delivery(api.sendMessage.bind(api));
+		(api as { sendMessage: Send }).sendMessage = (message, options) => delivery.deliver(message, options);
+		api.on("session_start", async (_event, ctx) => delivery.reset(ctx));
+		api.on("session_shutdown", async () => delivery.reset(undefined));
+		api.on("agent_start", async (_event, ctx) => {
 			delivery.ctx = ctx;
 			delivery.running = true;
 		});
-		pi.on("message_start", async (event) => {
+		api.on("message_start", async (event) => {
 			const { message } = event;
 			if (message.role === "custom" && isRecord(message.details) && delivery.waiting.delete(message.details))
 				delivery.paint();
 		});
-		pi.on("agent_settled", async (_event, ctx) => delivery.settle(ctx));
+		api.on("agent_settled", async (_event, ctx) => delivery.settle(ctx));
 		return delivery;
 	}
 

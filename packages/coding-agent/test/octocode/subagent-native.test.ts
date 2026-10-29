@@ -21,8 +21,8 @@ describe("native Octocode subagent completion", () => {
 			provider: "faux",
 			models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 		});
-		const provider: ExtensionFactory = (pi) =>
-			pi.registerProvider("faux", {
+		const provider: ExtensionFactory = (api) =>
+			api.registerProvider("faux", {
 				name: "Faux",
 				api: faux.api,
 				baseUrl: "http://127.0.0.1:0",
@@ -86,7 +86,7 @@ describe("native Octocode subagent completion", () => {
 			// an answer or a finished run is never replaced by one.
 			expect(abortedMessage).toBe(boundary === "tool");
 			// Replay the real native event sequence through the supervisor's child-process boundary.
-			const script = path.join(cwd, "pi");
+			const script = path.join(cwd, "octocode");
 			fs.writeFileSync(script, `process.stdout.write(${JSON.stringify(`${records.join("\n")}\n`)});`);
 			process.argv[1] = script;
 			const result = await runSubagent("", [], cwd, undefined, { id: "native-test" }, undefined, () => undefined);

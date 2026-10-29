@@ -42,7 +42,7 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
 	type?: "chat";
 	reasoning: boolean;
 	/**
-	 * Maps pi thinking levels to provider/model-specific values.
+	 * Maps Octocode thinking levels to provider/model-specific values.
 	 * Missing keys use provider defaults. null marks a level as unsupported.
 	 */
 	thinkingLevelMap?: ThinkingLevelMap;
@@ -52,7 +52,7 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
 	maxTokens: number;
 	/** Default sampling parameters for this model. See {@link StreamOptions.samplingParams}; per-request keys override these. */
 	samplingParams?: SamplingParams;
-	/** Sampling parameter overrides selected by the effective pi thinking level. */
+	/** Sampling parameter overrides selected by the effective Octocode thinking level. */
 	samplingParamsByThinkingLevel?: SamplingParamsByThinkingLevel;
 	/** Compatibility overrides for OpenAI-compatible APIs. If not set, auto-detected from baseUrl. */
 	compat?: TApi extends "openai-completions"

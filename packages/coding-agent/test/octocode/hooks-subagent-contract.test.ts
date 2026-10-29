@@ -104,7 +104,7 @@ it("keeps lifecycle handler eligibility and context limits source-specific", asy
 			JSON.stringify({ hooks }),
 		);
 	}
-	const loaded = loadHooks(cwd, false, home, { sourceProfiles: true });
+	const loaded = loadHooks(cwd, false, home);
 	const types = (event: "SubagentStart" | "SubagentStop", protocol: string) =>
 		commandsFor(loaded.config, event, ["general"])
 			.filter((hook) => hook.protocol === protocol)

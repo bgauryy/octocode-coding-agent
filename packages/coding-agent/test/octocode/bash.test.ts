@@ -9,7 +9,7 @@ import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { groupAlive, processAlive } from "../../src/octocode/shared/process.ts";
-import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import {
 	DEFAULT_BASH_TIMEOUT,
@@ -48,10 +48,10 @@ describe("bash deadline", () => {
 
 describe("bash tool", () => {
 	const setup = (shell: ShellSettings = {}) => {
-		const { pi, tools, commands: registered, sent, fire } = fakePi();
+		const { api, tools, commands: registered, sent, fire } = fakeHost();
 		const commands = new Subcommands();
 		const jobs = new BashJobs(tmp());
-		registerBashTool(pi, commands, jobs, () => shell);
+		registerBashTool(api, commands, jobs, () => shell);
 		const cwd = tmp();
 		const ctx = fakeCtx({ cwd });
 		return { tool: tools.get("bash"), registered, commands, jobs, sent, fire, cwd, ctx };
@@ -665,8 +665,8 @@ describe("bash tool", () => {
 
 describe("bash rendering", () => {
 	const setup = () => {
-		const { pi, tools, renderers } = fakePi();
-		registerBashTool(pi, new Subcommands(), new BashJobs(tmp()));
+		const { api, tools, renderers } = fakeHost();
+		registerBashTool(api, new Subcommands(), new BashJobs(tmp()));
 		return { tool: tools.get("bash"), renderers };
 	};
 	const done = (extra: Record<string, unknown> = {}) => ({

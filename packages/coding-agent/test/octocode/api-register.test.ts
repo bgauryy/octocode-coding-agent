@@ -14,7 +14,7 @@ import {
 	writeRecord,
 } from "../../src/octocode/api/registry.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const stops: Array<() => Promise<void>> = [];
@@ -30,10 +30,10 @@ function setup(env: Record<string, string> = {}) {
 	vi.stubEnv("OCTOCODE_API", "");
 	vi.stubEnv("OCTOCODE_API_HTTP", "");
 	for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
-	const { pi } = fakePi();
+	const { api } = fakeHost();
 	const commands = new Subcommands();
 	const wired = registerApi(
-		pi,
+		api,
 		commands,
 		{ list: () => [], tell: () => ({ sent: [] }), deliverable: (text) => text },
 		() => "1.2.3",

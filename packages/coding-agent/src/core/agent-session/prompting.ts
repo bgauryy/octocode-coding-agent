@@ -33,7 +33,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	const expandPromptTemplates = options?.expandPromptTemplates ?? true;
 	const preflightResult = options?.preflightResult;
 	// Handle extension commands first (execute immediately, even during streaming)
-	// Extension commands manage their own LLM interaction via pi.sendMessage()
+	// Extension commands manage their own LLM interaction via api.sendMessage()
 	if (expandPromptTemplates && text.startsWith("/")) {
 		const handled = await tryExecuteExtensionCommand(session.extensionRunner, text);
 		if (handled) {
@@ -107,7 +107,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 			throw new Error(
 				`Authentication failed for "${session.model.provider}". ` +
 					`Credentials may have expired or network is unavailable. ` +
-					`Run '/providers ${session.model.provider}' to re-authenticate.`,
+					`Run '/login ${session.model.provider}' to re-authenticate.`,
 			);
 		}
 		throw new Error(formatNoApiKeyFoundMessage(session.model.provider));

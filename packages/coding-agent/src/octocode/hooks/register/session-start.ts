@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/in
 import { notify } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
 import { projectTrust } from "../../shared/trust.ts";
+import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
 import { loadHooks } from "../config.ts";
 import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type ReportFailure, START_HOOKS_WAIT_MS } from "./types.ts";
@@ -20,11 +21,10 @@ const START_SOURCE: Record<string, string> = {
  * SessionStart hooks, and hands their context to the next prompt.
  */
 export function registerSessionStartHooks(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	session: HookSession,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 	home: string | undefined,
-	sourceProfiles: boolean,
 	child = false,
 ): void {
 	let pending: string[] = [];
@@ -74,10 +74,11 @@ export function registerSessionStartHooks(
 		starting = run;
 	};
 
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
+		const settings = api.getSettings();
 		const loaded = loadHooks(ctx.cwd, await projectTrust(ctx), home, {
-			sourceProfiles,
-			plugins: pi.getSettings().plugins,
+			plugins: effectivePlugins(settings, ctx.cwd),
+			toggles: settings.toggles,
 		});
 		session.config = loaded.config;
 		session.errors = loaded.errors;
@@ -88,11 +89,11 @@ export function registerSessionStartHooks(
 		startHooks(ctx, START_SOURCE[event.reason] ?? "startup", true);
 	});
 	// Claude Code runs SessionStart again (source `compact`) after a compaction: its context comes with the next prompt.
-	pi.on("session_compact", async (_event, ctx) => startHooks(ctx, "compact", false));
-	pi.on("session_shutdown", async () => startAbort.abort());
+	api.on("session_compact", async (_event, ctx) => startHooks(ctx, "compact", false));
+	api.on("session_shutdown", async () => startAbort.abort());
 
 	// SessionStart context reaches the model once, with the next prompt, as data rather than instructions.
-	pi.on("before_agent_start", async (_event, ctx) => {
+	api.on("before_agent_start", async (_event, ctx) => {
 		// The first prompt waits a bounded time for their context; a slower hook's context comes with the next prompt.
 		if (starting) {
 			// Shown only while the prompt actually waits: `starting` clears itself once the hooks finish.

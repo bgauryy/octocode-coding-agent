@@ -1,4 +1,3 @@
-import { getBuiltinCommand } from "../../core/slash-commands.ts";
 import type { AutocompleteItem } from "@octocodeai/octocode-tui";
 import type {
 	ExtensionAPI,
@@ -32,7 +31,6 @@ export function say(ctx: Pick<ExtensionContext, "hasUI" | "ui">, text: string, l
 
 /** A native command registered once under its canonical name. */
 export interface Subcommand {
-	aliases?: readonly string[];
 	description: string;
 	dialog?: "handler" | "interaction";
 	handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
@@ -88,7 +86,7 @@ export class Subcommands {
 				?.map((item) => ({ ...item, value: `${match[1]} ${item.value}` })) ?? null
 		);
 	}
-	register(pi: ExtensionAPI, status?: () => string): void {
+	register(api: ExtensionAPI, status?: () => string): void {
 		if (status) {
 			const details = this.get("status");
 			this.add("status", {
@@ -101,8 +99,7 @@ export class Subcommands {
 			});
 		}
 		for (const [name, command] of this.list()) {
-			pi.registerCommand(name, {
-				aliases: command.aliases ?? getBuiltinCommand(name)?.aliases,
+			api.registerCommand(name, {
 				description: command.description,
 				getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
 				handler: (args, ctx) =>
@@ -111,7 +108,7 @@ export class Subcommands {
 						: withDialog(() => command.handler(args.trim(), ctx)),
 			});
 		}
-		pi.on("input", async (event, ctx) => {
+		api.on("input", async (event, ctx) => {
 			const match = /^\/octocode(?:\s+(.*))?$/s.exec(event.text.trim());
 			if (!match) return { action: "continue" };
 			// Bare /octocode is now the live board; only the retired namespaced form needs migration guidance.

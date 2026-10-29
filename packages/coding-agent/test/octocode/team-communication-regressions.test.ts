@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const teams: Team[] = [];
@@ -18,8 +18,8 @@ function setup() {
 	fs.mkdirSync(path.join(cwd, ".git"));
 	const file = path.join(tmp(), "team.sqlite");
 	const agent = (signal?: AbortSignal) => {
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: file });
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: file });
 		const ctx = { ...fakeCtx({ cwd, hasUI: true }), ...(signal ? { signal } : {}) };
 		team.start(ctx);
 		team.join();

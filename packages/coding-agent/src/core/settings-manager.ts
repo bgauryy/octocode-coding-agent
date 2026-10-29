@@ -23,7 +23,7 @@ export { CACHE_WARMING_MODES } from "./settings-manager/constants.ts";
 import { DisplaySettingsAccessors } from "./settings-manager/accessors/display.ts";
 import type { SettingsManagerApi } from "./settings-manager/api.ts";
 import { migrateSettings, tryLoadSettingsFromStorage } from "./settings-manager/load.ts";
-import { deepMergeSettings } from "./settings-manager/merge.ts";
+import { deepMergeSettings, mergeScopedSettings } from "./settings-manager/merge.ts";
 import { SettingsPersistence } from "./settings-manager/persistence.ts";
 import type { SettingsState } from "./settings-manager/state.ts";
 import {
@@ -68,7 +68,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			storage,
 			globalSettings: initialGlobal,
 			projectSettings: initialProject,
-			settings: deepMergeSettings(initialGlobal, initialProject),
+			settings: mergeScopedSettings(initialGlobal, initialProject),
 			cacheOverrides: {},
 			projectTrusted,
 			globalSettingsLoadError: globalLoadError,
@@ -175,7 +175,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		if (!trusted) {
 			state.projectSettings = {};
 			state.projectSettingsLoadError = null;
-			state.settings = deepMergeSettings(state.globalSettings, state.projectSettings);
+			state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
 			return;
 		}
 
@@ -185,7 +185,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		if (projectLoad.error) {
 			this.persistence.recordError("project", projectLoad.error);
 		}
-		state.settings = deepMergeSettings(state.globalSettings, state.projectSettings);
+		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
 	}
 
 	async reload(): Promise<void> {
@@ -212,7 +212,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			this.persistence.recordError("project", projectLoad.error);
 		}
 
-		state.settings = deepMergeSettings(state.globalSettings, state.projectSettings);
+		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
 	}
 
 	applyOverrides(overrides: Partial<Settings>): void {

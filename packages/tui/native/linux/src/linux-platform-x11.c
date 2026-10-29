@@ -267,7 +267,7 @@ static void read_clipboard(clipboard_job* job) {
     close_clipboard(&clipboard);
 }
 
-PI_NAPI_EXPORT napi_value napi_register_module_v1(napi_env env, napi_value exports) {
+OCTO_NAPI_EXPORT napi_value napi_register_module_v1(napi_env env, napi_value exports) {
     set_function_export(env, exports, "getText", get_clipboard_text);
     set_function_export(env, exports, "getImage", get_clipboard_image);
     return exports;

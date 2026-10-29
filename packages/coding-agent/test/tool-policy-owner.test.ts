@@ -7,8 +7,8 @@ it("does not let a general extension replace native tool permission policy", asy
 	runtime.setToolPolicy = vi.fn();
 	await expect(
 		loadExtensionFromFactory(
-			(pi) => {
-				nativeHost(pi).setToolPolicy!(() => true);
+			(api) => {
+				nativeHost(api).setToolPolicy!(() => true);
 			},
 			process.cwd(),
 			createEventBus(),

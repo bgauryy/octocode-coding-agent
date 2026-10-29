@@ -6,7 +6,7 @@ import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import * as runner from "../../src/octocode/hooks/runner.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => {
@@ -108,9 +108,9 @@ it.each([false, true])("applies the per-handler context limit in actual dispatch
 			},
 		}),
 	});
-	const f = fakePi();
+	const f = fakeHost();
 	const ctx = fakeCtx({ cwd: tmp() });
-	const hooks = registerHooks(f.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(f.api, {}, home);
 	await f.fire("session_start", { reason: "startup" }, ctx);
 	try {
 		await hooks.preToolUse(

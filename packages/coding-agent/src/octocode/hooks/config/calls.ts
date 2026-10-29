@@ -1,6 +1,7 @@
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import { fileChanges } from "../../shared/file-input.ts";
-import type { HookHandler, HookConfig, HookEvent } from "../contracts.ts";
+import type { HookEvent } from "../catalog.ts";
+import type { HookHandler, HookConfig } from "../contracts.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { stringOrEmpty } from "../../shared/util.ts";
 import { matchesHook } from "../profiles.ts";

@@ -7,8 +7,8 @@ import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookHostMetadata, type HookSession } from "./types.ts";
 
 /** Native PreCompact remains observational; source-profile vetoes cancel through the core owner. */
-export function registerPreCompactHook(pi: ExtensionAPI, dispatch: Dispatch): void {
-	pi.on("session_before_compact", async (event, ctx) => {
+export function registerPreCompactHook(api: ExtensionAPI, dispatch: Dispatch): void {
+	api.on("session_before_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
 		const verdict = await dispatch(
 			ctx,
@@ -25,12 +25,12 @@ export function registerPreCompactHook(pi: ExtensionAPI, dispatch: Dispatch): vo
 }
 
 export function registerSessionEndHook(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	session: HookSession,
 	dispatch: Dispatch,
 	env: NodeJS.ProcessEnv,
 ): void {
-	pi.on("session_shutdown", async (event, ctx) => {
+	api.on("session_shutdown", async (event, ctx) => {
 		if (event.reason === "reload") return;
 		const run = async (protocol: "claude" | "codex", reason: string) => {
 			const configuredBudget = Math.min(
@@ -58,8 +58,8 @@ export function registerSessionEndHook(
 	});
 }
 
-export function registerPostCompactHook(pi: ExtensionAPI, dispatch: Dispatch): void {
-	pi.on("session_compact", async (event, ctx) => {
+export function registerPostCompactHook(api: ExtensionAPI, dispatch: Dispatch): void {
+	api.on("session_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
 		const verdict = await dispatch(ctx, "PostCompact", [trigger], () => ({
 			trigger,
@@ -67,7 +67,7 @@ export function registerPostCompactHook(pi: ExtensionAPI, dispatch: Dispatch): v
 		}));
 		if (verdict.stop) ctx.abort("internal");
 		if (verdict.context && !verdict.stop && !ctx.signal?.aborted) {
-			await pi.sendMessage(
+			await api.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
 					content: capContext(`Context from PostCompact hooks:\n${verdict.context}`),
@@ -79,8 +79,8 @@ export function registerPostCompactHook(pi: ExtensionAPI, dispatch: Dispatch): v
 	});
 }
 
-export function registerPostToolBatchHook(pi: ExtensionAPI, dispatch: Dispatch): void {
-	pi.on("turn_end", async (event, ctx) => {
+export function registerPostToolBatchHook(api: ExtensionAPI, dispatch: Dispatch): void {
+	api.on("turn_end", async (event, ctx) => {
 		if (ctx.signal?.aborted || event.toolResults.length === 0 || event.message.role !== "assistant") return;
 		const calls = event.message.content.filter((content) => content.type === "toolCall");
 		const verdict = await dispatch(
@@ -119,8 +119,8 @@ export function registerPostToolBatchHook(pi: ExtensionAPI, dispatch: Dispatch):
 	});
 }
 
-export function registerPromptHook(pi: ExtensionAPI, dispatch: Dispatch): void {
-	pi.on("user_input", async (event, ctx) => {
+export function registerPromptHook(api: ExtensionAPI, dispatch: Dispatch): void {
+	api.on("user_input", async (event, ctx) => {
 		const verdict = await dispatch(ctx, "UserPromptSubmit", [], () => ({ prompt: event.text }), ctx.signal, "codex");
 		if (verdict.block && ctx.hasUI) notify(ctx.ui, `Blocked by a UserPromptSubmit hook: ${verdict.block}`, "warning");
 		return {
@@ -130,7 +130,7 @@ export function registerPromptHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 				: [],
 		};
 	});
-	pi.on("input", async (event, ctx) => {
+	api.on("input", async (event, ctx) => {
 		const verdict = await dispatch(ctx, "UserPromptSubmit", [], () => ({ prompt: event.text }), ctx.signal, [
 			"octocode",
 			"claude",
@@ -141,7 +141,7 @@ export function registerPromptHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 			return { action: "handled" };
 		}
 		if (verdict.context) {
-			await pi.sendMessage(
+			await api.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
 					content: capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`),
@@ -155,12 +155,12 @@ export function registerPromptHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 }
 
 export function registerInterruptHook(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	session: HookSession,
 	dispatch: Dispatch,
 	metadata: (() => HookHostMetadata) | undefined,
 ): void {
-	pi.on("agent_interrupted", async (event, ctx) => {
+	api.on("agent_interrupted", async (event, ctx) => {
 		if (!commandsFor(session.config, "Interrupt", []).length) return;
 		if (!event.model || !metadata?.().permissionMode) {
 			const diagnostic = "Skipping Codex Interrupt hook: live model or permission metadata is unavailable";

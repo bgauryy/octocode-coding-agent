@@ -8,12 +8,6 @@ export const NETWORK_TIMEOUT_MS = 10000;
 export const UPDATE_CHECK_CONCURRENCY = 4;
 export const GIT_UPDATE_CONCURRENCY = 4;
 
-export function isOfflineModeEnabled(): boolean {
-	const value = process.env.OCTOCODE_OFFLINE;
-	if (!value) return false;
-	return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
-}
-
 export interface PathMetadata {
 	source: string;
 	scope: SourceScope;

@@ -5,7 +5,6 @@ export type SlashCommandSource = "extension" | "prompt" | "skill";
 
 export interface SlashCommandInfo {
 	name: string;
-	aliases?: readonly string[];
 	description?: string;
 	source: SlashCommandSource;
 	sourceInfo: SourceInfo;
@@ -14,7 +13,6 @@ export interface SlashCommandInfo {
 export interface BuiltinSlashCommand {
 	requiresNative?: boolean;
 	name: string;
-	aliases?: readonly string[];
 	description: string;
 	argumentHint?: string;
 	argumentValues?: readonly string[];
@@ -25,14 +23,12 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "permissions",
 		requiresNative: true,
-		aliases: ["allowed-tools"],
 		description: "Inspect or change native permissions",
 		argumentHint: "<mode|grants|log|plan>",
 	},
 	{
 		name: "agents",
 		requiresNative: true,
-		aliases: ["list-agents", "peers"],
 		description: "List or control native and external agents",
 		argumentHint: "<operation>",
 	},
@@ -50,8 +46,8 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "context",
 		description: "Inspect context usage or set this session's context budget",
-		argumentHint: "<all|size|reset|tokens>",
-		argumentValues: ["all", "size", "reset"],
+		argumentHint: "<all|size|reset|full|tokens>",
+		argumentValues: ["all", "size", "reset", "full"],
 	},
 	{
 		name: "diff",
@@ -60,21 +56,23 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentKind: "path",
 	},
 	{ name: "help", description: "Find commands", argumentHint: "<search>" },
-	{ name: "settings", aliases: ["config"], description: "Open settings menu" },
+	{ name: "settings", description: "Open settings menu" },
 	{
 		name: "model",
-		aliases: ["models"],
 		description: "Choose the AI model for this chat, grouped by provider",
 		argumentHint: "<provider/model>",
 	},
 	{ name: "tree", description: "Navigate session tree (switch branches)" },
 	{
 		name: "effort",
-		aliases: ["thinking"],
 		description: "Set the coordinator's reasoning effort",
 		argumentHint: "<level>",
 	},
-	{ name: "modelsettings", description: "Configure model shortcuts; inspect prices and agent routing" },
+	{
+		name: "modelsettings",
+		description: "Configure model shortcuts; inspect prices and agent routing",
+		argumentHint: "[check]",
+	},
 	{
 		name: "export",
 		description: "Export session (HTML default, or specify path: .html/.jsonl)",
@@ -90,7 +88,6 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "share", description: "Share session as a private GitHub gist" },
 	{
 		name: "bug",
-		aliases: ["feedback"],
 		description: "Report a bug to the Octocode developers",
 		argumentHint: "<description>",
 	},
@@ -98,10 +95,9 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "rename", description: "Set session display name", argumentHint: "<name>" },
 	{
 		name: "status",
-		aliases: ["usage", "cost", "stats"],
 		description: "Show session statistics, skills and MCP status",
 	},
-	{ name: "changelog", aliases: ["release-notes"], description: "Show changelog entries" },
+	{ name: "changelog", description: "Show changelog entries" },
 	{ name: "keys", description: "Show all keyboard shortcuts" },
 	{ name: "fork", description: "Create a new fork from a previous user message" },
 	{ name: "clone", description: "Duplicate the current session at the current position" },
@@ -113,21 +109,20 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentValues: ["project", "config", "off"],
 	},
 	{
-		name: "providers",
-		aliases: ["login"],
+		name: "login",
 		description: "Connect AI providers; view status, update or remove credentials",
 		argumentHint: "<provider|pi>",
 	},
 	{ name: "logout", description: "Remove a saved AI provider credential; external credentials stay unchanged" },
 	{
 		name: "github",
-		description: "Manage GitHub code-search access; AI model access uses /providers",
+		description: "Manage GitHub code-search access; AI model access uses /login",
 		argumentHint: "<status|login|logout>",
 		argumentValues: ["status", "login", "logout"],
 	},
-	{ name: "new", aliases: ["clear", "reset"], description: "Start a new session", argumentHint: "<previous-name>" },
+	{ name: "new", description: "Start a new session", argumentHint: "<previous-name>" },
 	{ name: "compact", description: "Manually compact the session context", argumentHint: "<instructions>" },
-	{ name: "resume", aliases: ["continue"], description: "Browse and resume saved sessions", argumentHint: "<search>" },
+	{ name: "resume", description: "Browse and resume saved sessions", argumentHint: "<search>" },
 	{
 		name: "skills",
 		description: "Find, inspect, enable or disable skills",
@@ -136,15 +131,13 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "debug", description: "Save local terminal and session diagnostics" },
 	{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
-	{ name: "quit", aliases: ["exit"], description: `Quit ${APP_NAME}` },
+	{ name: "quit", description: `Quit ${APP_NAME}` },
 ];
 
-/** A command whose names prompt and skill commands must not take. */
+/** A command whose name prompt and skill commands must not take. */
 export interface CommandReservation {
 	name: string;
 	invocationName?: string;
-	aliases?: readonly string[];
-	invocationAliases?: readonly string[];
 }
 
 /** Names taken by the built-in commands and `reservedCommands`. */
@@ -152,29 +145,13 @@ export function reservedCommandNames(reservedCommands: readonly CommandReservati
 	const reserved = new Set<string>();
 	for (const command of [...BUILTIN_SLASH_COMMANDS, ...reservedCommands] as CommandReservation[]) {
 		reserved.add(command.name);
-		for (const name of commandNames(command)) reserved.add(name);
 		if (command.invocationName) reserved.add(command.invocationName);
 	}
 	return reserved;
 }
 
-/** Spellings owned by one command; resolved extension aliases take precedence over declarations. */
-export function commandNames(command: CommandReservation): string[] {
-	return [command.invocationName ?? command.name, ...(command.invocationAliases ?? command.aliases ?? [])];
-}
-
-export function validateCommandAliases(name: string, aliases: readonly string[] = []): void {
-	if (!Array.isArray(aliases)) throw new Error("Command aliases must be an array of strings.");
-	const seen = new Set([name]);
-	for (const alias of aliases) {
-		if (typeof alias !== "string" || !/^[a-z]+(?:-[a-z]+)*$/.test(alias) || seen.has(alias))
-			throw new Error(`Invalid or duplicate command alias: ${alias}`);
-		seen.add(alias);
-	}
-}
-
 export function getBuiltinCommand(name: string): BuiltinSlashCommand | undefined {
-	return BUILTIN_SLASH_COMMANDS.find((command) => commandNames(command).includes(name));
+	return BUILTIN_SLASH_COMMANDS.find((command) => command.name === name);
 }
 
 export function parseSlashCommand(text: string): { name: string; args: string } | undefined {

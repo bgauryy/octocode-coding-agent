@@ -20,7 +20,7 @@ interface RegisterBacklogOptions extends BacklogOptions {
  * `commands` is registered) and footer counts with a persistent `/octocode` hint for backlogs and activity.
  */
 export function registerBacklog(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	options: RegisterBacklogOptions,
 ): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void> {
 	const { commands, open, ...backlogOptions } = options;
@@ -39,7 +39,7 @@ export function registerBacklog(
 		}
 	};
 
-	const launch = webLauncher(pi, open);
+	const launch = webLauncher(api, open);
 	const openWeb = options.openWeb ? sharedWorkspaceWeb(options.openWeb, backlogOptions.env) : undefined;
 	const openView = async (ctx: ExtensionCommandContext, view: "board" | "activity") => {
 		const backlog = openBacklog(ctx, backlogOptions);
@@ -53,11 +53,11 @@ export function registerBacklog(
 			view,
 		);
 	};
-	registerBacklogTool(pi, { ...backlogOptions, changed: refresh });
+	registerBacklogTool(api, { ...backlogOptions, changed: refresh });
 	if (!options.isSubagent)
 		commands.add(
 			"backlog",
-			backlogCommand(pi, {
+			backlogCommand(api, {
 				...backlogOptions,
 				...(open ? { open } : {}),
 				changed: refresh,
@@ -65,8 +65,8 @@ export function registerBacklog(
 				openView: (ctx) => openView(ctx, "board"),
 			}),
 		);
-	pi.on("session_start", (_event, ctx) => refresh(ctx));
+	api.on("session_start", (_event, ctx) => refresh(ctx));
 	// Another session or agent may have changed the board: repaint at the end of every run.
-	pi.on("agent_end", (_event, ctx) => refresh(ctx));
+	api.on("agent_end", (_event, ctx) => refresh(ctx));
 	return openView;
 }

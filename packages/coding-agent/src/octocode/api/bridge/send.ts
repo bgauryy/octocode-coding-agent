@@ -15,7 +15,7 @@ const RESERVED_SENDERS = new Set([USER_SENDER, EXTERNAL_SENDER]);
 
 /** What `message.send` needs of the API it runs in; `OctocodeApi` passes its own state and checks. */
 interface SendHost {
-	readonly pi: ExtensionAPI;
+	readonly api: ExtensionAPI;
 	readonly agents: AgentDirectory;
 	readonly operations: ApiOperations;
 	readonly receipts: SendReceipts;
@@ -109,7 +109,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		host.receipts.accept(receipt, waiter, key !== undefined || wait);
 		dispatched = true;
 		const settlementVersion = host.receipts.settlementVersion;
-		const sending = host.pi.sendMessage(
+		const sending = host.api.sendMessage(
 			{
 				customType: EXTERNAL_MESSAGE_TYPE,
 				content: fenceUntrusted(messageHeader(apiClientLabel(from), at), text),

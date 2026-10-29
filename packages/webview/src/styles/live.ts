@@ -43,6 +43,7 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .activity-feed { display: grid; gap: 10px; }
 .result-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--border); border-left: 3px solid var(--tone); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; content-visibility: auto; contain-intrinsic-size: auto 160px; }
 .result-card.is-compact { padding: 10px 12px; gap: 6px; border-left-width: 2px; box-shadow: none; }
+.result-card [role=alert]:not(:empty) { color: var(--danger); font-size: 13px; }
 .result-card h3 { font-size: 15px; font-weight: 600; line-height: 1.45; }
 .result-card.is-compact h3 { font-family: var(--mono); font-size: 13px; font-weight: 500; }
 .result-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
@@ -63,10 +64,6 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .tool-group > summary::after { content: ""; width: 7px; height: 7px; margin-left: auto; border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3); transform: rotate(-45deg); transition: transform .15s var(--ease); }
 .tool-group[open] > summary::after { transform: rotate(45deg); }
 .tool-group-title { font-weight: 600; }
-.tool-group-icon { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; }
-.tool-group-icon.is-done { color: var(--success); }
-.tool-group-icon.is-failed { color: var(--danger); }
-.tool-group-icon.is-running { border: 2px solid var(--accent-line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tool-group-list { display: grid; gap: 6px; padding: 0 10px 10px; }
 .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }

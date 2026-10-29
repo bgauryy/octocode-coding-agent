@@ -9,7 +9,7 @@ import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, Tran
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { getUserAgent } from "../utils/user-agent.ts";
 import { hasProviderHeader, providerHeadersToRecord } from "../utils/headers.ts";
 import { getDeclaredTools, resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
 import { type AzureEndpointOptions, resolveAzureConfig, resolveDeploymentName } from "./azure-openai-config.ts";
@@ -129,7 +129,7 @@ function createClient(
 	apiKey: string | undefined,
 	options?: AzureOpenAIResponsesOptions,
 ) {
-	const headers = { "User-Agent": getPiUserAgent(), ...model.headers };
+	const headers = { "User-Agent": getUserAgent(), ...model.headers };
 
 	if (options?.headers) {
 		Object.assign(headers, options.headers);

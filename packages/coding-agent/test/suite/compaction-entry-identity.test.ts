@@ -9,15 +9,15 @@ it.each(["manual", "threshold", "overflow"] as const)(
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "Repeated summary",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
 							tokensBefore: event.preparation.tokensBefore,
 						},
 					}));
-					pi.on("session_compact", async (event) => {
+					api.on("session_compact", async (event) => {
 						emitted.push(event.compactionEntry.id);
 					});
 				},

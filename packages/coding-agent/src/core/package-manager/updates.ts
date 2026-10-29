@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { gt } from "semver";
+import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import type { PackageSource } from "../settings-manager.ts";
 import { runWithConcurrency } from "./commands.ts";
 import { getGitInstallPath } from "./git.ts";
@@ -20,7 +21,6 @@ import {
 	GIT_UPDATE_CONCURRENCY,
 	type GitUpdateTarget,
 	type InstalledSourceScope,
-	isOfflineModeEnabled,
 	type NpmSource,
 	type NpmUpdateTarget,
 	type PackageManagerHost,

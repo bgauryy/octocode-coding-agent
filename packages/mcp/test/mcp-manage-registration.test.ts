@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { createEventBus } from "../../coding-agent/src/core/event-bus.ts";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../../coding-agent/src/core/extensions/loader.ts";
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
-import { fakeCtx } from "../../coding-agent/test/octocode/fake-pi.ts";
+import { fakeCtx } from "../../coding-agent/test/octocode/fake-host.ts";
 import { reconnect } from "../src/connections.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import { McpExtensionState } from "../src/state.ts";

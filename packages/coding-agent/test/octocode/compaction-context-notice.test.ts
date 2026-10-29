@@ -36,7 +36,7 @@ describe("context usage notice", () => {
 	it("sends one notice per band crossed, hidden from the transcript view, without starting a turn", () => {
 		const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
 		const entries: Array<{ message: unknown }> = [];
-		const pi = {
+		const api = {
 			sendMessage: (message: Record<string, unknown>, options: unknown) => {
 				sent.push({ message, options });
 				entries.push({ message: { role: "custom", ...message } });
@@ -45,21 +45,21 @@ describe("context usage notice", () => {
 		};
 		let tokens = 100_000;
 		const ctx = { model, getContextUsage: () => ({ tokens, contextWindow: 200_000, percent: 50 }) };
-		noticeContextUsage(pi as never, ctx as never, entries);
-		noticeContextUsage(pi as never, ctx as never, entries);
+		noticeContextUsage(api as never, ctx as never, entries);
+		noticeContextUsage(api as never, ctx as never, entries);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message).toMatchObject({ customType: CONTEXT_NOTICE_TYPE, display: false, details: { band: 0.5 } });
 		expect(sent[0].options).toEqual({ triggerTurn: false });
 		tokens = 175_000;
-		noticeContextUsage(pi as never, ctx as never, entries);
+		noticeContextUsage(api as never, ctx as never, entries);
 		expect(sent.map((entry) => (entry.message.details as { band: number }).band)).toEqual([0.5, 0.9]);
 	});
 
 	it("stays quiet when usage is unknown or the model has no window", () => {
 		const sent: unknown[] = [];
-		const pi = { sendMessage: (message: unknown) => sent.push(message) };
-		noticeContextUsage(pi as never, { model, getContextUsage: () => ({ tokens: null }) } as never, []);
-		noticeContextUsage(pi as never, { model: undefined, getContextUsage: () => ({ tokens: 1 }) } as never, []);
+		const api = { sendMessage: (message: unknown) => sent.push(message) };
+		noticeContextUsage(api as never, { model, getContextUsage: () => ({ tokens: null }) } as never, []);
+		noticeContextUsage(api as never, { model: undefined, getContextUsage: () => ({ tokens: 1 }) } as never, []);
 		expect(sent).toEqual([]);
 	});
 });

@@ -16,6 +16,7 @@ import { untilAborted } from "../../../coding-agent/src/octocode/shared/util.ts"
 import type { ExternalBackend, ExternalReply } from "../../../coding-agent/src/octocode/external/protocol.ts";
 import { errorMessage } from "../../../coding-agent/src/utils/guards.ts";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
+import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
 
 interface AcpConnectInput {
 	command: string;
@@ -23,6 +24,8 @@ interface AcpConnectInput {
 	vendor: string;
 	cwd: string;
 	sessionId?: string;
+	/** A value of the agent's model config option, set before the connection is returned. */
+	model?: string;
 	timeoutMs?: number;
 }
 
@@ -75,6 +78,7 @@ export class AcpBackend implements ExternalBackend {
 	private readonly child: ChildProcessWithoutNullStreams;
 	readonly cwd: string;
 	private currentSessionId: string;
+	private currentModels?: AcpModels;
 	private readonly permission: AcpPermission;
 	private constructor(
 		child: ChildProcessWithoutNullStreams,
@@ -109,6 +113,10 @@ export class AcpBackend implements ExternalBackend {
 		return this.currentSessionId;
 	}
 
+	get models(): AcpModels | undefined {
+		return this.currentModels;
+	}
+
 	get isClosed(): boolean {
 		return this.lifetime.signal.aborted;
 	}
@@ -140,7 +148,7 @@ export class AcpBackend implements ExternalBackend {
 				Writable.toWeb(child.stdin),
 				Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>,
 			);
-			const connection = client({ name: "octocode-pi-external" })
+			const connection = client({ name: "octocode-external" })
 				.onRequest(methods.client.session.requestPermission, (ctx) => backend.requestPermission(ctx.params, ctx.signal))
 				.onNotification(methods.client.session.update, (ctx) => backend.update(ctx.params))
 				.connect(stream);
@@ -165,7 +173,7 @@ export class AcpBackend implements ExternalBackend {
 				phase = "session/load";
 				if (!initialization.agentCapabilities?.loadSession)
 					throw new Error("ACP agent does not advertise session/load; existing session was not replaced.");
-				await untilAborted(
+				const loaded = await untilAborted(
 					connection.agent.request(methods.agent.session.load, {
 						sessionId: input.sessionId,
 						cwd,
@@ -173,6 +181,7 @@ export class AcpBackend implements ExternalBackend {
 					}),
 					startup,
 				);
+				backend.currentModels = acpModels(loaded ?? {});
 			} else {
 				phase = "session/new";
 				const session = await untilAborted(
@@ -181,6 +190,21 @@ export class AcpBackend implements ExternalBackend {
 				);
 				if (!session.sessionId) throw new Error("ACP agent returned an empty session ID.");
 				backend.currentSessionId = session.sessionId;
+				backend.currentModels = acpModels(session);
+			}
+			if (input.model) {
+				phase = "session/set_config_option";
+				const refusal = modelRefusal(backend.currentModels, input.model);
+				if (refusal) throw new Error(refusal);
+				const selected = await untilAborted(
+					connection.agent.request(methods.agent.session.setConfigOption, {
+						sessionId: backend.currentSessionId,
+						configId: backend.currentModels!.configId!,
+						value: input.model,
+					}),
+					startup,
+				);
+				backend.currentModels = acpModels(selected) ?? { ...backend.currentModels!, current: input.model };
 			}
 			startup.throwIfAborted();
 			backend.lifetime.signal.throwIfAborted();
@@ -239,16 +263,21 @@ export class AcpBackend implements ExternalBackend {
 		}
 	}
 
-	/** Ignore unrelated sessions and thoughts; the turn capture owns bounded previews and overflow evidence. */
+	/**
+	 * Ignore unrelated sessions and thoughts; the turn capture owns bounded previews and overflow evidence. Config updates
+	 * refresh the model state between turns too. Slash-command catalogs are the peer's own UI: they can run to hundreds of
+	 * entries and repeat every turn, so they never reach the reply.
+	 */
 	private update(notification: SessionNotification): void {
-		const turn = this.active;
-		if (
-			!turn ||
-			notification.sessionId !== this.sessionId ||
-			turn.signal.aborted ||
-			notification.update.sessionUpdate === "agent_thought_chunk"
-		)
+		if (notification.sessionId !== this.sessionId) return;
+		const update = notification.update;
+		if (update.sessionUpdate === "config_option_update") {
+			this.currentModels = acpModels(update) ?? this.currentModels;
 			return;
+		}
+		if (update.sessionUpdate === "available_commands_update") return;
+		const turn = this.active;
+		if (!turn || turn.signal.aborted || update.sessionUpdate === "agent_thought_chunk") return;
 		turn.output.append(notification);
 	}
 

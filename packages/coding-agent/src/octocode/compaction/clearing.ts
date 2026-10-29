@@ -123,12 +123,12 @@ function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<str
 
 /**
  * Clears the old results when the cache lifetime `ttlMs` has passed since the cache was last used (`now`): saves each,
- * records the decision with `pi.appendEntry`, and makes the file guard forget the files whose read was cleared and that
+ * records the decision with `api.appendEntry`, and makes the file guard forget the files whose read was cleared and that
  * no read left in the context still shows (the rule `contextReads` rebuilds the guard by on a resume). Does
  * nothing when the lifetime is unknown, the session has no reply yet, or less than `CLEAR_AT_LEAST_TOKENS` would be freed.
  */
 export function clearColdResults(
-	pi: Pick<ExtensionAPI, "appendEntry">,
+	api: Pick<ExtensionAPI, "appendEntry">,
 	ctx: ExtensionContext,
 	guard: Pick<FileGuard, "forget">,
 	ttlMs: number | undefined,
@@ -163,7 +163,7 @@ export function clearColdResults(
 		const id = String(message.toolCallId);
 		if (file !== undefined && !savedOf.has(id)) results.push({ id, saved: file });
 	}
-	pi.appendEntry(CLEARED_RESULTS_TYPE, { results });
+	api.appendEntry(CLEARED_RESULTS_TYPE, { results });
 	// The entry is in the branch now (`appendEntry` is synchronous), so `contextReads` sees the context as cleared.
 	const shown = new Set(contextReads(ctx).map((read) => canonicalPath(read.file)));
 	const calls = toolCallArguments(messages);

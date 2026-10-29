@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
@@ -15,9 +15,9 @@ afterEach(() => vi.unstubAllEnvs());
 async function setup() {
 	const cwd = fs.realpathSync(tmp());
 	fs.mkdirSync(path.join(cwd, ".git"));
-	fs.mkdirSync(path.join(cwd, ".codex"));
+	fs.mkdirSync(path.join(cwd, ".octocode"));
 	fs.writeFileSync(
-		path.join(cwd, ".codex/hooks.json"),
+		path.join(cwd, ".octocode/hooks.json"),
 		JSON.stringify({
 			hooks: { PostToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "node post.cjs" }] }] },
 		}),
@@ -27,9 +27,9 @@ async function setup() {
 		"let input=''; process.stdin.on('data', chunk => input += chunk).on('end', () => require('node:fs').appendFileSync(JSON.parse(input).tool_input.file_path, '[hook]'));\n",
 	);
 	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
-	const fake = fakePi();
-	registerHooks(fake.pi, { OCTOCODE_HOOKS: "1" }, tmp());
-	registerFileTool(fake.pi, new FileGuard(), fakePermission("manual"));
+	const fake = fakeHost();
+	registerHooks(fake.api, {}, tmp());
+	registerFileTool(fake.api, new FileGuard(), fakePermission("manual"));
 	const ctx = fakeCtx({ cwd, ui: { selects: ["Review one by one", "Apply", "Reject"] } });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { ...fake, cwd, ctx, tool: fake.tools.get("file") };

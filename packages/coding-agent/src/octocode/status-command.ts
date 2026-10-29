@@ -3,16 +3,16 @@ import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
 
 /** `/status`: the loaded skills and each MCP server's connection status. */
-export function statusCommand(pi: ExtensionAPI): Subcommand {
+export function statusCommand(api: ExtensionAPI): Subcommand {
 	return {
 		description: "status — list loaded skills and MCP connection status",
 		dialog: "interaction",
 		handler: async (_args, ctx) => {
-			const skills = pi
+			const skills = api
 				.getCommands()
 				.filter((command) => command.source === "skill")
 				.sort((a, b) => a.name.localeCompare(b.name));
-			const servers = getMcpSessionStatus(pi.events);
+			const servers = getMcpSessionStatus(api.events);
 			say(
 				ctx,
 				[

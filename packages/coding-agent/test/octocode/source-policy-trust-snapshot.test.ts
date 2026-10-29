@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { projectTrustForContents, saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fakeCtx } from "./fake-pi.ts";
+import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 it("authorizes the captured settings bytes rather than other bytes visible during trust", async () => {

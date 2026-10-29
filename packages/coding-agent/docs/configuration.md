@@ -2,9 +2,9 @@
 
 Start with [CONFIGURATIONS.md](../../../CONFIGURATIONS.md) for global/workspace locations and the commands for MCP, skills, models, and other resources. `/mcp config` shows the active MCP paths without reading credentials or connecting servers.
 
-For lifecycle automation, see [hooks](hooks.md): execution is opt-in, discovery uses explicit JSON paths plus Codex TOML in the source-profile preview, and project hooks require native configuration trust. Explicit local [plugins](plugins.md) use the `plugins` settings array and separate component review.
+For lifecycle automation, see [hooks](hooks.md): discovery uses explicit JSON paths plus Codex TOML, each source runs under its own profile, and project hooks require native configuration trust. Explicit local [plugins](plugins.md) use the `plugins` settings array and separate component review.
 
-Source [permission rules](permissions.md) have a separate approval boundary from hook execution. The compatibility preview can enforce Claude deny/ask rules even with executable hooks disabled.
+Source [permission rules](permissions.md) have a separate approval boundary from hook execution. Claude deny/ask rules apply even when `disableAllHooks` turns hooks off.
 
 ## Agent directory
 
@@ -93,7 +93,7 @@ own tools and commands; normal conflict diagnostics apply.
 
 Explicit home overrides and custom SDK directories disable automatic Pi fallback.
 Pi sessions, trust decisions, device identity and telemetry consent are not imported.
-Pi authentication is not loaded automatically; `/providers pi` offers an explicit,
+Pi authentication is not loaded automatically; `/login pi` offers an explicit,
 confirmed credential import. Pi model definitions remain fallback inputs. Existing
 directories are neither moved nor deleted. See [provider setup](providers.md#use-pi-configuration).
 Project trust decisions are saved by atomically replacing the native `trust.json`.
@@ -138,11 +138,11 @@ Session transcripts and compaction entries are saved in local JSONL files under 
 
 ## Prompt cache warming
 
-Set `cacheWarming` in the global `settings.json`: `"off"` disables refreshes, `"streaming"` (the default) refreshes while the agent is active, and `"idle"` also permits refreshes after it settles. Project settings cannot enable paid warming. For example:
+Set `cacheWarming` in the global `settings.json`: `"off"` disables refreshes, `"streaming"` refreshes while the agent is active, and `"idle"` (the default) also permits refreshes after it settles. Project settings cannot enable paid warming. For example:
 
 ```json
 {
-	"cacheWarming": "streaming",
+	"cacheWarming": "idle",
 	"cacheRetention": "short"
 }
 ```

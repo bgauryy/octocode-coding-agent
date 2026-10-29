@@ -4,7 +4,7 @@
  */
 
 import * as path from "node:path";
-import { Spacer, Text } from "@octocodeai/octocode-tui";
+import { SEPARATOR, Spacer, Text } from "@octocodeai/octocode-tui";
 import { APP_NAME, APP_TITLE } from "../../../config.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { takeUnnotifiedCrash } from "../../../core/crash-log.ts";
@@ -257,16 +257,12 @@ export async function init(host: StartupHost): Promise<void> {
 }
 
 /**
- * Update terminal title with session name and cwd.
+ * Update terminal title with session name and cwd, in the format the native notifier prefixes with the session state.
  */
 export function updateTerminalTitle(host: StartupHost): void {
 	const cwdBasename = path.basename(host.sessionManager.getCwd());
 	const sessionName = host.sessionManager.getSessionName();
-	if (sessionName) {
-		host.ui.terminal.setTitle(`${APP_TITLE} - ${sessionName} - ${cwdBasename}`);
-	} else {
-		host.ui.terminal.setTitle(`${APP_TITLE} - ${cwdBasename}`);
-	}
+	host.ui.terminal.setTitle([APP_TITLE, sessionName, cwdBasename].filter(Boolean).join(SEPARATOR));
 }
 
 /**

@@ -80,15 +80,15 @@ describe("compaction summary", () => {
 		] as never);
 		expect([...ops.read]).toEqual(["a.ts"]);
 		expect([...ops.edited]).toEqual(["b.ts"]);
-		const pi = fileOps();
-		carryFileLists({ fileOps: pi }, [compaction(false, ["a.ts"], ["b.ts"])] as never);
-		carryFileLists({ fileOps: pi }, [] as never);
-		expect(pi.read.size + pi.edited.size).toBe(0);
+		const untouched = fileOps();
+		carryFileLists({ fileOps: untouched }, [compaction(false, ["a.ts"], ["b.ts"])] as never);
+		carryFileLists({ fileOps: untouched }, [] as never);
+		expect(untouched.read.size + untouched.edited.size).toBe(0);
 	});
 
 	it("leaves the summary to Octocode without a model, after an abort, or when the call fails, and records why in the session", async () => {
 		const notes: unknown[] = [];
-		const pi = {
+		const api = {
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
@@ -124,7 +124,7 @@ describe("compaction summary", () => {
 				hasUI: true,
 				ui: { notify: (text: string) => notices.push(text) },
 			}) as never;
-		expect(await writeSummary(pi, event(), ctx(undefined))).toBeUndefined();
+		expect(await writeSummary(api, event(), ctx(undefined))).toBeUndefined();
 		expect(notes).toEqual([
 			{
 				customType: COMPACTION_NOTE_TYPE,
@@ -132,11 +132,11 @@ describe("compaction summary", () => {
 			},
 		]);
 		// A cancel is the user's own: no default summary follows, so nothing is recorded or shown.
-		expect(await writeSummary(pi, event(true), ctx({ id: "m" }))).toBeUndefined();
+		expect(await writeSummary(api, event(true), ctx({ id: "m" }))).toBeUndefined();
 		expect(notes).toHaveLength(1);
 		expect(notices).toEqual([]);
 		expect(
-			await writeSummary(pi, event(), ctx({ id: "m", provider: "p", api: "x", maxTokens: 100, contextWindow: 1000 })),
+			await writeSummary(api, event(), ctx({ id: "m", provider: "p", api: "x", maxTokens: 100, contextWindow: 1000 })),
 		).toBeUndefined();
 		expect(notices.at(-1)).toMatch(/compaction summary failed .*Octocode writes its default summary/);
 		expect(notes).toHaveLength(2);

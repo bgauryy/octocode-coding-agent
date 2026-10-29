@@ -3,13 +3,13 @@ import { expect, it, vi } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
 import { octocodeHome } from "../../src/octocode/shared/home.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 function setup(target: string, allowed = false) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const permission = new Permission({
-		pi: fake.pi,
+		api: fake.api,
 		env: { OCTOCODE_PERMISSION: "manual" },
 		isSubagent: false,
 	});

@@ -5,10 +5,10 @@ import type * as NativeConfig from "../../src/config.ts";
 import { stopConfirmation } from "../../src/octocode/permission/stop-confirm.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 
@@ -21,8 +21,8 @@ beforeAll(() => {
 	});
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -31,10 +31,10 @@ afterAll(() => {
 });
 
 function setup(hasUI = true) {
-	const f = fakePi();
-	const team = new Team(f.pi);
+	const f = fakeHost();
+	const team = new Team(f.api);
 	const permission = fakePermission("workspace");
-	const control = registerAgentTool(f.pi, () => new Map(), team, permission);
+	const control = registerAgentTool(f.api, () => new Map(), team, permission);
 	permission.setConfirmStop(stopConfirmation(() => control.running(), false));
 	const ctx = fakeCtx({ cwd: tmp(), hasUI });
 	team.start(ctx);

@@ -4,10 +4,11 @@ export const BASE_CSS = `
 	color-scheme: light dark;
 	--bg: #f6f8fa; --surface: #ffffff; --surface-2: #f6f8fa; --surface-3: #eaeef2;
 	--border: #d0d7de; --border-soft: #eaeef2;
-	--text: #24292f; --text-2: #4b5563; --text-3: #667085;
+	--text: #24292f; --text-2: #4b5563; --text-3: #5b6472;
 	--accent: #6d28d9; --accent-strong: #5b21b6; --accent-soft: #f3e8ff; --accent-line: #ddd6fe; --on-accent: #ffffff;
-	--success: #15803d; --danger: #b91c1c; --warning: #b45309; --tool: #0369a1; --agent: #6d28d9; --teal: #0d9488; --coral: #c2410c; --lav: #4f46e5;
-	--state-backlog: #8c959f; --state-todo: #4b5563; --state-ongoing: #b45309; --state-done: #15803d;
+	--success: #166534; --danger: #b91c1c; --warning: #92400e; --tool: #0369a1; --agent: #6d28d9; --teal: #0d9488; --coral: #c2410c; --lav: #4f46e5;
+	--state-backlog: #6e7781; --state-todo: #4b5563; --state-ongoing: #92400e; --state-done: #166534;
+	--state-pending: var(--text-3); --state-running: var(--accent); --state-waiting: var(--warning); --state-failed: var(--danger); --state-stopped: var(--warning);
 	--shadow-sm: 0 1px 2px rgb(31 35 40 / .06); --shadow-md: 0 4px 12px rgb(31 35 40 / .08); --shadow-lg: 0 24px 64px rgb(31 35 40 / .22);
 	--radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
 	--font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;

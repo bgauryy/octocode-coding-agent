@@ -52,6 +52,13 @@ select { min-height: 34px; padding: 4px 28px 4px 10px; font-size: 13px; cursor: 
 .live-dot { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
 .live-dot:not(.is-paused) { animation: pulse 1.8s var(--ease) infinite; }
 .live-dot.is-paused { background: var(--text-3); animation: none; }
+.state-mark { flex-shrink: 0; color: var(--mark, currentColor); vertical-align: -2px; }
+.mark-pending { --mark: var(--state-pending); } .mark-running { --mark: var(--state-running); } .mark-waiting { --mark: var(--state-waiting); }
+.mark-done { --mark: var(--state-done); } .mark-failed { --mark: var(--state-failed); } .mark-stopped { --mark: var(--state-stopped); }
+.badge.tone-warning .mark-running { --mark: var(--warning); }
+.mark-arc { transform-origin: 7px 7px; animation: spin .8s linear infinite; }
+.mark-waiting { animation: breathe 2.6s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .empty-state { display: grid; justify-items: center; gap: 6px; padding: 40px 20px; text-align: center; color: var(--text-2); }
 .empty-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 6px; border-radius: var(--radius); background: var(--accent-soft); color: var(--accent); }

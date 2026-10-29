@@ -22,8 +22,8 @@ describe("automatic compaction with an unknown (zero) context window", () => {
 			models: [{ id: "faux-1", contextWindow: 0, maxTokens: 100 }],
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "summary",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

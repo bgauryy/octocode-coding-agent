@@ -90,7 +90,7 @@ async function loginCommand(state: McpExtensionState, server: McpServer, ctx: Ex
 }
 
 function getArgumentCompletions(state: McpExtensionState, prefix: string) {
-	const { pi } = state;
+	const { api } = state;
 	const words = prefix.trimStart().split(/\s+/);
 	const [action = "", name = "", value = ""] = words;
 	if (words.length === 1)
@@ -117,7 +117,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 					description: firstLine(tool.description ?? ""),
 				}));
 		if (words.length === 2)
-			return getMcpSessionStatus(pi.events)
+			return getMcpSessionStatus(api.events)
 				.filter((server) => server.name.startsWith(name))
 				.map((server) => ({ value: `tools ${server.name} `, label: server.name, description: server.state }));
 		return null;
@@ -145,7 +145,7 @@ function showToolsCommand(state: McpExtensionState, name: string, extra: string[
 		ctx.ui.notify(MCP_USAGE, "warning");
 		return;
 	}
-	const snapshot = getMcpSessionStatus(state.pi.events).filter((server) => !name || server.name === name);
+	const snapshot = getMcpSessionStatus(state.api.events).filter((server) => !name || server.name === name);
 	if (name && snapshot.length === 0) {
 		ctx.ui.notify(`No MCP server named "${name}".`, "error");
 		return;
@@ -257,7 +257,7 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Ext
 }
 
 export function registerMcpCommand(state: McpExtensionState): void {
-	state.pi.registerCommand("mcp", {
+	state.api.registerCommand("mcp", {
 		description:
 			"Manage MCP servers, inspect tools and configuration, sign in, reconnect, or change enablement and exposure",
 		getArgumentCompletions: (prefix) => getArgumentCompletions(state, prefix),

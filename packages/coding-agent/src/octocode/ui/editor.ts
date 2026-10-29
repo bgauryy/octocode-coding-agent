@@ -82,8 +82,8 @@ export function promptLabel(text: string, theme: Paint): string {
 	return theme.fg("accent", ` ${LABEL} `);
 }
 
-function borderTint(text: string, pi: (text: string) => string, theme: Paint): (text: string) => string {
-	if (text.trimStart().startsWith("!")) return pi;
+function borderTint(text: string, api: (text: string) => string, theme: Paint): (text: string) => string {
+	if (text.trimStart().startsWith("!")) return api;
 	return (part) => theme.fg("accent", part);
 }
 
@@ -171,18 +171,18 @@ const isEditor = (component: Component): component is CustomEditor =>
  * factory's editor is kept and decorated when it is an editor; any other component only gets the shortcut. The hint
  * shows until the conversation starts: by then the footer chip carries the Shift+Tab reminder.
  */
-export function registerEditor(pi: ExtensionAPI, permission: EditorPermission): void {
+export function registerEditor(api: ExtensionAPI, permission: EditorPermission): void {
 	let installed: EditorFactory | undefined;
 	let context: ExtensionContext;
 	let started = false;
 	const sample = (ctx: ExtensionContext) => {
 		started = ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
 	};
-	pi.on("agent_start", async () => {
+	api.on("agent_start", async () => {
 		started = true;
 	});
-	pi.on("session_tree", async (_event, ctx) => sample(ctx));
-	pi.on("session_start", async (_event, ctx) => {
+	api.on("session_tree", async (_event, ctx) => sample(ctx));
+	api.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		context = ctx;
 		sample(ctx);

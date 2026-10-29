@@ -8,7 +8,7 @@ import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 let dir: string;
 let db: AgentDb;
@@ -28,9 +28,10 @@ function setup(
 	options: {
 		send?: () => Promise<void>;
 		tell?: (to: string, text: string, signal?: AbortSignal) => Promise<unknown>;
+		expiry?: () => string;
 	} = {},
 ) {
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: dir });
 	const session = {
 		sessionId: ctx.sessionManager.getSessionId(),
@@ -42,13 +43,14 @@ function setup(
 	applications.push(application);
 	const tell = vi.fn(options.tell ?? (async () => ({ sent: ["worker"], id: 1 })));
 	const stop = vi.fn(() => "Not owned by this session");
-	const runtime = new WorkspaceRuntime(fake.pi, {
+	const runtime = new WorkspaceRuntime(fake.api, {
 		application: () => application,
 		database: () => db,
 		members: () => [{ id: "worker", role: "general", status: "working" } as never],
 		traffic: () => [],
 		tell,
 		stop,
+		expiry: options.expiry,
 	});
 	const backlog = {
 		store,
@@ -202,5 +204,39 @@ describe("workspace runtime boundary", () => {
 		expect(signal.aborted).toBe(false);
 		resolve({ sent: ["worker"], id: 1 });
 		expect(await pending).toMatchObject({ status: "accepted" });
+	});
+
+	describe("revision stamp", () => {
+		it("is stable while nothing changes and moves for each snapshot input", async () => {
+			let bucket = "1";
+			const app = setup({ expiry: () => bucket });
+			const stamp = () => app.connection.revision?.();
+			const initial = stamp();
+			expect(initial).toBeDefined();
+			expect(stamp()).toBe(initial);
+
+			await app.emit("agent_start", {}, app.ctx);
+			const afterEvent = stamp();
+			expect(afterEvent).not.toBe(initial);
+			expect(stamp()).toBe(afterEvent);
+
+			// Receipts (and every other database writer, members and traffic included) move the database stamp.
+			expect(await app.connection.execute(app.command)).toMatchObject({ status: "accepted" });
+			const afterReceipt = stamp();
+			expect(afterReceipt).not.toBe(afterEvent);
+
+			bucket = "2";
+			expect(stamp()).not.toBe(afterReceipt);
+			app.connection.close();
+		});
+
+		it("is undefined when members and traffic cannot be stamped, and throws once the view closed", () => {
+			const unstamped = setup();
+			expect(unstamped.connection.revision?.()).toBeUndefined();
+			const stamped = setup({ expiry: () => "1" });
+			stamped.connection.close();
+			expect(() => stamped.connection.revision?.()).toThrow("This session changed");
+			unstamped.connection.close();
+		});
 	});
 });

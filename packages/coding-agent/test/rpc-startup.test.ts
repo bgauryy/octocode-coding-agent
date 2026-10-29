@@ -41,7 +41,6 @@ export default function(api) {
 			HOME: directory,
 			USERPROFILE: directory,
 			OCTOCODE_HOME: join(directory, "octocode"),
-			PI_CODING_AGENT_DIR: join(directory, "pi"),
 			OCTOCODE_CODING_AGENT_DIR: join(directory, "agent"),
 			OCTOCODE_OFFLINE: "1",
 			OCTOCODE_MCP: "0",

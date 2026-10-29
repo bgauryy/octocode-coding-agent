@@ -7,7 +7,8 @@ import {
 	type Tool,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
-import { longCacheTtl, supportsPromptCaching } from "./model-support.ts";
+import { supportsPromptCaching } from "./model-match.ts";
+import { longCacheTtl } from "./model-support.ts";
 
 /** Bedrock accepts at most four cache checkpoints per Claude request. */
 export const MAX_CACHE_POINTS = 4;

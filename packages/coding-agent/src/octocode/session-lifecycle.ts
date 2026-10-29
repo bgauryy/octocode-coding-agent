@@ -10,7 +10,7 @@ import { interactive } from "./shared/interactive.ts";
 import { MINUTE_MS, settleWithin } from "./shared/util.ts";
 
 export function registerNativeSessionLifecycle(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	options: {
 		isSubagent: boolean;
 		team: Team;
@@ -21,11 +21,11 @@ export function registerNativeSessionLifecycle(
 		api?: ReturnType<typeof registerApi>;
 	},
 ): void {
-	const { isSubagent, team, permission, jobs, agents, external, api } = options;
+	const { isSubagent, team, permission, jobs, agents, external, api: externalApi } = options;
 	// Headless runs (print, JSON, subagents) end with the agent's run, which would lose background work before it reports:
 	// hold the run until bash jobs and background subagents finish (their reports arrive as one more turn). An interactive
 	// session goes on; an aborted or failed run has no turn to hand the reports to.
-	pi.on("agent_before_settle", async (event, ctx) => {
+	api.on("agent_before_settle", async (event, ctx) => {
 		if (interactive(ctx, isSubagent) || event.outcome !== "completed") return undefined;
 		// ctx.signal is unset once the model's run is over; an interrupt for this agent ends the wait too.
 		const stop = ctx.signal ? AbortSignal.any([ctx.signal, team.interrupted]) : team.interrupted;
@@ -41,11 +41,11 @@ export function registerNativeSessionLifecycle(
 		return undefined;
 	});
 
-	pi.on("session_shutdown", async (_event, ctx) => {
+	api.on("session_shutdown", async (_event, ctx) => {
 		permission.shutdown(ctx);
 		// Rows of the old session that were still running would otherwise tick every second for the life of the process.
 		stopRowTimers();
-		await api?.stop();
+		await externalApi?.stop();
 		await external?.reset();
 		// The database and Windows helper belong to the process. Session-owned stores, jobs and children release only their own resources.
 	});

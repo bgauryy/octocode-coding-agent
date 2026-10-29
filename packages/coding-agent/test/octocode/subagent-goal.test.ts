@@ -10,10 +10,10 @@ import { renderAgentCall } from "../../src/octocode/subagents/render.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { AGENT_NAMES } from "../../src/octocode/team/identity.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 const GOAL = "audit auth token refresh";
@@ -35,8 +35,8 @@ beforeAll(() => {
 		delete process.env[key];
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 afterAll(() => {
 	process.argv[1] = savedArgv!;
@@ -48,9 +48,9 @@ const profiles = new Map<string, AgentProfile>([
 ]);
 
 function setup() {
-	const f = fakePi();
-	const team = new Team(f.pi);
-	registerAgentTool(f.pi, () => profiles, team, fakePermission());
+	const f = fakeHost();
+	const team = new Team(f.api);
+	registerAgentTool(f.api, () => profiles, team, fakePermission());
 	const cwd = tmp("octocode-agent-goal-cwd-");
 	const ctx = fakeCtx({ cwd, hasUI: true });
 	team.start(ctx);

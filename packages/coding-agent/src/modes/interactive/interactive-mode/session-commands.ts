@@ -1,6 +1,6 @@
 import { validateCompactionInstructions } from "../../../core/compaction/manual-options.ts";
 /**
- * Slash commands that act on the current session: /reload, /export, /import, /share, /bug, /copy, /name, /clear and
+ * Slash commands that act on the current session: /reload, /export, /import, /share, /bug, /copy, /rename, /new and
  * /compact, plus project trust after a reload and the trust selector.
  */
 

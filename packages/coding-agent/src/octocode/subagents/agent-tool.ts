@@ -19,7 +19,7 @@ export function agentToolSpec() {
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"Skill command names; omit to inherit the loaded catalog, [] to disable. Name required workflows in task.",
+						"Skill names, sent in the task (cache-safe); omit for the profile's skills or the loaded catalog; [] for none.",
 				}),
 			),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),

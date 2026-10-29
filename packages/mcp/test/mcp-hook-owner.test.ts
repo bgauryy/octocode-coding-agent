@@ -33,8 +33,8 @@ it("uses the configured MCP connection for hook calls without recursive tool eve
 	const harness = await createHarness({
 		initialActiveToolNames: [],
 		extensionFactories: [
-			(pi) => {
-				pi.on("tool_call", () => {
+			(host) => {
+				host.on("tool_call", () => {
 					recursive++;
 				});
 				return createMcpExtension({
@@ -44,10 +44,10 @@ it("uses the configured MCP connection for hook calls without recursive tool eve
 						globalConfig: "fixture",
 					}),
 					createTransport: () => pair.client,
-				})(pi);
+				})(host);
 			},
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 			},
 		],
 	});
@@ -137,8 +137,8 @@ it("refuses a hook call the host's gate refuses, and a tool that is hidden or no
 				}),
 				createTransport: () => pair.client,
 			}),
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 			},
 		],
 	});
@@ -215,8 +215,8 @@ it("runs a hook call through the connection's request path, retrying once on an 
 				}),
 				createTransport: () => transports[opened++],
 			}),
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 			},
 		],
 	});

@@ -157,7 +157,7 @@ export function emergencyTerminalExit(host: CrashReportingHost): never {
  * paste / Kitty / modifyOtherKeys sequences.
  */
 export function uncaughtCrash(host: CrashReportingHost, error: Error): never {
-	// A dead terminal is not a pi crash. Do not try to restore it or record it.
+	// A dead terminal is not an Octocode crash. Do not try to restore it or record it.
 	if (isDeadTerminalError(error)) {
 		host.emergencyTerminalExit();
 	}

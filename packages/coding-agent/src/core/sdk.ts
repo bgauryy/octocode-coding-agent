@@ -120,6 +120,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			defaultModelId: settingsManager.getDefaultModel(),
 			defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
 			modelThinkingLevels: settingsManager.getAllModelThinkingLevels(),
+			providerModels: settingsManager.getProviderModels(),
 			modelRuntime,
 		});
 		model = result.model;
@@ -270,7 +271,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// shallow-copy the messages array or refresh the model object without changing
 			// the provider request, so top-level object identity is not a valid cache key.
 			if (options?.sessionId === sessionManager.getSessionId()) {
-				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
+				const rewriteRetention = isVirtualModel(model)
+					? undefined
+					: IdleHistoryCache.afterIdle(
+							model,
+							modelRuntime.getCachePolicy(model, options, settingsManager.getCachePreferenceLayers()),
+						).cacheRetention;
+				cacheWarmer.start(
+					{
+						model,
+						context,
+						options: requestOptions,
+						...(rewriteRetention === "long" || rewriteRetention === "short" ? { rewriteRetention } : {}),
+					},
+					cacheContextIsCurrent(model),
+				);
 			}
 			return modelRuntime.streamSimple(model, context, requestOptions);
 		},

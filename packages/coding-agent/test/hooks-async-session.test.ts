@@ -49,8 +49,8 @@ it("adds completed async context to the next model request without creating an e
 			},
 		],
 		extensionFactories: [
-			(pi) => {
-				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			(api) => {
+				registerHooks(api, {}, home);
 			},
 		],
 	});
@@ -101,8 +101,8 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 		settings: { retry: { enabled: false } },
 		tools: [],
 		extensionFactories: [
-			(pi) => {
-				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			(api) => {
+				registerHooks(api, {}, home);
 			},
 		],
 	});

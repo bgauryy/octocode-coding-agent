@@ -12,5 +12,5 @@ export { parseOverrides } from "./overrides.ts";
 export { parsePresetOverrides, presetOverridesFor, toPresetOverrides } from "./preset-overrides.ts";
 export { carryOverrides, catalogHashes, mergeOverrides, resolveServerFile, unoptimizedTools } from "./resolve.ts";
 export { schemaToTs } from "./schema-to-ts.ts";
-export { generatedDir, readGenerated, writeGenerated } from "./store.ts";
+export { generatedDir, readGenerated, serverGeneratedDir, writeGenerated } from "./store.ts";
 export type { CompactServerInput, CompactToolInput, DescriptionOverrides, GeneratedMeta } from "./types.ts";

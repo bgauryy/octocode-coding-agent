@@ -9,7 +9,7 @@ import { describeMembers, messageText, resolveTarget } from "../../src/octocode/
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
+import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "../../src/octocode/team/store/env.ts";
 
@@ -35,8 +35,8 @@ const dir = () => {
 	return cwd;
 };
 const session = (env: NodeJS.ProcessEnv, cwd: string, db: string) => {
-	const fake = fakePi();
-	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db, ...env });
+	const fake = fakeHost();
+	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db, ...env });
 	team.start(fakeCtx({ cwd }));
 	return { team, ...fake };
 };
@@ -107,9 +107,9 @@ describe("agent identity on the team", () => {
 	});
 
 	it("refuses a blank coordinate join goal and accepts a long one whole", async () => {
-		const fake = fakePi();
-		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
-		registerCollab(fake.pi, team, { stopAgent: () => undefined });
+		const fake = fakeHost();
+		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
+		registerCollab(fake.api, team, { stopAgent: () => undefined });
 		const ctx = fakeCtx({ cwd: dir() });
 		await fake.emit("session_start", {}, ctx);
 		const coordinate = fake.tools.get("coordinate");

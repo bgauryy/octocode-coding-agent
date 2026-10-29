@@ -7,7 +7,7 @@ interface WebServer {
 	validate?: () => Promise<boolean>;
 }
 
-export function webLauncher(pi: ExtensionAPI, open = openFile) {
+export function webLauncher(api: ExtensionAPI, open = openFile) {
 	let server: WebServer | undefined;
 	let key = "";
 	let pending = Promise.resolve();
@@ -22,8 +22,8 @@ export function webLauncher(pi: ExtensionAPI, open = openFile) {
 			server = undefined;
 			await previous?.close();
 		});
-	pi.on("session_start", close);
-	pi.on("session_shutdown", close);
+	api.on("session_start", close);
+	api.on("session_shutdown", close);
 	return (sessionKey: string, start: () => Promise<WebServer>, view: "board" | "activity") =>
 		enqueue(async () => {
 			if (server && !((await server.validate?.().catch(() => false)) ?? true)) {

@@ -93,3 +93,52 @@ describe("InteractiveMode assistant diagnostics", () => {
 		expect(context.chatContainer.children).toHaveLength(0);
 	});
 });
+
+describe("InteractiveMode cache miss warming hint", () => {
+	const TTL = 5 * 60_000;
+	const missMessage = {
+		...message,
+		usage: {
+			input: 4,
+			output: 1,
+			cacheRead: 44_000,
+			cacheWrite: 92_000,
+			totalTokens: 136_005,
+			cost: { input: 0, output: 0, cacheRead: 0.0088, cacheWrite: 0.736, total: 0.7448 },
+		},
+	};
+	const miss = {
+		missedTokens: 92_000,
+		missedCost: 0.72,
+		idleMs: 6 * 60_000,
+		modelChanged: false,
+		fullMiss: false,
+		promptChanged: false,
+	};
+	const hint = (mode: string, overrides: Partial<typeof miss> = {}, ttlMs: number | undefined = TTL) =>
+		sessionRender.idleWarmingHint(
+			createFakeHost({ settingsManager: { getCacheWarmingMode: () => mode } }),
+			{ ...miss, ...overrides },
+			missMessage,
+			ttlMs,
+		);
+
+	test("names idle warming and its refresh cost for an idle miss while it is off", () => {
+		// One refresh reads the previous prompt: (44k + 92k) tokens at $0.20/M.
+		expect(hint("streaming")).toBe(' · cacheWarming "idle" would have kept it for ≈$0.03');
+	});
+
+	test("adds nothing when idle warming is on or the gap does not explain the miss", () => {
+		expect(hint("idle")).toBe("");
+		expect(hint("streaming", { idleMs: 60_000 })).toBe("");
+		expect(hint("streaming", { modelChanged: true })).toBe("");
+		expect(
+			sessionRender.idleWarmingHint(
+				createFakeHost({ settingsManager: { getCacheWarmingMode: () => "streaming" } }),
+				miss,
+				missMessage,
+				undefined,
+			),
+		).toBe("");
+	});
+});

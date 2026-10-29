@@ -343,8 +343,8 @@ it("the bound extension API selects healthy resources without inspecting unrelat
 	let api: ExtensionAPI | undefined;
 	const h = await createHarness({
 		extensionFactories: [
-			(pi) => {
-				api = pi;
+			(host) => {
+				api = host;
 			},
 		],
 	});

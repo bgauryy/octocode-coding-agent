@@ -51,9 +51,11 @@ describe("provider setup flow", () => {
 	beforeAll(() => initTheme("dark"));
 	beforeEach(() => setKeybindings(new KeybindingsManager()));
 
-	it("unifies the ambiguous names without removing direct command spellings", () => {
-		expect(getBuiltinCommand("login")?.name).toBe("providers");
-		expect(getBuiltinCommand("models")?.name).toBe("model");
+	it("names provider access /login and keeps each command under one name", () => {
+		expect(getBuiltinCommand("login")?.name).toBe("login");
+		expect(getBuiltinCommand("login")?.description).toContain("Connect AI providers");
+		expect(getBuiltinCommand("github")?.description).toContain("/login");
+		for (const removed of ["providers", "models"]) expect(getBuiltinCommand(removed)).toBeUndefined();
 		expect(getBuiltinCommand("modelsettings")?.description).toContain("routing");
 		expect(getBuiltinCommand("github")?.description).toContain("code-search");
 	});

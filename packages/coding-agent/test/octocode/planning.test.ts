@@ -5,7 +5,7 @@ import { planningRefusal } from "../../src/octocode/plan/gate.ts";
 import { PLAN_REMINDER_TYPE } from "../../src/octocode/plan/prompts.ts";
 import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { readPlan, PLAN_ENTRY } from "../../src/octocode/plan/state.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
@@ -20,10 +20,10 @@ it("persists revisions, rejects stale approvals and restores planning on branch 
 		extensionFactories: [
 			{
 				path: NATIVE_FEATURE_PATH,
-				factory: (pi) => {
+				factory: (api) => {
 					const commands = new Subcommands();
-					registerPlanning(pi, commands, stop);
-					commands.register(pi);
+					registerPlanning(api, commands, stop);
+					commands.register(api);
 				},
 			},
 		],
@@ -63,10 +63,10 @@ it("does not announce planning if stopping work fails, and can retry", async () 
 		extensionFactories: [
 			{
 				path: NATIVE_FEATURE_PATH,
-				factory: (pi) => {
+				factory: (api) => {
 					const commands = new Subcommands();
-					registerPlanning(pi, commands, stop);
-					commands.register(pi);
+					registerPlanning(api, commands, stop);
+					commands.register(api);
 				},
 			},
 		],
@@ -139,9 +139,9 @@ it("lets the planner inspect the repository with read-only shell commands and no
 
 it("gates a native bash call through the host's classifier once it is injected", async () => {
 	await shellParserReady();
-	const fake = fakePi();
+	const fake = fakeHost();
 	const planning = registerPlanning(
-		fake.pi,
+		fake.api,
 		new Subcommands(),
 		vi.fn(async () => {}),
 	);
@@ -164,9 +164,9 @@ it("gates a native bash call through the host's classifier once it is injected",
 });
 
 it("puts the active plan back after a compaction, once, and only while planning", async () => {
-	const fake = fakePi();
+	const fake = fakeHost();
 	registerPlanning(
-		fake.pi,
+		fake.api,
 		new Subcommands(),
 		vi.fn(async () => {}),
 	);
@@ -219,10 +219,10 @@ it("restores a saved plan before an SDK control without lifecycle bindings", asy
 		extensionFactories: [
 			{
 				path: NATIVE_FEATURE_PATH,
-				factory: (pi) => {
+				factory: (api) => {
 					const commands = new Subcommands();
-					registerPlanning(pi, commands, stop);
-					commands.register(pi);
+					registerPlanning(api, commands, stop);
+					commands.register(api);
 				},
 			},
 		],
@@ -245,11 +245,11 @@ it("approves the exact saved plan even when its original assistant message is ab
 		extensionFactories: [
 			{
 				path: NATIVE_FEATURE_PATH,
-				factory: (pi) => {
+				factory: (api) => {
 					const commands = new Subcommands();
-					registerPlanning(pi, commands, async () => {});
-					commands.register(pi);
-					pi.registerCommand("danger", { handler: invoked });
+					registerPlanning(api, commands, async () => {});
+					commands.register(api);
+					api.registerCommand("danger", { handler: invoked });
 				},
 			},
 		],
@@ -276,11 +276,11 @@ it("treats a slash-prefixed planning task as literal user text rather than execu
 		extensionFactories: [
 			{
 				path: NATIVE_FEATURE_PATH,
-				factory: (pi) => {
+				factory: (api) => {
 					const commands = new Subcommands();
-					registerPlanning(pi, commands, async () => {});
-					commands.register(pi);
-					pi.registerCommand("danger", { handler: invoked });
+					registerPlanning(api, commands, async () => {});
+					commands.register(api);
+					api.registerCommand("danger", { handler: invoked });
 				},
 			},
 		],

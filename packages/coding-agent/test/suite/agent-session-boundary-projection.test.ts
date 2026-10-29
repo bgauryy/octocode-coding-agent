@@ -14,9 +14,9 @@ describe("turn_end boundary projection", () => {
 	async function branchCopiesDuringTurn(handlerCount: number, seen: unknown[] = []): Promise<number> {
 		const harness = await createHarness({
 			extensionFactories: [
-				(pi) => {
+				(api) => {
 					for (let index = 0; index < handlerCount; index++) {
-						pi.on("turn_end", (event) => {
+						api.on("turn_end", (event) => {
 							seen.push(event.context);
 							return undefined;
 						});

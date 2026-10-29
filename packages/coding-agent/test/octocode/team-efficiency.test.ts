@@ -8,7 +8,7 @@ import type { Message } from "../../src/octocode/team/model.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { TeamTicker, type TeamView } from "../../src/octocode/team/ticker.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { INBOX_BATCH_SIZE } from "../../src/octocode/team/store/limits.ts";
 import type { Member } from "@octocodeai/octocode-contacts/team";
@@ -108,8 +108,8 @@ describe("team delivery efficiency", () => {
 
 	it("batches every dead-letter notice and retries its database acknowledgement without sending it twice", () => {
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
-		const { pi, sent } = fakePi();
-		const mail = new Mail(pi);
+		const { api, sent } = fakeHost();
+		const mail = new Mail(api);
 		try {
 			store.save(member("recipient"));
 			const ids = Array.from(
@@ -137,13 +137,13 @@ describe("team delivery efficiency", () => {
 
 	it("keeps all dead letters pending when Octocode refuses the notice batch", () => {
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
-		const { pi, sent } = fakePi();
-		const mail = new Mail(pi);
+		const { api, sent } = fakeHost();
+		const mail = new Mail(api);
 		try {
 			store.save(member("recipient"));
 			store.send("sender", ["recipient"], "request", { replyRequired: true });
 			store.remove("recipient");
-			vi.spyOn(pi, "sendMessage").mockImplementationOnce(() => {
+			vi.spyOn(api, "sendMessage").mockImplementationOnce(() => {
 				throw new Error("not ready");
 			});
 			mail.reportDeadLetters(store, "sender");
@@ -159,8 +159,8 @@ describe("team delivery efficiency", () => {
 	it("forgets notice acknowledgements at a session reset without acknowledging colliding IDs in a new database", () => {
 		const oldStore = TeamStore.open(tmp(), path.join(tmp(), "old.sqlite"));
 		const newStore = TeamStore.open(tmp(), path.join(tmp(), "new.sqlite"));
-		const { pi, sent } = fakePi();
-		const mail = new Mail(pi);
+		const { api, sent } = fakeHost();
+		const mail = new Mail(api);
 		try {
 			for (const store of [oldStore, newStore]) {
 				store.save(member("recipient"));
@@ -188,8 +188,8 @@ describe("team delivery efficiency", () => {
 	it("ignores an old notice handoff that settles after a new session starts", async () => {
 		const oldStore = TeamStore.open(tmp(), path.join(tmp(), "old.sqlite"));
 		const newStore = TeamStore.open(tmp(), path.join(tmp(), "new.sqlite"));
-		const { pi } = fakePi();
-		const mail = new Mail(pi);
+		const { api } = fakeHost();
+		const mail = new Mail(api);
 		let acceptOld!: () => void;
 		const oldHandoff = new Promise<void>((resolve) => {
 			acceptOld = resolve;
@@ -198,7 +198,7 @@ describe("team delivery efficiency", () => {
 		const newHandoff = new Promise<void>((resolve) => {
 			acceptNew = resolve;
 		});
-		const send = vi.spyOn(pi, "sendMessage").mockReturnValueOnce(oldHandoff).mockReturnValueOnce(newHandoff);
+		const send = vi.spyOn(api, "sendMessage").mockReturnValueOnce(oldHandoff).mockReturnValueOnce(newHandoff);
 		try {
 			for (const store of [oldStore, newStore]) {
 				store.save(member("recipient"));
@@ -227,13 +227,13 @@ describe("team delivery efficiency", () => {
 
 	it("retries a busy notice acknowledgement after asynchronous host acceptance without resending", async () => {
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
-		const { pi } = fakePi();
-		const mail = new Mail(pi);
+		const { api } = fakeHost();
+		const mail = new Mail(api);
 		let accept!: () => void;
 		const handoff = new Promise<void>((resolve) => {
 			accept = resolve;
 		});
-		const send = vi.spyOn(pi, "sendMessage").mockReturnValueOnce(handoff);
+		const send = vi.spyOn(api, "sendMessage").mockReturnValueOnce(handoff);
 		try {
 			store.save(member("recipient"));
 			store.send("sender", ["recipient"], "request", { replyRequired: true });
@@ -258,8 +258,8 @@ describe("team delivery efficiency", () => {
 		vi.useFakeTimers();
 		const cwd = tmp();
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
-		const { pi, sent } = fakePi();
-		const team = new Team(pi, env);
+		const { api, sent } = fakeHost();
+		const team = new Team(api, env);
 		team.start(fakeCtx({ cwd }));
 		const recipient = team.join().id;
 		const store = TeamStore.open(cwd, env.OCTOCODE_AGENT_DB);

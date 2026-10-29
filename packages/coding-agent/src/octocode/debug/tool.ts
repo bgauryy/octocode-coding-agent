@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { timedTool } from "../shared/render/rows.ts";
-import { DebugSession } from "./session.ts";
+import { DebugSession, STOP_WAIT_MS } from "./session.ts";
 
 function resultText(value: unknown): string {
 	const json = JSON.stringify(value);
@@ -11,6 +11,7 @@ function resultText(value: unknown): string {
 const MAX_ADAPTER_ARGS = 32;
 const MAX_BREAKPOINT_SOURCES = 32;
 const MAX_LINES = 100;
+const MAX_EXCEPTION_FILTERS = 16;
 
 /**
  * The limits the schema leaves out: Octocode tool schemas describe shape only (a refused bound echoes every argument
@@ -20,6 +21,7 @@ function checkDebugInput(params: {
 	adapterArgs?: string[];
 	breakpoints?: Array<{ lines: number[] }>;
 	lines?: number[];
+	exceptions?: string[];
 	generation?: number;
 	variablesReference?: number;
 }): void {
@@ -33,13 +35,18 @@ function checkDebugInput(params: {
 		throw new Error(`breakpoints: at most ${MAX_BREAKPOINT_SOURCES} sources`);
 	for (const item of params.breakpoints ?? []) lines(item.lines, "breakpoints");
 	if (params.lines) lines(params.lines, "lines");
+	if ((params.exceptions?.length ?? 0) > MAX_EXCEPTION_FILTERS)
+		throw new Error(`exceptions: at most ${MAX_EXCEPTION_FILTERS} filter ids`);
 	if (params.generation !== undefined && params.generation < 0) throw new Error("generation: not negative");
 	if (params.variablesReference !== undefined && params.variablesReference < 1)
 		throw new Error("variablesReference: a positive reference from scopes or variables");
 }
 
+// Sent with every request: keep it to what decides a call. docs/debugging.md holds the detail.
+const DESCRIPTION = `Debug a program when logs and test output cannot explain a failure. Supports line breakpoints, exception stops, stepping, pause, stack, scopes, nested variables, output and exit code; not attach, evaluation, or conditional or log breakpoints. Adapters: "xcrun" ["lldb-dap"] or "lldb-dap" (C, C++, Rust, Swift; launch {program, args, cwd}); "python3" ["-m","debugpy.adapter"] (Python; launch {program} or {module, args} with console "internalConsole", subProcess false); "node" ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"] with tcp true (Node, TypeScript, vitest; launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exception filter "all" for ES modules). Launch runs the program and needs permission. launch, continue, next, stepIn, stepOut, pause and output wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, reason, frame, exception, exitCode and output. At a stop, pass the latest generation to scopes with frame.id, then variables; each resume replaces generation and ids. If running, call output again, pause or terminate; after ended, launch again.`;
+
 /** Opt-in native debugger. The shared tool-call permission gate must authorize launch before execute. */
-export function registerDebugTool(pi: ExtensionAPI): void {
+export function registerDebugTool(api: ExtensionAPI): void {
 	let session: DebugSession | undefined;
 	let pending: AbortController | undefined;
 	let epoch = 0;
@@ -50,15 +57,14 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 		session?.close();
 		session = undefined;
 	};
-	pi.registerTool(
+	api.registerTool(
 		timedTool(
 			{
 				name: "debug",
 				label: "Debugger",
 				defaultActive: true,
-				description:
-					"Control one explicitly configured local DAP stdio adapter. Launch can execute and mutate repository code and requires permission. Launch with adapter executable, adapterArgs, launch arguments and optional source breakpoints; then use output, stack, scopes, variables, continue, next, stepIn, stepOut, breakpoints or terminate. All inspection and stepping calls require the current stop generation; frame and variable IDs expire on resume. Attach, evaluate, custom requests, runInTerminal and writes are unsupported.",
-				promptSnippet: "Inspect stopped runtime state through an optional DAP adapter",
+				description: DESCRIPTION,
+				promptSnippet: "Debug a program: breakpoints, stepping, stack, variables",
 				promptGuidelines: [
 					"Use debug when a failing test or runtime behavior needs stopped-state inspection that logs and bash output cannot give.",
 				],
@@ -73,31 +79,32 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 						Type.Literal("stack"),
 						Type.Literal("scopes"),
 						Type.Literal("variables"),
+						Type.Literal("pause"),
 						Type.Literal("output"),
 						Type.Literal("terminate"),
 					]),
-					adapter: Type.Optional(Type.String({ description: "Explicit executable path or command for launch" })),
-					adapterArgs: Type.Optional(
-						Type.Array(Type.String(), { description: `Adapter arguments, at most ${MAX_ADAPTER_ARGS}` }),
-					),
-					launch: Type.Optional(
-						Type.Record(Type.String(), Type.Unknown(), { description: "Adapter-specific DAP launch arguments" }),
-					),
+					adapter: Type.Optional(Type.String({ description: "launch: one executable, no shell" })),
+					adapterArgs: Type.Optional(Type.Array(Type.String())),
+					launch: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "launch: adapter config" })),
+					tcp: Type.Optional(Type.Boolean({ description: "launch: adapter prints a loopback port" })),
+					exceptions: Type.Optional(Type.Array(Type.String(), { description: "launch: filter ids to stop on" })),
 					breakpoints: Type.Optional(
 						Type.Array(
 							Type.Object({
 								source: Type.String(),
-								lines: Type.Array(Type.Integer(), { description: `1-based lines, at most ${MAX_LINES}` }),
+								lines: Type.Array(Type.Integer()),
 							}),
-							{ description: `At most ${MAX_BREAKPOINT_SOURCES} sources` },
+							{ description: `launch: at most ${MAX_BREAKPOINT_SOURCES} files` },
 						),
 					),
-					source: Type.Optional(Type.String()),
-					lines: Type.Optional(Type.Array(Type.Integer(), { description: `1-based lines, at most ${MAX_LINES}` })),
-					generation: Type.Optional(Type.Integer()),
+					source: Type.Optional(Type.String({ description: "breakpoints: absolute path" })),
+					lines: Type.Optional(Type.Array(Type.Integer(), { description: "breakpoints: all lines; [] clears" })),
+					generation: Type.Optional(
+						Type.Integer({ description: "stack, scopes, variables and steps: from the latest stopped result" }),
+					),
 					threadId: Type.Optional(Type.Integer()),
-					frameId: Type.Optional(Type.Integer()),
-					variablesReference: Type.Optional(Type.Integer()),
+					frameId: Type.Optional(Type.Integer({ description: "scopes" })),
+					variablesReference: Type.Optional(Type.Integer({ description: "variables: from scopes or variables" })),
 				}),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
@@ -110,8 +117,9 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 						if (!session) return { content: [{ type: "text" as const, text: "No active debug session" }], details: {} };
 						const old = session;
 						session = undefined;
-						await old.terminate();
-						return { content: [{ type: "text" as const, text: "Debug session terminated" }], details: {} };
+						const warning = await old.terminate();
+						const text = warning ? `Debug session terminated; ${warning}` : "Debug session terminated";
+						return { content: [{ type: "text" as const, text }], details: {} };
 					}
 					if (params.action === "launch") {
 						if (session?.state === "ended") {
@@ -135,6 +143,8 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 									cwd: ctx.cwd,
 									launch: params.launch,
 									breakpoints: params.breakpoints,
+									exceptions: params.exceptions,
+									tcp: params.tcp,
 								},
 								controller.signal,
 							);
@@ -147,16 +157,13 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 							throw new Error("Debug launch expired before activation");
 						}
 						session = result.session;
+						// Wait for the first stop or exit, so the launch result already says where the program is.
+						const status = (await session.action("output", {}, signal)) as Record<string, unknown>;
 						return {
 							content: [
 								{
 									type: "text" as const,
-									text: resultText({
-										state: session.state,
-										generation: session.generation,
-										breakpoints: result.breakpoints,
-										output: session.output(),
-									}),
+									text: resultText({ breakpoints: result.breakpoints, exceptions: result.exceptions, ...status }),
 								},
 							],
 							details: {},
@@ -171,7 +178,7 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 			{ exclusive: false },
 		),
 	);
-	pi.on("session_before_switch", close);
-	pi.on("session_before_fork", close);
-	pi.on("session_shutdown", close);
+	api.on("session_before_switch", close);
+	api.on("session_before_fork", close);
+	api.on("session_shutdown", close);
 }

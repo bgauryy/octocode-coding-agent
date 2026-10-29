@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 it.each([true, false])("dispatches Claude failure hooks only for failed results (error=%s)", async (isError) => {
@@ -25,9 +25,9 @@ it.each([true, false])("dispatches Claude failure hooks only for failed results 
 			},
 		}),
 	);
-	const f = fakePi();
+	const f = fakeHost();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	registerHooks(f.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	registerHooks(f.api, {}, home);
 	await f.fire("session_start", { reason: "startup" }, ctx);
 	const content = [{ type: "text", text: "missing executable" }];
 	const results = await f.emit(

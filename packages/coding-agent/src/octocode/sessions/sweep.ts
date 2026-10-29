@@ -22,7 +22,7 @@ const SWEEP_EVERY_MS = 6 * HOUR_MS;
  * one means no sessions yet), or a custom dir that turned unreadable since the sweep checked it, rejects, and the sweep
  * then removes nothing.
  */
-async function piSessionIds(dirs: readonly string[]): Promise<Set<string>> {
+async function sessionIds(dirs: readonly string[]): Promise<Set<string>> {
 	const lists = await Promise.all([
 		fs.promises.readdir(getSessionsDir()).then(
 			() => SessionManager.listAll(),
@@ -148,7 +148,7 @@ export async function sweepSessions(
 		const unreadable = await unreadableDirs(dirs);
 		let ids: Set<string>;
 		try {
-			ids = await (options.listed ?? piSessionIds)(dirs.filter((dir) => !unreadable.has(dir)));
+			ids = await (options.listed ?? sessionIds)(dirs.filter((dir) => !unreadable.has(dir)));
 		} catch {
 			writeMeta(index.agent.db, "last_sweep", String(last));
 			return removed;

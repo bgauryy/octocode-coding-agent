@@ -5,7 +5,7 @@ import { collapsedRows } from "../../src/octocode/team/panel-compact.ts";
 import { type Moving, PanelMotion } from "../../src/octocode/team/panel-motion.ts";
 import { panelMark, panelState } from "../../src/octocode/team/panel-state.ts";
 import { AgentsView, widgetLines } from "../../src/octocode/team/panel.ts";
-import { fakeCtx, theme } from "./fake-pi.ts";
+import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent, type AgentMessage } from "@octocodeai/octocode-agent-core";
@@ -26,10 +26,11 @@ describe("threshold compaction counts content after the last response", () => {
 	let belowThreshold: number;
 
 	beforeEach(async () => {
-		tempDir = join(tmpdir(), `pi-compaction-trailing-${Date.now()}`);
+		tempDir = join(tmpdir(), `octocode-compaction-trailing-${Date.now()}`);
 		mkdirSync(tempDir, { recursive: true });
 		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({ streamFn: streamSimple, initialState: { model, systemPrompt: "Test", tools: [] } });
+		writeFileSync(join(tempDir, "settings.json"), JSON.stringify({ contextBudget: "full" }));
 		const settingsManager = SettingsManager.create(tempDir, tempDir);
 		const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
 		await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));

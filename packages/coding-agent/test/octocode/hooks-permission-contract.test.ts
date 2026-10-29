@@ -71,7 +71,7 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
 	const home = tmp();
@@ -98,9 +98,9 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 			},
 		}),
 	);
-	const fake = fakePi(),
+	const fake = fakeHost(),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const invocation = captureToolInvocation("file", "file", {
 		queries: [
@@ -147,7 +147,7 @@ it.each([false, true])("keeps invalid Codex effects neutral unless failClosed=%s
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
 	const home = tmp();
@@ -181,9 +181,9 @@ it.each([false, true])("keeps invalid Codex effects neutral unless failClosed=%s
 			},
 		}),
 	);
-	const fake = fakePi(),
+	const fake = fakeHost(),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	expect(
 		await hooks.permissionRequest(
@@ -222,7 +222,7 @@ it("retains interruption from a later denied file constituent", async () => {
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
 	const home = tmp();
@@ -245,9 +245,9 @@ it("retains interruption from a later denied file constituent", async () => {
 			},
 		}),
 	);
-	const fake = fakePi(),
+	const fake = fakeHost(),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const hooks = registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const invocation = captureToolInvocation("one", "file", {
 		queries: [

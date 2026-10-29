@@ -17,7 +17,7 @@ import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts"
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { askSpawn, loadProfiles, parseProfile, profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A child's saved session, as `childSession` names it. */
@@ -58,8 +58,8 @@ describe("subagent permissions", () => {
 	});
 
 	it("asks once in manual and passes the grant; a denied spawn throws before anything starts", async () => {
-		const fake = fakePi();
-		const permission = new Permission({ pi: fake.pi, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
 		const ctx = fakeCtx({ cwd: tmp(), ui: { selects: ["Allow once", "Deny"] } });
 		permission.start(ctx);
 		let title = "";
@@ -103,8 +103,8 @@ describe("profile permissions", () => {
 	});
 
 	it("forces one spawn prompt listing each class in workspace, remembers the answer, and asks again after an edit", async () => {
-		const fake = fakePi();
-		const permission = new Permission({ pi: fake.pi, env: { OCTOCODE_PERMISSION: "workspace" }, isSubagent: false });
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env: { OCTOCODE_PERMISSION: "workspace" }, isSubagent: false });
 		const { ctx, titles } = spawnCtx(["Allow once", "Allow once", "Deny"]);
 		permission.start(ctx);
 		const profile = parseProfile("x", text("[browser.control, net.private]"));
@@ -132,9 +132,9 @@ describe("profile permissions", () => {
 	});
 
 	it("runs a declaring profile in full without a prompt, and still records the reason", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const permission = new Permission({
-			pi: fake.pi,
+			api: fake.api,
 			env: { OCTOCODE_PERMISSION: "full" },
 			isSubagent: false,
 			stderr: () => undefined,
@@ -184,15 +184,13 @@ describe("subagents", () => {
 			started ? `${process.pid} ${started}` : String(process.pid),
 		);
 		// The user's command hooks stay in the main session unless the profile opts in.
-		expect(subagentProcessEnv(undefined, { OCTOCODE_HOOKS: "1", PATH: "/bin" })).not.toHaveProperty("OCTOCODE_HOOKS");
-		expect(subagentProcessEnv(undefined, { OCTOCODE_HOOKS: "1", PATH: "/bin" }).PATH).toBe("/bin");
-		expect(
-			subagentProcessEnv({ name: "h", description: "", prompt: "", hooks: true }, { OCTOCODE_HOOKS: "1" })
-				.OCTOCODE_HOOKS,
-		).toBe("1");
-		expect(subagentProcessEnv({ name: "h", description: "", prompt: "", hooks: true }, {})).not.toHaveProperty(
-			"OCTOCODE_HOOKS",
+		expect(subagentProcessEnv(undefined, { OCTOCODE_SUBAGENT_HOOKS: "1", PATH: "/bin" })).not.toHaveProperty(
+			"OCTOCODE_SUBAGENT_HOOKS",
 		);
+		expect(subagentProcessEnv(undefined, { PATH: "/bin" }).PATH).toBe("/bin");
+		expect(
+			subagentProcessEnv({ name: "h", description: "", prompt: "", hooks: true }, {}).OCTOCODE_SUBAGENT_HOOKS,
+		).toBe("1");
 		expect(parseProfile("x", "---\nhooks: true\n---\nbody").hooks).toBe(true);
 		// Switches take YAML booleans only; a quoted string is refused rather than read as a guess.
 		expect(() => parseProfile("x", "---\nmcp: false\n---\nbody")).toThrow(
@@ -211,7 +209,7 @@ describe("subagents", () => {
 		);
 	});
 
-	it("parses profile frontmatter and builds child pi arguments", () => {
+	it("parses profile frontmatter and builds child Octocode arguments", () => {
 		const profile = parseProfile(
 			"fallback",
 			"---\nname: researcher\ndescription: Reads code\ntools: read,grep\n---\nBe precise.",
@@ -324,7 +322,7 @@ describe("subagents", () => {
 
 	it("bundles one browser specialist with shared instructions and a headless default", () => {
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		expect([...profiles.keys()].sort()).toEqual(["browser", "implementer", "researcher", "reviewer"]);
+		expect([...profiles.keys()].sort()).toEqual(["browser", "implementer", "lean", "researcher", "reviewer"]);
 		const profile = profiles.get("browser")!;
 		expect(profile.headless).toBe(true);
 		expect(profile.prompt.length).toBeLessThanOrEqual(2_000);
@@ -444,7 +442,7 @@ describe("subagents", () => {
 			parameters: { properties: Record<string, { maxLength?: number; description?: string }> };
 		}> = [];
 		const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
-		const pi = {
+		const api = {
 			registerTool: (tool: never) => tools.push(tool),
 			registerCommand: (name: string, command: never) => commands.set(name, command),
 			registerMessageRenderer: () => undefined,
@@ -452,7 +450,7 @@ describe("subagents", () => {
 			sendMessage: () => undefined,
 		} as never;
 		const control = registerAgentTool(
-			pi,
+			api,
 			() => new Map(),
 			{ id: undefined, view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
 			fakePermission(),
@@ -460,7 +458,7 @@ describe("subagents", () => {
 		// index.ts adds it as `/octocode agents` with the `/agents` shortcut.
 		const subcommands = new Subcommands();
 		subcommands.add("agents", control.command);
-		subcommands.register(pi);
+		subcommands.register(api);
 		const agent = tools.find((tool) => tool.name === "agent")!;
 		expect(agent.parameters.properties.task?.maxLength).toBeUndefined();
 		expect(agent.parameters.properties).toHaveProperty("isolate");

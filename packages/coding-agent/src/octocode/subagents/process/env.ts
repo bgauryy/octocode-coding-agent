@@ -9,8 +9,11 @@ import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
 	BROWSER_VISIBLE_ENV,
 	CACHE_RETENTION_ENV,
-	HOOKS_ENV,
+	SUBAGENT_HOOKS_ENV,
 	READ_ONLY_ENV,
+	LEAN_ENV,
+	MEMORY_AUTO_ENV,
+	SKILLS_IN_TASK_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	PARENT_SESSION_ENV,
 	PARENT_TRANSCRIPT_ENV,
@@ -38,6 +41,8 @@ export interface Identity {
 	/** MCP servers the parent's `mcp` tool added this session (the user confirmed them): the child registers them, and nothing is written to `mcp.json`. */
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	cachePreferences?: CachePreferences;
+	/** The parent chose its skills: they ride in its task and its prompt lists none (`SKILLS_IN_TASK_ENV`). */
+	skillsInTask?: boolean;
 	id: string;
 	role?: string;
 	parentId?: string;
@@ -83,15 +88,16 @@ export function subagentProcessEnv(
 	skillSnapshotFile?: string,
 	mcpServersFile?: string,
 ): NodeJS.ProcessEnv {
-	const hooks = base[HOOKS_ENV];
 	const inherited = { ...base };
 	// User settings survive; run identity, trust delegation, permissions and browser mode belong to this child.
 	const owned = [
 		ROLE_PROMPT_FILE_ENV,
 		SKILL_SNAPSHOT_FILE_ENV,
 		MCP_SESSION_SERVERS_FILE_ENV,
-		HOOKS_ENV,
+		SUBAGENT_HOOKS_ENV,
 		READ_ONLY_ENV,
+		LEAN_ENV,
+		SKILLS_IN_TASK_ENV,
 		TRUST_ROOT_ENV,
 		BROWSER_VISIBLE_ENV,
 		PERMISSION_ENV,
@@ -118,8 +124,11 @@ export function subagentProcessEnv(
 		...(identity?.cachePreferences?.instructionCacheRetention
 			? { [INSTRUCTION_CACHE_RETENTION_ENV]: identity.cachePreferences.instructionCacheRetention }
 			: {}),
-		...(profile?.hooks && hooks !== undefined ? { [HOOKS_ENV]: hooks } : {}),
+		...(profile?.hooks ? { [SUBAGENT_HOOKS_ENV]: "1" } : {}),
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
+		// A lean child's prompt is its role and task only: no memory notes are injected either.
+		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),
+		...(identity?.skillsInTask ? { [SKILLS_IN_TASK_ENV]: "1" } : {}),
 		[SUBAGENT_ENV]: "1",
 		...(rolePromptFile ? { [ROLE_PROMPT_FILE_ENV]: rolePromptFile } : {}),
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),

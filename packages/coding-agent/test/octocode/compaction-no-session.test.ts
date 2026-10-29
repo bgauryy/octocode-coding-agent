@@ -35,7 +35,7 @@ const result = {
 function setup(sessionManager: unknown) {
 	const requests: Array<{ messages: unknown[] }> = [];
 	const notes: unknown[] = [];
-	const pi = {
+	const api = {
 		getThinkingLevel: () => "off",
 		getActiveTools: () => [],
 		getSettings: () => ({}),
@@ -75,7 +75,7 @@ function setup(sessionManager: unknown) {
 		branchEntries: [],
 		signal: new AbortController().signal,
 	} as never;
-	return { requests, notes, pi, ctx, event };
+	return { requests, notes, api, ctx, event };
 }
 
 const directories: string[] = [];
@@ -118,10 +118,10 @@ describe("compaction without a session file (--no-session)", () => {
 	});
 
 	it("writes the summary of an in-memory session over a long tool result and a long user message", async () => {
-		const { requests, notes, pi, ctx, event } = setup(SessionManager.inMemory());
+		const { requests, notes, api, ctx, event } = setup(SessionManager.inMemory());
 		expect(SessionManager.inMemory().getSessionFile()).toBeUndefined();
 		// Standalone request (the summary ran on the model before a downshift), so the summarizer sees `summarizerView`.
-		const out = await writeSummary(pi, event, ctx, model as never);
+		const out = await writeSummary(api, event, ctx, model as never);
 		expect(out?.cancel).toBeUndefined();
 		expect(out?.compaction?.summary).toContain("## Goal\nread the file");
 		expect(out?.compaction?.summary).toContain("please keep this whole");
@@ -139,8 +139,8 @@ describe("compaction without a session file (--no-session)", () => {
 		const blocker = path.join(directory, "file");
 		fs.writeFileSync(blocker, "x");
 		const manager = { getSessionFile: () => path.join(blocker, "session.jsonl") };
-		const { requests, notes, pi, ctx, event } = setup(manager);
-		const out = await writeSummary(pi, event, ctx, model as never);
+		const { requests, notes, api, ctx, event } = setup(manager);
+		const out = await writeSummary(api, event, ctx, model as never);
 		expect(out).toMatchObject({ cancel: true, failure: expect.stringContaining("Cannot persist") });
 		expect(requests).toHaveLength(0);
 		expect(notes).toMatchObject([{ data: { kind: "checkpoint-not-saved" } }]);
@@ -154,20 +154,20 @@ describe("compaction without a session file (--no-session)", () => {
 		const blocker = path.join(directory, "file");
 		fs.writeFileSync(blocker, "x");
 		const manager = { getSessionFile: () => path.join(blocker, "session.jsonl") };
-		const { requests, pi, ctx, event } = setup(manager);
+		const { requests, api, ctx, event } = setup(manager);
 		(event as { preparation: { messagesToSummarize: unknown[] } }).preparation.messagesToSummarize = [
 			user,
 			call,
 			small,
 		];
-		const first = await writeSummary(pi, event, ctx, model as never);
-		const second = await writeSummary(pi, event, ctx, model as never);
+		const first = await writeSummary(api, event, ctx, model as never);
+		const second = await writeSummary(api, event, ctx, model as never);
 		expect(first).toMatchObject({ cancel: true, failure: expect.any(String) });
 		expect(second).toMatchObject({ cancel: true, failure: expect.any(String) });
 		expect(requests).toHaveLength(1);
 		// Another span is another summary.
 		(event as { preparation: { firstKeptEntryId: string } }).preparation.firstKeptEntryId = "later";
-		await writeSummary(pi, event, ctx, model as never);
+		await writeSummary(api, event, ctx, model as never);
 		expect(requests).toHaveLength(2);
 	});
 });

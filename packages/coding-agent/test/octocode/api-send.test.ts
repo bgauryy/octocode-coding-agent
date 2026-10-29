@@ -21,7 +21,7 @@ function setup() {
 		hasPendingMessages: () => false,
 	};
 	const host = {
-		pi: { sendMessage: send },
+		api: { sendMessage: send },
 		agents: { list: () => [], deliverable: (text: string) => text },
 		operations: {},
 		receipts,

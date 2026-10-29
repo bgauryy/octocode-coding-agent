@@ -47,8 +47,8 @@ describe("AgentSession virtual models", () => {
 			tools: [echoTool],
 			builtinCompactionFactories: [
 				...(options.builtinCompactionFactories ?? options.extensionFactories ?? []),
-				(pi) => {
-					pi.registerVirtualModel({
+				(api) => {
+					api.registerVirtualModel({
 						provider: "router",
 						id: "auto",
 						name: "Auto",
@@ -125,8 +125,8 @@ describe("AgentSession virtual models", () => {
 		const { harness, requests, reasons } = await createRoutedHarness(defaultRoute, {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+				(api) => {
+					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "overflow compacted", firstKeptEntryId, tokensBefore },
 					}));
 				},
@@ -149,9 +149,9 @@ describe("AgentSession virtual models", () => {
 	it("routes requests after extension messages as continuations", async () => {
 		const { harness, reasons } = await createRoutedHarness(defaultRoute, {
 			builtinCompactionFactories: [
-				(pi) => {
+				(api) => {
 					let continued = false;
-					pi.on("agent_before_settle", () => {
+					api.on("agent_before_settle", () => {
 						if (continued) return undefined;
 						continued = true;
 						return {
@@ -173,8 +173,8 @@ describe("AgentSession virtual models", () => {
 	it("routes the first request of a prompt as a user turn when extension messages follow the prompt", async () => {
 		const { harness, reasons } = await createRoutedHarness(defaultRoute, {
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("before_agent_start", () => ({
+				(api) => {
+					api.on("before_agent_start", () => ({
 						message: { customType: "context", content: "Extra context.", display: false },
 					}));
 				},
@@ -229,8 +229,8 @@ describe("AgentSession virtual models", () => {
 		const { harness, dispatched } = await createRoutedHarness(defaultRoute, {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+				(api) => {
+					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "compacted", firstKeptEntryId, tokensBefore },
 					}));
 				},
@@ -264,8 +264,8 @@ describe("AgentSession virtual models", () => {
 		const { harness, dispatched } = await createRoutedHarness(route, {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+				(api) => {
+					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "compacted", firstKeptEntryId, tokensBefore },
 					}));
 				},
@@ -372,8 +372,8 @@ describe("AgentSession virtual models", () => {
 		const { harness, reasons } = await createRoutedHarness(route, {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+				(api) => {
+					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "extension summary", firstKeptEntryId, tokensBefore },
 					}));
 				},

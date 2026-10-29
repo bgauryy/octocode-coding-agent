@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import lockfile from "proper-lockfile";
 import { sha256 } from "../../utils/atomic-file.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { processStartTime, sameProcess } from "../shared/process.ts";
 import type { BacklogWeb, OpenBacklogWeb } from "./context.ts";
+import { acquireRegistryLock } from "./shared-web-lock.ts";
 
 /** On-disk record that lets callers reuse the live server for the same session. */
 interface WorkspaceWebRecord {
@@ -17,6 +17,15 @@ interface WorkspaceWebRecord {
 const STARTUP_TIMEOUT_MS = 5000;
 const CLOSE_TIMEOUT_MS = 3000;
 const PROBE_TIMEOUT_MS = 500;
+
+/** Servers this process started, by URL: their liveness is local state, so no loopback request is needed. */
+const ownedServers = new Map<string, () => boolean>();
+
+/** Whether the server at `url` is up: asked of this process when it owns it, else probed over HTTP. */
+function serverUp(url: string, token: string): Promise<boolean> {
+	const local = ownedServers.get(url);
+	return local ? Promise.resolve(local()) : probeBacklogs(url, token, PROBE_TIMEOUT_MS);
+}
 
 function registryDir(env: NodeJS.ProcessEnv): string {
 	return path.join(path.dirname(agentDbPath(env)), "workspace-web");
@@ -32,20 +41,6 @@ function registryEntryPath(dir: string, repoRoot: string, session: string): stri
 
 function registryLockPath(dir: string, repoRoot: string, session: string): string {
 	return path.join(dir, `.${registryHash(repoRoot, session)}.lock`);
-}
-
-async function acquireLock(lockPath: string): Promise<() => Promise<void>> {
-	return lockfile.lock(lockPath, {
-		realpath: false,
-		stale: 30_000,
-		retries: {
-			retries: Math.ceil((STARTUP_TIMEOUT_MS + CLOSE_TIMEOUT_MS + PROBE_TIMEOUT_MS) / 50),
-			factor: 1,
-			minTimeout: 50,
-			maxTimeout: 100,
-		},
-		onCompromised: () => {},
-	});
 }
 
 async function readRecord(entryPath: string): Promise<WorkspaceWebRecord | undefined> {
@@ -178,18 +173,18 @@ export function sharedWorkspaceWeb(openWeb: OpenBacklogWeb, env: NodeJS.ProcessE
 		await fs.mkdir(dir, { recursive: true, mode: 0o700 });
 		const entryPath = registryEntryPath(dir, backlog.repoRoot, backlog.session);
 		const lockPath = registryLockPath(dir, backlog.repoRoot, backlog.session);
-		const release = await acquireLock(lockPath);
+		const release = await acquireRegistryLock(lockPath);
 		let started: BacklogWeb | undefined;
 		let isOwner = false;
 		try {
 			const existing = await readRecord(entryPath);
 			if (existing && isLoopbackUrl(existing.url) && sameProcess(existing.pid, existing.pid_started)) {
 				const token = extractAccessToken(existing.url);
-				if (token && (await probeBacklogs(existing.url, token, PROBE_TIMEOUT_MS))) {
+				if (token && (await serverUp(existing.url, token))) {
 					return {
 						url: existing.url,
 						close: () => Promise.resolve(),
-						validate: () => probeBacklogs(existing.url, token, PROBE_TIMEOUT_MS),
+						validate: () => serverUp(existing.url, token),
 					};
 				}
 			}
@@ -209,16 +204,19 @@ export function sharedWorkspaceWeb(openWeb: OpenBacklogWeb, env: NodeJS.ProcessE
 			};
 			await writeRecord(entryPath, record);
 			const owned = started;
+			// A server that cannot say whether it is up (a fake, another implementation) is still probed over HTTP.
+			if (owned.isUp) ownedServers.set(owned.url, owned.isUp);
 
 			let closed = false;
 			return {
 				url: owned.url,
-				validate: () => probeBacklogs(owned.url, token, PROBE_TIMEOUT_MS),
+				validate: () => serverUp(owned.url, token),
 				close: async () => {
 					if (closed) return;
 					closed = true;
+					ownedServers.delete(owned.url);
 					if (!isOwner) return;
-					const innerRelease = await acquireLock(lockPath).catch(() => undefined);
+					const innerRelease = await acquireRegistryLock(lockPath).catch(() => undefined);
 					try {
 						const current = await readRecord(entryPath);
 						if (current && current.url === owned.url && extractAccessToken(current.url) === token) {

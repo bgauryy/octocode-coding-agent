@@ -8,7 +8,7 @@
  *   parse   {command}  the commands of a PowerShell script, as `Parser.ParseInput` sees them      -> {id, ok, commands}
  * `ok: false` carries an `error`. Each root gets its own job, so one tree can end while the others run. The jobs
  * have `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and no other limit (so no flag lets a child leave the job), and the helper
- * keeps their handles: when its stdin closes, or Pi dies, the helper exits and Windows ends every tree. A process
+ * keeps their handles: when its stdin closes, or Octocode dies, the helper exits and Windows ends every tree. A process
  * must be assigned before it starts children (those join the job); children it started earlier are not in it.
  *
  * Rules for editing: no backticks and no `${` (this is a template literal); no word the tests forbid (the flags that

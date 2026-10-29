@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { inspectPluginHooks } from "../../src/core/plugin-hooks.ts";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
@@ -27,9 +27,9 @@ describe("plugin hooks through session registration", () => {
 				}),
 			);
 			const entry = { path: plugin, protocol, hooksFingerprint: undefined as string | undefined };
-			const f = fakePi();
-			f.pi.getSettings = () => ({ plugins: [entry] });
-			const hooks = registerHooks(f.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			const f = fakeHost();
+			f.api.getSettings = () => ({ plugins: [entry] });
+			const hooks = registerHooks(f.api, {}, home);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const event = { toolName: "bash", toolCallId: "plugin-call", input: { command: "true" } };
 			await f.fire("session_start", { reason: "startup" }, ctx);
@@ -69,18 +69,11 @@ describe("plugin hooks through session registration", () => {
 			return { ...entry, hooksFingerprint: inspectPluginHooks(entry).fingerprint! };
 		});
 		expect(
-			commandsFor(loadHooks(tmp(), false, home, { sourceProfiles: true, plugins: entries }).config, "PreToolUse", [
-				"Bash",
-			]),
-		).toHaveLength(2);
-		expect(
 			commandsFor(loadHooks(tmp(), false, home, { plugins: entries }).config, "PreToolUse", ["Bash"]),
-		).toHaveLength(0);
+		).toHaveLength(2);
 		fs.writeFileSync(path.join(native, "hooks.json"), '{"disableAllHooks":true}');
 		expect(
-			commandsFor(loadHooks(tmp(), false, home, { sourceProfiles: true, plugins: entries }).config, "PreToolUse", [
-				"Bash",
-			]),
+			commandsFor(loadHooks(tmp(), false, home, { plugins: entries }).config, "PreToolUse", ["Bash"]),
 		).toHaveLength(0);
 	});
 
@@ -97,7 +90,7 @@ describe("plugin hooks through session registration", () => {
 	it.each([{}, [null], [{}]].map((plugins) => ({ plugins })))(
 		"reports malformed plugin settings in hook loading: %j",
 		({ plugins }) => {
-			const result = loadHooks(tmp(), false, tmp(), { sourceProfiles: true, plugins: plugins as never });
+			const result = loadHooks(tmp(), false, tmp(), { plugins: plugins as never });
 			expect(result.errors).toContainEqual(expect.stringContaining("plugins"));
 			expect(commandsFor(result.config, "PreToolUse", ["Bash"])).toEqual([]);
 		},

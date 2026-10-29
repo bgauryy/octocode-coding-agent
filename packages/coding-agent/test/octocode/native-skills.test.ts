@@ -53,7 +53,7 @@ describe("skills the application ships", () => {
 		return loader;
 	};
 
-	it("holds octocode-compact-mcp as a valid skill whose scripts only call the CLI", () => {
+	it("holds octocode-context-optimization as a valid skill whose scripts only call the CLI", () => {
 		const { skills, diagnostics } = loadSkills({
 			cwd: path.join(root, "project"),
 			agentDir: path.join(root, "agent"),
@@ -61,8 +61,8 @@ describe("skills the application ships", () => {
 			includeDefaults: false,
 		});
 		expect(diagnostics).toEqual([]);
-		expect(skills.map((skill) => skill.name)).toEqual(["octocode-compact-mcp"]);
-		const dir = path.join(getNativeSkillsDir(), "octocode-compact-mcp");
+		expect(skills.map((skill) => skill.name)).toEqual(["octocode-context-optimization"]);
+		const dir = path.join(getNativeSkillsDir(), "octocode-context-optimization");
 		expect(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8")).toContain("octocode-agentic-prompts");
 		for (const script of fs.readdirSync(path.join(dir, "scripts"))) {
 			const source = fs.readFileSync(path.join(dir, "scripts", script), "utf8");
@@ -72,16 +72,22 @@ describe("skills the application ships", () => {
 
 	it("is discovered by a root session, even with extra skill folders turned off", async () => {
 		expect(bundledSkillDirs({})).toEqual([getNativeSkillsDir()]);
-		const skill = (await loadRoot()).getSkills().skills.find((candidate) => candidate.name === "octocode-compact-mcp");
-		expect(skill?.filePath).toBe(path.join(getNativeSkillsDir(), "octocode-compact-mcp", "SKILL.md"));
+		const skill = (await loadRoot())
+			.getSkills()
+			.skills.find((candidate) => candidate.name === "octocode-context-optimization");
+		expect(skill?.filePath).toBe(path.join(getNativeSkillsDir(), "octocode-context-optimization", "SKILL.md"));
 		vi.stubEnv("OCTOCODE_EXTRA_SKILLS", "0");
-		expect((await loadRoot()).getSkills().skills.map((candidate) => candidate.name)).toContain("octocode-compact-mcp");
+		expect((await loadRoot()).getSkills().skills.map((candidate) => candidate.name)).toContain(
+			"octocode-context-optimization",
+		);
 	});
 
 	it("is left to a subagent's inherited inventory instead of discovered again", async () => {
 		const parent = await loadRoot();
 		const inventory = JSON.parse(JSON.stringify(captureSkillResourceSnapshot(parent.getSkills())));
-		expect(adoptSkillResourceSnapshot(inventory).skills.map((skill) => skill.name)).toContain("octocode-compact-mcp");
+		expect(adoptSkillResourceSnapshot(inventory).skills.map((skill) => skill.name)).toContain(
+			"octocode-context-optimization",
+		);
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		expect(bundledSkillDirs()).toEqual([]);
 		const child = new DefaultResourceLoader({
@@ -91,11 +97,11 @@ describe("skills the application ships", () => {
 			noSkills: true,
 		});
 		await child.reload();
-		expect(child.getSkills().skills.map((skill) => skill.name)).not.toContain("octocode-compact-mcp");
+		expect(child.getSkills().skills.map((skill) => skill.name)).not.toContain("octocode-context-optimization");
 	});
 
 	describe("scripts", () => {
-		const scripts = path.join(getNativeSkillsDir(), "octocode-compact-mcp", "scripts");
+		const scripts = path.join(getNativeSkillsDir(), "octocode-context-optimization", "scripts");
 		/** An executable standing in for `octocode`: it records its arguments and writes the --out file it is given. */
 		const fakeCli = () => {
 			const log = path.join(root, "calls.jsonl");

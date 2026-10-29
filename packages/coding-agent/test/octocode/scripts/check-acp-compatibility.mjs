@@ -56,7 +56,6 @@ async function main(argv) {
 		TMPDIR: tmpdir(),
 		OCTOCODE_HOME: join(run, "home"),
 		OCTOCODE_CODING_AGENT_DIR: join(run, "home"),
-		PI_CODING_AGENT_DIR: join(run, "pi"),
 		OCTOCODE_AGENT_DB: join(run, "agent.sqlite"),
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MCP: "0",

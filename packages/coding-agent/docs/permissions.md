@@ -31,9 +31,9 @@ A subagent whose profile sets `readOnly: true` (the bundled `reviewer`, `researc
 
 This is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen. MCP tools are not restricted by it. For the roles themselves see [native features](native-features.md#configuration).
 
-## Claude permission-rule preview
+## Claude permission rules
 
-`OCTOCODE_HOOKS_COMPAT=1` enables the developing Claude permission-rule adapter in native sessions. Rules apply independently of `OCTOCODE_HOOKS`; disabling executable hooks does not disable these restrictions. Child sessions inherit this distinction. Hook-based approval additionally needs [hook execution](hooks.md#permission-request-preview).
+Native sessions always apply the partial Claude permission-rule adapter. Rules apply independently of hook execution; `disableAllHooks` does not disable these restrictions, and child sessions inherit them. Hook-based approval uses [PermissionRequest hooks](hooks.md#permission-request-preview). A typed `!` command that no rule or shell-target check concerns still runs as typed consent.
 
 The adapter reads the `permissions.deny`, `permissions.ask` and `permissions.allow` arrays from Claude user settings and project settings. User settings honor `CLAUDE_CONFIG_DIR`. Project deny and ask rules restrict calls before trust; project allow rules require native configuration trust. Files are inspected again at tool boundaries. The adapter does not write source settings or import another host's trust decisions.
 
@@ -41,7 +41,7 @@ Current source locations are:
 
 | Scope         | Location                                                                | Activation                                                  |
 | ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
-| User          | `$CLAUDE_CONFIG_DIR/settings.json`, otherwise `~/.claude/settings.json` | Parsed when the compatibility flag is enabled               |
+| User          | `$CLAUDE_CONFIG_DIR/settings.json`, otherwise `~/.claude/settings.json` | Always parsed                                               |
 | Project       | `<repository root>/.claude/settings.json`                               | Restrictions always apply; allow rules require native trust |
 | Project local | `<repository root>/.claude/settings.local.json`                         | Same local adapter trust rule                               |
 

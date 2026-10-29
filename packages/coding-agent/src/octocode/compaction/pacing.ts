@@ -67,10 +67,10 @@ export function needsDownshiftCompaction(
 }
 
 /** The characters of the tool definitions declared to the model (name, description, parameters, guidelines of the active tools). */
-export function toolDefinitionChars(pi: Pick<ExtensionAPI, "getActiveTools" | "getAllTools">): number {
+export function toolDefinitionChars(api: Pick<ExtensionAPI, "getActiveTools" | "getAllTools">): number {
 	try {
-		const active = new Set(pi.getActiveTools());
-		return pi.getAllTools().reduce((sum, tool) => {
+		const active = new Set(api.getActiveTools());
+		return api.getAllTools().reduce((sum, tool) => {
 			if (!active.has(tool.name)) return sum;
 			const { name, description, parameters, promptGuidelines } = tool;
 			return sum + JSON.stringify({ name, description, parameters, promptGuidelines }).length;

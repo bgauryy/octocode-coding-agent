@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ModelRuntime } from "../../../coding-agent/src/core/model-runtime.ts";
 
 /**
- * Reads the token like a session does (stored `/providers` credentials, `models.json`, environment). The
+ * Reads the token like a session does (stored `/login` credentials, `models.json`, environment). The
  * model runtime loads on the first request, so commands without such servers never pay for it.
  */
 export function storedProviderToken(agentDir: string): (provider: string) => Promise<string | undefined> {

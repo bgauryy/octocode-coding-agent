@@ -20,7 +20,7 @@ const CHANGED_LABEL = /^✎ \d+ files?$/;
 /** A session's checkpoint folder: `<session folder>/checkpoints` (not created). */
 const checkpointDir = (id: string): string => path.join(sessionDir(id), "checkpoints");
 
-/** The parent session file of a fork: the fork event's, else the session header's (`pi --fork <file>` starts as 'startup'). */
+/** The parent session file of a fork: the fork event's, else the session header's (`octocode --fork <file>` starts as 'startup'). */
 function parentSessionFile(
 	event: { reason?: string; previousSessionFile?: string } | undefined,
 	ctx: ExtensionContext,
@@ -59,7 +59,7 @@ function treeLeaf(ctx: ExtensionContext, targetId: string): string | null {
  * offer before a fork or a tree navigation leaves turns that changed files.
  */
 export function registerCheckpoints(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	checkpoints: Checkpoints,
 	forget: (file: string) => void,
 	commands: Subcommands,
@@ -75,7 +75,7 @@ export function registerCheckpoints(
 		pending = false;
 		return undefined;
 	};
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
 		currentContext = ctx;
 		[begun, pending] = [false, false];
 		const id = ctx.sessionManager.getSessionId();
@@ -99,14 +99,14 @@ export function registerCheckpoints(
 	});
 	const branchIds = (ctx: ExtensionContext, from?: string) =>
 		ctx.sessionManager.getBranch(from).map((entry) => entry.id);
-	pi.on("input", async (event) => {
+	api.on("input", async (event) => {
 		if (event.source !== "extension") {
 			if (event.streamingBehavior === undefined) begin();
 			else pending = true;
 		}
 		return undefined;
 	});
-	pi.on("agent_start", async () => {
+	api.on("agent_start", async () => {
 		if (!begun || pending) begin();
 		return undefined;
 	});
@@ -120,13 +120,13 @@ export function registerCheckpoints(
 			const want = count ? `${CHANGED_LABEL_MARK} ${plural(count, "file")}` : undefined;
 			const have = ctx.sessionManager.getLabel(anchor);
 			if (have === want || (have !== undefined && !CHANGED_LABEL.test(have))) continue;
-			pi.setLabel(anchor, want);
+			api.setLabel(anchor, want);
 		}
 	};
 	// Anchors whose checkpoints were pruned since keep an Octocode label that no longer holds: relabel those too.
 	const labelled = (ctx: ExtensionContext) =>
 		branchIds(ctx).filter((id) => CHANGED_LABEL.test(ctx.sessionManager.getLabel(id) ?? ""));
-	pi.on("agent_end", async (_event, ctx) => relabel(ctx, [...checkpoints.filesByAnchor().keys(), ...labelled(ctx)]));
+	api.on("agent_end", async (_event, ctx) => relabel(ctx, [...checkpoints.filesByAnchor().keys(), ...labelled(ctx)]));
 
 	const apply = async (turns: number[], ctx: ExtensionContext): Promise<RewindResult> => {
 		const anchors = checkpoints
@@ -168,7 +168,7 @@ export function registerCheckpoints(
 			const result = await apply(turns, ctx);
 			// The model still believes its edits are in place: tell it on its next turn (never triggers one itself).
 			if (result.restored.length + result.partly.length > 0) {
-				void pi.sendMessage(
+				void api.sendMessage(
 					{
 						customType: "octocode-rewind",
 						content: `The user ran /rewind. ${describe(result, ctx.cwd, turns.length)} Those files are back to their earlier content: read them again before editing.`,
@@ -206,23 +206,23 @@ export function registerCheckpoints(
 		if (turns) await apply(turns, ctx);
 	};
 
-	pi.on("session_before_fork", async (event, ctx) => {
+	api.on("session_before_fork", async (event, ctx) => {
 		if (ctx.hasUI) await offer(checkpoints.turnsFrom(branchIds(ctx), event.entryId), ctx);
 		return undefined;
 	});
 	// Octocode tears the parent session down only once the fork is certain; its checkpoints are still open here.
-	pi.on("session_shutdown", async (event, ctx) => {
+	api.on("session_shutdown", async (event, ctx) => {
 		if (event.reason === "fork") await restoreChosen(ctx);
 		else chosen = undefined;
 	});
 
 	// /tree moves the leaf in place: turns on the current branch that the new position does not include are abandoned.
-	pi.on("session_before_tree", async (event, ctx) => {
+	api.on("session_before_tree", async (event, ctx) => {
 		if (!ctx.hasUI) return undefined;
 		const leaf = treeLeaf(ctx, event.preparation.targetId);
 		const keep = new Set(leaf === null ? [] : branchIds(ctx, leaf));
 		await offer(checkpoints.turnsLeaving(branchIds(ctx), keep), ctx, event.signal);
 		return undefined;
 	});
-	pi.on("session_tree", async (_event, ctx) => restoreChosen(ctx));
+	api.on("session_tree", async (_event, ctx) => restoreChosen(ctx));
 }

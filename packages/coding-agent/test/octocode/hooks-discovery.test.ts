@@ -5,7 +5,7 @@ import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks, registerHooksCommand } from "../../src/octocode/hooks/register.ts";
 import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
@@ -38,14 +38,14 @@ describe("documented hook discovery and controls", () => {
 	});
 
 	it.each(["enable", "off"])("does not pretend /hooks %s changes execution", async (argument) => {
-		const { pi } = fakePi();
-		const hooks = registerHooks(pi, {}, tmp());
+		const { api } = fakeHost();
+		const hooks = registerHooks(api, { OCTOCODE_SUBAGENT: "1" }, tmp());
 		const commands = new Subcommands();
 		registerHooksCommand(commands, hooks);
 		const notify = vi.fn();
 		await commands.get("hooks")!.handler(argument, { hasUI: true, cwd: tmp(), ui: { notify } } as never);
 		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Usage: /hooks"), "warning");
-		expect(notify.mock.calls[0][0]).toContain("OCTOCODE_HOOKS=1");
+		expect(notify.mock.calls[0][0]).toContain("disableAllHooks");
 		expect(hooks.summary()).toContain("off");
 	});
 
@@ -55,7 +55,7 @@ describe("documented hook discovery and controls", () => {
 		vi.stubEnv("OCTOCODE_HOME", runtimeHome);
 		const root = fs.realpathSync(tmp());
 		fs.mkdirSync(path.join(root, ".git"));
-		const files = hookFiles(root, true, home);
+		const files = hookFiles(root, true, home).filter((file) => !file.endsWith(".toml"));
 		for (const file of files) {
 			fs.mkdirSync(path.dirname(file), { recursive: true });
 			fs.writeFileSync(
@@ -68,13 +68,16 @@ describe("documented hook discovery and controls", () => {
 			dialect: ["claude", "codex", "octocode", "claude", "claude", "codex", "octocode"][i],
 			scope: i < 3 ? "user" : "project",
 		}));
+		const ofDialect = (dialect: string) => expected.filter((origin) => origin.dialect === dialect);
 		const config = loadHooks(root, true, home).config;
 		expect(config.PreToolUse.flatMap((group) => group.hooks).map((hook) => hook.origins)).toEqual(
 			expected.map((origin) => [origin]),
 		);
+		// Each profile runs its copy once; identical commands merge only within one profile.
 		const selected = commandsFor(config, "PreToolUse", ["Bash"]);
-		expect(selected).toHaveLength(1);
-		expect(selected[0]).toMatchObject({ origins: expected, source: files[0], timeoutMs: 60_000 });
+		expect(selected.map((hook) => [hook.protocol ?? "octocode", hook.origins])).toEqual(
+			(["claude", "codex", "octocode"] as const).map((dialect) => [dialect, ofDialect(dialect)]),
+		);
 		expect(commandsFor(config, "PreToolUse", ["Bash"])).toEqual(selected);
 		expect(config.PreToolUse[0].hooks[0].origins).toEqual([expected[0]]);
 	});
@@ -87,6 +90,7 @@ describe("documented hook discovery and controls", () => {
 		fs.mkdirSync(path.join(root, ".git"));
 		const cwd = path.join(root, "src", "nested");
 		fs.mkdirSync(cwd, { recursive: true });
+		const userToml = path.join(home, ".codex/config.toml");
 		const userFiles = [
 			path.join(home, ".claude/settings.json"),
 			path.join(home, ".codex/hooks.json"),
@@ -98,8 +102,13 @@ describe("documented hook discovery and controls", () => {
 			".codex/hooks.json",
 			".octocode/hooks.json",
 		].map((name) => path.join(root, name));
-		expect(hookFiles(cwd, false, home)).toEqual(userFiles);
-		expect(hookFiles(cwd, true, home)).toEqual([...userFiles, ...projectFiles]);
+		const projectToml = path.join(root, ".codex/config.toml");
+		expect(hookFiles(cwd, false, home)).toEqual([...userFiles.slice(0, 2), userToml, userFiles[2]]);
+		expect(hookFiles(cwd, true, home).filter((file) => !file.endsWith(".toml"))).toEqual([
+			...userFiles,
+			...projectFiles,
+		]);
+		expect(hookFiles(cwd, true, home)).toContain(projectToml);
 		for (const [index, file] of [...userFiles, ...projectFiles].entries()) {
 			fs.mkdirSync(path.dirname(file), { recursive: true });
 			fs.writeFileSync(

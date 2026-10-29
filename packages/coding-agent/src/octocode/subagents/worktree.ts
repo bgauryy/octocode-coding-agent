@@ -18,7 +18,7 @@ import {
 
 /**
  * Git worktree isolation for implementer subagents, adapted from the native host's worker worktrees: each isolated
- * subagent works in a detached worktree under `<Octocode home>/pi-worktrees/<repo-hash>/<agent-id>`; on finish its
+ * subagent works in a detached worktree under `<Octocode home>/worktrees/<repo-hash>/<agent-id>`; on finish its
  * changes are committed to `refs/octocode/pi/<agent-id>` and the worktree is removed; when saving fails the worktree is
  * kept so nothing is lost. Merging stays manual (`/agents merge`).
  * Ignored files (`node_modules`, builds) are not in the worktree.

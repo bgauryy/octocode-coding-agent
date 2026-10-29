@@ -44,6 +44,7 @@ export type ApplicationMessage = Static<typeof MessageSchema>;
 export type ApplicationReceipt = Static<typeof ReceiptSchema>;
 export type ApplicationTool = Static<typeof ApplicationToolSchema>;
 export type ApplicationEvent = Static<typeof ApplicationEventSchema>;
+export type ApplicationAwaiting = Static<typeof AwaitingSchema>;
 export type ApplicationSnapshot = Static<typeof ApplicationSnapshotSchema>;
 export type ApplicationFrame = Static<typeof ApplicationFrameSchema>;
 export interface ApplicationConnection extends AsyncIterable<ApplicationFrame> {
@@ -159,6 +160,11 @@ const ApplicationModelSchema = Type.Object({
 	name: Type.String(),
 	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
 });
+/** A blocking dialog the run waits on: an approval, or a question or other input only the terminal user can answer. */
+const AwaitingSchema = Type.Object({
+	kind: Type.Union([Type.Literal("approval"), Type.Literal("question")]),
+	title: Type.Optional(Type.String({ maxLength: 200 })),
+});
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,
 	Type.Object({ type: Type.Literal("session.model"), model: Type.Optional(ApplicationModelSchema) }),
@@ -210,6 +216,11 @@ export const ApplicationEventSchema = Type.Union([
 		status: Type.Union([Type.Literal("compacting"), Type.Literal("retrying"), Type.Literal("idle")]),
 	}),
 	Type.Object({
+		type: Type.Literal("session.awaiting"),
+		/** The blocking dialog now open; absent when none is. */
+		awaiting: Type.Optional(AwaitingSchema),
+	}),
+	Type.Object({
 		type: Type.Literal("command.receipt"),
 		receipt: ReceiptSchema,
 	}),
@@ -226,6 +237,7 @@ export const ApplicationSnapshotSchema = Type.Object({
 	errors: Type.Optional(Type.Array(ApplicationErrorSchema)),
 	tools: Type.Optional(Type.Array(ApplicationToolSchema)),
 	status: Type.Optional(SessionStatusSchema),
+	awaiting: Type.Optional(AwaitingSchema),
 	sessionId: Type.String(),
 	runId: Type.Optional(Type.String()),
 	messages: Type.Array(MessageSchema),

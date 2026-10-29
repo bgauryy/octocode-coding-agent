@@ -1195,7 +1195,7 @@ Content`,
 			expect(runCommandSyncSpy).toHaveBeenNthCalledWith(2, "mise", ["exec", "node@22", "--", "npm", "root", "-g"]);
 		});
 
-		it("should install user npm packages into the pi-managed npm root", async () => {
+		it("should install user npm packages into the Octocode-managed npm root", async () => {
 			settingsManager = SettingsManager.inMemory(
 				{
 					npmCommand: ["pnpm"],

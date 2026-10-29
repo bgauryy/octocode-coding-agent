@@ -7,7 +7,7 @@ vi.mock("../../src/octocode/shared/trust.ts", () => ({
 	projectTrustForContents: async () => false,
 }));
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 const roots: string[] = [];
 afterEach(() => {
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
@@ -39,8 +39,8 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 		execFileSync("git", ["init", "-q"], { cwd });
 		execFileSync("git", ["add", "-f", ".claude/settings.local.json"], { cwd });
 	}
-	const fake = fakePi();
-	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const fake = fakeHost();
+	const owner = registerSourcePolicy(fake.api, home);
 	await owner.refresh(fakeCtx({ cwd, hasUI: false }));
 	return owner.evaluate(
 		{

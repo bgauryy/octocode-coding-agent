@@ -24,7 +24,7 @@ import { tmp } from "./helpers.ts";
  * tool call, and the request the faux provider receives.
  * Gap: no child process is spawned and the `file` tool is a stub that records execution, so the real CLI start (which
  * reads these environment variables) and the real `file` implementation are not exercised here. Process launch with the
- * same environment is covered in `subagent-tool.test.ts` (`subagent-fake-pi.cjs` reports the child's environment and
+ * same environment is covered in `subagent-tool.test.ts` (`subagent-fake-host.cjs` reports the child's environment and
  * task), and the gate's refusal rules in `permission-isolated-tree.test.ts`.
  */
 describe("isolated subagent session", () => {
@@ -74,16 +74,16 @@ describe("isolated subagent session", () => {
 		};
 		const extensionsResult = await createTestExtensionsResult(
 			[
-				(pi) => {
-					const permission = new Permission({ pi, env, isSubagent: true });
-					pi.on("session_start", (_event, ctx) => permission.start(ctx));
+				(api) => {
+					const permission = new Permission({ api, env, isSubagent: true });
+					api.on("session_start", (_event, ctx) => permission.start(ctx));
 					const gate = permissionGate({
 						permission,
 						provenance: { check: () => undefined },
 						env,
 					});
-					pi.on("tool_call", (event, ctx) => gate(event, ctx));
-					registerTurnSetup(pi, {
+					api.on("tool_call", (event, ctx) => gate(event, ctx));
+					registerTurnSetup(api, {
 						isSubagent: true,
 						profiles: () => new Map(),
 					});

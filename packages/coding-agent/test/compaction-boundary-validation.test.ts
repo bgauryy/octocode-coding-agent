@@ -59,8 +59,8 @@ it.each(["manual", "threshold", "overflow"] as const)(
 			tools: [],
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => ({
+				(api) => {
+					api.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "Checkpoint",
 							firstKeptEntryId: "foreign-entry",

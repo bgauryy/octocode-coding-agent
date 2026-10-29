@@ -9,12 +9,12 @@ import type { Dispatch, HookSession } from "./types.ts";
 
 /** PostToolUse: feedback from the hooks is appended to the tool result the model reads. */
 export function registerPostToolUseHook(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	dispatch: Dispatch,
 	session: HookSession,
 	patches: Map<string, string>,
 ): void {
-	pi.on("tool_result", async (event, ctx) => {
+	api.on("tool_result", async (event, ctx) => {
 		const outcomes =
 			event.toolName === "file" && isRecord(event.details) && Array.isArray(event.details.outcomes)
 				? event.details.outcomes

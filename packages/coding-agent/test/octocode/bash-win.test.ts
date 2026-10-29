@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const tree = {
@@ -28,9 +28,9 @@ afterEach(() => {
 
 /** The bash tool on a pretend Windows, with `/bin/sh` standing in for the shell (the spawn itself is real). */
 const setup = () => {
-	const { pi, tools } = fakePi();
+	const { api, tools } = fakeHost();
 	const jobs = new BashJobs(tmp());
-	registerBashTool(pi, new Subcommands(), jobs, () => ({ shellPath: "/bin/sh" }));
+	registerBashTool(api, new Subcommands(), jobs, () => ({ shellPath: "/bin/sh" }));
 	Object.defineProperty(process, "platform", { value: "win32" });
 	return { tool: tools.get("bash"), jobs, ctx: fakeCtx({ cwd: tmp() }) };
 };

@@ -1,15 +1,16 @@
-import path from "node:path";
-import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../shared/env.ts";
 import { promptTitle } from "../shared/locks.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
+import { terminalTitle, type TitleState, TitleTracker } from "./terminal-title.ts";
+import { registerPresentWarming } from "./present-warming.ts";
 
 /**
  * "Answer ready" and "waiting for you" signals for a terminal in the background, after Codex's
  * `tui.notification_method` / `notification_condition`: a desktop notification (OSC 9, OSC 777 or Kitty's OSC 99, else
- * the bell) and a `●` in the terminal title until the user is back.
+ * the bell). The terminal title carries the session state: `✻` thinking, `◐` running a tool, `◇` waiting for the user,
+ * then `✓` finished or `✗` failed until the user is back (focus returns or a key is pressed).
  *
  * Octocode enables focus reports (CSI ?1004) only in fullscreen mode, and that mode consumes them. So in the regular TUI this
  * enables them itself and reads `ESC [ I` / `ESC [ O`; without focus reports (fullscreen) it falls back to idleness: a
@@ -37,7 +38,8 @@ const FOCUS_OFF = "\x1b[?1004l";
 const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
 const BEL = "\x07";
-const MARK = GLYPH.live;
+/** Thinking and tool runs alternate within milliseconds; their title swaps are coalesced over this window. */
+const TITLE_COALESCE_MS = 250;
 /** Without focus reports: a run this long with no keypress counts as "the user stepped away". */
 const AWAY_MS = 30_000;
 /** No two notifications within this window (a prompt right after an answer, back-to-back dialogs). */
@@ -110,8 +112,8 @@ interface NotifyOptions {
 	write?: (data: string) => void;
 }
 
-/** Registers the notifier for the root session; returns nothing to drive: it follows Octocode's events. */
-export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): void {
+/** Registers the notifier for the root session; it follows Octocode's events, and the presence it sees steers cache warming. */
+export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): void {
 	const env = options.env ?? process.env;
 	const write =
 		options.write ??
@@ -125,7 +127,11 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 	let lastInputAt = Date.now();
 	let runStartedAt: number | undefined;
 	let lastNoticeAt = 0;
-	let marked = false;
+	const title = new TitleTracker();
+	let shown: { state: TitleState; text: string } | undefined;
+	let titleTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Outcome of the latest response, applied to the title when the run settles. */
+	let outcome: "idle" | "done" | "failed" = "idle";
 	let unsubscribe: (() => void) | undefined;
 	let idleTimer: ReturnType<typeof setTimeout> | undefined;
 	let lastAnswer = "";
@@ -134,16 +140,38 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 	const focusOffAtExit = () => write(FOCUS_OFF);
 	const dropExitHook = () => process.removeListener("exit", focusOffAtExit);
 
-	const baseTitle = (current: ExtensionContext): string => {
-		const raw = pi.getSessionName();
-		const name = raw ? sanitizeTerminalText(raw) : raw;
-		const cwd = path.basename(current.cwd);
-		return name ? `octocode · ${name} · ${cwd}` : `octocode · ${cwd}`;
+	const tui = (current: ExtensionContext | undefined): current is ExtensionContext =>
+		current?.mode === "tui" && current.hasUI;
+	const clearTitleTimer = () => {
+		if (titleTimer) clearTimeout(titleTimer);
+		titleTimer = undefined;
 	};
-	const unmark = () => {
-		if (!marked || !ctx) return;
-		marked = false;
-		ctx.ui.setTitle(baseTitle(ctx));
+	const writeTitle = (force: boolean) => {
+		titleTimer = undefined;
+		if (!tui(ctx)) return;
+		const state = title.state;
+		const text = terminalTitle(state, api.getSessionName(), ctx.cwd);
+		if (!force && shown?.text === text) return;
+		shown = { state, text };
+		ctx.ui.setTitle(text);
+	};
+	/** Repaint the title; `force` rewrites it after another writer (the host, a session switch) may have replaced it. */
+	const paintTitle = (force = false) => {
+		const busy = (state: TitleState | undefined) => state === "thinking" || state === "running";
+		if (!force && busy(title.state) && busy(shown?.state)) {
+			if (!titleTimer) {
+				titleTimer = setTimeout(() => writeTitle(false), TITLE_COALESCE_MS);
+				titleTimer.unref?.();
+			}
+			return;
+		}
+		clearTitleTimer();
+		writeTitle(force);
+	};
+	/** The user is back: drop a finished or failed mark. */
+	const seen = () => {
+		title.seen();
+		paintTitle();
 	};
 	const clearIdle = () => {
 		if (idleTimer) clearTimeout(idleTimer);
@@ -155,8 +183,6 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 		if (focus !== "unknown") return focus === "unfocused";
 		return runStartedAt !== undefined && now - runStartedAt >= AWAY_MS && now - lastInputAt >= AWAY_MS;
 	};
-	const tui = (current: ExtensionContext | undefined): current is ExtensionContext =>
-		current?.mode === "tui" && current.hasUI;
 	const fire = (notice: Notice, hook: boolean) => {
 		if (!ctx?.hasUI) return;
 		if (hook) options.onNotice?.(notice, ctx);
@@ -165,27 +191,28 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 		if (condition === "off" || !away(now) || now - lastNoticeAt < DEBOUNCE_MS) return;
 		lastNoticeAt = now;
 		write(notificationSequence(notifyMethod(env), notice.title, notice.message, env));
-		marked = true;
-		ctx.ui.setTitle(`${MARK} ${baseTitle(ctx)}`);
 	};
 
-	pi.on("session_start", async (_event, current) => {
+	api.on("session_start", async (_event, current) => {
 		unsubscribe?.();
 		unsubscribe = undefined;
 		clearIdle();
+		clearTitleTimer();
 		ctx = current;
-		marked = false;
+		title.reset();
+		outcome = "idle";
+		shown = undefined;
 		if (!tui(current)) return;
-		current.ui.setTitle(baseTitle(current));
+		paintTitle(true);
 		unsubscribe = current.ui.onTerminalInput((data) => {
 			if (data === FOCUS_IN || data === FOCUS_OUT) {
 				focus = data === FOCUS_IN ? "focused" : "unfocused";
-				if (focus === "focused") unmark();
+				if (focus === "focused") seen();
 				return { consume: true };
 			}
 			lastInputAt = Date.now();
 			clearIdle();
-			unmark();
+			seen();
 			return undefined;
 		});
 		if (condition !== "off") {
@@ -194,39 +221,57 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 			process.once("exit", focusOffAtExit);
 		}
 	});
-	pi.on("session_info_changed", async (_event, current) => {
-		if (tui(current)) current.ui.setTitle(`${marked ? `${MARK} ` : ""}${baseTitle(current)}`);
-	});
-	pi.on("session_shutdown", async () => {
+	// The host rewrites the plain title on a rename; put the state mark back.
+	api.on("session_info_changed", async () => paintTitle(true));
+	api.on("session_shutdown", async () => {
 		clearIdle();
 		unsubscribe?.();
 		unsubscribe = undefined;
 		dropExitHook();
 		if (tui(ctx) && condition !== "off") write(FOCUS_OFF);
-		unmark();
+		clearTitleTimer();
+		title.reset();
+		if (shown?.state !== "idle") paintTitle(true);
 		ctx = undefined;
 	});
-	pi.on("agent_start", async () => {
+	api.on("agent_start", async () => {
 		runStartedAt ??= Date.now();
 		lastAnswer = "";
+		outcome = "idle";
 		clearIdle();
-		unmark();
+		title.start();
+		paintTitle();
 	});
-	pi.on("agent_end", async (event) => {
+	api.on("tool_execution_start", async (event) => {
+		title.toolStart(event.toolCallId);
+		paintTitle();
+	});
+	api.on("tool_execution_end", async (event) => {
+		title.toolEnd(event.toolCallId);
+		paintTitle();
+	});
+	api.on("agent_end", async (event) => {
 		type Message = (typeof event.messages)[number];
 		const last = [...event.messages]
 			.reverse()
 			.find((message): message is Extract<Message, { role: "assistant" }> => message.role === "assistant");
 		// An interrupted run (Esc) means the user is right here; an error is worth a notice.
-		if (!last || last.stopReason === "aborted") return;
+		if (!last) return;
+		outcome = last.stopReason === "aborted" ? "idle" : last.stopReason === "error" ? "failed" : "done";
+		if (last.stopReason === "aborted") return;
 		lastAnswer =
 			last.stopReason === "error"
 				? `Failed: ${last.errorMessage ?? "the run stopped with an error"}`
 				: contentText(last.content) || "Ready for input";
 	});
-	pi.on("agent_settled", async () => {
+	api.on("agent_settled", async (event) => {
 		const answer = lastAnswer;
 		lastAnswer = "";
+		title.settle(event.aborted ? "idle" : outcome);
+		outcome = "idle";
+		// Someone watching the terminal has already seen the outcome.
+		if (focus === "focused") title.seen();
+		paintTitle();
 		if (ctx?.hasUI && answer) {
 			fire({ type: "idle_prompt", title: "Octocode: answer ready", message: answer }, false);
 			const current = ctx;
@@ -243,7 +288,13 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 		}
 		runStartedAt = undefined;
 	});
-	pi.on("ui_prompt_start", async (event) => {
+	api.on("ui_prompt_end", async () => {
+		title.promptEnd();
+		paintTitle();
+	});
+	api.on("ui_prompt_start", async (event) => {
+		title.promptStart();
+		paintTitle();
 		// Only the agent's dialogs: one the user opened (a `/permissions` or `/octocode` picker) needs no call back.
 		if (runStartedAt === undefined) return;
 		const type: NoticeType = event.kind === "confirm" ? "permission_prompt" : "elicitation_dialog";
@@ -251,5 +302,9 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 			{ type, title: "Octocode: waiting for you", message: promptTitle(event) ?? "A question needs your answer" },
 			true,
 		);
+	});
+	registerPresentWarming(api, {
+		focused: () => (focus === "unknown" ? undefined : focus === "focused"),
+		lastInputAt: () => lastInputAt,
 	});
 }

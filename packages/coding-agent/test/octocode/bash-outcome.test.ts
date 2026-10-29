@@ -3,7 +3,7 @@ import { createBashToolDefinition } from "../../src/core/tools/bash.ts";
 import { BashExecutionError } from "../../src/core/tools/bash/outcome.ts";
 import { foregroundFailure } from "../../src/octocode/files/bash/results.ts";
 import { renderBashResult } from "../../src/octocode/files/render.ts";
-import { fakeCtx, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("Bash outcome facts", () => {

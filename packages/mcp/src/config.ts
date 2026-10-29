@@ -21,7 +21,7 @@
  * ```
  *
  * HTTP servers without an `Authorization` header use OAuth when they answer 401 (sign in with `/mcp`).
- * `"auth": { "provider": "<provider>" }` sends the token of a `/providers` provider instead. Project files
+ * `"auth": { "provider": "<provider>" }` sends the token of a `/login` provider instead. Project files
  * cannot use it, so a repository cannot pick where the credential goes.
  *
  */
@@ -51,7 +51,7 @@ export interface McpServerEntry {
 	source: string;
 	/**
 	 * The global or the project `mcp.json`, or `extension` for servers registered with
-	 * `pi.registerMcpServer()`. Changes to extension servers are not saved.
+	 * `api.registerMcpServer()`. Changes to extension servers are not saved.
 	 */
 	scope?: "global" | "project" | "extension" | "default";
 	/** Latest `mcp.json` overriding this server's `enabled`, `defaultActive`, `exposure`, or `toolExposure`. */

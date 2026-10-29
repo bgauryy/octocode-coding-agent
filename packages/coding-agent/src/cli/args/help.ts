@@ -31,6 +31,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
   ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
   ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
+  ${APP_NAME} context <command>         Show and store the skill descriptions agents read
   ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
   ${APP_NAME} migrate                   Convert historical configuration in the active Octocode home and project
   ${APP_NAME} research <args...>        Run the installed Octocode research CLI

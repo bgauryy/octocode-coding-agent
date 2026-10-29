@@ -15,9 +15,9 @@ import { isRecord } from "../../../utils/guards.ts";
 const PREVIEW_CHARS = 60;
 
 /** Shows team mail in the conversation. */
-export function registerMessageRenderer(pi: ExtensionAPI): void {
+export function registerMessageRenderer(api: ExtensionAPI): void {
 	// Agent messages are shown in full, collapsed or not: they are short (a long one arrives as its start plus a file path) and the user reads them.
-	pi.registerMessageRenderer(INTERNAL_MESSAGE_TYPE, (message, { outputPad }, theme) => {
+	api.registerMessageRenderer(INTERNAL_MESSAGE_TYPE, (message, { outputPad }, theme) => {
 		const mail = (message.details as Partial<MailDetails> | undefined)?.messages;
 		const box = new Box(outputPad ?? 1, 0);
 		// Details are another process's data: anything but a batch shows the text the model got.
@@ -50,9 +50,9 @@ export function registerMessageRenderer(pi: ExtensionAPI): void {
 
 /** The `sendMessage` tool. */
 export function registerSendMessageTool(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	team: Team,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
+	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
 ): void {
 	registerTool(
 		timedTool({

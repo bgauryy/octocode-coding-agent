@@ -1,6 +1,7 @@
 import type { ApplicationReceipt } from "@octocodeai/octocode-contacts";
 import { useStore } from "zustand";
 import { Badge, Button } from "../ui/primitives.tsx";
+import { StateMark } from "../ui/StateMark.tsx";
 import { useLive } from "./session.tsx";
 
 export function SessionRequests({ sessionId, receipts }: { sessionId: string; receipts: ApplicationReceipt[] }) {
@@ -28,7 +29,18 @@ export function SessionRequests({ sessionId, receipts }: { sessionId: string; re
 										: "Handled";
 					return (
 						<li key={receipt.id}>
-							<Badge tone={receipt.status === "failed" ? "danger" : "neutral"}>{label}</Badge>
+							<Badge
+								tone={receipt.status === "failed" ? "danger" : "neutral"}
+								icon={
+									receipt.status === "failed" ? (
+										<StateMark state="failed" size={12} />
+									) : receipt.status === "accepted" ? (
+										<StateMark state="pending" size={12} />
+									) : undefined
+								}
+							>
+								{label}
+							</Badge>
 							{sent?.text && (
 								<span title={sent.text}>
 									{sent.text.slice(0, 160)}

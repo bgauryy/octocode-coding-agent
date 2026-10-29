@@ -50,7 +50,7 @@ const run = path.join(parent, `${new Date().toISOString().replace(/[:.]/g, "-")}
 fs.mkdirSync(run);
 const workspace = path.join(run, "workspace");
 const userConfig = path.join(run, "user-config");
-const agentDir = path.join(run, "pi-agent");
+const agentDir = path.join(run, "agent");
 const octocodeHome = path.join(run, "octocode");
 for (const dir of [workspace, userConfig, agentDir, octocodeHome]) fs.mkdirSync(dir);
 assert.equal(spawnSync("git", ["init", "-q"], { cwd: workspace, stdio: "pipe" }).status, 0);
@@ -64,7 +64,6 @@ Object.assign(process.env, {
 	OCTOCODE_CODING_AGENT_DIR: agentDir,
 	OCTOCODE_PERMISSION: "full",
 	OCTOCODE_MCP: "0",
-	OCTOCODE_HOOKS: "1",
 	OCTOCODE_MODELS_DEV: "0",
 	OCTOCODE_MEMORY_AUTO: "0",
 	OCTOCODE_API: "1",
@@ -157,8 +156,8 @@ const faux = createFauxCore({
 	provider: "reliability-controller",
 	models: [{ id: "scripted", contextWindow: 200000, maxTokens: 4096 }],
 });
-const provider = (pi) =>
-	pi.registerProvider("reliability-controller", {
+const provider = (api) =>
+	api.registerProvider("reliability-controller", {
 		name: "Scripted controller",
 		api: faux.api,
 		baseUrl: "http://127.0.0.1:0",

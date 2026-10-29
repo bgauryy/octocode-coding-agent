@@ -68,7 +68,7 @@ describe("layered cache warming", () => {
 		expect(getPromptCacheLifetime(shortOnly, layered)).toEqual({ ttlMs: 300_000, layered: false });
 		expect(getPromptCacheLifetime({ ...model, promptCache: { short: 300 } }, layered)?.layered).toBe(false);
 	});
-	it("preserves Pi warming for a single lifetime and honors explicit disabling", () => {
+	it("keeps single-lifetime warming and honors explicit disabling", () => {
 		expect(getPromptCacheLifetime(model, { cacheRetention: "long" })).toEqual({ ttlMs: 3600000, layered: false });
 		expect(getPromptCacheTtlMs(model, { cacheRetention: "none", instructionCacheRetention: "long" })).toBeUndefined();
 		expect(getPromptCacheTtlMs(model, { env: { OCTOCODE_CACHE_RETENTION: "none" } })).toBeUndefined();

@@ -1,4 +1,4 @@
-/** `pi mcp list` and `pi mcp tools`: connect to each server and report its state and tools. */
+/** `octocode mcp list` and `octocode mcp tools`: connect to each server and report its state and tools. */
 
 import { APP_NAME } from "../../../coding-agent/src/config.ts";
 import { getMcpToolExposure, type LoadedMcpConfig } from "../config.ts";

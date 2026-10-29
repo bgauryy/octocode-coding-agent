@@ -24,12 +24,12 @@ it.each(["custom", "user"] as const)(
 				},
 			],
 			extensionFactories: [
-				(pi) => {
-					pi.on("agent_settled", (event) => {
+				(api) => {
+					api.on("agent_settled", (event) => {
 						if (!event.aborted) return;
 						if (kind === "custom")
-							pi.sendMessage({ customType: "redirect", content: "new task", display: false }, { triggerTurn: true });
-						else pi.sendUserMessage("new task");
+							api.sendMessage({ customType: "redirect", content: "new task", display: false }, { triggerTurn: true });
+						else api.sendUserMessage("new task");
 					});
 				},
 			],

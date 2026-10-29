@@ -28,7 +28,7 @@ export const WARN_ACTIONS: ReadonlySet<string> = new Set<ActionClass>([
 	"net.private",
 ]);
 
-/** One audit entry (`pi.appendEntry`, never sent to the model). */
+/** One audit entry (`api.appendEntry`, never sent to the model). */
 export interface AuditEntry {
 	at: number;
 	mode: PermissionMode;

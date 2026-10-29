@@ -14,7 +14,7 @@ import { HOOK_EVALUATION_SYSTEM_PROMPT } from "../src/octocode/hooks/prompt.ts";
 import { defineOctocodeTool, octocodeToolName } from "../../mcp/src/presets/octocode/tools.ts";
 import { renderServersSection } from "../../mcp/src/section.ts";
 import type { Tool } from "../../mcp/src/client/index.ts";
-import { fakePi } from "../test/octocode/fake-pi.ts";
+import { fakeHost } from "../test/octocode/fake-host.ts";
 
 const destination = process.argv[2];
 if (!destination) throw new Error("Usage: export-agent-prompts.ts <output-directory> [captured-mcp-catalog.json]");
@@ -45,8 +45,8 @@ try {
 		if (child) process.env.OCTOCODE_SUBAGENT = "1";
 		if (profile?.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
 		if (profile?.prompt) process.env[ROLE_PROMPT_FILE_ENV] = writeRolePrompt(profile.prompt, temporary);
-		const native = fakePi();
-		octocode(native.pi);
+		const native = fakeHost();
+		octocode(native.api);
 		for (const tool of catalog?.catalog.tools ?? []) {
 			const definition = defineOctocodeTool({
 				tool,
@@ -59,15 +59,15 @@ try {
 					throw new Error("Prompt export does not execute MCP tools");
 				},
 			});
-			native.pi.registerTool(definition);
+			native.api.registerTool(definition);
 		}
-		const defaults = native.pi.getActiveTools();
+		const defaults = native.api.getActiveTools();
 		const selected = defaults.filter((tool) => !child || profileSelectsTool(profile, tool, defaults));
-		const tools = native.pi.getAllTools().filter((tool) => selected.includes(tool.name));
-		const turn = fakePi();
+		const tools = native.api.getAllTools().filter((tool) => selected.includes(tool.name));
+		const turn = fakeHost();
 		for (const tool of tools) turn.tools.set(tool.name, tool);
-		turn.pi.setActiveTools(selected);
-		registerTurnSetup(turn.pi, {
+		turn.api.setActiveTools(selected);
+		registerTurnSetup(turn.api, {
 			isSubagent: child,
 			profiles: () => profiles,
 		});

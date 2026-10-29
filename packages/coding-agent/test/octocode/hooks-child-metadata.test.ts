@@ -73,7 +73,7 @@ it.each([false, true])("requires actual child marker (child=%s)", async (child) 
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const home = tmp(),
 		cwd = tmp(),
@@ -87,16 +87,12 @@ it.each([false, true])("requires actual child marker (child=%s)", async (child) 
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd });
 	ctx.sessionManager.getSessionId = () => "actual-child";
 	const view = registerHooks(
-		fake.pi,
-		{
-			OCTOCODE_HOOKS: "1",
-			OCTOCODE_HOOKS_COMPAT: "1",
-			...(child ? { OCTOCODE_SUBAGENT: "1" } : {}),
-		},
+		fake.api,
+		child ? { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" } : {},
 		home,
 		undefined,
 		() => ({ agentName: "stale-worker", agentType: "reviewer" }),
@@ -130,7 +126,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const home = tmp(),
 		cwd = tmp(),
@@ -153,7 +149,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 			},
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	let sessionId = "original-child",
 		agentType = "reviewer",
 		permissionMode: "workspace" | "full" = "workspace",
@@ -162,8 +158,8 @@ it("snapshots identity and metadata before queued async launch", async () => {
 	ctx.sessionManager.getSessionId = () => sessionId;
 	ctx.getTurnId = () => "original-turn";
 	const view = registerHooks(
-		fake.pi,
-		{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1", OCTOCODE_SUBAGENT: "1" },
+		fake.api,
+		{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" },
 		home,
 		undefined,
 		() => {
@@ -218,7 +214,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const home = tmp(),
 		cwd = tmp();
@@ -244,17 +240,16 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 			),
 		}),
 	);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, model: { id: "current-model" } });
 	ctx.sessionManager.getSessionId = () => "child-session";
 	ctx.sessionManager.getSessionFile = () => "/child-transcript.jsonl";
 	ctx.getTurnId = () => "current-turn";
 	registerHooks(
-		fake.pi,
+		fake.api,
 		{
-			OCTOCODE_HOOKS: "1",
-			OCTOCODE_HOOKS_COMPAT: "1",
 			OCTOCODE_SUBAGENT: "1",
+			OCTOCODE_SUBAGENT_HOOKS: "1",
 		},
 		home,
 		undefined,

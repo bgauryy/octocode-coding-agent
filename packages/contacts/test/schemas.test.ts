@@ -144,6 +144,8 @@ describe("application schemas", () => {
 			{ type: "run.settled", runId: "r1", aborted: false },
 			{ type: "queue.changed", steering: ["a"], followUp: [] },
 			{ type: "session.status", status: "compacting" },
+			{ type: "session.awaiting", awaiting: { kind: "approval", title: "Run bash?" } },
+			{ type: "session.awaiting" },
 			{ type: "command.receipt", receipt: { id: "c1", status: "failed", message: "nope" } },
 		];
 		for (const event of events) expect(Value.Check(ApplicationEventSchema, event), event.type).toBe(true);
@@ -153,6 +155,8 @@ describe("application schemas", () => {
 		const bad = [
 			{ type: "run.settled", runId: "r1" },
 			{ type: "session.status", status: "busy" },
+			{ type: "session.awaiting", awaiting: { kind: "dialog" } },
+			{ type: "session.awaiting", awaiting: { kind: "question", title: "x".repeat(201) } },
 			{ type: "command.receipt", receipt: { id: "c1", status: "rejected" } },
 			{ type: "queue.changed", steering: "a", followUp: [] },
 			{ type: "tool.started", toolName: "bash" },
@@ -168,8 +172,10 @@ describe("application schemas", () => {
 				tools: [{ ...tool, order: 1 }],
 				status: "retrying",
 				runId: "r1",
+				awaiting: { kind: "question" },
 			}),
 		).toBe(true);
+		expect(Value.Check(ApplicationSnapshotSchema, { ...snapshot, awaiting: { kind: "wait" } })).toBe(false);
 		expect(Value.Check(ApplicationSnapshotSchema, { ...snapshot, capabilities: ["shell"] })).toBe(false);
 		expect(Value.Check(ApplicationSnapshotSchema, { ...snapshot, status: "busy" })).toBe(false);
 		const { receipts: _receipts, ...missing } = snapshot;

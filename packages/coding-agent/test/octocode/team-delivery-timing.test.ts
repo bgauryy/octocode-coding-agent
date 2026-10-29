@@ -186,7 +186,7 @@ describe("a background report (follow-up) during a long tool", () => {
 		]);
 		const running = live.session.prompt("work");
 		await long.started;
-		live.pi.sendMessage(
+		live.api.sendMessage(
 			{ customType: "report-test", content: "MAIL: job finished", display: true, details: { id: "j1" } },
 			{ deliverAs: "followUp", triggerTurn: true },
 		);

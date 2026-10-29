@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
@@ -29,10 +29,9 @@ function sources(matcher = "Bash", event = "PreToolUse", command = "echo same") 
 const run = (output: unknown) => ({ code: 0, stdout: JSON.stringify(output), stderr: "", timedOut: false });
 
 describe("source hook profiles", () => {
-	it("keeps three dialects separate while the legacy default still runs a duplicate once", () => {
+	it("keeps three dialects separate", () => {
 		const { home, cwd } = sources();
-		expect(commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"])).toHaveLength(1);
-		const selected = commandsFor(loadHooks(cwd, false, home, { sourceProfiles: true }).config, "PreToolUse", ["Bash"]);
+		const selected = commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"]);
 		expect(selected.map((hook) => [hook.protocol ?? "octocode", hook.timeoutMs])).toEqual([
 			["claude", 600_000],
 			["codex", 600_000],
@@ -48,7 +47,7 @@ describe("source hook profiles", () => {
 		["*", "Bash", ["claude", "codex", "octocode"]],
 	] as const)("selects %s against %s by source semantics", (matcher, name, expected) => {
 		const { home, cwd } = sources(matcher);
-		const loaded = loadHooks(cwd, false, home, { sourceProfiles: true });
+		const loaded = loadHooks(cwd, false, home);
 		expect(loaded.errors).toEqual([]);
 		expect(commandsFor(loaded.config, "PreToolUse", [name]).map((hook) => hook.protocol ?? "octocode")).toEqual(
 			expected,
@@ -57,7 +56,7 @@ describe("source hook profiles", () => {
 
 	it("ignores Stop matchers in upstream profiles, including invalid regexes", () => {
 		const { home, cwd } = sources("(", "Stop");
-		const loaded = loadHooks(cwd, false, home, { sourceProfiles: true });
+		const loaded = loadHooks(cwd, false, home);
 		expect(loaded.errors).toHaveLength(1);
 		expect(loaded.errors[0]).toContain("hooks.json");
 		expect(commandsFor(loaded.config, "Stop", []).map((hook) => hook.protocol)).toEqual(["claude", "codex"]);
@@ -69,7 +68,7 @@ describe("source hook profiles", () => {
 		["PostMessageReceive", ["octocode"], 2],
 	] as const)("does not present %s as a supported event of another host", (event, expected, diagnostics) => {
 		const { home, cwd } = sources("*", event);
-		const loaded = loadHooks(cwd, false, home, { sourceProfiles: true });
+		const loaded = loadHooks(cwd, false, home);
 		expect(loaded.errors).toHaveLength(diagnostics);
 		expect(commandsFor(loaded.config, event, []).map((hook) => hook.protocol ?? "octocode")).toEqual(expected);
 	});
@@ -104,9 +103,9 @@ describe("source hook profiles", () => {
 		);
 		fs.rmSync(path.join(home, ".claude/settings.json"));
 		fs.rmSync(path.join(process.env.OCTOCODE_HOME!, "hooks.json"));
-		const { pi, fire } = fakePi();
+		const { api, fire } = fakeHost();
 		const audit = vi.fn();
-		const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home, audit);
+		const hooks = registerHooks(api, {}, home, audit);
 		const ctx = {
 			cwd,
 			hasUI: false,

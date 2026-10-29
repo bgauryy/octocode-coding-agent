@@ -24,12 +24,12 @@ describe.skipIf(process.platform === "win32")("runtime state is owner-only", () 
 	});
 
 	it("creates output folders 0700 and tightens one that already exists", () => {
-		expect(modeOf(outputDir("pi-x"))).toBe(0o700);
+		expect(modeOf(outputDir("octocode-x"))).toBe(0o700);
 		expect(modeOf(home)).toBe(0o700);
-		const loose = path.join(home, "pi-loose");
+		const loose = path.join(home, "octocode-loose");
 		fs.mkdirSync(loose, { mode: 0o755 });
 		fs.chmodSync(loose, 0o755);
-		expect(modeOf(outputDir("pi-loose"))).toBe(0o700);
+		expect(modeOf(outputDir("octocode-loose"))).toBe(0o700);
 		expect(modeOf(privateDir(path.join(tmp(), "a", "b")))).toBe(0o700);
 	});
 

@@ -46,7 +46,7 @@ describe("strict built-in tools", () => {
 	it.each([{ activeTools: [] }, { activeTools: [...strictToolNames] }])(
 		"allows extensions to re-register tools without strict sampling: $activeTools",
 		async ({ activeTools }) => {
-			const cwd = mkdtempSync(join(tmpdir(), "pi-non-strict-tools-"));
+			const cwd = mkdtempSync(join(tmpdir(), "octocode-non-strict-tools-"));
 			const agentDir = join(cwd, "agent");
 			const settingsManager = SettingsManager.inMemory({ defaultTools: activeTools });
 			const resourceLoader = new DefaultResourceLoader({
@@ -59,13 +59,13 @@ describe("strict built-in tools", () => {
 				noPromptTemplates: true,
 				noThemes: true,
 				extensionFactories: [
-					(pi) => {
-						pi.on("session_start", () => {
+					(api) => {
+						api.on("session_start", () => {
 							const definitions = definitionFor(cwd);
 							for (const name of strictToolNames) {
-								pi.registerTool({ ...definitions[name], constrainedSampling: false } as never);
+								api.registerTool({ ...definitions[name], constrainedSampling: false } as never);
 							}
-							pi.setActiveTools(activeTools);
+							api.setActiveTools(activeTools);
 						});
 					},
 				],

@@ -40,6 +40,8 @@ export interface BacklogWeb {
 	close(): Promise<void>;
 	/** Revalidate a cached shared endpoint before opening it again; omitted for ordinary per-session servers. */
 	validate?: () => Promise<boolean>;
+	/** Whether this server, started by this process, still accepts connections; lets a wrapper skip a loopback probe. */
+	isUp?: () => boolean;
 }
 
 export type OpenBacklogWeb = (

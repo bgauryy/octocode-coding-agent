@@ -31,8 +31,8 @@ describe("pre-prompt compaction refused as a failure", () => {
 			models: [{ id: "faux-1", contextWindow: 1_000, maxTokens: 100 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async () => ({ cancel: true, failure: refusal }));
+				(api) => {
+					api.on("session_before_compact", async () => ({ cancel: true, failure: refusal }));
 				},
 			],
 		});

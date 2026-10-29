@@ -73,7 +73,7 @@ function trustState(
 	// Octocode's own decision (its `/trust`) and our store file (written by any process) are part of the key too.
 	const store = fs.statSync(storePath(home), { throwIfNoEntry: false })?.mtimeMs;
 	const trusted = ctx.isProjectTrusted();
-	const decided = piDecided(ctx.cwd);
+	const decided = trustDecided(ctx.cwd);
 	const memoKey = `${ctx.cwd}\0${process.env[TRUST_ROOT_ENV] ?? ""}\0${process.env[SUBAGENT_ENV] ?? ""}\0${home ?? ""}\0${trusted}\0${decided}\0${store}\0${stamp.join("|")}`;
 	const now = Date.now();
 	// A size and mtime stamp can miss a same-size rewrite within the window. A memoized refusal errs safe; a memoized
@@ -137,7 +137,7 @@ function computeTrust(
 }
 
 /** Octocode resolved trust itself: protected resources exist, or `/trust` saved a decision. */
-function piDecided(cwd: string): boolean {
+function trustDecided(cwd: string): boolean {
 	try {
 		return hasTrustRequiringProjectResources(cwd) || new ProjectTrustStore(getAgentDir()).get(cwd) === true;
 	} catch {

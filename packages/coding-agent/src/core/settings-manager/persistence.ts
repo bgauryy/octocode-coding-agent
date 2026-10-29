@@ -1,7 +1,7 @@
 import { stripBom } from "../../utils/text.ts";
 import type { Settings } from "../settings-schema.ts";
 import { migrateSettings } from "./load.ts";
-import { deepMergeSettings } from "./merge.ts";
+import { mergeScopedSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
 
@@ -123,7 +123,7 @@ export class SettingsPersistence {
 
 	save(): void {
 		const state = this.state;
-		state.settings = deepMergeSettings(state.globalSettings, state.projectSettings);
+		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
 
 		if (state.globalSettingsLoadError) {
 			return;
@@ -142,7 +142,7 @@ export class SettingsPersistence {
 		const state = this.state;
 		this.assertProjectTrustedForWrite();
 		state.projectSettings = structuredClone(settings);
-		state.settings = deepMergeSettings(state.globalSettings, state.projectSettings);
+		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
 
 		if (state.projectSettingsLoadError) {
 			return;
@@ -156,11 +156,12 @@ export class SettingsPersistence {
 		});
 	}
 
-	updateProjectSettings(field: keyof Settings, update: (settings: Settings) => void): void {
+	/** `nestedKey` writes only that key of an object field, keeping keys another process wrote meanwhile. */
+	updateProjectSettings(field: keyof Settings, update: (settings: Settings) => void, nestedKey?: string): void {
 		this.assertProjectTrustedForWrite();
 		const projectSettings = structuredClone(this.state.projectSettings);
 		update(projectSettings);
-		this.markProjectModified(field);
+		this.markProjectModified(field, nestedKey);
 		this.saveProjectSettings(projectSettings);
 	}
 }

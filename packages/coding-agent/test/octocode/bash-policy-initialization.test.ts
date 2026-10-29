@@ -17,14 +17,14 @@ vi.mock("../../src/octocode/shared/trust.ts", () => ({
 }));
 import { nativeHost } from "../../src/octocode/shared/host-api.ts";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 const roots: string[] = [];
 afterEach(() => {
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	state.initialize.mockReset().mockResolvedValue();
 	vi.unstubAllEnvs();
 });
-function fixture(enabled = true) {
+function fixture() {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "bash-policy-init-"));
 	roots.push(root);
 	const home = path.join(root, "home");
@@ -32,9 +32,9 @@ function fixture(enabled = true) {
 	vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(home, ".claude"));
 	const file = path.join(home, ".claude/settings.json");
 	const write = (permissions: unknown) => fs.writeFileSync(file, JSON.stringify({ permissions }));
-	const fake = fakePi();
-	nativeHost(fake.pi).setToolPolicy = vi.fn();
-	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: enabled ? "1" : "0" }, home);
+	const fake = fakeHost();
+	nativeHost(fake.api).setToolPolicy = vi.fn();
+	const owner = registerSourcePolicy(fake.api, home);
 	return { owner, write, ctx: fakeCtx({ cwd: root, hasUI: false }), fake };
 }
 const call = {
@@ -48,12 +48,6 @@ it("initializes compatibility file effects with no configured rules", async () =
 	f.write({});
 	await f.owner.refresh(f.ctx);
 	expect(state.initialize).toHaveBeenCalledTimes(1);
-});
-it("does not initialize when compatibility is disabled", async () => {
-	const f = fixture(false);
-	f.write({ deny: ["Bash(*)"] });
-	await f.owner.refresh(f.ctx);
-	expect(state.initialize).not.toHaveBeenCalled();
 });
 it("holds concurrent refreshes behind initialization and captures changed bytes afterward", async () => {
 	const f = fixture();
@@ -73,7 +67,7 @@ it("holds concurrent refreshes behind initialization and captures changed bytes 
 	});
 	await Promise.resolve();
 	expect(settled).toBe(false);
-	expect(nativeHost(f.fake.pi).setToolPolicy).not.toHaveBeenCalled();
+	expect(nativeHost(f.fake.api).setToolPolicy).not.toHaveBeenCalled();
 	f.write({ deny: ["Bash"] });
 	release();
 	await Promise.all([first, second]);

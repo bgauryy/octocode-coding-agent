@@ -155,7 +155,6 @@ export class SessionExtensionBindings {
 		const getCommands = (): SlashCommandInfo[] => {
 			const extensionCommands: SlashCommandInfo[] = runner.getRegisteredCommands().map((command) => ({
 				name: command.invocationName,
-				aliases: command.invocationAliases,
 				description: command.description,
 				source: "extension",
 				sourceInfo: command.sourceInfo,

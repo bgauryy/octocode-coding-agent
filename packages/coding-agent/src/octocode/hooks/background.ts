@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import type { HookCommand, HookEvent, HookRun } from "./contracts.ts";
+import type { HookEvent } from "./catalog.ts";
+import type { HookCommand, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 import { limitCodexContext } from "./context-limit.ts";
@@ -38,7 +39,7 @@ function backgroundContext(stdout: string): string | undefined {
 }
 
 /** Own background processes and pending context for one live session, independently of a foreground turn. */
-export function registerBackgroundHooks(pi: ExtensionAPI) {
+export function registerBackgroundHooks(api: ExtensionAPI) {
 	let controller = new AbortController();
 	let closed = false;
 	const active = new Set<Promise<void>>();
@@ -56,20 +57,20 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 			closed = false;
 		}
 	};
-	pi.on("session_start", async () => reset(false));
-	pi.on("session_shutdown", async () => reset(true));
+	api.on("session_start", async () => reset(false));
+	api.on("session_shutdown", async () => reset(true));
 	const takeContext = () => {
 		if (!pending.length) return undefined;
 		const content = capContext(`Context from background hooks:\n${pending.join("\n\n")}`);
 		pending = [];
 		return { customType: "octocode-hook-context", content, display: false };
 	};
-	pi.on("before_agent_start", async (_event, ctx) => {
+	api.on("before_agent_start", async (_event, ctx) => {
 		if (ctx.signal?.aborted) return;
 		const message = takeContext();
 		return message ? { message } : undefined;
 	});
-	pi.on("turn_end", async (event, ctx) => {
+	api.on("turn_end", async (event, ctx) => {
 		if (
 			ctx.signal?.aborted ||
 			!event.toolResults?.length ||
@@ -124,7 +125,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 							const reason = visibleControls(result.stderr.trim() || result.stdout.trim());
 							// Sending may await an entire new turn; cleanup must not await that turn through this job.
 							void Promise.resolve(
-								pi.sendMessage(
+								api.sendMessage(
 									{
 										customType: "octocode-hook-context",
 										content: capContext(`Background hook feedback:\n${reason}`),

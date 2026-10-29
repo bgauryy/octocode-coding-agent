@@ -1,4 +1,3 @@
-import { validateCommandAliases } from "../../slash-commands.ts";
 import type { Provider } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "../../event-bus.ts";
@@ -112,13 +111,17 @@ export function createExtensionAPI(
 			assertActive();
 			if (typeof name !== "string" || name.length === 0) {
 				throw new Error(
-					`Command registered by extension "${extension.path}" must have a non-empty string name. Use pi.registerCommand("name", { description, handler }).`,
+					`Command registered by extension "${extension.path}" must have a non-empty string name. Use api.registerCommand("name", { description, handler }).`,
 				);
 			}
 			if (typeof options?.handler !== "function") {
 				throw new Error(`Command "/${name}" registered by extension "${extension.path}" must define handler().`);
 			}
-			validateCommandAliases(name, options.aliases);
+			if ("aliases" in options) {
+				throw new Error(
+					`Command "/${name}" registered by extension "${extension.path}" passes aliases, which are no longer supported. Register each command under one name.`,
+				);
+			}
 			extension.commands.set(name, {
 				name,
 				sourceInfo: extension.sourceInfo,

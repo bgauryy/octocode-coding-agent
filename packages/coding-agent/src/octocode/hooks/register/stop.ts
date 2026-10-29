@@ -8,7 +8,8 @@ import { clipText, contentText, firstLine } from "../../shared/util.ts";
 import { hookLabel } from "../config.ts";
 import { type Dispatch, type HookSession, STOP_CONTINUE_CAP, STOP_PREFIX, STOP_TYPE } from "./types.ts";
 import { commandsFor } from "../config/calls.ts";
-import type { HookHandler, HookEvent } from "../contracts.ts";
+import type { HookEvent } from "../catalog.ts";
+import type { HookHandler } from "../contracts.ts";
 
 /**
  * Shows `label` in the footer status while `work` runs, with its elapsed time in the TUI. For hooks that run after Octocode
@@ -43,17 +44,17 @@ function hooksLabel(event: HookEvent, hooks: HookHandler[]): string {
 	return `${event} hook: ${command}${hooks.length > 1 ? ` +${hooks.length - 1}` : ""}`;
 }
 
-export function registerStopHook(pi: ExtensionAPI, session: HookSession, dispatch: Dispatch, child = false): void {
+export function registerStopHook(api: ExtensionAPI, session: HookSession, dispatch: Dispatch, child = false): void {
 	/** Stop-hook continuations in a row (reset by a prompt or a tool call). */
 	let stopContinues = 0;
-	pi.on("before_agent_start", async () => {
+	api.on("before_agent_start", async () => {
 		stopContinues = 0;
 		return undefined;
 	});
-	pi.on("tool_execution_start", async (event) => {
+	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) stopContinues = 0;
 	});
-	pi.on("agent_before_settle", async (event, ctx) => {
+	api.on("agent_before_settle", async (event, ctx) => {
 		const last = [...event.context.llmMessages].reverse().find((message) => message.role === "assistant");
 		if (event.outcome === "error") {
 			const details = last?.errorMessage;
@@ -100,8 +101,8 @@ export function registerStopHook(pi: ExtensionAPI, session: HookSession, dispatc
 }
 
 /** `⚑ Stop hook`, then the hook's feedback: untrusted text, sanitized and previewed by resultBlock, never drawn as Markdown. */
-export function registerStopRenderer(pi: ExtensionAPI): void {
-	pi.registerMessageRenderer(STOP_TYPE, (message, { expanded, outputPad }, theme) => {
+export function registerStopRenderer(api: ExtensionAPI): void {
+	api.registerMessageRenderer(STOP_TYPE, (message, { expanded, outputPad }, theme) => {
 		const text = contentText(message.content);
 		const box = new Box(outputPad ?? 1, 0);
 		box.addChild(

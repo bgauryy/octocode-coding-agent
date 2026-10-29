@@ -22,13 +22,13 @@ import type { ExtensionContext } from "./context.ts";
 // Provider Registration Types
 // ============================================================================
 
-/** Virtual model registered via pi.registerVirtualModel(). */
+/** Virtual model registered via api.registerVirtualModel(). */
 export interface ExtensionVirtualModel<TState = unknown> extends Omit<VirtualModelDefinition<TState>, "route"> {
 	/** Like `VirtualModelDefinition.route`, with an extension context. */
 	route(request: ModelRouteRequest<TState>, ctx: ExtensionContext): ModelRoute<TState> | Promise<ModelRoute<TState>>;
 }
 
-/** Configuration for registering a provider via pi.registerProvider(). */
+/** Configuration for registering a provider via api.registerProvider(). */
 export interface ProviderConfig {
 	/** Display name for the provider in UI. */
 	name?: string;
@@ -68,7 +68,7 @@ export interface ProviderConfig {
 	 * Use context.publish({ persist: entry }) when the catalog should persist across sessions.
 	 */
 	refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;
-	/** OAuth provider for /providers support. The `id` is set automatically from the provider name. */
+	/** OAuth provider for /login support. The `id` is set automatically from the provider name. */
 	oauth?: {
 		/** Display name for the provider in login UI. */
 		name: string;
@@ -112,7 +112,7 @@ interface ProviderChatModelConfig extends ProviderModelConfigBase {
 	api?: Api;
 	/** Whether the model supports extended thinking. */
 	reasoning: boolean;
-	/** Maps pi thinking levels to provider/model-specific values; null marks a level unsupported. */
+	/** Maps Octocode thinking levels to provider/model-specific values; null marks a level unsupported. */
 	thinkingLevelMap?: Model<Api>["thinkingLevelMap"];
 	/** Best-effort prompt cache lifetime in seconds per retention tier. Unset disables cache warming. */
 	promptCache?: Model<Api>["promptCache"];

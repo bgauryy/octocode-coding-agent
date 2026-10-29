@@ -1,6 +1,6 @@
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import type { Model, ProviderHeaders, TranscriptContext } from "../../types.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
+import { getUserAgent } from "../../utils/user-agent.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
 import { getDeclaredTools, getInitialSystemMessage, resolveTranscriptTools } from "../../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "../constrained-sampling.ts";
@@ -155,7 +155,7 @@ function buildBaseCodexHeaders(
 	token: string,
 ): Headers {
 	// Defaults first so model and caller headers can override them, matching the other providers.
-	const headers = new Headers({ originator: "pi", "User-Agent": getPiUserAgent() });
+	const headers = new Headers({ originator: "pi", "User-Agent": getUserAgent() });
 	for (const [key, value] of Object.entries(initHeaders || {})) {
 		headers.set(key, value);
 	}

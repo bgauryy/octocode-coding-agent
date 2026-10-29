@@ -35,6 +35,19 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 		this.save();
 	}
 
+	getProviderModels(): Record<string, string> {
+		return { ...this.settings.providerModels };
+	}
+
+	/** A hand-edited value that is not "full" or a whole number of at least 8,192 tokens falls back to the default. */
+	getContextBudget(): number | "full" {
+		const value: unknown = this.settings.contextBudget;
+		if (value === "full") return value;
+		return Number.isSafeInteger(value) && (value as number) >= 8192
+			? (value as number)
+			: SETTINGS_DEFAULTS.contextBudget;
+	}
+
 	getSteeringMode(): "all" | "one-at-a-time" {
 		return this.settings.steeringMode || SETTINGS_DEFAULTS.steeringMode;
 	}

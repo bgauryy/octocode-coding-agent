@@ -8,7 +8,7 @@ import {
 	storedText,
 	visibleControls,
 } from "../../src/octocode/shared/sanitize.ts";
-import { rendered, theme } from "./fake-pi.ts";
+import { rendered, theme } from "./fake-host.ts";
 
 describe("sanitizeTerminalText", () => {
 	const cases: Array<[string, string, string]> = [

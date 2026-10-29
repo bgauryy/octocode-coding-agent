@@ -4,8 +4,8 @@ import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts"
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../../core/extensions/index.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
-import type { HookConfig, HookEvent, HookVerdict } from "../contracts.ts";
-import type { HookProtocol } from "../profiles.ts";
+import type { HookEvent, HookProtocol } from "../catalog.ts";
+import type { HookConfig, HookVerdict } from "../contracts.ts";
 
 export const CONTEXT_TYPE = "octocode-hook-context";
 /** Longest the first prompt waits for SessionStart hooks still running. */

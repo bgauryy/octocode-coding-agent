@@ -8,10 +8,10 @@ import type * as Parked from "../../src/octocode/subagents/parked.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 const parked = vi.hoisted(() => ({ failWrites: false }));
@@ -41,8 +41,8 @@ beforeAll(() => {
 	});
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -52,9 +52,9 @@ afterAll(() => {
 
 function setup() {
 	const cwd = tmp();
-	const f = fakePi();
-	const team = new Team(f.pi);
-	const control = registerAgentTool(f.pi, () => new Map(), team, fakePermission("full"));
+	const f = fakeHost();
+	const team = new Team(f.api);
+	const control = registerAgentTool(f.api, () => new Map(), team, fakePermission("full"));
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },

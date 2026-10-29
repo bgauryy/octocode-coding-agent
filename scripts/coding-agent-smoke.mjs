@@ -38,8 +38,8 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		if (!existsSync(profileDir) || !readdirSync(profileDir).some((name) => name.endsWith(".md"))) {
 			throw new Error("Installed Octocode package is missing bundled subagent profiles");
 		}
-		if (!existsSync(join(packageDir, "dist/octocode/native-skills/octocode-compact-mcp/SKILL.md"))) {
-			throw new Error("Installed Octocode package is missing the bundled octocode-compact-mcp skill");
+		if (!existsSync(join(packageDir, "dist/octocode/native-skills/octocode-context-optimization/SKILL.md"))) {
+			throw new Error("Installed Octocode package is missing the bundled octocode-context-optimization skill");
 		}
 		if (existsSync(join(packageDir, "src"))) throw new Error("Installed Octocode must not depend on source files");
 		writeFileSync(

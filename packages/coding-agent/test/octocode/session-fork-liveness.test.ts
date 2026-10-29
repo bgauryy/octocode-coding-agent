@@ -8,7 +8,7 @@ import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let saved: { home?: string; db?: string };
@@ -79,8 +79,8 @@ describe("a fork's totals", () => {
 	});
 
 	async function start(id: string, entries: Entry[], header: { timestamp: string; parentSession?: string }) {
-		const fake = fakePi();
-		registerSessions(fake.pi, { commands: new Subcommands(), isSubagent: false, filesChanged: () => 0 });
+		const fake = fakeHost();
+		registerSessions(fake.api, { commands: new Subcommands(), isSubagent: false, filesChanged: () => 0 });
 		const file = path.join(tmp(), `${id}.jsonl`);
 		fs.writeFileSync(file, "{}\n");
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });

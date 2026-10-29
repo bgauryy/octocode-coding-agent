@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "../../src/octocode/shared/env.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -11,7 +11,7 @@ import { tmp } from "./helpers.ts";
  */
 describe("what a spawn approval in manual mode grants the child", () => {
 	it("grants shell and workspace edits for the run, and never outside changes or destructive shell", async () => {
-		const parent = new Permission({ pi: fakePi().pi, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });
+		const parent = new Permission({ api: fakeHost().api, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });
 		const ctx = fakeCtx({ cwd: tmp(), ui: { selects: ["Allow once"] } });
 		parent.start(ctx);
 		const profile = { name: "implementer", description: "", prompt: "" };
@@ -20,7 +20,7 @@ describe("what a spawn approval in manual mode grants the child", () => {
 
 		// The child runs in the parent's mode with those grants; it cannot ask anyone.
 		const child = new Permission({
-			pi: fakePi().pi,
+			api: fakeHost().api,
 			env: { [PERMISSION_ENV]: parent.mode, [PERMISSION_GRANTS_ENV]: grants.join(",") },
 			isSubagent: true,
 		});
@@ -35,7 +35,7 @@ describe("what a spawn approval in manual mode grants the child", () => {
 	});
 
 	it("passes no grant when the parent's mode already allows the spawn", async () => {
-		const parent = new Permission({ pi: fakePi().pi, env: { [PERMISSION_ENV]: "workspace" }, isSubagent: false });
+		const parent = new Permission({ api: fakeHost().api, env: { [PERMISSION_ENV]: "workspace" }, isSubagent: false });
 		const ctx = fakeCtx({ cwd: tmp() });
 		parent.start(ctx);
 		expect(await askSpawn(parent, ctx, { name: "implementer", description: "", prompt: "" }, "Fix")).toEqual([]);

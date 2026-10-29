@@ -65,7 +65,7 @@ const keyOf = (model: Pick<Model<Api>, "provider" | "id">) => `${model.provider}
  * rest of the process (a later reply without usage, such as an aborted one, does not undo that), and:
  *
  * - idle-warming decisions use its inferred lifetime (`of`);
- * - an `anthropic-messages` model also gets those lifetimes in Octocode's model registry through `pi.registerProvider`, so Octocode's
+ * - an `anthropic-messages` model also gets those lifetimes in Octocode's model registry through `api.registerProvider`, so Octocode's
  *   cache warmer, which skips a model without `promptCache`, keeps its cache warm. The registration lists every model of
  *   the provider as the registry has it (models.json definitions, auth and headers config stay Octocode's, and a models.json
  *   `modelOverrides.promptCache` still wins, since Octocode applies overrides last); only models seen caching gain lifetimes.
@@ -90,7 +90,7 @@ export class PromptCacheLifetimes {
 
 	/** Notes a turn's assistant reply; supplies lifetimes to Octocode's registry when it shows an undeclared model caching. */
 	observe(
-		pi: Pick<ExtensionAPI, "registerProvider">,
+		api: Pick<ExtensionAPI, "registerProvider">,
 		ctx: Pick<ExtensionContext, "modelRegistry">,
 		message: unknown,
 		env: NodeJS.ProcessEnv = process.env,
@@ -117,7 +117,7 @@ export class PromptCacheLifetimes {
 			this.caching.has(keyOf(entry)) &&
 			(!entry.promptCache || this.supplied.has(keyOf(entry)));
 		try {
-			pi.registerProvider(model.provider, {
+			api.registerProvider(model.provider, {
 				models: models.map((entry) =>
 					inferred(entry)
 						? { ...entry, promptCache: inferredPromptCache(entry, !this.shortOnly.has(keyOf(entry))) }

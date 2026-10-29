@@ -227,7 +227,7 @@ export class Lingering {
 				last.profile,
 				text,
 				launchSignal,
-				runs.pi.getSettings().defaultTools,
+				runs.api.getSettings().defaultTools,
 				{ goal: last.identity.goal },
 			);
 			launchSignal.throwIfAborted();
@@ -235,7 +235,7 @@ export class Lingering {
 				throw new Error(`Subagent ${id} is no longer available to resume.`);
 			// Keep the saved conversation, model and skill inventory, but renew authorization from the parent's current policy,
 			// and take the session's current MCP servers, as a new run would.
-			const servers = getMcpAddedServers(runs.pi.events);
+			const servers = getMcpAddedServers(runs.api.events);
 			const identity = {
 				...withoutServers(last.identity),
 				...(Object.keys(servers).length > 0 ? { mcpServers: servers } : {}),

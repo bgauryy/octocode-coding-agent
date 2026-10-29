@@ -31,7 +31,7 @@ describe("package commands", () => {
 	let packageDir: string;
 	let originalCwd: string;
 	let originalAgentDir: string | undefined;
-	let originalPiPackageDir: string | undefined;
+	let originalPackageDir: string | undefined;
 	let originalPath: string | undefined;
 	let originalExitCode: typeof process.exitCode;
 	let originalExecPath: string;
@@ -69,14 +69,14 @@ fs.writeFileSync(${JSON.stringify(npmRecordPath)}, JSON.stringify(args));
 if (${npmExitCode} !== 0) process.exit(${npmExitCode});
 const binDir = path.join(process.cwd(), "node_modules", ".bin");
 fs.mkdirSync(binDir, { recursive: true });
-const piPath = path.join(binDir, process.platform === "win32" ? "octocode.cmd" : "octocode");
+const octocodePath = path.join(binDir, process.platform === "win32" ? "octocode.cmd" : "octocode");
 fs.writeFileSync(
-	piPath,
+	octocodePath,
 	process.platform === "win32"
 		? "@echo off\\r\\necho ${targetVersion}\\r\\n"
 		: "#!/bin/sh\\nprintf '%s\\n' ${targetVersion}\\n",
 );
-if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
+if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 `,
 		);
 		const npmPath = join(binDir, process.platform === "win32" ? "npm.cmd" : "npm");
@@ -150,7 +150,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 
 		originalCwd = process.cwd();
 		originalAgentDir = process.env[ENV_AGENT_DIR];
-		originalPiPackageDir = process.env.OCTOCODE_PACKAGE_DIR;
+		originalPackageDir = process.env.OCTOCODE_PACKAGE_DIR;
 		originalPath = process.env.PATH;
 		originalExitCode = process.exitCode;
 		originalExecPath = process.execPath;
@@ -178,10 +178,10 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		} else {
 			process.env[ENV_AGENT_DIR] = originalAgentDir;
 		}
-		if (originalPiPackageDir === undefined) {
+		if (originalPackageDir === undefined) {
 			delete process.env.OCTOCODE_PACKAGE_DIR;
 		} else {
-			process.env.OCTOCODE_PACKAGE_DIR = originalPiPackageDir;
+			process.env.OCTOCODE_PACKAGE_DIR = originalPackageDir;
 		}
 		if (originalPath === undefined) {
 			delete process.env.PATH;

@@ -6,14 +6,14 @@ import {
 	loopNote,
 	registerLoopGuard,
 } from "../../src/octocode/loop-guard.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 type Result = { message: { content: Array<{ text: string }>; structuredContent?: unknown } } | undefined;
 
 /** Fire the events the agent loop sends for one top-level call: start, the executed result unless `blocked`, then the message. */
 function guard() {
-	const fake = fakePi();
-	registerLoopGuard(fake.pi);
+	const fake = fakeHost();
+	registerLoopGuard(fake.api);
 	const ctx = fakeCtx({ cwd: "/repo" });
 	let id = 0;
 	return {

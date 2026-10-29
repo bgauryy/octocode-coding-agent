@@ -2,6 +2,7 @@ import { crc32, deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import type { ToolResultContent } from "../src/utils/tool-result-images.ts";
 import { normalizeToolResultImages } from "../src/utils/tool-result-images.ts";
+import { createTinyBmp1x1Red24bpp } from "./image-fixtures.ts";
 
 const TINY_PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
@@ -37,22 +38,6 @@ function createPng(width: number, height: number): Buffer {
 function readPngDimensions(base64Data: string): { width: number; height: number } {
 	const buffer = Buffer.from(base64Data, "base64");
 	return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
-}
-
-function createTinyBmp1x1Red24bpp(): Buffer {
-	const buffer = Buffer.alloc(58);
-	buffer.write("BM", 0, "ascii");
-	buffer.writeUInt32LE(buffer.length, 2);
-	buffer.writeUInt32LE(54, 10);
-	buffer.writeUInt32LE(40, 14);
-	buffer.writeInt32LE(1, 18);
-	buffer.writeInt32LE(1, 22);
-	buffer.writeUInt16LE(1, 26);
-	buffer.writeUInt16LE(24, 28);
-	buffer.writeUInt32LE(0, 30);
-	buffer.writeUInt32LE(4, 34);
-	buffer[56] = 0xff;
-	return buffer;
 }
 
 function imageBlock(bytes: Buffer, mimeType: string): ToolResultContent {

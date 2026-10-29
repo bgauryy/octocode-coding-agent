@@ -10,7 +10,7 @@ import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../src/runtime.ts";
 import { McpExtensionState } from "../src/state.ts";
 
-import { fakePi } from "../../coding-agent/test/octocode/fake-pi.ts";
+import { fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
 
 const fixture = path.join(import.meta.dirname, "../../coding-agent/test/octocode/fixtures/resource-mcp.mjs");
 
@@ -72,9 +72,9 @@ describe("shared MCP host capabilities", () => {
 	});
 
 	it("inherits extension registrations while omitting disabled, stopped and file-configured servers", async () => {
-		const fake = fakePi();
-		Object.assign(fake.pi, { events: createEventBus() });
-		const state = new McpExtensionState(fake.pi, {});
+		const fake = fakeHost();
+		Object.assign(fake.api, { events: createEventBus() });
+		const state = new McpExtensionState(fake.api, {});
 		const config = { command: process.execPath, args: [fixture] };
 		const stopped = new McpServerConnection({
 			entry: { name: "stopped", source: "extension", scope: "extension", config },
@@ -91,7 +91,7 @@ describe("shared MCP host capabilities", () => {
 			{ entry: { name: "file", source: "mcp.json", scope: "global", config } },
 		];
 		registerMcpManageTool(state);
-		expect(getMcpAddedServers(fake.pi.events)).toEqual({ plugin: config });
+		expect(getMcpAddedServers(fake.api.events)).toEqual({ plugin: config });
 		await stopped.close();
 	});
 

@@ -6,7 +6,7 @@ import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
 import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { childSkills, registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakePi } from "./fake-pi.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp, allSections } from "./helpers.ts";
 
 const skill = (name: string, disableModelInvocation = false): Skill => ({
@@ -54,7 +54,7 @@ describe("registerTurnSetup routing and child trim", () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	const run = async (
-		fake: ReturnType<typeof fakePi>,
+		fake: ReturnType<typeof fakeHost>,
 		options: { selectedTools: string[]; skills?: Skill[] },
 	): Promise<Record<string, string>> => {
 		const event = {
@@ -72,7 +72,7 @@ describe("registerTurnSetup routing and child trim", () => {
 	};
 
 	it("keeps Octocode guidance without restating server instructions when an Octocode tool is declared", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		for (const name of ["bash", "file"]) fake.tools.set(name, { name, exposure: "direct" });
 		fake.tools.set("mcp__octocode__ghSearchCode", {
 			name: "mcp__octocode__ghSearchCode",
@@ -80,7 +80,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			namespace: { name: "mcp__octocode", instructions: "Search first, then fetch." },
 		});
 
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", "mcp__octocode__ghSearchCode"] });
 		expect(sections.octocode).toContain("Use Octocode MCP");
 		expect(sections.octocode).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
@@ -89,19 +89,19 @@ describe("registerTurnSetup routing and child trim", () => {
 	});
 
 	it("keeps Octocode guidance while a configured, enabled server is still connecting", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		for (const name of ["bash", "file", "mcp"]) fake.tools.set(name, { name, exposure: "direct" });
 
-		fake.pi.events = createEventBus();
-		setMcpSessionStatus(fake.pi.events, [
+		fake.api.events = createEventBus();
+		setMcpSessionStatus(fake.api.events, [
 			{ name: "octocode", enabled: true, state: "connecting", toolCount: 0, source: "mcp.json", exposure: "direct" },
 		]);
-		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
+		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", "mcp"] });
 		expect(sections.octocode).toContain("Use Octocode MCP");
-		const disabled = fakePi();
+		const disabled = fakeHost();
 		for (const name of ["bash", "file", "mcp"]) disabled.tools.set(name, { name, exposure: "direct" });
-		registerTurnSetup(disabled.pi, {
+		registerTurnSetup(disabled.api, {
 			isSubagent: true,
 			profiles: () => new Map(),
 		});
@@ -111,7 +111,7 @@ describe("registerTurnSetup routing and child trim", () => {
 	});
 
 	it("falls back to shell research guidance when no Octocode tool or mcp is selected", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		fake.tools.set("bash", { name: "bash", exposure: "direct" });
 		fake.tools.set("mcp__octocode__ghSearchCode", {
 			name: "mcp__octocode__ghSearchCode",
@@ -119,15 +119,15 @@ describe("registerTurnSetup routing and child trim", () => {
 			defaultActive: false,
 		});
 
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash"] });
 		expect(sections.octocode).not.toContain("Use Octocode MCP");
 	});
 
 	it("rebuilds lookup guidance when tools change without recommending unavailable tools", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		for (const name of ["bash", "web", "agent"]) fake.tools.set(name, { name, exposure: "direct" });
-		registerTurnSetup(fake.pi, {
+		registerTurnSetup(fake.api, {
 			isSubagent: false,
 			profiles: () => new Map(),
 		});
@@ -144,8 +144,8 @@ describe("registerTurnSetup routing and child trim", () => {
 	});
 
 	it("routes native graph questions without MCP and updates the cached prompt with tool selection", async () => {
-		const fake = fakePi();
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		const fake = fakeHost();
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const selectedTools = ["graphBuild", "graphQuery"];
 		const full = (await run(fake, { selectedTools })).octocode;
 		expect(full).toContain("Repeated repository or package dependency, cycle and broad impact questions");
@@ -160,8 +160,8 @@ describe("registerTurnSetup routing and child trim", () => {
 	});
 
 	it("routes graph questions without restating the server's tool routing", async () => {
-		const fake = fakePi();
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		const fake = fakeHost();
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const { octocode } = await run(fake, {
 			selectedTools: ["graphBuild", "graphQuery", "mcp__octocode__lspSearch"],
 		});
@@ -171,8 +171,8 @@ describe("registerTurnSetup routing and child trim", () => {
 
 	it("lets a read-only child build a graph, saying it writes only derived snapshots", async () => {
 		vi.stubEnv("OCTOCODE_READ_ONLY", "1");
-		const fake = fakePi();
-		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
+		const fake = fakeHost();
+		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
 		const { octocode } = await run(fake, { selectedTools: ["file", "graphBuild", "graphQuery"] });
 		expect(octocode).toContain("`graphQuery` on an existing snapshot; create or refresh it with `graphBuild`");
 		expect(octocode).toContain(".octocode/graph/");
@@ -185,9 +185,9 @@ describe("registerTurnSetup routing and child trim", () => {
 
 	it("keeps bounded evidence and authorization guidance in root and child context", async () => {
 		for (const isSubagent of [false, true]) {
-			const fake = fakePi();
+			const fake = fakeHost();
 			fake.tools.set("mcp__octocode__localFetch", { name: "mcp__octocode__localFetch", exposure: "direct" });
-			registerTurnSetup(fake.pi, {
+			registerTurnSetup(fake.api, {
 				isSubagent,
 				profiles: () => new Map(),
 			});
@@ -214,18 +214,18 @@ describe("registerTurnSetup routing and child trim", () => {
 			{ name: "browser", enabled: true, state, toolCount, source: "default", exposure: "direct" as const },
 		];
 		for (const isSubagent of [false, true]) {
-			const fake = fakePi();
+			const fake = fakeHost();
 			for (const name of [...natives, ...octocodeTools, ...browserTools])
 				fake.tools.set(name, { name, exposure: "direct" });
-			fake.pi.events = createEventBus();
-			registerTurnSetup(fake.pi, {
+			fake.api.events = createEventBus();
+			registerTurnSetup(fake.api, {
 				isSubagent,
 				profiles: () =>
 					new Map([["browser", { name: "browser", description: "Drives Chrome", tools: "+browser" } as never]]),
 			});
-			setMcpSessionStatus(fake.pi.events, status("connecting", 0));
+			setMcpSessionStatus(fake.api.events, status("connecting", 0));
 			const before = await run(fake, { selectedTools: natives });
-			setMcpSessionStatus(fake.pi.events, status("connected", 4));
+			setMcpSessionStatus(fake.api.events, status("connected", 4));
 			const after = await run(fake, { selectedTools: [...natives, ...octocodeTools, ...browserTools] });
 			// Every named section the prompt carries keeps its exact bytes, so the cached prefix survives the connection.
 			expect(before.octocode_research).toContain("Use Octocode MCP");
@@ -236,31 +236,31 @@ describe("registerTurnSetup routing and child trim", () => {
 	});
 
 	it("delegates browser work to a specialist when the browser server is off or not selected, whatever the connection state", async () => {
-		const fake = fakePi();
-		fake.pi.events = createEventBus();
+		const fake = fakeHost();
+		fake.api.events = createEventBus();
 		const profiles = new Map([
 			["browser", { name: "browser", description: "Drives Chrome", tools: "+browser" } as never],
 		]);
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => profiles });
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => profiles });
 		const selectedTools = ["bash", "agent", "mcp"];
-		setMcpSessionStatus(fake.pi.events, [
+		setMcpSessionStatus(fake.api.events, [
 			{ name: "browser", enabled: false, state: "disabled", toolCount: 0, source: "default", exposure: "direct" },
 		]);
 		expect((await run(fake, { selectedTools })).octocode_delegation).toContain(
 			"Delegate browser interaction to `browser`",
 		);
 		// The default: the browser server is enabled but only the browser subagent selects it.
-		setMcpSessionStatus(fake.pi.events, [
+		setMcpSessionStatus(fake.api.events, [
 			{ name: "browser", enabled: true, state: "unselected", toolCount: 0, source: "default", exposure: "direct" },
 		]);
 		expect((await run(fake, { selectedTools })).octocode_delegation).toContain(
 			"Delegate browser interaction to `browser`, which has the browser tools you lack",
 		);
-		setMcpSessionStatus(fake.pi.events, [
+		setMcpSessionStatus(fake.api.events, [
 			{ name: "browser", enabled: true, state: "connecting", toolCount: 0, source: "default", exposure: "direct" },
 		]);
 		const connecting = (await run(fake, { selectedTools })).octocode_delegation;
-		setMcpSessionStatus(fake.pi.events, [
+		setMcpSessionStatus(fake.api.events, [
 			{ name: "browser", enabled: true, state: "connected", toolCount: 2, source: "default", exposure: "direct" },
 		]);
 		expect(connecting).not.toContain("Delegate browser interaction");
@@ -268,10 +268,10 @@ describe("registerTurnSetup routing and child trim", () => {
 	});
 
 	it("drops the docs block and skill descriptions in a child", async () => {
-		const fake = fakePi();
+		const fake = fakeHost();
 		fake.tools.set("bash", { name: "bash", exposure: "direct" });
 
-		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
+		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
 		const event = {
 			systemPromptOptions: {
 				sections: {} as Record<string, string>,

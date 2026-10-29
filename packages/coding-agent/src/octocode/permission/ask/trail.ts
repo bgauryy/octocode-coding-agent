@@ -21,7 +21,7 @@ import type { ActionEvent, Verdict } from "./types.ts";
  * of its entries to its parent. Each public method backs the `Permission` method of the same name.
  */
 export class PermissionTrail {
-	readonly #pi: ExtensionAPI;
+	readonly #api: ExtensionAPI;
 	readonly #isSubagent: boolean;
 	/** The secret the parent gave this subagent: what marks a header or audit entry as this module's own. Empty when there is none. */
 	readonly #nonce: string;
@@ -35,14 +35,14 @@ export class PermissionTrail {
 	#paintCtx: Pick<ExtensionContext, "hasUI" | "ui" | "mode"> | undefined;
 
 	constructor(options: {
-		pi: ExtensionAPI;
+		api: ExtensionAPI;
 		isSubagent: boolean;
 		nonce: string;
 		mode: () => PermissionMode;
 		agent: () => string;
 		stderr: (text: string) => void;
 	}) {
-		this.#pi = options.pi;
+		this.#api = options.api;
 		this.#isSubagent = options.isSubagent;
 		this.#nonce = options.nonce;
 		this.#mode = options.mode;
@@ -50,7 +50,7 @@ export class PermissionTrail {
 		this.#stderr = options.stderr;
 		this.#log = new AuditLog((entry) => {
 			try {
-				this.#pi.appendEntry<AuditEntry>(PERMISSION_ID, entry);
+				this.#api.appendEntry<AuditEntry>(PERMISSION_ID, entry);
 			} catch {
 				// No session to write to (it was replaced); the decision itself stands.
 			}

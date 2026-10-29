@@ -1,7 +1,7 @@
 import { discoverProviderModels } from "@octocodeai/octocode-ai/providers/discovery";
 import { APP_NAME } from "../config.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
-import { isTruthyEnvFlag } from "./startup.ts";
+import { isTruthyEnvFlag } from "../utils/env-flag.ts";
 
 /** Explicit, read-only vendor discovery; never makes an inference request. */
 export async function runModelDiscoveryCommand(args: string[]): Promise<boolean> {

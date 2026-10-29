@@ -5,7 +5,7 @@ import * as hookRunner from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -44,8 +44,8 @@ async function fixture() {
 			},
 		}),
 	);
-	const fake = fakePi();
-	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const fake = fakeHost();
+	const hooks = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { ...fake, hooks, ctx, started, release, script };

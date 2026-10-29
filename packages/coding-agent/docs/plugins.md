@@ -4,7 +4,7 @@ A plugin packages components under one identity. It may contain skills, hooks, M
 
 ## Current support
 
-Explicit local plugin configuration activates namespaced skills, supported Claude prompt commands, reviewed MCP server declarations and, with hook compatibility enabled, reviewed hooks. Other component activation is unfinished. Native [Octocode packages](packages.md) are supported and use a separate distribution contract.
+Explicit local plugin configuration activates namespaced skills, supported Claude prompt commands, reviewed MCP server declarations and reviewed hooks. Other component activation is unfinished. Native [Octocode packages](packages.md) are supported and use a separate distribution contract.
 
 | Manifest                     | Reader behavior                                                                                                                    | Runtime activation                                                                                                  |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -18,7 +18,7 @@ Readers check real-path containment, including symlinks. Component discovery cur
 
 - **[Skills](skills.md)** contain task instructions in `SKILL.md`. Their existing discovery and invocation work independently of plugins.
 - **[Extensions](extensions.md)** execute code through Octocode's native API. Claude Mods use a different API; no compatible bridge is implemented yet.
-- **[Hooks](hooks.md)** run at supported events through the separately enabled hook subsystem. Plugin hook references require a reviewed definition fingerprint and both hook flags.
+- **[Hooks](hooks.md)** run at supported events through the separately enabled hook subsystem. Plugin hook references require a reviewed definition fingerprint.
 
 ## Configure a local plugin
 
@@ -32,7 +32,7 @@ Add an absolute local path and the source protocol to the `plugins` array in Oct
 
 Use `"protocol": "codex"` for legacy Codex or portable OpenAI manifests. Selecting a protocol is explicit when a directory has both manifests. An explicitly selected Claude directory may omit its manifest and use the directory name; a present invalid manifest never falls back. Legacy Codex manifests with a missing or blank name use the directory name. Safe non-kebab identifiers are accepted, but whitespace, namespace/path separators and control characters remain invalid locally. Plugin skills use `plugin-name:skill-name`; `/skill:plugin-name:skill-name` explicitly invokes them. Eligible Codex plugin skills also support [`$plugin-name:skill-name` mentions](skills.md#select-skills-with-codex-mentions). Set `"enabled": false` and reload to remove the plugin's loaded skills, commands and hooks. `--no-skills` also disables plugin skills. Project plugin settings are loaded only after project resource trust. Relative plugin roots are rejected. Malformed entries are diagnosed and skipped without failing resource reload. Skill discovery rejects directory cycles and escaping links across the entire declared skill tree, including hidden and ignored descendants; this is stricter than ordinary skill scanning.
 
-For supported command, Claude HTTP/prompt and configured-server MCP hooks, start with `OCTOCODE_HOOKS=1 OCTOCODE_HOOKS_COMPAT=1`. Inspect `/hooks`, review the referenced plugin manifests and hook definitions, and copy the reported `hooksFingerprint` into the same plugin entry only after that review. Reload. A changed manifest or hook definition requires a new fingerprint; enabling a plugin alone does not approve its hook handlers. This fingerprint covers declarations, not the contents of arbitrary scripts or external programs those commands invoke.
+For supported command, Claude HTTP/prompt and configured-server MCP hooks, inspect `/hooks`, review the referenced plugin manifests and hook definitions, and copy the reported `hooksFingerprint` into the same plugin entry only after that review. Reload. A changed manifest or hook definition requires a new fingerprint; enabling a plugin alone does not approve its hook handlers. This fingerprint covers declarations, not the contents of arbitrary scripts or external programs those commands invoke.
 
 Plugin command hooks receive `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA`; allowed HTTP header interpolation uses the same plugin identity. Codex command hooks also receive `PLUGIN_ROOT` and `PLUGIN_DATA`. Skills and commands use the same `CLAUDE_PLUGIN_DATA` path. Data is stored under `<Octocode home>/plugins/data/<identity hash>/`, outside the plugin directory, and is created when a reviewed command hook executes or a reviewed stdio MCP declaration activates. Instruction expansion and HTTP header interpolation only resolve the path. Moving the plugin root changes its identity, approval and data location. Disabling a plugin preserves its data; uninstall/data cleanup management is not implemented yet.
 
@@ -45,6 +45,18 @@ Review the manifest and MCP declarations, then add the diagnostic's `mcpFingerpr
 Servers register as `plugin:<plugin-name>:<server-key>`. Claude tool namespaces preserve the plugin name and server key, for example `mcp__plugin_review-kit_check__policy`; use the scoped server name in an `mcp_tool` hook. This follows the [Claude plugin MCP naming contract](https://code.claude.com/docs/en/mcp#plugin-provided-mcp-servers). Codex currently uses this local scoped naming too; its full naming, portable overlays and policy semantics remain unverified.
 
 Plugin-root, plugin-data and project-root placeholders resolve before registration. Stdio activation creates the shared plugin data directory and exports these variables. The supported declaration subset is `type`, `command`, `args`, `env`, `cwd`, `url` and `headers`; Claude HTTP entries require an explicit type. Native MCP authentication and transport behavior still apply. This adapter does not yet import vendor OAuth policy, dynamic header helpers, user configuration, environment overlays, SSE or WebSocket transports. Normal sessions load the built-in MCP owner, while SDK sessions that disable native features must provide an owner; registration alone does not prove a connection succeeded. Existing server configuration can override extension registrations.
+
+## Inspect and switch plugins, extensions and hooks
+
+Run `/plugins` to list every plugin, extension and hook Octocode loads, grouped by the host that defines it: Claude Code, Codex, Octocode and packages. In the terminal it opens a list: ↑↓ move, Space switches the selected row on or off, Tab chooses global or project scope, `r` reloads and closes, Esc closes. Other modes print the same list with an ID per row; switch one with `/plugins enable|disable <id> [--local] [--force]`. Changes apply after `/reload`.
+
+- Rows nest as host, hook file and single hook; the most specific switch wins, so a single hook can stay on while the rest of its host is off.
+- Plugins and hooks are stored in the `toggles` setting by ID (`plugin:<path>`, `hooks:<host>`, `hooks:<host>:<file>`, `hook:<id>`). Extensions use the `extensions` patterns `octocode config` writes, so both tools show the same state.
+- A project switch (`--local`, Tab) only reaches items inside the repository: a committed `.octocode/settings.json` cannot switch off your own hooks or plugins. `/plugins` lists project keys it ignored.
+- Switching on never skips project trust or the plugin fingerprint review, and `disableAllHooks` still turns every hook off. Switching off a gate hook (one that denies when it fails) needs a second Space or `--force`.
+- Editing a hook changes its `hook:` ID; the old switch then appears under "Stale switches" and `/plugins enable <id>` removes it.
+
+Each plugin row also shows its manifest format, skill and command sources, hook and MCP approval state (including the fingerprint to review and copy), and the components Octocode does not load. A plugin that declares or ships such a component, for example Claude `agents/`, `.lsp.json`, `output-styles/`, `monitors`, `userConfig` or `bin/`, or Codex `commands` and `.app.json`, loads without it and reports a warning instead of dropping it silently. `UNSUPPORTED_PLUGIN_COMPONENTS` in `src/core/plugin-components.ts` is the complete list.
 
 ## Remaining limits
 

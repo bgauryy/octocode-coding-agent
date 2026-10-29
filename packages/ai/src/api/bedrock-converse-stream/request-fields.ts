@@ -1,12 +1,7 @@
 import type { Model, ThinkingLevel } from "../../types.ts";
 import { getConfiguredBedrockRegion } from "./client-config.ts";
-import {
-	getModelMatchCandidates,
-	isAnthropicClaudeModel,
-	mapThinkingLevelToEffort,
-	supportsAdaptiveThinking,
-	supportsThinkingBlockBinding,
-} from "./model-support.ts";
+import { getModelMatchCandidates, isAnthropicClaudeModel, supportsAdaptiveThinking } from "./model-match.ts";
+import { mapThinkingLevelToEffort, supportsThinkingBlockBinding } from "./model-support.ts";
 import { type BedrockOptions, THINKING_BINDING_CONTROLS_BETA } from "./types.ts";
 
 function isGovCloudBedrockTarget(model: Model<"bedrock-converse-stream">, options: BedrockOptions): boolean {

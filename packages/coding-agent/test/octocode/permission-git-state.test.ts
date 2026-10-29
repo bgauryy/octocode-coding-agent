@@ -6,7 +6,7 @@ import { gitStateMutation } from "../../src/octocode/permission/shell/git-state.
 import { PERMISSION_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
 
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const call = (command: string, toolName = "bash") =>
@@ -75,8 +75,8 @@ describe("the subagent git-state invariant", () => {
 
 	it("blocks in the tool_call pipeline even in full mode, before the hooks run", async () => {
 		const run = async (env: NodeJS.ProcessEnv) => {
-			const f = fakePi();
-			const permission = new Permission({ pi: f.pi, env: { [PERMISSION_ENV]: "full" }, isSubagent: true });
+			const f = fakeHost();
+			const permission = new Permission({ api: f.api, env: { [PERMISSION_ENV]: "full" }, isSubagent: true });
 			permission.start(ctx);
 			const hooked: string[] = [];
 			const options = {
@@ -95,7 +95,7 @@ describe("the subagent git-state invariant", () => {
 				localReads: new Map(),
 				env,
 			} as unknown as ToolGatesOptions;
-			registerToolGates(f.pi, options);
+			registerToolGates(f.api, options);
 			return { verdict: await f.fire("tool_call", call("git commit -am wip"), ctx), hooked };
 		};
 		const child = await run({ [SUBAGENT_ENV]: "1" });

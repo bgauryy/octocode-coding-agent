@@ -1,7 +1,7 @@
 import { type ManualCompactionOptions, validateCompactionInstructions } from "../compaction/manual-options.ts";
 /**
  * Manual and automatic compaction of a session: their abort controllers, events and failure
- * accounting around the shared compaction core (`session-compaction.ts`), and Pi's default summary.
+ * accounting around the shared compaction core (`session-compaction.ts`), and Octocode's default summary.
  */
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
@@ -28,7 +28,7 @@ export class NothingToCompactError extends Error {
 	}
 }
 
-/** What Pi's default compaction summary needs; the session passes itself or a test double. */
+/** What Octocode's default compaction summary needs; the session passes itself or a test double. */
 export interface DefaultCompactionHost {
 	readonly session: Pick<SessionPublic, "sessionManager" | "settingsManager" | "agent">;
 	emit(event: AgentSessionEvent): void;
@@ -39,7 +39,7 @@ export interface DefaultCompactionHost {
 	summarizationRetryCallbacks(source: { source: "compaction"; reason: CompactionReason }): RetryCallbacks;
 }
 
-/** Generate Pi's built-in compaction summary for manual and automatic compaction. */
+/** Generate Octocode's built-in compaction summary for manual and automatic compaction. */
 export async function runDefaultCompaction(
 	host: DefaultCompactionHost,
 	preparation: CompactionPreparation,
@@ -49,7 +49,7 @@ export async function runDefaultCompaction(
 	customInstructions?: string,
 ): Promise<CompactionResult> {
 	const { session } = host;
-	// Resolve the request only when Pi summarizes itself: routing may call models or fail.
+	// Resolve the request only when Octocode summarizes itself: routing may call models or fail.
 	const record = createSessionUsageRecorder(session.sessionManager, "compaction_attempt", (entry) =>
 		host.emit({ type: "entry_appended", entry }),
 	);

@@ -437,6 +437,24 @@ describe("ProcessTerminal progress", () => {
 	});
 });
 
+describe("ProcessTerminal title", () => {
+	it("strips control characters, so a title cannot end the OSC and inject sequences", () => {
+		const terminal = new ProcessTerminal();
+		const writes: string[] = [];
+		const previousWrite = process.stdout.write;
+		process.stdout.write = (chunk: string | Uint8Array) => {
+			writes.push(String(chunk));
+			return true;
+		};
+		try {
+			terminal.setTitle("✻ Octocode · fix\x07\x1b[2J\u009b login");
+			assert.deepEqual(writes, ["\x1b]0;✻ Octocode · fix[2J login\x07"]);
+		} finally {
+			process.stdout.write = previousWrite;
+		}
+	});
+});
+
 describe("ProcessTerminal dimensions", () => {
 	it("falls back to COLUMNS and LINES before default dimensions", () => {
 		const previousColumnsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "columns");

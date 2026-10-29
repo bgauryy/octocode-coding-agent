@@ -7,6 +7,7 @@ import type { AgentRuns, Run } from "./claim.ts";
 import type { BackgroundRun } from "./command.ts";
 import { withStopFacts } from "./budget.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
+import { providerHealth } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
 import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
@@ -26,7 +27,7 @@ export function startBackground(
 	task: string,
 	launch: (signal: AbortSignal) => Promise<Outcome>,
 	finish: () => Promise<string>,
-	piSession: string,
+	sessionId: string,
 	linger?: (outcome?: ReportStatus, awaitsReply?: boolean) => string,
 ): void {
 	const { background, read } = runs;
@@ -37,7 +38,7 @@ export function startBackground(
 		add: (report: Report) =>
 			session === runs.session
 				? runs.reports.add(report)
-				: savePendingReport(pendingReportsDir(piSession), identity.id, report),
+				: savePendingReport(pendingReportsDir(sessionId), identity.id, report),
 	};
 	const controller = new AbortController();
 	const entry: BackgroundRun = { controller, done: Promise.resolve() };
@@ -51,6 +52,7 @@ export function startBackground(
 	entry.done = (async () => {
 		try {
 			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
+			providerHealth.noteRun(run.route.model, outcome.error);
 			const note = await finish();
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
@@ -186,6 +188,7 @@ export async function runForeground(
 	let outcome: Outcome;
 	try {
 		outcome = withStopFacts(await launch(controller.signal), details, runs.team);
+		providerHealth.noteRun(run.route.model, outcome.error);
 	} catch (error) {
 		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;

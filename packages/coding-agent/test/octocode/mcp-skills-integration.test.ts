@@ -94,8 +94,8 @@ describe("installed MCP and skills through the native SDK", () => {
 				provider: "faux",
 				models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 			});
-			const provider: ExtensionFactory = (pi) => {
-				pi.registerProvider("faux", {
+			const provider: ExtensionFactory = (api) => {
+				api.registerProvider("faux", {
 					name: "Faux",
 					api: faux.api,
 					baseUrl: "http://127.0.0.1:0",
@@ -103,7 +103,7 @@ describe("installed MCP and skills through the native SDK", () => {
 					models: faux.models,
 					streamSimple: faux.streamSimple,
 				} as never);
-				pi.on("resources_discover", () => ({ skillPaths: [discoveredSkill] }));
+				api.on("resources_discover", () => ({ skillPaths: [discoveredSkill] }));
 			};
 			const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
 			const resourceLoader = new DefaultResourceLoader({
@@ -117,11 +117,11 @@ describe("installed MCP and skills through the native SDK", () => {
 						: [
 								{
 									name: "builtin:mcp",
-									factory: (pi: Parameters<ExtensionFactory>[0]) =>
+									factory: (api: Parameters<ExtensionFactory>[0]) =>
 										createMcpExtension({
-											presets: [octocodePreset(() => pi.getSkillDirectories())],
+											presets: [octocodePreset(() => api.getSkillDirectories())],
 											logPath: path.join(root, "mcp.log"),
-										})(pi),
+										})(api),
 								},
 							]),
 				],

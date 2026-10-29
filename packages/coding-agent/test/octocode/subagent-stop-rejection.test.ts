@@ -14,7 +14,7 @@ vi.mock("../../src/octocode/shared/process.ts", async (original) => ({
 	}),
 }));
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedHome = process.env.OCTOCODE_HOME;
 
@@ -23,8 +23,8 @@ beforeAll(() => {
 	process.env.OCTOCODE_HOME = path.join(root, "home");
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {

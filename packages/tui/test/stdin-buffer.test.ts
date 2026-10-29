@@ -536,16 +536,6 @@ describe("StdinBuffer", () => {
 			const flushed = buffer.flush();
 			assert.deepStrictEqual(flushed, []);
 		});
-
-		it("should emit flushed data via timeout", async () => {
-			processInput("\x1b[<35");
-			assert.deepStrictEqual(emittedSequences, []);
-
-			// Wait for timeout to flush
-			await wait(15);
-
-			assert.deepStrictEqual(emittedSequences, ["\x1b[<35"]);
-		});
 	});
 
 	describe("Clear", () => {

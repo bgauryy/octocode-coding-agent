@@ -4,7 +4,7 @@ import { onSecond } from "../../src/octocode/shared/clock.ts";
 import { LateReports } from "../../src/octocode/subagents/late.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { PARENT_PID_ENV } from "../../src/octocode/team/store/env.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => {
@@ -67,8 +67,8 @@ describe("the shared one-second clock", () => {
 	it("serves the team ticker, the parent check and late reports from one timer", () => {
 		vi.useFakeTimers();
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite"), [PARENT_PID_ENV]: String(process.pid) };
-		const { pi } = fakePi();
-		const team = new Team(pi, env);
+		const { api } = fakeHost();
+		const team = new Team(api, env);
 		const late = new LateReports({ reports: { pendingDir: undefined, add: () => undefined } } as never);
 		try {
 			team.start(fakeCtx({ cwd: tmp() }));

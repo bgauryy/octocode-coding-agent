@@ -14,7 +14,7 @@ import { WorkspaceRuntime } from "../../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../../src/octocode/workspace/server.ts";
 import { createModelRegistry, getModelRuntime } from "../../model-runtime-test-utils.ts";
 import { createTestResourceLoader } from "../../utilities.ts";
-import { fakeCtx, fakePi } from "../fake-pi.ts";
+import { fakeCtx, fakeHost } from "../fake-host.ts";
 
 export async function workspaceAgent(root: string, label: string) {
 	const directory = path.join(root, label);
@@ -59,7 +59,7 @@ export async function workspaceAgent(root: string, label: string) {
 	const store = new BacklogStore(() => db, "shared-repo");
 	const ctx = fakeCtx({ cwd: root });
 	ctx.sessionManager.getSessionId = () => session.sessionId;
-	const runtime = new WorkspaceRuntime(fakePi().pi, {
+	const runtime = new WorkspaceRuntime(fakeHost().api, {
 		application: () => application, database: () => db, members: () => [], traffic: () => [],
 		tell: async () => ({}), stop: () => undefined,
 	});

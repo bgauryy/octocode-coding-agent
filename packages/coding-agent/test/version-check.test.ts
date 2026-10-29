@@ -92,7 +92,7 @@ describe("version checks", () => {
 	it("does not accept an unrelated package update target", async () => {
 		const fetchMock = vi.fn(async () =>
 			Response.json({
-				packageName: "@new-scope/pi",
+				packageName: "@new-scope/octocode",
 				version: "1.2.4",
 			}),
 		);

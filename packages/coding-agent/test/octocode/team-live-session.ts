@@ -9,7 +9,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A tool that runs until the test calls `release`; `entered` resolves when the model's call started it. */
@@ -57,9 +57,9 @@ export async function liveSession(options: LiveOptions) {
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 	});
 	let team!: Team;
-	let pi!: ExtensionAPI;
-	const factory: ExtensionFactory = (api) => {
-		pi = api;
+	let api!: ExtensionAPI;
+	const factory: ExtensionFactory = (host) => {
+		api = host;
 		api.registerProvider("faux", {
 			name: "Faux",
 			api: faux.api,
@@ -115,13 +115,13 @@ export async function liveSession(options: LiveOptions) {
 	const joined = team.id ?? team.join().id;
 
 	// A second agent on the same database.
-	const peerPi = fakePi();
-	const peer = new Team(peerPi.pi, {
+	const peerHost = fakeHost();
+	const peer = new Team(peerHost.api, {
 		OCTOCODE_AGENT_DB: db,
 		...(options.peerId ? { OCTOCODE_AGENT_ID: options.peerId } : {}),
 		...options.peerEnv?.(joined),
 	});
-	registerCollab(peerPi.pi, peer);
+	registerCollab(peerHost.api, peer);
 	peer.start(fakeCtx({ cwd }));
 	peer.join();
 
@@ -140,7 +140,7 @@ export async function liveSession(options: LiveOptions) {
 		sessionManager,
 		team,
 		peer,
-		pi,
+		api,
 		faux,
 		id: joined,
 		requests,

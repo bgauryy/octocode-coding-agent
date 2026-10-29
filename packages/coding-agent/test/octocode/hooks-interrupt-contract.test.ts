@@ -25,7 +25,7 @@ it("normalizes Codex Interrupt timeout, ignores matcher, and retains async and M
 			},
 		}),
 	);
-	const loaded = loadHooks(tmp(), false, home, { sourceProfiles: true });
+	const loaded = loadHooks(tmp(), false, home);
 	expect(loaded.errors).toEqual([]);
 	const hooks = commandsFor(loaded.config, "Interrupt", []);
 	expect(hooks.map((hook) => hook.timeoutMs)).toEqual([1000, 3000, 1000]);
@@ -67,7 +67,7 @@ it.each(["command", "mcp_tool"] as const)(
 				},
 			}),
 		);
-		const loaded = loadHooks(tmp(), false, home, { sourceProfiles: true });
+		const loaded = loadHooks(tmp(), false, home);
 		expect(commandsFor(loaded.config, "Interrupt", []).map((hook) => hook.timeoutMs)).toEqual([
 			1000, 1000, 1000, 1000, 3000, 3000,
 		]);
@@ -80,7 +80,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 	async (output) => {
 		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
-		const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+		const { fakeHost, fakeCtx } = await import("./fake-host.ts");
 		const { createEventBus } = await import("../../src/core/event-bus.ts");
 		const { registerMcpHookCaller } = await import("../../../mcp/src/hook-caller.ts");
 		const home = tmp();
@@ -104,10 +104,10 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 				},
 			}),
 		);
-		const fake = fakePi();
-		fake.pi.events = createEventBus();
+		const fake = fakeHost();
+		fake.api.events = createEventBus();
 		let called = false;
-		const unregister = registerMcpHookCaller(fake.pi.events, async (request) => {
+		const unregister = registerMcpHookCaller(fake.api.events, async (request) => {
 			called = true;
 			expect(request.signal?.aborted).toBe(false);
 			expect(request.input).toEqual({
@@ -122,7 +122,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 			model: { id: "later-model" },
 		});
 		ctx.signal = AbortSignal.abort();
-		registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home, undefined, () => ({
+		registerHooks(fake.api, {}, home, undefined, () => ({
 			permissionMode: "workspace",
 		}));
 		try {

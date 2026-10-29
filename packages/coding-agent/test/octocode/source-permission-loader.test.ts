@@ -8,7 +8,7 @@ vi.mock("../../src/octocode/shared/trust.ts", () => ({
 }));
 import { nativeHost } from "../../src/octocode/shared/host-api.ts";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 const roots: string[] = [];
 afterEach(() => {
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
@@ -23,9 +23,9 @@ function setup() {
 	fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
 	fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
 	vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(home, ".claude"));
-	const fake = fakePi();
-	nativeHost(fake.pi).setToolPolicy = vi.fn();
-	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	const fake = fakeHost();
+	nativeHost(fake.api).setToolPolicy = vi.fn();
+	const owner = registerSourcePolicy(fake.api, home);
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	return {
 		root,
@@ -76,7 +76,7 @@ it("refreshes same-sized settings changes and reinstates tool visibility", async
 	const f = setup();
 	fs.writeFileSync(f.user, JSON.stringify({ permissions: { deny: ["Bash"] } }));
 	await f.owner.refresh(f.ctx);
-	const setter = vi.mocked(nativeHost(f.fake.pi).setToolPolicy!);
+	const setter = vi.mocked(nativeHost(f.fake.api).setToolPolicy!);
 	expect(setter.mock.calls.at(-1)![0]("bash")).toBe(false);
 	fs.writeFileSync(f.user, JSON.stringify({ permissions: { deny: ["Read"] } }));
 	await f.owner.refresh(f.ctx);

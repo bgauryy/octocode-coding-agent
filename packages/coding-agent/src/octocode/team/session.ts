@@ -75,10 +75,10 @@ export class Team {
 		if (this.finished.size > 128) this.finished.delete(this.finished.keys().next().value!);
 	}
 	private readonly env: NodeJS.ProcessEnv;
-	constructor(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env) {
+	constructor(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env) {
 		this.env = env;
 
-		this.mail = new Mail(pi, () => ownNonce(this.env));
+		this.mail = new Mail(api, () => ownNonce(this.env));
 		this.activity = new Activity({
 			me: () => this.me,
 			db: () => this.database.current,

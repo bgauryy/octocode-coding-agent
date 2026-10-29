@@ -11,6 +11,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { handleSkillsCommand } from "./skills-command.ts";
+import { closeNames } from "../../../octocode/skill/catalog.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
 type CommandDispatchHost = Pick<
@@ -86,14 +87,7 @@ async function runNativeCommand(host: CommandDispatchHost, name: string, args = 
 }
 
 function showCommandPicker(host: CommandDispatchHost, query = "", skillsOnly = false): void {
-	const commands = host.getSlashCommands(true).filter((command) => {
-		if (skillsOnly) return host.skillCommands.has(command.name);
-		const core = getBuiltinCommand(command.name);
-		if (core) return core.name === command.name;
-		return !host.session.extensionRunner
-			.getRegisteredCommands()
-			.some((entry) => entry.invocationAliases?.includes(command.name));
-	});
+	const commands = host.getSlashCommands(true).filter((command) => !skillsOnly || host.skillCommands.has(command.name));
 	host.showSelector((done) => {
 		const selector = new CommandSelectorComponent(
 			skillsOnly ? "Skills" : "Commands",
@@ -110,10 +104,14 @@ function showCommandPicker(host: CommandDispatchHost, query = "", skillsOnly = f
 	});
 }
 
+const CREDENTIAL_CHECK = "Credential check — one tiny request per provider, then the catalog";
+
 async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
 	const choices = [
 		"Model shortcuts — choose models for keyboard cycling",
-		...(getNativeCommand(host, "modelsettings") ? ["Model catalog — prices, capabilities and agent routing"] : []),
+		...(getNativeCommand(host, "modelsettings")
+			? ["Model catalog — prices, capabilities and agent routing", CREDENTIAL_CHECK]
+			: []),
 	];
 	const llama = host.session.extensionRunner.getCommand("llama");
 	if (llama) choices.push("Local llama.cpp models");
@@ -121,6 +119,7 @@ async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
 	if (choice === choices[0]) host.showModelsSelector();
 	else if (choice === "Model catalog — prices, capabilities and agent routing")
 		await runNativeCommand(host, "modelsettings");
+	else if (choice === CREDENTIAL_CHECK) await runNativeCommand(host, "modelsettings", "check");
 	else if (choice === "Local llama.cpp models" && llama)
 		await llama.handler("", host.session.extensionRunner.createCommandContext());
 }
@@ -161,6 +160,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			host.showSettingsSelector();
 			return;
 		case "modelsettings":
+			if (args.trim() === "check" && (await runNativeCommand(host, "modelsettings", "check"))) return;
 			await showModelsMenu(host);
 			return;
 		case "model":
@@ -217,7 +217,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 					host.showWarning("Native project configuration is unavailable.");
 			} else host.showWarning("Usage: /trust [project|config|off]");
 			return;
-		case "providers":
+		case "login":
 			await host.handleLoginCommand(args || undefined);
 			return;
 		case "logout":
@@ -252,6 +252,17 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 	}
 }
 
+/** A warning for a command-shaped `/name` that no command owns, naming the closest command when one is close. */
+function unknownCommandWarning(host: CommandDispatchHost, name: string): string | undefined {
+	if (!/^[a-z][a-z0-9-]*$/i.test(name)) return undefined;
+	const names = host.getSlashCommands(true).map((command) => command.name);
+	if (names.includes(name)) return undefined;
+	const [closest] = closeNames(name, names);
+	return closest
+		? `Unknown command /${name}. Did you mean /${closest}?`
+		: `Unknown command /${name}. Search commands with /help ${name}.`;
+}
+
 export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 	host.defaultEditor.onSubmit = async (text: string) => {
 		text = text.trim();
@@ -266,6 +277,12 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			} catch (error) {
 				host.showError(errorMessage(error));
 			}
+			return;
+		}
+		const unknown = parsed && unknownCommandWarning(host, parsed.name);
+		if (unknown) {
+			host.editor.setText(text);
+			host.showWarning(unknown);
 			return;
 		}
 

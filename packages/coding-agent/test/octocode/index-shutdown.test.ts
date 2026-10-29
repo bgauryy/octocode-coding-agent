@@ -2,7 +2,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import octocode from "../../src/octocode/index.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let saved: NodeJS.ProcessEnv;
@@ -32,9 +32,9 @@ describe("the composed extension on session_shutdown", () => {
 	it.each(["quit", "reload", "new", "resume", "fork"])(
 		"preserves the shared agent database on %s until process cleanup",
 		async (reason) => {
-			const fake = fakePi();
-			Object.assign(fake.pi, { getSessionName: () => undefined });
-			octocode(fake.pi);
+			const fake = fakeHost();
+			Object.assign(fake.api, { getSessionName: () => undefined });
+			octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const before = sharedAgentDb();
 			expect(usable(before)).toBe(true);

@@ -68,7 +68,7 @@ function createToolResultMessage(usage: Usage): ToolResultMessage {
 }
 
 async function createSession() {
-	const settingsManager = SettingsManager.inMemory();
+	const settingsManager = SettingsManager.inMemory({ contextBudget: "full" });
 	const sessionManager = SessionManager.inMemory();
 	const authStorage = AuthStorage.inMemory();
 	await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));

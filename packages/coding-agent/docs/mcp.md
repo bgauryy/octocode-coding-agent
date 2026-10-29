@@ -113,7 +113,7 @@ The agent's `mcp` tool can inspect tools and connection state, connect/restart/s
 
 ## Catalog caching
 
-Validated instructions and tool contracts are cached in memory; reconnect refreshes tools and disconnect withdraws them. In compact presentation each server's generated file is also stored under `<agent directory>/mcp-generated/` and renewed when its catalog changes, keeping the rewritten descriptions of tools that did not change. [Connection behavior](mcp-reference.md#connections-and-caching).
+Validated instructions and tool contracts are cached in memory; reconnect refreshes tools and disconnect withdraws them. In compact presentation each server's generated file is also stored under `<agent directory>/context-optimization/mcp/` and renewed when its catalog changes, keeping the rewritten descriptions of tools that did not change. [Connection behavior](mcp-reference.md#connections-and-caching).
 
 ## Replace the built-in MCP support
 

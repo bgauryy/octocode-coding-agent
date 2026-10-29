@@ -101,8 +101,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.scopeHintText = new Text(this.getScopeHintText(), 0, 0);
 			this.addChild(this.scopeHintText);
 		} else {
-			const hintText =
-				"Models from configured providers. /providers manages access; /modelsettings configures shortcuts.";
+			const hintText = "Models from configured providers. /login manages access; /modelsettings configures shortcuts.";
 			this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
 		}
 		this.addChild(new Spacer(1));

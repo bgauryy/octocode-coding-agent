@@ -7,7 +7,7 @@ import * as importedModule3 from "../../src/octocode/browser/actions.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 import * as importedModule2 from "../../src/octocode/shared/home.ts";
-import { fakePermission } from "./fake-pi.ts";
+import { fakePermission } from "./fake-host.ts";
 import { type CdpHandler, type CdpStub, NO_REPLY, startCdpStub } from "./fixtures/cdp-stub.ts";
 import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
@@ -109,14 +109,14 @@ function register(mode: PermissionMode = "workspace") {
 	tools.push(browser);
 	let tool: Tool | undefined;
 	const handlers = new Map<string, () => Promise<void>>();
-	const pi = {
+	const api = {
 		registerTool: (definition: Tool) => {
 			tool = definition;
 			return tool;
 		},
 		on: (event: string, fn: () => Promise<void>) => handlers.set(event, fn),
 	} as unknown as ExtensionAPI;
-	registerBrowserTool(pi, browser);
+	registerBrowserTool(api, browser);
 	const cwd = tmp();
 	const run = (params: Record<string, unknown>) => tool!.execute("id", params, undefined, undefined, { cwd });
 	const text = async (params: Record<string, unknown>) =>

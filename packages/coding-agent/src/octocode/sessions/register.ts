@@ -88,12 +88,12 @@ const branchOf = (ctx: ExtensionContext): readonly unknown[] =>
  * since this session started in this process, without a report yet) and this session's ongoing backlog items: the
  * summary may have dropped them, and their reports will arrive later as messages.
  */
-function registerRunningWork(pi: ExtensionAPI): void {
+function registerRunningWork(api: ExtensionAPI): void {
 	let since = Date.now();
-	pi.on("session_start", async () => {
+	api.on("session_start", async () => {
 		since = Date.now();
 	});
-	pi.on("session_compact", async (_event, ctx) => {
+	api.on("session_compact", async (_event, ctx) => {
 		const running = unreportedWork(branchOf(ctx), since).map((work) => describeWork(work, false));
 		let ongoing: string[] = [];
 		try {
@@ -108,7 +108,7 @@ function registerRunningWork(pi: ExtensionAPI): void {
 		];
 		const content = `[After compaction] ${parts.join(" ")}`;
 		try {
-			void pi.sendMessage(
+			void api.sendMessage(
 				{ customType: RUNNING_WORK_TYPE, content, display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -150,8 +150,8 @@ const hasUserMessage = (entries: readonly Entry[]) =>
  * messages). Database failures never break the session: the feature warns once and stays out of the way. Git runs off
  * the event loop, so a slow repository never stalls a turn.
  */
-export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): void {
-	registerRunningWork(pi);
+export function registerSessions(api: ExtensionAPI, options: SessionsOptions): void {
+	registerRunningWork(api);
 	if (options.isSubagent) return;
 	let warned = false;
 	/** A resumed session's record from before this start, briefed at the next prompt (not now: the user may come back later). */
@@ -185,7 +185,7 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		});
 	};
 
-	pi.registerMessageRenderer(RESUME_MESSAGE_TYPE, (message, { expanded }, theme) => {
+	api.registerMessageRenderer(RESUME_MESSAGE_TYPE, (message, { expanded }, theme) => {
 		const [head = "", ...rest] = sanitizeTerminalText(contentText(message.content)).split("\n");
 		// Collapsed, the hidden lines get resultBlock's hint, so the brief reads as expandable like any tool row.
 		const tail = !rest.length
@@ -196,7 +196,7 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		return new Text(theme.fg("dim", `↻ ${head}${tail}`), 1, 0);
 	});
 
-	pi.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (event, ctx) => {
 		gitRevision++;
 		pending = undefined;
 		const id = ctx.sessionManager.getSessionId();
@@ -241,7 +241,7 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		void recordGit(ctx, id);
 	});
 
-	pi.on("message_end", async (event, ctx) => {
+	api.on("message_end", async (event, ctx) => {
 		const spend = spendOf(event.message);
 		if (!spend) return undefined;
 		addUsage(usage, spend.usage);
@@ -249,7 +249,7 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		return undefined;
 	});
 
-	pi.on("before_agent_start", async (_event, ctx) => {
+	api.on("before_agent_start", async (_event, ctx) => {
 		if (!pending) return undefined;
 		const input = pending;
 		pending = undefined;
@@ -267,7 +267,7 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		return content ? { message: { customType: RESUME_MESSAGE_TYPE, content, display: true } } : undefined;
 	});
 
-	pi.on("agent_end", async (_event, ctx) => {
+	api.on("agent_end", async (_event, ctx) => {
 		const id = ctx.sessionManager.getSessionId();
 		const stats = {
 			cost: usage.cost.total,
@@ -279,10 +279,10 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		void recordGit(ctx, id);
 	});
 
-	pi.on("session_shutdown", async (_event, ctx) => {
+	api.on("session_shutdown", async (_event, ctx) => {
 		gitRevision++;
 		safely(ctx, (sessions) => sessions.end(ctx.sessionManager.getSessionId()));
 	});
 
-	registerSessionsCommand(pi, options.commands, { index, current: currentSessionId });
+	registerSessionsCommand(api, options.commands, { index, current: currentSessionId });
 }

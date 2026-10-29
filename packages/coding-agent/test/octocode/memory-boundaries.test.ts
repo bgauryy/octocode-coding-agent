@@ -6,7 +6,7 @@ import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { MemoryStore } from "../../src/octocode/memory/store.ts";
 import { registerMemoryTool } from "../../src/octocode/memory/tool.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => {
@@ -23,8 +23,8 @@ describe("memory retrieval and write boundaries", () => {
 				"INSERT INTO memories(scope, repo_key, kind, title, body, keywords, pinned, author, created_at, updated_at) VALUES ('project', 'repo', 'fact', ?, '', '', 0, 'test', 1, 1)",
 			);
 			for (let i = 0; i < 105; i++) insert.run(`retrieval item ${i}`);
-			const fake = fakePi();
-			registerMemoryTool(fake.pi, () => store, { isSubagent: false, permission: fakePermission() });
+			const fake = fakeHost();
+			registerMemoryTool(fake.api, () => store, { isSubagent: false, permission: fakePermission() });
 			const tool = fake.tools.get("memory");
 			const ctx = fakeCtx({ cwd: tmp() });
 			Object.assign(ctx, { isProjectTrusted: () => true });
@@ -74,8 +74,8 @@ describe("memory retrieval and write boundaries", () => {
 		const broken = path.join(root, "broken.db");
 		fs.writeFileSync(broken, "not sqlite");
 		const env = { OCTOCODE_AGENT_DB: broken, OCTOCODE_MEMORY_AUTO: "1" };
-		const fake = fakePi();
-		registerMemory(fake.pi, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env });
+		const fake = fakeHost();
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env });
 		const ctx = fakeCtx({ cwd: root });
 		Object.assign(ctx.sessionManager, { getBranch: () => [] });
 		for (let i = 0; i < 2; i++) expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();

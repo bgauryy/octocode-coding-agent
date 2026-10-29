@@ -46,7 +46,7 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		const entries = preloadedFileEntries ?? loadEntriesFromFile(resolvedFile);
 
 		// If file was empty, initialize it with a valid session header. If it was
-		// non-empty but did not parse as a pi session, fail without modifying it.
+		// non-empty but did not parse as an Octocode session, fail without modifying it.
 		if (entries.length === 0) {
 			const explicitPath = resolvedFile;
 			if (statSync(explicitPath).size > 0) {
@@ -177,7 +177,7 @@ export function materializeSession(state: SessionState): void {
 /**
  * A new session file is created only once the session contains a user or assistant message.
  * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
- * closing pi without chatting leaves no file behind. Starting at the user message (not the
+ * closing Octocode without chatting leaves no file behind. Starting at the user message (not the
  * first assistant reply) keeps the prompt on disk if the first turn never completes (#10000).
  */
 function hasConversation(state: SessionState): boolean {

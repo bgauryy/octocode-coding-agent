@@ -10,11 +10,8 @@ export const BROWSER_VISIBLE_ENV = "OCTOCODE_BROWSER_VISIBLE";
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
 export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
 
-/** `1` runs Claude Code / Codex command hooks (off by default; subagents run them only when their profile opts in). */
-export const HOOKS_ENV = "OCTOCODE_HOOKS";
-
-/** Preview source-specific hook behavior; it does not imply complete upstream compatibility. */
-export const HOOKS_COMPAT_ENV = "OCTOCODE_HOOKS_COMPAT";
+/** Set by the parent in a subagent whose profile declares `hooks: true`: the child runs command hooks (other subagents do not). */
+export const SUBAGENT_HOOKS_ENV = "OCTOCODE_SUBAGENT_HOOKS";
 
 /** `0` keeps the Octocode MCP server unregistered for this session and its children. */
 export const MCP_ENV = "OCTOCODE_MCP";
@@ -41,6 +38,13 @@ export function cleanupDays(env: NodeJS.ProcessEnv = process.env): number {
 
 /** Set in child processes so a subagent cannot spawn further subagents (and skips the root session's extras). */
 export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
+/** Set for a child of a `lean: true` profile: a short subagent prompt replaces the native policy (`instructions/lean.ts`). */
+export const LEAN_ENV = "OCTOCODE_LEAN";
+/**
+ * Set when the parent chose the child's skills: they ride in its task, so its prompt carries no skills section and its
+ * `skill` tool stays declared even with none; children of one profile then share the cached prompt whatever their skills.
+ */
+export const SKILLS_IN_TASK_ENV = "OCTOCODE_SKILLS_IN_TASK";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
 export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 

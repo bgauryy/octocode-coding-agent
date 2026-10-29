@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { expandClaudeArguments, expandClaudeVariables } from "../../core/claude-arguments.ts";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { errorMessage } from "../../utils/guards.ts";
+import { envFlag, SKILLS_IN_TASK_ENV } from "../shared/env.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { resultBlock, resultText } from "../shared/render.ts";
@@ -68,16 +69,16 @@ function body(entry: CatalogSkill, sessionId: string, cwd: string): { text: stri
  * catalog is refused, so the tool is no way to read another path. The result is the `/skill:name` block, with the
  * skill's directory so references in it resolve. With no loadable skill the tool's declaration stays out of requests.
  */
-export function registerSkillTool(pi: ExtensionAPI): SkillCatalog {
-	const catalog = new SkillCatalog(() => pi.getSkillResourceSnapshot());
+export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
+	const catalog = new SkillCatalog(() => api.getSkillResourceSnapshot());
 	setActiveSkillCatalog(catalog);
-	pi.on("session_start", async () => {
+	api.on("session_start", async () => {
 		catalog.refresh();
 	});
-	pi.on("session_shutdown", async () => {
+	api.on("session_shutdown", async () => {
 		setActiveSkillCatalog(undefined, catalog);
 	});
-	pi.registerTool(
+	api.registerTool(
 		timedTool({
 			name: "skill",
 			label: "Skill",
@@ -89,8 +90,12 @@ export function registerSkillTool(pi: ExtensionAPI): SkillCatalog {
 			parameters: Type.Object({
 				name: Type.String({ description: "The skill's name, as listed in <available_skills>" }),
 			}),
-			// The declaration is worth its tokens only when a model can load a skill.
-			prepareLoadout: () => (catalog.invocable().length === 0 ? { hiddenDeclarations: ["skill"] } : undefined),
+			// The declaration is worth its tokens only when a model can load a skill. A child whose skills ride in its task
+			// keeps it even without any: siblings with and without skills then send the same tool list and share its cache.
+			prepareLoadout: () =>
+				catalog.invocable().length === 0 && !envFlag(process.env, SKILLS_IN_TASK_ENV)
+					? { hiddenDeclarations: ["skill"] }
+					: undefined,
 			async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 				signal?.throwIfAborted();
 				const requested = bareName(params.name ?? "");

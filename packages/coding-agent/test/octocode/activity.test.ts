@@ -6,7 +6,7 @@ import { stripAnsi } from "../../src/utils/ansi.ts";
 import { titledDialog, withDialog } from "../../src/octocode/shared/locks.ts";
 import { Thought, thoughtGist } from "../../src/octocode/shared/thought.ts";
 import { Activity, callTarget, registerActivity, shortToolName } from "../../src/octocode/ui/activity.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -278,8 +278,8 @@ describe("registerActivity", () => {
 	it("clears activity on settlement, ignoring late streaming events", async () => {
 		vi.useFakeTimers();
 		try {
-			const fake = fakePi();
-			registerActivity(fake.pi, { workingLine: true });
+			const fake = fakeHost();
+			registerActivity(fake.api, { workingLine: true });
 			const ctx = fakeCtx({ cwd: "/x" });
 			const update = {
 				message: { role: "assistant" },
@@ -302,9 +302,9 @@ describe("registerActivity", () => {
 
 	it("drives the working line and the team activity from Octocode events", async () => {
 		vi.useFakeTimers();
-		const fake = fakePi();
+		const fake = fakeHost();
 		const lines: Array<string | undefined> = [];
-		registerActivity(fake.pi, { workingLine: true, onChange: (line) => lines.push(line) });
+		registerActivity(fake.api, { workingLine: true, onChange: (line) => lines.push(line) });
 		const ctx = fakeCtx({ cwd: "/x" });
 		const ui = ctx.ui as typeof ctx.ui & { working?: string };
 		await fake.emit("session_start", {}, ctx);
@@ -356,8 +356,8 @@ describe("registerActivity", () => {
 	it("starts the run clock the working line counts from at agent_start and ends it at settlement", async () => {
 		initTheme("dark", false);
 		vi.useFakeTimers({ now: 5_000 });
-		const fake = fakePi();
-		registerActivity(fake.pi, { workingLine: true });
+		const fake = fakeHost();
+		registerActivity(fake.api, { workingLine: true });
 		const ctx = fakeCtx({ cwd: "/x" });
 		await fake.emit("agent_start", {}, ctx);
 		vi.setSystemTime(5_000 + 62_000);
@@ -370,8 +370,8 @@ describe("registerActivity", () => {
 		const after = new WorkingStatusIndicator(tui, "Working");
 		expect(stripAnsi(after.render(80)[1])).toContain("(0s");
 		after.dispose();
-		const child = fakePi();
-		registerActivity(child.pi, { workingLine: false });
+		const child = fakeHost();
+		registerActivity(child.api, { workingLine: false });
 		await child.emit("agent_start", {}, ctx);
 		vi.setSystemTime(5_000 + 70_000);
 		const alone = new WorkingStatusIndicator(tui, "Working");
@@ -381,14 +381,14 @@ describe("registerActivity", () => {
 	});
 
 	it("skips the working line for subagents and headless runs", async () => {
-		const fake = fakePi();
-		registerActivity(fake.pi, { workingLine: false });
+		const fake = fakeHost();
+		registerActivity(fake.api, { workingLine: false });
 		const ctx = fakeCtx({ cwd: "/x" });
 		await fake.emit("agent_start", {}, ctx);
 		await fake.emit("tool_execution_start", { toolCallId: "a", toolName: "bash", args: {} }, ctx);
 		expect((ctx.ui as { working?: string }).working).toBeUndefined();
-		const headless = fakePi();
-		registerActivity(headless.pi, { workingLine: true });
+		const headless = fakeHost();
+		registerActivity(headless.api, { workingLine: true });
 		const quiet = fakeCtx({ cwd: "/x", hasUI: false });
 		await headless.emit("agent_start", {}, quiet);
 		await headless.emit("tool_execution_start", { toolCallId: "a", toolName: "bash", args: {} }, quiet);
@@ -397,9 +397,9 @@ describe("registerActivity", () => {
 
 	it("paints and ticks only in the TUI: RPC has no working line", async () => {
 		vi.useFakeTimers();
-		const fake = fakePi();
+		const fake = fakeHost();
 		const lines: Array<string | undefined> = [];
-		registerActivity(fake.pi, { workingLine: true, onChange: (line) => lines.push(line) });
+		registerActivity(fake.api, { workingLine: true, onChange: (line) => lines.push(line) });
 		const rpc = fakeCtx({ cwd: "/x", mode: "rpc" });
 		await fake.emit("session_start", {}, rpc);
 		await fake.emit("agent_start", {}, rpc);
@@ -412,8 +412,8 @@ describe("registerActivity", () => {
 	});
 
 	it("titles a custom dialog from its opener, since Octocode gives it none", async () => {
-		const fake = fakePi();
-		registerActivity(fake.pi, { workingLine: true });
+		const fake = fakeHost();
+		registerActivity(fake.api, { workingLine: true });
 		const ctx = fakeCtx({ cwd: "/x" });
 		const ui = ctx.ui as typeof ctx.ui & { working?: string };
 		await fake.emit("session_start", {}, ctx);
@@ -439,8 +439,8 @@ describe("registerActivity", () => {
 
 	it("shows a call's pre-run checks and dialogs queued behind the open one", async () => {
 		vi.useFakeTimers();
-		const fake = fakePi();
-		const control = registerActivity(fake.pi, { workingLine: true });
+		const fake = fakeHost();
+		const control = registerActivity(fake.api, { workingLine: true });
 		const ctx = fakeCtx({ cwd: "/x" });
 		const ui = ctx.ui as typeof ctx.ui & { working?: string };
 		await fake.emit("session_start", {}, ctx);
@@ -505,14 +505,6 @@ describe("Activity: the working line", () => {
 		expect(activity.working()).toBe("Running localSearch +1");
 	});
 
-	it("says a warned call's target once, with its warning", () => {
-		const activity = new Activity();
-		activity.start(0);
-		activity.toolStart("1", "bash", { command: "rm -rf build" }, 0);
-		activity.consequential("shell.destructive", "rm -rf build", true, 0);
-		expect(activity.working()).toBe("⚠ Running Bash: rm -rf build");
-	});
-
 	it("shows a subagent call with its goal, not the spawn permission sentence", () => {
 		const activity = new Activity();
 		activity.start(0);
@@ -546,10 +538,10 @@ describe("Activity: the working line", () => {
 it("shows only activity details, never a step clock, and keeps no timers", async () => {
 	vi.useFakeTimers();
 	vi.setSystemTime(0);
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: "/work" });
 	const ui = ctx.ui as typeof ctx.ui & { working?: string };
-	registerActivity(fake.pi, { workingLine: true });
+	registerActivity(fake.api, { workingLine: true });
 	await fake.emit("session_start", {}, ctx);
 	await fake.emit("agent_start", {}, ctx);
 	expect(ui.working).toBe("Waiting for model");

@@ -9,7 +9,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV } from "../../src/octocode/shared/env.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -29,11 +29,11 @@ function child(mode: "full" | "workspace", readOnly = true) {
 		[AGENT_SCRATCH_ENV]: scratch,
 		[PERMISSION_ENV]: mode,
 	};
-	const fake = fakePi();
+	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
-	const permission = new Permission({ pi: fake.pi, env, isSubagent: true });
+	const permission = new Permission({ api: fake.api, env, isSubagent: true });
 	permission.start(ctx);
-	registerFileTool(fake.pi, new FileGuard(), permission, undefined, { enabled: () => true, refresh: async () => {} });
+	registerFileTool(fake.api, new FileGuard(), permission, undefined, { enabled: () => true, refresh: async () => {} });
 	const gate = permissionGate({
 		permission,
 		provenance: { check: () => undefined },

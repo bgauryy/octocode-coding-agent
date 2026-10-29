@@ -68,7 +68,6 @@ async function fixture(registered = false) {
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		CODEX_HOME: path.join(home, ".codex"),
 		OCTOCODE_MCP: "0",
-		OCTOCODE_HOOKS: "0",
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MODELS_DEV: "0",
 		OCTOCODE_PERMISSION: "full",
@@ -94,9 +93,9 @@ async function fixture(registered = false) {
 			{ name: "mcp", factory: createMcpExtension() },
 			{
 				name: "parent-fixture",
-				factory: (pi) => {
-					if (registered) pi.registerMcpServer("extension-echo", { command: process.execPath, args: [echoServer] });
-					pi.registerProvider("faux-parent", {
+				factory: (api) => {
+					if (registered) api.registerMcpServer("extension-echo", { command: process.execPath, args: [echoServer] });
+					api.registerProvider("faux-parent", {
 						name: "Fixture parent",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",

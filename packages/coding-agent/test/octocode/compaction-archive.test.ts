@@ -27,7 +27,7 @@ import {
 } from "../../src/octocode/shared/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let saved: string | undefined;
@@ -461,7 +461,7 @@ describe("the pointer in the summary and after a default summary", () => {
 	const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 };
 
 	it("puts the pointer in the Recovery section of Octocode's summary, and a rewritten summary does not carry it", async () => {
-		const pi = {
+		const api = {
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
@@ -494,7 +494,7 @@ describe("the pointer in the summary and after a default summary", () => {
 			branchEntries: [],
 			signal: { aborted: false },
 		} as never;
-		const out = await writeSummary(pi, event, ctx);
+		const out = await writeSummary(api, event, ctx);
 		const summary = out!.compaction!.summary;
 		const recovery = summary.slice(summary.indexOf("## Recovery"));
 		expect(recovery).toContain(
@@ -507,8 +507,8 @@ describe("the pointer in the summary and after a default summary", () => {
 	});
 
 	it("sends the pointer as a hidden message that triggers no turn", () => {
-		const f = fakePi();
-		deliverArchivePointer(f.pi, 3);
+		const f = fakeHost();
+		deliverArchivePointer(f.api, 3);
 		expect(f.sent).toHaveLength(1);
 		expect(f.sent[0].options).toEqual({ triggerTurn: false });
 		expect(f.sent[0].message).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
@@ -521,10 +521,10 @@ describe("the pointer in the summary and after a default summary", () => {
 
 describe("archive wiring in the session", () => {
 	function session() {
-		const f = fakePi();
+		const f = fakeHost();
 		const sendMessage = vi.fn();
-		(f.pi as unknown as { sendMessage: unknown }).sendMessage = sendMessage;
-		registerCompaction(f.pi, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
+		(f.api as unknown as { sendMessage: unknown }).sendMessage = sendMessage;
+		registerCompaction(f.api, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
 		const notices: string[] = [];
 		const ctx = {
 			cwd: tmp(),

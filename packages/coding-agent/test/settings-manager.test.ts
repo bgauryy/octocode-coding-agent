@@ -37,7 +37,7 @@ describe("SettingsManager", () => {
 				}),
 			);
 
-			// Create SettingsManager (simulates pi starting up)
+			// Create SettingsManager (simulates Octocode starting up)
 			const manager = SettingsManager.create(projectDir, agentDir);
 
 			// Simulate user editing settings.json externally to add enabledModels
@@ -309,42 +309,42 @@ describe("SettingsManager", () => {
 	});
 
 	describe("project settings directory creation", () => {
-		it("should not create .pi folder when only reading project settings", () => {
-			// Create agent dir with global settings, but NO .pi folder in project
+		it("should not create .octocode folder when only reading project settings", () => {
+			// Create agent dir with global settings, but NO .octocode folder in project
 			const settingsPath = join(agentDir, "settings.json");
 			writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
 
-			// Delete the .pi folder that beforeEach created
+			// Delete the .octocode folder that beforeEach created
 			rmSync(join(projectDir, ".octocode"), { recursive: true });
 
 			// Create SettingsManager (reads both global and project settings)
 			const manager = SettingsManager.create(projectDir, agentDir);
 
-			// .pi folder should NOT have been created just from reading
+			// .octocode folder should NOT have been created just from reading
 			expect(existsSync(join(projectDir, ".octocode"))).toBe(false);
 
 			// Settings should still be loaded from global
 			expect(manager.getTheme()).toBe("dark");
 		});
 
-		it("should create .pi folder when writing project settings", async () => {
-			// Create agent dir with global settings, but NO .pi folder in project
+		it("should create .octocode folder when writing project settings", async () => {
+			// Create agent dir with global settings, but NO .octocode folder in project
 			const settingsPath = join(agentDir, "settings.json");
 			writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
 
-			// Delete the .pi folder that beforeEach created
+			// Delete the .octocode folder that beforeEach created
 			rmSync(join(projectDir, ".octocode"), { recursive: true });
 
 			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 
-			// .pi folder should NOT exist yet
+			// .octocode folder should NOT exist yet
 			expect(existsSync(join(projectDir, ".octocode"))).toBe(false);
 
 			// Write a project-specific setting
 			manager.setProjectPackages([{ source: "npm:test-pkg" }]);
 			await manager.flush();
 
-			// Now .pi folder should exist
+			// Now .octocode folder should exist
 			expect(existsSync(join(projectDir, ".octocode"))).toBe(true);
 
 			// And settings file should be created
@@ -411,17 +411,17 @@ describe("SettingsManager", () => {
 	});
 
 	describe("cacheWarming", () => {
-		it("defaults to streaming and ignores project settings", () => {
-			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("streaming");
-
-			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ cacheWarming: "idle" }));
-			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("streaming");
-
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ cacheWarming: "idle" }));
+		it("defaults to idle and ignores project settings", () => {
 			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("idle");
 
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ cacheWarming: "bogus" }));
+			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ cacheWarming: "off" }));
+			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("idle");
+
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ cacheWarming: "streaming" }));
 			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("streaming");
+
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ cacheWarming: "bogus" }));
+			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("idle");
 		});
 
 		it("persists the mode globally", async () => {

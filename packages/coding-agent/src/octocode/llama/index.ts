@@ -30,7 +30,7 @@ function parseHuggingFaceModel(value: string): { repository: string; quantizatio
 async function configuredClient(ctx: ExtensionCommandContext): Promise<LlamaClient | undefined> {
 	const result = await ctx.modelRegistry.getProviderAuth(LLAMA_PROVIDER_ID);
 	if (!result) {
-		ctx.ui.notify(`Configure llama.cpp with /providers ${LLAMA_PROVIDER_ID}`, "warning");
+		ctx.ui.notify(`Configure llama.cpp with /login ${LLAMA_PROVIDER_ID}`, "warning");
 		return undefined;
 	}
 	const configuredUrl = result.env?.LLAMA_BASE_URL;
@@ -40,9 +40,9 @@ async function configuredClient(ctx: ExtensionCommandContext): Promise<LlamaClie
 	return new LlamaClient(serverUrl, result.auth.apiKey);
 }
 
-export default function llamaExtension(pi: ExtensionAPI): void {
+export default function llamaExtension(api: ExtensionAPI): void {
 	const provider = createLlamaProvider();
-	pi.registerProvider(provider.provider);
+	api.registerProvider(provider.provider);
 
 	const syncCatalog = async (
 		ctx: ExtensionCommandContext,
@@ -179,7 +179,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 		ctx.ui.notify(`Downloaded ${model}`);
 	};
 
-	pi.registerCommand("llama", {
+	api.registerCommand("llama", {
 		description: "Manage llama.cpp router models",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") {

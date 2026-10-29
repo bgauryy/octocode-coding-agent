@@ -8,6 +8,8 @@ export interface ModelSettingsApi {
 	setDefaultProvider(provider: string): void;
 	setDefaultModel(modelId: string): void;
 	setDefaultModelAndProvider(provider: string, modelId: string): void;
+	/** The user's default model id per provider. */
+	getProviderModels(): Record<string, string>;
 	getSteeringMode(): "all" | "one-at-a-time";
 	setSteeringMode(mode: "all" | "one-at-a-time"): void;
 	getFollowUpMode(): "all" | "one-at-a-time";
@@ -18,6 +20,8 @@ export interface ModelSettingsApi {
 	getAllModelThinkingLevels(): Record<string, ThinkingLevel>;
 	setModelThinkingLevel(provider: string, modelId: string, level: ThinkingLevel): void;
 	removeModelThinkingLevel(provider: string, modelId: string): void;
+	/** The default working context: a token count, or "full" for the model's whole capacity. */
+	getContextBudget(): number | "full";
 	getTransport(): TransportSetting;
 	setTransport(transport: TransportSetting): void;
 	getThinkingBudgets(): ThinkingBudgetsSettings | undefined;

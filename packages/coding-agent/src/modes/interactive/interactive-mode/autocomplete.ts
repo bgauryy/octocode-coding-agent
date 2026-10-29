@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ExtensionRunner } from "../../../core/extensions/index.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
-import { BUILTIN_SLASH_COMMANDS, commandNames } from "../../../core/slash-commands.ts";
+import { BUILTIN_SLASH_COMMANDS } from "../../../core/slash-commands.ts";
 import { getSkillCommands } from "../../../core/skill-commands.ts";
 import { getPromptCommands } from "../../../core/prompt-templates.ts";
 import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
@@ -82,7 +82,7 @@ function prefixAutocompleteDescription(
 }
 
 export function getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[] {
-	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap(commandNames));
+	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 	return extensionRunner
 		.getRegisteredCommands()
 		.filter((command) => builtinNames.has(command.name) && command.sourceInfo.path !== NATIVE_FEATURE_PATH)
@@ -153,9 +153,9 @@ export function getSlashCommands(
 		};
 	}
 
-	const providersCommand = slashCommands.find((command) => command.name === "providers");
-	if (providersCommand) {
-		providersCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
+	const loginCommand = slashCommands.find((command) => command.name === "login");
+	if (loginCommand) {
+		loginCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
 			const providers = getLoginProviderCompletionOptions(host.getLoginProviderOptions()).map((provider) => ({
 				value: provider.id,
 				label: provider.id,
@@ -196,7 +196,7 @@ export function getSlashCommands(
 	}));
 
 	// Convert extension commands to SlashCommand format
-	const builtinCommandNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap(commandNames));
+	const builtinCommandNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 	const extensionCommands: SlashCommand[] = host.session.extensionRunner
 		.getRegisteredCommands()
 		.filter((cmd) => !builtinCommandNames.has(cmd.invocationName))
@@ -239,28 +239,7 @@ export function getSlashCommands(
 				(skill) => skill.name,
 				(skill) => ({ value: skill.name, label: skill.name, description: skill.description }),
 			);
-	const aliases = new Map([
-		...BUILTIN_SLASH_COMMANDS.map((command) => [command.name, command.aliases] as const),
-		...host.session.extensionRunner
-			.getRegisteredCommands()
-			.filter((command) => command.invocationAliases?.length)
-			.map((command) => [command.invocationName, command.invocationAliases] as const),
-	]);
-	return allCommands.flatMap((command) => {
-		const names = aliases.get(command.name) ?? [];
-		if (!names.length) return [command];
-		return [
-			{
-				...command,
-				description: `${command.description ?? ""} (aliases: ${names.map((name) => `/${name}`).join(", ")})`,
-			},
-			...names.map((name) => ({
-				...command,
-				name,
-				description: `Alias for /${command.name}. ${command.description ?? ""}`,
-			})),
-		];
-	});
+	return allCommands;
 }
 
 export function createBaseAutocompleteProvider(host: AutocompleteHost): AutocompleteProvider {

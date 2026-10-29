@@ -83,7 +83,7 @@ function unchangedNote(toolName: string, input: Record<string, unknown>): string
  * Registered after the file guard's `tool_result` handler (`registerFileTool`): the guard digests the text the read
  * returned, so it must see that text, not the note.
  */
-export function registerReadDedupe(pi: ExtensionAPI): void {
+export function registerReadDedupe(api: ExtensionAPI): void {
 	const index = new BranchIndex<ReadIndex>(
 		() => ({ calls: new Map(), results: new Map(), rebuild: true }),
 		(state, entry) => {
@@ -93,7 +93,7 @@ export function registerReadDedupe(pi: ExtensionAPI): void {
 			if (!state.rebuild && entry.type === "message") indexMessage(state, entry.message);
 		},
 	);
-	pi.on("tool_result", async (event, ctx) => {
+	api.on("tool_result", async (event, ctx) => {
 		if (event.isError || !DEDUPED_TOOLS.has(event.toolName)) return undefined;
 		const text = plainText(event.content);
 		if (text === undefined) return undefined;

@@ -47,19 +47,19 @@ export function setExposure(
 	exposure: McpExposure,
 	inProject = false,
 ): string | undefined {
-	const { pi } = state;
+	const { api } = state;
 	const failed = saveConfig(state, server, { exposure }, inProject);
 	if (failed) return failed;
 	if (server.connection?.state === "connected") registerTools(state, server.connection);
 	// Tools no longer exposed directly leave the declared set; direct tools are activated on registration.
 	const indirect = new Set(
-		pi
+		api
 			.getAllTools()
 			.filter((tool) => tool.exposure !== "direct")
 			.map((tool) => tool.name),
 	);
 	const tools = state.serverTools.get(server.entry.name) ?? new Set<string>();
-	pi.setActiveTools(pi.getActiveTools().filter((name) => !tools.has(name) || !indirect.has(name)));
+	api.setActiveTools(api.getActiveTools().filter((name) => !tools.has(name) || !indirect.has(name)));
 	state.emitChange();
 	return undefined;
 }

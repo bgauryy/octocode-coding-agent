@@ -1,7 +1,7 @@
 /**
- * Adapts MCP tools to pi tool definitions.
+ * Adapts MCP tools to Octocode tool definitions.
  *
- * Results map onto pi's model-facing content (text and images). Text over 20KB keeps its start and
+ * Results map onto Octocode's model-facing content (text and images). Text over 20KB keeps its start and
  * end with the middle cut out, like Codex does, and the full text is saved to a temp file the model
  * can read. Programmatic callers receive the supported `CallToolResult` without `_meta`
  * (supported `content` blocks, `structuredContent`, `isError`), never truncated: it is

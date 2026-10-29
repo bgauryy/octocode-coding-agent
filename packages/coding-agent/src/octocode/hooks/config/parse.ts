@@ -1,30 +1,21 @@
-import { HOOK_EVENTS, HOOK_MAX_TIMEOUT_S, type HookSource, type HookHandler, type HookConfig } from "../contracts.ts";
+import {
+	HOOK_CATALOG,
+	HOOK_EVENTS,
+	PROFILE_COMMAND_FIELDS,
+	PROFILE_TIMEOUT_S,
+	profileSupport,
+	UPSTREAM_ONLY_EVENTS,
+	type HookProtocol,
+} from "../catalog.ts";
+import { HOOK_MAX_TIMEOUT_S, type HookSource, type HookHandler, type HookConfig } from "../contracts.ts";
 import { parseHttpHook } from "../http.ts";
 import { isRecord } from "../../../utils/guards.ts";
-import { claudeSessionEndOverride, hookMatcher, supportsHookEvent, type HookProtocol } from "../profiles.ts";
+import { claudeSessionEndOverride, hookMatcher } from "../profiles.ts";
 
-const DEFAULT_TIMEOUT_S = 60;
+export const emptyHooks = (): HookConfig =>
+	Object.fromEntries(HOOK_EVENTS.map((event) => [event, []])) as unknown as HookConfig;
 
-export const emptyHooks = (): HookConfig => ({
-	PreToolUse: [],
-	PermissionRequest: [],
-	PostToolUse: [],
-	PostToolUseFailure: [],
-	PostToolBatch: [],
-	SessionStart: [],
-	SubagentStart: [],
-	SubagentStop: [],
-	Interrupt: [],
-	SessionEnd: [],
-	UserPromptSubmit: [],
-	PreCompact: [],
-	PostCompact: [],
-	Stop: [],
-	StopFailure: [],
-	Notification: [],
-	PreMessageSend: [],
-	PostMessageReceive: [],
-});
+const HOST_NAMES = { claude: "Claude Code", codex: "Codex" } as const;
 
 /** Adds the command hooks in one parsed file to `into`; a group whose matcher is not a valid pattern is kept (it matches nothing) and named in `errors`. */
 export function parseHooks(
@@ -36,7 +27,6 @@ export function parseHooks(
 	protocol: HookProtocol = "octocode",
 ): HookConfig {
 	if (isRecord(value) && value.disableAllHooks === true) return into;
-	const profileTimeout = protocol === "octocode" ? DEFAULT_TIMEOUT_S : 600;
 	const hooks = isRecord(value) ? value.hooks : undefined;
 	if (hooks === undefined) return into;
 	if (!isRecord(hooks)) {
@@ -44,28 +34,27 @@ export function parseHooks(
 		return into;
 	}
 	for (const event of Object.keys(hooks)) {
-		if (!(HOOK_EVENTS as readonly string[]).includes(event))
-			errors.push(`${source}: unsupported hook event ${event}; skipped`);
+		if (Object.hasOwn(HOOK_CATALOG, event)) continue;
+		errors.push(
+			protocol !== "octocode" && UPSTREAM_ONLY_EVENTS[protocol].includes(event)
+				? `${source}: ${HOST_NAMES[protocol]} hook event ${event} is not implemented in Octocode yet; skipped`
+				: `${source}: unsupported hook event ${event}; skipped`,
+		);
 	}
 	for (const event of HOOK_EVENTS) {
-		const defaultTimeout =
-			event === "Interrupt"
-				? 1
-				: event === "SessionEnd"
-					? protocol === "codex"
-						? 1
-						: (claudeSessionEndOverride() ?? 1500) / 1000
-					: protocol === "claude" && event === "UserPromptSubmit"
-						? 30
-						: profileTimeout;
-		const maxTimeout =
-			protocol === "codex" && (event === "SessionEnd" || event === "Interrupt") ? 3 : HOOK_MAX_TIMEOUT_S;
 		const groups = hooks[event];
 		if (groups === undefined) continue;
-		if (!supportsHookEvent(protocol, event)) {
+		const support = profileSupport(protocol, event);
+		if (!support) {
 			errors.push(`${source}: unsupported ${protocol} hook event ${event}; skipped`);
 			continue;
 		}
+		const defaultTimeout =
+			protocol === "claude" && event === "SessionEnd"
+				? (claudeSessionEndOverride() ?? 1500) / 1000
+				: (support.timeout ?? PROFILE_TIMEOUT_S[protocol]);
+		const maxTimeout = support.maxTimeout ?? HOOK_MAX_TIMEOUT_S;
+		const gate: boolean = "gate" in HOOK_CATALOG[event];
 		if (!Array.isArray(groups)) {
 			errors.push(`${source}: ${event} must be an array; skipped`);
 			continue;
@@ -89,10 +78,7 @@ export function parseHooks(
 					const required =
 						isRecord(hook) &&
 						(hook.failClosed === true || (protocol === "claude" && hook.onFailure === "block")) &&
-						(event === "PermissionRequest" ||
-							event === "PreToolUse" ||
-							event === "PreMessageSend" ||
-							event === "UserPromptSubmit");
+						gate;
 					errors.push(`${source}: ${failure}; ${required ? "failClosed denies matching calls" : "skipped"}`);
 					if (!required) return [];
 					return [
@@ -120,8 +106,8 @@ export function parseHooks(
 						return invalidHandler("Interrupt timeout must be a non-negative safe integer");
 				}
 				if (isRecord(hook) && hook.type === "mcp_tool" && protocol !== "octocode") {
-					if (protocol === "codex" && event === "SessionEnd")
-						return invalidHandler("Codex SessionEnd does not support MCP hooks");
+					if (!support.handlers.includes("mcp_tool"))
+						return invalidHandler(`${HOST_NAMES[protocol]} ${event} does not support MCP hooks`);
 					const invalid =
 						typeof hook.server !== "string" ||
 						!hook.server.trim() ||
@@ -148,24 +134,10 @@ export function parseHooks(
 						},
 					];
 				}
-				if (isRecord(hook) && hook.type === "http" && protocol === "claude" && event !== "SessionStart") {
+				if (isRecord(hook) && hook.type === "http" && support.handlers.includes("http")) {
 					return parseHttpHook(hook, source, origin, defaultTimeout, errors);
 				}
-				if (
-					isRecord(hook) &&
-					hook.type === "prompt" &&
-					protocol === "claude" &&
-					[
-						"PermissionRequest",
-						"PreToolUse",
-						"PostToolUse",
-						"PostToolUseFailure",
-						"PostToolBatch",
-						"Stop",
-						"SubagentStop",
-						"UserPromptSubmit",
-					].includes(event)
-				) {
+				if (isRecord(hook) && hook.type === "prompt" && support.handlers.includes("prompt")) {
 					if (
 						typeof hook.prompt !== "string" ||
 						!hook.prompt.trim() ||
@@ -196,15 +168,7 @@ export function parseHooks(
 				if (!isRecord(hook) || hook.type !== "command" || typeof hook.command !== "string" || !hook.command.trim()) {
 					return invalidHandler(`${event} requires a command hook with a non-empty command`);
 				}
-				const accepted = [
-					"type",
-					"command",
-					"timeout",
-					"failClosed",
-					"statusMessage",
-					...(protocol === "claude" ? ["args", "onFailure", "async", "asyncRewake"] : []),
-					...(protocol === "codex" ? ["commandWindows", "async", "additionalContextLimit"] : []),
-				];
+				const accepted = PROFILE_COMMAND_FIELDS[protocol];
 				const unsupported = Object.keys(hook).filter((key) => !accepted.includes(key));
 				const invalid: string[] = [];
 				if (
@@ -217,7 +181,7 @@ export function parseHooks(
 					invalid.push("async must be a boolean");
 				if (protocol === "claude" && hook.asyncRewake !== undefined && typeof hook.asyncRewake !== "boolean")
 					invalid.push("asyncRewake must be a boolean");
-				if (protocol === "claude" && (hook.async === true || hook.asyncRewake === true) && event === "SessionEnd")
+				if (protocol === "claude" && (hook.async === true || hook.asyncRewake === true) && support.synchronous)
 					invalid.push("async SessionEnd requires an unavailable teardown scheduler");
 				if (
 					protocol === "claude" &&
@@ -248,13 +212,7 @@ export function parseHooks(
 				}
 
 				const hasContextLimit = protocol === "codex" && hook.additionalContextLimit != null;
-				const supportsContextLimit = [
-					"PreToolUse",
-					"PostToolUse",
-					"SessionStart",
-					"SubagentStart",
-					"UserPromptSubmit",
-				].includes(event);
+				const supportsContextLimit = support.contextLimit === true;
 				if (hasContextLimit && !supportsContextLimit)
 					errors.push(
 						`${source}: ignoring additionalContextLimit for ${event}: this event cannot emit additionalContext`,

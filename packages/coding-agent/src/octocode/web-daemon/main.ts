@@ -1,0 +1,179 @@
+import path from "node:path";
+import { Value } from "typebox/value";
+import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode-contacts/daemon";
+import { ConfigSnapshotSchema } from "@octocodeai/octocode-contacts/config";
+import { getAgentDir } from "../../config.ts";
+import { privateDir } from "../shared/home.ts";
+import { processStartTime } from "../shared/process.ts";
+import { RotatingLog } from "../shared/rotating-log.ts";
+import { redactSecrets } from "../shared/sanitize.ts";
+import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
+import type { DaemonPage } from "./build.ts";
+import { buildConfigSnapshot } from "./config-status.ts";
+import { WEB_DAEMON_IDLE_ENV, webDaemonPaths } from "./paths.ts";
+import { removeRecord, writeDaemonRecord } from "./records.ts";
+import { startDaemonServer, type DaemonServer } from "./server.ts";
+
+const DEFAULT_IDLE_MINUTES = 10;
+const DRAIN_LIMIT_MS = 30_000;
+const LOCK_WAIT_MS = 2000;
+
+export interface RunningDaemon {
+	server: DaemonServer;
+	/** Resolves after the daemon stopped listening and removed its record. */
+	stopped: Promise<void>;
+	shutdown(): Promise<void>;
+}
+
+function idleMs(env: NodeJS.ProcessEnv): number {
+	const minutes = Number.parseFloat(env[WEB_DAEMON_IDLE_ENV] ?? "");
+	return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_IDLE_MINUTES) * 60_000;
+}
+
+/**
+ * Starts the user-level daemon in this process: takes the run lock (a second daemon cannot start beside it), listens,
+ * and only then writes the record. It exits after `OCTOCODE_WEB_DAEMON_IDLE_MINUTES` (default 10) with no browser tab
+ * and no attached session, or when told to drain by a launcher of another build. Resolves undefined when another daemon
+ * already runs.
+ */
+export async function startWebDaemon(
+	env: NodeJS.ProcessEnv = process.env,
+	options: { page?: DaemonPage } = {},
+): Promise<RunningDaemon | undefined> {
+	const paths = webDaemonPaths(env);
+	privateDir(paths.dir);
+	let release: (() => Promise<void>) | undefined;
+	try {
+		release = await acquireRegistryLock(paths.runLock, LOCK_WAIT_MS);
+	} catch {
+		return undefined;
+	}
+	const idleLimit = idleMs(env);
+	let lastActivity = Date.now();
+	let stopping: Promise<void> | undefined;
+	let drainTimer: ReturnType<typeof setInterval> | undefined;
+	let onStopped: () => void = () => {};
+	const stopped = new Promise<void>((resolve) => (onStopped = resolve));
+	let server: DaemonServer | undefined;
+	let nonce = "";
+	const idleTimer = setInterval(
+		() => {
+			if (!server || server.draining) return;
+			if (server.tabs.count > 0 || server.registry.attached > 0) lastActivity = Date.now();
+			else if (Date.now() - lastActivity >= idleLimit) void shutdown();
+		},
+		Math.min(1000, Math.max(50, idleLimit / 4)),
+	);
+	idleTimer.unref();
+	const dropRecord = () => removeRecord(paths.record, (text) => text.includes(nonce));
+	const shutdown = (): Promise<void> =>
+		(stopping ??= (async () => {
+			clearInterval(idleTimer);
+			clearInterval(drainTimer);
+			dropRecord();
+			await server?.close().catch(() => undefined);
+			await release?.().catch(() => undefined);
+			release = undefined;
+			onStopped();
+		})());
+	try {
+		server = await startDaemonServer({
+			env,
+			page: options.page,
+			onActivity: () => (lastActivity = Date.now()),
+			config: async (repo) => {
+				const snapshot = await buildConfigSnapshot({ agentDir: getAgentDir(), cwd: repo?.root, env });
+				if (!Value.Check(ConfigSnapshotSchema, snapshot)) throw new Error("The configuration snapshot is invalid.");
+				return snapshot;
+			},
+			onDrain: () => {
+				if (!server || server.draining) return;
+				server.draining = true;
+				// A new daemon may take over now; this one serves its open tabs until they leave or the limit passes.
+				dropRecord();
+				void release?.().catch(() => undefined);
+				release = undefined;
+				const deadline = Date.now() + DRAIN_LIMIT_MS;
+				drainTimer = setInterval(() => {
+					if ((server?.tabs.count ?? 0) === 0 || Date.now() >= deadline) void shutdown();
+				}, 500);
+				drainTimer.unref();
+			},
+		});
+	} catch (error) {
+		await release?.().catch(() => undefined);
+		throw error;
+	}
+	nonce = server.nonce;
+	const startedAt = Date.now();
+	const record: DaemonRecord = {
+		pid: process.pid,
+		...(processStartTime(process.pid) ? { pid_started: processStartTime(process.pid) } : {}),
+		port: server.port,
+		url: `http://127.0.0.1:${server.port}/#access=${server.token}`,
+		protocolVersion: DAEMON_PROTOCOL_VERSION,
+		build: server.build,
+		startedAt,
+		nonce,
+	};
+	try {
+		writeDaemonRecord(paths.record, record);
+	} catch (error) {
+		await shutdown();
+		throw error;
+	}
+	return { server, stopped, shutdown };
+}
+
+/** More uncaught errors than this inside `CRASH_WINDOW_MS` mean the process is broken, not that one peer misbehaved. */
+const CRASH_LIMIT = 20;
+const CRASH_WINDOW_MS = 60_000;
+
+/**
+ * What the daemon does with an uncaught error: write one redacted line to `log` and keep serving, unless more than
+ * `CRASH_LIMIT` arrive within `CRASH_WINDOW_MS`, which means the process itself is broken and `stop` is called.
+ */
+export function crashGuard(options: {
+	log?: { write(text: string): void };
+	stop: () => void;
+	now?: () => number;
+}): (kind: string) => (error: unknown) => void {
+	let recent: number[] = [];
+	const clock = options.now ?? Date.now;
+	return (kind) => (error) => {
+		const now = clock();
+		recent = [...recent.filter((at) => now - at < CRASH_WINDOW_MS), now];
+		options.log?.write(
+			`${new Date(now).toISOString()} ${kind}: ${redactSecrets(String((error as Error)?.stack ?? error)).slice(0, 2000)}\n`,
+		);
+		if (recent.length > CRASH_LIMIT) options.stop();
+	};
+}
+
+/** A per-connection error must not end a daemon that holds every open tab: it is logged to `web/daemon.log` (size-capped). */
+function keepServing(running: RunningDaemon, env: NodeJS.ProcessEnv): void {
+	let log: RotatingLog | undefined;
+	try {
+		log = new RotatingLog(path.join(webDaemonPaths(env).dir, "daemon.log"), 256 * 1024, "lines");
+	} catch {
+		// No log to write; the daemon still survives.
+	}
+	const guard = crashGuard({ log, stop: () => void running.shutdown().finally(() => process.exit(1)) });
+	process.on("uncaughtException", guard("uncaughtException"));
+	process.on("unhandledRejection", guard("unhandledRejection"));
+}
+
+/** The detached process's entry: serve until idle, drained or signalled, then exit. */
+export async function runWebDaemon(
+	env: NodeJS.ProcessEnv = process.env,
+	options: { page?: DaemonPage } = {},
+): Promise<void> {
+	const running = await startWebDaemon(env, options);
+	if (!running) return;
+	const stop = () => void running.shutdown();
+	process.once("SIGTERM", stop);
+	process.once("SIGINT", stop);
+	keepServing(running, env);
+	await running.stopped;
+	process.exit(0);
+}

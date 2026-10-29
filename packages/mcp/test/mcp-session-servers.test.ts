@@ -42,21 +42,21 @@ describe("session MCP servers handed to children", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-session-servers-"));
 		const file = path.join(dir, "servers.json");
 		fs.writeFileSync(file, serializeMcpSessionServers({ echo: stdio })!);
-		const pi = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
-		registerInheritedMcpServers(pi, { [MCP_SESSION_SERVERS_FILE_ENV]: file });
-		expect(pi.registerMcpServer).not.toHaveBeenCalled();
-		registerInheritedMcpServers(pi, { OCTOCODE_SUBAGENT: "1" });
-		expect(pi.registerMcpServer).not.toHaveBeenCalled();
-		registerInheritedMcpServers(pi, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file });
-		expect(pi.registerMcpServer).toHaveBeenCalledWith("echo", stdio);
+		const api = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
+		registerInheritedMcpServers(api, { [MCP_SESSION_SERVERS_FILE_ENV]: file });
+		expect(api.registerMcpServer).not.toHaveBeenCalled();
+		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1" });
+		expect(api.registerMcpServer).not.toHaveBeenCalled();
+		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file });
+		expect(api.registerMcpServer).toHaveBeenCalledWith("echo", stdio);
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 
 	it("keeps an unreadable file from failing the child", () => {
-		const pi = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
+		const api = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
 		const write = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-		registerInheritedMcpServers(pi, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: "/nonexistent/x.json" });
-		expect(pi.registerMcpServer).not.toHaveBeenCalled();
+		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: "/nonexistent/x.json" });
+		expect(api.registerMcpServer).not.toHaveBeenCalled();
 		expect(write).toHaveBeenCalled();
 		write.mockRestore();
 	});

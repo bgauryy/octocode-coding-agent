@@ -327,11 +327,10 @@ it("registered user Bash source denial prevents the actual executor from writing
 	}
 });
 
-for (const compatibility of [true, false]) {
-	it(`registered user Bash ${compatibility ? "checks protected targets" : "preserves typed consent with source policy off"}`, async () => {
+{
+	it("registered user Bash checks protected targets", async () => {
 		const f = await fixture("claude", {
 			mode: "manual",
-			compatibility,
 			rules: { allow: ["Bash"] },
 		});
 		try {
@@ -351,7 +350,7 @@ for (const compatibility of [true, false]) {
 				}));
 			expect(result.cancelled).toBe(false);
 			expect(fs.readFileSync(path.join(f.cwd, ".claude/generated.txt"), "utf8")).toBe("WRITE");
-			expect(f.inputs()).toHaveLength(compatibility ? 1 : 0);
+			expect(f.inputs()).toHaveLength(1);
 		} finally {
 			await f.close();
 		}

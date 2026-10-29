@@ -30,7 +30,6 @@ it("runs native tools and releases team resources across a real session reload",
 		OCTOCODE_MCP: "0",
 		OCTOCODE_API: "0",
 		OCTOCODE_MODELS_DEV: "0",
-		OCTOCODE_HOOKS: "0",
 		OCTOCODE_EXTRA_SKILLS: "0",
 		OCTOCODE_MEMORY_AUTO: "0",
 		OCTOCODE_NOTIFY: "off",
@@ -48,11 +47,11 @@ it("runs native tools and releases team resources across a real session reload",
 			noThemes: true,
 			noContextFiles: true,
 			extensionFactories: [
-				(pi) => {
-					pi.on("session_start", async (event) => {
+				(api) => {
+					api.on("session_start", async (event) => {
 						events.push(`start:${event.reason}`);
 					});
-					pi.on("session_shutdown", async (event) => {
+					api.on("session_shutdown", async (event) => {
 						events.push(`stop:${event.reason}`);
 						expect(store?.list() ?? []).toEqual([]);
 						expect(store?.leases() ?? []).toEqual([]);

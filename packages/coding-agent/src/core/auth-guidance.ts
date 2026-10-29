@@ -5,7 +5,7 @@ const UNKNOWN_PROVIDER = "unknown";
 
 function getProviderLoginHelp(): string {
 	return [
-		"Use /providers to connect an AI provider with an account or API key. See:",
+		"Use /login to connect an AI provider with an account or API key. See:",
 		`  ${join(getDocsPath(), "providers.md")}`,
 		`  ${join(getDocsPath(), "models.md")}`,
 	].join("\n");

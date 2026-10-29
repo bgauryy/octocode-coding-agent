@@ -12,11 +12,11 @@ import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
+import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { buildAgentArgs, childSession, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 
-const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 
@@ -37,8 +37,8 @@ beforeAll(() => {
 		delete process.env[key];
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.copyFileSync(FIXTURE, path.join(bin, "pi"));
-	process.argv[1] = path.join(bin, "pi");
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
 });
 
 afterAll(() => {
@@ -47,9 +47,9 @@ afterAll(() => {
 });
 
 function setup(cwd = tmp("octocode-agent-cwd-")) {
-	const f = fakePi();
-	const team = new Team(f.pi);
-	const control = registerAgentTool(f.pi, () => new Map(), team, fakePermission());
+	const f = fakeHost();
+	const team = new Team(f.api);
+	const control = registerAgentTool(f.api, () => new Map(), team, fakePermission());
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
 	const ctx = fakeCtx({ cwd, hasUI: true });

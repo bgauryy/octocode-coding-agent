@@ -791,6 +791,54 @@ describe("default model selection", () => {
 		expect(result.model?.id).toBe("deepseek-v4-flash");
 	});
 
+	describe("per-provider default models", () => {
+		const make = (provider: string, id: string): Model<"anthropic-messages"> => ({
+			id,
+			name: id,
+			api: "anthropic-messages",
+			provider,
+			baseUrl: "https://example.test",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 },
+			contextWindow: 200000,
+			maxTokens: 8192,
+		});
+		const available = [
+			make("anthropic", "claude-opus-4-8"),
+			make("anthropic", "claude-opus-5-5"),
+			make("openai", "gpt-5.5"),
+			make("openai", "gpt-5.4-mini"),
+		];
+		const runtime = {
+			getModel: () => undefined,
+			hasConfiguredAuth: () => true,
+			getAvailableSnapshot: () => available,
+		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
+		const start = (options: Partial<Parameters<typeof findInitialModel>[0]>) =>
+			findInitialModel({ scopedModels: [], isContinuing: false, modelRuntime: runtime, ...options });
+
+		test("uses the user's model for the default provider when no default model is set", async () => {
+			const result = await start({ defaultProvider: "anthropic", providerModels: { anthropic: "claude-opus-5-5" } });
+			expect(`${result.model?.provider}/${result.model?.id}`).toBe("anthropic/claude-opus-5-5");
+		});
+
+		test("falls back to the built-in default for the default provider", async () => {
+			const result = await start({ defaultProvider: "openai" });
+			expect(`${result.model?.provider}/${result.model?.id}`).toBe("openai/gpt-5.5");
+		});
+
+		test("prefers the user's per-provider defaults over the built-in order", async () => {
+			const result = await start({ providerModels: { openai: "gpt-5.4-mini" } });
+			expect(`${result.model?.provider}/${result.model?.id}`).toBe("openai/gpt-5.4-mini");
+		});
+
+		test("skips a per-provider default that is not available", async () => {
+			const result = await start({ defaultProvider: "anthropic", providerModels: { anthropic: "missing" } });
+			expect(`${result.model?.provider}/${result.model?.id}`).toBe("anthropic/claude-opus-4-8");
+		});
+	});
+
 	describe("persisted default model scoping", () => {
 		const tempDirs: string[] = [];
 		const sonnet = getBuiltinModel("anthropic", "claude-sonnet-4-5");
@@ -803,7 +851,7 @@ describe("default model selection", () => {
 		});
 
 		async function createSession(options: { scoped: boolean; persistedScope?: string[] }) {
-			const tempDir = join(tmpdir(), `pi-default-scope-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+			const tempDir = join(tmpdir(), `octocode-default-scope-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 			mkdirSync(tempDir, { recursive: true });
 			tempDirs.push(tempDir);
 

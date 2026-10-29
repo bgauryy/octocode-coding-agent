@@ -21,10 +21,10 @@ export class Mail {
 	private readonly forUser = new Map<number, { text: string; recipients: ReadonlySet<string> }>();
 
 	/** `secret`: what the parent gave this process (a subagent), which checks a user message the parent signed (`userProof`). */
-	private readonly pi: Pick<ExtensionAPI, "sendMessage">;
+	private readonly api: Pick<ExtensionAPI, "sendMessage">;
 	private readonly secret: () => string | undefined;
-	constructor(pi: Pick<ExtensionAPI, "sendMessage">, secret: () => string | undefined = () => undefined) {
-		this.pi = pi;
+	constructor(api: Pick<ExtensionAPI, "sendMessage">, secret: () => string | undefined = () => undefined) {
+		this.api = api;
 		this.secret = secret;
 	}
 
@@ -180,7 +180,7 @@ export class Mail {
 	): boolean {
 		let sending: void | Promise<void>;
 		try {
-			sending = this.pi.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
+			sending = this.api.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
 		} catch {
 			return false; // The session ended or is not ready.
 		}

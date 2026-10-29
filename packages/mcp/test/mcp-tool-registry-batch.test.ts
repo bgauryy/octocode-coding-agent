@@ -8,7 +8,7 @@ import { hideTools, registerTools } from "../src/tool-registry.ts";
 function setup(toolCount: number, withBatchApi = true) {
 	const batches: string[][] = [];
 	const single: string[] = [];
-	const pi = {
+	const api = {
 		getAllTools: () => [],
 		getActiveTools: () => [],
 		setActiveTools: vi.fn(),
@@ -18,7 +18,7 @@ function setup(toolCount: number, withBatchApi = true) {
 			registerTools: (definitions: Array<{ name: string }>) => batches.push(definitions.map((entry) => entry.name)),
 		}),
 	} as unknown as ExtensionAPI;
-	const state = new McpExtensionState(pi, {});
+	const state = new McpExtensionState(api, {});
 	const entry: McpServerEntry = { name: "srv", config: { command: "fixture", exposure: "direct" }, source: "test" };
 	const tools = Array.from({ length: toolCount }, (_, index) => ({
 		name: `tool${index}`,

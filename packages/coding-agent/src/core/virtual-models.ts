@@ -90,7 +90,7 @@ export interface VirtualModelDefinition<TState = unknown> {
 	/** Thinking levels offered for selection. Defaults to `["off"]`. */
 	thinkingLevels?: readonly ModelThinkingLevel[];
 	/**
-	 * Limits shown before the first response. Afterwards, Pi uses the limits of the physical model
+	 * Limits shown before the first response. Afterwards, Octocode uses the limits of the physical model
 	 * that answered. Unset limits are unknown (0).
 	 */
 	contextWindow?: number;

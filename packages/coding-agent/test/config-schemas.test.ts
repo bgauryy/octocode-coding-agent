@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 function createTemporaryDirectory(): string {
-	const directory = mkdtempSync(join(tmpdir(), "pi-config-schema-test-"));
+	const directory = mkdtempSync(join(tmpdir(), "octocode-config-schema-test-"));
 	temporaryDirectories.push(directory);
 	return directory;
 }

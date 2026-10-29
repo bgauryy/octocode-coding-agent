@@ -90,9 +90,9 @@ export function budgetToolResult(budget: TurnBudget, message: ToolResultMessage)
  * order: the same calls always keep and lose the same text, and the cached prefix does not change with timing. Each
  * tool keeps its own cap; the budget bounds only their sum (results within it are unchanged). A new turn starts it again.
  */
-export function registerTurnBudget(pi: ExtensionAPI, budget = new TurnBudget()): TurnBudget {
-	pi.on("turn_start", async () => budget.reset());
-	pi.on("message_end", async (event) => {
+export function registerTurnBudget(api: ExtensionAPI, budget = new TurnBudget()): TurnBudget {
+	api.on("turn_start", async () => budget.reset());
+	api.on("message_end", async (event) => {
 		if (event.message.role !== "toolResult") return undefined;
 		const bounded = budgetToolResult(budget, event.message);
 		return bounded ? { message: bounded } : undefined;

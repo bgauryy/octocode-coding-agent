@@ -2,15 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { VERIFY_NUDGE, VERIFY_NUDGE_TYPE, registerVerifyNudge } from "../../src/octocode/files/verify-nudge.ts";
 import { beginVerification, finishVerification } from "../../src/octocode/files/bash/verification.ts";
 import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
 let counter = 0;
 function run() {
 	const sessionId = `nudge-${++counter}`;
-	const fake = fakePi();
-	registerVerifyNudge(fake.pi);
+	const fake = fakeHost();
+	registerVerifyNudge(fake.api);
 	const ctx = fakeCtx({ cwd: "/repo" });
 	Object.assign(ctx, { sessionManager: { getSessionId: () => sessionId } });
 	const settle = async (entries: unknown[] = [], outcome = "completed") =>

@@ -59,6 +59,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 				event.message.content,
 				event.message.display,
 				event.message.details,
+				event.message.timestamp,
 			);
 		} else if (
 			event.message.role === "system" ||

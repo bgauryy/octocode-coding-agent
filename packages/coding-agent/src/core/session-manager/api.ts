@@ -95,6 +95,8 @@ export interface SessionManagerApi {
 	 * @param content Message content (string or TextContent/ImageContent array)
 	 * @param display Whether to show in TUI (true = styled display, false = hidden)
 	 * @param details Optional extension-specific metadata (not sent to LLM)
+	 * @param timestamp Creation time (ms) of a message that already exists in the live context; the entry keeps it so a
+	 * context rebuilt from the session file equals the live message. Defaults to now.
 	 * @returns Entry id
 	 */
 	appendCustomMessageEntry<T = unknown>(
@@ -102,6 +104,7 @@ export interface SessionManagerApi {
 		content: string | (TextContent | ImageContent)[],
 		display: boolean,
 		details?: T,
+		timestamp?: number,
 	): string;
 
 	/** Append a branch-local edit to an earlier model-visible entry. */

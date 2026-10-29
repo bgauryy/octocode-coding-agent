@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { AuditEntry } from "../../src/octocode/permission/audit.ts";
 import { pruneSnapshots, takeSnapshot } from "../../src/octocode/permission/snapshot.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const git = (cwd: string, ...args: string[]): string =>
@@ -104,9 +104,9 @@ describe("a destructive shell call", () => {
 		cwd: string,
 		options: { snapshotMs?: number } = { snapshotMs: SNAPSHOT_WORK_MS },
 	) {
-		const fake = fakePi();
+		const fake = fakeHost();
 		const permission = new Permission({
-			pi: fake.pi,
+			api: fake.api,
 			env: { OCTOCODE_PERMISSION: mode },
 			isSubagent: false,
 			stderr: () => undefined,

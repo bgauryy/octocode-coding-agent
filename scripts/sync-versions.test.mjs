@@ -27,7 +27,7 @@ function runSyncVersions(root) {
 
 // #10865: caret ranges allowed older agents to install incompatible newer workspace dependencies.
 test("pins published and private dependencies without touching registry aliases, generated manifests, or published lockstep", async () => {
-	const root = await mkdtemp(join(tmpdir(), "pi-sync-versions-"));
+	const root = await mkdtemp(join(tmpdir(), "octocode-sync-versions-"));
 	try {
 		await writeManifest(root, "packages/ai", {
 			name: "@octocodeai/octocode-ai",

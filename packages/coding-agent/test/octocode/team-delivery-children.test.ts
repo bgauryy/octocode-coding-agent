@@ -209,7 +209,7 @@ describe("an external client (API message.send, the inbound side of the octocode
 		const receipts = new SendReceipts();
 		receipts.follow(live.session.sessionManager.getSessionId());
 		const host = {
-			pi: live.pi,
+			api: live.api,
 			agents: { list: () => [], deliverable: (text: string) => text },
 			operations: {},
 			receipts,

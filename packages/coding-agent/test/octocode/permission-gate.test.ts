@@ -7,7 +7,7 @@ import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate, powershellDestructive } from "../../src/octocode/permission/gate.ts";
 import { archiveFolder } from "../../src/octocode/shared/archive.ts";
 import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { runsLater } from "../../src/octocode/permission/file-access.ts";
@@ -26,8 +26,8 @@ function setup(
 ) {
 	const cwd = tmp();
 	fs.mkdirSync(path.join(cwd, ".git"));
-	const fake = fakePi();
-	const permission = new Permission({ pi: fake.pi, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
+	const fake = fakeHost();
+	const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
 	const ctx = fakeCtx({ cwd, hasUI: options.hasUI ?? true, ui: { selects: options.selects ?? [] } });
 	permission.start(ctx);
 	const asked: string[] = [];
@@ -440,8 +440,8 @@ describe("permission gate", () => {
 		expect(of(call("write", { path: "a.txt", content: "x" }), path.join(home, "proj"))).toBe("file.workspace");
 
 		const run = async (mode: "workspace" | "full") => {
-			const fake = fakePi();
-			const permission = new Permission({ pi: fake.pi, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
+			const fake = fakeHost();
+			const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
 			const ctx = fakeCtx({ cwd: home, hasUI: false });
 			permission.start(ctx);
 			const gate = permissionGate({

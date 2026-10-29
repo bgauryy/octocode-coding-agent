@@ -49,8 +49,8 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 			{ name: "mcp", factory: createMcpExtension() },
 			{
 				name: "cache-fixture",
-				factory: (pi) =>
-					pi.registerProvider("faux-cache", {
+				factory: (api) =>
+					api.registerProvider("faux-cache", {
 						name: "Fixture",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -131,7 +131,6 @@ it("sends byte-identical tools and first instruction block from different projec
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		CODEX_HOME: path.join(home, ".codex"),
 		OCTOCODE_MCP: "0",
-		OCTOCODE_HOOKS: "0",
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MODELS_DEV: "0",
 		OCTOCODE_PERMISSION: "full",

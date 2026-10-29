@@ -16,7 +16,7 @@ yarn run hydrate:model-data
 yarn start
 ```
 
-Hydration downloads the provider model catalog. Use `/providers` to connect an AI account or API key, then `/model` to choose a model and enter a task. `yarn start --help` lists CLI options; `/help` lists the native feature commands. For compiled artifacts, run `yarn run build:offline` after hydration.
+Hydration downloads the provider model catalog. Use `/login` to connect an AI account or API key, then `/model` to choose a model and enter a task. `yarn start --help` lists CLI options; `/help` lists the native feature commands. For compiled artifacts, run `yarn run build:offline` after hydration.
 
 The package name is `@octocodeai/octocodecode`, and its agent executable is `octocode`. The research and native executables are available without name collisions through:
 
@@ -55,6 +55,7 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 - [Agent guide and runtime references](packages/coding-agent/README.md)
 - [Native features and extension migration](packages/coding-agent/docs/native-features.md)
 - [Configuration locations and controls](CONFIGURATIONS.md)
+- [Add hooks, plugins and extensions](PLUGINS.md)
 - [Configuration and Pi compatibility](packages/coding-agent/docs/configuration.md)
 - [Agent instructions](packages/coding-agent/docs/instructions.md)
 - [Development guidance](AGENTS.md)

@@ -22,14 +22,11 @@ it("uses the selected Claude user home for preview hooks and leaves project and 
 	fs.writeFileSync(path.join(home, ".claude/settings.json"), definition("default"));
 	fs.writeFileSync(path.join(custom, "settings.json"), definition("custom"));
 	fs.writeFileSync(path.join(cwd, ".claude/settings.json"), definition("project"));
-	const selected = (trusted: boolean, sourceProfiles: boolean) =>
-		commandsFor(loadHooks(cwd, trusted, home, { sourceProfiles }).config, "PreToolUse", ["Bash"]).map(
-			(h) => "command" in h && h.command,
-		);
-	expect(selected(false, true)).toEqual(["custom"]);
-	expect(selected(true, true)).toEqual(["custom", "project"]);
-	expect(selected(false, false)).toEqual(["default"]);
-	expect(hookFiles(cwd, false, home, true)).toContain(path.join(custom, "settings.json"));
+	const selected = (trusted: boolean) =>
+		commandsFor(loadHooks(cwd, trusted, home).config, "PreToolUse", ["Bash"]).map((h) => "command" in h && h.command);
+	expect(selected(false)).toEqual(["custom"]);
+	expect(selected(true)).toEqual(["custom", "project"]);
+	expect(hookFiles(cwd, false, home)).toContain(path.join(custom, "settings.json"));
 });
 it("retains Claude parsing and synced-skill exclusion under a custom home", () => {
 	const home = tmp();

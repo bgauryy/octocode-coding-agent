@@ -1,6 +1,6 @@
 import { isRecord } from "../../coding-agent/src/utils/guards.ts";
 /**
- * MCP server configuration and the servers extensions register with `pi.registerMcpServer()`.
+ * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
  *
  * The core only validates and stores registrations. The MCP extension (built in, or another
  * extension that handles `mcp_servers_change`) connects them next to the servers from `mcp.json`.
@@ -80,7 +80,7 @@ interface McpStdioServerConfig extends McpServerConfigBase {
 
 /** OAuth client settings for servers that do not support dynamic client registration. */
 export interface McpOAuthConfig {
-	/** Pre-registered client id. Without it, pi registers a client with the authorization server. */
+	/** Pre-registered client id. Without it, Octocode registers a client with the authorization server. */
 	clientId?: string;
 	/** May reference environment variables (`${NAME}`) or commands (`!cmd`). */
 	clientSecret?: string;
@@ -119,7 +119,7 @@ export interface McpOAuthConfig {
 
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
-/** Whether a redirect URI can be served by pi's loopback callback server. */
+/** Whether a redirect URI can be served by Octocode's loopback callback server. */
 function isLoopbackRedirectUri(value: string): boolean {
 	if (!URL.canParse(value)) return false;
 	const url = new URL(value);
@@ -135,7 +135,7 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 	literalHeaders?: boolean;
 	oauth?: McpOAuthConfig;
 	/**
-	 * Send the token of a model provider (`/providers <provider>`) instead of using OAuth. Not allowed in project
+	 * Send the token of a model provider (`/login <provider>`) instead of using OAuth. Not allowed in project
 	 * `mcp.json` files, and requires https except on loopback hosts, since it sends the credential to `url`.
 	 */
 	auth?: { provider: string };
@@ -294,7 +294,7 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 	return `server "${name}" needs either "command" (stdio) or "url" (HTTP or SSE)`;
 }
 
-/** A server an extension registered with `pi.registerMcpServer()`. */
+/** A server an extension registered with `api.registerMcpServer()`. */
 export interface RegisteredMcpServer {
 	name: string;
 	config: McpServerConfig;

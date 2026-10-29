@@ -65,7 +65,7 @@ const messageNames = (message: MessageEnvelope): string[] => [
  * which were already seen (a resumed session replays its history), so each received message dispatches once.
  */
 export function registerMessageHooks(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): Pick<HooksView, "messageSend" | "messageReceive"> {
 	let messageAbort = new AbortController();
@@ -73,7 +73,7 @@ export function registerMessageHooks(
 	const received = new Set<string>();
 	let receivedObjects = new WeakSet<MessageEnvelope>();
 
-	pi.on("session_start", async (_event, ctx) => {
+	api.on("session_start", async (_event, ctx) => {
 		messageAbort.abort();
 		messageAbort = new AbortController();
 		messageSessionId = undefined;
@@ -97,7 +97,7 @@ export function registerMessageHooks(
 			messageAbort.abort();
 		}
 	});
-	pi.on("session_shutdown", async () => messageAbort.abort());
+	api.on("session_shutdown", async () => messageAbort.abort());
 
 	const messageSend: HooksView["messageSend"] = async (message, ctx) => {
 		if (ctx.sessionManager.getSessionId() !== messageSessionId)
@@ -133,7 +133,7 @@ export function registerMessageHooks(
 		);
 	};
 
-	pi.on("context", async (event, ctx) => {
+	api.on("context", async (event, ctx) => {
 		const signal = messageAbort.signal;
 		for (const message of event.messages) {
 			for (const envelope of receivedMessages(message)) {
@@ -149,7 +149,7 @@ export function registerMessageHooks(
 
 /** Notification observers outlive the foreground turn, but never their session. */
 export function notificationHook(
-	pi: ExtensionAPI,
+	api: ExtensionAPI,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): HooksView["notification"] {
 	let controller = new AbortController();
@@ -160,8 +160,8 @@ export function notificationHook(
 		controller.abort();
 		await Promise.allSettled(active);
 	};
-	pi.on("session_shutdown", stop);
-	pi.on("session_start", async () => {
+	api.on("session_shutdown", stop);
+	api.on("session_start", async () => {
 		await stop();
 		controller = new AbortController();
 		closed = false;

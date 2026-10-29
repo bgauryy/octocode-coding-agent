@@ -11,15 +11,15 @@ export const VERIFY_NUDGE_TYPE = "octocode-verify-nudge";
 export const VERIFY_NUDGE =
 	"Files changed in this run after the last passing check (or no check ran). Run the check that proves the change with bash verify: true, or say plainly that you did not verify it and why. If you already checked another way, name how.";
 
-export function registerVerifyNudge(pi: ExtensionAPI): void {
+export function registerVerifyNudge(api: ExtensionAPI): void {
 	let nudged = false;
 	let editsAtStart = 0;
 	// A run is one prompt's work: the continuation this nudge asks for does not start a new one.
-	pi.on("before_agent_start", async (_event, ctx) => {
+	api.on("before_agent_start", async (_event, ctx) => {
 		nudged = false;
 		editsAtStart = fileEditCount(ctx.sessionManager.getSessionId());
 	});
-	pi.on("agent_before_settle", async (event, ctx) => {
+	api.on("agent_before_settle", async (event, ctx) => {
 		// Another handler (a Stop hook) already continues the run: that turn settles again, and this one is not spent.
 		if (nudged || event.outcome !== "completed" || event.entries.length > 0 || readOnlyRole()) return undefined;
 		const sessionId = ctx.sessionManager.getSessionId();

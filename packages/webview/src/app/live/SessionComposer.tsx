@@ -6,9 +6,11 @@ import { choice, errorMessage, plural } from "../model/format.ts";
 import { Field, Select } from "../ui/fields.tsx";
 import { SendIcon, StopIcon } from "../ui/icons.tsx";
 import { Badge, Button } from "../ui/primitives.tsx";
+import { StateMark } from "../ui/StateMark.tsx";
 import { ConnectionNotice, StatusLine } from "./controls.tsx";
 import { SessionAttachments } from "./SessionAttachments.tsx";
 import { SessionRequests } from "./SessionRequests.tsx";
+import { sessionBadge } from "./model.ts";
 import { useLive } from "./session.tsx";
 
 type SessionAction = "prompt" | "steer" | "followUp";
@@ -53,6 +55,7 @@ function SessionComposerForSession() {
 						runId: state.application.runId,
 						streaming: state.application.streaming,
 						status: state.application.status,
+						awaiting: state.application.awaiting,
 						capabilities: state.application.capabilities,
 						receipts: state.application.receipts,
 						steering: state.application.steering,
@@ -68,6 +71,16 @@ function SessionComposerForSession() {
 	const [pending, setPending] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const sending = useRef(false);
+	const messageRef = useRef<HTMLTextAreaElement>(null);
+	const refocus = useRef(false);
+	// The Send button is inert while a request is in flight; give focus back to the message box once it settles.
+	useEffect(() => {
+		if (pending || !refocus.current) return;
+		refocus.current = false;
+		if (!document.activeElement || document.activeElement === document.body)
+			messageRef.current?.focus({ preventScroll: true });
+	}, [pending]);
+	const tone = useStore(sessionStore, (state) => state.status.tone);
 	const [status, setStatus] = useState("");
 	const stopKey = `abort:${session?.sessionId ?? ""}:${session?.runId ?? ""}`;
 	const stopRequest = useStore(workspace, (state) => state.requests[stopKey]);
@@ -75,6 +88,7 @@ function SessionComposerForSession() {
 	const announcement = useRunAnnouncement(session);
 	if (!session || !connection) return null;
 
+	const badge = sessionBadge(session);
 	const choices = session.capabilities.filter(
 		(action): action is SessionAction => action === "prompt" || action === "steer" || action === "followUp",
 	);
@@ -94,8 +108,9 @@ function SessionComposerForSession() {
 			id: crypto.randomUUID(),
 		});
 
-	async function submit(event: FormEvent) {
+	async function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		refocus.current = event.currentTarget.contains(document.activeElement);
 		if (attachments.length && !acceptsImages) return;
 		if (
 			sending.current ||
@@ -200,14 +215,13 @@ function SessionComposerForSession() {
 			<ConnectionNotice />
 			<div className="session-panel-header">
 				<h3>Message the current agent</h3>
-				{session.streaming ? (
-					<Badge tone="accent">
-						<span className="live-dot" aria-hidden="true" /> Running
-					</Badge>
-				) : (
-					<Badge>Idle</Badge>
-				)}
-				{session.status && session.status !== "idle" && <span className="muted">{session.status}</span>}
+				<Badge
+					tone={badge?.warn ? "warning" : badge ? "accent" : "neutral"}
+					icon={badge && <StateMark state={badge.state} size={12} />}
+				>
+					{badge ? badge.label : "Idle"}
+					{badge && tone !== "live" ? " · last known" : ""}
+				</Badge>
 			</div>
 			<p className="muted">
 				Messages go to the terminal session that opened this page: <code>{session.sessionId}</code>. Replies appear in
@@ -222,13 +236,15 @@ function SessionComposerForSession() {
 						{(props) => (
 							<textarea
 								{...props}
+								ref={messageRef}
 								rows={3}
 								placeholder={
 									session.streaming ? "Guide the agent or queue the next step…" : "What should the agent do?"
 								}
 								required={!attachments.length}
 								value={text}
-								disabled={pending}
+								readOnly={pending}
+								aria-busy={pending || undefined}
 								onChange={(event) => edit({ text: event.target.value })}
 								onKeyDown={(event) => {
 									if (event.key === "Enter" && (event.metaKey || event.ctrlKey))

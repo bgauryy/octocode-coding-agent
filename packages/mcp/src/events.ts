@@ -29,7 +29,7 @@ import { hideTools, registerTools } from "./tool-registry.ts";
  * the server reconnects, so a state change does not resend it.
  */
 function serverListings(state: McpExtensionState): McpServerListing[] {
-	const active = new Set(state.pi.getActiveTools());
+	const active = new Set(state.api.getActiveTools());
 	return state.servers.flatMap((server) => {
 		if (!isEnabled(server) || server.unselected) return [];
 		const declared = [...(state.serverTools.get(server.entry.name) ?? [])].filter(
@@ -57,9 +57,9 @@ function defaultLoadConfig(ctx: ExtensionContext, defaults: readonly McpServerEn
 }
 
 export function registerSessionEvents(state: McpExtensionState): void {
-	const { pi, options } = state;
+	const { api, options } = state;
 
-	pi.on("session_start", (_event, ctx) => {
+	api.on("session_start", (_event, ctx) => {
 		state.presentation.reset();
 		const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
 		state.configErrors = loaded.errors;
@@ -72,7 +72,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.session = new AbortController();
 		const { signal } = state.session;
 		state.unregisterHookCaller?.();
-		state.unregisterHookCaller = registerMcpHookCaller(pi.events, async (request) => {
+		state.unregisterHookCaller = registerMcpHookCaller(api.events, async (request) => {
 			const callSignal = AbortSignal.any([signal, request.signal]);
 			callSignal.throwIfAborted();
 			const server = state.findServer(request.server);
@@ -111,7 +111,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				.map((entry) => ({ entry })),
 			...registered.servers,
 		];
-		for (const server of state.servers) server.unselected = isEnabled(server) && !isSelected(state.pi, server.entry);
+		for (const server of state.servers) server.unselected = isEnabled(server) && !isSelected(state.api, server.entry);
 		state.emitChange();
 		const enabled = state.servers.filter((server) => isEnabled(server) && !server.unselected);
 		if (enabled.length === 0) {
@@ -134,21 +134,21 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	});
 
 	// Navigating the tree rebuilds the loadout of the target branch, and with it the prompt.
-	pi.on("session_tree", () => {
+	api.on("session_tree", () => {
 		state.presentation.rebuild();
 	});
 
-	pi.on("model_select", () => {
+	api.on("model_select", () => {
 		state.presentation.rebuild();
 		for (const connection of state.connections())
 			if (connection.state === "connected") registerTools(state, connection);
 	});
 
 	// Every prompt describes the servers as they are when it starts: each server's contract is a base section (cached
-	// with the tools, ahead of project context) and servers that are not connected are named in `mcp_status`. Pi appends
+	// with the tools, ahead of project context) and servers that are not connected are named in `mcp_status`. Octocode appends
 	// a section to the conversation when it changed, for example after a server connected. The first prompt waits for
 	// servers whose tools are declared to the model (`waitForDirectServers`).
-	pi.on("before_agent_start", async (event, ctx) => {
+	api.on("before_agent_start", async (event, ctx) => {
 		if (!ctx.signal?.aborted && !state.session.signal.aborted) {
 			const changed = state.servers.filter((server) => {
 				const launched = server.connection && state.preparedLaunches.get(server.connection);
@@ -169,7 +169,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		// A new or changed catalog whose tools keep the server's own wording: tell the user, never the model.
 		for (const { server, tools } of state.presentation.takeUnoptimized())
 			ctx.ui.notify(
-				`MCP server "${server}": ${tools.length} tool description${tools.length === 1 ? "" : "s"} not yet rewritten for its compact file (${tools.join(", ")}). The octocode-compact-mcp skill rewrites them.`,
+				`MCP server "${server}": ${tools.length} tool description${tools.length === 1 ? "" : "s"} not yet rewritten for its compact file (${tools.join(", ")}). The octocode-context-optimization skill rewrites them.`,
 				"info",
 			);
 		const { sections, baseSections } = event.systemPromptOptions;
@@ -186,20 +186,20 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	// An MCP call waits only for its server, including a pending reconnect. Readiness can be pending while the display
 	// state is still connected: reconnect first closes the old transport, then opens a new one. Settled promises return
 	// immediately.
-	pi.on("tool_call", async (event, ctx) => {
+	api.on("tool_call", async (event, ctx) => {
 		const owner = state.toolOwners.get(event.toolName)?.split("\0", 1)[0];
 		if (owner === undefined) return;
 		const waiting = state.servers.filter((server) => isEnabled(server) && server.ready && server.entry.name === owner);
 		await waitForServers(state, waiting, ctx.signal);
 	});
 
-	// Pick up sign-ins done outside the session, such as `pi mcp login` run by the agent.
-	pi.on("turn_start", async () => {
+	// Pick up sign-ins done outside the session, such as `octocode mcp login` run by the agent.
+	api.on("turn_start", async () => {
 		if (state.tokensAtSignIn.size > 0) await reconnectSignedIn(state);
 	});
 
 	// Servers registered or unregistered during the session connect or disconnect right away.
-	pi.on("mcp_servers_change", async (_event, ctx) => {
+	api.on("mcp_servers_change", async (_event, ctx) => {
 		const { signal } = state.session;
 		if (signal.aborted) return;
 		const registered = state.registeredServers();
@@ -226,7 +226,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			(server) =>
 				!state.servers.some((current) => mcpNamespace(current.entry.name) === mcpNamespace(server.entry.name)),
 		);
-		for (const server of added) server.unselected = isEnabled(server) && !isSelected(state.pi, server.entry);
+		for (const server of added) server.unselected = isEnabled(server) && !isSelected(state.api, server.entry);
 		state.servers.push(...added);
 		state.emitChange();
 		await Promise.all(removed.flatMap((server) => server.connection?.close() ?? []));
@@ -246,7 +246,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		reportProblems(state, ctx, connecting);
 	});
 
-	pi.on("session_shutdown", async () => {
+	api.on("session_shutdown", async () => {
 		state.unregisterHookCaller?.();
 		state.unregisterHookCaller = undefined;
 		state.session.abort();

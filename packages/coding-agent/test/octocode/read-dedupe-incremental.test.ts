@@ -2,12 +2,12 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { registerReadDedupe } from "../../src/octocode/files/dedupe.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 function setup() {
 	const session = SessionManager.inMemory("/repo");
-	const fake = fakePi();
-	registerReadDedupe(fake.pi);
+	const fake = fakeHost();
+	registerReadDedupe(fake.api);
 	const ctx = Object.assign(fakeCtx({ cwd: "/repo" }), { sessionManager: session });
 	const run = (file: string, text: string) =>
 		fake.fire(

@@ -258,7 +258,8 @@ export interface InitialModelResult {
  * Find the initial model to use based on priority:
  * 1. First model from scoped models (if not continuing/resuming)
  * 2. Saved default from settings
- * 3. First available model with valid API key
+ * 3. The default provider's model: the user's `providerModels` entry, then the built-in default
+ * 4. The first connected provider's model, in the same order, then the first available model
  */
 export async function findInitialModel(options: {
 	scopedModels: ScopedModel[];
@@ -267,6 +268,8 @@ export async function findInitialModel(options: {
 	defaultModelId?: string;
 	defaultThinkingLevel?: ThinkingLevel;
 	modelThinkingLevels?: Record<string, ThinkingLevel>;
+	/** The user's default model id per provider (`providerModels`). */
+	providerModels?: Record<string, string>;
 	modelRuntime: ModelRuntime;
 }): Promise<InitialModelResult> {
 	const {
@@ -276,6 +279,7 @@ export async function findInitialModel(options: {
 		defaultModelId,
 		defaultThinkingLevel,
 		modelThinkingLevels,
+		providerModels = {},
 		modelRuntime,
 	} = options;
 
@@ -308,23 +312,34 @@ export async function findInitialModel(options: {
 		}
 	}
 
-	// 3. Try first available model with valid API key
 	const availableModels = [...modelRuntime.getAvailableSnapshot()];
+	const withLevel = (match: Model<Api>): InitialModelResult => ({
+		model: match,
+		thinkingLevel: DEFAULT_THINKING_LEVEL,
+		fallbackMessage: undefined,
+	});
+	const providerDefault = (provider: string) =>
+		[providerModels[provider], defaultModelPerProvider[provider as KnownProvider]]
+			.filter((id): id is string => Boolean(id))
+			.map((id) => availableModels.find((m) => m.provider === provider && m.id === id))
+			.find((match) => match !== undefined);
 
+	// 3. The default provider's model when no default model applies.
+	const defaultProviderMatch = defaultProvider ? providerDefault(defaultProvider) : undefined;
+	if (defaultProviderMatch) return withLevel(defaultProviderMatch);
+
+	// 4. Try first available model with valid API key
 	if (availableModels.length > 0) {
-		// Try to find a default model from known providers
-		for (const provider of Object.keys(defaultModelPerProvider) as KnownProvider[]) {
-			const defaultId = defaultModelPerProvider[provider];
-			const match = availableModels.find((m) => m.provider === provider && m.id === defaultId);
-			if (match) {
-				return { model: match, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
-			}
+		// The user's per-provider defaults first, then the built-in ones
+		for (const provider of [...Object.keys(providerModels), ...Object.keys(defaultModelPerProvider)]) {
+			const match = providerDefault(provider);
+			if (match) return withLevel(match);
 		}
 
 		// If no default found, use first available
 		return { model: availableModels[0], thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
 	}
 
-	// 4. No model found
+	// 5. No model found
 	return { model: undefined, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
 }

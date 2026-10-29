@@ -14,8 +14,8 @@ describe("overflow recovery with nothing to compact", () => {
 		const failed: SessionCompactFailedEvent[] = [];
 		const harness = await createHarness({
 			extensionFactories: [
-				(pi) => {
-					pi.on("session_compact_failed", async (event) => {
+				(api) => {
+					api.on("session_compact_failed", async (event) => {
 						failed.push(event);
 					});
 				},

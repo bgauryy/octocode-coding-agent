@@ -1,5 +1,5 @@
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
-import type { PackageSource } from "../../settings-schema.ts";
+import type { PackageSource, Settings } from "../../settings-schema.ts";
 import type { ResourceSettingsApi } from "../api/resources.ts";
 import { EnvironmentSettingsAccessors } from "./environment.ts";
 
@@ -92,6 +92,23 @@ export abstract class ResourceSettingsAccessors extends EnvironmentSettingsAcces
 	setEnableSkillCommands(enabled: boolean): void {
 		this.globalSettings.enableSkillCommands = enabled;
 		this.markModified("enableSkillCommands");
+		this.save();
+	}
+
+	getToggles(): Record<string, boolean> {
+		return { ...this.settings.toggles };
+	}
+
+	setToggle(scope: "global" | "project", id: string, on: boolean | undefined): void {
+		const update = (settings: Settings) => {
+			const toggles = { ...settings.toggles };
+			if (on === undefined) delete toggles[id];
+			else toggles[id] = on;
+			settings.toggles = toggles;
+		};
+		if (scope === "project") return this.updateProjectSettings("toggles", update, id);
+		update(this.globalSettings);
+		this.markModified("toggles", id);
 		this.save();
 	}
 }

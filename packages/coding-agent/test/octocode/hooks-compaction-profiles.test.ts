@@ -5,7 +5,7 @@ import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("compaction source semantics", () => {
@@ -38,8 +38,8 @@ describe("compaction source semantics", () => {
 					},
 				}),
 			);
-			const f = fakePi();
-			registerHooks(f.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+			const f = fakeHost();
+			registerHooks(f.api, {}, home);
 			const ctx = fakeCtx({ cwd: tmp() });
 			ctx.abort = vi.fn();
 			await f.fire("session_start", { reason: "startup" }, ctx);

@@ -6,7 +6,7 @@ Extensions are TypeScript modules that add executable behavior to Octocode. Use 
 
 An extension runs inside the Octocode process with the same operating-system permissions. It can inspect prompts, tool calls, files, credentials, and session history, so load extensions only from sources you trust.
 
-Extension event handlers run inside Octocode and are separate from [command hooks](hooks.md). They do not require `OCTOCODE_HOOKS=1`. Claude Mods modules use a different API and cannot be loaded unchanged through this interface.
+Extension event handlers run inside Octocode and are separate from [command hooks](hooks.md). Claude Mods modules use a different API and cannot be loaded unchanged through this interface.
 
 Typical extensions add an agent tool, protect paths, confirm dangerous commands, react to session events, modify context, expose a command, or display persistent status.
 
@@ -43,11 +43,11 @@ Octocode uses `jiti`, so local TypeScript extensions do not need a separate comp
 
 ## Command names
 
-Each command has one canonical name and may declare compatibility `aliases`. Arguments follow the typed spelling and are passed to the same handler.
+Each command has exactly one name. `registerCommand` has no `aliases` option and throws when one is passed; register a second command only when it needs its own behavior.
 
 Command resolution keeps collisions distinct. Use the invocation names returned by `octocode.getCommands()` when constructing a command; duplicate extension names, and extension names that match a built-in terminal command, receive numeric suffixes such as `/model:1`.
 
-`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, optional resolved `aliases`, `description`, `source`, and `sourceInfo`. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
+`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, `description`, `source`, and `sourceInfo`. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
 
 ## Active tool invocation
 
@@ -434,8 +434,6 @@ Use [Custom Providers](custom-provider.md) for model-service integrations, [Term
 
 `session_before_compact` is observational: returned values are ignored and the preparation is an isolated snapshot. Compaction summaries, budgets and cut points are managed by the built-in implementation. Use `ctx.compact()` to request that flow; custom compaction boundary entries are rejected.
 
-### Command aliases and manual summary focus
-
-`registerCommand(name, { aliases, description, handler })` can declare a list such as `aliases: ["list-agents"]`. Canonical native names stay single words; alias declarations accept lowercase words separated by hyphens. Duplicate/self aliases are rejected. Core and native spellings take priority, and collisions qualify the extension invocation. `getCommands()` and RPC discovery expose resolved aliases; all spellings invoke the same handler. See [compatibility aliases](native-features.md#compatibility-aliases).
+### Manual summary focus
 
 Use `ctx.compact({ customInstructions: "Preserve the outstanding regression.", onComplete, onError })` to supply optional manual summary focus, bounded to 16,000 characters. The observational `session_before_compact` event includes that invocation's `customInstructions`; returning a different focus does not replace it. Automatic compaction never inherits a previous manual focus.

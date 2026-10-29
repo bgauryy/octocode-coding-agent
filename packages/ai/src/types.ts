@@ -188,7 +188,7 @@ export interface StreamOptions extends ProviderRequestOptions {
 	 */
 	onResponse?: (response: ProviderResponse, model: Model<Api>) => void | Promise<void>;
 	/**
-	 * Optional observer for each parsed provider stream event before Pi normalization.
+	 * Optional observer for each parsed provider stream event before Octocode normalization.
 	 * Event data is adapter-owned and must be treated as read-only.
 	 * Adapter support is explicit; unsupported adapters do not invoke it.
 	 */
@@ -197,7 +197,7 @@ export interface StreamOptions extends ProviderRequestOptions {
 	/**
 	 * Arbitrary sampling parameters merged into the request body as-is, after the named request
 	 * fields, so keys here override them. Lets custom OpenAI-compatible servers (llama.cpp, vLLM,
-	 * SGLang, ...) receive parameters pi does not model, e.g. `top_p`, `top_k`, `min_p`,
+	 * SGLang, ...) receive parameters Octocode does not model, e.g. `top_p`, `top_k`, `min_p`,
 	 * `repetition_penalty`. Merged over `Model.samplingParams` per key. Only applied by
 	 * OpenAI-compatible adapters (completions, responses, Azure responses); other APIs ignore it.
 	 */

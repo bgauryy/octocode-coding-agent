@@ -1,34 +1,12 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { PluginContext } from "../../core/plugin-context.ts";
 import type { SourcePermissionUpdate } from "../shared/permission-updates.ts";
-import type { HookProtocol } from "./profiles.ts";
+import type { HookEvent, HookProtocol } from "./catalog.ts";
 
 /** Most bytes Octocode reads back from any hook: a command's stdout, an HTTP response, an MCP or prompt result. */
 export const HOOK_OUTPUT_MAX_BYTES = 64 * 1024;
 /** The longest timeout, in seconds, a hook may configure. */
 export const HOOK_MAX_TIMEOUT_S = 600;
-
-export const HOOK_EVENTS = [
-	"PreToolUse",
-	"PermissionRequest",
-	"PostToolUse",
-	"PostToolUseFailure",
-	"PostToolBatch",
-	"SessionStart",
-	"SubagentStart",
-	"SubagentStop",
-	"Interrupt",
-	"SessionEnd",
-	"UserPromptSubmit",
-	"PreCompact",
-	"PostCompact",
-	"Stop",
-	"StopFailure",
-	"Notification",
-	"PreMessageSend",
-	"PostMessageReceive",
-] as const;
-export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 export interface HookSource {
 	path: string;

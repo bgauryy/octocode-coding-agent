@@ -25,8 +25,8 @@ describe("issue #7150: RPC prompt during manual compaction", () => {
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
-				(pi) => {
-					pi.on("session_before_compact", async (event) => {
+				(api) => {
+					api.on("session_before_compact", async (event) => {
 						markCompactionStarted();
 						await compactionReleased;
 						return {

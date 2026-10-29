@@ -5,7 +5,7 @@ import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("source SessionEnd hooks", () => {
@@ -38,13 +38,9 @@ describe("source SessionEnd hooks", () => {
 				},
 			}),
 		);
-		const f = fakePi();
+		const f = fakeHost();
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-		registerHooks(
-			f.pi,
-			{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1", OCTOCODE_SUBAGENT: subagent ? "1" : "0" },
-			home,
-		);
+		registerHooks(f.api, { OCTOCODE_SUBAGENT: subagent ? "1" : "0" }, home);
 		await f.fire("session_start", { reason: "startup" }, ctx);
 		await f.fire("session_shutdown", { reason }, ctx);
 		if (expected)

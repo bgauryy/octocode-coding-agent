@@ -2,13 +2,16 @@ import type { ApplicationService } from "../../core/application/index.ts";
 import { appendWorkspaceEvent, createWorkspaceRuntimeState } from "../../core/application/workspace-state.ts";
 import { ApplicationCommands } from "./application-commands.ts";
 import { presentAgentReport } from "../subagents/presentation.ts";
-import { sharedAgentDb, type AgentDb } from "../agentdb/db.ts";
+import { dbStamp, sharedAgentDb, type AgentDb } from "../agentdb/db.ts";
+import type { RevisedWorkspace } from "./revision.ts";
 import { WorkspaceCommands } from "./commands.ts";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
+import type { Team } from "../team/session.ts";
+import { HEARTBEAT_MS } from "../team/session/activity.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
-import type { WorkspaceConnection, WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { contentText, toolHint } from "../shared/util.ts";
@@ -21,6 +24,20 @@ interface Operations {
 	traffic(): Traffic[];
 	tell(to: string, text: string, signal?: AbortSignal): Promise<unknown>;
 	stop(to: string): string | undefined;
+	/**
+	 * Changes whenever time alone can change `members()` or `traffic()` (liveness and recent traffic expire without a
+	 * database write). Without it the snapshot cannot be stamped and the server compares serialized snapshots.
+	 */
+	expiry?(): string;
+}
+
+/** The team inputs of a workspace snapshot, with the expiry stamp the team's own view uses (it re-reads each heartbeat). */
+export function teamView(team: Team): Pick<Operations, "members" | "traffic" | "expiry"> {
+	return {
+		members: () => team.members(),
+		traffic: () => team.snapshot().traffic,
+		expiry: () => String(Math.trunc(Date.now() / HEARTBEAT_MS)),
+	};
 }
 
 /** Adapts the running session to interfaces; execution and permissions remain owned by the agent runtime. */
@@ -32,13 +49,18 @@ export class WorkspaceRuntime {
 	private sessionController = new AbortController();
 	private readonly subscriptions = new Set<() => void>();
 	private readonly projectedApplications = new WeakSet<ApplicationService>();
+	/** Counts changes to the event list; one of the inputs of a snapshot's `revision`. */
+	private eventsVersion = 0;
 
-	private readonly pi: ExtensionAPI;
+	private readonly api: ExtensionAPI;
 	private readonly operations: Operations;
-	constructor(pi: ExtensionAPI, operations: Operations) {
-		this.pi = pi;
+	constructor(api: ExtensionAPI, operations: Operations) {
+		this.api = api;
 		this.operations = operations;
-		pi.on("session_start", (_event, ctx) => {
+		this.state.subscribe((state, previous) => {
+			if (state.events !== previous.events) this.eventsVersion++;
+		});
+		api.on("session_start", (_event, ctx) => {
 			const sessionId = ctx.sessionManager.getSessionId();
 			if (this.sessionId !== sessionId || this.sessionController.signal.aborted) {
 				this.sessionController.abort(new Error("Session changed before delivery finished."));
@@ -48,19 +70,21 @@ export class WorkspaceRuntime {
 			this.state.setState({ sessionId, events: [] });
 			this.publish("session", "Session started");
 		});
-		pi.on("agent_start", () => this.publish("agent.start", "Agent working"));
-		pi.on("agent_settled", (event) => this.publish("agent.settled", event.aborted ? "Agent stopped" : "Agent settled"));
-		pi.on("tool_execution_start", (event, ctx) => {
+		api.on("agent_start", () => this.publish("agent.start", "Agent working"));
+		api.on("agent_settled", (event) =>
+			this.publish("agent.settled", event.aborted ? "Agent stopped" : "Agent settled"),
+		);
+		api.on("tool_execution_start", (event, ctx) => {
 			if (this.application(ctx)) return;
 			const hint = toolHint(event.args);
 			this.publish("tool.start", event.toolName, { id: event.toolCallId, ...(hint ? { hint } : {}) });
 		});
-		pi.on("tool_execution_update", (event, ctx) => {
+		api.on("tool_execution_update", (event, ctx) => {
 			if (this.application(ctx)) return;
 			if (event.toolName === "agent")
 				this.publish("agent.progress", contentText(event.partialResult.content), event.partialResult.details);
 		});
-		pi.on("tool_execution_end", (event, ctx) => {
+		api.on("tool_execution_end", (event, ctx) => {
 			if (this.application(ctx)) return;
 			const result = isRecord(event.result) ? event.result : {};
 			this.publish(
@@ -70,7 +94,7 @@ export class WorkspaceRuntime {
 				event.isError ? "failed" : "succeeded",
 			);
 		});
-		pi.on("message_end", (event, ctx) => {
+		api.on("message_end", (event, ctx) => {
 			if (event.message.role === "assistant" && this.application(ctx)) return;
 			if (event.message.role === "assistant" || event.message.role === "custom") {
 				const message = event.message;
@@ -86,7 +110,7 @@ export class WorkspaceRuntime {
 				} else this.publish("message", contentText(message.content), details);
 			}
 		});
-		pi.on("session_shutdown", () => {
+		api.on("session_shutdown", () => {
 			this.sessionController.abort(new Error("Session closed before delivery finished."));
 			for (const unsubscribe of this.subscriptions) unsubscribe();
 			this.subscriptions.clear();
@@ -151,7 +175,7 @@ export class WorkspaceRuntime {
 		});
 	}
 
-	bind(ctx: ExtensionCommandContext, backlog: Backlog): WorkspaceConnection {
+	bind(ctx: ExtensionContext, backlog: Backlog): RevisedWorkspace {
 		const sessionId = ctx.sessionManager.getSessionId();
 		const application = this.application(ctx);
 		application?.setReceiptStore(
@@ -173,10 +197,20 @@ export class WorkspaceRuntime {
 				this.sessionId !== sessionId ||
 				(application && application.sessionId !== sessionId)
 			)
-				throw new Error("This session changed. Reopen /web.");
+				throw new Error("This session changed. Reopen /octocode.");
 		};
 		return {
 			application,
+			/**
+			 * Stamps every input of `snapshot`: the events (counted here), receipts, members and traffic (the shared
+			 * database file; every writer moves it), and expiry by time. Undefined when `operations.expiry` is missing.
+			 */
+			revision: () => {
+				active();
+				const expiry = this.operations.expiry?.();
+				if (expiry === undefined) return undefined;
+				return `${this.eventsVersion}|${dbStamp((this.operations.database ?? sharedAgentDb)().file)}|${expiry}`;
+			},
 			snapshot: () => {
 				active();
 				return {
@@ -235,7 +269,7 @@ export class WorkspaceRuntime {
 									sessionId,
 									signal,
 								);
-							else this.pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+							else this.api.sendUserMessage(prompt, { deliverAs: "followUp" });
 						});
 						message =
 							command.action === "delegate"

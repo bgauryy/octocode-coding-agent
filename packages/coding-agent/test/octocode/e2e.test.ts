@@ -113,8 +113,8 @@ async function startSession(
 		provider: "faux",
 		models: models.map(({ id, maxTokens }) => ({ id, contextWindow: 200_000, maxTokens })),
 	});
-	const provider: ExtensionFactory = (pi) => {
-		pi.registerProvider("faux", {
+	const provider: ExtensionFactory = (api) => {
+		api.registerProvider("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",

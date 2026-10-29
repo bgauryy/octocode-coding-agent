@@ -1,3 +1,4 @@
+import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import { teamTask } from "../instructions/task.ts";
@@ -110,7 +111,7 @@ export class Slots {
 
 /** State of one agent tool registration; a replaced session starts clean. */
 export interface AgentRuns {
-	pi: ExtensionAPI;
+	api: ExtensionAPI;
 	team: Team;
 	background: Background;
 	/** Foreground runs, so `/agents kill` can stop one without aborting the whole turn. */
@@ -155,6 +156,29 @@ export interface Run {
  */
 export type RunRoute = Extract<ModelRoute, { model?: string }> & { via?: string; parent?: string };
 
+/**
+ * Whether `provider` authenticates only through this session's runtime override (`--api-key`): that key lives in this
+ * process's memory and never reaches a child, which inherits the environment and the shared credential store instead.
+ * An environment key the child inherits keeps the provider usable.
+ */
+function sessionOnlyProvider(registry: ExtensionContext["modelRegistry"] | undefined, provider: string): boolean {
+	return registry?.getProviderAuthStatus?.(provider).source === "runtime" && !getEnvApiKey(provider);
+}
+
+function sessionOnlyError(provider: string): Error {
+	return new Error(
+		`${provider} is authenticated by this session's --api-key, which subagents do not receive. Connect it with /login or choose a model from another provider.`,
+	);
+}
+
+/** The models a child process can authenticate for; naming a session-only provider explicitly is refused with the reason. */
+function childAvailable(registry: ExtensionContext["modelRegistry"] | undefined, explicit: string | undefined) {
+	if (!registry) return [];
+	const provider = explicit?.includes("/") ? explicit.slice(0, explicit.indexOf("/")) : undefined;
+	if (provider && sessionOnlyProvider(registry, provider)) throw sessionOnlyError(provider);
+	return registry.getAvailable().filter((model) => !sessionOnlyProvider(registry, model.provider));
+}
+
 /** What a call asks for, checked before anything waits, asks or starts: its profile and the model it routes to. */
 type RunPlan = Pick<Run, "profile" | "route">;
 
@@ -185,11 +209,14 @@ export function planRun(
 	const route = routeModel({
 		explicit: params.model,
 		preferred: profile?.model,
-		available: ctx.modelRegistry?.getAvailable() ?? [],
+		available: childAvailable(ctx.modelRegistry, params.model),
 		parent: ctx.model,
 		catalog: currentCatalog(),
 	});
 	if ("error" in route) throw new Error(route.error);
+	// No model argument, or a preference that fell back, runs the child on this session's model.
+	const routedProvider = route.model ? route.model.slice(0, route.model.indexOf("/")) : ctx.model?.provider;
+	if (routedProvider && sessionOnlyProvider(ctx.modelRegistry, routedProvider)) throw sessionOnlyError(routedProvider);
 	const via = params.model
 		? `model argument: ${params.model}`
 		: profile?.model && !route.fallback
@@ -243,7 +270,7 @@ export function claimRun(
 		: undefined;
 	if (childModel && ctx.modelRegistry) {
 		identity.cachePreferences = ctx.modelRegistry.getCachePolicy(childModel, [
-			{ source: "parent settings", values: runs.pi.getSettings() },
+			{ source: "parent settings", values: runs.api.getSettings() },
 		]).options;
 	}
 	const scratch = agentScratch(cwd, identity.id);

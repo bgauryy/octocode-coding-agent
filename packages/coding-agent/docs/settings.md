@@ -41,7 +41,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `showCacheMissNotices` | boolean | `false` | Show cache cost and provider recovery notices. |
 | `httpProxy` | string |  | Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients. |
 | `httpIdleTimeoutMs` | `number \| "disabled"` |  | HTTP header or body idle timeout in milliseconds; 0 or "disabled" disables it. |
-| `cacheWarming` | `"off" \| "streaming" \| "idle"` | `"streaming"` | Cache-warming profile. "idle" also warms between agent runs. Global only because each refresh costs money. |
+| `cacheWarming` | `"off" \| "streaming" \| "idle"` | `"idle"` | Cache-warming profile. "idle" also warms between agent runs. Global only because each refresh costs money. |
 | `websocketConnectTimeoutMs` | `number \| "disabled"` |  | WebSocket connect or open handshake timeout in milliseconds; 0 or "disabled" disables it. |
 
 ## Sessions, queues and tools
@@ -147,6 +147,9 @@ See [packages](packages.md), [skills](skills.md), [extensions](extensions.md) an
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `$schema` | string |  | JSON Schema reference. |
+| `providerModels` | object |  | Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. |
+| `contextBudget` | `integer \| "full"` | `300000` | Working context per session in tokens, capped at 90% of the model's capacity; "full" uses the whole capacity. /context overrides it for one session. |
+| `toggles` | object |  | Plugin and hook switches by ID, as `/plugins` writes them: `plugin:&lt;path>`, `hooks:&lt;host>`, `hooks:&lt;host>:&lt;source>` or `hook:&lt;id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository. |
 | `queueMode` | `"all" \| "one-at-a-time"` |  | Legacy setting migrated to steeringMode. |
 | `websockets` | boolean |  | Legacy setting migrated to transport. |
 

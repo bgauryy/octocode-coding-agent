@@ -5,7 +5,7 @@ import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCtx, fakePi } from "./fake-pi.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const teams: Team[] = [];
@@ -17,9 +17,9 @@ afterEach(() => {
 });
 
 function agent(dbFile: string, cwd: string, branch: () => unknown[] = () => []) {
-	const fake = fakePi();
-	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: dbFile });
-	registerCollab(fake.pi, team);
+	const fake = fakeHost();
+	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: dbFile });
+	registerCollab(fake.api, team);
 	const ctx = fakeCtx({ cwd, hasUI: true, idle: true }) as { sessionManager: { getBranch: () => unknown[] } };
 	ctx.sessionManager.getBranch = branch;
 	team.start(ctx as never);

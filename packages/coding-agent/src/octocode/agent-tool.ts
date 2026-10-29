@@ -23,9 +23,9 @@ export function agentModes() {
 	};
 	return {
 		collect,
-		register(pi: ExtensionAPI) {
+		register(api: ExtensionAPI) {
 			const entries = [...modes];
-			pi.registerTool({
+			api.registerTool({
 				name: "agent",
 				label: "Agent",
 				description:

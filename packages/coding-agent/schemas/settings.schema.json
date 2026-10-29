@@ -51,6 +51,15 @@
     "defaultModel": {
       "type": "string"
     },
+    "providerModels": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "string"
+        }
+      },
+      "description": "Default model id per provider, e.g. { \"anthropic\": \"claude-opus-5-5\" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults."
+    },
     "defaultThinkingLevel": {
       "$ref": "#/$defs/ModelThinkingLevel"
     },
@@ -62,6 +71,20 @@
         }
       },
       "description": "Per-model default thinking level overrides keyed by \"provider/modelId\"."
+    },
+    "contextBudget": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 8192
+        },
+        {
+          "type": "string",
+          "const": "full"
+        }
+      ],
+      "description": "Working context per session in tokens, capped at 90% of the model's capacity; \"full\" uses the whole capacity. /context overrides it for one session.",
+      "default": 300000
     },
     "transport": {
       "anyOf": [
@@ -314,6 +337,15 @@
         "additionalProperties": false
       },
       "description": "Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters."
+    },
+    "toggles": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "boolean"
+        }
+      },
+      "description": "Plugin and hook switches by ID, as `/plugins` writes them: `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository."
     },
     "packages": {
       "type": "array",
@@ -694,7 +726,7 @@
         }
       ],
       "description": "Cache-warming profile. \"idle\" also warms between agent runs. Global only because each refresh costs money.",
-      "default": "streaming"
+      "default": "idle"
     },
     "websocketConnectTimeoutMs": {
       "anyOf": [
