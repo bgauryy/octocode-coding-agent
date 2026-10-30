@@ -86,7 +86,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 			undefined,
 			ctx,
 		);
-		expect(result.content[0].text).toBe("f\nfinished\n");
+		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 2 lines · 11 B\]\nf\nfinished\n$/);
 		expect(jobs.jobs.size).toBe(0);
 	});
 
@@ -105,14 +105,14 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 			undefined,
 			off.ctx,
 		);
-		expect(waited.content[0].text).toBe("off\nwaited\n");
+		expect(waited.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 2 lines · 11 B\]\noff\nwaited\n$/);
 		expect(off.jobs.jobs.size).toBe(0);
 	});
 
 	it("leaves a sleep to its own deadline", async () => {
 		const { tool, jobs, ctx } = setup({ backgroundAfterSeconds: 1 });
 		const result = await tool.execute("t1", { command: "sleep 2" }, undefined, undefined, ctx);
-		expect(result.content[0].text).toBe("(no output)");
+		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · no output\]$/);
 		expect(jobs.jobs.size).toBe(0);
 	});
 });
@@ -141,7 +141,7 @@ describe.runIf(posix)("a user message queued during a foreground command", () =>
 		const { tool, jobs, ctx } = setup({ backgroundAfterSeconds: 0 });
 		ctx.hasPendingMessages = () => true;
 		const result = await tool.execute("t1", { command: "echo quick" }, undefined, undefined, ctx);
-		expect(result.content[0].text).toBe("quick\n");
+		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 1 line · 6 B\]\nquick\n$/);
 		expect(jobs.jobs.size).toBe(0);
 	});
 

@@ -16,7 +16,7 @@ import type { SessionEntry } from "../session-manager.ts";
 /** Streaming warming never continues past this long after the real request that started it. */
 export const MAX_WARMING_AGE_MS = 60 * 60_000;
 /** Idle warming uses a shorter horizon because continuation estimates become less reliable with age. */
-export const MAX_IDLE_WARMING_AGE_MS = 30 * 60_000;
+const MAX_IDLE_WARMING_AGE_MS = 30 * 60_000;
 /**
  * How long after its start an idle run may still refresh: the idle horizon, or one lifetime when the entry lives longer,
  * so a one-hour entry gets the one refresh that falls at 90% of its lifetime instead of none.

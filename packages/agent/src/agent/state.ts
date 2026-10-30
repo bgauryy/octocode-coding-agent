@@ -121,6 +121,13 @@ export class PendingMessageQueue {
 		return true;
 	}
 
+	/** Insert before `before` when it is queued here, else at the end. */
+	insert(message: AgentMessage, before?: AgentMessage): void {
+		const index = before ? this.messages.indexOf(before) : -1;
+		if (index < 0) this.messages.push(message);
+		else this.messages.splice(index, 0, message);
+	}
+
 	swap(first: AgentMessage, second: AgentMessage): boolean {
 		const a = this.messages.indexOf(first);
 		const b = this.messages.indexOf(second);

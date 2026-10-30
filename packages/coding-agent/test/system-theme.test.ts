@@ -53,6 +53,16 @@ describe("generateSystemThemeColors", () => {
 		}
 	});
 
+	it("keeps the tool reason line readable on the background and every tool panel", () => {
+		for (const [name, input] of Object.entries(TERMINALS)) {
+			const reason = resolved(input, "toolReason");
+			for (const surface of ["toolPendingBg", "toolSuccessBg", "toolErrorBg"] as const) {
+				expect(wcagContrast(reason, resolved(input, surface)), `${name} ${surface}`).toBeGreaterThanOrEqual(3);
+			}
+			expect(wcagContrast(reason, input.background!), name).toBeGreaterThanOrEqual(3);
+		}
+	});
+
 	it("orders foreground roles by contrast and keeps panels close to the background", () => {
 		for (const [name, input] of Object.entries(TERMINALS)) {
 			const background = lightness(input.background!);

@@ -25,7 +25,7 @@ import {
 } from "./skills-store.ts";
 
 /** The internal skill that writes the rewrites. */
-export const CONTEXT_OPTIMIZATION_SKILL = "octocode-context-optimization";
+const CONTEXT_OPTIMIZATION_SKILL = "octocode-context-optimization";
 
 /** Names shown in the notice; the rest are counted. */
 const NOTICE_NAMES = 8;

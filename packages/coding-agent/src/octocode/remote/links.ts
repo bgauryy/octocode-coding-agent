@@ -2,7 +2,7 @@ import type { RemoteLink, RemoteStatus } from "@octocodeai/octocode-contacts/dae
 import { qrText } from "./qr.ts";
 
 /** What a link lets its holder do, said once wherever the link is shown. */
-export function accessNote(link: Pick<RemoteLink, "access">): string {
+function accessNote(link: Pick<RemoteLink, "access">): string {
 	return link.access === "control"
 		? "Anyone with this link can send commands and answer approvals in your sessions."
 		: "This link only shows your sessions; nothing can be sent through it.";

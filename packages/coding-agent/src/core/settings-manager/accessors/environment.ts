@@ -84,6 +84,13 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 			: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds;
 	}
 
+	getBashOutputMaxBytes(): number {
+		const bytes = this.settings.bashOutputMaxBytes;
+		return typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 1024
+			? Math.floor(bytes)
+			: SETTINGS_DEFAULTS.bashOutputMaxBytes;
+	}
+
 	getNpmCommand(): string[] | undefined {
 		return this.settings.npmCommand ? [...this.settings.npmCommand] : undefined;
 	}

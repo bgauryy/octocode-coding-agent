@@ -64,6 +64,11 @@ export const THEME_TOKENS = defineThemeTokens({
 	toolErrorBg: { slot: "background", description: "Tool execution box (error state)" },
 	toolTitle: { slot: "foreground", description: "Tool execution box title color" },
 	toolOutput: { slot: "foreground", description: "Tool execution box output text color" },
+	toolReason: {
+		slot: "foreground",
+		description: "Line under a tool call that says why it was made (falls back to muted when omitted)",
+		fallback: "muted",
+	},
 	mdHeading: { slot: "foreground", description: "Markdown heading text" },
 	mdLink: { slot: "foreground", description: "Markdown link text" },
 	mdLinkUrl: { slot: "foreground", description: "Markdown link URL" },

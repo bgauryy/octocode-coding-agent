@@ -160,7 +160,10 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // branch and drops the "<mode> input" labels, `launch`/`resultSchema` are plain objects, and the debug, askUser,
 // external, web, file, bash, memory, message and task descriptions lost restated mechanics. The graph CLI contracts
 // (12_620) are the sibling native package's and were not changed.
-const MAIN_CEILING = 43_200;
+// 43_400 (2026-10-30, measured 43_370 without entity fields): the user-requested bash output budget replaces the
+// `| tail -n 50` rule with a longer one (each result starts with exit, time and size; trimmed output is saved; the
+// `maxOutputTokens` parameter), +248 net over the 43_122 measured above; the bash tool gained no other text.
+const MAIN_CEILING = 43_400;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -178,7 +181,8 @@ const MAIN_CEILING = 43_200;
 // `blocked` semantics ride in its task, so the Subagent section lost its longest lines.
 // 32_600 (2026-10-30, measured 32_519 without entity fields): the same declaration cuts (debug -357, agent -135,
 // web -135, memory and skill text), with no subagent `ollama` tool to offset them.
-const SPECIALIST_CEILING = 32_600;
+// 32_800 (2026-10-30, measured 32_781 without entity fields): the same bash output budget text (+248).
+const SPECIALIST_CEILING = 32_800;
 
 describe("prompt size", () => {
 	it("main session", async () => {

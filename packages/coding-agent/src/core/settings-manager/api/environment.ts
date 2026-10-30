@@ -16,6 +16,8 @@ export interface EnvironmentSettingsApi {
 	setShellCommandPrefix(prefix: string | undefined): void;
 	/** Seconds a foreground bash command runs before moving to the background; 0 = never. */
 	getBashBackgroundAfterSeconds(): number;
+	/** Most bytes of a foreground bash result that reach the model; at least 1024. */
+	getBashOutputMaxBytes(): number;
 	getNpmCommand(): string[] | undefined;
 	setNpmCommand(command: string[] | undefined): void;
 	getCollapseChangelog(): boolean;

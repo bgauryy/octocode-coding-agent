@@ -118,7 +118,7 @@ describe("external prompt refs", () => {
 		expect(state.backend.prompt).toHaveBeenCalledWith("plain", expect.anything());
 		await expect(state.prompt({ text: "x", refs: [" "] })).rejects.toThrow("non-empty");
 		await expect(state.prompt({ text: "x", refs: Array.from({ length: 17 }, (_, i) => `msg#${i}`) })).rejects.toThrow(
-			"Invalid agent external input",
+			"at most 16 references",
 		);
 		await expect(state.manager.call({ action: "cancel", id: "peer", refs: ["msg#1"] }, state.ctx)).rejects.toThrow(
 			"does not accept: refs",

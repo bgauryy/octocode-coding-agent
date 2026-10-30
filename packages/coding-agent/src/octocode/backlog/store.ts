@@ -1,6 +1,6 @@
 import { dbStamp, type AgentDb } from "../agentdb/db.ts";
 import { type Note, type BacklogComment, type BacklogAudit, type State } from "@octocodeai/octocode-contacts/snapshot";
-import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName, refuseSecrets } from "./item.ts";
+import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
 import type { AddInput, ListQuery, UpdateInput } from "./inputs.ts";
 import {
 	audit as auditTrail,
@@ -15,7 +15,7 @@ import {
 } from "./reads.ts";
 import { addItem, COMPLETION_GUIDANCE, removeItem, updateItem } from "./writes.ts";
 
-export { BacklogError, COMPLETION_GUIDANCE, PRIORITIES, parseRef, priorityName, refuseSecrets };
+export { BacklogError, COMPLETION_GUIDANCE, PRIORITIES, parseRef, priorityName };
 export type { Actor, Item };
 export type { UpdateInput };
 

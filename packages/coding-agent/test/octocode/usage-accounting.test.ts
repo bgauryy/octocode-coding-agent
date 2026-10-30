@@ -25,7 +25,7 @@ describe("agent row usage", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
 		const ctx = { cwd, isIdle: () => false } as never;
-		const team = new Team({ sendMessage: () => undefined } as never, env);
+		const team = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, env);
 		team.start(ctx);
 		// A resumed session's first reply re-writes the whole cache and can end before the join.
 		team.onUsage(usage(14_613, 303_672, 100, 1.53), "anthropic/claude-opus", false);
@@ -46,7 +46,7 @@ describe("agent row usage", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
 		const ctx = { cwd, isIdle: () => false } as never;
-		const team = new Team({ sendMessage: () => undefined } as never, env);
+		const team = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, env);
 		team.start(ctx);
 		team.onUsage(usage(10, 10, 10, 1), undefined, false);
 		team.start(ctx);

@@ -69,6 +69,7 @@ const ALLOWED: Record<string, string[]> = {
 	"context-optimization": ["shared"],
 	"native-skills": [],
 	graph: ["shared"],
+	"terminal-launch": [],
 };
 
 describe("source layout", () => {

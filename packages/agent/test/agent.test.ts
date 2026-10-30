@@ -759,6 +759,28 @@ describe("Agent", () => {
 		expect(agent.peekQueuedMessages()).toEqual([followUp]);
 	});
 
+	it("places a message into either queue at a chosen position", () => {
+		const agent = new Agent({ streamFn: unusedStreamFunction });
+		agent.steeringMode = "all";
+		agent.followUpMode = "all";
+		const a = { role: "user" as const, content: "a", timestamp: 1 };
+		const b = { role: "user" as const, content: "b", timestamp: 2 };
+		const c = { role: "user" as const, content: "c", timestamp: 3 };
+		agent.steer(a);
+		agent.steer(b);
+		agent.followUp(c);
+
+		// A held (unqueued) message goes back before its anchor.
+		agent.removeQueuedMessage(a);
+		agent.placeQueuedMessage(a, "steer", b);
+		expect(agent.peekQueuedMessages()).toEqual([a, b]);
+		// Moving between queues removes it from the old one; a missing anchor appends.
+		agent.placeQueuedMessage(b, "followUp", a);
+		expect(agent.peekQueuedMessages()).toEqual([a]);
+		agent.clearSteeringQueue();
+		expect(agent.peekQueuedMessages()).toEqual([c, b]);
+	});
+
 	it("should handle abort controller", () => {
 		const agent = new Agent({ streamFn: unusedStreamFunction });
 

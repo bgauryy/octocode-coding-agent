@@ -21,7 +21,8 @@ export const ExternalParamsSchema = Type.Object(
 		sessionId: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),
 		text: Type.Optional(Type.String()),
-		refs: Type.Optional(Type.Array(Type.String(), { maxItems: MAX_HANDOFF_REFERENCES })),
+		// No `maxItems`: schemas carry shape only; `resolveReferences` refuses more than MAX_HANDOFF_REFERENCES at runtime.
+		refs: Type.Optional(Type.Array(Type.String())),
 		timeoutMs: Type.Optional(Type.Integer()),
 	},
 	{ additionalProperties: false },
@@ -62,6 +63,8 @@ export function parseExternalParams(value: unknown): ExternalParams {
 	if (input.action === "prompt" && !input.text) throw new Error("prompt requires text.");
 	if (input.refs) {
 		if (input.refs.some((ref) => !ref.trim())) throw new Error("refs entries must be non-empty.");
+		if (input.refs.length > MAX_HANDOFF_REFERENCES)
+			throw new Error(`refs: at most ${MAX_HANDOFF_REFERENCES} references per prompt.`);
 	}
 	return input;
 }

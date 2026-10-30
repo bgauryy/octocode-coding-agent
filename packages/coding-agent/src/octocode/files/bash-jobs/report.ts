@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { formatCount, formatOutputSize } from "../../../core/tools/bash/header.ts";
 import { formatDuration, shortPath } from "../../shared/format.ts";
 import { visibleControls, withoutColors } from "../../shared/sanitize.ts";
 import { cutText, firstLine } from "../../shared/util.ts";
@@ -52,7 +53,30 @@ export function logTail(file: string, maxBytes = TAIL_BYTES, maxLines = TAIL_LIN
 	}
 }
 
-/** The message a finished job sends: how it ended, how long it ran, and the tail of its output. */
+/** The first line of a report, shaped like a foreground result's: `[exit 1 · 61s · 48,213 lines · 2.1 MB · log: <path>]`. */
+function jobHeader(job: BashJob, exit: JobExit, lines: number): string {
+	const status =
+		job.stopped === "timeout"
+			? `timed out after ${job.timeout ?? 0}s`
+			: job.stopped
+				? `stopped (${job.stopped})`
+				: exit.code !== null
+					? `exit ${exit.code}`
+					: `signal ${exit.signal ?? "unknown"}`;
+	let bytes = 0;
+	try {
+		bytes = fs.statSync(job.log).size;
+	} catch {
+		// The log is unavailable; the report says so.
+	}
+	const size =
+		lines === 0 && bytes === 0
+			? "no output"
+			: `${formatCount(lines)} ${lines === 1 ? "line" : "lines"} · ${formatOutputSize(bytes)}`;
+	return `[${[status, `${exit.seconds}s`, size, `log: ${shortPath(job.log, job.cwd)}`].join(" · ")}]`;
+}
+
+/** The message a finished job sends: a status header, how it ended, and the tail of its output. */
 export function jobReport(job: BashJob, exit: JobExit): string {
 	const how =
 		job.stopped === "timeout"
@@ -78,9 +102,10 @@ export function jobReport(job: BashJob, exit: JobExit): string {
 	const rotated = exit.logRotations
 		? `log rotated at its size cap${exit.logRotations > 1 ? ` ${exit.logRotations} times` : ""}: ${shortPath(`${job.log}.1`, job.cwd)} ${archived ? "holds the part before this log" : "is unavailable; earlier output cannot be recovered"}${exit.logRotations > 1 ? "; output before that was dropped and cannot be recovered" : ""}`
 		: "";
+	const lines = earlier + (tail ? tail.split("\n").length : 0);
 	return [
+		jobHeader(job, exit, lines),
 		`Background bash ${job.id} ${how} after ${formatDuration(exit.seconds * 1000)}: ${cutText(firstLine(job.command), 120, { chars: true })}`,
-		`Log: ${shortPath(job.log, job.cwd)}`,
 		job.verification ? verificationLine(job.verification) : "",
 		!available ? "Log unavailable; output could not be inspected" : "",
 		rotated,

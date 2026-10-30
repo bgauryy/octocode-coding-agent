@@ -42,6 +42,7 @@
 		"toolErrorBg": "",
 		"toolTitle": "purple",
 		"toolOutput": "ink",
+		"toolReason": "teal",
 		"mdHeading": "purpleDeep",
 		"mdLink": "lav",
 		"mdLinkUrl": "dim",

@@ -341,7 +341,7 @@ describe("prompt", () => {
 	it("tells the main session which coordination system reaches whom", () => {
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
 		expect(root).toContain(
-			"- Use `agent` type `external` to reach configured agents in other hosts; connection and prompt permissions still apply.",
+			"- Reach configured agents in other hosts with `agent` type `external`; its permissions still apply.",
 		);
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).not.toContain("agents-communication");
 		// Without the agent tool, the rule names no `agent` modes.

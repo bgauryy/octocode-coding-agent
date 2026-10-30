@@ -77,6 +77,25 @@ describe("CombinedAutocompleteProvider slash-command filter", () => {
 		assert.equal(applied.lines[0], "  /model sonnet");
 	});
 
+	it("puts the short description before the argument hint", async () => {
+		const provider = new CombinedAutocompleteProvider(
+			[
+				{ name: "context", description: "Inspect context usage", argumentHint: "<all|size|reset>" },
+				{ name: "rename", argumentHint: "<name>" },
+				{ name: "copy", description: "Copy last message" },
+			],
+			process.cwd(),
+		);
+		const result = await provider.getSuggestions(["/"], 0, 1, { signal: new AbortController().signal });
+		assert.ok(result);
+		const descriptions = Object.fromEntries(result.items.map((item) => [item.value, item.description]));
+		assert.deepStrictEqual(descriptions, {
+			context: "Inspect context usage · <all|size|reset>",
+			rename: "<name>",
+			copy: "Copy last message",
+		});
+	});
+
 	it("keeps explicit skill: queries working", async () => {
 		const items = await suggestionsFor("skill:side");
 		assert.ok(items.includes("skill:to-sidecar"));

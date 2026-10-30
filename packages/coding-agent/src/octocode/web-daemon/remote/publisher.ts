@@ -5,7 +5,7 @@ import { encodeKey, newKey } from "./seal.ts";
 import type { Loopback } from "./tunnel.ts";
 
 /** The daemon's tokens by access level; `view` may be replaced when publication stops. */
-export interface Tokens {
+interface Tokens {
 	control: string;
 	view: string;
 }

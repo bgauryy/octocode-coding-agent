@@ -103,21 +103,21 @@ Octocode reports invalid theme files during startup and `/reload`.
 
 Theme colors describe interface roles rather than individual components. Use these groups to find the relevant part of the schema:
 
-| Area                     | Color names                                                                |
-| ------------------------ | -------------------------------------------------------------------------- |
-| General interface        | `accent`, `border*`, `text`, `muted`, `dim`, `success`, `error`, `warning` |
-| Selection and fullscreen | `selectedBg`, `searchMatch*`, `scrollbar*`                                 |
-| Messages                 | `userMessage*`, `customMessage*`, `thinkingText`                           |
-| Tool execution           | `toolPendingBg`, `toolSuccessBg`, `toolErrorBg`, `toolTitle`, `toolOutput` |
-| Markdown                 | `md*`                                                                      |
-| Tool diffs               | `toolDiff*`                                                                |
-| Syntax highlighting      | `syntax*`                                                                  |
-| Editor modes             | `thinking*`, `bashMode`                                                    |
-| HTML export              | `export.pageBg`, `export.cardBg`, `export.infoBg`                          |
+| Area                     | Color names                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| General interface        | `accent`, `border*`, `text`, `muted`, `dim`, `success`, `error`, `warning`               |
+| Selection and fullscreen | `selectedBg`, `searchMatch*`, `scrollbar*`                                               |
+| Messages                 | `userMessage*`, `customMessage*`, `thinkingText`                                         |
+| Tool execution           | `toolPendingBg`, `toolSuccessBg`, `toolErrorBg`, `toolTitle`, `toolOutput`, `toolReason` |
+| Markdown                 | `md*`                                                                                    |
+| Tool diffs               | `toolDiff*`                                                                              |
+| Syntax highlighting      | `syntax*`                                                                                |
+| Editor modes             | `thinking*`, `bashMode`                                                                  |
+| HTML export              | `export.pageBg`, `export.cardBg`, `export.infoBg`                                        |
 
 The schema is the format reference. The built-in themes provide complete values that you can copy and adjust.
 
-Five colors are optional and inherit another color when omitted:
+Six colors are optional and inherit another color when omitted:
 
 | Optional color    | Fallback        |
 | ----------------- | --------------- |
@@ -125,6 +125,7 @@ Five colors are optional and inherit another color when omitted:
 | `scrollbarThumb`  | `text`          |
 | `searchMatchBg`   | `selectedBg`    |
 | `searchMatchText` | `text`          |
+| `toolReason`      | `muted`         |
 | `thinkingMax`     | `thinkingXhigh` |
 
 If `export` colors are omitted, Octocode derives HTML page and panel backgrounds from `userMessageBg`.

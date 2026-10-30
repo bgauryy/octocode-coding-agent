@@ -170,16 +170,27 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 While the agent runs, Enter queues input for the next assistant turn, after the current tool calls finish. The follow-up shortcut waits until the run would otherwise stop. The queue preview labels these as **Next turn** and **After run**, shows up to three messages, and counts the rest. During compaction, messages wait until compaction finishes. A submission rejected before acceptance is restored automatically.
 
-**Managing the queue.** The preview counts and lists queued messages in the order they will be sent: all **Next turn** messages, then all **After run** messages. `/queue` opens the manager: choose a message, then **Edit** (opens the editor with its text), **Remove**, **Move up** or **Move down**. Moving swaps a message with its neighbour of the same kind; it never changes the kind. The list is rebuilt after every action, so it always shows what will be sent next. Editing keeps attachments, and an empty or whitespace-only edit removes the message. Once a message has begun delivery it can no longer be changed, and the manager says so.
+**Managing the queue.** The preview counts and lists queued messages in the order they will be sent: all **Next turn** messages, then all **After run** messages. Up in an empty editor (focused on the last message) or `/queue` (focused on the first) opens the queue list in place of the editor. Each row shows its number, kind, a one-line preview and notes such as attachments or `extension`. The list follows the queue: delivered messages disappear, and the list closes when the queue is empty.
+
+| Key in the queue list             | Action                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `↑` / `↓` (`k` / `j`)             | Select a message                                                                |
+| `Shift+↑` / `Shift+↓` (`K` / `J`) | Move it one place among messages of the same kind                               |
+| `Enter` or `e`                    | Edit it in place: `Enter` saves, `Shift+Enter` adds a line, `Escape` cancels    |
+| `s`                               | Switch between **After run** and **Next turn**; it goes last among its new kind |
+| `d` or `Delete`                   | Remove it                                                                       |
+| `Escape` or `q`                   | Close the list                                                                  |
+
+While you edit a message it is held out of delivery, so the agent cannot send it mid-edit and it is never sent twice; it keeps its place, kind and attachments. Saving puts the new text back in the same place, an empty or whitespace-only text removes it, and cancelling (or another dialog replacing the list) puts it back unchanged. If the run ended while you edited, there is no queue left to wait in, so saving or cancelling sends the message as it would have been sent. If a message has already begun delivery when you press Edit, nothing happens apart from a short status.
 
 **Up arrow and queued messages.**
 
-- Up never touches the queue. In a multi-line draft it moves the cursor; on the first line of an empty or single-line editor it browses prompt history.
-- The dequeue key (`app.message.dequeue`) recalls only the last queued message, placing it before your current draft, so repeated presses walk backwards through the queue without duplicating or dropping anything. A message with attachments stays queued, because the editor holds text only; use `/queue` to edit or remove it.
+- Up in an empty editor opens the queue list while anything is queued; with an empty queue it browses prompt history as before. In a draft it moves the cursor or browses history as usual.
+- The dequeue key (`app.message.dequeue`) recalls only the last queued message, placing it before your current draft, so repeated presses walk backwards through the queue without duplicating or dropping anything. A message with attachments stays queued, because the editor holds text only; edit or remove it from the queue list.
 - `Escape` while the agent works aborts the run and restores every queued message, steering first and then follow-ups, ahead of your draft. Attachments on those messages are not restored.
 - Replacing the session (`/new`, `/resume`, fork, clone) restores queued text to the editor before the old session is discarded; fork and clone then replace the editor text with their own.
 - Messages queued by extensions appear in the list marked as such and can be edited, removed or moved like any other.
-- Messages typed during compaction wait in the same list and are sent when compaction ends; `/queue` and the dequeue key manage them too.
+- Messages typed during compaction wait in the same list and are sent when compaction ends; the queue list and the dequeue key manage them too.
 
 ### Tree Navigation
 

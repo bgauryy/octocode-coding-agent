@@ -1,6 +1,6 @@
 /** The heading of a summary's closing label, and the line inside it that lists keywords (the archive index reads both). */
 export const TLDR_HEADING = "## TL;DR";
-export const TOPICS_LABEL = "Topics:";
+const TOPICS_LABEL = "Topics:";
 
 /**
  * The one statement of the checkpoint a compaction summary is written in. The standalone prompts (`summarization.ts`,

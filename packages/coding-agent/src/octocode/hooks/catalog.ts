@@ -8,7 +8,7 @@
 export type HookProtocol = "octocode" | "claude" | "codex";
 export type HookHandlerType = "command" | "http" | "prompt" | "mcp_tool";
 /** Host metadata a profile adds to the event input when it is available. */
-export type HookInputField = "model" | "permission_mode" | "turn_id" | "agent";
+type HookInputField = "model" | "permission_mode" | "turn_id" | "agent";
 
 /** What one profile accepts for one event. */
 export interface ProfileEventSupport {

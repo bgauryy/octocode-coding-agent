@@ -53,10 +53,12 @@
 		"check:favicon": "node scripts/generate-favicon.mjs --check",
 		"check:boundaries": "node scripts/check-package-boundaries.mjs",
 		"check:db-boundary": "node scripts/check-db-boundary.mjs",
-		"check:pi-names": "node scripts/check-pi-names.mjs"
+		"check:pi-names": "node scripts/check-pi-names.mjs",
+		"check:unused": "knip --no-progress"
 	},
 	"devDependencies": {
 		"@types/node": "24.19.2",
+		"knip": "6.42.1",
 		"oxfmt": "0.74.0",
 		"oxlint": "1.89.0",
 		"oxlint-tsgolint": "7.0.2004",

@@ -256,11 +256,14 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ ...result, isError: false }, false);
 
 		const rendered = stripAnsi(component.render(200).join("\n"));
-		expect(rendered.match(/Full output:/g)?.length ?? 0).toBe(1);
-		expect(rendered).toMatch(/line-4000[^\n]*\n[^\S\n]*\n \[Full output:/);
-		expect(rendered).not.toMatch(/line-4000[^\n]*\n[^\S\n]*\n[^\S\n]*\n \[Full output:/);
-		expect(rendered).toContain("Truncated: showing 2000 of 4000 lines");
-		expect(rendered).not.toContain("[Showing lines 2001-4000 of 4000. Full output:");
+		// The header line carries the exit code, size, what was trimmed and the file; nothing repeats it below the output.
+		expect(rendered.match(/full output:/g)?.length ?? 0).toBe(1);
+		expect(rendered).toMatch(
+			/\[exit 0 · [\d.]+s · 4,000 lines · \d+ KB · trimmed: first 120 \+ last 480 lines · full output: /,
+		);
+		expect(rendered).toContain("line-4000");
+		expect(rendered).not.toContain("Truncated:");
+		expect(rendered).not.toMatch(/Full output:/);
 	});
 
 	// Issue #9628: short durations stay precise; long ones use the one shared duration format (octocode/shared/format.ts).

@@ -60,15 +60,24 @@ describe("bash tool", () => {
 	it("replaces Octocode bash with a schema that has background and a documented deadline", () => {
 		const { tool } = setup();
 		expect(tool.name).toBe("bash");
-		expect(Object.keys(tool.parameters.properties)).toEqual(["type", "command", "timeout", "background", "verify"]);
+		expect(Object.keys(tool.parameters.properties)).toEqual([
+			"type",
+			"command",
+			"timeout",
+			"maxOutputTokens",
+			"background",
+			"verify",
+		]);
 		// The OCTOCODE_* variables are still set; the prompt no longer carries a rule with no action for them.
 		expect(tool.promptGuidelines).not.toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
-		// `cmd | tail` alone exits with tail's status: a failed build would read as passing.
-		expect(tool.promptGuidelines).toContain(
-			"Keep bash output small: pipe builds, tests and logs through `2>&1 | tail -n 50` (or grep, head) after `set -o pipefail;`, so failures still show.",
-		);
+		// Each result starts with a header and over-budget output is saved: no rule asks for `| tail -n 50` any more.
+		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Each result starts with"));
+		expect(guideline).toContain("exit code, time and output size");
+		expect(guideline).toContain("maxOutputTokens");
+		expect(guideline).toContain("`set -o pipefail;` before an explicit pipe");
+		expect(tool.promptGuidelines.join("\n")).not.toContain("tail -n 50");
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
 		expect(tool.parameters.properties.timeout.description).toContain("moves to the background");
 		expect(tool.parameters.properties.background.description).toContain("long builds");
@@ -167,7 +176,7 @@ describe("bash tool", () => {
 		const { tool, ctx, jobs } = setup();
 		const started = Date.now();
 		await expect(tool.execute("t1", { command: "sleep 30", timeout: 1 }, undefined, undefined, ctx)).rejects.toThrow(
-			/Command timed out after 1 seconds[\s\S]*background: true/,
+			/^\[timed out after 1s · [\s\S]*background: true/,
 		);
 		expect(Date.now() - started).toBeLessThan(10_000);
 		expect(jobs.jobs.size).toBe(0);
@@ -209,7 +218,7 @@ describe("bash tool", () => {
 			ctx,
 		);
 		expect(failed.content[0].text).toMatch(
-			/oops[\s\S]*exited with code 3[\s\S]*\(timeout clamped to 3600 s; use background: true for longer\)/,
+			/^\[exit 3 · [\s\S]*oops[\s\S]*\(timeout clamped to 3600 s; use background: true for longer\)/,
 		);
 		const controller = new AbortController();
 		setTimeout(() => controller.abort(), 300);
@@ -242,14 +251,14 @@ describe("bash tool", () => {
 		const saved = result.details.fullOutputPath as string;
 		expect(path.dirname(saved)).toBe(jobs.logDir());
 		expect(fs.readFileSync(saved, "utf8").split("\n")[4999]).toBe("5000");
-		expect(result.content[0].text).toContain(`Full output: ${saved}]`);
+		expect(result.content[0].text).toContain(`full output: ${saved}]`);
 		// A failing command (Octocode returns it as an error result) points at the moved file too.
 		const failed = await tool.execute("t2", { command: "seq 1 5000; exit 1" }, undefined, undefined, ctx);
 		expect(failed.isError).toBe(true);
 		const moved = failed.details.fullOutputPath as string;
 		expect(path.dirname(moved)).toBe(jobs.logDir());
 		expect(fs.existsSync(moved)).toBe(true);
-		expect(failed.content[0].text).toContain(`Full output: ${moved}]`);
+		expect(failed.content[0].text).toContain(`full output: ${moved}]`);
 	});
 
 	it("moves the spill file of a command that timed out, though only its updates named it", async () => {
@@ -257,7 +266,7 @@ describe("bash tool", () => {
 		const message = await tool
 			.execute("t1", { command: "sleep 0; seq 1 5000; sleep 30", timeout: 1 }, undefined, undefined, ctx)
 			.catch((error: Error) => error.message);
-		const moved = /Full output: (.+?)\]/.exec(message)![1];
+		const moved = /full output: (.+?)\]/.exec(message)![1];
 		expect(path.dirname(moved)).toBe(jobs.logDir());
 		expect(fs.readFileSync(moved, "utf8")).toContain("5000");
 	});
@@ -274,7 +283,7 @@ describe("bash tool", () => {
 			);
 			const spill = result.details.fullOutputPath as string;
 			expect(path.dirname(spill)).toBe(jobs.logDir());
-			expect(result.content[0].text).toContain(`Full output: ${spill}]`);
+			expect(result.content[0].text).toContain(`Output so far, in full: ${spill}`);
 			expect(fs.readFileSync(spill, "utf8")).toContain("5000");
 			// The job log starts with everything printed before the move.
 			expect(fs.readFileSync(jobs.jobs.get("bash-1")!.log, "utf8")).toContain("5000");
@@ -378,7 +387,7 @@ describe("bash tool", () => {
 		// Octocode 0.99 returns a non-zero exit as an error result (with structured output) rather than throwing.
 		const result = await tool.execute("t1", { command: "echo oops; exit 3" }, undefined, undefined, ctx);
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toMatch(/oops[\s\S]*exited with code 3/);
+		expect(result.content[0].text).toMatch(/^\[exit 3 · [\d.]+s · 1 line · 5 B\]\noops/);
 		expect(result.structuredContent.exit_code).toBe(3);
 	});
 
@@ -405,7 +414,12 @@ describe("bash tool", () => {
 			undefined,
 			ctx,
 		);
-		expect(inline.content[0].text.trim().split(/\s+/)).toEqual(["2", "cat", "cat"]);
+		expect(
+			inline.content[0].text
+				.replace(/^\[[^\n]*\]\n/, "")
+				.trim()
+				.split(/\s+/),
+		).toEqual(["2", "cat", "cat"]);
 		expect(fs.existsSync(path.join(cwd, ".git"))).toBe(true);
 	});
 
@@ -432,7 +446,9 @@ describe("bash tool", () => {
 		expect(jobs.jobs.size).toBe(0);
 		const { message, options } = sent[0];
 		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
-		expect(message.content).toMatch(/^Background bash bash-1 failed with exit code 2 after \d+s: echo started/);
+		expect(message.content).toMatch(
+			/^\[exit 2 · [^\n]*\]\nBackground bash bash-1 failed with exit code 2 after \d+s: echo started/,
+		);
 		expect(message.content).toMatch(/started\ndone/);
 	});
 
@@ -467,7 +483,7 @@ describe("bash tool", () => {
 			await until(() => sent.length === 1);
 			const log = /Log: (\S+)/.exec(result.content[0].text as string)![1];
 			const background = fs.readFileSync(log, "utf8");
-			expect(background).toBe(foreground.trim());
+			expect(background).toBe(foreground.replace(/^\[[^\n]*\]\n/, "").trim());
 			expect(background).toBe(
 				`session-test|unset|unset|${[path.join(getAgentDir(), "bin"), "/usr/bin", "/bin"].join(path.delimiter)}`,
 			);
@@ -630,17 +646,45 @@ describe("bash tool", () => {
 			done: Promise.resolve({ code: 0, signal: null, seconds: 75 }),
 		};
 		expect(jobReport(job, { code: 0, signal: null, seconds: 75 })).toBe(
-			`Background bash bash-9 finished after 1m15s: make\nLog: job.log\n[+1 earlier line in the log]\nlast line`,
+			`[exit 0 · 75s · 2 lines · 5 KB · log: job.log]\nBackground bash bash-9 finished after 1m15s: make\n[+1 earlier line in the log]\nlast line`,
 		);
 		// One rotation keeps the earlier output in `.1`; nothing is said to be dropped.
 		expect(jobReport(job, { code: 0, signal: null, seconds: 75, logRotations: 1 })).toBe(
-			`Background bash bash-9 finished after 1m15s: make\nLog: job.log\nlog rotated at its size cap: job.log.1 is unavailable; earlier output cannot be recovered\n[+1 earlier line in the log]\nlast line`,
+			`[exit 0 · 75s · 2 lines · 5 KB · log: job.log]\nBackground bash bash-9 finished after 1m15s: make\nlog rotated at its size cap: job.log.1 is unavailable; earlier output cannot be recovered\n[+1 earlier line in the log]\nlast line`,
 		);
 		// The tail is the end of the log (not the start of its last few KB), and nothing before it goes uncounted.
 		fs.writeFileSync(log, Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n"));
 		const report = jobReport(job, { code: 0, signal: null, seconds: 1 }).split("\n");
+		expect(report[0]).toMatch(/^\[exit 0 · 1s · 100 lines · \d+ B · log: job\.log\]$/);
 		expect(report.slice(2, 4)).toEqual(["[+60 earlier lines in the log]", "line 61"]);
 		expect(report.at(-1)).toBe("line 100");
+	});
+
+	it("starts a job report with a status header: exit or signal, seconds, size and the log", () => {
+		const dir = tmp();
+		const log = path.join(dir, "job.log");
+		fs.writeFileSync(log, Array.from({ length: 48_213 }, (_, i) => `row ${i}`).join("\n"));
+		const job = {
+			id: "bash-3",
+			command: "make",
+			cwd: dir,
+			pid: 1,
+			log,
+			startedAt: 0,
+			done: Promise.resolve(),
+		} as never;
+		const header = (exit: Parameters<typeof jobReport>[1], stopped?: string) =>
+			jobReport({ ...(job as object), ...(stopped ? { stopped } : {}), timeout: 60 } as never, exit).split("\n")[0];
+		expect(header({ code: 1, signal: null, seconds: 61 })).toMatch(
+			/^\[exit 1 · 61s · 48,213 lines · \d+ KB · log: job\.log\]$/,
+		);
+		expect(header({ code: null, signal: "SIGTERM", seconds: 2 })).toContain("[signal SIGTERM · 2s · ");
+		expect(header({ code: null, signal: "SIGTERM", seconds: 60 }, "timeout")).toContain(
+			"[timed out after 60s · 60s · ",
+		);
+		expect(header({ code: null, signal: null, seconds: 3 }, "user")).toContain("[stopped (user) · 3s · ");
+		fs.writeFileSync(log, "");
+		expect(header({ code: 0, signal: null, seconds: 1 })).toBe("[exit 0 · 1s · no output · log: job.log]");
 	});
 
 	it("drops colors from the reported log tail and shows other terminal escapes as visible escapes", () => {
@@ -888,6 +932,14 @@ describe("bash rendering", () => {
 			" ✓ Job(bash-1: yarn build)\n   ⎿  finished after 3s (ctrl+o to expand)\n      ok",
 		);
 		expect(rendered(job(message, { expanded: true }, theme))).toBe(
+			" ✓ Job(bash-1: yarn build)\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
+		);
+		// A report that opens with the status header names its log there instead of on a `Log:` line.
+		const headed = {
+			content:
+				"[exit 0 · 3s · 1 line · 3 B · log: /tmp/j.log]\nBackground bash bash-1 finished after 3s: yarn build\nok",
+		};
+		expect(rendered(job(headed, { expanded: true }, theme))).toBe(
 			" ✓ Job(bash-1: yarn build)\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
 		);
 		// A job the user killed is interrupted, not failed.

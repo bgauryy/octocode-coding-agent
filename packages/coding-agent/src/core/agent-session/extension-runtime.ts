@@ -45,7 +45,13 @@ export function buildExtensionRuntime(host: ExtensionRuntimeHost, options: Build
 			)
 		: hasNativeTools
 			? {}
-			: { bash: createBashToolDefinition(host.cwd, { commandPrefix: shellCommandPrefix, shellPath }) };
+			: {
+					bash: createBashToolDefinition(host.cwd, {
+						commandPrefix: shellCommandPrefix,
+						shellPath,
+						maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
+					}),
+				};
 
 	tools.setBaseToolDefinitions(
 		new Map(Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition])),

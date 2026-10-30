@@ -69,4 +69,22 @@ describe("custom editor installed during startup", () => {
 		expect(host.isBashMode).toBe(true);
 		expect(host.updateEditorBorderColor).toHaveBeenCalledOnce();
 	});
+
+	it("opens the queued-messages list on Up in the empty replacement editor", () => {
+		const host = createStartupHost();
+		const queued = [{ id: "q1", mode: "steer", text: "queued", imageCount: 0, source: "user" }];
+		Object.assign(host.session, { getQueuedInputs: () => queued });
+		const showQueueManager = vi.fn(() => true);
+		Object.assign(host, { compactionQueuedMessages: [], showQueueManager });
+		setupKeyHandlers(host);
+		expect(host.editor).not.toBe(host.defaultEditor);
+
+		host.editor.handleInput("\x1b[A");
+		expect(showQueueManager).toHaveBeenCalledWith("last");
+
+		showQueueManager.mockClear();
+		queued.length = 0;
+		host.editor.handleInput("\x1b[A");
+		expect(showQueueManager).not.toHaveBeenCalled();
+	});
 });

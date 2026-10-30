@@ -3,12 +3,10 @@ import { describe, expect, test, vi } from "vitest";
 import type { QueuedInput } from "../src/core/agent-session.ts";
 import { handleDequeue } from "../src/modes/interactive/interactive-mode/message-queue.ts";
 import {
-	editQueueItem,
 	listQueueItems,
 	moveQueueItem,
 	recallLastQueuedMessage,
 	removeQueueItem,
-	showQueueManager,
 } from "../src/modes/interactive/interactive-mode/queue-manager.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
@@ -167,20 +165,8 @@ describe("recalling the last queued message (Alt+Up)", () => {
 	});
 });
 
-describe("editing, removing and moving", () => {
-	test("edit replaces the text of a session message", () => {
-		const { host, session } = fixture([{ text: "old" }]);
-		expect(editQueueItem(host, listQueueItems(host)[0], "new text")).toBe("replaced");
-		expect(session.getQueuedInputs()[0].text).toBe("new text");
-	});
-
-	test("an empty or whitespace-only edit removes the message", () => {
-		const { host, session } = fixture([{ text: "old" }, { text: "other" }]);
-		expect(editQueueItem(host, listQueueItems(host)[0], " \n ")).toBe("removed");
-		expect(session.getQueuedInputs().map((item) => item.text)).toEqual(["other"]);
-	});
-
-	test("edit and remove act on compaction-queue messages", () => {
+describe("removing and moving", () => {
+	test("remove acts on compaction-queue messages", () => {
 		const { host, ui } = fixture(
 			[],
 			[
@@ -188,18 +174,14 @@ describe("editing, removing and moving", () => {
 				{ text: "b", mode: "steer" },
 			],
 		);
-		expect(editQueueItem(host, listQueueItems(host)[0], "A!")).toBe("replaced");
 		expect(removeQueueItem(host, listQueueItems(host)[1])).toBe(true);
-		expect(ui.compactionQueuedMessages).toEqual([{ text: "A!", mode: "steer" }]);
-		expect(editQueueItem(host, listQueueItems(host)[0], "")).toBe("removed");
-		expect(ui.compactionQueuedMessages).toEqual([]);
+		expect(ui.compactionQueuedMessages).toEqual([{ text: "a", mode: "steer" }]);
 	});
 
-	test("editing a message that has been delivered meanwhile reports it missing", () => {
+	test("removing a message that has been delivered meanwhile reports false", () => {
 		const { host, session } = fixture([{ text: "old" }]);
 		const [item] = listQueueItems(host);
 		session.getQueuedInputs().length = 0;
-		expect(editQueueItem(host, item, "new")).toBe("missing");
 		expect(removeQueueItem(host, item)).toBe(false);
 	});
 
@@ -219,69 +201,5 @@ describe("editing, removing and moving", () => {
 		expect(moveQueueItem(host, items[3], "up")).toBe(true);
 		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["y", "x"]);
 		expect(moveQueueItem(host, listQueueItems(host)[3], "down")).toBe(false);
-	});
-});
-
-describe("queue manager dialog", () => {
-	test("says so when nothing is queued", async () => {
-		const { host, ui } = fixture();
-		await showQueueManager(host);
-		expect(ui.showStatus).toHaveBeenCalledWith("No queued messages");
-		expect(ui.showExtensionSelector).not.toHaveBeenCalled();
-	});
-
-	test("lists messages with their kind, then edits one through the editor and returns to the list", async () => {
-		const { host, ui, session } = fixture([{ text: "first" }, { text: "later", mode: "followUp" }]);
-		ui.showExtensionSelector
-			.mockImplementationOnce(async (_title: string, options: string[]) => {
-				expect(options[0]).toContain("Next turn");
-				expect(options[0]).toContain("first");
-				expect(options[1]).toContain("After run");
-				return options[0];
-			})
-			.mockResolvedValueOnce("Edit")
-			.mockResolvedValueOnce(undefined);
-		ui.showExtensionEditor.mockResolvedValueOnce("first, revised");
-		await showQueueManager(host);
-		expect(ui.showExtensionEditor).toHaveBeenCalledWith(expect.any(String), "first");
-		expect(session.getQueuedInputs()[0].text).toBe("first, revised");
-		expect(ui.showExtensionSelector).toHaveBeenCalledTimes(3);
-	});
-
-	test("cancelling the editor changes nothing", async () => {
-		const { host, ui, session } = fixture([{ text: "keep" }]);
-		ui.showExtensionSelector
-			.mockImplementationOnce(async (_title: string, options: string[]) => options[0])
-			.mockResolvedValueOnce("Edit")
-			.mockResolvedValueOnce(undefined);
-		ui.showExtensionEditor.mockResolvedValueOnce(undefined);
-		await showQueueManager(host);
-		expect(session.replaceQueuedInput).not.toHaveBeenCalled();
-		expect(session.getQueuedInputs()[0].text).toBe("keep");
-	});
-
-	test("remove and move actions apply to the chosen message", async () => {
-		const { host, ui, session } = fixture([{ text: "a" }, { text: "b" }, { text: "c" }]);
-		ui.showExtensionSelector
-			.mockImplementationOnce(async (_title: string, options: string[]) => options[1])
-			.mockResolvedValueOnce("Move up")
-			.mockImplementationOnce(async (_title: string, options: string[]) => options[2])
-			.mockResolvedValueOnce("Remove")
-			.mockResolvedValueOnce(undefined);
-		await showQueueManager(host);
-		expect(session.getQueuedInputs().map((item) => item.text)).toEqual(["b", "a"]);
-	});
-
-	test("a message delivered while the dialog is open is reported, not edited", async () => {
-		const { host, ui, session } = fixture([{ text: "racing" }]);
-		ui.showExtensionSelector
-			.mockImplementationOnce(async (_title: string, options: string[]) => options[0])
-			.mockImplementationOnce(async () => {
-				session.getQueuedInputs().length = 0;
-				return "Remove";
-			});
-		await showQueueManager(host);
-		expect(ui.showStatus).toHaveBeenCalledWith(expect.stringContaining("already being delivered"));
-		expect(ui.showExtensionSelector).toHaveBeenCalledTimes(2);
 	});
 });

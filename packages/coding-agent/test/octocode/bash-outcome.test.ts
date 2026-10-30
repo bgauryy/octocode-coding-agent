@@ -50,7 +50,7 @@ describe("Bash outcome facts", () => {
 		failure.message = "A newly worded deadline report";
 		expect(() =>
 			foregroundFailure(failure, { dir: tmp(), seconds: 2, clamped: false, cwd: tmp(), how: "deadline" }),
-		).toThrow(/A newly worded deadline report.*\nIf it needs longer/);
+		).toThrow(/A newly worded deadline report\n\nIf it needs longer/);
 	});
 
 	it("does not add timeout advice to command output that happens to mention timeouts", () => {

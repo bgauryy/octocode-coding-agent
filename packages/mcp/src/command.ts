@@ -265,8 +265,7 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Ext
 
 export function registerMcpCommand(state: McpExtensionState): void {
 	state.api.registerCommand("mcp", {
-		description:
-			"Manage MCP servers, inspect tools and configuration, sign in, reconnect, or change enablement and exposure",
+		description: "Manage MCP servers and their tools",
 		getArgumentCompletions: (prefix) => getArgumentCompletions(state, prefix),
 		handler: async (args, ctx) => {
 			const [action, name, ...extra] = args.trim().split(/\s+/).filter(Boolean);

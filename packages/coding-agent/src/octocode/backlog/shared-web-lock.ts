@@ -5,7 +5,7 @@ import { processStartTime, sameProcess } from "../shared/process.ts";
 /** A lock whose mtime is older than this is taken over even when its owner cannot be identified (no owner file). */
 const STALE_MS = 30_000;
 /** How long a caller waits for a live owner before giving up. */
-export const LOCK_WAIT_MS = 8500;
+const LOCK_WAIT_MS = 8500;
 
 interface LockOwner {
 	pid: number;

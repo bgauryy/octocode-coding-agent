@@ -39,6 +39,9 @@
 				"@octocodeai/octocode-native",
 				"@octocodeai/octocode-acp",
 				"@octocodeai/octocode-mcp",
+				// Resolved at runtime by name (`ollama/freellama.ts`), and imported by the private MCP workspace's sources.
+				"@octocodeai/freellama",
+				"@modelcontextprotocol/core",
 			],
 			// Platform commands and optional test prerequisites, not npm packages.
 			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv"],

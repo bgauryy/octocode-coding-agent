@@ -229,7 +229,8 @@ export interface InteractiveModeMethods {
 	showSessionSelector(): void;
 	showSettingsSelector(): void;
 	showStartupNoticesIfNeeded(): void;
-	showQueueManager(): Promise<void>;
+	/** Open the queued-messages list focused on the first (default) or last message; false when nothing is queued. */
+	showQueueManager(focus?: "first" | "last"): boolean;
 	showStatus(message: string): void;
 	showStatusIndicator(indicator: StatusIndicator): void;
 	showTreeSelector(initialSelectedId?: string): void;

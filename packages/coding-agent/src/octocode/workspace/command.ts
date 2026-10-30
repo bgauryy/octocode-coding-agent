@@ -9,7 +9,7 @@ export function webCommand(
 	daemon?: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<boolean>,
 ): Subcommand {
 	return {
-		description: "Open the web workspace — /octocode [backlogs]",
+		description: "Open the web workspace",
 		complete: (prefix) => wordCompletions(["backlogs"], prefix),
 		async handler(args, ctx) {
 			if (args.trim() && args.trim() !== "backlogs") {

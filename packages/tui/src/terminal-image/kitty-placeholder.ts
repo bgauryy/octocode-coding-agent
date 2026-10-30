@@ -4,7 +4,7 @@ import { ROWCOLUMN_DIACRITICS } from "./kitty-diacritics.ts";
 export const KITTY_PLACEHOLDER = "\u{10eeee}";
 
 /** Largest row or column count one image can address with the diacritic table. */
-export const KITTY_PLACEHOLDER_MAX_CELLS = ROWCOLUMN_DIACRITICS.length;
+const KITTY_PLACEHOLDER_MAX_CELLS = ROWCOLUMN_DIACRITICS.length;
 
 /** Whether a `columns` x `rows` placeholder grid fits the diacritic table. */
 export function kittyPlaceholdersFit(columns: number, rows: number): boolean {

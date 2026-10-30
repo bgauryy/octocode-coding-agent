@@ -16,7 +16,7 @@ const READ_TIMEOUT_MS = 30_000;
 /** Time the CLI gets past the server deadline to report it. */
 const REPORT_GRACE_MS = 15_000;
 
-export interface OllamaDetails {
+interface OllamaDetails {
 	action: "models" | "route" | "task";
 	model?: string;
 	models?: number;

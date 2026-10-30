@@ -11,7 +11,7 @@ next: Use the live backlog board and validate additional entity resolvers only w
 
 Keep separate domain models for **backlogs, sessions, agents, runs, messages, and memories**. Connect them with scoped references; each owner keeps its own validation, storage, and lifecycle. A shared reference format is useful. A universal entity record, state machine, or CRUD service is not.
 
-The first implementation includes epic/task/bug/research types, parent hierarchy, dependency arrays, typed links, completion history, and a live local workspace with agent controls, comments, audit history and shared report presentation. Optional future capabilities below remain deferred. Sessions, messages, agents, and memories keep their existing domain contracts. See [interface architecture](INTERFACE_ARCHITECTURE.md) for the shared application port and [presentation boundaries](DATA_PRESENTATION.md) for domain rendering contracts.
+The first implementation includes epic/task/bug/research types, parent hierarchy, dependency arrays, typed links, completion history, and a live local workspace with agent controls, comments, audit history and shared report presentation. Optional future capabilities below remain deferred. Sessions, messages, agents, and memories keep their existing domain contracts. See [interface architecture](INTERFACE_ARCHITECTURE.md) for the shared application port for domain rendering contracts.
 
 ## Proposed design
 

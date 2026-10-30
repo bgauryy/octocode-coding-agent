@@ -82,6 +82,9 @@ export function bindEditorHandlers(host: Pick<InteractiveModeHost, "defaultEdito
 		if (!customEditor.onExtensionShortcut) {
 			customEditor.onExtensionShortcut = (data: string) => host.defaultEditor.onExtensionShortcut?.(data);
 		}
+		if (!customEditor.onEmptyUp) {
+			customEditor.onEmptyUp = () => host.defaultEditor.onEmptyUp?.() ?? false;
+		}
 		// Copy action handlers (clear, suspend, model switching, etc.)
 		for (const [action, handler] of host.defaultEditor.actionHandlers) {
 			(customEditor.actionHandlers as Map<string, () => void>).set(action, handler);

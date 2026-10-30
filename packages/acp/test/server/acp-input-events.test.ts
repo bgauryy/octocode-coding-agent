@@ -2,7 +2,7 @@ import { type ContentBlock, RequestError } from "@agentclientprotocol/sdk";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { describe, expect, it } from "vitest";
-import { AcpEventProjector } from "../../src/server/events.ts";
+import { AcpEventProjector, toolContent } from "../../src/server/events.ts";
 import { convertPrompt } from "../../src/server/input.ts";
 import type { JsonAgentSessionEvent } from "../../../coding-agent/src/modes/json-event.ts";
 
@@ -234,6 +234,25 @@ describe("ACP event projection", () => {
 		).toEqual([
 			{ sessionUpdate: "tool_call", toolCallId: "call-2", title: "read", status: "in_progress" },
 			{ sessionUpdate: "tool_call_update", toolCallId: "call-2", status: "completed", content: [] },
+		]);
+	});
+});
+
+describe("ACP tool content", () => {
+	it("keeps a bash result's status line and the end of its output when it exceeds the limit", () => {
+		const header = "[exit 1 · 4.2s · 3,000 lines · 96 KB · trimmed: first 120 + last 478 lines]";
+		const body = Array.from({ length: 3000 }, (_, index) => `line ${index} some padding text here`).join("\n");
+		const [item] = toolContent({ content: [{ type: "text", text: `${header}\n${body}\nerror: the final failure` }] });
+		const text = (item as { content: { text: string } }).content.text;
+		expect(text.startsWith(header)).toBe(true);
+		expect(text.endsWith("error: the final failure")).toBe(true);
+		expect(text).toMatch(/\[Tool output truncated for ACP: \d+ characters omitted\.\]/);
+		expect(text.length).toBeLessThanOrEqual(16_000);
+	});
+
+	it("passes a result within the limit through unchanged", () => {
+		expect(toolContent({ content: [{ type: "text", text: "[exit 0 · 0.1s · 1 line · 3 B]\nhi" }] })).toEqual([
+			{ type: "content", content: { type: "text", text: "[exit 0 · 0.1s · 1 line · 3 B]\nhi" } },
 		]);
 	});
 });

@@ -73,7 +73,11 @@ function movedResult(
 		how === "message"
 			? `A message for you is waiting, so this command (running ${formatDuration(Date.now() - job.startedAt)}) moved to the background as ${job.id} (pid ${job.pid}), still running. Answer the message; its exit status and output tail arrive as a message.`
 			: `Did not finish within ${formatDuration(seconds * 1000)}; moved to the background as ${job.id} (pid ${job.pid}), still running. Its exit status and output tail arrive as a message.`;
-	const moved = [lead, ...jobLines(job, cwd)].join("\n");
+	const moved = [
+		lead,
+		...jobLines(job, cwd),
+		...(fullOutputPath ? [`Output so far, in full: ${shortPath(fullOutputPath)}`] : []),
+	].join("\n");
 	const threshold =
 		how === "threshold" ? `(${AUTO_NOTE}; pass background: false with a timeout to wait in the foreground)` : "";
 	const text = [
@@ -149,7 +153,7 @@ export function foregroundFailure(
 		: "with a longer timeout, or with background: true and check its log";
 	const hint = `${RERUN_HINT} ${how}; if it waits for input, pass the input or a non-interactive flag.`;
 	details.notices = [...(details.notices ?? []), hint];
-	throw new BashExecutionError(`${full.text}.\n${hint}`, details);
+	throw new BashExecutionError(`${full.text.trimEnd()}\n\n${hint}`, details);
 }
 
 /** The notice for jobs found running after their Octocode died (`reapOrphanJobs`). */

@@ -145,8 +145,7 @@ export function registerCheckpoints(
 	};
 
 	commands.add("rewind", {
-		description:
-			"rewind [turns] — undo file changes of the last N turns on this branch (default 1); files changed since are left alone",
+		description: "Undo file changes of recent turns",
 		complete: (prefix) => {
 			const count = currentContext ? checkpoints.turnsOn(branchIds(currentContext)).length : 0;
 			return wordCompletions(

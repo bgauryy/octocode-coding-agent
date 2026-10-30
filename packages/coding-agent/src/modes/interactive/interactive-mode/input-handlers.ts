@@ -19,6 +19,7 @@ import { errorMessage } from "../../../utils/guards.ts";
 type InputHandlersHost = Pick<
 	InteractiveModeHost,
 	| "cycleModel"
+	| "compactionQueuedMessages"
 	| "cycleThinkingLevel"
 	| "defaultEditor"
 	| "editor"
@@ -39,6 +40,7 @@ type InputHandlersHost = Pick<
 	| "settingsManager"
 	| "showError"
 	| "showModelSelector"
+	| "showQueueManager"
 	| "showSessionSelector"
 	| "showTreeSelector"
 	| "showUserMessageSelector"
@@ -99,6 +101,10 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	);
 	host.defaultEditor.onAction("app.message.followUp", () => host.handleFollowUp());
 	host.defaultEditor.onAction("app.message.dequeue", () => host.handleDequeue());
+	// Up in an empty editor manages queued messages when there are any; otherwise it browses prompt history.
+	host.defaultEditor.onEmptyUp = () =>
+		(host.session.getQueuedInputs().length > 0 || host.compactionQueuedMessages.length > 0) &&
+		host.showQueueManager("last");
 	host.defaultEditor.onAction("app.session.new", () => host.handleClearCommand());
 	host.defaultEditor.onAction("app.session.tree", () => host.showTreeSelector());
 	host.defaultEditor.onAction("app.session.fork", () => host.showUserMessageSelector());

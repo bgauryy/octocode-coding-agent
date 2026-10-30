@@ -77,6 +77,7 @@ export const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 	mdLink: "blue",
 	syntaxKeyword: "blue",
 	syntaxVariable: "calamine",
+	toolReason: "calamine",
 	success: "green",
 	mdCodeBlock: "green",
 	toolDiffAdded: "green",
@@ -277,6 +278,7 @@ export const RULES: Rule[] = [
 		level: "readable",
 	},
 	{ token: "toolOutput", on: ["background", ...TOOL_PANELS], level: "readable" },
+	{ token: "toolReason", on: ["background", ...TOOL_PANELS], level: "readable" },
 	...each(
 		["mdHeading", "mdLink", "mdLinkUrl", "mdCode", "mdQuote", "mdCodeBlockBorder", "mdListBullet"],
 		["background", ...MESSAGE_PANELS],

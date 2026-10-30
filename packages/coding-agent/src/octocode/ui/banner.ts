@@ -14,7 +14,7 @@ export interface BannerPaint {
 	ramp?(t: number, text: string): string;
 }
 
-export const BANNER_ART = [
+const BANNER_ART = [
 	"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀",
 	"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄",
 ] as const;

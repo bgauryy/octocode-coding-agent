@@ -7,7 +7,7 @@ import type { CompactionResult } from "../compaction/index.ts";
 import type { InputSource } from "../extensions/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { BashOperations } from "../tools/bash.ts";
-import type { PromptOptions, QueuedInput, QueuedInputDisposition } from "./types.ts";
+import type { PromptOptions, QueuedInput, QueuedInputDisposition, ReleasedQueuedInput } from "./types.ts";
 
 /** Prompting and input queues of `AgentSession`. */
 export interface AgentSessionPromptingApi {
@@ -110,6 +110,21 @@ export interface AgentSessionPromptingApi {
 
 	/** Move a queued message one place earlier or later among messages of its kind; false when it cannot move. */
 	moveQueuedInput(id: string, direction: "up" | "down"): boolean;
+
+	/** Make a queued message wait for the next turn (`steer`) or until the run ends (`followUp`); it goes last among that kind. */
+	setQueuedInputMode(id: string, mode: "steer" | "followUp"): boolean;
+
+	/**
+	 * Take a queued message out of delivery while the user edits it, keeping its place, kind and attachments; it is
+	 * still listed with `held`. Undefined when it is no longer queued (its delivery has begun) or already held.
+	 */
+	holdQueuedInput(id: string): QueuedInput | undefined;
+
+	/**
+	 * Put a held message back in its place, with new text when given (blank text removes it). With no run active it
+	 * leaves the queue instead ("idle") and the caller sends it; "missing" when the queue was cleared meanwhile.
+	 */
+	releaseQueuedInput(id: string, text?: string): ReleasedQueuedInput;
 
 	/** Abort the current operation; internal cancellation and replacement do not emit interruption hooks. */
 	abort(reason?: "interrupted" | "replacement" | "shutdown" | "internal"): Promise<void>;

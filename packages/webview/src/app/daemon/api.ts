@@ -25,4 +25,3 @@ export function createDaemonApi(access: string) {
 			requestJson<ConfigSnapshot>(DAEMON_ROUTES.config, { headers }, "Could not load settings"),
 	};
 }
-export type DaemonApi = ReturnType<typeof createDaemonApi>;

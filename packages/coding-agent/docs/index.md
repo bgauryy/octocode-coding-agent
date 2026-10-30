@@ -36,6 +36,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Hook events: what each source profile accepts](hook-events.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
 - [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md)
+- [RFC: align hooks, plugins and extensions under one source model](../../../docs/RFC_HOOKS_PLUGINS_EXTENSIONS.md)
 - [Packages](packages.md)
 - [Skills](skills.md)
 - [Prompt templates](prompt-templates.md)
@@ -55,7 +56,6 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Native feature architecture and flows](../../../docs/FEATURES.md)
 - [Shared entities and contracts](../../../docs/ENTITIES.md)
 - [Context management: request contents, caching and compaction](../../../docs/CONTEXT.md)
-- [Data and presentation architecture (historical snapshot; superseded by the application and interface boundaries page)](../../../docs/DATA_PRESENTATION.md)
 - [Browser workspace review](../../../docs/WEBVIEW_REVIEW.md)
 - [Provider protocol and authentication audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md)
 

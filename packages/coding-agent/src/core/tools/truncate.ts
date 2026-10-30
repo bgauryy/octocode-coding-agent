@@ -41,6 +41,10 @@ export interface TruncationResult {
 	headBytes?: number;
 	/** Head-and-tail truncation only: lines between the head and the tail that are left out. */
 	elidedLines?: number;
+	/** Head-and-tail truncation only: lines at the end of the output that are shown. */
+	tailLines?: number;
+	/** Head-and-tail truncation only: failure lines from the elided part shown between head and tail. */
+	matchedLines?: number;
 }
 
 /**
@@ -60,12 +64,21 @@ export function splitHeadTailBudget(maxLines: number, maxBytes: number): { headL
  * The line between the kept head and the kept tail. `elidedLines` is 0 when only the start of the last
  * (very long) line is cut.
  */
-export function formatElisionMarker(elidedLines: number, lastLine: number, fullOutputPath?: string): string {
+export function formatElisionMarker(
+	elidedLines: number,
+	lastLine: number,
+	fullOutputPath?: string,
+	matchedLines = 0,
+): string {
 	const what =
 		elidedLines > 0
 			? `${elidedLines} ${elidedLines === 1 ? "line" : "lines"} elided`
 			: `start of line ${lastLine} elided`;
-	return `[... ${what}${fullOutputPath ? `; full output: ${fullOutputPath}` : ""}]`;
+	const matched =
+		matchedLines > 0
+			? `; ${matchedLines} matched ${matchedLines === 1 ? "line" : "lines"} below, then the end of the output`
+			: "";
+	return `[... ${what}${matched}${fullOutputPath ? `; full output: ${fullOutputPath}` : ""}]`;
 }
 
 export interface TruncationOptions {

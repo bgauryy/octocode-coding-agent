@@ -60,6 +60,7 @@ import type {
 	PromptOptions,
 	QueuedInput,
 	QueuedInputDisposition,
+	ReleasedQueuedInput,
 } from "./agent-session/types.ts";
 import type { BashResult } from "./bash-executor.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
@@ -97,6 +98,7 @@ export type {
 	PromptOptions,
 	QueuedInput,
 	QueuedInputDisposition,
+	ReleasedQueuedInput,
 } from "./agent-session/types.ts";
 export type { SessionStats } from "./session-stats.ts";
 
@@ -480,6 +482,15 @@ export class AgentSession implements AgentSessionApi {
 	}
 	moveQueuedInput(id: string, direction: "up" | "down"): boolean {
 		return this._c.inputs.move(id, direction);
+	}
+	setQueuedInputMode(id: string, mode: "steer" | "followUp"): boolean {
+		return this._c.inputs.setMode(id, mode);
+	}
+	holdQueuedInput(id: string): QueuedInput | undefined {
+		return this._c.inputs.hold(id);
+	}
+	releaseQueuedInput(id: string, text?: string): ReleasedQueuedInput {
+		return this._c.inputs.release(id, text);
 	}
 	async abort(reason: "interrupted" | "replacement" | "shutdown" | "internal" = "interrupted"): Promise<void> {
 		abortSessionDispatches(this);

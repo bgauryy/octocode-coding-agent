@@ -60,11 +60,11 @@ export class CommandSelectorComponent extends Container implements Focusable {
 			(command) => `${command.name} ${command.description ?? ""}`,
 		);
 		this.list = new SelectList(
-			// The arguments a command takes, as autocomplete shows them, lead its description.
+			// The short description leads, then the arguments the command takes, as autocomplete shows them.
 			commands.map((command) => ({
 				value: command.name,
 				label: `/${command.name}`,
-				description: [command.argumentHint, command.description].filter(Boolean).join("  "),
+				description: [command.description, command.argumentHint].filter(Boolean).join(" · "),
 			})),
 			12,
 			getSelectListTheme(),

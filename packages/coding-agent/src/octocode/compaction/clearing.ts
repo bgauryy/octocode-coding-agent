@@ -126,7 +126,7 @@ function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<str
  * a cold cache) clears old results first: the rewrite is paid regardless, so the clearing costs nothing extra, and the
  * smaller history is read back cheaper on every request that follows.
  */
-export const CLEAR_ABOVE_CONTEXT_SHARE = 0.5;
+const CLEAR_ABOVE_CONTEXT_SHARE = 0.5;
 
 /**
  * Whether the request about to be made rewrites the history's cache entry anyway: its last message is a system update

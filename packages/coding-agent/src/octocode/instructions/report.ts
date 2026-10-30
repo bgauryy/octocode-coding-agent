@@ -5,7 +5,7 @@ export const REPORT_STATUSES = ["done", "partial", "blocked", "failed"] as const
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
 
 /** What each outcome means, so a child picks by what it can still do: `blocked` is the one that waits for an answer. */
-export const REPORT_STATUS_MEANING: Record<ReportStatus, string> = {
+const REPORT_STATUS_MEANING: Record<ReportStatus, string> = {
 	done: "acceptance checks met",
 	partial: "ended before the Definition of Done, usable as it is, no answer pending",
 	blocked: "a decision or access from your parent would let you continue",

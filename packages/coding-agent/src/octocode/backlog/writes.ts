@@ -27,7 +27,7 @@ import { derived, getItem, list, liveHolder, origin } from "./reads.ts";
 export const COMPLETION_GUIDANCE = "Done needs completion: summary, files, verification, operationKey.";
 
 /** The fields a subagent proposal cannot set: hierarchy and dependencies belong to the parent. */
-export const SUBAGENT_REFUSED_ADD = ["parentId", "dependsOn"] as const;
+const SUBAGENT_REFUSED_ADD = ["parentId", "dependsOn"] as const;
 
 /** The fields an update may change (a note is not a change); the live holder's are refused and a subagent's limited. */
 const CHANGED_FIELDS = [

@@ -45,7 +45,7 @@ const isLinkAnswer = (value: unknown): value is { link: RemoteLink } =>
 const isStatus = (value: unknown): value is RemoteStatus => Value.Check(RemoteStatusSchema, value);
 
 /** Publishes one link with the configured transport. */
-export async function publishLink(host: RemoteHost, ctx: ExtensionContext, access: RemoteAccess): Promise<RemoteLink> {
+async function publishLink(host: RemoteHost, ctx: ExtensionContext, access: RemoteAccess): Promise<RemoteLink> {
 	const daemon = await host.daemon(ctx);
 	if (!daemon) throw new Error(OFF);
 	const settings = host.settings();
@@ -64,7 +64,7 @@ export async function publishLink(host: RemoteHost, ctx: ExtensionContext, acces
  */
 export function remoteCommand(host: RemoteHost): Subcommand {
 	return {
-		description: "Share this machine's sessions with another device — /remote [view|status|stop]",
+		description: "Share sessions with another device",
 		complete: (prefix) =>
 			wordCompletions(
 				[

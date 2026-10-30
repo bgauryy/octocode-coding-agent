@@ -18,7 +18,7 @@ import { webDaemonPaths } from "./paths.ts";
 import { readDaemonRecord, recordOrigin, recordProcessAlive, recordToken, removeRecord } from "./records.ts";
 
 /** The hidden CLI subcommand that runs the daemon (`cli.ts`). */
-export const WEB_DAEMON_COMMAND = "__web-daemon";
+const WEB_DAEMON_COMMAND = "__web-daemon";
 
 const PROBE_MS = 1000;
 const REQUEST_MS = 10_000;

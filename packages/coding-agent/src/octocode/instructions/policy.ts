@@ -71,7 +71,7 @@ function graphWorkflows(tools: readonly string[], readOnly: boolean): string[] {
  * out of the rules while a session's sections carry this one, so only one of the two shows, whether or not the
  * server's tools are declared yet.
  */
-export const OCTOCODE_SEARCH_RULE = "Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it";
+const OCTOCODE_SEARCH_RULE = "Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it";
 
 /** Whether these prompt sections route code search to Octocode MCP. */
 export const policyRoutesSearchToOctocode = (sections: Record<string, string | undefined>): boolean =>

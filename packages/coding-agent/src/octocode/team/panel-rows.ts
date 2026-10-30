@@ -40,7 +40,7 @@ function cachedShare(usage: Usage): string {
 }
 
 /** Tree connectors for each entry: `├ ` with later siblings, `└ ` for the last, `│ ` beside a deeper row. */
-export function treePrefixes(tree: PanelEntry[]): string[] {
+function treePrefixes(tree: PanelEntry[]): string[] {
 	const laterSibling = (index: number) => {
 		const depth = tree[index].depth;
 		for (const entry of tree.slice(index + 1)) if (entry.depth <= depth) return entry.depth === depth;

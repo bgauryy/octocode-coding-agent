@@ -99,6 +99,14 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds,
 			}),
 		),
+		bashOutputMaxBytes: Type.Optional(
+			Type.Number({
+				description:
+					"Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (600 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens.",
+				minimum: 1024,
+				default: SETTINGS_DEFAULTS.bashOutputMaxBytes,
+			}),
+		),
 		mcpPresentation: Type.Optional(
 			Type.Union([Type.Literal("compact"), Type.Literal("json")], {
 				description:

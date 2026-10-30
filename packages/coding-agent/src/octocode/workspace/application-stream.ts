@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import { redactData } from "../shared/sanitize.ts";
 
 /** A view-only tab sees the session as it is but can do nothing: its snapshots carry no capabilities, so the page draws no controls. */
-export function viewFrame(frame: ApplicationFrame): ApplicationFrame {
+function viewFrame(frame: ApplicationFrame): ApplicationFrame {
 	return frame.type === "snapshot" ? { ...frame, snapshot: { ...frame.snapshot, capabilities: [] } } : frame;
 }
 

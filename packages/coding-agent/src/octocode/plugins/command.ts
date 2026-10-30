@@ -30,7 +30,7 @@ async function load(api: ExtensionAPI, ctx: ExtensionCommandContext) {
 /** `/plugins`: every plugin, extension and hook per host, with a switch for each. */
 export function pluginsCommand(api: ExtensionAPI): Subcommand {
 	return {
-		description: "plugins [enable|disable <id>] — list and switch plugins, extensions and hooks per host",
+		description: "List and switch plugins, extensions and hooks",
 		dialog: "interaction",
 		complete: (prefix) =>
 			["list", "enable", "disable"]

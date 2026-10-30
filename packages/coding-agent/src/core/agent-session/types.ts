@@ -154,7 +154,14 @@ export interface QueuedInput {
 	/** Attachments (images) delivered with the text; edits keep them. */
 	imageCount: number;
 	source: InputSource;
+	/** Taken out of delivery by `holdQueuedInput` while the user edits it; it keeps its place. */
+	held?: true;
 }
+/** What `releaseQueuedInput` did with a held message. */
+export type ReleasedQueuedInput =
+	| { outcome: "queued" | "removed" | "missing" }
+	/** No run is active, so the message cannot wait in the queue: it left the queue and the caller sends it. */
+	| { outcome: "idle"; mode: "steer" | "followUp"; text: string; images: ImageContent[]; source: InputSource };
 export type QueuedInputDisposition = "handled" | "queued";
 export type PromptDisposition = QueuedInputDisposition | "started";
 

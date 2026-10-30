@@ -94,7 +94,7 @@ export function renderContextReport(report: ContextReport, all = false): string 
 		report.note,
 		report.currentTokens !== null && report.threshold !== null && report.currentTokens >= report.threshold
 			? "Consider /compact to free context."
-			: "Use /context all for every contributor. /mcp exposure controls tool declaration size.",
+			: `${rows.length > visible.length ? "Use /context all for every contributor. " : ""}/mcp exposure controls tool declaration size.`,
 	]
 		.filter(Boolean)
 		.join("\n\n");

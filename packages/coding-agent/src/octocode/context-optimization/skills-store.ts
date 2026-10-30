@@ -22,7 +22,7 @@ export interface SkillSource {
 	file: string;
 }
 
-export interface StoredSkill {
+interface StoredSkill {
 	/** {@link skillHash} of the source description the rewrite was written for. */
 	hash: string;
 	file: string;
@@ -39,11 +39,11 @@ export interface SkillsStore {
 
 const emptyStore = (): SkillsStore => ({ version: 1, skills: {} });
 
-export function skillsStoreFile(dir: string): string {
+function skillsStoreFile(dir: string): string {
 	return join(dir, "skills.json");
 }
 
-export function skillHash(name: string, description: string): string {
+function skillHash(name: string, description: string): string {
 	return sha256(`${name}\0${description}`);
 }
 
@@ -70,7 +70,7 @@ export function readSkillsStore(dir: string): SkillsStore {
 }
 
 /** The descriptions agents read, one skill per paragraph, for inspection. */
-export function renderSkillsView(store: SkillsStore): string {
+function renderSkillsView(store: SkillsStore): string {
 	return Object.entries(store.skills)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([name, entry]) => `${name}${entry.description ? "" : " (source)"}\n${entry.description ?? entry.source}`)

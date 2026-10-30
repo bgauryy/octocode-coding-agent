@@ -7,7 +7,7 @@ import { sha256 } from "../../../utils/atomic-file.ts";
  * associated data so a frame cannot be replayed into another room. The room id is derived from the key, so a link
  * needs nothing but the key and whoever holds the key can find the room while the relay never learns the key.
  */
-export const KEY_BYTES = 32;
+const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 

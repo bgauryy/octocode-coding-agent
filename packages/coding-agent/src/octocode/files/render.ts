@@ -215,18 +215,18 @@ export function renderBashResult(
 	);
 }
 
-/** A finished background job: `✓ Job(bash-1: yarn build)` / `⎿  finished after 3s` and its output tail. */
+/** A finished background job: `✓ Job(bash-1: yarn build)` / `⎿  finished after 3s`, its output tail; the status header names its log (older reports: a `Log:` line). */
 export function renderJobMessage(text: string, expanded: boolean, theme: Theme, outputPad = 1): Component {
-	const [head = "", ...rest] = text.split("\n");
+	const [head = "", ...rest] = text.replace(/^\[[^\n]*\]\n/, "").split("\n");
 	const ok = / finished after /.test(head);
-	// Killed by the user or at shutdown: interrupted, not failed.
-	const stopped = !ok && / stopped \(/.test(head);
+	const stopped = !ok && / stopped \(/.test(head); // killed by the user or at shutdown: interrupted, not failed
 	// "Background bash bash-1 finished after 3s: yarn build" → `✓ Job(bash-1: yarn build)` / `⎿ finished after 3s`.
 	const parts = /^Background bash (\S+) (.+?): (.*)$/.exec(head);
 	const context: RenderContext = { isPartial: false, isError: !ok, expanded, state: stopped ? { stopped: true } : {} };
-	const log = rest[0]?.startsWith("Log: ") ? rest.shift() : undefined;
-	// Octocode draws custom messages flush left; pad them like a tool row.
-	const box = new Box(outputPad, 0);
+	const log =
+		/^\[[^\n]*· log: ([^\n]+)\]\n/.exec(text)?.[1] ??
+		(rest[0]?.startsWith("Log: ") ? rest.shift()!.slice(5) : undefined);
+	const box = new Box(outputPad, 0); // custom messages are drawn flush left; pad them like a tool row
 	box.addChild(toolHeader(theme, context, "Job", parts ? `${parts[1]}: ${parts[3]}` : head));
 	box.addChild(
 		resultBlock(theme, context, {
@@ -235,7 +235,7 @@ export function renderJobMessage(text: string, expanded: boolean, theme: Theme, 
 			tail: true,
 			error: !ok,
 			stopped,
-			...(log ? { spill: log.slice(5), spillLabel: "log" } : {}),
+			...(log ? { spill: log, spillLabel: "log" } : {}),
 		}),
 	);
 	return box;
@@ -314,7 +314,7 @@ export function renderFileCall(args: FileArgs, theme: Theme, context: RenderCont
 		);
 	const why = (query: (typeof queries)[number] | undefined, indent = "") =>
 		context.expanded && isInformativeReason(query?.reason)
-			? [theme.fg("dim", `${indent}↳ ${clip(query.reason, 200)}`)]
+			? [theme.fg("toolReason", `${indent}↳ ${clip(query.reason, 200)}`)]
 			: [];
 	// One change: File(edit src/a.ts · 2 edits), with the call's own reason line under it unless it has none. Several: File(3 changes) with a sub-line each.
 	if (queries.length <= 1)

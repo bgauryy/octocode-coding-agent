@@ -198,6 +198,11 @@ export class Agent {
 		this.steeringQueue.remove(message) || this.followUpQueue.remove(message);
 	swapQueuedMessages = (first: AgentMessage, second: AgentMessage) =>
 		this.steeringQueue.swap(first, second) || this.followUpQueue.swap(first, second);
+	/** Move `message` into `queue`, before `before` when that is queued there, else last. */
+	placeQueuedMessage = (message: AgentMessage, queue: "steer" | "followUp", before?: AgentMessage) => {
+		this.removeQueuedMessage(message);
+		(queue === "steer" ? this.steeringQueue : this.followUpQueue).insert(message, before);
+	};
 	/** Returns true when either queue still contains pending messages. */
 	hasQueuedMessages(): boolean {
 		return this.steeringQueue.hasItems() || this.followUpQueue.hasItems();

@@ -112,3 +112,26 @@ it("compacts before dispatch using the routed model's output reserve", async () 
 		harness.cleanup();
 	}
 });
+
+it("suggests /context all only while contributors are folded into 'Other contributors'", () => {
+	const report = (count: number) =>
+		({
+			model: "m",
+			at: "now",
+			reportedTokens: null,
+			currentTokens: 10,
+			capacity: 1000,
+			reserve: 1,
+			threshold: 900,
+			catalogCapacity: null,
+			estimatedTotal: 10,
+			difference: 0,
+			note: "n",
+			contributors: Array.from({ length: count }, (_, index) => ({ name: `part ${index}`, tokens: index + 1 })),
+		}) as never;
+	expect(renderContextReport(report(12))).toContain("Use /context all");
+	expect(renderContextReport(report(12))).toContain("Other contributors");
+	expect(renderContextReport(report(12), true)).not.toContain("Use /context all");
+	expect(renderContextReport(report(3))).not.toContain("Use /context all");
+	expect(renderContextReport(report(3))).toContain("/mcp exposure controls");
+});

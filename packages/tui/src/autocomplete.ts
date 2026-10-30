@@ -69,7 +69,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					const name = "name" in cmd ? cmd.name : cmd.value;
 					const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
 					const desc = cmd.description ?? "";
-					const detail = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
+					// The short description leads so a long argument hint cannot push it off a narrow terminal.
+					const detail = hint ? (desc ? `${desc} · ${hint}` : hint) : desc;
 					return { name, label: name, description: detail || undefined };
 				});
 

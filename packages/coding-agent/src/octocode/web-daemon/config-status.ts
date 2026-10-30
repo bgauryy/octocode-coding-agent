@@ -39,7 +39,7 @@ export interface ConfigStatusOptions {
 }
 
 /** The settings the page shows, in order. Each is a string; project values replace global ones. */
-export const CONFIG_SETTING_KEYS = ["defaultProvider", "defaultModel"] as const;
+const CONFIG_SETTING_KEYS = ["defaultProvider", "defaultModel"] as const;
 
 const CREDENTIALS_ERROR = "auth.json could not be read; only environment variables are shown.";
 const SETTINGS_ERROR = "This settings file is invalid, so its values are not shown. Fix it in a terminal.";

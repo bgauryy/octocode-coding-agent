@@ -22,6 +22,9 @@ export function sha256(data: string | Uint8Array, encoding: "hex" | "base64url" 
 	return createHash("sha256").update(data).digest(encoding);
 }
 
+/** An incremental SHA-256, for a caller that streams bytes it also inspects (`update` each chunk, then `digest`). */
+export const sha256Hasher = () => createHash("sha256");
+
 /** The first 16 hex digits of the SHA-256: a short name for content. */
 export const shortHash = (data: string | Uint8Array): string => sha256(data).slice(0, 16);
 

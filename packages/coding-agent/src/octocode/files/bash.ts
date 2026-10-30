@@ -2,7 +2,7 @@ import { StringEnum } from "@octocodeai/octocode-contacts/schema";
 import { Type } from "typebox";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { bashSessionEnv } from "../../core/tools/bash.ts";
+import { bashSessionEnv, maxOutputTokensParameter } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../shared/env.ts";
@@ -167,7 +167,7 @@ export function registerBashTool(
 	);
 
 	commands?.add("jobs", {
-		description: "jobs [kill <id>] — list or stop background bash jobs",
+		description: "List or stop background bash jobs",
 		handler: async (args, ctx) => {
 			const [sub = "", id = ""] = args.split(/\s+/);
 			if (!sub) return say(ctx, jobs.describe(), "info");
@@ -197,7 +197,7 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			description:
-				"Run shell commands in the working directory: builds, tests, git, formatters and CLIs. Foreground calls return combined output; large output keeps a tail and names the full log. " +
+				"Run shell commands in the working directory: builds, tests, git, formatters and CLIs. Foreground calls return combined output; large output is trimmed and the full log named. " +
 				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or when the user sends a message, unless background is false with a timeout. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
 			// Octocode's own snippet ("ls, grep, find") would contradict the Octocode research routing.
 			promptSnippet: "Run shell commands: builds, tests, git",
@@ -211,10 +211,10 @@ export function registerBashTool(
 						]),
 					}
 				: {}),
-			// `cmd | tail` alone exits with tail's status, so a failing build would read as passing; each call returns up to 50 KB.
+			// A pipe such as `cmd | tail` exits with the last command's status, so a failing build would read as passing.
 			promptGuidelines: [
 				...(builtin.promptGuidelines ?? []),
-				"Keep bash output small: pipe builds, tests and logs through `2>&1 | tail -n 50` (or grep, head) after `set -o pipefail;`, so failures still show.",
+				"Each result starts with exit code, time and output size. Output over the budget is trimmed (head, tail, matched error lines) and saved in full: search or read that file by line range instead of rerunning; maxOutputTokens makes it smaller. Put `set -o pipefail;` before an explicit pipe.",
 			],
 			parameters: Type.Object({
 				type: Type.Optional(
@@ -228,6 +228,7 @@ export function registerBashTool(
 						description: `Timeout in seconds; foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s, then it moves to the background. A background job has none unless given`,
 					}),
 				),
+				maxOutputTokens: maxOutputTokensParameter,
 				background: Type.Optional(
 					Type.Boolean({
 						description: "Return at once; the exit arrives later as a message. For servers and long builds",
@@ -289,6 +290,7 @@ export function registerBashTool(
 				const run = createBashToolDefinition(process.cwd(), {
 					...settings,
 					commandPrefix: undefined,
+					maxOutputBytes: settings.outputMaxBytes,
 					operations: foregroundOperations(
 						settings,
 						(pid) => {
@@ -313,7 +315,7 @@ export function registerBashTool(
 				try {
 					const raw = await run.execute(
 						toolCallId,
-						{ command: shellScript(params.command, settings), timeout },
+						{ command: shellScript(params.command, settings), timeout, maxOutputTokens: params.maxOutputTokens },
 						signal,
 						(update) => {
 							spilled = update.details?.fullOutputPath ?? spilled;

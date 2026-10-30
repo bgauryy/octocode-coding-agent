@@ -23,7 +23,7 @@ export interface DialogAnswer {
 /** Whether an answer was taken; a refusal names why (unknown dialog, not an offered choice, already answered). */
 export type DialogAnswerResult = { ok: true } | { ok: false; reason: string };
 
-export const CONFIRM_OPTIONS = ["Yes", "No"] as const;
+const CONFIRM_OPTIONS = ["Yes", "No"] as const;
 
 interface Pending {
 	kind: UIPromptKind;

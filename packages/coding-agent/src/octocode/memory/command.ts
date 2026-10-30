@@ -98,7 +98,7 @@ export function registerMemoryCommand(
 	deps: { store: (ctx: ExtensionCommandContext) => MemoryStore; autoEnv: () => boolean },
 ): void {
 	commands.add("memory", {
-		description: "memory [search <q>|add|auto on|off|last] — browse and edit durable memories",
+		description: "Browse and edit durable memories",
 		complete: (prefix) =>
 			wordCompletions(
 				[

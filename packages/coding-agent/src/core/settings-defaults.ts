@@ -29,6 +29,7 @@ export const SETTINGS_DEFAULTS = {
 	showCacheMissNotices: false,
 	quietStartup: false,
 	bashBackgroundAfterSeconds: 90,
+	bashOutputMaxBytes: 24 * 1024,
 	mcpPresentation: "compact",
 	defaultProjectTrust: "ask",
 	collapseChangelog: false,

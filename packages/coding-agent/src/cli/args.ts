@@ -4,11 +4,11 @@
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { TuiMode } from "../core/settings-manager.ts";
-import { isValidThinkingLevel, VALID_THINKING_LEVELS } from "../core/thinking-level.ts";
+import { isValidThinkingLevel } from "../core/thinking-level.ts";
 import { flagSpec, invalidValue, looksLikeFlag, missingValue } from "./args/flags.ts";
 
 export { printHelp } from "./args/help.ts";
-export { isValidThinkingLevel, VALID_THINKING_LEVELS };
+export { isValidThinkingLevel };
 
 export type Mode = "text" | "json" | "rpc" | "acp";
 

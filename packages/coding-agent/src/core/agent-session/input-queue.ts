@@ -9,13 +9,15 @@ import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionInternals } from "./host.ts";
-import type { PendingUserInput, QueuedInput } from "./types.ts";
+import type { PendingUserInput, QueuedInput, ReleasedQueuedInput } from "./types.ts";
 
 interface QueuedEntry {
 	id: string;
 	mode: "steer" | "followUp";
 	text: string;
 	message: Extract<AgentMessage, { role: "user" }>;
+	/** Out of the agent's queue while the user edits it; the entry keeps its place here. */
+	held?: true;
 }
 
 export class SessionInputQueue {
@@ -56,6 +58,7 @@ export class SessionInputQueue {
 				? entry.message.content.filter((part) => part.type === "image").length
 				: 0,
 			source: this._pendingUserInputs.get(entry.message)?.source ?? "interactive",
+			...(entry.held ? { held: true as const } : {}),
 		}));
 	}
 
@@ -110,6 +113,12 @@ export class SessionInputQueue {
 		if (!text.trim()) {
 			return this.remove(id) ? "removed" : "missing";
 		}
+		this._setText(entry, text);
+		this._emitQueueUpdate();
+		return "replaced";
+	}
+
+	private _setText(entry: QueuedEntry, text: string): void {
 		const { message } = entry;
 		const parts = Array.isArray(message.content) ? message.content : [];
 		const attachments = parts.filter((part) => part.type !== "text");
@@ -117,8 +126,64 @@ export class SessionInputQueue {
 		entry.text = text;
 		const input = this._pendingUserInputs.get(message);
 		if (input) this._pendingUserInputs.set(message, { ...input, text, expandedPaths: undefined });
+	}
+
+	/** Take a message out of delivery while it is edited; undefined when delivery has begun or it is already held. */
+	hold(id: string): QueuedInput | undefined {
+		const entry = this._queued.find((candidate) => candidate.id === id);
+		if (!entry || entry.held || !this.host.session.agent.removeQueuedMessage(entry.message)) return undefined;
+		entry.held = true;
 		this._emitQueueUpdate();
-		return "replaced";
+		return this.queuedInputs.find((candidate) => candidate.id === id);
+	}
+
+	/**
+	 * Put a held message back before the next queued message of its kind, with new text when given (blank removes it).
+	 * With no run active it leaves the queue ("idle"): a queued message would otherwise wait for an unrelated run.
+	 */
+	release(id: string, text?: string): ReleasedQueuedInput {
+		const entry = this._queued.find((candidate) => candidate.id === id && candidate.held);
+		if (!entry) return { outcome: "missing" };
+		delete entry.held;
+		const drop = () => {
+			this._queued = this._queued.filter((candidate) => candidate !== entry);
+			this._emitQueueUpdate();
+		};
+		if (text !== undefined && !text.trim()) {
+			drop();
+			return { outcome: "removed" };
+		}
+		if (text !== undefined && text !== entry.text) this._setText(entry, text);
+		if (!this.host.session.isStreaming) {
+			drop();
+			const parts = Array.isArray(entry.message.content) ? entry.message.content : [];
+			return {
+				outcome: "idle",
+				mode: entry.mode,
+				text: entry.text,
+				images: parts.filter((part) => part.type === "image"),
+				source: this._pendingUserInputs.get(entry.message)?.source ?? "interactive",
+			};
+		}
+		const agent = this.host.session.agent;
+		const next = this._queued
+			.slice(this._queued.indexOf(entry) + 1)
+			.find((candidate) => candidate.mode === entry.mode && agent.hasQueuedMessage(candidate.message));
+		agent.placeQueuedMessage(entry.message, entry.mode, next?.message);
+		this._emitQueueUpdate();
+		return { outcome: "queued" };
+	}
+
+	/** Switch a queued message between the steering and follow-up queues; it goes last among its new kind. */
+	setMode(id: string, mode: "steer" | "followUp"): boolean {
+		const entry = this._queued.find((candidate) => candidate.id === id);
+		if (!entry || !this.host.session.agent.hasQueuedMessage(entry.message)) return false;
+		if (entry.mode === mode) return true;
+		this.host.session.agent.placeQueuedMessage(entry.message, mode);
+		entry.mode = mode;
+		this._queued = [...this._queued.filter((candidate) => candidate !== entry), entry];
+		this._emitQueueUpdate();
+		return true;
 	}
 
 	/** Take one message out of the queue so it is never delivered; undefined when it is no longer queued. */

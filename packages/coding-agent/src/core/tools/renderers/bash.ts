@@ -38,6 +38,14 @@ function rebuildBashResultRenderComponent(
 	component.clear();
 
 	let output = getTextOutput(result, showImages).trim();
+	// The result's first line (`[exit 0 · 4.2s · 312 lines · 18 KB]`) is the status; it stays visible above the collapsed output.
+	const header = options.isPartial
+		? undefined
+		: /^\[(?:exit|timed out|aborted|terminated)[^\n]*\](?:\n|$)/.exec(output)?.[0];
+	if (header) {
+		output = output.slice(header.length).trim();
+		component.addChild(new Text(`\n${theme.fg("muted", header.trim())}`, 0, 0));
+	}
 	const truncation = result.details?.truncation;
 	const fullOutputPath = result.details?.fullOutputPath;
 	if (!options.isPartial && truncation?.truncated && fullOutputPath && output.endsWith("]")) {
@@ -70,7 +78,7 @@ function rebuildBashResultRenderComponent(
 		}
 	}
 
-	if (truncation?.truncated || fullOutputPath) {
+	if (!header && (truncation?.truncated || fullOutputPath)) {
 		const warnings: string[] = [];
 		if (fullOutputPath) {
 			warnings.push(`Full output: ${fullOutputPath}`);

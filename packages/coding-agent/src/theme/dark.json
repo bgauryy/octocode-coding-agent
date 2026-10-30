@@ -39,6 +39,7 @@
 		"toolErrorBg": "okhsl(19 54% 25%)",
 		"toolTitle": "text",
 		"toolOutput": "muted",
+		"toolReason": "okhsl(202 70% 72%)",
 		"mdHeading": "yellow",
 		"mdLink": "blue",
 		"mdLinkUrl": "muted",

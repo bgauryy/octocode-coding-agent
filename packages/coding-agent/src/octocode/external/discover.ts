@@ -21,7 +21,7 @@ export interface InstalledAcpAgent {
 }
 
 /** The first executable file named `command` on PATH, trying PATHEXT suffixes on Windows. */
-export function findOnPath(command: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+function findOnPath(command: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
 	const suffixes =
 		process.platform === "win32" ? ["", ...(env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").filter(Boolean)] : [""];
 	for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean)) {

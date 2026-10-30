@@ -22,6 +22,8 @@ export class CustomEditor extends Editor {
 	public onPasteImage?: () => void;
 	/** Handler for extension-registered shortcuts. Returns true if handled. */
 	public onExtensionShortcut?: (data: string) => boolean;
+	/** Up in an empty editor without autocomplete; return true to take it, false to browse prompt history as usual. */
+	public onEmptyUp?: () => boolean;
 
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: CustomEditorOptions) {
 		super(tui, theme, options);
@@ -131,6 +133,16 @@ export class CustomEditor extends Editor {
 			this.keybindings.matches(data, "tui.editor.historyNext")
 		) {
 			super.handleInput(data);
+			return;
+		}
+
+		if (
+			this.onEmptyUp &&
+			this.getText().length === 0 &&
+			!this.isShowingAutocomplete() &&
+			this.keybindings.matches(data, "tui.editor.cursorUp") &&
+			this.onEmptyUp()
+		) {
 			return;
 		}
 

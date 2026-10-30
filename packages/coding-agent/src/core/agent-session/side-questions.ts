@@ -142,7 +142,8 @@ export class SideQuestions {
 					: error instanceof Error
 						? error.message
 						: String(error);
-			throw error;
+			// An abort surfaces as provider-specific text; callers show the message the state holds.
+			throw controller.signal.aborted ? new Error("Side question cancelled.") : error;
 		} finally {
 			if (generation === this.generation) {
 				this.controller = undefined;

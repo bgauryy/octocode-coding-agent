@@ -234,7 +234,11 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		for (const line of body) rows.push(hang(paint(line)));
 		if (options.spill)
 			rows.push({
-				text: `${INDENT}${theme.fg("dim", `${options.spillLabel ?? "saved"}: ${clip(shortPath(options.spill), 300)}`)}`,
+				text: theme.fg("dim", `${options.spillLabel ?? "saved"}: ${clip(shortPath(options.spill), 300)}`),
+				// A path is only useful whole: wrap it under the label instead of cutting it at the row's width.
+				lead: INDENT,
+				wrap: true,
+				indent: INDENT,
 			});
 	} else {
 		// Blank lines waste preview rows; they still count as hidden and show when expanded.

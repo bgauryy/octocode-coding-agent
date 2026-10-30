@@ -664,6 +664,22 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("bashOutputMaxBytes", () => {
+		it("defaults to 24 KB and reads a valid setting", () => {
+			const settingsPath = join(agentDir, "settings.json");
+			expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(24 * 1024);
+			writeFileSync(settingsPath, JSON.stringify({ bashOutputMaxBytes: 8192 }));
+			expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(8192);
+		});
+
+		it("falls back to the default below 1 KB or for a non-number", () => {
+			for (const value of [100, -5, "big"]) {
+				writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ bashOutputMaxBytes: value }));
+				expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(24 * 1024);
+			}
+		});
+	});
+
 	describe("shellCommandPrefix", () => {
 		it("should load shellCommandPrefix from settings", () => {
 			const settingsPath = join(agentDir, "settings.json");

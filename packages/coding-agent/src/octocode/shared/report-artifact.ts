@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { sha256Hasher } from "../../utils/atomic-file.ts";
 import { isRecord } from "../../utils/guards.ts";
 
 /** A host-recorded report version. Without a path, use the current answer received in the transcript. */
@@ -21,7 +21,7 @@ export function reportArtifact(value: unknown): ReportArtifact | undefined {
 
 function reportDigest(file: string): string {
 	if (fs.lstatSync(path.dirname(file)).isSymbolicLink()) throw new Error("its scratch folder is a link");
-	const hash = createHash("sha256");
+	const hash = sha256Hasher();
 	const buffer = Buffer.alloc(64 * 1024);
 	const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
 	try {
@@ -80,7 +80,7 @@ export async function readChildReport(
 		if (!stat.isFile() || stat.nlink !== 1 || !regularReportFile(report)) throw new Error("not a regular file");
 		const [real, root] = await Promise.all([fs.promises.realpath(report), fs.promises.realpath(scratch)]);
 		if (real !== path.join(root, name)) throw new Error("outside the child's scratch folder");
-		const hash = createHash("sha256");
+		const hash = sha256Hasher();
 		const buffer = Buffer.alloc(64 * 1024);
 		const parts: Buffer[] = [];
 		let tail = Buffer.alloc(0);

@@ -421,7 +421,7 @@ agent.clearFollowUpQueue();
 agent.clearAllQueues();
 ```
 
-Use clearSteeringQueue, clearFollowUpQueue, or clearAllQueues to drop queued messages.
+Use clearSteeringQueue, clearFollowUpQueue, or clearAllQueues to drop queued messages. To change one queued message without touching the others, use `hasQueuedMessage(message)`, `removeQueuedMessage(message)`, `swapQueuedMessages(first, second)` (same queue only) and `placeQueuedMessage(message, "steer" | "followUp", before?)`, which takes the message out of either queue and queues it in the named one, before `before` when that message is queued there, otherwise last. The same message object is the handle for all of them.
 
 When steering messages are detected after a turn completes:
 

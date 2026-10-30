@@ -4,7 +4,10 @@ import type { RpcEvent } from "../../../coding-agent/src/modes/rpc/rpc-client.ts
 
 type Update = SessionNotification["update"];
 const MAX_TOOL_TEXT = 16_000;
-const TRUNCATED = "\n[Tool output truncated for ACP.]";
+/** Kept from the start of an oversized result: bash's `[exit 1 · 4.2s · …]` status line and the output before the cut. */
+const HEAD_TEXT = 4_000;
+/** Room for the omission note, so the whole text stays within `MAX_TOOL_TEXT`. */
+const NOTE_ROOM = 100;
 
 function chunk(text: string): Update[] {
 	return text ? [{ sessionUpdate: "agent_message_chunk", content: { type: "text", text } }] : [];
@@ -36,19 +39,22 @@ export function customMessageUpdates(message: {
 	return updates;
 }
 
-/** Only project visible textual content; details, raw output and binary payloads never cross this adapter. */
+/**
+ * Only project visible textual content; details, raw output and binary payloads never cross this adapter. An oversized
+ * result keeps its start and its end: a command's status line leads and its failure or summary comes last.
+ */
 export function toolContent(result: unknown): ToolCallContent[] {
 	if (!result || typeof result !== "object" || !("content" in result) || !Array.isArray(result.content)) return [];
-	let text = "";
+	const texts: string[] = [];
 	for (const block of result.content) {
 		if (!block || typeof block !== "object" || block.type !== "text" || typeof block.text !== "string") continue;
-		const separator = text ? "\n" : "";
-		const remaining = MAX_TOOL_TEXT - text.length;
-		text += (separator + block.text).slice(0, remaining + 1);
-		if (text.length > MAX_TOOL_TEXT) {
-			text = text.slice(0, MAX_TOOL_TEXT - TRUNCATED.length) + TRUNCATED;
-			break;
-		}
+		texts.push(block.text);
+	}
+	let text = texts.join("\n");
+	if (text.length > MAX_TOOL_TEXT) {
+		const keep = MAX_TOOL_TEXT - NOTE_ROOM;
+		const omitted = text.length - keep;
+		text = `${text.slice(0, HEAD_TEXT)}\n[Tool output truncated for ACP: ${omitted} characters omitted.]\n${text.slice(text.length - (keep - HEAD_TEXT))}`;
 	}
 	return text ? [{ type: "content", content: { type: "text", text } }] : [];
 }

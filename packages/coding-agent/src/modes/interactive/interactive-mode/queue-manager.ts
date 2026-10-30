@@ -1,25 +1,21 @@
 /**
- * Managing queued messages from the chat: one ordered list over the session queue (owned by `AgentSession`) and the
- * compaction queue (held here while compaction runs), the recall-last action, and the `/queue` dialog.
+ * Operations on queued messages from the chat: one ordered list over the session queue (owned by `AgentSession`) and
+ * the compaction queue (held here while compaction runs), the recall-last action, mode switching, and holding a
+ * message out of delivery while it is edited. The list UI lives in `queue-list.ts`.
  */
 
+import type { ImageContent } from "@octocodeai/octocode-ai/compat";
 import { getApplicationPort } from "../../../core/application/index.ts";
+import type { InputSource } from "../../../core/extensions/index.ts";
 import { plural } from "../../../octocode/shared/render/text.ts";
-import { stripAnsi } from "../../../utils/ansi.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import type { QueuedInput } from "../../../core/agent-session.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { CompactionQueuedMessage } from "./types.ts";
 
-type QueueManagerHost = Pick<
+export type QueueManagerHost = Pick<
 	InteractiveModeHost,
-	| "compactionQueuedMessages"
-	| "editor"
-	| "session"
-	| "showExtensionEditor"
-	| "showExtensionSelector"
-	| "showStatus"
-	| "ui"
-	| "updatePendingMessagesDisplay"
+	"compactionQueuedMessages" | "editor" | "session" | "showError" | "showStatus" | "ui" | "updatePendingMessagesDisplay"
 >;
 
 /** A queued message from either queue, in delivery order. */
@@ -33,8 +29,6 @@ export interface QueueItem {
 	session?: QueuedInput;
 	compaction?: CompactionQueuedMessage;
 }
-
-const MODE_LABEL = { steer: "Next turn", followUp: "After run" } as const;
 
 /** Steering before follow-ups; within each, messages already in the session before those held for compaction. */
 export function listQueueItems(host: Pick<QueueManagerHost, "compactionQueuedMessages" | "session">): QueueItem[] {
@@ -79,28 +73,6 @@ export function removeQueueItem(host: QueueManagerHost, item: QueueItem): boolea
 	return removed;
 }
 
-/** Replace a queued message's text; empty or whitespace-only text removes it. Attachments stay. */
-export function editQueueItem(
-	host: QueueManagerHost,
-	item: QueueItem,
-	text: string,
-): "replaced" | "removed" | "missing" {
-	let outcome: "replaced" | "removed" | "missing";
-	if (item.session) {
-		outcome = getApplicationPort(host.session).invoke("replaceQueuedInput", item.session.id, text);
-	} else if (!item.compaction || !host.compactionQueuedMessages.includes(item.compaction)) {
-		outcome = "missing";
-	} else if (!text.trim()) {
-		takeOut(host, item);
-		outcome = "removed";
-	} else {
-		item.compaction.text = text;
-		outcome = "replaced";
-	}
-	if (outcome !== "missing") changed(host);
-	return outcome;
-}
-
 /** Swap a queued message with its neighbour of the same kind and queue; false at either end. */
 export function moveQueueItem(host: QueueManagerHost, item: QueueItem, direction: "up" | "down"): boolean {
 	let moved = false;
@@ -121,6 +93,114 @@ export function moveQueueItem(host: QueueManagerHost, item: QueueItem, direction
 	return moved;
 }
 
+/** Next turn ↔ after run: the message goes last among its new kind. False when it is no longer queued. */
+export function toggleQueueItemMode(host: QueueManagerHost, item: QueueItem): boolean {
+	const mode = item.mode === "steer" ? "followUp" : "steer";
+	let switched = false;
+	if (item.session) {
+		switched = getApplicationPort(host.session).invoke("setQueuedInputMode", item.session.id, mode);
+	} else if (item.compaction && takeOut(host, item)) {
+		item.compaction.mode = mode;
+		host.compactionQueuedMessages.push(item.compaction);
+		switched = true;
+	}
+	if (switched) changed(host);
+	return switched;
+}
+
+/** A queued message taken out of delivery while it is edited. */
+export interface HeldQueueItem {
+	item: QueueItem;
+	/** The session it was queued in; a held message never goes back into another session. */
+	owner: QueueManagerHost["session"];
+	/** Where a compaction-queue message stood, to put it back there. */
+	compactionIndex?: number;
+}
+
+/** Take a message out of delivery for editing; undefined when its delivery has already begun. */
+export function holdQueueItem(host: QueueManagerHost, item: QueueItem): HeldQueueItem | undefined {
+	const owner = host.session;
+	if (item.session) {
+		if (!getApplicationPort(owner).invoke("holdQueuedInput", item.session.id)) return undefined;
+		changed(host);
+		return { item, owner };
+	}
+	const compactionIndex = item.compaction ? host.compactionQueuedMessages.indexOf(item.compaction) : -1;
+	if (compactionIndex === -1 || !takeOut(host, item)) return undefined;
+	changed(host);
+	return { item, owner, compactionIndex };
+}
+
+export type ReleaseOutcome = "queued" | "sent" | "removed" | "missing";
+
+/**
+ * Put a held message back in its place, with `text` when it was edited (blank removes it) or unchanged when the edit
+ * was cancelled. When its queue can no longer deliver it (the run or compaction ended meanwhile) it is sent now, as it
+ * would have been. "missing": the queue was cleared or the session replaced meanwhile, and the queued text was
+ * already returned to whoever cleared it.
+ */
+export function releaseHeldQueueItem(host: QueueManagerHost, held: HeldQueueItem, text?: string): ReleaseOutcome {
+	const { item, owner } = held;
+	if (host.session !== owner) return "missing";
+	if (item.session) {
+		const released = getApplicationPort(owner).invoke("releaseQueuedInput", item.session.id, text);
+		if (released.outcome === "missing") return "missing";
+		changed(host);
+		if (released.outcome !== "idle") return released.outcome;
+		return sendReleased(host, { ...released, expand: false });
+	}
+	if (!item.compaction) return "missing";
+	if (text !== undefined && !text.trim()) return "removed";
+	const message = { text: text ?? item.compaction.text, mode: item.mode };
+	if (!owner.isCompacting) {
+		return sendReleased(host, { ...message, images: [], source: "interactive", expand: true });
+	}
+	item.compaction.text = message.text;
+	const index = Math.min(held.compactionIndex ?? 0, host.compactionQueuedMessages.length);
+	host.compactionQueuedMessages.splice(index, 0, item.compaction);
+	changed(host);
+	return "queued";
+}
+
+/**
+ * Send a released message whose queue has gone: during compaction a text-only message waits in the compaction
+ * queue; otherwise it is submitted with its kind, which starts a run or queues into one that began meanwhile. A
+ * submission rejected before acceptance returns the text to the editor.
+ */
+function sendReleased(
+	host: QueueManagerHost,
+	message: { mode: "steer" | "followUp"; text: string; images: ImageContent[]; source: InputSource; expand: boolean },
+): ReleaseOutcome {
+	if (host.session.isCompacting && message.images.length === 0) {
+		host.compactionQueuedMessages.push({ text: message.text, mode: message.mode });
+		changed(host);
+		return "queued";
+	}
+	let accepted = false;
+	void getApplicationPort(host.session)
+		.invoke("prompt", message.text, {
+			images: message.images.length > 0 ? message.images : undefined,
+			streamingBehavior: message.mode,
+			source: message.source,
+			...(message.expand ? {} : { expandPromptTemplates: false }),
+			preflightResult: () => {
+				accepted = true;
+			},
+		})
+		.catch((error: unknown) => {
+			if (!accepted) {
+				host.editor.setText([message.text, host.editor.getText()].filter((part) => part.trim()).join("\n\n"));
+			}
+			const dropped =
+				!accepted && message.images.length > 0 ? `; ${plural(message.images.length, "attachment")} dropped` : "";
+			host.showError(
+				`${accepted ? "Message failed" : `Message was not sent; restored to editor${dropped}`}: ${errorMessage(error)}`,
+			);
+		})
+		.finally(() => changed(host));
+	return "sent";
+}
+
 /**
  * Alt+Up: put the last queued message back in the editor, ahead of the current draft, and leave every other queued
  * message queued. A message with attachments stays queued because the editor holds text only.
@@ -134,7 +214,7 @@ export function recallLastQueuedMessage(host: QueueManagerHost): boolean {
 	}
 	if (last.imageCount > 0) {
 		host.showStatus(
-			`The last queued message has ${plural(last.imageCount, "attachment")}; use /queue to edit or remove it`,
+			`The last queued message has ${plural(last.imageCount, "attachment")}; press ↑ in an empty editor to edit or remove it`,
 		);
 		return false;
 	}
@@ -152,46 +232,4 @@ export function recallLastQueuedMessage(host: QueueManagerHost): boolean {
 			: "Restored the queued message to the editor",
 	);
 	return true;
-}
-
-function describe(item: QueueItem, index: number): string {
-	const preview = stripAnsi(item.text)
-		.replace(/[\r\n\t\u2028\u2029]+/g, " ")
-		.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
-		.slice(0, 80);
-	const notes = [
-		item.extension ? "extension" : "",
-		item.imageCount ? plural(item.imageCount, "attachment") : "",
-	].filter(Boolean);
-	return `${index + 1}. ${MODE_LABEL[item.mode]}: ${preview}${notes.length ? ` (${notes.join(", ")})` : ""}`;
-}
-
-const ACTIONS = ["Edit", "Remove", "Move up", "Move down"] as const;
-const GONE = "That message is already being delivered; it can no longer be changed";
-
-/**
- * `/queue`: pick a queued message, then edit, remove or move it. The list is rebuilt after every action, so what
- * the dialog shows is what will be sent next. Cancelling an action returns to the list; cancelling the list closes it.
- */
-export async function showQueueManager(host: QueueManagerHost): Promise<void> {
-	for (;;) {
-		const items = listQueueItems(host);
-		if (items.length === 0) {
-			host.showStatus("No queued messages");
-			return;
-		}
-		const labels = items.map(describe);
-		const picked = await host.showExtensionSelector("Queued messages", labels);
-		const item = picked === undefined ? undefined : items[labels.indexOf(picked)];
-		if (!item) return;
-		const action = await host.showExtensionSelector(labels[items.indexOf(item)], [...ACTIONS]);
-		if (action === "Edit") {
-			const text = await host.showExtensionEditor("Edit queued message", item.text);
-			if (text !== undefined && editQueueItem(host, item, text) === "missing") host.showStatus(GONE);
-		} else if (action === "Remove") {
-			if (!removeQueueItem(host, item)) host.showStatus(GONE);
-		} else if (action === "Move up" || action === "Move down") {
-			moveQueueItem(host, item, action === "Move up" ? "up" : "down");
-		}
-	}
 }

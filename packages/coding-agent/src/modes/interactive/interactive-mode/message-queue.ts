@@ -9,6 +9,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
+import { refreshQueueList } from "./queue-list.ts";
 import { recallLastQueuedMessage } from "./queue-manager.ts";
 
 /** Interactive-mode members used by the message queues. */
@@ -166,10 +167,11 @@ export function updatePendingMessagesDisplay(host: MessageQueueHost): void {
 		const dequeueHint = host.getAppKeyDisplay("app.message.dequeue");
 		const hintText = theme.fg(
 			"muted",
-			`↳ ${dequeueHint} to restore the last · /queue to manage · Esc restores all${host.session.isCompacting ? " · waiting for compaction" : ""}`,
+			`↳ ↑ to manage · ${dequeueHint} restores the last · Esc restores all${host.session.isCompacting ? " · waiting for compaction" : ""}`,
 		);
 		host.pendingMessagesContainer.addChild(new TruncatedText(hintText, 1, 0));
 	}
+	refreshQueueList(host);
 }
 
 export function restoreQueuedMessagesToEditor(

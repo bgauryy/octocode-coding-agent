@@ -23,18 +23,11 @@ export type TunnelResponsePayload =
 	| { kind: "stream.message"; stream: string; data: string }
 	| { kind: "stream.end"; stream: string; code: number };
 
-/** Sealed, from the daemon to the page. */
-export type TunnelResponse = TunnelResponsePayload & { seq: number };
-
-export const RELAY_PROTOCOL_VERSION = 1 as const;
 /** Where a host and a peer meet at a relay; the room is derived from the link's key. */
 export const relayRoutes = {
 	host: (room: string) => `/v1/rooms/${room}/host`,
 	peer: (room: string) => `/v1/rooms/${room}/peer`,
 };
-const ROOM = /^[0-9a-f]{32}$/;
-export const isRoom = (value: string): boolean => ROOM.test(value);
-
 const ID = /^[\w.-]{1,64}$/;
 const PATH = /^\/(?!\/)[^\s]{0,2048}$/;
 

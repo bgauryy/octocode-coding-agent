@@ -257,4 +257,121 @@ describe("AgentSession queue management", () => {
 		await promptPromise;
 		expect(seen).toEqual(["after"]);
 	});
+
+	it("holds a message out of delivery while it is edited and puts it back in the same place", async () => {
+		const { harness, release, promptPromise } = await createWaitingHarness();
+		harnesses.push(harness);
+		harness.setResponses(
+			waitingResponses(fauxAssistantMessage("1"), fauxAssistantMessage("2"), fauxAssistantMessage("3")),
+		);
+		const { session } = harness;
+		await session.steer("a");
+		await session.steer("b", [{ type: "image", data: "AAAA", mimeType: "image/png" }]);
+		await session.steer("c");
+		const [, b] = session.getQueuedInputs();
+
+		expect(session.holdQueuedInput(b.id)).toMatchObject({ id: b.id, text: "b", held: true, imageCount: 1 });
+		expect(session.getQueuedInputs().map((entry) => [entry.text, entry.held ?? false])).toEqual([
+			["a", false],
+			["b", true],
+			["c", false],
+		]);
+		// While held, nothing else can change or take it.
+		expect(session.holdQueuedInput(b.id)).toBeUndefined();
+		expect(session.replaceQueuedInput(b.id, "x")).toBe("missing");
+		expect(session.removeQueuedInput(b.id)).toBeUndefined();
+		expect(session.setQueuedInputMode(b.id, "followUp")).toBe(false);
+
+		expect(session.releaseQueuedInput(b.id, "B!")).toEqual({ outcome: "queued" });
+		expect(session.getQueuedInputs()[1]).toMatchObject({ text: "B!", imageCount: 1 });
+		expect(session.getQueuedInputs()[1].held).toBeUndefined();
+		release();
+		await promptPromise;
+		expect(getUserTexts(harness)).toEqual(["start", "a", "B!", "c"]);
+		const delivered = session.messages.find((message) => message.role === "user" && getMessageText(message) === "B!");
+		expect(JSON.stringify(delivered)).toContain("image/png");
+	});
+
+	it("delivery skips a held message; released while the run is active it is delivered later", async () => {
+		const { harness, release, promptPromise } = await createWaitingHarness();
+		harnesses.push(harness);
+		harness.setResponses(waitingResponses(fauxAssistantMessage("1"), fauxAssistantMessage("2")));
+		const { session } = harness;
+		await session.steer("held");
+		await session.steer("other");
+		const [held] = session.getQueuedInputs();
+		session.holdQueuedInput(held.id);
+		const outcomes: unknown[] = [];
+		session.subscribe((event) => {
+			if (event.type === "message_start" && event.message.role === "user" && getMessageText(event.message) === "other")
+				outcomes.push(session.releaseQueuedInput(held.id));
+		});
+		release();
+		await promptPromise;
+		expect(outcomes).toEqual([{ outcome: "queued" }]);
+		expect(getUserTexts(harness)).toEqual(["start", "other", "held"]);
+	});
+
+	it("hands a held message back when no run is left to deliver it, and removes it on blank text", async () => {
+		const { harness, release, promptPromise } = await createWaitingHarness();
+		harnesses.push(harness);
+		harness.setResponses(waitingResponses(fauxAssistantMessage("done")));
+		const { session } = harness;
+		await session.followUp("late");
+		await session.followUp("blank me");
+		const [late, blank] = session.getQueuedInputs();
+		session.holdQueuedInput(late.id);
+		session.holdQueuedInput(blank.id);
+		expect(session.releaseQueuedInput(blank.id, "  ")).toEqual({ outcome: "removed" });
+		release();
+		await promptPromise;
+		expect(getUserTexts(harness)).toEqual(["start"]);
+
+		expect(session.releaseQueuedInput(late.id, "late!")).toEqual({
+			outcome: "idle",
+			mode: "followUp",
+			text: "late!",
+			images: [],
+			source: "interactive",
+		});
+		expect(session.getQueuedInputs()).toEqual([]);
+		expect(session.releaseQueuedInput(late.id)).toEqual({ outcome: "missing" });
+	});
+
+	it("clearing the queue returns and drops a held message", async () => {
+		const { harness, release, promptPromise } = await createWaitingHarness();
+		harnesses.push(harness);
+		harness.setResponses(waitingResponses(fauxAssistantMessage("done")));
+		const { session } = harness;
+		await session.steer("held");
+		const [held] = session.getQueuedInputs();
+		session.holdQueuedInput(held.id);
+		expect(session.clearQueue()).toEqual({ steering: ["held"], followUp: [] });
+		expect(session.releaseQueuedInput(held.id)).toEqual({ outcome: "missing" });
+		release();
+		await promptPromise;
+		expect(getUserTexts(harness)).toEqual(["start"]);
+	});
+
+	it("switches a message between after-run and next-turn delivery", async () => {
+		const { harness, release, promptPromise } = await createWaitingHarness();
+		harnesses.push(harness);
+		harness.setResponses(
+			waitingResponses(fauxAssistantMessage("1"), fauxAssistantMessage("2"), fauxAssistantMessage("3")),
+		);
+		const { session } = harness;
+		await session.followUp("later");
+		await session.followUp("promote me");
+		await session.steer("soon");
+		const promote = session.getQueuedInputs().find((entry) => entry.text === "promote me");
+		if (!promote) throw new Error("queued input missing");
+		expect(session.setQueuedInputMode(promote.id, "steer")).toBe(true);
+		expect(session.getSteeringMessages()).toEqual(["soon", "promote me"]);
+		expect(session.getFollowUpMessages()).toEqual(["later"]);
+		expect(session.setQueuedInputMode(promote.id, "steer")).toBe(true);
+		expect(session.setQueuedInputMode("missing", "followUp")).toBe(false);
+		release();
+		await promptPromise;
+		expect(getUserTexts(harness)).toEqual(["start", "soon", "promote me", "later"]);
+	});
 });

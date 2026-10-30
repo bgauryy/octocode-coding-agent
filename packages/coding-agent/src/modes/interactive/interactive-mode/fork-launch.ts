@@ -7,7 +7,7 @@ import { launchInTmux, type TmuxLaunchRequest } from "../../../octocode/terminal
 import { errorMessage } from "../../../utils/guards.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
-export const FORK_LAUNCH_USAGE = "Usage: /fork [pane [right|down] | window]";
+const FORK_LAUNCH_USAGE = "Usage: /fork [pane [right|down] | window]";
 
 type ForkLaunchHost = Pick<InteractiveModeHost, "sessionManager" | "showError" | "showStatus" | "showWarning">;
 

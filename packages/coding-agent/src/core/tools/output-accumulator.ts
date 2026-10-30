@@ -2,6 +2,15 @@ import type { WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../../utils/ansi.ts";
 import { createOutputFileStream } from "../../utils/output-files.ts";
+import { OutputHead } from "./output-head.ts";
+import {
+	collapseCarriageReturns,
+	collapseLine,
+	collapseText,
+	coveredLines,
+	type FailureLineScanner,
+	formatMatchedBlock,
+} from "./output-trim.ts";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -14,26 +23,15 @@ import {
 /** A line without a newline or carriage return that grows past this is counted before it ends. */
 const OPEN_LINE_CAP_BYTES = 64 * 1024;
 
-/** What a terminal shows after carriage-return redraws of one line: its last non-empty rewrite. */
-function collapseLine(line: string): string {
-	if (!line.includes("\r")) return line;
-	const parts = line.split("\r");
-	for (let i = parts.length - 1; i >= 0; i--) {
-		if (parts[i]) return parts[i];
-	}
-	return "";
-}
-
-/** `collapseLine` for each line of terminated text; CRLF is a newline. */
-function collapseCarriageReturns(text: string): string {
-	if (!text.includes("\r")) return text;
-	return text.split("\n").map(collapseLine).join("\n");
-}
-
 interface OutputAccumulatorOptions {
 	maxLines?: number;
 	maxBytes?: number;
 	tempFilePrefix?: string;
+	/**
+	 * Show a run of identical lines once with a count, and, when the output is trimmed, the failure lines
+	 * (`output-trim.ts`) from the elided middle under the head. The temp file keeps every line.
+	 */
+	smartTrim?: boolean;
 }
 
 interface OutputSnapshot {
@@ -69,6 +67,7 @@ export class OutputAccumulator {
 	private readonly maxBytes: number;
 	private readonly maxRollingBytes: number;
 	private readonly tempFilePrefix: string;
+	private readonly smartTrim: boolean;
 	private readonly decoder = new TextDecoder();
 	/** An escape sequence cut by a chunk boundary, completed by the next chunk. */
 	private pendingAnsi = "";
@@ -80,12 +79,9 @@ export class OutputAccumulator {
 	private openBytes = 0;
 	/** The raw line ended with `\r`: the next text replaces `openLine`, unless it is `\n` (CRLF). */
 	private openLineCr = false;
-	private readonly headMaxLines: number;
-	private readonly headMaxBytes: number;
-	/** The start of the output, at most `headMaxBytes + 1` bytes; complete lines are cut out of it on demand. */
-	private headBuffer = "";
-	private headBufferBytes = 0;
-	private headClosed = false;
+	private readonly head: OutputHead;
+	/** The rolling tail lost its start, so it no longer holds the whole output. */
+	private tailDropped = false;
 
 	private rawChunks: Buffer[] = [];
 	private tailText = "";
@@ -107,9 +103,9 @@ export class OutputAccumulator {
 		this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
 		this.tempFilePrefix = options.tempFilePrefix ?? "octocode-output";
+		this.smartTrim = options.smartTrim ?? false;
 		const head = splitHeadTailBudget(this.maxLines, this.maxBytes);
-		this.headMaxLines = head.headLines;
-		this.headMaxBytes = head.headBytes;
+		this.head = new OutputHead(head.headLines, head.headBytes, this.smartTrim);
 	}
 
 	append(data: Buffer): void {
@@ -148,31 +144,52 @@ export class OutputAccumulator {
 		const totalBytes = this.totalDecodedBytes + this.openBytes;
 		const linesExceeded = totalLines > this.maxLines;
 		const bytesExceeded = totalBytes > this.maxBytes;
-		const text = this.getSnapshotText() + this.openLine;
+		const raw = this.getSnapshotText() + this.openLine;
+		const view = this.smartTrim ? collapseText(raw) : { text: raw, extras: [] };
+		const limits = { maxLines: this.maxLines, maxBytes: this.maxBytes };
 
-		if (!linesExceeded && !bytesExceeded) {
-			const whole = truncateTail(text, { maxLines: this.maxLines, maxBytes: this.maxBytes });
-			return {
-				content: whole.content,
-				truncation: { ...whole, totalLines, totalBytes },
-				fullOutputPath: this.tempFilePath,
-			};
+		// Collapsed repeats can bring output over the budget back under it: then all of it shows.
+		if ((!linesExceeded && !bytesExceeded) || (this.smartTrim && !this.tailDropped)) {
+			const all = truncateTail(view.text, limits);
+			if (!all.truncated) {
+				return {
+					content: all.content,
+					truncation: { ...all, totalLines, totalBytes },
+					fullOutputPath: this.tempFilePath,
+				};
+			}
 		}
 
 		if (options.persistIfTruncated) {
 			this.ensureTempFile();
 		}
 
-		const head = this.getHead();
-		const tail = truncateTail(text, {
-			maxLines: this.maxLines - head.lines,
-			maxBytes: this.maxBytes - head.bytes,
+		const head = this.head.get();
+		const budget = (spent: { lines: number; bytes: number }) => ({
+			maxLines: this.maxLines - head.lines - spent.lines,
+			maxBytes: this.maxBytes - head.bytes - spent.bytes,
 		});
-		const elidedLines = Math.max(0, totalLines - head.lines - tail.outputLines);
-		const content =
-			head.lines > 0
-				? `${head.text}\n${formatElisionMarker(elidedLines, totalLines, this.tempFilePath)}\n${tail.content}`
-				: tail.content;
+		let tail = truncateTail(view.text, budget({ lines: 0, bytes: 0 }));
+		let tailCovered = coveredLines(tail.outputLines, view.extras);
+		let matches: ReturnType<FailureLineScanner["between"]> = [];
+		if (head.lines > 0 && this.smartTrim) {
+			matches = this.head.failures.between(head.covered + 1, totalLines - tailCovered);
+			if (matches.length > 0) {
+				const block = formatMatchedBlock(matches);
+				tail = truncateTail(view.text, budget({ lines: matches.length + 1, bytes: byteLength(block) + 1 }));
+				tailCovered = coveredLines(tail.outputLines, view.extras);
+			}
+		}
+		const elidedLines = Math.max(0, totalLines - head.covered - tailCovered);
+		const marker = formatElisionMarker(
+			elidedLines,
+			totalLines,
+			this.smartTrim ? undefined : this.tempFilePath,
+			matches.length,
+		);
+		const matched = matches.length > 0 ? `${formatMatchedBlock(matches)}\n` : "";
+		const content = head.lines > 0 ? `${head.text}\n${marker}\n${matched}${tail.content}` : tail.content;
+		const matchedBytes = matched ? byteLength(matched) : 0;
 		const truncation: TruncationResult = {
 			...tail,
 			content,
@@ -180,11 +197,19 @@ export class OutputAccumulator {
 			truncatedBy: linesExceeded && bytesExceeded ? (tail.truncatedBy ?? "lines") : bytesExceeded ? "bytes" : "lines",
 			totalLines,
 			totalBytes,
-			outputLines: head.lines + tail.outputLines,
-			outputBytes: head.bytes + tail.outputBytes,
+			outputLines: head.covered + tailCovered,
+			outputBytes: head.bytes + matchedBytes + tail.outputBytes,
 			maxLines: this.maxLines,
 			maxBytes: this.maxBytes,
-			...(head.lines > 0 ? { headLines: head.lines, headBytes: head.bytes, elidedLines } : {}),
+			...(head.lines > 0
+				? {
+						headLines: head.covered,
+						headBytes: head.bytes,
+						elidedLines,
+						tailLines: tailCovered,
+						matchedLines: matches.length,
+					}
+				: {}),
 		};
 		return { content, truncation, fullOutputPath: this.tempFilePath };
 	}
@@ -276,10 +301,9 @@ export class OutputAccumulator {
 		}
 
 		const bytes = byteLength(text);
+		this.head.scan(text, this.completedLines, this.hasOpenLine);
 		this.totalDecodedBytes += bytes;
-		if (!this.headClosed) {
-			this.captureHead(text, bytes);
-		}
+		this.head.capture(text, bytes);
 		this.tailText += text;
 		this.tailBytes += bytes;
 		if (this.tailBytes > this.maxRollingBytes * 2) {
@@ -307,41 +331,6 @@ export class OutputAccumulator {
 		return this.completedLines + (this.hasOpenLine || this.openLine.length > 0 ? 1 : 0);
 	}
 
-	private captureHead(text: string, bytes: number): void {
-		const room = this.headMaxBytes + 1 - this.headBufferBytes;
-		if (bytes <= room) {
-			this.headBuffer += text;
-			this.headBufferBytes += bytes;
-			return;
-		}
-		const buffer = Buffer.from(text, "utf-8");
-		let end = room;
-		while (end > 0 && (buffer[end] & 0xc0) === 0x80) {
-			end--;
-		}
-		this.headBuffer += buffer.subarray(0, end).toString("utf-8");
-		this.headBufferBytes += end;
-		this.headClosed = true;
-	}
-
-	/** The first complete lines that fit the head budget, without the final newline. */
-	private getHead(): { text: string; lines: number; bytes: number } {
-		let lines = 0;
-		let bytes = 0;
-		let end = 0;
-		for (let pos = 0; lines < this.headMaxLines;) {
-			const newline = this.headBuffer.indexOf("\n", pos);
-			if (newline === -1) break;
-			const next = bytes + byteLength(this.headBuffer.slice(pos, newline)) + (lines > 0 ? 1 : 0);
-			if (next > this.headMaxBytes) break;
-			bytes = next;
-			lines++;
-			end = newline;
-			pos = newline + 1;
-		}
-		return { text: this.headBuffer.slice(0, end), lines, bytes };
-	}
-
 	private trimTail(): void {
 		const buffer = Buffer.from(this.tailText, "utf-8");
 		if (buffer.length <= this.maxRollingBytes) {
@@ -354,6 +343,7 @@ export class OutputAccumulator {
 			start++;
 		}
 
+		this.tailDropped = true;
 		this.tailStartsAtLineBoundary = start === 0 ? this.tailStartsAtLineBoundary : buffer[start - 1] === 0x0a;
 		this.tailText = buffer.subarray(start).toString("utf-8");
 		this.tailBytes = byteLength(this.tailText);

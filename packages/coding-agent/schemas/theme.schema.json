@@ -199,6 +199,10 @@
           "$ref": "#/$defs/ColorValue",
           "description": "Tool execution box output text color"
         },
+        "toolReason": {
+          "$ref": "#/$defs/ColorValue",
+          "description": "Line under a tool call that says why it was made (falls back to muted when omitted)"
+        },
         "mdHeading": {
           "$ref": "#/$defs/ColorValue",
           "description": "Markdown heading text"

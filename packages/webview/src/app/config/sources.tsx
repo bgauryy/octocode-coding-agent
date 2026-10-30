@@ -8,7 +8,7 @@ import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, type BadgeTone } from "../ui/primitives.tsx";
 
 /** What a source is called on the page. Environment variables and expiry are added by `SourceBadge`. */
-export const SOURCE_LABELS = {
+const SOURCE_LABELS = {
 	keychain: "OS keychain",
 	"auth-json": "Plaintext in auth.json",
 	"custom-command": "Custom command",

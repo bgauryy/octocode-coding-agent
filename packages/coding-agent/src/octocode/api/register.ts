@@ -18,7 +18,7 @@ export function registerApi(
 	server.observe();
 
 	commands.add("api", {
-		description: "api [on [http] | off] — external API status, start or stop",
+		description: "External API status, start or stop",
 		complete: (prefix) => wordCompletions(["on", "on http", "off"], prefix),
 		handler: async (args, ctx) => {
 			const line = args.trim();

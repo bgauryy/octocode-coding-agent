@@ -124,7 +124,7 @@ describe("OutputAccumulator head and tail", () => {
 		const snapshot = output.snapshot({ persistIfTruncated: true });
 		paths.push(snapshot.fullOutputPath!);
 		expect(snapshot.truncation).toMatchObject({ totalLines: 20_000, headLines: 102 });
-		expect((output as unknown as { headBuffer: string }).headBuffer.length).toBeLessThanOrEqual(10 * 1024 + 1);
+		expect((output as unknown as { head: { buffer: string } }).head.buffer.length).toBeLessThanOrEqual(10 * 1024 + 1);
 		expect((output as unknown as { tailText: string }).tailText.length).toBeLessThanOrEqual(2 * 2 * 50 * 1024 + 100);
 	});
 

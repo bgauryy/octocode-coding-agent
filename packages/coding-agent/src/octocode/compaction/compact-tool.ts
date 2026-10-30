@@ -15,9 +15,9 @@ import { contextTokens, type ThrashBreaker, toolDefinitionChars } from "./pacing
  */
 export const COMPACT_TOOL = "compact";
 /** Below this share of the room before automatic compaction, a summary frees too little to pay for itself. */
-export const COMPACT_MIN_SHARE = 0.5;
+const COMPACT_MIN_SHARE = 0.5;
 /** A request this few turns after the previous compaction is refused (an automatic one may still refill). */
-export const COMPACT_COOLDOWN_TURNS = 2;
+const COMPACT_COOLDOWN_TURNS = 2;
 export const COMPACT_RESUME_TYPE = "octocode-compact-resume";
 
 export const COMPACT_RESUME_TEXT =

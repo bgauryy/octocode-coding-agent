@@ -71,7 +71,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 	},
 	{
 		heading: "Shell and packages",
-		fields: ["shellPath", "shellCommandPrefix", "bashBackgroundAfterSeconds", "npmCommand"],
+		fields: ["shellPath", "shellCommandPrefix", "bashBackgroundAfterSeconds", "bashOutputMaxBytes", "npmCommand"],
 	},
 	{
 		heading: "Trust, telemetry and identity",

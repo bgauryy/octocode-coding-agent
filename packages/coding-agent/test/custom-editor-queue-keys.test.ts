@@ -46,4 +46,33 @@ describe("Up arrow and queued messages", () => {
 		expect(dequeue).toHaveBeenCalledOnce();
 		expect(editor.getText()).toBe("");
 	});
+
+	it("Up on an empty editor opens the queue list when the hook takes it", () => {
+		const { editor } = createEditor();
+		editor.addToHistory("previous prompt");
+		const onEmptyUp = vi.fn(() => true);
+		editor.onEmptyUp = onEmptyUp;
+		editor.handleInput(UP);
+		expect(onEmptyUp).toHaveBeenCalledOnce();
+		expect(editor.getText()).toBe("");
+	});
+
+	it("Up browses history when the queue is empty (the hook declines)", () => {
+		const { editor } = createEditor();
+		editor.addToHistory("previous prompt");
+		editor.onEmptyUp = vi.fn(() => false);
+		editor.handleInput(UP);
+		expect(editor.getText()).toBe("previous prompt");
+	});
+
+	it("Up with any draft never asks for the queue list", () => {
+		const { editor } = createEditor();
+		const onEmptyUp = vi.fn(() => true);
+		editor.onEmptyUp = onEmptyUp;
+		editor.setText("draft");
+		editor.handleInput(UP);
+		editor.setText(" ");
+		editor.handleInput(UP);
+		expect(onEmptyUp).not.toHaveBeenCalled();
+	});
 });

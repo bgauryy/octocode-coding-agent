@@ -10,9 +10,11 @@ export interface ShellSettings {
 	commandPrefix?: string;
 	/** `bashBackgroundAfterSeconds`: when a foreground command moves to the background. */
 	backgroundAfterSeconds?: number;
+	/** `bashOutputMaxBytes`: the model-facing budget of a foreground result. */
+	outputMaxBytes?: number;
 }
 
-/** `shellPath`, `shellCommandPrefix` and `bashBackgroundAfterSeconds` from Octocode's settings for `cwd` (project settings only in a trusted project). */
+/** `shellPath`, `shellCommandPrefix`, `bashBackgroundAfterSeconds` and `bashOutputMaxBytes` from Octocode's settings for `cwd` (project settings only in a trusted project). */
 export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettings {
 	try {
 		const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
@@ -22,6 +24,7 @@ export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettin
 			...(shellPath ? { shellPath } : {}),
 			...(commandPrefix ? { commandPrefix } : {}),
 			backgroundAfterSeconds: settings.getBashBackgroundAfterSeconds(),
+			outputMaxBytes: settings.getBashOutputMaxBytes(),
 		};
 	} catch {
 		return {};

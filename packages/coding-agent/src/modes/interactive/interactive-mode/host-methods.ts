@@ -22,7 +22,7 @@ import * as loadedResources from "./loaded-resources.ts";
 import * as loginDialogs from "./login-dialogs.ts";
 import * as loginFlow from "./login-flow.ts";
 import * as messageQueue from "./message-queue.ts";
-import * as queueManager from "./queue-manager.ts";
+import * as queueList from "./queue-list.ts";
 import * as modelControls from "./model-controls.ts";
 import * as resourceGroups from "./resource-groups.ts";
 import * as resourcePaths from "./resource-paths.ts";
@@ -191,7 +191,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	showModelsSelector: modelControls.showModelsSelector,
 	showNewVersionNotification: startupChecks.showNewVersionNotification,
 	showOAuthSelector: loginFlow.showOAuthSelector,
-	showQueueManager: queueManager.showQueueManager,
+	showQueueManager: queueList.showQueueManager,
 	showPackageUpdateNotification: startupChecks.showPackageUpdateNotification,
 	showSelector: viewState.showSelector,
 	showSessionSelector: sessionNavigation.showSessionSelector,

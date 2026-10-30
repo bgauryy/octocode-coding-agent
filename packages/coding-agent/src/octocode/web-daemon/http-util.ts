@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 export type Reply = (status: number, body: unknown) => void;
 
-export const MAX_BODY_BYTES = 262144;
+const MAX_BODY_BYTES = 262144;
 
 export function replier(res: ServerResponse): Reply {
 	return (status, body) => {
@@ -18,7 +18,7 @@ export function replier(res: ServerResponse): Reply {
 }
 
 /** Constant-time comparison of a presented token with the expected one. */
-export function tokenMatches(supplied: string, expected: string): boolean {
+function tokenMatches(supplied: string, expected: string): boolean {
 	const a = Buffer.from(supplied);
 	const b = Buffer.from(expected);
 	return a.length === b.length && timingSafeEqual(a, b);

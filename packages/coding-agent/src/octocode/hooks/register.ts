@@ -230,7 +230,7 @@ export function registerHooks(
 /** `/hooks`: what loaded, from where, and the events each profile supports. */
 export function registerHooksCommand(commands: Subcommands, hooks: HooksView): void {
 	commands.add("hooks", {
-		description: "hooks [events] — inspect loaded commands, sources and diagnostics, or the supported events",
+		description: "Inspect loaded hooks and supported events",
 		handler: async (args, ctx) => {
 			const arg = args.trim();
 			if (arg === "events") return say(ctx, hookEventsReport());

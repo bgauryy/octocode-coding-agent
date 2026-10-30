@@ -66,6 +66,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `shellPath` | string |  | Custom shell path, for example for Cygwin on Windows, with support for leading ~ expansion. |
 | `shellCommandPrefix` | string |  | Prefix prepended to every bash command, for example to enable shell aliases. |
 | `bashBackgroundAfterSeconds` | number | `90` | Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it. |
+| `bashOutputMaxBytes` | number | `24576` | Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (600 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens. |
 | `npmCommand` | `string[]` |  | Command used for npm package lookup and installation, in argv form such as ["mise", "exec", "node@20", "--", "npm"]. |
 
 ## Trust, telemetry and identity
@@ -150,6 +151,10 @@ See [packages](packages.md), [skills](skills.md), [extensions](extensions.md) an
 | `providerModels` | object |  | Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. |
 | `contextBudget` | `integer \| "full"` | `300000` | Working context per session in tokens, capped at 90% of the model's capacity; "full" uses the whole capacity. /context overrides it for one session. |
 | `toggles` | object |  | Plugin and hook switches by ID, as `/plugins` writes them: `plugin:&lt;path>`, `hooks:&lt;host>`, `hooks:&lt;host>:&lt;source>` or `hook:&lt;id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository. |
+| `remote` | object |  |  |
+| `remote.transport` | `"ssh" \| "relay"` | `"ssh"` | How /remote reaches this machine: "ssh" prints a port forward to run; "relay" dials remote.relayUrl. |
+| `remote.relayUrl` | string |  | The ws:// or wss:// relay the daemon dials for relay links. |
+| `remote.autoStart` | `"off" \| "view" \| "control"` | `"off"` | Publish a link when a session starts. A project settings file can set "off" but never turn it on. |
 | `queueMode` | `"all" \| "one-at-a-time"` |  | Legacy setting migrated to steeringMode. |
 | `websockets` | boolean |  | Legacy setting migrated to transport. |
 

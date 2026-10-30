@@ -17,9 +17,11 @@ import { closeNames } from "../../../octocode/skill/catalog.ts";
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
 type CommandDispatchHost = Pick<
 	InteractiveModeHost,
+	| "chatContainer"
 	| "defaultEditor"
 	| "editor"
 	| "flushPendingBashComponents"
+	| "getMarkdownThemeWithSettings"
 	| "getSlashCommands"
 	| "handleBashCommand"
 	| "handleBugCommand"
@@ -211,7 +213,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			host.showTreeSelector();
 			return;
 		case "queue":
-			await host.showQueueManager();
+			host.showQueueManager();
 			return;
 		case "trust":
 			if (!args) await showTrustMenu(host);

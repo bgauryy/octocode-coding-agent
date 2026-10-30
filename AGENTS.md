@@ -40,6 +40,7 @@ Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Fo
 
 - `yarn run check` runs TypeScript, Oxlint, the Oxfmt format check, browser imports, workspace bundle freshness, package-boundary checks and the Pi-name ratchet without rewriting files.
 - `yarn run check:db-boundary` fails when SQL appears outside `octocode/agentdb/`.
+- `yarn run check:unused` runs Knip (`knip.jsonc`) for unused files, dependencies, exports and types; runtime-resolved packages and path-invoked entries are listed there with their reason.
 - `yarn run lint` runs Oxlint (`.oxlintrc.json`, type-aware through tsgolint on TypeScript 7) over all packages and scripts; `yarn run lint:fix` applies its safe fixes, which still need `tsc` afterwards. `yarn run format` formats code with Oxfmt (`.oxfmtrc.json`, Prettier-compatible).
 - Source files stay within 400 lines. The `max-lines` override in `.oxlintrc.json` lists the files that were longer when the rule was adopted; split one and remove it from the list (`scripts/check-max-lines-baseline.mjs` fails while a listed file fits). Never add files to it.
 - `scripts/pi-names-baseline.json` records the Pi tokens each file still has; `yarn run check:pi-names` fails when a file gains or loses some. Use Octocode names in new code. After removing Pi names, or when adding an intentional Pi reference (compatibility, attribution, history), run `node scripts/check-pi-names.mjs --update`.

@@ -176,7 +176,11 @@ describe("ACP persistent sessions", () => {
 
 	it.each([
 		["complete", "changed one file", "changed one file"],
-		["truncated", "x".repeat(30_000), "x".repeat(16_000 - 33) + "\n[Tool output truncated for ACP.]"],
+		[
+			"truncated",
+			"x".repeat(30_000),
+			`${"x".repeat(4_000)}\n[Tool output truncated for ACP: 14100 characters omitted.]\n${"x".repeat(11_900)}`,
+		],
 	])("replays %s stored tool results with explicit truncation in transcript order", async (_name, text, expected) => {
 		const manager = SessionManager.create(cwd);
 		manager.appendMessage({
