@@ -321,8 +321,8 @@ describe("agents view", () => {
 		expect(lines[0]).toContain("1 working · 1 idle");
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
 		expect(lines[1]).toContain("a-0001");
-		expect(lines[2]).toContain("└ b-0002");
-		expect(lines[2]).toMatch(/working\s+·\s+1m\s/);
+		expect(lines[2]).toContain("└ ⠋ b-0002");
+		expect(lines[2]).toMatch(/working\s+1m$/);
 		expect(lines[2]).toContain("→ localSearch foo");
 		expect(
 			widgetLines(
@@ -339,9 +339,11 @@ describe("agents view", () => {
 				theme,
 				200,
 			)[1],
-		).toMatch(/localSearch x$/);
+		).toContain("Find where tools register › localSearch x");
 		expect(widgetLines(list, undefined, now, theme, 200)).toEqual([]);
-		expect(lines.join("\n")).not.toContain("main-aaaaaa");
+		// This session is the root row, never one of the agent rows.
+		expect(lines[0]).toMatch(/^ ● main-aaaaaa /);
+		expect(lines.slice(1).join("\n")).not.toContain("main-aaaaaa");
 		expect(widgetLines([member("main-aaaaaa")], "main-aaaaaa", now, theme, 80)).toEqual([]);
 	});
 
@@ -392,7 +394,7 @@ describe("agents view", () => {
 describe("collaboration prompt", () => {
 	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
-			"own user communication, approvals and integration; check reports against acceptance checks",
+			"own user communication, approvals and integration, and verify reports against acceptance checks",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
@@ -406,7 +408,9 @@ describe("collaboration prompt", () => {
 			{ view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
 			fakePermission(),
 		);
-		expect(tools[0].parameters.properties.collaborate?.description).toMatch(/subagents that must coordinate directly/);
+		expect(tools[0].parameters.properties.collaborate?.description).toMatch(
+			/Adds teammate context.*does not enable messaging or grant authority/,
+		);
 		// A child names its parent generically: its own id and parent arrive in its task.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
 			/your parent[\s\S]*agent[\s\S]*message/,
@@ -426,7 +430,10 @@ describe("Team", () => {
 		const inbox = () => [] as Array<{ message: { content: string; details?: unknown }; options: unknown }>;
 		const [mainLog, childLog] = [inbox(), inbox()];
 		const fakeHost = (log: ReturnType<typeof inbox>) =>
-			({ sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }) }) as never;
+			({
+				sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }),
+				appendEntry: () => undefined,
+			}) as never;
 		try {
 			const main = new Team(fakeHost(mainLog), env);
 			main.start(ctx);
@@ -565,7 +572,9 @@ describe("team database schema", () => {
 		const { Team } = await Promise.resolve(importedModule2);
 		const file = path.join(tmp(), "other.sqlite");
 		exec(file, "CREATE TABLE notes (id INTEGER);");
-		const team = new Team({ sendMessage: () => undefined } as never, { OCTOCODE_AGENT_DB: file });
+		const team = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
+			OCTOCODE_AGENT_DB: file,
+		});
 		team.start({ cwd: repo(), isIdle: () => true } as never);
 		expect(() => team.join()).toThrow(/not an Octocode agent database/);
 		expect(team.snapshot()).toMatchObject({ members: [], error: expect.stringMatching(/Team database unavailable/) });
@@ -596,6 +605,7 @@ describe("Team safety", () => {
 				if (failing) throw new Error("not ready");
 				log.push({ message, options });
 			},
+			appendEntry: () => undefined,
 		} as never;
 		const main = new Team(api, env);
 		main.start(ctx);
@@ -622,7 +632,7 @@ describe("Team safety", () => {
 		vi.stubEnv("OCTOCODE_HOME", tmp());
 		try {
 			const { Team, cwd, file, env, ctx, main, me } = await setup();
-			const child = new Team({ sendMessage: () => undefined } as never, {
+			const child = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
 				...env,
 				OCTOCODE_AGENT_ID: "researcher-1234",
 				OCTOCODE_PARENT_ID: me.id,
@@ -665,7 +675,7 @@ describe("Team safety", () => {
 	it("treats a subagent as headless whether or not Octocode reports a UI (RPC does): it leaves the team once its run settles", async () => {
 		const { Team, cwd, env, main, me } = await setup();
 		const started = (id: string, extra: Record<string, string>) => {
-			const team = new Team({ sendMessage: () => undefined } as never, {
+			const team = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
 				...env,
 				OCTOCODE_AGENT_ID: id,
 				OCTOCODE_PARENT_ID: me.id,
@@ -691,7 +701,7 @@ describe("Team safety", () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		const { Team } = await Promise.resolve(importedModule2);
 		const cwd = repo();
-		const lonely = new Team({ sendMessage: () => undefined } as never, {
+		const lonely = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
 			OCTOCODE_AGENT_DB: path.join(tmp(), "none.sqlite"),
 		});
 		lonely.start({ cwd, isIdle: () => true } as never);
@@ -778,7 +788,9 @@ describe("Team safety", () => {
 		const raw = new DatabaseSync(foreign);
 		raw.exec("CREATE TABLE notes (id INTEGER);");
 		raw.close();
-		const solo = new Team({ sendMessage: () => undefined } as never, { OCTOCODE_AGENT_DB: foreign });
+		const solo = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
+			OCTOCODE_AGENT_DB: foreign,
+		});
 		solo.start({ cwd, isIdle: () => true } as never);
 		expect(solo.reservation(target, "a.ts")).toBeUndefined();
 		await edit(solo, "one", "two");
@@ -787,7 +799,7 @@ describe("Team safety", () => {
 
 		// A healthy database: a solo session still sees a peer's lease, and a busy database does not block it.
 		const { main, env } = await setup();
-		const lone = new Team({ sendMessage: () => undefined } as never, env);
+		const lone = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, env);
 		lone.start({ cwd, isIdle: () => true } as never);
 		try {
 			const peer = TeamStore.open(cwd, env.OCTOCODE_AGENT_DB);
@@ -854,7 +866,10 @@ describe("Team safety", () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		vi.useFakeTimers();
 		const { Team, cwd, file, env, ctx, log, main, me } = await setup();
-		const peer = new Team({ sendMessage: () => undefined } as never, { ...env, OCTOCODE_AGENT_ID: "peer-0001" });
+		const peer = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
+			...env,
+			OCTOCODE_AGENT_ID: "peer-0001",
+		});
 		try {
 			peer.start(ctx);
 			const target = path.join(cwd, "src", "a.ts");
@@ -934,7 +949,7 @@ describe("Team safety", () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		vi.useFakeTimers();
 		const { Team, env, ctx, log, main, fail } = await setup();
-		const child = new Team({ sendMessage: () => undefined } as never, {
+		const child = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
 			...env,
 			OCTOCODE_AGENT_ID: "researcher-1234",
 		});

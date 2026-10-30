@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
@@ -79,7 +79,8 @@ it("substitutes Claude session and skill variables after inserting literal argum
 	await harness.session.prompt('/paths "${CLAUDE_SKILL_DIR}"');
 	const user = harness.session.messages.find((message) => message.role === "user");
 	const text = user && getMessageText(user);
-	expect(text).toContain(`${root} | ${harness.session.sessionManager.getSessionId()} | ${root}`);
+	const canonicalRoot = realpathSync(root);
+	expect(text).toContain(`${canonicalRoot} | ${harness.session.sessionManager.getSessionId()} | ${canonicalRoot}`);
 	expect(text).not.toContain("${CLAUDE_PROJECT_DIR}");
 	expect(text).toContain("${UNKNOWN}");
 });

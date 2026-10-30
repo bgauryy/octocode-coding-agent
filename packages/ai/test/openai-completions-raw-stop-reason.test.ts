@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
 import type { Model } from "../src/types.ts";
@@ -7,33 +8,14 @@ const mockState = vi.hoisted(() => ({
 	chunks: [] as unknown[],
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: () => {
-					const chunks = mockState.chunks;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							for (const chunk of chunks) yield chunk;
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
-				},
-			},
-		};
-	}
-	return { default: FakeOpenAI };
+mockCompletionsFetch((_params: unknown) => {
+	const chunks = mockState.chunks;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			for (const chunk of chunks) yield chunk;
+		},
+	};
+	return completionsResponse(stream);
 });
 
 const model: Model<"openai-completions"> = {

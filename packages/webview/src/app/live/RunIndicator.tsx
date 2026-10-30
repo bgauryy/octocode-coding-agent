@@ -56,7 +56,7 @@ export function RunIndicator({
 				{phase.kind === "tool"
 					? `Running ${phase.name}`
 					: phase.kind === "waiting"
-						? `Waiting for you in the terminal${phase.awaiting.title ? `: ${phase.awaiting.title}` : ""}`
+						? `Waiting for you${phase.awaiting.id ? "" : " in the terminal"}${phase.awaiting.title ? `: ${phase.awaiting.title}` : ""}`
 						: LABELS[phase.kind]}
 			</span>
 			{stale && <span className="muted">last known</span>}

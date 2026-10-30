@@ -12,7 +12,7 @@ import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { getDeclaredTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { createClient } from "./openai-completions/client.ts";
-import { requestOpenAISdkStream } from "./openai-sdk-request.ts";
+import { requestCompletionsStream } from "./openai-completions/request.ts";
 import { getCompat } from "./openai-completions/compat.ts";
 import { buildParams } from "./openai-completions/params.ts";
 import {
@@ -61,6 +61,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				options?.fetch,
 				cacheSessionId,
 				compat,
+				options?.env,
 			);
 			let params = buildParams(
 				model,
@@ -78,9 +79,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
 			}
 			assertImageRequestPayload(model, params);
-			const openaiStream = await requestOpenAISdkStream(model, options, (requestOptions) =>
-				client.chat.completions.create(params, requestOptions),
-			);
+			const openaiStream = await requestCompletionsStream(model, client, params, options);
 			stream.push({ type: "start", partial: output });
 
 			const processor = createCompletionsChunkProcessor(

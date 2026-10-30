@@ -60,7 +60,6 @@ function populate(store: BacklogStore): void {
 		evidence: ["a:1 — x"],
 		why: "because",
 		plan: "steps",
-		body: "body text",
 	});
 	store.add({
 		title: "child",
@@ -131,7 +130,6 @@ describe("backlog snapshot", () => {
 			evidence: ["a:1 — x"],
 			why: "because",
 			plan: "steps",
-			body: "body text",
 			priority: "p2",
 		});
 		expect(ref("B1").derived).toHaveLength(2);

@@ -44,20 +44,20 @@ export function createShareTrailingEntries(
 	];
 }
 
-/** Share the current session as a private GitHub gist. */
+/** Share the current session as a secret GitHub gist: unlisted, but readable by anyone who has the link. */
 export async function shareSession(context: SessionShareContext): Promise<void> {
 	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-share-"));
 	const htmlFile = path.join(tempDir, "session.html");
 
 	try {
-		try {
-			const authResult = spawnSync("gh", ["auth", "status"], { encoding: "utf-8" });
-			if (authResult.status !== 0) {
-				context.showError("GitHub CLI is not logged in. Run 'gh auth login' first.");
-				return;
-			}
-		} catch {
+		// spawnSync reports a missing executable in `error`, not by throwing.
+		const authResult = spawnSync("gh", ["auth", "status"], { encoding: "utf-8" });
+		if (authResult.error) {
 			context.showError("GitHub CLI (gh) is not installed. Install it from https://cli.github.com/");
+			return;
+		}
+		if (authResult.status !== 0) {
+			context.showError("GitHub CLI is not logged in. Run 'gh auth login' first.");
 			return;
 		}
 
@@ -121,7 +121,9 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 		}
 
 		const previewUrl = getShareViewerUrl(gistId);
-		context.showStatus(`Share URL: ${hyperlink(previewUrl, previewUrl)}\nGist: ${hyperlink(gistUrl, gistUrl)}`);
+		context.showStatus(
+			`Share URL: ${hyperlink(previewUrl, previewUrl)}\nGist: ${hyperlink(gistUrl, gistUrl)}\nAnyone with the link can read it; delete it with: gh gist delete ${gistId}`,
+		);
 	} catch (error: unknown) {
 		if (!loader.signal.aborted) {
 			restoreEditor(loader, context);

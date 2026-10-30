@@ -191,6 +191,16 @@ describe("project trust", () => {
 		expect(await projectTrust(ctx(cwd))).toBe(false);
 	});
 
+	it("/trust never trusts without a review: no terminal UI means no decision", async () => {
+		const cwd = project({ ".codex/hooks.json": MCP });
+		const commands = new Subcommands();
+		registerTrustCommand(commands);
+		const headless = { ...ctx(cwd), hasUI: false, reload: vi.fn(async () => undefined) };
+		await commands.get("trust")!.handler("", headless as never);
+		expect(headless.reload).not.toHaveBeenCalled();
+		expect(projectTrustNow(ctx(cwd))).toBeUndefined();
+	});
+
 	it("trusts a project Octocode resolved trust for (it holds Octocode-protected resources) without asking", async () => {
 		const cwd = project({ ".octocode/agents/a.md": "# agent", ".octocode/settings.json": "{}" });
 		const trustedCtx = ctx(cwd);

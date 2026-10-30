@@ -1,4 +1,5 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
+import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
@@ -75,6 +76,8 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatMistralError(error);
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}

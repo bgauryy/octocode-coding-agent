@@ -1,0 +1,37 @@
+# Protocol and skills library assessment
+
+Reviewed 2026-10-29 against this checkout, installed packages, npm metadata and the primary sources below. Scores are engineering-fit judgments for Octocode, not benchmarks, security certifications or popularity rankings. A high score does not mean a library replaces host authorization, persistence, accounting or UI behavior.
+
+| Boundary | Choice | Fit | Decision |
+| --- | --- | --- | --- |
+| MCP request lifecycle and Streamable HTTP | `@modelcontextprotocol/client` | 9/10 | Use the official client, transport and OAuth primitives. Retain host credential isolation, redirect restrictions, body limits, total deadlines and process-tree cleanup. Remove legacy SSE transport. |
+| JWT signatures, claims and JWKS selection | `jose` | 9/10 | Use `jwtVerify` and `createRemoteJWKSet`. Keep the configured issuer, audience, algorithm, nonce and authorized-party checks in the application. |
+| Provider HTTP/SSE mechanics | Vercel AI SDK `@ai-sdk/provider-utils` | 9/10 | Use the SDK's HTTP and streaming primitives behind existing provider contracts. Do not import `eventsource-parser` directly. Its presence as an SDK dependency is accepted. |
+| Wholesale provider normalization | Vercel AI SDK provider adapters | 6/10 | A generic conversion can lose grammar tools, vendor beta fields, signed reasoning replay and subscription-specific transport behavior. Adopt only where existing compatibility tests demonstrate parity; installing unused adapters adds no value. |
+| Google and AWS provider protocols | Existing official Google/AWS SDKs | 9/10 | Keep SDK-owned authentication and wire formats. Product transcript conversion and cache accounting remain in Octocode. |
+| ACP | Existing `@agentclientprotocol/sdk` | 9/10 | Already delegated to the official SDK. Host sessions, permissions and MCP registration remain application policy. |
+| Local skill parsing | Existing `yaml` plus a small host adapter | 9/10 | Keep the external YAML parser. Preserve permissive Claude/Codex metadata, legacy layouts, source precedence and trust behavior. Fix discovery and snapshot bugs in their owners. |
+| Strict Agent Skills parsing/validation | `agent-skills-ts-sdk` | 6/10 for this loader; 8/10 for a new strict-spec host | A real embedded TypeScript library, unlike an installer CLI. Its syntax-only API is a candidate, but replacing our small YAML adapter does not remove discovery, compatibility, activation or trust logic. Do not add it without demonstrated net simplification and fixture parity. |
+| Skill installation CLI | npm `skills` | 2/10 as our embedded runtime | Excluded following the user's correction. Its CLI installs and updates skills; it is not a supported replacement for our agent's skill runtime. |
+| Remote skills over MCP | Official MCP `SkillsClient` in SDK 2.4+ | 9/10 for future remote support | Prefer its list/get/read and integrity verification when implementing this feature. Installed SDK 2.3.1 does not include that entry point; remote-skill integration is not claimed by this migration. |
+| Official `skills-ref` | Python reference implementation | 1/10 as a production dependency | Its own README describes it as demonstration-only. Use the specification as a reference, not this library as the runtime. |
+| Native RPC, compaction, cache policy and monitoring | Existing application modules | 9/10 for retaining ownership | These encode Octocode's behavior. Transport SDKs cannot decide which context to compact, how siblings share a cache group, how usage is attributed, or when users receive notifications. |
+
+## Skills integration boundary
+
+Skill discovery, metadata parsing and activation are different operations. The catalog places bounded metadata in the prompt; activation reads the selected body and supporting resources. Global/workspace precedence, project trust, explicit enablement, snapshot identity and child inheritance belong to the host. A library that parses `SKILL.md` does not replace those decisions.
+
+The local loader already uses an npm YAML parser. The useful corrective work is preserving the catalog's identity through activation, handling symlink cycles and refusing execution from a snapshot that no longer validates. Adopting a stricter parser without a compatibility adapter would reject inputs the host intentionally supports. An installer should not be invoked during skill activation.
+
+## Sources and version scope
+
+- [Official MCP v2 client](https://github.com/modelcontextprotocol/typescript-sdk/tree/main/packages/client): installed client/core **2.3.1**. Host imports remain compatible with the application's supported wire revisions; the SDK package version is not the negotiated protocol version.
+- [MCP client changelog](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/CHANGELOG.md): **2.4.0** adds `@modelcontextprotocol/client/ext/skills`; it verifies skill file sizes, digests and frontmatter. This is separate from the local filesystem loader.
+- [`jose` verification](https://github.com/panva/jose/blob/main/docs/jwt/verify/functions/jwtVerify.md), [remote JWKS](https://github.com/panva/jose/blob/main/docs/jwks/remote/functions/createRemoteJWKSet.md), and [application policy boundary](https://github.com/panva/jose/security/policy): installed **6.2.12**.
+- [Vercel provider utilities](https://github.com/vercel/ai/tree/main/packages/provider-utils): installed **5.0.33**. The installed package's public declarations and source establish the APIs used in this checkout.
+- [Agent Skills specification](https://agentskills.io/specification) and [client integration guidance](https://agentskills.io/integrate-skills).
+- [`agent-skills-ts-sdk` specification and parser distinction](https://github.com/WebMCP-org/agent-skills-ts-sdk/blob/main/SPECIFICATION.md): npm resolved **2.5.0** on the review date; no dependency added. The strict parser enforces required spec fields, while `parseSkillDocument` is syntax-only and preserves YAML types.
+- [`skills` package manifest](https://github.com/vercel-labs/skills/blob/main/package.json) and [CLI documentation](https://github.com/vercel-labs/skills/blob/main/README.md): npm resolved **1.7.4** on the review date. Not installed or integrated.
+- [`skills-ref` production limitation](https://github.com/agentskills/agentskills/blob/main/skills-ref/README.md).
+
+The [protocol audit](PROVIDER_PROTOCOL_AUDIT.md) records implementation and validation results. Live inference, account entitlements and measured cache-hit rates require separate provider runs; a passing mocked stream does not prove those properties.

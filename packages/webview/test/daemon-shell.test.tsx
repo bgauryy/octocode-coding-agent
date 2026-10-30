@@ -16,6 +16,25 @@ const sessions = {
 			startedAt: Date.now() - 60_000,
 			attached: true,
 		},
+		{
+			id: "blocked",
+			repoId: "r1",
+			repoName: "octo-repo",
+			cwd: "/work/blocked",
+			startedAt: Date.now() - 30_000,
+			attached: true,
+			busy: true,
+			needsYou: "Run rm -rf build?",
+		},
+		{
+			id: "working",
+			repoId: "r1",
+			repoName: "octo-repo",
+			cwd: "/work/working",
+			startedAt: Date.now() - 10_000,
+			attached: true,
+			busy: true,
+		},
 	],
 };
 const repos = {
@@ -51,10 +70,15 @@ afterEach(() => vi.unstubAllGlobals());
 describe("DaemonShell", () => {
 	it("lists live sessions with a link that opens that session's own live view", async () => {
 		render(<DaemonShell access="tok" />);
-		const link = await screen.findByRole("link", { name: "Open session" });
-		expect(link).toHaveAttribute("href", "/?s=sess%20one#activity");
-		expect(screen.getByText("octo-repo")).toBeInTheDocument();
+		const links = await screen.findAllByRole("link", { name: "Open session" });
+		expect(links[0]).toHaveAttribute("href", "/?s=sess%20one#activity");
+		expect(screen.getAllByText("octo-repo")).toHaveLength(3);
 		expect(screen.getByText("/work/octo")).toBeInTheDocument();
+		// Each session says what it is doing; a blocked one shows the question it waits on.
+		expect(screen.getByText("Live")).toBeInTheDocument();
+		expect(screen.getByText("Needs you")).toBeInTheDocument();
+		expect(screen.getByText("Run rm -rf build?")).toBeInTheDocument();
+		expect(screen.getByText("Working")).toBeInTheDocument();
 		expect(requests.every((request) => request.auth === "Bearer tok")).toBe(true);
 	});
 

@@ -127,7 +127,6 @@ export interface InteractiveModeState {
 	transcriptScrollView: TuiLayouts.ScrollView | undefined;
 	readonly ui: TUI;
 	unsubscribe: (() => void) | undefined;
-	unsubscribeMcpStatus: (() => void) | undefined;
 	readonly version: string;
 	readonly widgetContainerAbove: Container;
 	readonly widgetContainerBelow: Container;

@@ -5,6 +5,14 @@ import { SessionManager } from "../session-manager.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
 /** The file to import is not a usable session; nothing was copied and the current session is unchanged. */
+/** A session name the user typed is empty or too long: a usage problem, not a runtime failure. */
+export class SessionNameError extends Error {
+	constructor() {
+		super("Session name must contain 1–200 characters.");
+		this.name = "SessionNameError";
+	}
+}
+
 export class SessionImportInvalidError extends Error {
 	readonly filePath: string;
 

@@ -20,8 +20,7 @@ afterEach(() => {
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 const actor = { id: "session-test", kind: "human" as const };
-const add = (title = "Build it") =>
-	store.add({ title, goal: "Checks pass", reason: "Users need it", createdBy: "user" });
+const add = (title = "Build it") => store.add({ title, goal: "Checks pass", why: "Users need it", createdBy: "user" });
 
 function setup() {
 	const fake = fakeHost();
@@ -44,9 +43,8 @@ describe("backlog implementation handoff", () => {
 		let item = store.add({
 			title: "Fix login",
 			goal: "Login submits without freezing",
-			reason: "Users cannot sign in",
-			body: "Original diagnosis",
-			plan: "Add cancellation and a regression test",
+			why: "Users cannot sign in",
+			plan: "Original diagnosis",
 			paths: ["src/login.ts"],
 			evidence: ["src/login.ts:42 — unresolved request"],
 			tags: ["auth"],
@@ -56,7 +54,7 @@ describe("backlog implementation handoff", () => {
 			createdBy: "user",
 		});
 		const derived = store.add({ title: "Related follow-up", from: item.ref, createdBy: "user" });
-		item = store.update(item.ref, { body: "Current diagnosis" }, actor);
+		item = store.update(item.ref, { plan: "Current diagnosis\nAdd cancellation and a regression test" }, actor);
 		const comments = Array.from({ length: 25 }, (_, index) => `Comment ${String(index).padStart(2, "0")} requirement`);
 		for (const text of comments) item = store.comment(item.ref, text, { id: "reviewer", kind: "human" });
 		item = store.comment(item.ref, "Multiline requirement\nPreserve cancellation", actor);

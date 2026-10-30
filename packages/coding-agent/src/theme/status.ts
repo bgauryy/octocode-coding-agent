@@ -15,14 +15,22 @@ import type { ThemeColor } from "./theme-tokens.ts";
 export type { UiState };
 
 /** The colour role of each state: the only place a state picks its colour. */
-export const STATE_COLOR: Readonly<Record<UiState, ThemeColor>> = {
+export const STATE_COLOR = {
 	pending: "dim",
 	running: "accent",
 	waiting: "warning",
 	done: "success",
 	failed: "error",
 	stopped: "warning",
-};
+} as const satisfies Readonly<Record<UiState, ThemeColor>>;
+
+/** A footer status (text and tone as data) painted in the live theme; a status without a tone as written. */
+export function paintStatus(
+	status: { text: string; tone?: ThemeColor },
+	paint: { fg(color: ThemeColor, text: string): string },
+): string {
+	return status.tone ? paint.fg(status.tone, status.text) : status.text;
+}
 
 /** What a mark needs from a theme: token colours, and concrete colours for glows when the theme has them. */
 export interface MarkTheme {

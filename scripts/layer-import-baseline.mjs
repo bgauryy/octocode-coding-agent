@@ -21,7 +21,6 @@ export const LAYER_RULES = [
 			"coding-agent/src/octocode/shared/keys.ts",
 			"coding-agent/src/octocode/ui/activity.ts",
 			"coding-agent/src/octocode/ui/editor.ts",
-			"coding-agent/src/octocode/ui/thinking.ts",
 		],
 	},
 ];

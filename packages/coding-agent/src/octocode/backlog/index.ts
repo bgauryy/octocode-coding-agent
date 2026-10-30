@@ -22,7 +22,7 @@ interface RegisterBacklogOptions extends BacklogOptions {
 export function registerBacklog(
 	api: ExtensionAPI,
 	options: RegisterBacklogOptions,
-): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void> {
+): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<string> {
 	const { commands, open, ...backlogOptions } = options;
 
 	let currentContext: ExtensionContext | undefined;
@@ -43,7 +43,7 @@ export function registerBacklog(
 	const openWeb = options.openWeb ? sharedWorkspaceWeb(options.openWeb, backlogOptions.env) : undefined;
 	const openView = async (ctx: ExtensionCommandContext, view: "board" | "activity") => {
 		const backlog = openBacklog(ctx, backlogOptions);
-		await launch(
+		return launch(
 			backlog.store.repo + ":" + backlog.session,
 			async () => {
 				if (!openWeb)

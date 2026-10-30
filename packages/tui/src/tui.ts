@@ -13,8 +13,10 @@ import {
 	type TerminalColorScheme,
 	type TerminalColors,
 } from "./terminal-colors.ts";
-import { getCapabilities, setCellDimensions } from "./terminal-image/capabilities.ts";
+import { getCapabilities, kittyPlaceholderMode, setCellDimensions } from "./terminal-image/capabilities.ts";
+import { TmuxImageReupload } from "./terminal-image/tmux-reupload.ts";
 import { isImageLine } from "./terminal-image.ts";
+import { FOCUS_IN } from "./tui-alt-screen/constants.ts";
 import { visibleWidth } from "./utils/width.ts";
 import { extractSegments, sliceByColumn, sliceWithWidth } from "./utils/columns.ts";
 import { normalizeTerminalOutput } from "./utils.ts";
@@ -591,6 +593,7 @@ export abstract class TuiBase extends Container implements TUI {
 	private clearOnShrink = false;
 	protected fullRedrawCount = 0;
 	protected stopped = false;
+	private readonly imageReupload = new TmuxImageReupload();
 	/**
 	 * Color queries waiting for their DA1 reply, oldest first. Terminals answer in order, so color
 	 * replies belong to the oldest one. Queries stay here after a timeout to collect late replies.
@@ -623,6 +626,11 @@ export abstract class TuiBase extends Container implements TUI {
 	protected abstract doRender(): void;
 
 	protected resetRenderState(): void {}
+
+	/** The lines last written to the terminal, scanned for image uploads to send again. */
+	protected renderedLines(): readonly string[] {
+		return [];
+	}
 
 	protected beforeTerminalStart(): void {}
 
@@ -1287,6 +1295,15 @@ export abstract class TuiBase extends Container implements TUI {
 		}
 		if (this.consumeTerminalColorSchemeReport(data)) {
 			return;
+		}
+		// tmux sends a focus-in when a client attaches; it does not consume the event.
+		if (data === FOCUS_IN && kittyPlaceholderMode()) {
+			void this.imageReupload.focusIn(
+				() => this.renderedLines(),
+				(uploads) => {
+					if (!this.stopped) this.terminal.write(uploads);
+				},
+			);
 		}
 
 		if (this.inputListeners.size > 0) {

@@ -138,9 +138,14 @@ export async function runContextCommand(args: readonly string[], options: Contex
 	const log = options.log ?? ((line: string) => console.log(line));
 	const error = options.error ?? ((line: string) => console.error(line));
 	const [action, ...rest] = args;
-	if (!action || action === "--help" || action === "-h" || action === "help") {
+	// `octocode context <action> --help` works like `octocode context --help`; a missing action is a usage error (stderr).
+	if (action === "--help" || action === "-h" || action === "help" || rest.includes("--help") || rest.includes("-h")) {
 		log(CONTEXT_USAGE);
-		return action ? 0 : 1;
+		return 0;
+	}
+	if (!action) {
+		error(CONTEXT_USAGE);
+		return 1;
 	}
 	try {
 		const { values } = parseArgs({

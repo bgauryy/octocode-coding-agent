@@ -54,6 +54,33 @@ describe("awaiting", () => {
 		expect(service.getSnapshot().awaiting).toBeUndefined();
 	});
 
+	it("carries the dialog id, options and text acceptance so a client can answer, and tracks nested dialogs", async () => {
+		const { service, fake } = setup();
+		const running = fakeCtx({ cwd: "/x", idle: false });
+		await fake.emit(
+			"ui_prompt_start",
+			{ kind: "select", title: "Pick", id: "d1", options: ["Type my own", "A"], allowsText: false },
+			running,
+		);
+		expect(service.getSnapshot().awaiting).toEqual({
+			kind: "question",
+			title: "Pick",
+			id: "d1",
+			options: ["Type my own", "A"],
+			allowsText: false,
+		});
+		await fake.emit(
+			"ui_prompt_start",
+			{ kind: "input", title: "Your answer", id: "d2", allowsText: true, nested: true },
+			running,
+		);
+		expect(service.getSnapshot().awaiting).toMatchObject({ id: "d2", allowsText: true });
+		await fake.emit("ui_prompt_end", { kind: "input", id: "d2", nested: true }, running);
+		expect(service.getSnapshot().awaiting).toMatchObject({ id: "d1" });
+		await fake.emit("ui_prompt_end", { kind: "select", id: "d1" }, running);
+		expect(service.getSnapshot().awaiting).toBeUndefined();
+	});
+
 	it("ignores dialogs the user opens while no run is active", async () => {
 		const { service, fake } = setup();
 		const idle = fakeCtx({ cwd: "/x", idle: true });

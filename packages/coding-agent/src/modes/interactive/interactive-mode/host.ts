@@ -183,7 +183,7 @@ export interface InteractiveModeMethods {
 	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
 	setExtensionFooter: ExtensionUIContext["setFooter"];
 	setExtensionHeader: ExtensionUIContext["setHeader"];
-	setExtensionStatus(key: string, text: string | undefined): void;
+	setExtensionStatus: ExtensionUIContext["setStatus"];
 	setExtensionWidget(
 		key: string,
 		content: string[] | ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined,

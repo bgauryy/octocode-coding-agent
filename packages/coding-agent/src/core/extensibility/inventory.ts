@@ -1,8 +1,11 @@
+import path from "node:path";
 import { getBundledSkillsDir } from "../../config.ts";
 import { HOOK_CATALOG, HOOK_EVENTS } from "../../octocode/hooks/catalog.ts";
 import { hookFiles, hookLabel, loadHooks } from "../../octocode/hooks/config.ts";
 import { hookSwitchedOn, hookToggleIds } from "../../octocode/hooks/config/toggles.ts";
 import { tildePath } from "../../octocode/shared/home.ts";
+import { repoKey } from "../../octocode/shared/home/repo.ts";
+import { clipText } from "../../octocode/shared/util.ts";
 import { DefaultPackageManager } from "../package-manager.ts";
 import { buildGroups, type ResourceItem } from "../package-manager/resource-groups.ts";
 import { discoverPluginComponents } from "../plugin-components.ts";
@@ -13,6 +16,7 @@ import { configuredPlugins } from "../plugin-settings.ts";
 import { resolveExtensionFactories } from "../resource-loader/builtins.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
+import { hostInstalledPlugins } from "./host-plugins.ts";
 import {
 	effectivePlugins,
 	hookHostToggleId,
@@ -47,6 +51,8 @@ export interface InventoryItem {
 	parents?: string[];
 	/** For extensions: the resource the existing `extensions` patterns switch. */
 	resource?: ResourceItem;
+	/** For a plugin another host installed: the `plugins` entry switching it on adds. */
+	install?: { path: string; protocol: "claude" | "codex" };
 }
 
 export interface Inventory {
@@ -57,6 +63,9 @@ export interface Inventory {
 	ignored: string[];
 	notes: string[];
 }
+
+export const EMPTY_INVENTORY =
+	'Nothing configured yet. Add plugins under "plugins" in settings.json, hooks in a hook file, or extensions in extensions/.';
 
 export const HOST_TITLES: Record<InventoryHost, string> = {
 	claude: "Claude Code",
@@ -115,15 +124,22 @@ function pluginItems(settings: Settings, cwd: string, notes: string[]): Inventor
 function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, home?: string): InventoryItem[] {
 	const toggles = settings.toggles;
 	const { config } = loadHooks(cwd, projectTrusted, home, { plugins: effectivePlugins(settings, cwd) });
-	const byHost = new Map<ToggleHost, Map<string, { project: boolean; hooks: InventoryItem[] }>>();
+	const byHost = new Map<ToggleHost, Map<string, { project: boolean; label: string; hooks: InventoryItem[] }>>();
 	for (const event of HOOK_EVENTS)
 		for (const group of config[event])
 			for (const hook of group.hooks) {
 				const host = hook.protocol ?? "octocode";
 				const source = tildePath(hook.source, home);
-				const files = byHost.get(host) ?? new Map<string, { project: boolean; hooks: InventoryItem[] }>();
+				const files =
+					byHost.get(host) ?? new Map<string, { project: boolean; label: string; hooks: InventoryItem[] }>();
 				byHost.set(host, files);
-				const file = files.get(source) ?? { project: insideProject(hook.source, cwd), hooks: [] };
+				const project = insideProject(hook.source, cwd);
+				const file = files.get(source) ?? {
+					project,
+					// Repository files read best relative to the repository, user files relative to home.
+					label: project ? `${path.relative(repoKey(cwd).root, hook.source)} (project)` : source,
+					hooks: [],
+				};
 				files.set(source, file);
 				const gate = "gate" in HOOK_CATALOG[event] && (hook.failClosed === true || hook.onFailure === "block");
 				file.hooks.push({
@@ -132,9 +148,9 @@ function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, hom
 					host,
 					kind: "hook",
 					depth: 2,
-					label: `${event} [${group.matcher || "*"}] ${hookLabel(hook)}`,
+					label: `${event} [${group.matcher || "*"}] ${clipText(hookLabel(hook), 48)}`,
 					on: hookSwitchedOn(event, group.matcher, hook, toggles, cwd, home),
-					detail: gate ? "gate: denies when it fails" : "",
+					detail: [...(gate ? ["gate: denies when it fails"] : []), hookLabel(hook)].join(" · "),
 					...(file.project ? { project: true as const } : {}),
 					...(gate ? { gate: true as const } : {}),
 				});
@@ -160,7 +176,7 @@ function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, hom
 					host,
 					kind: "hook-file",
 					depth: 1,
-					label: source,
+					label: file.label,
 					on: isSwitchedOn([id, hostId], toggles, file.project),
 					parents: [hostId],
 					detail: `${count(file.hooks, "hook")}${file.project ? " · project" : ""}`,
@@ -225,8 +241,21 @@ export async function buildInventory(options: {
 	home?: string;
 }): Promise<Inventory> {
 	const notes: string[] = [];
+	const configured = new Set((options.settings.plugins ?? []).map((entry) => path.resolve(entry.path)));
 	const items = [
 		...pluginItems(options.settings, options.cwd, notes),
+		...hostInstalledPlugins(options.home)
+			.filter((plugin) => !configured.has(plugin.path))
+			.map((plugin): InventoryItem => ({
+				id: `installed:${plugin.path}`,
+				host: plugin.host,
+				kind: "plugin",
+				depth: 0,
+				label: `${plugin.id} (installed in ${HOST_TITLES[plugin.host]})`,
+				on: false,
+				detail: `${plugin.enabledThere ? "enabled" : "disabled"} there · not added to Octocode; switch on to add it (hooks and MCP still need review)`,
+				install: { path: plugin.path, protocol: plugin.protocol },
+			})),
 		...hookItems(options.settings, options.cwd, options.projectTrusted, options.home),
 		...(await extensionItems(options.manager, options.cwd, options.agentDir)),
 	];
@@ -253,17 +282,14 @@ export function renderInventory(inventory: Inventory): string {
 		lines.push(HOST_TITLES[host]);
 		for (const item of rows)
 			lines.push(
-				`${"  ".repeat(item.depth + 1)}[${item.on ? "x" : " "}] ${item.label}${item.detail ? ` — ${item.detail}` : ""}  ${item.id}`,
+				`${"  ".repeat(item.depth + 1)}[${item.locked ? "-" : item.on ? "x" : " "}] ${item.label}${item.detail ? ` — ${item.detail}` : ""}  ${item.id}`,
 			);
 	}
-	if (!lines.length)
-		lines.push(
-			'Nothing configured. Add plugins to "plugins" in settings.json, hooks to a hook file, or extensions to extensions/.',
-		);
+	if (!lines.length) lines.push(EMPTY_INVENTORY);
 	if (inventory.stale.length)
 		lines.push(
 			"",
-			"Stale switches (match nothing now; remove with /plugins enable <id>):",
+			"Stale switches (they match nothing now; /plugins enable <id> clears one):",
 			...inventory.stale.map((id) => `  ${id}`),
 		);
 	if (inventory.ignored.length)

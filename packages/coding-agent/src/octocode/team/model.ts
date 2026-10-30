@@ -21,6 +21,10 @@ export interface Message {
 	interrupt?: boolean;
 	/** Set on a message the user typed for this recipient: the signature the parent made with the secret it gave the recipient (`userProof`). */
 	proof?: string;
+	/** Set when another agent forwarded this stored message to the recipient (`from` stays the original sender). */
+	forwardedBy?: string;
+	/** The forwarder's short note to this recipient. */
+	note?: string;
 }
 
 /** How a message is sent: whether it asks for a reply, which message it answers, and whether it interrupts. */
@@ -45,6 +49,8 @@ export interface DeadLetter {
 	/** The recipients that read it but left without answering a `replyRequired` question (the others never read it). */
 	read?: string[];
 	text: string;
+	/** Set when it was a relay through the sender's parent (`recipients` is that parent): the agent it was for, and why it failed. */
+	relay?: { to: string; reason?: string };
 }
 
 export interface Lease {
@@ -142,6 +148,8 @@ export function toMessage(row: Row, to: string): Message {
 	const wake = row.wake;
 	const role = optionalString(row.sender_role);
 	const goal = optionalString(row.sender_goal);
+	const forwardedBy = optionalString(row.forwarded_by);
+	const note = optionalString(row.note);
 	return {
 		id: num(row.id),
 		from: String(row.sender),
@@ -154,5 +162,7 @@ export function toMessage(row: Row, to: string): Message {
 		...(wake === WAKE.interrupt ? { interrupt: true } : {}),
 		...(typeof row.proof === "string" ? { proof: row.proof } : {}),
 		...(role ? { sender: { role, ...(goal ? { goal } : {}) } } : {}),
+		...(forwardedBy ? { forwardedBy } : {}),
+		...(forwardedBy && note ? { note } : {}),
 	};
 }

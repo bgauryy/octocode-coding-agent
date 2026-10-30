@@ -1,5 +1,7 @@
 import chalk from "chalk";
-import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME } from "../config.ts";
+import { join } from "node:path";
+import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
+import { tildePath } from "../octocode/shared/home.ts";
 
 export type PackageCommand = "install" | "remove" | "update" | "list";
 
@@ -23,7 +25,7 @@ export function printConfigCommandHelp(): void {
   ${CONFIG_COMMAND_USAGE}
 
 Open the resource configuration TUI to enable or disable package resources.
-Without -l, starts in global settings (~/${CONFIG_DIR_NAME}/agent/settings.json).
+Without -l, starts in global settings (${tildePath(join(getAgentDir(), "settings.json"))}).
 Press Tab in the TUI to switch between global and project-local modes.
 
 Options:

@@ -1,17 +1,13 @@
+import { commands } from "../agentdb/api.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { Value } from "typebox/value";
 import { WorkspaceCommandSchema } from "@octocodeai/octocode-contacts/protocol";
 import { storedSecret } from "../shared/sanitize.ts";
 import type { WorkspaceCommand, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
 
-type Row = {
-	id: string;
-	backlog_id: string | null;
+type Row = Omit<commands.CommandRow, "action" | "status"> & {
 	action: WorkspaceReceipt["action"];
-	input: string;
 	status: WorkspaceReceipt["status"];
-	at: number;
-	message: string;
 };
 const receipt = (row: Row): WorkspaceReceipt => ({
 	id: row.id,
@@ -33,15 +29,7 @@ export class WorkspaceCommands {
 		this.session = session;
 	}
 	list(): WorkspaceReceipt[] {
-		return (
-			this.db.db
-				.prepare(
-					"SELECT * FROM workspace_commands WHERE repo_key = ? AND session_id = ? AND action IN ('work', 'delegate', 'message', 'stop') ORDER BY at DESC LIMIT 100",
-				)
-				.all(this.repo, this.session) as unknown as Row[]
-		)
-			.reverse()
-			.map(receipt);
+		return (commands.recentWorkspace(this.db.db, this.repo, this.session) as Row[]).reverse().map(receipt);
 	}
 	begin(command: WorkspaceCommand): { fresh: boolean; receipt: WorkspaceReceipt } {
 		if (!Value.Check(WorkspaceCommandSchema, command)) throw new Error("Invalid workspace command");
@@ -55,20 +43,26 @@ export class WorkspaceCommands {
 		});
 		return this.db.withActor({ id: "user", kind: "human" }, () =>
 			this.db.transaction(() => {
-				const existing = this.db.db
-					.prepare("SELECT * FROM workspace_commands WHERE repo_key = ? AND session_id = ? AND id = ?")
-					.get(this.repo, this.session, command.id) as Row | undefined;
+				const existing = commands.byId(this.db.db, this.repo, this.session, command.id) as Row | undefined;
 				if (existing) {
 					if (existing.input !== input) throw new Error("This request ID was already used for different input.");
 					return { fresh: false, receipt: receipt(existing) };
 				}
 				const at = Date.now();
 				const message = "Request recorded; delivery pending. Do not resend if the session disconnects.";
-				this.db.db
-					.prepare(
-						"INSERT INTO workspace_commands(id, session_id, repo_key, backlog_id, action, input, status, at, message) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
-					)
-					.run(command.id, this.session, this.repo, command.backlogId ?? null, command.action, input, at, message);
+				commands.insertPending(
+					this.db.db,
+					{
+						id: command.id,
+						session: this.session,
+						repo: this.repo,
+						backlogId: command.backlogId ?? null,
+						action: command.action,
+						input,
+					},
+					at,
+					message,
+				);
 				return {
 					fresh: true,
 					receipt: {
@@ -86,16 +80,8 @@ export class WorkspaceCommands {
 	finish(id: string, status: "accepted" | "failed", message: string): WorkspaceReceipt {
 		return this.db.withActor({ id: "user", kind: "human" }, () =>
 			this.db.transaction(() => {
-				this.db.db
-					.prepare(
-						"UPDATE workspace_commands SET status = ?, message = ? WHERE repo_key = ? AND session_id = ? AND id = ?",
-					)
-					.run(status, message, this.repo, this.session, id);
-				return receipt(
-					this.db.db
-						.prepare("SELECT * FROM workspace_commands WHERE repo_key = ? AND session_id = ? AND id = ?")
-						.get(this.repo, this.session, id) as Row,
-				);
+				commands.setStatus(this.db.db, this.repo, this.session, id, status, message);
+				return receipt(commands.byId(this.db.db, this.repo, this.session, id) as Row);
 			}),
 		);
 	}

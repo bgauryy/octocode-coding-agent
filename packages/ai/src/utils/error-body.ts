@@ -30,6 +30,7 @@ type SdkErrorShape = Error & {
 	statusCode?: unknown;
 	status?: unknown;
 	body?: unknown;
+	responseBody?: unknown;
 	error?: unknown;
 	$metadata?: { httpStatusCode?: unknown };
 	$response?: { statusCode?: unknown; body?: unknown };
@@ -83,6 +84,7 @@ function extractBody(error: SdkErrorShape): string | undefined {
 
 function pickBodyText(error: SdkErrorShape): string | undefined {
 	if (typeof error.body === "string") return error.body;
+	if (typeof error.responseBody === "string") return error.responseBody;
 	if (isPlainNonEmptyObject(error.error)) return safeJsonStringify(error.error);
 	const responseBody = error.$response?.body;
 	if (typeof responseBody === "string") return responseBody;

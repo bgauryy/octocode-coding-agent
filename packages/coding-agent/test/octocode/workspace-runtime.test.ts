@@ -60,7 +60,7 @@ function setup(
 		repoRoot: dir,
 	};
 	const connection = runtime.bind(ctx, backlog);
-	const item = store.add({ title: "Fix login", goal: "Tests pass", reason: "Users are blocked", createdBy: "user" });
+	const item = store.add({ title: "Fix login", goal: "Tests pass", why: "Users are blocked", createdBy: "user" });
 	const command = { id: "work-1", action: "work" as const, backlogId: item.ref, version: item.version };
 	return { ...fake, ctx, session, application, runtime, backlog, connection, tell, stop, item, command };
 }

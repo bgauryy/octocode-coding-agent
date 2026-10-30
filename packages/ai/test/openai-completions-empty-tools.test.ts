@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { streamSimple } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -8,49 +9,26 @@ import { getBuiltinModel } from "../src/providers/all.ts";
 
 const mockState = vi.hoisted(() => ({
 	lastParams: undefined as unknown,
-	lastClientOptions: undefined as unknown,
+	lastRequest: undefined as unknown,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		constructor(options: unknown) {
-			mockState.lastClientOptions = options;
-		}
-
-		chat = {
-			completions: {
-				create: (params: unknown) => {
-					mockState.lastParams = params;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								choices: [{ delta: {}, finish_reason: "stop" }],
-								usage: {
-									prompt_tokens: 1,
-									completion_tokens: 1,
-									prompt_tokens_details: { cached_tokens: 0 },
-									completion_tokens_details: { reasoning_tokens: 0 },
-								},
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
+mockCompletionsFetch((params: unknown, request, url) => {
+	mockState.lastRequest = { url, headers: Object.fromEntries(new Headers(request.headers)) };
+	mockState.lastParams = params;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			yield {
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1,
+					completion_tokens: 1,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 0 },
 				},
-			},
-		};
-	}
-
-	return { default: FakeOpenAI };
+			};
+		},
+	};
+	return completionsResponse(stream);
 });
 
 describe("openai-completions empty tools handling", () => {
@@ -58,7 +36,7 @@ describe("openai-completions empty tools handling", () => {
 
 	beforeEach(() => {
 		mockState.lastParams = undefined;
-		mockState.lastClientOptions = undefined;
+		mockState.lastRequest = undefined;
 	});
 
 	it("omits tools field when context.tools is an empty array", async () => {
@@ -190,13 +168,13 @@ describe("openai-completions empty tools handling", () => {
 		expect(params.reasoning_effort).toBeUndefined();
 		expect(params.store).toBeUndefined();
 
-		const clientOptions = mockState.lastClientOptions as {
-			baseURL?: string;
-			defaultHeaders?: Record<string, unknown>;
+		const request = mockState.lastRequest as {
+			url?: string;
+			headers?: Record<string, unknown>;
 		};
-		expect(clientOptions.baseURL).toBe("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/compat");
-		expect(clientOptions.defaultHeaders?.Authorization).toBeNull();
-		expect(clientOptions.defaultHeaders?.["cf-aig-authorization"]).toBe("Bearer cf-token");
+		expect(request.url).toBe("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/compat/chat/completions");
+		expect(request.headers?.authorization).toBeUndefined();
+		expect(request.headers?.["cf-aig-authorization"]).toBe("Bearer cf-token");
 	});
 
 	it("resolves Cloudflare AI Gateway base URL through provider auth", async () => {
@@ -209,8 +187,8 @@ describe("openai-completions empty tools handling", () => {
 			messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
 		}).result();
 
-		const clientOptions = mockState.lastClientOptions as { baseURL?: string };
-		expect(clientOptions.baseURL).toBe("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/compat");
+		const request = mockState.lastRequest as { url?: string };
+		expect(request.url).toBe("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/compat/chat/completions");
 	});
 
 	it("preserves inline upstream Authorization for Cloudflare AI Gateway BYOK requests", async () => {
@@ -256,10 +234,10 @@ describe("openai-completions empty tools handling", () => {
 			{ sessionId: "session-1" },
 		).result();
 
-		const clientOptions = mockState.lastClientOptions as { defaultHeaders?: Record<string, string> };
-		expect(clientOptions.defaultHeaders?.session_id).toBe("session-1");
-		expect(clientOptions.defaultHeaders?.["x-client-request-id"]).toBe("session-1");
-		expect(clientOptions.defaultHeaders?.["x-session-affinity"]).toBe("session-1");
+		const request = mockState.lastRequest as { headers?: Record<string, string> };
+		expect(request.headers?.session_id).toBe("session-1");
+		expect(request.headers?.["x-client-request-id"]).toBe("session-1");
+		expect(request.headers?.["x-session-affinity"]).toBe("session-1");
 	});
 
 	it("still emits tools: [] for Anthropic/LiteLLM proxy when conversation has tool history", async () => {

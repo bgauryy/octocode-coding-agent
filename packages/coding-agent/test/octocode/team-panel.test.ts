@@ -91,9 +91,9 @@ describe("agents panel", () => {
 		);
 		expect(rows[1]).toContain("research-a");
 		expect(rows[1]).toContain("working");
-		// One head row (name, state, elapsed) and one detail row; no `age`/`model` labels.
+		// One head row (tree, name, state, elapsed; the model only when it fits whole) and one detail row; no labels.
 		expect(rows).toHaveLength(3);
-		expect(rows[1]).toMatch(/^ ⠋ research-a · working · 1m$/);
+		expect(rows[1]).toMatch(/^ └ ⠋ research-a · working · 1m$/);
 		expect(rows.join("\n")).not.toMatch(/\b(age|model)\b/);
 		expect(rows.every((row) => visibleWidth(row) <= 48)).toBe(true);
 	});
@@ -102,9 +102,9 @@ describe("agents panel", () => {
 		const agents = [member("research-a", { parentId: "main", goal: "Inspect ".repeat(20) })];
 		const before = widgetLines(agents, "main", NOW, theme, 32);
 		const after = widgetLines(agents, "main", NOW + 5_000, theme, 32);
-		expect(before[1]).toBe(" ○ research-a · idle · 1m");
-		expect(after[1]).toBe(" ○ research-a · idle · 1m05s");
-		expect(before[2]).toMatch(/^ {3}Inspect Inspect/);
+		expect(before[1]).toBe(" └ ○ research-a · idle · 1m");
+		expect(after[1]).toBe(" └ ○ research-a · idle · 1m05s");
+		expect(before[2]).toMatch(/^ {5}Inspect Inspect/);
 		expect(before).toHaveLength(3);
 	});
 
@@ -161,43 +161,38 @@ describe("agents panel", () => {
 		expect(rows.every((row) => visibleWidth(row) <= 160)).toBe(true);
 	});
 
-	it("shows the header totals, model, state, age, tools and what each agent is doing now, working first", () => {
+	it("roots the list at this session's totals, then model, state, age, tokens, tools and what each agent is doing now, working first", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 200);
-		expect(lines[0]).toBe(" agents · 2 working · 1 idle · ≈$0.04");
 		const squash = (line: string | undefined) => line!.replace(/ +/g, " ");
+		expect(squash(lines[0])).toBe(" ● main-aaaaaa main 2 working · 1 idle · 20k tok · ≈$0.04");
 		expect(squash(lines[1])).toBe(
-			" ⠋ researcher-3fa9 · Find where tools register · claude-opus-4-5 · working · 2m14s · ↑12k ↓3k · 12 tool calls · ≈$0.04 localSearch registerTool",
+			" ├ ⠋ researcher-3fa9 Find where tools register › localSearch registerTool claude-opus-4-5 working 2m14s 15k tok 12 tool calls ≈$0.04",
 		);
-		// A grandchild sits under its parent, indented; one without a goal leaves its cell empty, one without usage its tokens.
-		expect(squash(lines[2])).toBe(
-			" ⠋ └ general-77aa · · claude-haiku-4-5 · working · 5s · · 1 tool call bash yarn test",
-		);
-		expect(squash(lines[3])).toBe(
-			" ○ reviewer-a1b2 · Review the diff · gpt-5 · idle · 45s · ↑4k ↓1k · 3 tool calls · · ✉ 1 waiting 1 lock",
-		);
-		// The role (the profile, `researcher`) is not a column: the name and goal say who and what.
-		expect(lines.slice(1).join("\n")).not.toMatch(/· (researcher|reviewer|general) ·/);
+		// A grandchild sits under its parent with the tree line beside it; no goal or usage leaves those cells empty.
+		expect(squash(lines[2])).toBe(" │ └ ⠋ general-77aa bash yarn test claude-haiku-4-5 working 5s 1 tool call");
+		expect(squash(lines[3])).toBe(" └ ○ reviewer-a1b2 Review the diff ✉ 1 · 1 lock gpt-5 idle 45s 5k tok 3 tool calls");
+		// A role the id already starts with (`researcher-3fa9`) is not repeated.
+		expect(lines.slice(1).join("\n")).not.toMatch(/ (researcher|reviewer|general) /);
 		// Provider prefixes stay out of the panel.
 		expect(lines.join("\n")).not.toMatch(/anthropic\//);
 	});
 
-	it("drops cost, tools, flags and finally tokens before squeezing the activity, then shortens the goal", () => {
+	it("drops per-agent cost and tools first, keeps tokens, and shortens the goal before the activity; then two lines", () => {
 		const medium = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
 		expect(medium.every((line) => visibleWidth(line) <= 120)).toBe(true);
 		expect(medium[1]).not.toContain("$0.04");
 		expect(medium[1]).not.toContain("12 tool calls");
-		expect(medium[1]).toContain("Find where tools register");
-		expect(medium[1]).toContain("localSearch registerTool");
+		for (const kept of ["claude-opus-4-5", "working", "2m14s", "15k tok", "› localSearch registerTool"])
+			expect(medium[1]).toContain(kept);
+		expect(medium[1]).toMatch(/Find where[^›]*… ›/);
 		const narrow = widgetLines(team, "main-aaaaaa", NOW, theme, 90);
 		expect(narrow.every((line) => visibleWidth(line) <= 90)).toBe(true);
-		for (const kept of ["claude-opus-4-5", "working", "2m14s"]) expect(narrow[1]).toContain(kept);
-		expect(narrow[1]).not.toContain("↑12k");
-		expect(narrow[1]).not.toContain("Find where tools register");
-		expect(narrow[1]).toMatch(/Find where[^·]*…/);
-		expect(narrow[1]).toContain("localSearch");
+		expect(narrow[1]).toBe(" ├ ⠋ researcher-3fa9 · working · 2m14s · 15k tok · claude-opus-4-5");
+		expect(narrow[2]).toBe(" │   localSearch registerTool");
+		expect(narrow.join("\n")).toContain("✉ 1 · 1 lock");
 	});
 
-	it("keeps a long activity readable at 120 columns by dropping tokens, not by cutting it to a stub", () => {
+	it("keeps a long activity readable at 120 columns by shortening the goal, not by dropping tokens or the cached share", () => {
 		const busy = member("glowing-prawn", {
 			parentId: "main-aaaaaa",
 			status: "working",
@@ -210,10 +205,14 @@ describe("agents panel", () => {
 			activity: "Running shell: sleep 25",
 		});
 		const row = widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 120)[1];
-		expect(row).toContain("Running shell: sleep 25");
-		expect(row).not.toContain("cached");
-		// With room (200 columns) the tokens stay.
-		expect(widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 200)[1]).toContain("cached");
+		expect(row).toContain("› Running shell: sleep 25");
+		expect(row).toMatch(/ask parent a[^›]*… ›/);
+		expect(row).toContain("58.5k tok");
+		expect(row).toContain("100% cached");
+		// With room (200 columns) the whole goal shows too.
+		expect(widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 200)[1]).toContain(
+			"ask parent a color, sleep, report › Running shell: sleep 25",
+		);
 	});
 
 	it("keeps a finished agent as a final done row for ten seconds, after the live ones", () => {
@@ -222,13 +221,13 @@ describe("agents panel", () => {
 		const main = member("main-aaaaaa");
 		const live = member("wobbly-siphon", { parentId: "main-aaaaaa", status: "working" });
 		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
-		expect(lines[0]).toBe(" agents · 1 working · 1 done");
+		expect(lines[0]).toBe(" ● main-aaaaaa  main  1 working · 1 done");
 		expect(lines[1]).toContain("wobbly-siphon");
-		expect(lines[2]).toMatch(/^ ✓ sly-crab +· done +· 15s/);
+		expect(lines[2]).toMatch(/^ └ ✓ sly-crab +done +15s/);
 		expect(lines[2]).not.toContain("working");
 		// The elapsed time stays the run's length while the row is shown (ten seconds after it left, inclusive).
 		const later = widgetLines([main, live], "main-aaaaaa", NOW + 1_000, theme, 120, [], undefined, finished);
-		expect(later[2]).toMatch(/done +· +15s/);
+		expect(later[2]).toMatch(/done +15s/);
 		// Then the row is gone; a lone finished agent keeps the panel for those ten seconds only.
 		expect(widgetLines([main, live], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toHaveLength(2);
 		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(2);
@@ -238,7 +237,7 @@ describe("agents panel", () => {
 		expect(row).toBe(" ✓ sly-crab · done · 15s");
 	});
 
-	it("shows cache reads apart from new tokens and marks a model without pricing in the row and the header", () => {
+	it("shows every token with the cached share and marks a model without pricing in the row and the root row", () => {
 		const priced = member("researcher-3fa9", {
 			parentId: "main-aaaaaa",
 			toolCalls: 2,
@@ -257,9 +256,9 @@ describe("agents panel", () => {
 		const lines = widgetLines([member("main-aaaaaa"), priced, free], "main-aaaaaa", NOW, theme, 200).map((line) =>
 			line.replace(/ +/g, " "),
 		);
-		expect(lines[0]).toBe(" agents · 2 idle · ≈$2.28 + n/a");
-		expect(lines[1]).toBe(" ○ researcher-3fa9 · idle · 1m · ↑72k +1.1M cached ↓35k · 2 tool calls · ≈$2.28");
-		expect(lines[2]).toBe(" ○ general-77aa · idle · 1m · ↑4k ↓500 · 1 tool call · cost n/a");
+		expect(lines[0]).toBe(" ● main-aaaaaa main 2 idle · 1.2M tok · ≈$2.28 + n/a");
+		expect(lines[1]).toBe(" ├ ○ researcher-3fa9 idle 1m 1.2M tok 94% cached 2 tool calls ≈$2.28");
+		expect(lines[2]).toBe(" └ ○ general-77aa idle 1m 4.5k tok 1 tool call cost n/a");
 	});
 
 	it('keeps every line within a narrow width, the "+N more" line too', () => {

@@ -2,6 +2,7 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import type { ReportStatus } from "../../instructions/report.ts";
 import type { WatchdogLimits } from "../events.ts";
 import type { StructuredResultV1 } from "../result-schema.ts";
+import type { ReportArtifact } from "../../shared/report-artifact.ts";
 
 /** How long a stopped subagent gets to exit after SIGTERM before it is killed (a session shutdown, a permission change, a stall). */
 export const SUBAGENT_STOP_GRACE_MS = 5_000;
@@ -31,6 +32,7 @@ export function exitReason(code: number | null, signal: NodeJS.Signals | null): 
 export interface SubagentOutcome {
 	text: string;
 	structured?: StructuredResultV1;
+	reportArtifact?: ReportArtifact;
 	outcome?: ReportStatus;
 	/** Where the report named `outcome`: its first word or a labelled last line. */
 	outcomeSource?: "first" | "last";

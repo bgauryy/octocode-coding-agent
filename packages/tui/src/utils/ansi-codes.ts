@@ -35,5 +35,16 @@ export function ansiCodeLength(str: string, pos: number): number {
 		return 0;
 	}
 
+	// DCS sequence: ESC P ... ST. tmux passthrough (ESC P tmux; ...) doubles every ESC inside it, so only a lone
+	// ESC \ ends the sequence.
+	if (next === "P") {
+		for (let j = pos + 2; j < str.length; j++) {
+			if (str.charCodeAt(j) !== 0x1b) continue;
+			if (str[j + 1] === "\x1b") j++;
+			else if (str[j + 1] === "\\") return j + 2 - pos;
+		}
+		return 0;
+	}
+
 	return 0;
 }

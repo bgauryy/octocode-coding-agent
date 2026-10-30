@@ -39,7 +39,7 @@ export async function listModels(
 	const models = [...(await modelRuntime.getAvailable(undefined, { signal }))];
 
 	if (models.length === 0) {
-		console.log(formatNoModelsAvailableMessage());
+		console.log(formatNoModelsAvailableMessage("cli"));
 		return;
 	}
 

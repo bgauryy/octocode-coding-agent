@@ -146,7 +146,7 @@ it("dispatches one Codex batch with the original tool id and reuses its pre-call
 		["PostToolUse", "apply_patch", "patch-id", { command }],
 	]);
 });
-it("only blocks unsupported native inputs when the Codex apply_patch gate matches", async () => {
+it("runs a native input the Codex apply_patch gate cannot see losslessly without that hook, never blocking it", async () => {
 	for (const matcher of ["apply_patch", "Bash"]) {
 		const { view, ctx, capture } = await fixture(matcher);
 		const event = {
@@ -154,13 +154,8 @@ it("only blocks unsupported native inputs when the Codex apply_patch gate matche
 			toolCallId: "partial",
 			input: { queries: [{ ...input.queries[0], content: "no newline" }] },
 		};
-		const result = await view.preToolUse(event as never, ctx);
-		if (matcher === "apply_patch")
-			expect(result).toMatchObject({
-				block: true,
-				reason: expect.stringContaining("Lossless"),
-			});
-		else expect(result).toBeUndefined();
+		// Hooks fail open: the write goes ahead, the unprojectable hook is skipped (and reported), not run.
+		expect(await view.preToolUse(event as never, ctx)).toBeUndefined();
 		expect(fs.existsSync(capture)).toBe(false);
 	}
 });

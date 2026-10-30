@@ -2,6 +2,11 @@ import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octoco
 import { WebSocket } from "ws";
 import { redactData } from "../shared/sanitize.ts";
 
+/** A view-only tab sees the session as it is but can do nothing: its snapshots carry no capabilities, so the page draws no controls. */
+export function viewFrame(frame: ApplicationFrame): ApplicationFrame {
+	return frame.type === "snapshot" ? { ...frame, snapshot: { ...frame.snapshot, capabilities: [] } } : frame;
+}
+
 /** Streamed text reaches a browser at most this often per message (about 20 updates a second). */
 const DELTA_WINDOW_MS = 50;
 
@@ -10,9 +15,14 @@ const DELTA_WINDOW_MS = 50;
  * per window. A slow socket or a resync closes it so the page reconnects and resynchronizes. Closes `connection` when
  * the stream or the socket ends. Shared by the per-session server and the user-level daemon.
  */
-export async function pumpApplicationFrames(socket: WebSocket, connection: ApplicationConnection): Promise<void> {
+export async function pumpApplicationFrames(
+	socket: WebSocket,
+	connection: ApplicationConnection,
+	options: { access?: "control" | "view" } = {},
+): Promise<void> {
+	const shape = options.access === "view" ? viewFrame : (frame: ApplicationFrame) => frame;
 	const send = (frame: ApplicationFrame) => {
-		if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "application", data: frame }));
+		if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "application", data: shape(frame) }));
 	};
 	// A delta frame carries the whole redacted text (redacting a fragment could miss a secret split across tokens), so
 	// only the latest per window matters: the first goes out at once, later ones in the window collapse into one.

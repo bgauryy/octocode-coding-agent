@@ -178,12 +178,12 @@ describe("backlog store", () => {
 		expect(item.tags).toEqual(["ui", "a-b"]);
 	});
 
-	it("refuses secrets on the stored (sanitized) text of title, body, note and tags", () => {
+	it("refuses secrets on the stored (sanitized) text of title, plan, note and tags", () => {
 		const store = storeFor("r");
 		const hidden = `ghp_\u200b${"a1B2c3D4e5".repeat(4)}`;
 		expect(() => store.add({ ...READY, title: hidden, createdBy: "user" })).toThrow(BacklogError);
-		expect(() => store.add({ ...READY, title: "ok", body: `use ${hidden}`, createdBy: "user" })).toThrow(
-			/body .*secret/,
+		expect(() => store.add({ ...READY, title: "ok", plan: `use ${hidden}`, createdBy: "user" })).toThrow(
+			/plan .*secret/,
 		);
 		expect(() => store.add({ ...READY, title: "ok", tags: ["AKIAIOSFODNN7EXAMPLE"], createdBy: "user" })).toThrow(
 			/tags .*secret/,
@@ -266,20 +266,20 @@ describe("backlog store", () => {
 		});
 	});
 
-	it("logs every field an update changes, keeps a replaced body in full, and logs nothing for a note or a no-op", () => {
+	it("logs every field an update changes, keeps a replaced plan in full, and logs nothing for a note or a no-op", () => {
 		const store = storeFor("r");
-		const body = `why: ${"evidence ".repeat(300)}`.trim();
+		const plan = `why: ${"evidence ".repeat(300)}`.trim();
 		const item = store.add({
 			...READY,
 			title: "old title",
-			body,
+			plan,
 			tags: ["a"],
 			state: "todo",
 			createdBy: "user",
 		});
 		store.update(
 			item.ref,
-			{ title: "new title", body: "rewritten", priority: 0, tags: ["b", "c"], state: "ongoing" },
+			{ title: "new title", plan: "rewritten", priority: 0, tags: ["b", "c"], state: "ongoing" },
 			{ id: "s1" },
 		);
 		store.update(item.ref, { note: "why I changed it" }, { id: "s1" });
@@ -287,11 +287,11 @@ describe("backlog store", () => {
 		const notes = store.notes(item, 50);
 		expect(notes.map((note) => note.kind)).toEqual(["change", "note"]);
 		expect(notes[0].text).toBe(
-			`state todo → ongoing · assignee none → s1 · priority p2 → p0 · tags #a → #b #c · title was "old title" · body replaced; it was:\n${body}`,
+			`state todo → ongoing · assignee none → s1 · priority p2 → p0 · tags #a → #b #c · title was "old title" · plan replaced; it was:\n${plan}`,
 		);
-		expect(body.length).toBeGreaterThan(1000);
+		expect(plan.length).toBeGreaterThan(1000);
 		const blank = store.add({ ...READY, title: "blank", createdBy: "user" });
-		expect(store.notes(store.update(blank.ref, { body: "first text" }, { id: "s1" }))[0].text).toBe("body added");
+		expect(store.notes(store.update(blank.ref, { plan: "first text" }, { id: "s1" }))[0].text).toBe("plan added");
 	});
 
 	it("matches a query against title and body substrings but only whole tags", () => {
@@ -312,6 +312,17 @@ describe("backlog store", () => {
 		} finally {
 			db.close();
 		}
+	});
+});
+
+describe("backlog done-item corrections", () => {
+	it("lets only the user force a correction of a done item's why; the goal stays locked", () => {
+		const store = storeFor(repoDir());
+		const item = store.add({ ...READY, title: "t", createdBy: "agent", state: "todo" });
+		store.update(item.ref, { state: "done", completion: completed() }, { id: "agent-1" });
+		expect(() => store.update(item.ref, { why: "x", force: true }, { id: "agent-1" })).toThrow(/Reopen before/);
+		expect(() => store.update(item.ref, { goal: "y", force: true }, { id: "user" })).toThrow(/Reopen before/);
+		expect(store.update(item.ref, { why: "Restored", force: true }, { id: "user" }).why).toBe("Restored");
 	});
 });
 
@@ -350,7 +361,7 @@ describe("backlog tool", () => {
 				title: "Add memory tool",
 				why: "Required work",
 				goal: "it works",
-				body: "with BM25",
+				plan: "with BM25",
 				priority: "p1",
 				tags: ["mem"],
 			}),
@@ -377,7 +388,7 @@ describe("backlog tool", () => {
 		await t.text({ op: "add", why: "Required work", title: "task", goal: "it works", state: "todo" });
 		await expect(t.call({ op: "update", id: "B1", state: "done" })).rejects.toThrow(/needs completion/);
 		await expect(
-			t.call({ op: "add", why: "Required work", title: "token", goal: "it works", body: `use ${SECRET}` }),
+			t.call({ op: "add", why: "Required work", title: "token", goal: "it works", plan: `use ${SECRET}` }),
 		).rejects.toThrow(/secret/);
 		await expect(t.call({ op: "update", id: "B1", note: SECRET })).rejects.toThrow(/secret/);
 		await expect(t.call({ op: "update", id: "B1", tags: [SECRET] })).rejects.toThrow(/secret/);
@@ -490,18 +501,27 @@ describe("backlog tool", () => {
 			}),
 		).toBe("Added B3 [backlog p2] follow-up");
 		expect(storeFor(fs.realpathSync(sub.cwd)).get("B3")!.createdBy).toBe("agent:general-1");
-		// A proposal takes no note, and the parent has not claimed it, so the hint points at body, not a later update.
+		// A proposal takes no note, and the parent has not claimed it, so the hint points at plan, not a later update.
 		await expect(
 			sub.call({ op: "add", why: "Required work", title: "with note", goal: "it works", note: "details" }),
-		).rejects.toThrow("A subagent adds without a note: put the details in body.");
-		// The child schema omits hierarchy, dependencies and links; the tool refuses them with a message naming each.
-		expect(Object.keys(sub.tool.parameters.properties)).not.toEqual(
-			expect.arrayContaining(["parentId", "dependsOn", "links", "reason"]),
-		);
+		).rejects.toThrow("A subagent adds without a note: put the details in plan or evidence.");
+		// The child schema omits hierarchy and dependencies; the tool refuses them with a message naming each.
+		const childFields = Object.keys(sub.tool.parameters.properties);
+		for (const field of ["parentId", "dependsOn", "reason", "body"]) expect(childFields).not.toContain(field);
 		expect(sub.tool.parameters.properties).toHaveProperty("completion");
+		expect(sub.tool.parameters.properties).toHaveProperty("links");
 		await expect(
-			sub.call({ op: "add", title: "linked", goal: "it works", parentId: "B1", links: [], dependsOn: ["B1"] }),
-		).rejects.toThrow("A subagent proposal cannot set parentId, dependsOn, links:");
+			sub.call({ op: "add", ...READY, title: "linked", parentId: "B1", links: [], dependsOn: ["B1"] }),
+		).rejects.toThrow("A subagent proposal cannot set parentId, dependsOn:");
+		// A proposal may carry references as links (shorthands expand as for the parent); an update still may not.
+		await sub.text({ op: "add", ...READY, title: "referenced", links: [{ relation: "output", target: "docs/r.md" }] });
+		expect(storeFor(fs.realpathSync(sub.cwd)).get("B4")!.links).toEqual([
+			{
+				relation: "output",
+				target: { resource: "files", repositoryKey: storeFor(fs.realpathSync(sub.cwd)).repo, path: "docs/r.md" },
+			},
+		]);
+		await expect(sub.call({ op: "update", id: "B1", links: [] })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B2", state: "ongoing" })).rejects.toThrow(/not claimed by your parent/);
 		await expect(sub.call({ op: "update", id: "B1", title: "renamed" })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B1", state: "todo" })).rejects.toThrow(/sets only ongoing or done/);
@@ -521,12 +541,12 @@ describe("backlog tool", () => {
 	it("keeps strict link validation in the store behind the compact tool schema", async () => {
 		const t = setup();
 		const target = { resource: "files", repositoryKey: "repo", path: "src/a.ts" };
-		await t.text({ op: "add", title: "linked", goal: "it works", links: [{ relation: "evidence", target }] });
+		await t.text({ op: "add", ...READY, title: "linked", links: [{ relation: "evidence", target }] });
 		await expect(
 			t.call({
 				op: "add",
+				...READY,
 				title: "bad",
-				goal: "it works",
 				links: [{ relation: "evidence", target: { resource: "files" } }],
 			}),
 		).rejects.toThrow(/Invalid backlog entity fields at \/links\/0\/target/);
@@ -543,6 +563,53 @@ describe("backlog tool", () => {
 				},
 			}),
 		).rejects.toThrow(/Invalid backlog entity fields at \/completion\/verification/);
+	});
+
+	it("keeps why apart from the call reason, expands reference shorthands, and shows links and completion ids", async () => {
+		const t = setup();
+		await expect(t.call({ op: "add", title: "no reason", goal: "it works" })).rejects.toThrow(/add needs why/);
+		await t.text({ op: "add", ...READY, title: "origin", state: "todo" });
+		const links = [
+			{ relation: "output", target: "./.octocode/x/report.md" },
+			{ relation: "related", target: "https://example.com/issues/1" },
+			{ relation: "derived_from", target: "b1" },
+			{ relation: "evidence", target: { resource: "files", path: "src/a.ts" } },
+		];
+		await t.text({
+			op: "add",
+			reason: "Track it",
+			why: "User asked",
+			title: "tracked",
+			goal: "g",
+			state: "ongoing",
+			links,
+		});
+		await t.text({ op: "update", id: "B2", reason: "Close it", state: "done", completion: completed() });
+		const detail = await t.text({ op: "get", id: "B2" });
+		expect(detail).toMatch(/^Why: User asked$/m);
+		for (const line of [
+			"- output: .octocode/x/report.md",
+			"- related: https://example.com/issues/1",
+			"- derived_from: B1",
+			"- evidence: src/a.ts",
+		])
+			expect(detail).toContain(line);
+		const id = Number(detail.match(/^Result \(completion (\d+)\): Implemented$/m)![1]);
+		await expect(t.call({ op: "update", id: "B2", completion: { ...completed(), replaces: id + 99 } })).rejects.toThrow(
+			`B2 is done: a correction replaces the latest completion, ${id}; omit completion.replaces`,
+		);
+		await t.text({ op: "update", id: "B2", completion: { ...completed(), summary: "Fixed", replaces: id } });
+		expect(await t.text({ op: "get", id: "B2" })).toMatch(/^Result \(completion \d+\): Fixed$/m);
+		// Without replaces, a new completion on a done item replaces the latest one, and a retry of it is a no-op.
+		const store = storeFor(fs.realpathSync(t.cwd));
+		const fixed = store.get("B2")!.completions.at(-1)!.id;
+		const again = { ...completed(), summary: "Fixed again" };
+		await t.text({ op: "update", id: "B2", completion: again });
+		await t.text({ op: "update", id: "B2", completion: again });
+		const history = store.get("B2")!.completions;
+		expect(history).toHaveLength(3);
+		expect(history.at(-1)).toMatchObject({ summary: "Fixed again", replaces: fixed });
+		expect(await t.text({ op: "get", id: "B2" })).toMatch(/^Result \(completion \d+\): Fixed again$/m);
 	});
 
 	it("links follow-ups with from: shows the origin and derived items in get, filters list, and lets a subagent link only on add", async () => {
@@ -760,7 +827,7 @@ describe("/backlog", () => {
 			...READY,
 			title: "Fix login",
 			goal: "Login submits without freezing; focused tests pass.",
-			body: "The form hangs.",
+			plan: "The form hangs.",
 			state: "todo",
 			createdBy: "user",
 		});
@@ -826,13 +893,11 @@ describe("/backlog", () => {
 			"The selected action changes the item and repaints the board.",
 		);
 		expect(store.get("B1")!.goal).toBe("The goal reads true.");
-		await edit("Body", "new body");
 		await edit("Paths", "src/a.ts\n\nsrc/b.ts\nsrc/a.ts");
 		await edit("Reason", "because");
 		expect((await edit("Evidence", "src/a.ts:1 — shows it")).title).toBe("Edit the evidence of B1 (one per line)");
 		await edit("Plan", "step one");
 		expect(store.get("B1")).toMatchObject({
-			body: "new body",
 			paths: ["src/a.ts", "src/b.ts"],
 			why: "because",
 			evidence: ["src/a.ts:1 — shows it"],
@@ -849,7 +914,6 @@ describe("/backlog", () => {
 		for (const part of [
 			'title was "first"',
 			'goal was "The selected action',
-			"body added",
 			"paths none → src/a.ts, src/b.ts",
 			"why replaced; it was:",
 			"evidence added",
@@ -1026,9 +1090,9 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		expect(() => store.update(item.ref, { paths: [SECRET] }, { id: "s1" })).toThrow(/paths .*secret/);
 	});
 
-	it("adds with every field through the tool; get shows Goal, Where, Why, Evidence, Plan, then times, body and notes; list stays one line", async () => {
+	it("adds with every field through the tool; get shows Goal, Where, Why, Evidence, Plan, then times and notes; list stays one line", async () => {
 		const t = setup();
-		expect(await t.text({ op: "add", title: "Path search", ...FIELDS, body: "More background.", state: "todo" })).toBe(
+		expect(await t.text({ op: "add", title: "Path search", ...FIELDS, state: "todo" })).toBe(
 			"Added B1 [todo p2] Path search",
 		);
 		await t.text({ op: "update", id: "B1", note: "looked at it" });
@@ -1040,7 +1104,6 @@ describe("backlog fields: where, why, evidence, plan", () => {
 			"Evidence:\n- src/backlog/store.ts:87 — body copied into notes\n- yarn test → 2 failures",
 			"Plan: Add four columns, then render them.\n  Keep search on LIKE.",
 			"created ",
-			"More background.",
 			"Notes and changes:",
 		];
 		const at = order.map((part) => detail.indexOf(part));
@@ -1085,13 +1148,13 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		expect(storeFor(fs.realpathSync(t.cwd)).get("B1")).toMatchObject({ goal: "Tests and lint pass." });
 	});
 
-	it("describes each field by its decision rule, and says an update replaces the whole body", () => {
+	it("describes each field by its decision rule, and offers no body", () => {
 		const { properties } = setup().tool.parameters;
 		expect(properties.paths.description).toMatch(/files, dirs or components/);
 		expect(properties.why.description).toMatch(/why it matters/);
 		expect(properties.evidence.description).toMatch(/observations/);
 		expect(properties.plan.description).toMatch(/approach and steps/);
-		expect(properties.body.description).toMatch(/update replaces the whole text/);
+		expect(properties).not.toHaveProperty("body");
 		expect(properties.paths.type).toBe("array");
 		expect(properties.evidence.type).toBe("array");
 	});
@@ -1122,7 +1185,6 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		storeFor(fs.realpathSync(t.cwd)).add({
 			title: "Fix search",
 			...FIELDS,
-			body: "Extra.",
 			state: "todo",
 			createdBy: "user",
 		});
@@ -1132,7 +1194,6 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		expect(message).toContain("Why: Agents lose");
 		expect(message).toContain("- yarn test → 2 failures");
 		expect(message).toContain("Plan: Add four columns");
-		expect(message).toContain("Extra.");
 	});
 
 	it("shows the fields in /backlog <id> and in the markdown export", async () => {

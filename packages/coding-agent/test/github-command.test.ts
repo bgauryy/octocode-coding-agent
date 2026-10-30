@@ -37,6 +37,7 @@ function host() {
 		showStatus: vi.fn(),
 		showError: vi.fn(),
 		showWarning: vi.fn(),
+		showExtensionConfirm: vi.fn(async () => true),
 	};
 }
 
@@ -124,9 +125,12 @@ describe("/github", () => {
 		);
 	});
 
-	it("signs out, and rejects unknown arguments", async () => {
+	it("asks before signing out, signs out, and rejects unknown arguments", async () => {
 		const target = host();
 		const { run } = runner(signedIn);
+		target.showExtensionConfirm.mockResolvedValueOnce(false);
+		await handleGithubCommand(target as never, "logout", run as never);
+		expect(target.showStatus).toHaveBeenLastCalledWith("Still signed in to GitHub.");
 		await handleGithubCommand(target as never, "logout", run as never);
 		expect(target.showStatus).toHaveBeenCalledWith(
 			"Signed out of GitHub on github.com. Environment and gh CLI credentials are unchanged.",

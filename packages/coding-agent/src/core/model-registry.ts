@@ -30,6 +30,7 @@ import type { ModelRuntime } from "./model-runtime.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
 import { errorMessage } from "../utils/guards.ts";
+import { billedBySubscription } from "./subscription.ts";
 
 export type { ProviderConfigInput } from "./provider-composer.ts";
 export type ResolvedRequestAuth =
@@ -121,6 +122,11 @@ export class ModelRegistry {
 
 	getProvider(provider: string): Provider | undefined {
 		return this.runtime.getProvider(provider);
+	}
+
+	/** Whether usage is paid by a subscription, so a cost figure is an estimate of API value, not a bill. */
+	billedBySubscription(provider: string): boolean {
+		return billedBySubscription(this.runtime, provider);
 	}
 
 	/** Stream through the configured provider with request-time authentication. */

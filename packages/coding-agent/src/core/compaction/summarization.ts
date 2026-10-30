@@ -3,6 +3,7 @@
  */
 
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
 	contentText,
 	normalizeContext,
@@ -21,7 +22,7 @@ import type {
 import { completeSimple, isContextOverflow } from "@octocodeai/octocode-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT, serializeConversation } from "./utils.ts";
-import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
+import { SUMMARY_CHECKPOINT_FORMAT, TLDR_HEADING } from "./summary-format.ts";
 
 const SUMMARIZATION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
@@ -29,40 +30,12 @@ ${SUMMARY_CHECKPOINT_FORMAT}`;
 
 const UPDATE_SUMMARIZATION_INSTRUCTIONS = `Update the existing structured summary with new information. RULES:
 - PRESERVE all existing information from the previous summary
-- ADD new progress, decisions, and context from the new messages
+- ADD new progress, decisions, errors and context from the new messages
 - UPDATE the Progress section: move items from "In Progress" to "Done" when completed
-- UPDATE "Next Steps" based on what was accomplished
-- PRESERVE exact file paths, function names, and error messages
-- If something is no longer relevant, you may remove it
+- REWRITE "Where We Stopped" and "${TLDR_HEADING}" for the new messages only
+- Newer messages win where they contradict, resolve or supersede the previous summary; what is no longer relevant may be removed
 
-Use this EXACT format:
-
-## Goal
-[Preserve existing goals, add new ones if the task expanded]
-
-## Constraints & Preferences
-- [Preserve existing, add new ones discovered]
-
-## Progress
-### Done
-- [x] [Include previously done items AND newly completed items]
-
-### In Progress
-- [ ] [Current work - update based on progress]
-
-### Blocked
-- [Current blockers - remove if resolved]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale] (preserve all previous, add new)
-
-## Next Steps
-1. [Update based on current state]
-
-## Critical Context
-- [Preserve important context, add new if needed]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages.`;
+${SUMMARY_CHECKPOINT_FORMAT}`;
 
 const UPDATE_SUMMARIZATION_PROMPT = `The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
 
@@ -94,8 +67,9 @@ function createSummarizationOptions(
 	signal: AbortSignal | undefined,
 	thinkingLevel: ThinkingLevel | undefined,
 	sessionId: string | undefined,
+	cache: CachePreferences | undefined,
 ): SimpleStreamOptions {
-	const options: SimpleStreamOptions = { signal, apiKey, headers, env, sessionId };
+	const options: SimpleStreamOptions = { signal, apiKey, headers, env, sessionId, ...cache };
 	if (model.reasoning && thinkingLevel && thinkingLevel !== "off") {
 		options.reasoning = thinkingLevel;
 	}
@@ -117,11 +91,12 @@ export async function completeSummarization(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 ): Promise<AssistantMessage> {
-	// Avoid cache writes for one-off summaries. Reuse caller-supplied routing when available;
-	// callers without a session ID, including branch summaries, receive a fresh routing ID.
+	// A caller that passes the session's routing id and cache preferences (a compaction summary) is routed and cached as
+	// the session is. A one-off summary without them (a branch summary, a bug report) writes nothing to the cache,
+	// since nothing reads it back, and gets a fresh routing id.
 	const requestOptions: SimpleStreamOptions = {
 		...options,
-		cacheRetention: "none",
+		cacheRetention: options.cacheRetention ?? "none",
 		sessionId: options.sessionId ?? uuidv7(),
 	};
 	const produce = async (): Promise<AssistantMessage> =>
@@ -222,6 +197,7 @@ export async function generateSummaryWithUsage(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
+	cache?: CachePreferences,
 ): Promise<{ text: string; usage: Usage }> {
 	// Use update prompt if we have a previous summary, otherwise initial prompt
 	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
@@ -244,7 +220,7 @@ export async function generateSummaryWithUsage(
 		currentMessages,
 		buildPrompt,
 		model,
-		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId),
+		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache),
 		streamFn,
 		retry,
 		callbacks,
@@ -294,13 +270,14 @@ export async function generateTurnPrefixSummary(
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
 	customInstructions?: string,
+	cache?: CachePreferences,
 ): Promise<{ text: string; usage: Usage }> {
 	const response = await completeWithOverflowTrim(
 		messages,
 		(remaining) =>
 			`# Conversation\n${serializeConversation(convertToLlm(remaining))}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${customInstructions ? `\n\nAdditional summary focus:\n${customInstructions}` : ""}`,
 		model,
-		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId),
+		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache),
 		streamFn,
 		retry,
 		callbacks,

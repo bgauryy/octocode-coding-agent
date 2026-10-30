@@ -21,6 +21,8 @@ Start with `ctx.ui` methods from an [extension](extensions.md#ui-and-modes). Bui
 
 These APIs receive Octocode’s active theme and keybindings where needed. Do not create a second terminal renderer inside an extension.
 
+Pass a footer status as plain text with an optional tone instead of colouring it: `ctx.ui.setStatus("jobs", "2 jobs", "accent")`. The tone is one of `accent`, `muted`, `dim`, `success`, `warning` or `error`. The terminal footer paints it with the live theme, so a theme switch recolours it, and RPC clients receive the text without escape codes. A custom footer reads the same data from `footerData.getState().statuses` (`{ text, tone }` per key) and can `subscribe()` to changes.
+
 ## Understand the component model
 
 A component renders an array of terminal lines for an available width. It can optionally handle keyboard and mouse input, and it must invalidate cached output when its state or theme-dependent content changes.

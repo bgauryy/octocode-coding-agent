@@ -24,6 +24,16 @@ export function tokenMatches(supplied: string, expected: string): boolean {
 	return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Which capability a presented token is: the control token, the view token, or neither. Both comparisons always run. */
+export function tokenAccess(
+	supplied: string,
+	tokens: { control: string; view: string },
+): "control" | "view" | undefined {
+	const control = tokenMatches(supplied, tokens.control);
+	const view = tokenMatches(supplied, tokens.view);
+	return control ? "control" : view ? "view" : undefined;
+}
+
 /** The bearer token of a request (the `Authorization` header only; a query string never carries one). */
 export function bearerOf(req: IncomingMessage): string {
 	return (req.headers.authorization ?? "").replace(/^Bearer /, "");

@@ -165,10 +165,10 @@ describe("profile permissions", () => {
 describe("subagents", () => {
 	it("collaborate mode: lists teammates in the task", () => {
 		expect(teamTask("Fix A", "main-1", [["researcher-2", "Trace B"]])).toBe(
-			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B",
+			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B\nTo pass on a teammate's message, forward it instead of retyping it.",
 		);
 		expect(teamTask("Fix A", "main-1", [])).toMatch(
-			/none yet; `agent` type `coordinate`, action `list` shows teammates that start later/,
+			/none yet; `agent` type `coordinate`, `input.action` = `list` shows teammates that start later/,
 		);
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
@@ -329,9 +329,13 @@ describe("subagents", () => {
 		expect(profile.prompt).toContain("headless");
 		expect(profile.prompt).toContain("persistent");
 		expect(buildAgentArgs(profile, undefined, SESSION)).toContain("builtin:mcp");
-		// Read-only roles also drop the debugger, which their permission layer refuses.
-		for (const name of ["researcher", "reviewer", "implementer"])
-			expect(profiles.get(name)?.excludeTools, name).toBe(name === "implementer" ? "browser" : "browser,debug");
+		// Read-only roles drop the debugger; scoped implementer/reviewer roles omit graph schemas.
+		for (const [name, excluded] of [
+			["researcher", "browser,debug"],
+			["reviewer", "browser,debug,graphBuild,graphQuery"],
+			["implementer", "browser,graphBuild,graphQuery"],
+		])
+			expect(profiles.get(name)?.excludeTools, name).toBe(excluded);
 	});
 
 	it("sets visible Chrome only for headless=false and clears inherited browser mode", () => {
@@ -463,9 +467,11 @@ describe("subagents", () => {
 		expect(agent.parameters.properties.task?.maxLength).toBeUndefined();
 		expect(agent.parameters.properties).toHaveProperty("isolate");
 		// The parameter owns the collaborate guidance; the prompt does not repeat it.
-		expect(agent.parameters.properties.collaborate?.description).toMatch(/subagents that must coordinate directly/);
+		expect(agent.parameters.properties.collaborate?.description).toMatch(
+			/Adds teammate context.*does not enable messaging or grant authority/,
+		);
 		expect(agent.parameters.properties.model?.description).toMatch(
-			/provider\/id, bare id or purpose \(small, medium\).*:thinking.*Refused when unavailable/,
+			/provider\/id, bare id, small or medium.*:thinking.*unavailable choices refused/,
 		);
 		expect([...commands.keys()]).toEqual(["agents"]);
 		const notes: string[] = [];

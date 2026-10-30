@@ -1,4 +1,4 @@
-import { Container, rgbColor, styleText, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, Container, rgbColor, styleText } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../../src/modes/interactive/components/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
@@ -30,7 +30,7 @@ const colorTheme = {
 } as never;
 
 describe("chrome", () => {
-	it("expands the real transcript before its message rows render", async () => {
+	it("draws the banner without touching the transcript's thinking visibility", async () => {
 		initTheme("dark", false);
 		const fake = fakeHost();
 		registerUi(fake.api, false);
@@ -38,45 +38,21 @@ describe("chrome", () => {
 		await fake.emit("session_start", { reason: "resume" }, ctx);
 		const chat = new Container();
 		const message = new AssistantMessageComponent(
-			{ role: "assistant", content: [{ type: "thinking", thinking: "Visible reasoning." }] } as never,
+			{ role: "assistant", content: [{ type: "thinking", thinking: "Hidden thought." }] } as never,
 			true,
 		);
 		chat.addChild(message);
 		const setHidden = vi.spyOn(message, "setHideThinkingBlock");
-		const root = { children: [chat], requestRender: vi.fn() };
-		const header = (
-			ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[]; dispose(): void }
-		)(root, theme);
-		header.render(80);
-		expect(setHidden).toHaveBeenCalledExactlyOnceWith(false);
-		expect(message.render(80).join("\n")).toContain("Visible reasoning.");
-		header.dispose();
-	});
-
-	it("tells a fullscreen transcript its reasoning stubs can be clicked, and no other", async () => {
-		initTheme("dark", false);
-		const stub = async (mode?: "fullscreen" | "regular") => {
-			const fake = fakeHost();
-			registerUi(fake.api, false);
-			const ctx = fakeCtx({ cwd: "/work/app" });
-			await fake.emit("session_start", { reason: "resume" }, ctx);
-			const chat = new Container();
-			const message = new AssistantMessageComponent(
-				{ role: "assistant", content: [{ type: "thinking", thinking: "Hidden thought." }] } as never,
-				true,
-			);
-			chat.addChild(message);
-			const header = (
-				ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[]; dispose(): void }
-			)({ children: [chat], requestRender: vi.fn(), mode }, theme);
-			header.render(80);
-			header.dispose();
-			message.setHideThinkingBlock(true);
-			return message.render(80).join("\n");
-		};
-		expect(await stub("fullscreen")).toContain("click");
-		expect(await stub("regular")).not.toContain("click");
-		expect(await stub()).not.toContain("click");
+		const setMouseHint = vi.spyOn(message, "setMouseHint");
+		const header = (ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[] })(
+			{ children: [chat], requestRender: vi.fn(), mode: "fullscreen" },
+			theme,
+		);
+		expect(header.render(80)).toHaveLength(BANNER_HEIGHT);
+		// The user's hideThinkingBlock setting, owned by the host, stays in force.
+		expect(setHidden).not.toHaveBeenCalled();
+		expect(setMouseHint).not.toHaveBeenCalled();
+		expect(message.render(80).join("\n")).not.toContain("Hidden thought.");
 	});
 
 	it("computes output tokens per second of streaming time", () => {
@@ -103,14 +79,17 @@ describe("chrome", () => {
 		// The hidden reasoning stub is one line the message itself draws; no extension label adds a second.
 		expect((ctx.ui as never as { thinkingLabel?: string }).thinkingLabel).toBeUndefined();
 		const requestRender = vi.fn();
-		const header = (
-			ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[]; dispose(): void }
-		)({ requestRender, children: [] }, theme);
+		const header = (ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[] })(
+			{ requestRender, children: [] },
+			theme,
+		);
 		const lines = header.render(120);
 		expect(lines).toHaveLength(BANNER_HEIGHT);
-		expect(lines[0]).toContain("██");
-		expect(lines.join("\n")).toContain(`v${packageVersion()}`);
-		header.dispose();
+		expect(lines[0]).toContain("█▀█");
+		expect(lines.join("\n")).toContain("BETA version");
+		// Static: building and drawing the header never asks for another frame.
+		expect(requestRender).not.toHaveBeenCalled();
+		expect(animationClock.isRunning()).toBe(false);
 		// Nothing goes into the session, so /resume and /fork never replay it.
 		expect(fake.entries).toEqual([]);
 
@@ -159,80 +138,26 @@ describe("chrome", () => {
 		}
 	});
 
-	it("shines the banner only on a fresh startup, never on /resume, /new, /fork, /reload or over a resumed transcript", async () => {
-		const frames = async (reason: string, branch: unknown[] = []): Promise<number> => {
-			// Octocode re-imports extensions for every runtime, so each session start meets fresh module state.
-			const fake = fakeHost();
-			registerUi(fake.api, false);
-			const ctx = fakeCtx({ cwd: "/work/app" });
-			ctx.sessionManager.getBranch = () => branch as never;
-			await fake.emit("session_start", { reason }, ctx);
-			const requestRender = vi.fn();
-			const header = (ctx.ui.header as (tui: unknown, theme: unknown) => { dispose(): void })(
-				{ requestRender, children: [] },
-				colorTheme,
-			);
-			await new Promise((resolve) => setTimeout(resolve, 120));
-			header.dispose();
-			return requestRender.mock.calls.length;
-		};
-		expect(await frames("startup")).toBeGreaterThan(0);
-		// `octocode -c`: the history renders first, so the banner sits above the viewport and a frame would redraw everything.
-		expect(await frames("startup", [{ type: "message" }])).toBe(0);
-		for (const reason of ["resume", "new", "fork", "reload"]) expect(await frames(reason)).toBe(0);
-	});
-
 	it("paints the banner and spinner along the theme gradient, and falls back to tokens without concrete colours", () => {
 		expect(themeRamp(theme)).toBeUndefined();
 		expect(spinnerFrames(theme)[0]).toBe("⠋");
 		const ramp = themeRamp(colorTheme)!;
-		expect(ramp(0, "stroke", 0, "x")).toMatch(/\u001b\[[0-9;]*1[;m].*x/);
-		expect(ramp(0, "stroke", 0, "x")).not.toBe(ramp(1, "stroke", 0, "x"));
-		expect(ramp(0.5, "shadow", 0, "x")).not.toBe(ramp(0.5, "stroke", 0, "x"));
-		expect(ramp(0.5, "stroke", 1, "x")).not.toBe(ramp(0.5, "stroke", 0, "x"));
+		expect(ramp(0, "x")).toMatch(/\u001b\[[0-9;]*1[;m].*x/);
+		expect(ramp(0, "x")).not.toBe(ramp(1, "x"));
 		expect(new Set(spinnerFrames(colorTheme)).size).toBe(10);
 	});
 
-	it("sweeps a light band across the banner once, then stops redrawing", () => {
-		vi.useFakeTimers();
-		try {
-			const requestRender = vi.fn();
-			const header = bannerHeader({ requestRender }, colorTheme, Date.now());
-			const first = header.render(120);
-			vi.advanceTimersByTime(500);
-			expect(requestRender).toHaveBeenCalled();
-			expect(header.render(120)).not.toEqual(first);
-			vi.advanceTimersByTime(2_000);
-			const settled = header.render(120);
-			const calls = requestRender.mock.calls.length;
-			vi.advanceTimersByTime(1_000);
-			expect(requestRender.mock.calls.length).toBe(calls);
-			expect(header.render(120)).toEqual(settled);
-			expect(settled.every((line) => visibleWidth(line) <= 120)).toBe(true);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("stops the banner animation even when the header is no longer rendered", () => {
-		vi.useFakeTimers();
-		try {
-			const requestRender = vi.fn();
-			const header = bannerHeader({ requestRender }, colorTheme, Date.now());
-			vi.advanceTimersByTime(1_200);
-			const calls = requestRender.mock.calls.length;
-			expect(calls).toBeGreaterThan(0);
-			vi.advanceTimersByTime(5_000);
-			expect(requestRender.mock.calls.length).toBe(calls);
-			header.dispose();
-		} finally {
-			vi.useRealTimers();
-		}
+	it("draws the banner once per width: the same lines object until the width or theme changes", () => {
+		const header = bannerHeader(colorTheme);
+		const first = header.render(120);
+		expect(header.render(120)).toBe(first);
+		expect(header.render(80)).not.toBe(first);
+		expect(animationClock.isRunning()).toBe(false);
 	});
 
 	it("repaints the banner in the new colours after invalidate (a theme change)", () => {
 		const live = { ...(colorTheme as object), colors: { ...(colorTheme as { colors: object }).colors } };
-		const header = bannerHeader({ requestRender: vi.fn() }, live as never, undefined);
+		const header = bannerHeader(live as never);
 		const before = header.render(120);
 		live.colors = {
 			...live.colors,

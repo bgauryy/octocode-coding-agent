@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
+import type { ExtensionContext } from "../../core/extensions/index.ts";
+import { notify } from "../shared/commands.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { existingLibrary } from "../shared/archive.ts";
 import { shortPath } from "../shared/format.ts";
 import { addReply, emptyTotals, finiteNumber, type ModelLookup, unpricedModel } from "../shared/util.ts";
 import { type Ask, asksNote } from "../team/asks.ts";
 import type { Run } from "./claim.ts";
+import { noteChildCache } from "./cache-monitor.ts";
 import type { ChildProgress } from "./events.ts";
 import type { Identity } from "./process/env.ts";
 import { StartupError } from "./process/outcome.ts";
@@ -50,8 +53,10 @@ export const reportFacts = (
 	| "asks"
 	| "firstTurnTokens"
 	| "requests"
+	| "cache"
 	| "startup"
 	| "structured"
+	| "reportArtifact"
 > => {
 	const usage = spent.get(details);
 	return {
@@ -66,8 +71,10 @@ export const reportFacts = (
 		...(details.asks ? { asks: details.asks } : {}),
 		...(details.firstTurnTokens !== undefined ? { firstTurnTokens: details.firstTurnTokens } : {}),
 		...(details.requests !== undefined ? { requests: details.requests } : {}),
+		...(details.cache ? { cache: details.cache } : {}),
 		...(details.startup ? { startup: details.startup } : {}),
 		...(details.structured ? { structured: details.structured } : {}),
+		...(details.reportArtifact ? { reportArtifact: details.reportArtifact } : {}),
 	};
 };
 
@@ -94,7 +101,12 @@ function replyPromptTokens(reply: Record<string, unknown> | undefined): number |
  * Progress of a run into `details` (tool lines, usage, the latest screenshot), mirrored to `onUpdate`. A reply from a model
  * without pricing (looked up in this session's registry) marks the run's cost `n/a`.
  */
-export function tracker(identity: Identity, details: RunDetails, find: ModelLookup) {
+export function tracker(
+	identity: Identity,
+	details: RunDetails,
+	find: ModelLookup,
+	ctx?: Pick<ExtensionContext, "hasUI" | "ui">,
+) {
 	const dir = shotsDir();
 	let shots = 0;
 	let latest: Shot | undefined;
@@ -118,6 +130,20 @@ export function tracker(identity: Identity, details: RunDetails, find: ModelLook
 				else delete details.waiting;
 			}
 			if (compacting !== undefined) {
+				if (ctx?.hasUI) {
+					const failed = (compactions?.failed ?? 0) > (details.compactions?.failed ?? 0);
+					const aborted = (compactions?.aborted ?? 0) > (details.compactions?.aborted ?? 0);
+					const outcome = compacting ? "started" : failed ? "failed" : aborted ? "cancelled" : "finished";
+					try {
+						notify(
+							ctx.ui,
+							`Subagent ${identity.id} (${identity.role ?? "agent"}) compaction ${outcome}.${compactions ? ` ${compactionNote({ compactions })}` : ""}`,
+							failed ? "warning" : "info",
+						);
+					} catch {
+						// The originating session may have been replaced while its child shuts down.
+					}
+				}
 				if (compacting) details.compacting = true;
 				else delete details.compacting;
 			}
@@ -138,6 +164,7 @@ export function tracker(identity: Identity, details: RunDetails, find: ModelLook
 				details.shot = latest.path;
 			}
 			const first = replyPromptTokens(reply);
+			if (reply) details.cache = noteChildCache(details.cache, reply);
 			if (first !== undefined && details.firstTurnTokens === undefined) details.firstTurnTokens = first;
 			// `usage` is the run's total so far: the details restart from it. Cached prompt tokens count in ↑.
 			const unpriced = details.unpriced || unpricedModel(reply, find) !== undefined;

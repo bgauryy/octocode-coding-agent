@@ -33,19 +33,53 @@ describe("Octocode research routing in the policy", () => {
 		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: true })).not.toContain("tools.mcp__octocode__");
 	});
 
-	it("gives the parent delegation guidance, and every agent the one skill rule", () => {
+	it("gives the parent delegation guidance and leaves skill loading to the skills section", () => {
 		const root = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
-		expect(root).toContain("Keep coupled work in one agent");
-		expect(root).toContain("`.octocode/<topic>/contract.md`");
-		expect(root).toContain("check reports against acceptance checks");
+		expect(root).toContain("give coupled work one owner");
+		expect(root).toContain("verify reports against acceptance checks");
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
 		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
-		const skillRule = "when a listed skill's description matches it or the task names one, load that skill first";
-		expect(root).toContain(skillRule);
-		expect(child).toContain(skillRule);
-		expect(child).not.toContain("load any named skill first");
+		// The skills section (`core/skills.ts`) says when to load a skill; the policy does not restate it.
+		for (const prompt of [root, child]) expect(prompt).not.toMatch(/load (that|a|the|any named) skill|skill first/i);
 		expect(child).not.toContain("contract.md");
+	});
+
+	it("drops the base bash search rule whenever the policy routes search to Octocode, declared tools or not", async () => {
+		const fake = fakeHost();
+		for (const name of ["bash", "file", "mcp"]) fake.tools.set(name, { name, exposure: "direct" });
+		fake.api.events = createEventBus();
+		setMcpSessionStatus(fake.api.events, [
+			{ name: "octocode", enabled: true, state: "connecting", toolCount: 0, source: "mcp.json", exposure: "direct" },
+		]);
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		const build = async (selectedTools: string[]) => {
+			const event = {
+				systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {}, selectedTools },
+			};
+			await fake.emit("before_agent_start", event, {});
+			return buildSystemPrompt({ cwd: "/tmp", selectedTools, contextFiles: [], sections: allSections(event) });
+		};
+		// Connecting: no Octocode search tool is declared yet, but the policy already routes search to Octocode.
+		const connecting = await build(["bash", "file", "mcp"]);
+		expect(connecting).toContain("Use Octocode MCP");
+		expect(connecting).not.toContain("Use bash for file operations");
+		const declared = await build(["bash", "file", "mcp", "mcp__octocode__localSearch"]);
+		expect(declared).toContain("Use Octocode MCP");
+		expect(declared).not.toContain("Use bash for file operations");
+		// A server that failed later keeps the same policy bytes (its state is in mcp_status, and the policy says how to
+		// recover when a tool is missing); only a server that is not enabled gives the base rule.
+		setMcpSessionStatus(fake.api.events, [
+			{ name: "octocode", enabled: true, state: "failed", toolCount: 0, source: "mcp.json", exposure: "direct" },
+		]);
+		const failed = await build(["bash", "file", "mcp"]);
+		expect(failed).toBe(connecting);
+		setMcpSessionStatus(fake.api.events, [
+			{ name: "octocode", enabled: false, state: "disabled", toolCount: 0, source: "mcp.json", exposure: "direct" },
+		]);
+		const disabled = await build(["bash", "file", "mcp"]);
+		expect(disabled).not.toContain("Use Octocode MCP");
+		expect(disabled).toContain("Use bash for file operations like ls, rg, find");
 	});
 });
 
@@ -167,6 +201,25 @@ describe("registerTurnSetup routing and child trim", () => {
 		});
 		expect(octocode).toContain("broad impact questions: `graphQuery`");
 		expect(octocode).not.toContain("lspSearch");
+	});
+
+	it("keeps every policy section's bytes when the research server fails or stops after connecting", async () => {
+		const natives = ["bash", "file", "mcp"];
+		const status = (state: string) => [
+			{ name: "octocode", enabled: true, state, toolCount: 0, source: "default", exposure: "direct" as const },
+		];
+		const fake = fakeHost();
+		for (const name of natives) fake.tools.set(name, { name, exposure: "direct" });
+		fake.api.events = createEventBus();
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		setMcpSessionStatus(fake.api.events, status("connected"));
+		const before = await run(fake, { selectedTools: natives });
+		for (const state of ["failed", "stopped"]) {
+			setMcpSessionStatus(fake.api.events, status(state));
+			const after = await run(fake, { selectedTools: natives });
+			for (const name of Object.keys(before).filter((key) => key.startsWith("octocode")))
+				expect(after[name]).toBe(before[name]);
+		}
 	});
 
 	it("lets a read-only child build a graph, saying it writes only derived snapshots", async () => {

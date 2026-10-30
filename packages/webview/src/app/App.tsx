@@ -51,6 +51,8 @@ export function App({
 	const loaded = useStore(backlog, (state) => state.loaded);
 	const index = useMemo(() => indexBacklog(snapshot), [snapshot]);
 	const views = useMemo(() => [...BASE_VIEWS, ...(live?.views ?? [])], [live]);
+	// A read-only live page (a daemon repository scope) still reads, but the host refuses its writes: offer no edit control.
+	const editable = live !== null && !live.readOnly;
 	const destination = resolveRoute(
 		useHashRoute(),
 		views.map((view) => view.name),
@@ -85,38 +87,35 @@ export function App({
 	useHotkeys([
 		{ key: "k", mod: true, allowInInput: true, run: () => setPaletteOpen((open) => !open) },
 		{ key: "/", run: () => hasOpenModal() || document.querySelector<HTMLInputElement>("[data-search]")?.focus() },
-		...(live
-			? [
-					{ key: "c", run: () => hasOpenModal() || navigate("#new") },
-					{ key: "t", run: () => hasOpenModal() || navigate(TERMINAL_HASH) },
-				]
-			: []),
+		...(editable ? [{ key: "c", run: () => hasOpenModal() || navigate("#new") }] : []),
+		...(live ? [{ key: "t", run: () => hasOpenModal() || navigate(TERMINAL_HASH) }] : []),
 	]);
 
 	const commands = useMemo(() => {
-		const actions: PaletteCommand[] = live
-			? [
-					{
-						id: "action:new",
-						label: "Create new item",
-						group: "Actions",
-						hint: "C",
-						icon: <PlusIcon />,
-						run: () => navigate("#new"),
-					},
-					{
-						id: "action:terminal",
-						label: "Open terminal view",
-						group: "Actions",
-						keywords: "shell commands tools bash",
-						icon: <TerminalIcon />,
-						hint: "T",
-						run: () => navigate(TERMINAL_HASH),
-					},
-				]
-			: [];
+		const actions: PaletteCommand[] = [];
+		if (editable) {
+			actions.push({
+				id: "action:new",
+				label: "Create new item",
+				group: "Actions",
+				hint: "C",
+				icon: <PlusIcon />,
+				run: () => navigate("#new"),
+			});
+		}
+		if (live) {
+			actions.push({
+				id: "action:terminal",
+				label: "Open terminal view",
+				group: "Actions",
+				keywords: "shell commands tools bash",
+				icon: <TerminalIcon />,
+				hint: "T",
+				run: () => navigate(TERMINAL_HASH),
+			});
+		}
 		return buildCommands(index, views, navigate, actions);
-	}, [index, views, live]);
+	}, [index, views, live, editable]);
 
 	const badges = useMemo(() => {
 		const { claims, idle } = attention(index);
@@ -127,7 +126,7 @@ export function App({
 	}, [index]);
 
 	const View = current.Component;
-	const sheetOpen = destination.kind !== "view" && (destination.kind === "item" || live !== null);
+	const sheetOpen = destination.kind !== "view" && (destination.kind === "item" || editable);
 
 	const app = (
 		<RichTextContext.Provider value={live?.RichText ?? null}>
@@ -149,9 +148,16 @@ export function App({
 									>
 										Terminal
 									</Button>
-									<Button variant="primary" icon={<PlusIcon />} onClick={() => navigate("#new")} aria-keyshortcuts="C">
-										New item
-									</Button>
+									{editable && (
+										<Button
+											variant="primary"
+											icon={<PlusIcon />}
+											onClick={() => navigate("#new")}
+											aria-keyshortcuts="C"
+										>
+											New item
+										</Button>
+									)}
 								</>
 							) : undefined
 						}
@@ -168,13 +174,20 @@ export function App({
 							index={index}
 							params={nav.params[current.name] ?? {}}
 							setParams={setParams}
-							ItemAction={live?.ItemQuickAction}
+							ItemAction={editable ? live.ItemQuickAction : undefined}
 						/>
 					)}
 				</main>
 			</div>
 			{sheetOpen && (
-				<ItemSheet destination={destination} index={index} live={live} loaded={loaded} onClose={backToView} />
+				<ItemSheet
+					destination={destination}
+					index={index}
+					live={live}
+					editable={editable}
+					loaded={loaded}
+					onClose={backToView}
+				/>
 			)}
 			{paletteOpen && <CommandPalette commands={commands} onClose={closePalette} />}
 		</RichTextContext.Provider>
@@ -192,18 +205,22 @@ function ItemSheet({
 	destination,
 	index,
 	live,
+	editable,
 	loaded,
 	onClose,
 }: {
 	destination: Exclude<ReturnType<typeof resolveRoute>, { kind: "view" }>;
 	index: ReturnType<typeof indexBacklog>;
 	live: LiveExtension | null;
+	editable: boolean;
 	loaded: boolean;
 	onClose: () => void;
 }) {
 	const item = destination.kind === "item" ? index.byRef.get(destination.ref) : undefined;
 	const editing =
-		live && (destination.kind === "new" || (item && destination.kind === "item" && destination.mode !== "view"));
+		live &&
+		editable &&
+		(destination.kind === "new" || (item && destination.kind === "item" && destination.mode !== "view"));
 	const titleFocus = () => document.getElementById("item-title");
 	const fieldFocus = () => document.querySelector<HTMLElement>("#drawer [data-autofocus]");
 
@@ -248,8 +265,18 @@ function ItemSheet({
 					item={item}
 					index={index}
 					onClose={onClose}
-					actions={live ? <live.ItemActions item={item} /> : undefined}
-					activity={live ? <live.ItemActivity item={item} /> : undefined}
+					actions={
+						live ? (
+							editable ? (
+								<live.ItemActions item={item} />
+							) : (
+								<p className="muted">
+									This board is read-only here. Open the repository's session to edit items or start implementation.
+								</p>
+							)
+						) : undefined
+					}
+					activity={live && editable ? <live.ItemActivity item={item} /> : undefined}
 					reportHref={live ? reportLinkHref : undefined}
 				/>
 			) : (

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { openFile } from "./open.ts";
 
 interface WebServer {
@@ -10,8 +11,8 @@ interface WebServer {
 export function webLauncher(api: ExtensionAPI, open = openFile) {
 	let server: WebServer | undefined;
 	let key = "";
-	let pending = Promise.resolve();
-	const enqueue = (action: () => Promise<void>) => {
+	let pending: Promise<unknown> = Promise.resolve();
+	const enqueue = <T>(action: () => Promise<T>): Promise<T> => {
 		const next = pending.then(action);
 		pending = next.catch(() => undefined);
 		return next;
@@ -42,6 +43,12 @@ export function webLauncher(api: ExtensionAPI, open = openFile) {
 			const fragment = new URLSearchParams(url.hash.slice(1));
 			fragment.set("view", view);
 			url.hash = fragment.toString();
-			await open(url.href);
+			try {
+				await open(url.href);
+			} catch (error) {
+				// The server is running: give the address, so a headless or SSH session can still reach it.
+				throw new Error(`no browser could be started (${errorMessage(error)}); open ${url.href}`);
+			}
+			return url.href;
 		});
 }

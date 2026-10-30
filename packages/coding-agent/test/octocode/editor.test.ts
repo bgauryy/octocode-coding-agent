@@ -1,18 +1,8 @@
-import {
-	CombinedAutocompleteProvider,
-	Container,
-	type EditorTheme,
-	TuiMainScreen,
-	visibleWidth,
-} from "@octocodeai/octocode-tui";
+import { CombinedAutocompleteProvider, type EditorTheme, TuiMainScreen, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../../src/core/extensions/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import {
-	AssistantMessageComponent,
-	CustomEditor,
-	ExtensionSelectorComponent,
-} from "../../src/modes/interactive/components/index.ts";
+import { CustomEditor, ExtensionSelectorComponent } from "../../src/modes/interactive/components/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import {
 	BOX_MIN_WIDTH,
@@ -23,7 +13,6 @@ import {
 	registerEditor,
 	withHint,
 } from "../../src/octocode/ui/editor.ts";
-import { thinkingTranscript } from "../../src/octocode/ui/thinking.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const identity = (text: string): string => text;
@@ -49,34 +38,28 @@ function terminal() {
 }
 
 describe("permission shortcut in the Octocode editor", () => {
-	it("toggles thinking with the configured binding once per press without changing the draft", async () => {
+	it("forwards the thinking toggle to the host's action once per press without changing the draft", async () => {
 		initTheme("dark", false);
 		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
 		registerEditor(fake.api, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
-		const chat = new Container();
-		const component = new AssistantMessageComponent(
-			{ role: "assistant", content: [{ type: "thinking", thinking: "Complete thought." }] } as never,
-			true,
-		);
-		chat.addChild(component);
-		tui.addChild(chat);
-		thinkingTranscript(tui).refresh();
-		const setHidden = vi.spyOn(component, "setHideThinkingBlock");
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
+		const toggle = vi.fn();
+		editor.onAction("app.thinking.toggle", toggle);
 		expect(editor.embedWorkingStatus).toBe(false);
 		tui.setFocus(editor);
 		input("draft");
 		input("\x14");
-		expect(setHidden).toHaveBeenLastCalledWith(true);
+		expect(toggle).toHaveBeenCalledTimes(1);
+		// Repeat and release events of the held key do not toggle again.
 		input("\x1b[116;5:2u");
 		input("\x1b[116;5:3u");
-		expect(setHidden).toHaveBeenCalledTimes(1);
+		expect(toggle).toHaveBeenCalledTimes(1);
 		keys.setUserBindings({ "app.thinking.toggle": "ctrl+y" });
 		input("\x19");
-		expect(setHidden).toHaveBeenLastCalledWith(false);
+		expect(toggle).toHaveBeenCalledTimes(2);
 		expect(editor.getText()).toBe("draft");
 	});
 
@@ -252,7 +235,7 @@ describe("Octocode prompt box", () => {
 		const lines = editor.render(80);
 		const text = lines.map(plain);
 		expect(text[0]).toMatch(/^╭── octocode ─+╮$/);
-		expect(text[1]).toMatch(/^│ .*Ask about any code · \/ commands · @ files · ! shell · shift\+tab permission +│$/);
+		expect(text[1]).toMatch(/^│ .*Ask about any code · \/ commands · @ files · ! shell +│$/);
 		// The footer is the one home of the permission mode: the bottom border stays a plain rule.
 		expect(text[2]).toMatch(/^╰─+╯$/);
 		expect(text.map((line) => visibleWidth(line))).toEqual([80, 80, 80]);
@@ -379,7 +362,7 @@ describe("Octocode prompt box", () => {
 	});
 
 	it("shortens the hint part by part and keeps labels inside the rule", () => {
-		expect(hintText(200)).toBe("Ask about any code · / commands · @ files · ! shell · shift+tab permission");
+		expect(hintText(200)).toBe("Ask about any code · / commands · @ files · ! shell");
 		expect(hintText(40)).toBe("Ask about any code · / commands");
 		expect(plain(hintText(10))).toBe("Ask about…");
 		expect(labelledRule(20, " left ", " right ", (text) => text)).toBe("─ left ───── right ─");

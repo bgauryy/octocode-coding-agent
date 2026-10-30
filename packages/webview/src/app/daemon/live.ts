@@ -16,12 +16,13 @@ function DaemonStatus(): ReactNode {
 
 /**
  * The live extension for a page the daemon serves, scoped to a session or a repository: the same components, with a
- * link back to the session list, and for a repository (no session) only the views that read saved data.
+ * link back to the session list, and for a repository (no session) only the views that read saved data and no edit control,
+ * because the host answers a board write there with 405. The flag hides controls only; the host still decides.
  */
 export function daemonLive(live: LiveExtension, scope: NonNullable<PageScope>): LiveExtension {
 	return {
 		...live,
 		ConnectionStatus: DaemonStatus,
-		...(scope.kind === "repo" ? { views: live.views.filter((view) => REPO_VIEWS.has(view.name)) } : {}),
+		...(scope.kind === "repo" ? { readOnly: true, views: live.views.filter((view) => REPO_VIEWS.has(view.name)) } : {}),
 	};
 }

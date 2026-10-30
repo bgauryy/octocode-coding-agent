@@ -4,6 +4,7 @@ import { sha256 } from "../../../utils/atomic-file.ts";
 import { isRecord } from "../../../utils/guards.ts";
 import type { MutationReceipt } from "../render.ts";
 import { matchesResponsePath } from "./path.ts";
+import { knownUnsupported, noteUnsupported, saysUnsupported } from "./support.ts";
 
 type DiagnosticState =
 	| "issues"
@@ -24,7 +25,6 @@ interface DiagnosticFeedback {
 }
 
 const TOOL = "mcp__octocode__lspSearch";
-const WAIT_MS = 2000;
 const MAX_FILES = 3;
 const MAX_ISSUES = 5;
 
@@ -62,7 +62,12 @@ function describe(row: Record<string, unknown>, path: string): DiagnosticFeedbac
 	return matches.length ? { path, state: "issues", issues, truncated } : { path, state: "observed-empty" };
 }
 
-/** Coalesce repeated writes, then inspect a bounded number of final surviving targets outside file locks. */
+/**
+ * Coalesce repeated writes, then inspect a bounded number of final surviving targets outside file locks. Each call is
+ * bounded by the caller's signal and the research server's own request and language-server timeouts, never by a
+ * deadline of this tool, so a server still warming up answers the next edit instead of being cut off on every one.
+ * A file type the server already said it has no language server for is not asked again in this session.
+ */
 export async function inspectMutations(
 	receipts: readonly MutationReceipt[],
 	ctx: ExtensionToolContext,
@@ -97,37 +102,21 @@ export async function inspectMutations(
 			results.push({ path, state: "unavailable" });
 			continue;
 		}
-		const controller = new AbortController();
-		const abort = () => controller.abort();
-		signal?.addEventListener("abort", abort, { once: true });
-		let timer: ReturnType<typeof setTimeout> | undefined;
+		if (knownUnsupported(sessionId, TOOL, path)) {
+			results.push({ path, state: "unsupported" });
+			continue;
+		}
 		try {
-			const timeout = new Promise<"pending">((resolve) => {
-				timer = setTimeout(() => {
-					controller.abort();
-					resolve("pending");
-				}, WAIT_MS);
-			});
 			// Only schema-declared fields: the tool's query schema rejects unknown fields, and the row carries the
 			// diagnostics (matches, category) by itself.
-			const call = ctx.executeTool(
-				TOOL,
-				{ queries: [{ operation: "diagnostic", path }] },
-				{
-					signal: controller.signal,
-				},
-			);
-			const outcome = await Promise.race([call, timeout]);
-			if (outcome === "pending") {
-				results.push({ path, state: signal?.aborted ? "cancelled" : "pending" });
-				continue;
-			}
+			const outcome = await ctx.executeTool(TOOL, { queries: [{ operation: "diagnostic", path }] }, { signal });
 			const after = await stale(receipt);
 			if (after) {
 				results.push({ path, state: after });
 				continue;
 			}
 			if (outcome.isError) {
+				if (saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
 				results.push({ path, state: "unavailable" });
 				continue;
 			}
@@ -142,21 +131,21 @@ export async function inspectMutations(
 				}
 			}
 			const row = rowOf(parsed);
+			if (row && saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
 			results.push(
 				row && matchesResponsePath(parsed, row, path, ctx.cwd) ? describe(row, path) : { path, state: "unavailable" },
 			);
 		} catch {
 			results.push({ path, state: signal?.aborted ? "cancelled" : "unavailable" });
-		} finally {
-			if (timer) clearTimeout(timer);
-			signal?.removeEventListener("abort", abort);
 		}
 	}
 	return results;
 }
 
+/** The rows that carry a claim; a file type with no language server says nothing worth a line to the model. */
 export function formatFeedback(feedback: readonly DiagnosticFeedback[]): string {
 	return feedback
+		.filter(({ state }) => state !== "unsupported" && state !== "unavailable")
 		.map(({ path, state, issues, truncated }) => {
 			const detail =
 				state === "issues"

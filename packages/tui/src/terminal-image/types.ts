@@ -4,6 +4,8 @@ export interface TerminalCapabilities {
 	images: ImageProtocol;
 	trueColor: boolean;
 	hyperlinks: boolean;
+	/** Kitty images go through tmux passthrough as Unicode placeholder cells. Set only inside a tmux session. */
+	kittyPlaceholders?: boolean;
 }
 
 export interface CellDimensions {

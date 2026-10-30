@@ -43,6 +43,31 @@ octocode-api completion fish | source
 
 Shell hints cover built-in flags, enum values, bundled model/provider names, configured MCP servers and resource paths. API hints also include running session IDs and watch event types. Completion does not start agents, connect to providers, or load extension code. Extension-defined flags and delegated `research`/`native` commands are outside these completion lists; arbitrary text, URLs and credentials have no fixed option list.
 
+## Running inside tmux
+
+Octocode detects tmux and adapts, so keys, links, notifications, images and forks keep working in a multiplexer. Most of it needs no setup:
+
+- Shift+Enter and other modified keys, with a startup warning when `extended-keys` is off
+- Multi-line paste, including control keys tmux re-encodes
+- Mouse tracking that does not flood tmux
+- Clickable links, when your terminal reports hyperlink support
+- "Answer ready" notifications for Kitty, iTerm2, Ghostty and WezTerm, with a bell fallback
+- Kitty images in Kitty and Ghostty, re-sent when a terminal reattaches
+- Synchronized-output renewal so long redraws do not tear
+- `/fork pane`, `/fork pane down` and `/fork window` to open a fork beside the current session
+
+Octocode only reads your tmux options and never changes them. For the full feature set, add these to `~/.tmux.conf`:
+
+```tmux
+set -g extended-keys on
+set -g allow-passthrough on
+set -g focus-events on
+set -as terminal-features ',*:hyperlinks'
+set -as terminal-features ',*:RGB'
+```
+
+See [Running Octocode inside tmux](docs/tmux.md) for what each option unlocks, limits, troubleshooting and checks.
+
 ## Configuration
 
 [CONFIGURATIONS.md](../../CONFIGURATIONS.md) maps global and workspace settings for skills, MCP, models, prompts, extensions and agents. `/mcp config` shows the active locations and trust state; `/mcp tools [server] [tool]` inspects tool names, descriptions and schemas. `/mcp enable <server>` and `/mcp disable <server>` control configured servers; add `--local` for a trusted workspace override. `/status` lists loaded skills and MCP connections. See the [MCP guide](docs/mcp.md) for the default Octocode preset, exposure and shell commands.

@@ -49,12 +49,16 @@
 		"build:binary": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-ai run build && yarn workspace @octocodeai/octocode-agent-core run build && yarn run build && bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile dist/binary/octocode && node ../../scripts/stage-binary.mjs dist/binary",
 		"copy-assets": "shx mkdir -p dist/theme && shx cp src/theme/*.json dist/theme/ && shx mkdir -p dist/modes/interactive/assets && shx cp src/modes/interactive/assets/*.png dist/modes/interactive/assets/ && shx mkdir -p dist/core/export-html/vendor && shx cp src/core/export-html/template.html src/core/export-html/template.css src/core/export-html/template.js dist/core/export-html/ && shx cp src/core/export-html/vendor/*.js dist/core/export-html/vendor/ && shx mkdir -p dist/octocode/instructions && shx rm -rf dist/octocode/instructions/roles && shx cp -r src/octocode/instructions/roles dist/octocode/instructions/ && shx mkdir -p dist/octocode/native-skills && shx rm -rf dist/octocode/native-skills/octocode-context-optimization && shx cp -r src/octocode/native-skills/octocode-context-optimization dist/octocode/native-skills/ && shx mkdir -p dist/licenses/codex-patch && shx cp src/octocode/shared/codex-patch/LICENSE src/octocode/shared/codex-patch/NOTICE dist/licenses/codex-patch/ && node ../../scripts/stage-bash-parser.mjs",
 		"test": "vitest --run && vitest --run --config vitest.octocode.config.ts",
+		"test:tmux": "vitest --run --config vitest.octocode.config.ts test/octocode/notify.test.ts test/octocode/terminal-launch-tmux.test.ts test/octocode/fork-launch.test.ts test/octocode/tmux-startup-check.test.ts",
 		"generate:schemas": "node --import ./scripts/source-resolver.ts scripts/generate-schemas.ts",
 		"generate:references": "node --import ./scripts/source-resolver.ts scripts/generate-references.ts",
 		"prepublishOnly": "yarn run clean && yarn run build"
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "2.0.2",
+		"@modelcontextprotocol/client": "2.3.1",
+		"@modelcontextprotocol/core": "2.3.1",
+		"@octocodeai/freellama": "0.5.0",
 		"@octocodeai/octocode-agent-core": "1.3.0",
 		"@octocodeai/octocode-ai": "1.3.0",
 		"@octocodeai/octocode-chrome-devtools": "0.2.0",
@@ -79,11 +83,11 @@
 		"semver": "7.8.5",
 		"smol-toml": "1.9.1",
 		"typebox": "1.3.27",
-		"undici": "8.10.2",
+		"undici": "8.12.3",
 		"web-tree-sitter": "0.25.10",
 		"ws": "8.22.0",
 		"yaml": "2.9.0",
-		"zod": "4.6.5",
+		"zod": "4.6.7",
 		"zustand": "5.0.15"
 	},
 	"overrides": {

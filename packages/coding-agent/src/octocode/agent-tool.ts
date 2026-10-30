@@ -35,15 +35,17 @@ export function agentModes() {
 					? "Delegate work, coordinate agents and exchange messages"
 					: "Coordinate agents and exchange messages",
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
-				parameters: Type.Object(
-					{
-						type: Type.Unsafe<Mode>({ type: "string", enum: entries.map(([type]) => type) }),
-						input: Type.Unsafe<Record<string, unknown>>({
-							anyOf: entries.map(([type, tool]) => ({ ...tool.parameters, description: `Arguments for type ${type}` })),
-						}),
-					},
-					{ additionalProperties: false },
-				),
+				parameters: Type.Unsafe<{ type: Mode; input: Record<string, unknown> }>({
+					type: "object",
+					required: ["type", "input"],
+					anyOf: entries.map(([type, tool]) => ({
+						properties: {
+							type: Type.Literal(type),
+							input: tool.parameters,
+						},
+						additionalProperties: false,
+					})),
+				}),
 				async execute(id, params, signal, onUpdate, ctx) {
 					if (Object.keys(params).some((key) => key !== "type" && key !== "input")) {
 						throw new Error("Agent arguments belong inside input; the envelope accepts only type and input.");

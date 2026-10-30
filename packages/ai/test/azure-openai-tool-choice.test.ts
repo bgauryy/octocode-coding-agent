@@ -18,6 +18,26 @@ const model: Model<"azure-openai-responses"> = {
 };
 
 describe("Azure OpenAI tool choice", () => {
+	it.each(["short", "none"] as const)(
+		"keeps cache grouping separate from sessions with retention %s",
+		async (cacheRetention) => {
+			let payload: unknown;
+			await streamSimple(model, normalizeContext({ messages: [] }), {
+				apiKey: "test-key",
+				sessionId: "child-a",
+				promptCacheKey: "siblings",
+				cacheRetention,
+				onPayload: (value) => {
+					payload = value;
+					throw new Error("captured");
+				},
+			}).result();
+			expect((payload as { prompt_cache_key?: string }).prompt_cache_key).toBe(
+				cacheRetention === "none" ? undefined : "siblings",
+			);
+		},
+	);
+
 	it("forwards provider-specific tool choice while preserving tool definitions", async () => {
 		let payload: unknown;
 		const result = stream(

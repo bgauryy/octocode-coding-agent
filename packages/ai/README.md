@@ -246,6 +246,8 @@ A **provider** is the runtime unit: it owns its model catalog, its auth (API key
 
 Providers internally share **API implementations** (the wire protocols): Anthropic models use `anthropic-messages`, OpenAI uses `openai-responses`, while xAI, Groq, Cerebras, OpenRouter, and most others share `openai-completions`. Mixed-API providers (GitHub Copilot, OpenCode Zen) dispatch per model.
 
+Vercel AI SDK's `@ai-sdk/provider-utils` owns HTTP/error handling for Chat Completions, Responses, Mistral and classifiers, and shared SSE framing for those chat streams plus Anthropic and Codex. Existing provider adapters preserve grammar tools, reasoning replay, cache boundaries and usage accounting; they do not pass through the SDK's narrower normalized model interface. Official Anthropic, Google, AWS and Azure SDK paths remain where they own vendor protocols. `jose` verifies ChatGPT ID tokens; unverified JWT decoding is used only for account routing metadata. See the [library assessment](../../docs/LIBRARY_ASSESSMENT.md) for the ownership decisions.
+
 ### Provider Factories
 
 For apps that only need specific providers, there is one factory per built-in provider, each a subpath import that pulls only that provider's catalog:
@@ -1502,6 +1504,8 @@ interface OpenAIResponsesCompat {
 
 OpenAI Responses requests to `xai` also send `x-grok-conv-id` from `sessionId`, as the Chat Completions client does. On explicit-cache models (`supportsExplicitPromptCacheMode`, GPT-5.6+), `cacheRetention: "long"` sends `prompt_cache_options: { ttl: "12h" }`; `"short"` sends no request TTL, and `"none"` sends `{ mode: "explicit" }` with no breakpoints. The leading instructions carry an explicit breakpoint with the instruction retention. When `instructionCacheBoundary` names a section of the leading system message, they are split before that section into two `input_text` parts that each carry the breakpoint; an absent or unknown boundary, or a prompt without sections, keeps one part.
 
+`promptCacheKey` optionally groups related OpenAI, Azure Responses, Codex and Mistral requests for prompt caching without sharing transport sessions. It defaults to `OCTOCODE_PROMPT_CACHE_KEY` when set, then `sessionId`. Simple APIs preserve it. The wire key is capped at 64 characters and omitted when `cacheRetention` is `"none"`; session headers and WebSocket pooling continue to use `sessionId`.
+
 OpenRouter requests send `x-session-id` from `sessionId` when prompt caching is enabled. Chat Completions and Anthropic Messages both auto-detect OpenRouter endpoints unless `sendSessionAffinityHeaders` is explicitly false. On Anthropic-compatible models, `sessionAffinityFormat: "openrouter"` selects `x-session-id`; when unset, the existing `x-session-affinity` format is used. Explicit request headers take precedence over generated headers.
 
 If `compat` is not set, the library falls back to URL-based detection. If `compat` is partially set, unspecified fields use the detected defaults. This is useful for:
@@ -2028,3 +2032,5 @@ Update `packages/ai/README.md`:
 ## License
 
 MIT
+
+Provider SSE framing for Anthropic, OpenAI Responses, Codex SSE and Mistral is shared in `src/utils/server-sent-events.ts`. Adapters retain their own event schemas, completion validation and errors. Mistral initial HTTP requests use the shared retry policy; a stream that has emitted content is never replayed automatically. See the [dated protocol and library audit](../../docs/PROVIDER_PROTOCOL_AUDIT.md#streaming-cache-and-library-follow-up-2026-10-29).

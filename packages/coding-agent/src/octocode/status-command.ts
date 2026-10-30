@@ -2,12 +2,13 @@ import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
 
-/** `/status`: the loaded skills and each MCP server's connection status. */
-export function statusCommand(api: ExtensionAPI): Subcommand {
+/** `/status`: one message with the session summary, the loaded skills and each MCP server's connection status. */
+export function statusCommand(api: ExtensionAPI, summary: () => string): Subcommand {
 	return {
-		description: "status — list loaded skills and MCP connection status",
+		description: "status — session summary, loaded skills and MCP connection status",
 		dialog: "interaction",
-		handler: async (_args, ctx) => {
+		handler: async (args, ctx) => {
+			if (args.trim()) return say(ctx, "Usage: /status", "warning");
 			const skills = api
 				.getCommands()
 				.filter((command) => command.source === "skill")
@@ -16,6 +17,8 @@ export function statusCommand(api: ExtensionAPI): Subcommand {
 			say(
 				ctx,
 				[
+					summary(),
+					"",
 					`Skills (${skills.length})`,
 					...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
 					`MCPs (${servers.length})`,

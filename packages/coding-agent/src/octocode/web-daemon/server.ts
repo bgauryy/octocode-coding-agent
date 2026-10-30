@@ -13,7 +13,9 @@ import { DAEMON_ROUTES, WORKSPACE_ROUTES } from "@octocodeai/octocode-contacts/p
 import { errorMessage } from "../../utils/guards.ts";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { daemonPage, type DaemonPage } from "./build.ts";
-import { bearerOf, replier, tokenMatches, type Reply } from "./http-util.ts";
+import { bearerOf, replier, tokenAccess, type Reply } from "./http-util.ts";
+import { RemotePublisher } from "./remote/publisher.ts";
+import { handleRemoteRequest } from "./remote/routes.ts";
 import { handleRepoRequest } from "./repo-routes.ts";
 import { RepoCatalog } from "./repos.ts";
 import { repoId, SessionRegistry } from "./sessions.ts";
@@ -37,11 +39,15 @@ export interface DaemonServerOptions {
 
 export interface DaemonServer {
 	readonly port: number;
+	/** The launch capability: the page's full surface. */
 	readonly token: string;
+	/** The read-only capability for `/remote view` links: every GET and the live stream, never a command. */
+	readonly viewToken: string;
 	readonly nonce: string;
 	readonly build: string;
 	readonly registry: SessionRegistry;
 	readonly tabs: TabHub;
+	readonly remote: RemotePublisher;
 	draining: boolean;
 	status(): DaemonStatus;
 	close(): Promise<void>;
@@ -86,21 +92,32 @@ function requestUrl(target: string | undefined, origin: string): URL | undefined
 export async function startDaemonServer(options: DaemonServerOptions): Promise<DaemonServer> {
 	const page = options.page ?? daemonPage();
 	const token = randomBytes(32).toString("hex");
+	// One object, read on every check: a rotated view token applies to HTTP and to the next socket hello alike.
+	const tokens = { control: token, view: randomBytes(32).toString("hex") };
 	const nonce = randomBytes(16).toString("hex");
 	const startedAt = Date.now();
 	let origin = "";
 	let host = "";
+	let port = 0;
 	const notify = () => options.onActivity();
 	const registry = new SessionRegistry(options.env, notify);
 	const catalog = new RepoCatalog(options.env, registry);
 	const state = { draining: false };
 	const tabs = new TabHub({
-		token,
+		tokens,
 		origin: () => origin,
 		catalog,
 		env: options.env,
 		activity: notify,
 		accepting: () => !state.draining,
+	});
+	const remote = new RemotePublisher({
+		port: () => port,
+		origin: () => origin,
+		tokens: () => tokens,
+		rotateView: () => (tokens.view = randomBytes(32).toString("hex")),
+		build: page.build,
+		activity: notify,
 	});
 	const health = (): DaemonHealth => ({ ok: true, protocolVersion: DAEMON_PROTOCOL_VERSION, build: page.build });
 	const status = (): DaemonStatus => ({
@@ -141,10 +158,12 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			res.end(page.html);
 			return;
 		}
-		const authorized = tokenMatches(bearerOf(req), token);
-		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.health)
-			return reply(200, authorized ? status() : health());
-		if (!authorized) return reply(401, { error: "Reopen /octocode to connect to the Octocode web workspace." });
+		const access = tokenAccess(bearerOf(req), tokens);
+		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.health) return reply(200, access ? status() : health());
+		if (!access) return reply(401, { error: "Reopen /octocode to connect to the Octocode web workspace." });
+		// A view link reads what the page reads and changes nothing: no command, no board write, no admin call.
+		if (access === "view" && req.method !== "GET")
+			return reply(403, { error: "This link is view-only. Open the workspace from a terminal to act." });
 		notify();
 		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.sessions) {
 			const all = registry.list();
@@ -172,6 +191,12 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			} catch (error) {
 				return reply(500, { error: redactSecrets(errorMessage(error)).slice(0, 500) });
 			}
+		}
+		// Links carry capabilities: only the control token may see, issue or revoke them.
+		if (url.pathname === DAEMON_ROUTES.remote) {
+			if (access !== "control") return reply(403, { error: "This link is view-only." });
+			if (await handleRemoteRequest(req, reply, remote)) return;
+			return reply(405, { error: "Method not allowed" });
 		}
 		if (req.method === "POST" && url.pathname === DAEMON_ROUTES.drain) {
 			reply(200, { draining: true });
@@ -246,7 +271,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			resolve();
 		});
 	});
-	const port = (server.address() as AddressInfo).port;
+	port = (server.address() as AddressInfo).port;
 	host = `127.0.0.1:${port}`;
 	origin = `http://${host}`;
 	registry.start();
@@ -254,6 +279,10 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 	return {
 		port,
 		token,
+		get viewToken() {
+			return tokens.view;
+		},
+		remote,
 		nonce,
 		build: page.build,
 		registry,

@@ -198,7 +198,13 @@ export async function startWorkspaceWeb(
 			}
 			if (!Value.Check(BacklogMutationSchema, input)) return reply(400, { error: "Invalid backlog fields" });
 			const actor = { ...backlog.actor, kind: "human" as const };
-			const { op, id, ...fields } = input;
+			const { op, id, reason, ...fields } = input;
+			// `reason` is the former name of `why`, still accepted from older clients.
+			if (reason !== undefined) {
+				if (fields.why !== undefined && fields.why !== reason)
+					return reply(400, { error: "reason is the former name of why: give only why." });
+				fields.why = reason;
+			}
 			if (op !== "add" && (!id || fields.version === undefined))
 				return reply(400, { error: "An item and its current version are required." });
 			const item =

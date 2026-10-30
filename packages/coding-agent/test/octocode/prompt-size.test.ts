@@ -1,6 +1,8 @@
 import { EntityFields } from "@octocodeai/octocode-contacts/backlogs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
+import { reportContractSentences } from "../../src/octocode/instructions/report.ts";
+import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -9,7 +11,7 @@ beforeEach(() => {
 	saved = { ...process.env };
 	process.env.OCTOCODE_HOME = tmp();
 	// Hermetic: a run inside a Octocode subagent inherits its identity, which changes the tools and the prompt.
-	for (const key of ["OCTOCODE_SUBAGENT", "OCTOCODE_BROWSER_VISIBLE"]) delete process.env[key];
+	for (const key of ["OCTOCODE_SUBAGENT", "OCTOCODE_BROWSER_VISIBLE", "OCTOCODE_READ_ONLY"]) delete process.env[key];
 });
 afterEach(() => {
 	process.env = saved;
@@ -37,6 +39,8 @@ interface Size {
 	total: number;
 	prompt: number;
 	perTool: Record<string, number>;
+	/** The `octocode_*` policy sections, joined. */
+	policy: string;
 }
 
 /**
@@ -44,8 +48,9 @@ interface Size {
  * Octocode's base prompt/tools, MCP, skill metadata, repository instructions and snippets. e2e.test.ts also budgets the real
  * default Octocode + MCP prefix. `exclude` mirrors a subagent profile's `excludeTools`.
  */
-async function promptSize(options: { subagent: boolean; exclude?: string[] }): Promise<Size> {
+async function promptSize(options: { subagent: boolean; exclude?: string[]; readOnly?: boolean }): Promise<Size> {
 	if (options.subagent) process.env.OCTOCODE_SUBAGENT = "1";
+	if (options.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
 	const fake = fakeHost();
 	Object.assign(fake.api, { getSessionName: () => undefined });
 	await octocode(fake.api);
@@ -79,15 +84,17 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 		perTool[tool.name] =
 			description.length + JSON.stringify(parameters).length + (promptGuidelines ?? []).join("").length;
 	}
-	const prompt = Object.entries(sections)
+	const policy = Object.entries(sections)
 		.filter(([name]) => name.startsWith("octocode_"))
 		.map(([, text]) => text)
-		.join("\n\n").length;
+		.join("\n\n");
+	const prompt = policy.length;
 	return {
 		backlogEntities,
 		total: Object.values(perTool).reduce((sum, size) => sum + size, prompt),
 		prompt,
 		perTool,
+		policy,
 	};
 }
 
@@ -134,7 +141,26 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 41_300 (2026-10-29, measured 41_002 without entity fields): user-requested debugger pause, exception stops and
 // Node/TypeScript support through js-debug (the `pause` action, `tcp` and `exceptions` fields and their adapter line;
 // debug schema 2_879, after trimming), plus 136 for B173's agent external/models fields.
-const MAIN_CEILING = 41_300;
+// 42_600 (2026-10-29, measured 42_261 without entity fields): the graph tool contracts come from the sibling native CLI
+// (graphQuery 9_764, graphBuild 2_852), and with them the previous commit already measured 40_978. On top of that commit:
+// debug +872 (the debugger pause, exception and js-debug schema above), agent +258 (B173 external/models fields and the
+// models `scope` parameter) and +153 in the assembled system prompt.
+// 43_100 (2026-10-29, measured 42_985 without entity fields; user-approved): B205 message-by-reference, trimmed to
+// +504 over the 42_481 baseline: the shared `msg#<N>`/`report:<agent-id>` policy line, the agent `task` cite text,
+// scratch retention from OCTOCODE_CLEANUP_DAYS (+16), the message `forward` field and the external `refs` field.
+// 43_600 (2026-10-29, measured 43_526 without entity fields; user-approved B213): the main-session `compact` tool (449
+// with its reason property and prompt snippet); subagents do not get it, so the specialist ceiling is unchanged.
+// 43_000 (2026-10-29, measured 42_794 without entity fields; policy block 7_184, from 7_935): RFC D7/S1 cuts. The policy no longer repeats
+// seven tool mechanics (polling, references, model choice, headless, the contract file and locks, message fields,
+// closing backlog items), the report contract (now once, in the child's task), or the skill-loading rule (the skills
+// section), and its three universal templates became conditions. The agent `isolate` text names `refs/octocode/<id>`.
+// 43_200 (2026-10-30, measured 43_122 without entity fields; policy 7_267): the user-requested `ollama` tool (+1_152) and
+// the reorientation policy line (+160) land against -1_552 of declaration cuts: string unions declare `enum` instead of
+// `anyOf` literals (debug, ollama, bash, models), the agent envelope states `reason` once at its root instead of in every
+// branch and drops the "<mode> input" labels, `launch`/`resultSchema` are plain objects, and the debug, askUser,
+// external, web, file, bash, memory, message and task descriptions lost restated mechanics. The graph CLI contracts
+// (12_620) are the sibling native package's and were not changed.
+const MAIN_CEILING = 43_200;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -144,7 +170,15 @@ const MAIN_CEILING = 41_300;
 // (18_894 before the tool list) plus 1_469 for the research-workflow lines.
 // 32_400 (2026-10-28, measured 32_154 without entity fields): the same 12_135 characters of declared graph tools.
 // 32_800 (2026-10-29, measured 32_548 without entity fields): the same debugger pause, exception and js-debug schema.
-const SPECIALIST_CEILING = 32_800;
+// 33_800 (2026-10-29, measured 33_532 without entity fields): the same native-CLI graph contracts (the previous commit
+// measured 32_660 with them) plus debug +872.
+// 34_200 (2026-10-29, measured 34_075 without entity fields; user-approved): the same trimmed B205 additions (+305
+// over the 33_770 baseline: the subagent reference line, scratch retention and the message `forward` field).
+// 33_100 (2026-10-29, measured 32_910 without entity fields): the same S1 cuts; a child's report contract and its
+// `blocked` semantics ride in its task, so the Subagent section lost its longest lines.
+// 32_600 (2026-10-30, measured 32_519 without entity fields): the same declaration cuts (debug -357, agent -135,
+// web -135, memory and skill text), with no subagent `ollama` tool to offset them.
+const SPECIALIST_CEILING = 32_600;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -159,7 +193,7 @@ describe("prompt size", () => {
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);
 		expect(
 			size.total - size.backlogEntities,
-			`main session without new entity fields measured ${size.total - size.backlogEntities}`,
+			`main session without new entity fields measured ${size.total - size.backlogEntities} (policy ${size.prompt})`,
 		).toBeLessThan(MAIN_CEILING);
 	});
 
@@ -173,7 +207,35 @@ describe("prompt size", () => {
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);
 		expect(
 			size.total - size.backlogEntities,
-			`specialist without new entity fields measured ${size.total - size.backlogEntities}`,
+			`specialist without new entity fields measured ${size.total - size.backlogEntities} (policy ${size.prompt})`,
 		).toBeLessThan(SPECIALIST_CEILING);
+	});
+
+	it.each(["implementer", "reviewer"])("%s keeps its working tools without graph schemas", async (name) => {
+		const profile = loadProfiles(tmp(), tmp(), false, {}).get(name)!;
+		const exclude = profileExcludes(profile.excludeTools);
+		const baseline = await promptSize({
+			subagent: true,
+			readOnly: profile.readOnly,
+			exclude: exclude.filter((tool) => !["graphBuild", "graphQuery"].includes(tool)),
+		});
+		const scoped = await promptSize({ subagent: true, readOnly: profile.readOnly, exclude });
+		console.log(
+			`${name}: ${scoped.total} chars; avoids ${baseline.total - scoped.total} (${baseline.perTool.graphBuild + baseline.perTool.graphQuery} graph declarations)`,
+		);
+		expect(scoped.perTool.graphBuild).toBeUndefined();
+		expect(scoped.perTool.graphQuery).toBeUndefined();
+		expect(scoped.total).toBeLessThan(baseline.total - 12_000);
+		for (const tool of ["file", "bash", "agent", "archive", "skill"]) expect(scoped.perTool[tool]).toBeGreaterThan(0);
+	});
+
+	it("states the report contract in the child's task only, never in the policy sections", async () => {
+		const sentences = reportContractSentences();
+		expect(sentences.length).toBeGreaterThan(3);
+		for (const subagent of [false, true]) {
+			const { policy } = await promptSize({ subagent });
+			for (const sentence of sentences) expect(policy, `policy (subagent=${subagent})`).not.toContain(sentence);
+			expect(policy).not.toContain("Start it with one word");
+		}
 	});
 });

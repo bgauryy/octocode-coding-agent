@@ -13,6 +13,7 @@ import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME } from "../../coding-agent/src/config.ts";
 import { globalMcpConfigPath, projectMcpConfigPath, projectMcpConfigPaths } from "./paths.ts";
 import { ProjectTrustStore } from "../../coding-agent/src/core/trust-manager.ts";
+import { MCP_COMMANDS } from "./cli/commands.ts";
 import { compact, COMPACT_USAGE } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
 import { list } from "./cli/list.ts";
@@ -43,17 +44,7 @@ Reads the agent directory's mcp.json and trusted project files:
 .pi/mcp.json, .mcp.json, .agents/mcp.json, ${CONFIG_DIR_NAME}/mcp.json (last wins).
 
 Commands:
-  add <server>            Add or replace a server in mcp.json
-  remove <server>         Remove a server from mcp.json
-  enable <server>        Enable a configured server
-  disable <server>       Disable a configured server
-  exposure <server> <mode> Change how its tools are reached
-  list                    Show state, tools, and errors (exits 1 on failure)
-  tools [server] [tool]    List tools, or inspect a tool's description and input schema
-  compact <action>        Show, check, store or list the TypeScript file the model reads for each server
-  config                  Show global/workspace paths and their read order
-  login <server>          Sign in through the browser
-  logout <server>         Delete the stored OAuth credentials
+${MCP_COMMANDS.map(([name, args, description]) => `  ${`${name} ${args}`.trimEnd().padEnd(26)}${description}`).join("\n")}
 
 Options for configuration commands:
   -l, --local             Write project configuration (enable/disable/exposure require project trust)
@@ -87,7 +78,9 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 	const log = options.log ?? ((line: string) => console.log(line));
 	const error = options.error ?? ((line: string) => console.error(line));
 	const [command, ...rest] = args;
-	if (command === undefined || command === "help" || args.includes("--help") || args.includes("-h")) {
+	// Only options before `--` belong to this command: after it they are the server's own arguments.
+	const own = args.includes("--") ? args.slice(0, args.indexOf("--")) : args;
+	if (command === undefined || command === "help" || own.includes("--help") || own.includes("-h")) {
 		log(HELP);
 		return 0;
 	}

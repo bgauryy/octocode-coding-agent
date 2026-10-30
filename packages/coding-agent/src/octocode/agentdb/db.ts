@@ -4,12 +4,16 @@ import type { DatabaseSync } from "node:sqlite";
 import { agentDbPath, globalPaths, privateDir } from "../shared/home.ts";
 import { loadSqlite } from "../shared/util.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
+import * as backlog from "./queries/backlog.ts";
 import { AgentDbError, ensureSchema, schemaCurrent } from "./schema.ts";
+
+/** The open SQLite handle of an agent database; features pass it to `agentdb/api.ts` functions and never call it themselves. */
+export type Db = DatabaseSync;
 
 /** An open agent database. Features write their own SQL against the schema tables (`./schema.ts`). */
 export interface AgentDb {
 	readonly file: string;
-	readonly db: DatabaseSync;
+	readonly db: Db;
 	/** False when SQLite lacks FTS5: memory search falls back to LIKE. */
 	readonly fts: boolean;
 	/** One BEGIN IMMEDIATE transaction; nested calls join the outer one. */
@@ -70,17 +74,8 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 		db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
 		const { fts } = schemaCurrent(db) ? { fts: true } : transaction(() => ensureSchema(db, target));
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
-		if (
-			db
-				.prepare(
-					"SELECT 1 FROM backlog_notes n WHERE kind = 'note' AND NOT EXISTS (SELECT 1 FROM backlog_comments c WHERE c.legacy_note_id = n.id) LIMIT 1",
-				)
-				.get()
-		)
-			transaction(() =>
-				db.exec(`INSERT OR IGNORE INTO backlog_comments(item, legacy_note_id, at, author, text)
- SELECT item, id, at, author, text FROM backlog_notes WHERE kind = 'note'`),
-			);
+		// Comments replaced the backlog notes of kind `note`; rows written by an older build are copied across once.
+		if (backlog.hasUncopiedNotes(db)) transaction(() => backlog.copyNotesToComments(db));
 		tighten(target);
 		let open = true;
 		return {

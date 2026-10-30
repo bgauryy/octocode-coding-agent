@@ -4,7 +4,8 @@ import { getBuiltinCommand, parseSlashCommand } from "../slash-commands.ts";
  * skill commands, prompt templates, skill mentions and image normalization.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import { repoKey } from "../../octocode/shared/home/repo.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
@@ -91,9 +92,7 @@ export function throwIfExtensionCommand(runner: ExtensionRunner, text: string): 
 	const command = runner.getCommand(commandName);
 
 	if (command || getBuiltinCommand(commandName)) {
-		throw new Error(
-			`Extension command "/${commandName}" cannot be queued. Use prompt() or execute the command when not streaming.`,
-		);
+		throw new Error(`Command "/${commandName}" cannot be queued. Use prompt() or run the command when not streaming.`);
 	}
 }
 
@@ -172,7 +171,11 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 	if (!skill) return text; // Unknown skill, pass through
 
 	try {
-		const content = readFileSync(skill.filePath, "utf-8");
+		const filePath = skill.canonicalPath ?? skill.filePath;
+		if (skill.canonicalPath && realpathSync(filePath) !== filePath)
+			throw new Error("Skill canonical identity changed; reload skills before invoking it");
+		const baseDir = skill.canonicalPath ? dirname(filePath) : skill.baseDir;
+		const content = readFileSync(filePath, "utf-8");
 		const identity = explicitSkillIdentity(skill);
 		if (identity) expandedPaths?.add(identity.canonicalPath);
 		const rawBody = stripFrontmatter(content).trim();
@@ -183,13 +186,13 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 						{
 							sessionId: session.sessionManager.getSessionId(),
 							projectDir: repoKey(host.cwd).root,
-							skillDir: skill.baseDir,
+							skillDir: baseDir,
 							pluginRoot: skill.claudePluginRoot,
 							pluginData: skill.claudePluginData,
 						},
 					)
 				: rawBody;
-		const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
+		const skillBlock = `<skill name="${skill.name}" location="${filePath}">\nReferences are relative to ${baseDir}.\n\n${body}\n</skill>`;
 		return args && skill.argumentStyle !== "claude" ? `${skillBlock}\n\n${args}` : skillBlock;
 	} catch (err) {
 		// Emit error like extension commands do
@@ -234,6 +237,8 @@ export function expandMentionSkills(host: ExpansionHost, text: string, expandedP
 	for (const identity of selected) {
 		if (expandedPaths.has(identity.canonicalPath)) continue;
 		try {
+			if (realpathSync(identity.canonicalPath) !== identity.canonicalPath)
+				throw new Error("Skill canonical identity changed; reload skills before invoking it");
 			const bytes = readFileSync(identity.canonicalPath);
 			let contents = new TextDecoder("utf-8", {
 				fatal: true,

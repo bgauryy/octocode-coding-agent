@@ -6,6 +6,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 - [All commands](commands.md)
 - [Native features and migration from the Pi extension](native-features.md)
+- [Remote access: `/remote`, links, transports and the `octocode remote` CLI](remote.md)
 - [Configuration locations and controls](../../../CONFIGURATIONS.md)
 - [Add hooks, plugins and extensions](../../../PLUGINS.md)
 - [Configuration and Pi compatibility](configuration.md)
@@ -41,6 +42,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Themes](themes.md)
 - [Keybindings](keybindings.md)
 - [Terminal UI](tui.md)
+- [Running inside tmux: setup, features and checks](tmux.md)
 - [SDK](sdk.md)
 - [RPC mode: control a headless session over stdin and stdout](rpc.md)
 - [Agent Client Protocol: expose Octocode to editors and connect to peers](acp.md)

@@ -8,7 +8,6 @@ import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { CacheWarmer } from "./cache-warmer.ts";
-import { IdleHistoryCache } from "./idle-cache-retention.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ExtensionRunner } from "./extensions/index.ts";
 import { createToolNameMatcher } from "../../../mcp/src/servers.ts";
@@ -185,7 +184,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		() => settingsManager.getCacheWarmingMode(),
 		async (event) => extensionRunnerRef.current?.emitCacheWarmingDecision(event) ?? event.action,
 	);
-	const idleHistoryCache = new IdleHistoryCache();
 	const buildRequestOptions = (
 		requestModel: Model<any>,
 		options: ModelsSimpleStreamOptions = {},
@@ -194,12 +192,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const httpIdleTimeoutMs = settingsManager.getHttpIdleTimeoutMs();
 		const effectiveTimeoutMs = httpIdleTimeoutMs === 0 ? 2147483647 : httpIdleTimeoutMs;
 		const headerRunner = extensionRunnerRef.current;
-		// Only session requests measure idle gaps and move to the long tier; compaction and summaries use other ids.
-		const sessionRequest = options.sessionId === sessionManager.getSessionId();
-		const resolveCache = (physical: Model<any>) => {
-			const policy = modelRuntime.getCachePolicy(physical, options, settingsManager.getCachePreferenceLayers());
-			return sessionRequest ? idleHistoryCache.apply(physical, policy) : policy.options;
-		};
+		const resolveCache = (physical: Model<any>) =>
+			modelRuntime.getCachePolicy(physical, options, settingsManager.getCachePreferenceLayers()).options;
 		return {
 			...options,
 			// A virtual model's request is resolved for the model it routes to.
@@ -270,23 +264,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// the current transcript still extends the request's prefix. Agent state may
 			// shallow-copy the messages array or refresh the model object without changing
 			// the provider request, so top-level object identity is not a valid cache key.
-			if (options?.sessionId === sessionManager.getSessionId()) {
-				const rewriteRetention = isVirtualModel(model)
-					? undefined
-					: IdleHistoryCache.afterIdle(
-							model,
-							modelRuntime.getCachePolicy(model, options, settingsManager.getCachePreferenceLayers()),
-						).cacheRetention;
-				cacheWarmer.start(
-					{
-						model,
-						context,
-						options: requestOptions,
-						...(rewriteRetention === "long" || rewriteRetention === "short" ? { rewriteRetention } : {}),
-					},
-					cacheContextIsCurrent(model),
-				);
-			}
+			if (options?.sessionId === sessionManager.getSessionId())
+				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
 			return modelRuntime.streamSimple(model, context, requestOptions);
 		},
 		onPayload: transformProviderPayload,

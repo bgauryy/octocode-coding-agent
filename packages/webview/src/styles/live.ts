@@ -32,6 +32,11 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .session-panel-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .session-panel-header h3 { font-size: 14px; font-weight: 600; }
 .composer { display: grid; gap: 10px; min-width: 0; }
+.dialog-answer { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--warning, #d97706); border-radius: var(--radius-sm); }
+.dialog-answer-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.dialog-answer-text { display: flex; gap: 8px; }
+.dialog-answer-text input { flex: 1; min-width: 0; }
+.dialog-answer-status { margin: 0; }
 .composer-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .composer-actions > .field { flex: 1 1 200px; }
 .composer-actions > .btn { min-height: 36px; }

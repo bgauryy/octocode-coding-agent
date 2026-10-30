@@ -1,8 +1,8 @@
 import type { Api, AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import {
+	checkCandidates,
 	checkProviders,
-	checkTargets,
 	describeHealth,
 	ProviderHealth,
 } from "../../src/octocode/subagents/provider-health.ts";
@@ -42,13 +42,17 @@ describe("provider health", () => {
 		expect(describeHealth(undefined)).toBe("");
 	});
 
-	it("checks one model per provider: this session's model for its own provider, otherwise the cheapest", () => {
+	it("orders each provider's models: this session's model for its own provider first, otherwise the cheapest", () => {
 		const parent = model("anthropic", "opus", 5, 25);
-		const targets = checkTargets(
+		const targets = checkCandidates(
 			[model("anthropic", "haiku", 1, 5), parent, model("openai", "big", 10, 30), model("openai", "nano", 0.05, 0.4)],
 			parent,
 		);
-		expect(targets.map((entry) => `${entry.provider}/${entry.id}`)).toEqual(["anthropic/opus", "openai/nano"]);
+		expect(targets.map((models) => models.map((entry) => `${entry.provider}/${entry.id}`))).toEqual([
+			["anthropic/opus", "anthropic/haiku"],
+			["openai/nano", "openai/big"],
+		]);
+		expect(checkCandidates([parent, model("anthropic", "haiku", 1, 5)], parent, 1)).toEqual([[parent]]);
 	});
 
 	it("records each provider's answer to a tiny request, including thrown and reported errors", async () => {
@@ -77,7 +81,9 @@ describe("provider health", () => {
 		expect(describeHealth(health.get("broken"))).toContain("✗ check failed (check");
 		expect(describeHealth(health.get("broken"))).toContain("socket hang up");
 		expect(sent).toHaveLength(3);
-		expect(sent[0]).toMatchObject({ options: { maxTokens: 64 } });
+		expect(sent[0]).toMatchObject({
+			options: { maxTokens: 64, sessionId: expect.stringMatching(/^credential-check-/) },
+		});
 	});
 
 	it("accepts a credential by its model list without inference, and confirms a failed list with a request", async () => {
@@ -131,6 +137,39 @@ describe("provider health", () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
+	});
+
+	it("tries the provider's next model when the first is refused for itself, but not after a credential refusal", async () => {
+		const health = new ProviderHealth();
+		const tried: string[] = [];
+		const errors: Record<string, string | undefined> = {
+			"go/contributor": "400 This Go model trains on request data. Allow paid endpoints that train on request data.",
+			"go/open": undefined,
+			"key/a": "401 unauthorized",
+			"key/b": undefined,
+		};
+		const registry = {
+			streamSimple: (target: Model<Api>) => {
+				const id = `${target.provider}/${target.id}`;
+				tried.push(id);
+				const errorMessage = errors[id];
+				return {
+					result: async () => (errorMessage ? { stopReason: "error", errorMessage } : { stopReason: "stop" }),
+				} as never;
+			},
+		};
+		const available = [
+			model("go", "open", 0.14, 0.28),
+			model("go", "contributor", 0.1, 0.2),
+			model("key", "a", 1, 1),
+			model("key", "b", 2, 2),
+		];
+		await checkProviders(registry, checkCandidates(available, undefined), health);
+		// Providers run in parallel: compare the set, and the order within one provider.
+		expect([...tried].sort()).toEqual(["go/contributor", "go/open", "key/a"]);
+		expect(tried.indexOf("go/contributor")).toBeLessThan(tried.indexOf("go/open"));
+		expect(health.get("go")).toMatchObject({ ok: true, via: "check" });
+		expect(describeHealth(health.get("key"))).toContain("✗ credential refused (check");
 	});
 
 	it("records nothing when the caller cancels the check", async () => {

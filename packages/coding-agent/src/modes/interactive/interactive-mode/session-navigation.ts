@@ -55,6 +55,7 @@ type SessionNavigationHost = Pick<
 	| "sessionManager"
 	| "settingsManager"
 	| "showError"
+	| "showWarning"
 	| "showExtensionConfirm"
 	| "showExtensionEditor"
 	| "showExtensionSelector"
@@ -253,7 +254,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 		);
 		selector.onCopy = async (text) => {
 			if (!text) {
-				host.showError("Selected entry has no text to copy");
+				host.showWarning("Selected entry has no text to copy.");
 				return;
 			}
 			try {

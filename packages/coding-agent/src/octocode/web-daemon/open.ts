@@ -1,10 +1,27 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { openFile } from "../shared/open.ts";
 import type { SessionAttach } from "./attach-register.ts";
-import type { WorkspaceRuntime } from "../workspace/runtime.ts";
-import { registerSessionAttach } from "./attach-register.ts";
-import { ensureWebDaemon, waitForSession, type LaunchOptions } from "./launcher.ts";
+import { ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOptions } from "./launcher.ts";
 import { webDaemonEnabled } from "./paths.ts";
+
+/**
+ * The running daemon with this session attached to it, for a command that needs both (`/octocode`, `/remote`): starts
+ * or reuses the daemon and waits until it lists this session. Undefined with `OCTOCODE_WEB_DAEMON` off; throws when
+ * the daemon cannot be reached or this session cannot attach.
+ */
+export async function attachedDaemon(
+	attach: SessionAttach,
+	ctx: ExtensionContext,
+	options: LaunchOptions & { sessionWaitMs?: number } = {},
+): Promise<(LaunchedDaemon & { sessionId: string }) | undefined> {
+	if (!webDaemonEnabled(options.env)) return undefined;
+	const endpoint = await attach.ensure(ctx);
+	if (!endpoint) throw new Error("This session cannot accept the web daemon.");
+	const daemon = await ensureWebDaemon(options);
+	if (!(await waitForSession(daemon, endpoint.sessionId, options.sessionWaitMs)))
+		throw new Error("This session did not attach to the web daemon in time.");
+	return { ...daemon, sessionId: endpoint.sessionId };
+}
 
 /**
  * `/octocode` with `OCTOCODE_WEB_DAEMON=1`: makes sure this session accepts the daemon, starts or reuses the daemon,
@@ -16,25 +33,13 @@ export function daemonOpener(
 	options: LaunchOptions & { open?: (url: string) => Promise<void>; sessionWaitMs?: number } = {},
 ): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<boolean> {
 	return async (ctx, view) => {
-		if (!webDaemonEnabled(options.env)) return false;
-		const endpoint = await attach.ensure(ctx);
-		if (!endpoint) throw new Error("This session cannot accept the web daemon.");
-		const daemon = await ensureWebDaemon(options);
 		// A page opened before the daemon can reach this session would show an error: use the per-session server instead.
-		if (!(await waitForSession(daemon, endpoint.sessionId, options.sessionWaitMs)))
-			throw new Error("This session did not attach to the web daemon in time.");
+		const daemon = await attachedDaemon(attach, ctx, options);
+		if (!daemon) return false;
 		const url = new URL(daemon.origin + "/");
-		url.searchParams.set("s", endpoint.sessionId);
+		url.searchParams.set("s", daemon.sessionId);
 		url.hash = new URLSearchParams({ access: daemon.token, view }).toString();
 		await (options.open ?? openFile)(url.href);
 		return true;
 	};
-}
-
-/**
- * Registers the session's attach endpoint (a subagent, which has no `workspace`, gets none) and returns the opener for
- * `/octocode`: with `OCTOCODE_WEB_DAEMON` off it returns false and the per-session server opens as before.
- */
-export function registerWebDaemon(api: ExtensionAPI, workspace: WorkspaceRuntime | undefined) {
-	return daemonOpener(registerSessionAttach(api, { isSubagent: workspace === undefined, workspace }));
 }

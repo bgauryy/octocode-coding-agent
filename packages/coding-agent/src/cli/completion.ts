@@ -3,78 +3,20 @@ import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { getBuiltinProviders, getBuiltinModels } from "@octocodeai/octocode-ai/providers/all";
+import { MCP_COMMANDS } from "../../../mcp/src/cli/commands.ts";
 import { loadMcpConfig } from "../../../mcp/src/config.ts";
 import { MCP_EXPOSURES, MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
 import { ProjectTrustStore } from "../core/trust-manager.ts";
 import { getNativeToolNames } from "../octocode/permission/native-tools.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
-import { VALID_THINKING_LEVELS } from "./args.ts";
+import { FLAG_SPECS } from "./args/flags.ts";
 
-export const CLI_FLAGS = [
-	"--help",
-	"-h",
-	"--version",
-	"-v",
-	"--mode",
-	"--continue",
-	"-c",
-	"--resume",
-	"-r",
-	"--provider",
-	"--model",
-	"--api-key",
-	"--system-prompt",
-	"--append-system-prompt",
-	"--name",
-	"-n",
-	"--no-session",
-	"--session",
-	"--session-id",
-	"--fork",
-	"--session-dir",
-	"--models",
-	"--no-tools",
-	"-nt",
-	"--no-builtin-tools",
-	"-nbt",
-	"--tools",
-	"-t",
-	"--exclude-tools",
-	"-xt",
-	"--thinking",
-	"--print",
-	"-p",
-	"--export",
-	"--extension",
-	"-e",
-	"--no-extensions",
-	"-ne",
-	"--no-mcp",
-	"--skill",
-	"--prompt-template",
-	"--theme",
-	"--use-theme",
-	"--no-skills",
-	"-ns",
-	"--no-prompt-templates",
-	"-np",
-	"--no-themes",
-	"--no-context-files",
-	"-nc",
-	"--list-models",
-	"--tui-mode",
-	"--verbose",
-	"--approve",
-	"-a",
-	"--no-approve",
-	"-na",
-	"--offline",
-	"--",
-];
+/** Top-level flags, from the same table the parser and `--help` read. */
+export const CLI_FLAGS = [...FLAG_SPECS.flatMap((spec) => [spec.name, ...(spec.short ? [spec.short] : [])]), "--"];
 const commands: Record<string, readonly string[]> = {
 	models: ["discover"],
 	auth: ["check", "print-api-key", "print-bearer-token"],
-	mcp: ["add", "remove", "enable", "disable", "exposure", "list", "tools", "config", "login", "logout"],
+	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
 	install: [],
 	remove: [],
@@ -86,36 +28,19 @@ const commands: Record<string, readonly string[]> = {
 	native: [],
 	completion: ["bash", "zsh", "fish"],
 };
+// Subcommand options (`mcp`, `auth`, …) complete alongside the top-level table.
 const values: Record<string, readonly string[]> = {
-	"--mode": ["text", "json", "rpc", "acp"],
-	"--thinking": VALID_THINKING_LEVELS,
-	"--tui-mode": ["fullscreen", "regular"],
+	...Object.fromEntries(FLAG_SPECS.filter((spec) => spec.values).map((spec) => [spec.name, spec.values!])),
 	"--exposure": MCP_EXPOSURES,
 };
-const paths = new Set([
-	"--session",
-	"--fork",
-	"--session-dir",
-	"--export",
-	"--extension",
-	"-e",
-	"--skill",
-	"--prompt-template",
-	"--theme",
-	"--cwd",
-]);
+const byCompletion = (kind: "path" | "text") =>
+	FLAG_SPECS.filter((spec) => spec.completion === kind).flatMap((spec) => [
+		spec.name,
+		...(spec.short ? [spec.short] : []),
+	]);
+const paths = new Set([...byCompletion("path"), "--cwd"]);
 const textFlags = new Set([
-	"--provider",
-	"--model",
-	"--models",
-	"--api-key",
-	"--system-prompt",
-	"--append-system-prompt",
-	"--name",
-	"-n",
-	"--session-id",
-	"--use-theme",
-	"--list-models",
+	...byCompletion("text"),
 	"--url",
 	"--env",
 	"--header",

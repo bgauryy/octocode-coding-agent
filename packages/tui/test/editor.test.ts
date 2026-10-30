@@ -1860,6 +1860,14 @@ describe("Editor component", () => {
 			assert.strictEqual(editor.getText(), "line1\nline2\nline3");
 		});
 
+		it("decodes xterm modifyOtherKeys Ctrl+letter sequences inside bracketed paste (tmux default format)", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+
+			// tmux's default extended-keys-format=xterm sends \x1b[27;5;106~ for Ctrl+J.
+			editor.handleInput("\x1b[200~line1\x1b[27;5;106~line2\x1b[27;5;106~line3\x1b[201~");
+			assert.strictEqual(editor.getText(), "line1\nline2\nline3");
+		});
+
 		it("undoes multi-line paste atomically", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 

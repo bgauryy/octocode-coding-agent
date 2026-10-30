@@ -20,7 +20,7 @@ export function addConditionalItems(
 				currentValue: config.cachePreferences[field] ?? "short",
 				values: [...CACHE_RETENTIONS],
 				description:
-					"Saved default; environment and model overrides take priority. Long writes may cost more. See /session for effective durations.",
+					"Saved default; environment and model overrides take priority. Long writes may cost more. See /status for effective durations.",
 			});
 		}
 	}

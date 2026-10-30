@@ -1,5 +1,6 @@
 import type { ExtensionAPI, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import type { CompactionEntry } from "../../core/session-manager.ts";
+import { TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import {
 	archiveFolder,
 	archiveSearch,
@@ -22,10 +23,6 @@ import { isRecord } from "../../utils/guards.ts";
  * cancelled or failed compaction archives nothing, and whichever summary Octocode ended up with (Octocode's or its default)
  * the archive is the same.
  */
-
-/** The heading the summary asks for, and the line inside it that lists keywords (`summary.ts` words the request). */
-export const TLDR_HEADING = "## TL;DR";
-export const TOPICS_LABEL = "Topics:";
 
 /** What a summary says of its own stretch of history, for the library. */
 interface SummaryLabel {

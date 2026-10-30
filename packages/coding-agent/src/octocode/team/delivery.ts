@@ -21,6 +21,8 @@ interface DeliveryHost {
 	headless(): boolean;
 	/** Writes the heartbeat if one is due (a status change, or the interval passed); whether it did. */
 	heartbeat(db: TeamStore): boolean;
+	/** Settles the relay requests children left for this agent's process (`Relays.take`). */
+	relays(db: TeamStore): void;
 }
 
 /**
@@ -87,9 +89,11 @@ export class Delivery {
 		const headlessIdle = this.host.headless() && ctx?.isIdle();
 		// A settlement send can fail while Octocode changes state. An interactive session stays alive to retry held mail.
 		if (!this.host.headless() && ctx?.isIdle()) this.mail.settled();
-		// An idle subagent without a UI has had its last turn: mail waits, and becomes a dead letter when it leaves.
-		if (!headlessIdle)
+		// An idle subagent without a UI has had its last turn: mail and relay requests wait, and become dead letters when it leaves.
+		if (!headlessIdle) {
+			this.host.relays(db);
 			this.inbox.deliver(db, id, (batch, onRejected) => this.handOver(batch, onRejected), ctx?.isIdle() ?? false);
+		}
 		this.checkWake();
 		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id);
 	}

@@ -42,7 +42,7 @@ function memoryPrompt(subagent: boolean): {
 		"Near-duplicates and secrets are refused; global or pinned changes need a trusted project and the user's approval. " +
 		"An untrusted project shows only global memories.";
 	const ops =
-		"search: relevant notes by query; get: full note by id; list: pinned notes first, then newest" +
+		"search: by query; get: full note by id; list: pinned first, then newest" +
 		(subagent ? "" : "; set: add a memory (title required), or update one with id; delete: remove id");
 	return {
 		description,
@@ -145,7 +145,7 @@ export function registerMemoryTool(
 								title: Type.Optional(Type.String({ description: "set: specific one-line title" })),
 								body: Type.Optional(
 									Type.String({
-										description: "set: the note itself; keep it short, it may be injected into every session",
+										description: "set: the note; keep it short, it may be injected into every session",
 									}),
 								),
 								keywords: Type.Optional(

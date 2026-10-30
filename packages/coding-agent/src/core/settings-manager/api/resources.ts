@@ -21,6 +21,8 @@ export interface ResourceSettingsApi {
 	setEnableSkillCommands(enabled: boolean): void;
 	/** Plugin and hook switches by ID; project keys appear with the `project:` prefix (see `mergeToggles`). */
 	getToggles(): Record<string, boolean>;
+	/** Add a local plugin entry to global or project settings (once per path). */
+	addPlugin(scope: "global" | "project", entry: { path: string; protocol: "claude" | "codex" }): void;
 	/** Switch one ID in global or project settings; `undefined` removes the key. */
 	setToggle(scope: "global" | "project", id: string, on: boolean | undefined): void;
 }

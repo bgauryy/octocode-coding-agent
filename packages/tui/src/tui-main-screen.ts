@@ -1,3 +1,4 @@
+import { hasTmuxSession } from "./multiplexer.ts";
 import { isImageLine } from "./terminal-image.ts";
 import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import {
@@ -54,6 +55,10 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.hardwareCursorRow = state.hardwareCursorRow;
 		this.maxLinesRendered = state.maxLinesRendered;
 		this.previousViewportTop = state.previousViewportTop;
+	}
+
+	protected override renderedLines(): readonly string[] {
+		return this.previousLines;
 	}
 
 	protected override resetRenderState(): void {
@@ -115,7 +120,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				output.append(deleteKittyImages(this.previousKittyImageIds));
 				output.append("\x1b[2J\x1b[H\x1b[3J"); // Clear screen, home, then clear scrollback
 			}
-			appendFullRenderLines(output, newLines, height);
+			appendFullRenderLines(output, newLines, height, hasTmuxSession());
 			output.append("\x1b[?2026l"); // End synchronized output
 			output.flush();
 			this.cursorRow = Math.max(0, newLines.length - 1);

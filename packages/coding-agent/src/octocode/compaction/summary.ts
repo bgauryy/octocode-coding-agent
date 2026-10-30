@@ -18,7 +18,7 @@ import { tildePath } from "../shared/home.ts";
 import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { contentText, escapeRegExp } from "../shared/util.ts";
-import { archivePointer, TLDR_HEADING, TOPICS_LABEL } from "./archive.ts";
+import { archivePointer } from "./archive.ts";
 import {
 	SUMMARIZER_RESULT_CHARS,
 	summarizerView,
@@ -36,20 +36,19 @@ import {
 	withoutModelSavedResults,
 	withoutSavedResults,
 } from "./saved-results.ts";
-import { sharedSummary } from "./shared-summary.ts";
+import { sessionCachePreferences, sharedSummary } from "./shared-summary.ts";
 
 export { SUMMARIZER_RESULT_CHARS, summarizerView, USER_MESSAGE_CHARS, USER_MESSAGES_CHARS, userMessagesSection };
 
 /**
- * The compaction summary. Octocode's own summary (goal, constraints, progress, decisions, next steps, critical context, file
- * lists) loses what a resumed agent most needs verbatim: the user's own words, the errors already solved, and where
- * the work stopped. Octocode gives a hook no way to add to its prompt, so Octocode writes the summary itself: on the
- * session's own model as a request the prompt cache already holds (`shared-summary.ts`), else (a downshift, blocked
- * images, any failure) through Octocode's exported `compact()` (same cut point, split-turn handling, iterative update of the
- * previous summary and file lists), with the same built-in focus in both. Code, not the model, then appends the files Octocode saved from the summarized results
- * (`saved-results.ts`, carried like the file lists), the user's messages word for word (newest first within a budget, carried across
- * compactions), and the transcript that still holds every detail. Any failure returns nothing, and Octocode writes its default summary.
- * (Octocode's default summary has none of these additions.)
+ * The compaction summary. The model writes the checkpoint (`core/compaction/summary-format.ts`) with the focus below:
+ * on the session's own model as one more request of the session, which the prompt cache holds (`shared-summary.ts`),
+ * else (an overflow, a downshift, blocked images, any failure) through the exported `compact()` over the serialized
+ * conversation (same cut point, split-turn handling, iterative update of the previous summary and file lists), routed
+ * and cached as the session's requests are. Code, not the model, then appends the files Octocode saved from the
+ * summarized results (`saved-results.ts`, carried like the file lists), the user's messages word for word (newest
+ * first within a budget, carried across compactions), and the transcript that still holds every detail. Any failure
+ * returns nothing, and Octocode writes its default summary, which has none of these additions.
  */
 
 /**
@@ -74,24 +73,12 @@ const USER_REFERENCE_CHARS = 1_000;
 
 const RECOVERY_HEADING = "## Recovery";
 
-/** Appended to Octocode's summarization prompt (after its fixed sections, as "Additional focus"). */
-export const SUMMARY_FOCUS = `This summary becomes the only record of the conversation above: the next model will not see those messages, and what the summary leaves out it will not know to look for. The user's messages are appended after your summary word for word by code, so do not copy them; state what they ask, decided and corrected. Condense the assistant's own reasoning and narration, but keep what the work found exactly: numbers, sizes, lists, names, states, error strings and conclusions. Detail that can be fetched again (a file, a command's output, a page) needs only a pointer: its path, command or URL. Images do not reach you: where the messages show an image was read, attached or captured, keep its path and what was said about it.
-
-Also add these sections after "## Critical Context", in this order:
-
-## Errors & Fixes
-- Each error or failed approach: the exact error text, its cause, and the fix, or "unresolved". Include the user's corrections of your approach.
-
-## Where We Stopped
-- The work under way in the last messages above, with exact file paths, and a verbatim quote of the latest user request and of the assistant's last step. Name a next step only if it follows directly from that request; never start tangential work.
-
-## Follow-ups
-- Work promised, deferred or suggested but not started, and open questions for the user, or "(none)".
-
-${TLDR_HEADING}
-One or two lines on what the messages above did (only those, not the earlier summary), then a line "${TOPICS_LABEL} " with 3 to 8 comma-separated keywords. An index of the conversation's history uses it as this stretch's label.
-
-Everywhere, keep file paths, symbols, commands, error strings, URLs and identifiers exact. When updating a previous summary, keep the entries of these sections and add the new ones (except ${TLDR_HEADING}: write it afresh for the messages above); newer messages win where they contradict, resolve or supersede it. Write only what the messages show; never guess.`;
+/**
+ * Sent with every summary request as its "Additional focus": how to judge what to keep. The sections are the checkpoint
+ * format the request already carries, and what code appends after the summary (the user's messages, file lists, saved
+ * results, recovery pointers) is not asked for.
+ */
+export const SUMMARY_FOCUS = `This summary becomes the only record of the conversation above: the next model will not see those messages, and what the summary leaves out it will not know to look for. Code appends the user's messages word for word after your summary, so do not quote them; state what they asked for, decided and corrected. Condense the assistant's own reasoning and narration, but keep what the work found exactly: numbers, sizes, lists, names, states, error strings and conclusions. Detail that can be fetched again (a file, a command's output, a page) needs only a pointer: its path, command or URL. Images do not reach you: where the messages show an image was read, attached or captured, keep its path and what was said about it. Write only what the messages show; never guess.`;
 
 /**
  * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed: the
@@ -180,12 +167,12 @@ export function carryFileLists(
 	for (const file of strings(previous.details.modifiedFiles)) preparation.fileOps.edited.add(file);
 }
 
-/** The cache-sharing request was unusable: the summary is written as a standalone request, which bills the whole input. */
+/** The cache-sharing request was unusable: the summary is a standalone request over the serialized conversation, which the prompt cache does not hold. */
 function notifyStandalone(ctx: Pick<ExtensionContext, "hasUI" | "ui">, reason: string): void {
 	if (ctx.hasUI)
 		notify(
 			ctx.ui,
-			`Octocode could not write the compaction summary from the prompt cache (${reason}); it uses a standalone request that pays for the whole input.`,
+			`Octocode could not write the compaction summary inside the session's cached request (${reason}); it sends the conversation again as a standalone request, which the prompt cache does not hold.`,
 			"warning",
 		);
 }
@@ -238,8 +225,10 @@ export async function writeSummary(
 	event: SessionBeforeCompactEvent,
 	ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
 	summaryModel?: Model<Api>,
-	/** `cacheCold`: the session's prompt cache is past its lifetime, so sharing it would pay to rewrite it, not read it. */
-	options: { cacheCold?: boolean } = {},
+	/**
+	 * `cacheCold` (the session's prompt cache is past its lifetime) no longer changes the choice: the session's next
+	 * request rewrites the prefix anyway, so the shared request pays that write once and the next request reads it.
+	 */
 ): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
@@ -271,27 +260,28 @@ export async function writeSummary(
 		// The model updates only its own part of the previous summary; code carries the user messages and the note.
 		const previous =
 			event.preparation.previousSummary === undefined ? undefined : splitSummary(event.preparation.previousSummary);
-		const preparation = {
+		// The standalone request's view of the messages: long tool results are saved whole and shown as references. Only
+		// that request reads it (the shared one reads the session's own messages), so it is built only when it is sent.
+		const standalonePreparation = () => ({
 			...event.preparation,
 			messagesToSummarize: summarizerView(event.preparation.messagesToSummarize, segment, saveText),
 			turnPrefixMessages: summarizerView(event.preparation.turnPrefixMessages, segment, saveText),
 			...(previous === undefined ? {} : { previousSummary: previous.body }),
-		};
+		});
 		const key = paidKey(model, event.preparation, event.customInstructions);
 		let paidSummary = paid.get(ctx.sessionManager);
 		if (paidSummary?.key !== key) {
-			// On the session's own model the summary is asked for inside the session's request, which the prompt cache already
-			// holds; on another (a downshift) or when that fails, as a standalone request that pays for the whole input.
-			// After an overflow the session's own request just failed for its size: sharing it would only fail again.
-			const share = summaryModel === undefined && options.cacheCold !== true && event.reason !== "overflow";
+			// On the session's own model the summary is asked for inside the session's request, which the prompt cache holds
+			// (or is about to hold again); on another (a downshift) or when that fails, as a standalone request over the
+			// serialized conversation. After an overflow the session's own request just failed for its size: sharing it
+			// would only fail again.
+			const share = summaryModel === undefined && event.reason !== "overflow";
 			let fallback =
 				summaryModel !== undefined
 					? `the summary ran on ${model.id}, the model before a downshift, not the session's own`
 					: event.reason === "overflow"
 						? "the context had overflowed the model's window, so sharing it would overflow again"
-						: share
-							? "the cache-sharing request was cancelled"
-							: "the prompt cache had expired, so sharing it would rewrite the whole context";
+						: "the cache-sharing request was cancelled";
 			const shared = share
 				? await sharedSummary(
 						api,
@@ -306,10 +296,11 @@ export async function writeSummary(
 						recordUsage,
 					)
 				: undefined;
+			// Routed and cached as the session's own requests, so a provider that routes by session keeps it with them.
 			const written =
 				shared ??
 				(await compact(
-					preparation,
+					standalonePreparation(),
 					model,
 					undefined,
 					undefined,
@@ -317,6 +308,11 @@ export async function writeSummary(
 					event.signal,
 					api.getThinkingLevel(),
 					stream,
+					undefined,
+					undefined,
+					undefined,
+					ctx.sessionManager.getSessionId(),
+					sessionCachePreferences(ctx, model, api.getSettings()),
 				));
 			// A cancelled compaction saves nothing, so a summary that returned after the cancel is not kept either.
 			if (event.signal.aborted) return undefined;

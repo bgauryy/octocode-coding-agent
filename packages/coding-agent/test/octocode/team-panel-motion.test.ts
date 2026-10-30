@@ -48,8 +48,8 @@ describe("panel state", () => {
 			member("rest-bbbb", { parentId: "main-aaaaaa" }),
 		];
 		const rows = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
-		expect(rows[1]).toMatch(new RegExp(`^ ${frame} busy-aaaa`));
-		expect(rows[2]).toMatch(/^ ○ rest-bbbb/);
+		expect(rows[1]).toMatch(new RegExp(`^ ├ ${frame} busy-aaaa`));
+		expect(rows[2]).toMatch(/^ └ ○ rest-bbbb/);
 		const tree = [
 			{ member: team[1], depth: 0 },
 			{ member: team[2], depth: 0 },
@@ -65,7 +65,7 @@ describe("panel state", () => {
 		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.running);
 	});
 
-	it("says how many agents work and are done in the header", () => {
+	it("says how many agents work and are done in the root row", () => {
 		const team = [
 			member("main-aaaaaa"),
 			member("a-1111", { parentId: "main-aaaaaa", status: "working" }),
@@ -73,7 +73,7 @@ describe("panel state", () => {
 		];
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
-		expect(lines[0]).toBe(" agents · 2 working · 1 done");
+		expect(lines[0]).toBe(" ● main-aaaaaa  general  2 working · 1 done");
 	});
 });
 

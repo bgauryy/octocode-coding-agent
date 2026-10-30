@@ -10,7 +10,7 @@ import type {
 	TUI,
 } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../../theme/theme.ts";
-import type { ReadonlyFooterDataProvider } from "../../footer-data-provider.ts";
+import type { ReadonlyFooterDataProvider, StatusTone } from "../../footer-data-provider.ts";
 import type { KeybindingsManager } from "../../keybindings.ts";
 
 // ============================================================================
@@ -82,8 +82,11 @@ export interface ExtensionUIContext {
 	/** Listen to raw terminal input (interactive mode only). Returns an unsubscribe function. */
 	onTerminalInput(handler: TerminalInputHandler): () => void;
 
-	/** Set status text in the footer/status bar. Pass undefined to clear. */
-	setStatus(key: string, text: string | undefined): void;
+	/**
+	 * Set status text in the footer/status bar. Pass undefined to clear. Pass plain text and a `tone` instead of
+	 * colouring the text: each renderer (terminal footer, RPC client, web view) paints the tone in its own palette.
+	 */
+	setStatus(key: string, text: string | undefined, tone?: StatusTone): void;
 
 	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
 	setWorkingMessage(message?: string): void;

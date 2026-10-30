@@ -192,6 +192,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		return [...this.previousScreen];
 	}
 
+	protected override renderedLines(): readonly string[] {
+		return this.previousScreen;
+	}
+
 	setLayoutRoot(component: Component | undefined): void {
 		if (this.layoutRoot === component) return;
 		this.layoutRoot = component;

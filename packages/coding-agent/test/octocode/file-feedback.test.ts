@@ -4,7 +4,7 @@ import { expect, it, vi } from "vitest";
 import type { ExtensionToolContext } from "../../src/core/extensions/index.ts";
 import { formatFeedback, inspectMutations } from "../../src/octocode/files/feedback/diagnostics.ts";
 import { currentMutationRevision, mutationEpoch } from "../../src/octocode/files/feedback/revisions.ts";
-import { captureParseBefore, inspectParseAfter } from "../../src/octocode/files/feedback/parse.ts";
+import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "../../src/octocode/files/feedback/parse.ts";
 import { matchesResponsePath } from "../../src/octocode/files/feedback/path.ts";
 import type { MutationReceipt } from "../../src/octocode/files/render.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
@@ -296,19 +296,88 @@ it("suppresses old observations after a competing disk edit and avoids an uncall
 	expect(await inspectMutations([unavailable.receipt], unavailable.ctx)).toMatchObject([{ state: "unavailable" }]);
 });
 
-it("keeps cancellation and a bounded parser timeout from claiming a clean result", async () => {
+it("keeps cancellation from claiming a clean result and waits for the server rather than cutting it off", async () => {
 	const f = fixture();
 	callable(f.ctx, { kind: "diagnostics", matches: [] });
 	const controller = new AbortController();
 	controller.abort();
 	expect(await inspectMutations([f.receipt], f.ctx, controller.signal)).toMatchObject([{ state: "cancelled" }]);
-	const stalled = fixture();
-	Object.defineProperty(stalled.ctx, "tools", { value: [{ name: "mcp__octocode__astSearch" }] });
-	Object.defineProperty(stalled.ctx, "executeTool", { value: () => new Promise(() => undefined) });
-	const started = Date.now();
-	const before = await captureParseBefore([stalled.file], stalled.ctx);
-	expect(before.get(stalled.file)?.state).toBe("unsupported");
-	expect(Date.now() - started).toBeLessThan(2000);
+	// A slow server answers in its own time (bounded by the MCP request timeout, not a deadline of this tool).
+	const slow = fixture();
+	Object.defineProperty(slow.ctx, "tools", { value: [{ name: "mcp__octocode__astSearch" }] });
+	Object.defineProperty(slow.ctx, "executeTool", {
+		value: (_tool: string, _args: unknown, options: { signal?: AbortSignal }) =>
+			new Promise((resolve) =>
+				setTimeout(() => {
+					expect(options.signal).toBeUndefined();
+					resolve({
+						isError: false,
+						result: {
+							content: [],
+							structuredContent: {
+								root: slow.ctx.cwd,
+								results: [{ data: { path: "source.ts", operation: "syntaxTree", nodes: [] } }],
+							},
+						},
+					});
+				}, 30),
+			),
+	});
+	expect((await captureParseBefore([slow.file], slow.ctx)).get(slow.file)?.state).toBe("parsed");
+});
+
+it("asks the server once about a file type it does not serve, then skips that type for the session", async () => {
+	const f = fixture();
+	const doc = path.join(path.dirname(f.file), "notes.md");
+	const other = path.join(path.dirname(f.file), "more.md");
+	fs.writeFileSync(doc, "# notes\n");
+	fs.writeFileSync(other, "# more\n");
+	Object.defineProperty(f.ctx, "tools", {
+		value: [{ name: "mcp__octocode__astSearch" }, { name: "mcp__octocode__lspSearch" }],
+	});
+	const executeTool = vi.fn(async (tool: string) => ({
+		isError: true,
+		result: {
+			content: [
+				{
+					type: "text",
+					text:
+						tool === "mcp__octocode__astSearch"
+							? "No registered tree-sitter grammar for .md files"
+							: JSON.stringify({
+									results: [
+										{ errorCode: "serverUnavailable", error: "No language server is configured for this file." },
+									],
+								}),
+				},
+			],
+		},
+	}));
+	Object.defineProperty(f.ctx, "executeTool", { value: executeTool });
+	expect((await captureParseBefore([doc], f.ctx)).get(doc)?.state).toBe("unsupported");
+	expect((await captureParseBefore([other], f.ctx)).get(other)?.state).toBe("unsupported");
+	const receipts = [doc, other].map((file) => ({
+		...f.receipt,
+		canonicalPath: file,
+		digest: sha256(fs.readFileSync(file)),
+		beforeDigest: sha256(fs.readFileSync(file)),
+	}));
+	expect(await inspectMutations(receipts, f.ctx)).toMatchObject([{ state: "unavailable" }, { state: "unsupported" }]);
+	// One parse question and one diagnostics question for the whole type; a source file is still asked about.
+	expect(executeTool.mock.calls.map(([tool]) => tool)).toEqual([
+		"mcp__octocode__astSearch",
+		"mcp__octocode__lspSearch",
+	]);
+	await captureParseBefore([f.file], f.ctx);
+	expect(executeTool).toHaveBeenCalledTimes(3);
+	// Neither answer is worth a line to the model.
+	expect(
+		formatFeedback([
+			{ path: doc, state: "unavailable" },
+			{ path: other, state: "unsupported" },
+		]),
+	).toBe("");
+	expect(formatParseFeedback([{ path: doc, state: "unsupported" }])).toBe("");
 });
 
 it("records only committed queries and inspects the final repeated write", async () => {

@@ -9,6 +9,8 @@ export const BROWSER_VISIBLE_ENV = "OCTOCODE_BROWSER_VISIBLE";
 /** Set in a subagent: the session id of the Octocode session that started it, whose backlog claims the subagent may update. */
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
 export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
+/** Set in a subagent started for one backlog item (`agent` `item`): the only item it may update. */
+export const BACKLOG_ITEM_ENV = "OCTOCODE_BACKLOG_ITEM";
 
 /** Set by the parent in a subagent whose profile declares `hooks: true`: the child runs command hooks (other subagents do not). */
 export const SUBAGENT_HOOKS_ENV = "OCTOCODE_SUBAGENT_HOOKS";

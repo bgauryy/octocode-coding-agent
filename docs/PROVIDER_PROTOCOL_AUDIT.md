@@ -1,6 +1,104 @@
 # Provider protocol and authentication audit
 
+The [2026-10-29 library assessment](LIBRARY_ASSESSMENT.md) supersedes the earlier library recommendations below: direct `eventsource-parser` use and the npm `skills` CLI are excluded. SDK migration validation is recorded separately from the historical pre-migration results.
+
 Reviewed: **2026-10-25**. Result: **documented defects repaired; live interoperability and private vendor contracts remain unverified**. This is a source and protocol review, not certification of every account, model or optional feature.
+
+## SDK migration and skills review, 2026-10-29
+
+This section supersedes the pre-migration library decisions in the next section. The [scored library assessment](LIBRARY_ASSESSMENT.md) explains the chosen boundaries. The npm `skills` CLI was explicitly excluded after the user corrected that choice; no substitute skill runtime dependency was added.
+
+- **MCP:** official client/core 2.3.1 now own handshake, request dispatch, JSON-RPC validation/codecs, Streamable HTTP and OAuth discovery/PKCE/registration/token exchanges. Deleted the legacy SSE transport, its export/configuration support, the old pending/incoming dispatch implementation and the custom SSE event parser. Host wrappers retain process groups, environment isolation, response bounds, cancellation, consent/storage policy and absolute deadlines. The packaged coding-agent declares the SDK dependencies too.
+- **JWT:** `jose` owns ID-token signature/JWKS/standard-claim verification. Issuer, audience, algorithm, nonce, authorized party and subject policy remain explicit. Other JWT decoding is unverified account-routing metadata, not authentication.
+- **Provider transport:** Vercel provider-utils/provider own HTTP/error/SSE primitives for the migrated paths. Existing rich event projections retain cache accounting, grammar tools, reasoning replay and vendor fields. Existing official Anthropic/Google/AWS/Azure SDK paths and private Codex WebSocket semantics remain. Unused high-level `ai` and provider-adapter dependencies were removed; the narrower normalized model interface was not substituted for unsupported fields.
+- **Skills:** retained the external `yaml` parser and host compatibility policy. Fixed directory cycles, canonical identity across main/normal-child/lean-child invocation, stale-snapshot execution and reference roots. Overflow skill names now share the bounded catalog budget instead of expanding the system prompt without limit.
+- **Cache/compaction:** retained separate sibling cache grouping and unique transport identity, per-message child cache receipts, token-weighted conversation statistics and child compaction start/end/failure/cancellation notifications. Summary/warming/tool receipts stay separate from conversation hits. These are application behaviors, not SDK guarantees of a provider cache hit.
+
+Independent reviews found and repaired MCP credentials reaching OAuth endpoints, standalone transport abort-listener retention, stalled OAuth body reads, missing Completions organization/project environment defaults, and a Completions timeout regression. Completions again times out header acquisition while allowing a successful long-running stream; caller cancellation remains active. Responses keeps its existing whole-stream deadline.
+
+Two MCP API differences are explicit in the [package README](../packages/mcp/README.md): `onProgress` supplies progress/total/message without its opaque routing token (raw notifications retain it), and disabled idle timers map to the platform's approximately 24.8-day ceiling. Absolute total deadlines and cancellation remain enforced. Legacy `type: "sse"` is rejected by both native MCP configuration and ACP registration.
+
+### Migration verification
+
+Executed with available Node **26.4.0**, Yarn **4.18.1**. The required Node 24 line was unavailable. Runs below overlap; do not add their counts.
+
+| Check | Result |
+| --- | --- |
+| Vercel shared protocol matrix | 209 passed across 21 files. |
+| Subsequent Completions environment/timeout review fixes | 50 passed across 6 files. |
+| JWT/Codex OAuth verification | 28 passed across 2 files; includes real RSA signatures, ambiguous keys, audience/authorized-party rules and cancellation. |
+| Final focused MCP client/OAuth/stdio selection | 80 passed across 11 files, including post-review header isolation, listener cleanup and aborted body reads. TCP OAuth/HTTP files excluded from this hermetic selection. |
+| Skills core and native selections | 120 core + 41 native tests passed (161 across 16 files). The native selection includes child cache-monitor tests also present below. |
+| Main session cache/compaction selection | 64 passed across 7 files. |
+| Native child/cache/compaction selection | 197 passed, 1 failed across 10 files. The detached-helper cleanup test requires process discovery; this sandbox denies `ps` with `EPERM`. Its assertion remains unchanged. |
+| Broad MCP host selection | 301 passed, 23 failed across 37 files. Browser-proxy, provider-token HTTP and OAuth callback fixtures could not bind loopback (`listen EPERM`), causing listener errors/timeouts. This is not a passing integration suite. |
+| ACP workspace | 140 passed across 11 files after removing legacy registration support. |
+| Repository scripts | 96 passed using a writable task-local npm cache for consumer packaging fixtures. |
+| `yarn run check` | Passed: TypeScript, lint, formatting, browser imports, generated workspace/favicons, package/database boundaries and naming ratchet. |
+| `yarn run build:offline` | Passed, including the compiled coding-agent bundle and MCP host dependencies. |
+| `yarn start --help` | Passed with an isolated `OCTOCODE_HOME` and offline integrations. |
+| Installer-lock generator | Validated the three intentional local sibling dependencies; reported registry installer artifacts unavailable in local-dependency mode. No registry release claimed. |
+
+The final repository check passed after the separate shared-checkout edits settled. The naming baseline was regenerated for one additional mangled symbol in the generated browser bundle. Live inference, measured cache-hit rates, browser OAuth, TCP integration and Node 24 remain unverified. No failing integration assertion was weakened or converted into a skip.
+
+## Streaming, cache and library follow-up, 2026-10-29
+
+This follow-up covers all nine registered chat API families in [the API identifiers](../packages/ai/src/types/ids.ts), the image and four classifier families, and the ACP, MCP, native RPC/application and debugger boundaries. The earlier authentication findings and counts below remain historical evidence. Source review and deterministic fixtures do not establish live model support, account entitlement, private subscription contracts or measured cache hit rates.
+
+### Protocol findings and repairs
+
+| Boundary | Result of this follow-up |
+| --- | --- |
+| OpenAI Responses | Cache grouping is separate from transport session identity. Explicit-cache and older implicit-cache controls remain capability-gated. Shared SSE framing retains `[DONE]`, error events, UTF-8, CR/LF/CRLF and compatible unterminated final events. |
+| OpenAI Chat Completions and compatible endpoints | Retains the official OpenAI SDK for HTTP and streaming. Cache fields remain endpoint/capability-gated; Grok and OpenRouter session headers retain their own identities and explicit user overrides. A compatible URL alone does not prove support for OpenAI-specific retention fields. |
+| Azure Responses | Retains the OpenAI SDK, Azure authentication/deployment configuration and the shared Responses event processor. Cache keys do not alter transport session identity; unsupported explicit-cache lifetimes are not assumed. |
+| Codex Responses | Shared Responses event processing across SSE/WebSocket; WebSocket pools, retry/fallback state and headers remain per session. Shared SSE framing preserves typed malformed-JSON failures and the existing cancellation message. Private subscription interoperability remains a live-validation gap. |
+| Anthropic Messages | Retains the official SDK for credentials/HTTP and the native conversion/cache policy. Wire framing now uses the shared SSE reader. A cancelled read no longer waits indefinitely for another chunk; message-stop validation and repaired provider JSON remain adapter-owned. |
+| Bedrock ConverseStream | Retains AWS SDK authentication/event streaming and cache usage fields. Claude marker support and one-hour TTL remain model-gated; no universal cache controls are inferred for other Bedrock model families. |
+| Google Generative AI / Vertex | Retains `@google/genai`, shared response conversion and cached-prompt subtraction. Implicit caching is provider-managed. No client cache key or requested lifetime is represented as a guaranteed cache hit. |
+| Mistral native Chat Completions | Fixed missing sibling cache grouping. Added configured initial-request retries and retained server retry-delay metadata. Cancellation races header acquisition even when injected fetch ignores its signal; late bodies and callback failures are cleaned up. Started streams are never retried. The historical `mistral-conversations` identifier still targets `/v1/chat/completions`, not a hosted conversation store. |
+| MCP Streamable HTTP / legacy SSE | Fixed CR-only line separation, including CRLF split between chunks. Existing event-size bounds, event IDs, retry hints, session/version headers and reconnect ownership remain in the MCP client. It is a distinct resumption protocol, not a provider token stream. |
+| ACP | Already uses official `@agentclientprotocol/sdk` **2.0.2**, from its default stable-v1 entrypoint, for both inbound and outbound peers. SDK package version is not the wire protocol version. |
+| Native child RPC / application events | Application-owned JSONL commands, permission relay, typed events and persisted outcomes remain separate from provider SSE and ACP. Libraries cannot replace their product semantics. The preceding cache audit covers per-message child receipts and main/child compaction notifications. |
+| DAP | Retains bounded Content-Length framing, correlated requests, timeouts and restricted reverse requests in [the debugger owner](../packages/coding-agent/src/octocode/debug/protocol.ts). No DAP runtime replacement is made in this change. |
+| Images / classifiers | OpenRouter images retain SDK transport and reported cache read/write accounting. TypeSafe, Cloudflare System One, OpenAI Decisions and llama.cpp classification use their own request/response contracts. No conversation-cache lifetime is invented for these APIs; llama.cpp's server-side prefix reuse remains distinct from billable provider cache receipts. |
+
+Four provider readers now share [SSE framing](../packages/ai/src/utils/server-sent-events.ts): Anthropic, OpenAI Responses, Codex SSE and Mistral. Their event schemas, terminal conditions, diagnostics and retry decisions remain in their owning adapters. Shared framing discards event-only/comment-only blocks instead of retaining them between unrelated events, while preserving the existing end-of-file compatibility behavior.
+
+Official references checked for this follow-up: [OpenAI caching](https://developers.openai.com/api/docs/guides/prompt-caching), [Anthropic caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), [Bedrock caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html), [Gemini caching](https://ai.google.dev/gemini-api/docs/caching), [Mistral caching](https://docs.mistral.ai/studio/conversations/advanced/prompt-caching), [Grok caching](https://docs.x.ai/developers/advanced-api-usage/prompt-caching/best-practices), [ACP SDK](https://github.com/agentclientprotocol/typescript-sdk).
+
+### External libraries: decisions
+
+| Library | Decision and remaining work |
+| --- | --- |
+| Existing OpenAI, Anthropic, AWS, Google and ACP SDKs | Keep them. They already remove substantial HTTP, authentication, event-stream and protocol work. Keep custom adapters for transcript conversion, thinking replay, permissions, cache boundaries and accounting. |
+| [`eventsource-parser`](https://github.com/rexxars/eventsource-parser) | Best small replacement candidate for the shared provider framing layer. Its public API handles SSE fields, chunking, comments and buffer bounds. Preserve cancellation, terminal validation, malformed-payload diagnostics and compatible EOF flushing in the wrapper; parser reset alone must not be assumed to dispatch an unterminated final event. MCP additionally needs ID/retry/resumption tests. |
+| [`@modelcontextprotocol/client`](https://github.com/modelcontextprotocol/typescript-sdk) | Strong candidate to reduce custom MCP JSON-RPC/transports and copied OAuth maintenance. Upstream v2 is now the stable release line. A migration must retain current exports, trust/permission decisions, OAuth storage, redirects, request limits, subprocess cleanup and tested reconnect behavior. This is a separate integration change, not a safe drop-in edit. |
+| [`jose`](https://github.com/panva/jose) | Candidate for the manual JWS/JWKS layer in [ChatGPT ID-token verification](../packages/ai/src/auth/oauth/openai-id-token.ts). Retain explicit nonce, authorized-party, subject, issuer/audience and algorithm checks, cancellation and current invalid-token fixtures. It does not replace the application login flow. |
+| [Vercel AI SDK](https://ai-sdk.dev/providers/ai-sdk-providers/anthropic) | Useful unified provider interface, but no demonstrated net simplification for this fork yet. It exposes provider-specific cache options/metadata; transcript updates, thinking signatures, Codex subscription/WebSocket behavior and native compaction still need a compatibility layer. Evaluate with a small adapter spike and current conformance fixtures before proposing a wholesale migration. |
+| Retry/JSONL helpers | Keep the existing small shared helpers. A generic retry package would still need the current retry-after cap, cancellation, status selection and no-retry-after-stream-start rules. `partial-json` already owns incomplete tool-argument parsing. |
+
+No new external dependency was added. The Yarn registry metadata request failed with `ENOTFOUND registry.npmjs.org`; installation and package-level compatibility could not be validated. The simplification implemented here reuses existing code rather than vendoring an unverified package or changing the lockfile without installation.
+
+### Verification for this follow-up
+
+Executed on available Node **26.4.0**; the repository-required Node 24.15+ line was unavailable.
+
+| Check | Current result |
+| --- | --- |
+| AI `build:offline` | Passed with hydrated model data. |
+| `yarn run check` | Passed: types, lint, formatting, browser/import, generated workspace and package/database/name boundaries. |
+| Offline provider/cache matrix, 31 selected files | 642 passed, 5 skipped. Cache and adapter fixtures; the source review above covers all nine chat API families. |
+| Mistral regressions plus four classifier and image adapter suites, 7 files | 56 passed. Includes the two additional ignored-fetch/hook-cleanup regressions added after the matrix run; Mistral coverage overlaps the matrix. |
+| MCP SSE parser regressions | 3 passed, testing every byte split under LF/CR/CRLF and retained IDs/retry hints. |
+| DAP stdio/permissions/launch failures | 20 passed. No live debugger attachment or TCP test claimed. |
+| ACP workspace | 140 passed before the broad run was stopped. |
+| Agent-core workspace | 123 passed before the broad run was stopped. |
+| Repository scripts | 96 passed before the broad run was stopped. |
+
+The broad `./test.sh` run was interrupted during the AI workspace after a separate MCP integration reproduction established that this sandbox rejects `listen(127.0.0.1)` with `EPERM`. It is **not** a passing full-suite result. Direct MCP HTTP integration tests timed out before their fixture servers could bind; their transport assertions remain unverified here. The isolated test launcher initially could not download Corepack's Yarn from `repo.yarnpkg.com`; using the repository's already-pinned Yarn entrypoint allowed the completed suites above to run without changing the test script.
+
+Live provider inference, real OAuth accounts, TCP integrations and Node 24 validation remain separate checks. New regressions exercise stalled-reader cancellation, compatible final events, Mistral cache grouping/retry accounting and MCP resumption fields. No live cache-hit measurement is claimed.
 
 ## Follow-up implementation, 2026-10-25
 

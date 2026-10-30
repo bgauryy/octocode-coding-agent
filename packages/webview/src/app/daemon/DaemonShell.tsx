@@ -77,9 +77,17 @@ function List<T>({
 
 function SessionRow({ session, now }: { session: DaemonSession; now: number }) {
 	return (
-		<li className="daemon-row">
+		<li className={`daemon-row${session.needsYou ? " needs-you" : ""}`}>
 			<div className="daemon-row-main">
-				<strong>{session.repoName}</strong> <Badge tone="success">Live</Badge>
+				<strong>{session.repoName}</strong>{" "}
+				{session.needsYou ? (
+					<Badge tone="warning">Needs you</Badge>
+				) : session.busy ? (
+					<Badge tone="accent">Working</Badge>
+				) : (
+					<Badge tone="success">Live</Badge>
+				)}
+				{session.needsYou ? <div className="daemon-needs-you">{session.needsYou}</div> : null}
 				<div className="muted daemon-path">{session.cwd}</div>
 				<div className="muted">
 					Started <RelativeTime at={session.startedAt} now={now} />

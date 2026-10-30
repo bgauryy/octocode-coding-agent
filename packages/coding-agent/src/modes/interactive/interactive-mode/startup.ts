@@ -237,10 +237,9 @@ export async function init(host: StartupHost): Promise<void> {
 		host.ui.requestRender();
 	});
 
-	// Set up git branch watcher (uses provider instead of footer)
-	host.footerDataProvider.onBranchChange(() => {
-		host.ui.requestRender();
-	});
+	// Footer data (branch, statuses, GitHub, providers) is a state source: each real change asks for one frame,
+	// so its writers never request frames themselves.
+	host.footerDataProvider.subscribe(() => host.ui.requestRender());
 
 	void refreshGithubFooter(host);
 

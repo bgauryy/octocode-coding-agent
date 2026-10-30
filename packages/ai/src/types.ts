@@ -227,6 +227,8 @@ export interface StreamOptions extends ProviderRequestOptions {
 	 * session-aware features. Ignored by providers that don't support it.
 	 */
 	sessionId?: string;
+	/** Cache grouping key for related prompts; defaults to sessionId. Does not change transport/session identity. */
+	promptCacheKey?: string;
 	/**
 	 * WebSocket connect timeout in milliseconds for providers that support
 	 * WebSocket transports. This covers the connection/open handshake only;

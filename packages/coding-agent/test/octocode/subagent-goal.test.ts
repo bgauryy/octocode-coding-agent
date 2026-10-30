@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
+import { reportContract } from "../../src/octocode/instructions/report.ts";
 import { withIdentity } from "../../src/octocode/instructions/task.ts";
 import { archiveSearch } from "../../src/octocode/shared/archive.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
@@ -215,7 +216,7 @@ describe("child identity", () => {
 				scratch: "/tmp/s",
 			}),
 		).toBe(
-			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work for \`salty-squid\`. Your scratch folder, for handoff files and a long report, is \`/tmp/s\`.`,
+			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work for \`salty-squid\`. Your scratch folder, for handoff files and a long report, is \`/tmp/s\`.\n\n## Report\n${reportContract()}`,
 		);
 	});
 
@@ -224,15 +225,20 @@ describe("child identity", () => {
 		const base = withIdentity("do it", identity);
 		expect(withIdentity("do it", identity, undefined)).toBe(base);
 		const library = "/home/u/.octocode/agent/sessions/s/archive/LIBRARY.md";
+		// The line joins the `## You` block, before the report contract that closes every task.
+		const [you, report] = base.split("\n\n## Report\n");
+		expect(report).toBe(reportContract());
 		expect(withIdentity("do it", identity, { library })).toBe(
-			`${base}\nEarlier history of your parent session, compacted out of its context, is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}`,
+			`${you}\nEarlier history of your parent session, compacted out of its context, is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}\n\n## Report\n${report}`,
 		);
 	});
 
 	it("tells the child to search with the archive tool, and names rg on the folder for a child without it", () => {
 		const identity = { id: "inky-kraken", role: "reviewer", parentId: "salty-squid", scratch: "/tmp/s" };
 		const library = "/home/u/.octocode/agent/sessions/s/archive/LIBRARY.md";
-		const line = withIdentity("do it", identity, { library }).split("\n").at(-1)!;
+		const line = withIdentity("do it", identity, { library })
+			.split("\n")
+			.find((text) => text.startsWith("Earlier history of your parent session"))!;
 		expect(line).toContain("with the `archive` tool");
 		expect(line).toContain("`rg -n -C 8 <term>` in the folder");
 	});

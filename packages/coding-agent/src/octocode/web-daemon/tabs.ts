@@ -12,7 +12,7 @@ import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
 import type { AttachClient } from "./attach-client.ts";
-import { tokenMatches } from "./http-util.ts";
+import { tokenAccess } from "./http-util.ts";
 import type { RepoCatalog, RepoInfo } from "./repos.ts";
 
 /** Authenticated tabs. Sockets still waiting for their hello do not count against it. */
@@ -30,9 +30,16 @@ export interface TabScope {
 	session?: { id: string; client: AttachClient };
 }
 
+/** The daemon's two capabilities: `control` is the launch token; `view` reads everything and sends nothing. */
+export interface TabTokens {
+	control: string;
+	view: string;
+}
+
 interface Tab {
 	socket: WebSocket;
 	scope: TabScope;
+	access: "control" | "view";
 	connection?: ApplicationConnection;
 }
 
@@ -56,7 +63,7 @@ export class TabHub {
 	private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
 	private readonly tabs = new Set<Tab>();
 	private readonly pending = new Set<WebSocket>();
-	private readonly token: string;
+	private readonly tokens: TabTokens;
 	private readonly origin: () => string;
 	private readonly catalog: RepoCatalog;
 	private readonly env: NodeJS.ProcessEnv;
@@ -68,14 +75,14 @@ export class TabHub {
 	private checking = false;
 
 	constructor(options: {
-		token: string;
+		tokens: TabTokens;
 		origin: () => string;
 		catalog: RepoCatalog;
 		env: NodeJS.ProcessEnv;
 		activity: () => void;
 		accepting: () => boolean;
 	}) {
-		this.token = options.token;
+		this.tokens = options.tokens;
 		this.origin = options.origin;
 		this.catalog = options.catalog;
 		this.env = options.env;
@@ -113,7 +120,7 @@ export class TabHub {
 	}
 
 	private open(socket: WebSocket, scope: TabScope): void {
-		const tab: Tab = { socket, scope };
+		const tab: Tab = { socket, scope, access: "view" };
 		if (this.pending.size >= MAX_PENDING) {
 			const oldest = this.pending.values().next().value;
 			if (oldest) {
@@ -158,7 +165,9 @@ export class TabHub {
 					cursor = hello.cursor;
 				}
 			}
-			if (!tokenMatches(supplied, this.token)) return socket.close(1008, "Reopen the workspace");
+			const access = tokenAccess(supplied, this.tokens);
+			if (!access) return socket.close(1008, "Reopen the workspace");
+			tab.access = access;
 			if (this.tabs.size >= MAX_TABS) return socket.close(1013, "Too many open tabs");
 			clearTimeout(timeout);
 			authenticated = true;
@@ -179,7 +188,7 @@ export class TabHub {
 		const connection = session.client.application.connect({ sessionId: session.id, cursor });
 		tab.connection = connection;
 		if (tab.socket.readyState !== WebSocket.OPEN) return connection.close();
-		await pumpApplicationFrames(tab.socket, connection);
+		await pumpApplicationFrames(tab.socket, connection, { access: tab.access });
 	}
 
 	private post(tab: Tab, event: WorkspaceServerEvent | { type: "daemon"; data: { draining: boolean } }): void {

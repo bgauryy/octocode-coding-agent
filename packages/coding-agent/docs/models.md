@@ -48,6 +48,8 @@ Open `/llama` to inspect loaded models, download models and manage the connectio
 
 For Ollama, LM Studio, vLLM, SGLang, and other compatible servers, [configure a compatible endpoint](#configure-a-compatible-endpoint) in `models.json`.
 
+To let the main agent offload individual prompts to Ollama while another model drives the session, run `freellama serve` and use the native [`ollama` tool](native-features.md#tool-selection-and-migration).
+
 ## Configure a compatible endpoint
 
 Use `models.json` when an endpoint speaks an API Octocode already supports. This includes most Ollama, LM Studio, vLLM, SGLang, and proxy deployments.

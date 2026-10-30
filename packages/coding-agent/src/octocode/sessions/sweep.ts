@@ -4,7 +4,7 @@ import { getSessionsDir } from "../../config.ts";
 import { SessionManager } from "../../core/session-manager.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { runningPid } from "../agentdb/liveness.ts";
-import { readMeta, writeMeta } from "../agentdb/meta.ts";
+import { meta } from "../agentdb/api.ts";
 import { liveJobFiles } from "../files/bash-jobs/records.ts";
 import { cleanupDays } from "../shared/env.ts";
 import { PID_SESSION_PREFIX, sessionDirName, sessionsRoot } from "../shared/home.ts";
@@ -46,9 +46,9 @@ async function sessionIds(dirs: readonly string[]): Promise<Set<string>> {
  */
 export function claimSweep(agent: AgentDb, now: number, force: boolean): number | undefined {
 	return agent.transaction(() => {
-		const last = Number(readMeta(agent.db, "last_sweep") ?? 0);
+		const last = Number(meta.read(agent.db, "last_sweep") ?? 0);
 		if (!force && now - last < SWEEP_EVERY_MS) return undefined;
-		writeMeta(agent.db, "last_sweep", String(now));
+		meta.write(agent.db, "last_sweep", String(now));
 		return last;
 	});
 }
@@ -150,7 +150,7 @@ export async function sweepSessions(
 		try {
 			ids = await (options.listed ?? sessionIds)(dirs.filter((dir) => !unreadable.has(dir)));
 		} catch {
-			writeMeta(index.agent.db, "last_sweep", String(last));
+			meta.write(index.agent.db, "last_sweep", String(last));
 			return removed;
 		}
 		// A session in an unreadable dir is not listed but may still exist: it counts as listed. A row without a dir may be one.

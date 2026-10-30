@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { recordShellMutation } from "../../src/octocode/files/bash/mutation.ts";
-import {
-	checkedAtCurrentRevision,
-	currentMutationRevision,
-	fileEditCount,
-	recordMutation,
-} from "../../src/octocode/files/feedback/revisions.ts";
+import { currentMutationRevision, recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -38,8 +33,6 @@ describe("a mutating shell command stales verification receipts", () => {
 		expect(await changed("Set-Content f.txt x", true)).toBe(true);
 		expect(await changed("Get-ChildItem", true)).toBe(true);
 		expect(await changed("ls", true)).toBe(false);
-		// A shell change makes receipts stale; it is not an edit the run must show it checked.
-		expect(fileEditCount(id)).toBe(0);
 	});
 
 	it("through the bash tool: an edit after a passing check makes it stale, the check's own writes do not", async () => {
@@ -55,17 +48,14 @@ describe("a mutating shell command stales verification receipts", () => {
 		recordMutation(id);
 		const check = await run({ command: "echo built > built.txt && true", verify: true });
 		expect(check.structuredContent.verification).toMatchObject({ state: "finished", stale: false });
-		expect(checkedAtCurrentRevision(id)).toBe(true);
+		const checked = currentMutationRevision(id);
+		expect(check.structuredContent.verification.revisionAtLaunch).toBe(checked);
 
 		await run({ command: "ls" });
-		expect(checkedAtCurrentRevision(id)).toBe(true);
+		expect(currentMutationRevision(id)).toBe(checked);
 		await run({ command: "echo changed > other.txt" });
-		expect(checkedAtCurrentRevision(id)).toBe(false);
+		expect(currentMutationRevision(id)).toBe(checked + 1);
 		const again = await run({ command: "true", verify: true });
-		expect(again.structuredContent.verification).toMatchObject({ stale: false });
-		expect(checkedAtCurrentRevision(id)).toBe(true);
-		// A failing check neither passes nor disturbs the earlier passing one.
-		await run({ command: "exit 2", verify: true }).catch(() => undefined);
-		expect(checkedAtCurrentRevision(id)).toBe(true);
+		expect(again.structuredContent.verification).toMatchObject({ stale: false, revisionAtLaunch: checked + 1 });
 	});
 });

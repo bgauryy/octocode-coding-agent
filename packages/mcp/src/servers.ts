@@ -127,7 +127,7 @@ function isLoopbackRedirectUri(value: string): boolean {
 }
 
 export interface McpHttpServerConfig extends McpServerConfigBase {
-	type?: "http" | "sse";
+	type?: "http";
 	url: string;
 	/** Values may reference environment variables (`${NAME}`) or commands (`!cmd`). */
 	headers?: Record<string, string>;
@@ -247,17 +247,10 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 	if (timeout !== undefined && (typeof timeout !== "number" || !(timeout > 0))) {
 		return `server "${name}": timeout must be a positive number of seconds`;
 	}
-	if (
-		typeof value.url === "string" &&
-		(type === undefined || type === "http" || type === "streamable-http" || type === "sse")
-	) {
+	if (type === "sse") return `server "${name}": legacy SSE is unsupported; use a Streamable HTTP endpoint`;
+	if (typeof value.url === "string" && (type === undefined || type === "http" || type === "streamable-http")) {
 		if (!URL.canParse(value.url) || !/^https?:$/.test(new URL(value.url).protocol)) {
 			return `server "${name}": url must be an http or https URL`;
-		}
-		if (type === "sse") {
-			const url = new URL(value.url);
-			if (url.username || url.password || url.hash)
-				return `server "${name}": SSE url must not contain credentials or a fragment`;
 		}
 		if (value.headers !== undefined && !isStringRecord(value.headers)) {
 			return `server "${name}": headers must map names to strings`;
@@ -291,7 +284,7 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 		if (value.cwd !== undefined && typeof value.cwd !== "string") return `server "${name}": cwd must be a string`;
 		return value as unknown as McpStdioServerConfig;
 	}
-	return `server "${name}" needs either "command" (stdio) or "url" (HTTP or SSE)`;
+	return `server "${name}" needs either "command" (stdio) or "url" (Streamable HTTP)`;
 }
 
 /** A server an extension registered with `api.registerMcpServer()`. */

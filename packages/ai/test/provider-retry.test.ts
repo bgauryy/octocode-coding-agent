@@ -1,3 +1,4 @@
+import { APICallError } from "@ai-sdk/provider";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { retryAfterMsFromError, retryProviderRequest } from "../src/utils/provider-retry.ts";
 
@@ -27,6 +28,34 @@ describe("provider request retries", () => {
 
 		await expect(result).resolves.toBe("ok");
 		expect(request).toHaveBeenCalledTimes(2);
+	});
+	it("honors Vercel SDK retry metadata without changing the thrown error", async () => {
+		vi.useFakeTimers();
+		const error = new APICallError({
+			message: "rate limited",
+			url: "https://provider.example",
+			requestBodyValues: {},
+			statusCode: 429,
+			responseHeaders: { "retry-after-ms": "1000" },
+		});
+		const request = vi.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValue("ok");
+		const result = retryProviderRequest(request, { maxRetries: 1 });
+		await vi.advanceTimersByTimeAsync(999);
+		expect(request).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		await expect(result).resolves.toBe("ok");
+		expect(retryAfterMsFromError(error)).toBe(1000);
+	});
+	it("respects Vercel SDK non-retryable network failures", async () => {
+		const error = new APICallError({
+			message: "invalid request",
+			url: "https://provider.example",
+			requestBodyValues: {},
+			isRetryable: false,
+		});
+		const request = vi.fn<() => Promise<string>>().mockRejectedValue(error);
+		await expect(retryProviderRequest(request, { maxRetries: 2 })).rejects.toBe(error);
+		expect(request).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not retry errors the provider marks as non-retryable", async () => {

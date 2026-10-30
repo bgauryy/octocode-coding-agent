@@ -31,7 +31,8 @@ describe("native cleanup regressions", () => {
 		});
 		setKeybindings(bindings);
 		try {
-			expect(hintText(200, bindings)).toContain("ctrl+y permission");
+			// The chip, not the editor hint, is the one place that names the permission key.
+			expect(hintText(200)).not.toContain("permission");
 			expect(chipText("workspace")).toBe("permission: workspace · Ctrl+Y");
 			expect(shortChip(chipText("full", { actions: 2, warnings: 1 }))).toBe("⏵⏵ full · 2 actions · 1 ⚠");
 			expect(shortChip(chipText("manual"))).toBe("⏸ manual");
@@ -39,7 +40,6 @@ describe("native cleanup regressions", () => {
 			expect(appKey("app.thinking.toggle")).toBe("unbound");
 			bindings.setUserBindings({ "app.permission.cycle": [] });
 			expect(chipText("full")).toContain("Unbound");
-			expect(hintText(200, bindings)).not.toContain("shift+tab");
 		} finally {
 			setKeybindings(previous);
 		}

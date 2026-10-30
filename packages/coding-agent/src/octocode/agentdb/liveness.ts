@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
+import { sessions } from "./api.ts";
 import { sharedAgentDb } from "./db.ts";
 import { sameProcess } from "../shared/process.ts";
 
@@ -16,9 +17,7 @@ export function runningPid(pid: number | null | undefined, started?: string | nu
 
 /** `runningPid` of the session `id`; undefined when it has no row, has ended, or its process is gone. */
 export function sessionRunningPid(db: DatabaseSync, id: string): number | undefined {
-	const row = db.prepare("SELECT pid, pid_started FROM sessions WHERE id = ?").get(id) as
-		| { pid: number | null; pid_started: string | null }
-		| undefined;
+	const row = sessions.pidOf(db, id);
 	return runningPid(row?.pid, row?.pid_started);
 }
 

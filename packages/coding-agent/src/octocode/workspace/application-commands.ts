@@ -4,15 +4,9 @@ import {
 	type ApplicationReceipt,
 } from "@octocodeai/octocode-contacts";
 import type { ApplicationReceiptStore } from "../../core/application/index.ts";
+import { commands } from "../agentdb/api.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { redactSecrets, storedSecret } from "../shared/sanitize.ts";
-
-interface Row {
-	id: string;
-	status: ApplicationReceipt["status"];
-	input: string;
-	message: string;
-}
 
 export class ApplicationCommands implements ApplicationReceiptStore {
 	private readonly db: AgentDb;
@@ -30,27 +24,24 @@ export class ApplicationCommands implements ApplicationReceiptStore {
 		if (this.session && this.session !== command.sessionId) throw new Error("Receipt store belongs to another session");
 		this.session = command.sessionId;
 		return this.db.transaction(() => {
-			const previous = this.db.db
-				.prepare("SELECT id,status,input,message FROM workspace_commands WHERE repo_key=? AND session_id=? AND id=?")
-				.get(this.repo, command.sessionId, `application:${command.id}`) as Row | undefined;
+			const previous = commands.applicationById(this.db.db, this.repo, command.sessionId, `application:${command.id}`);
 			if (previous) {
 				if (previous.input !== input) throw new Error("Request ID already used with another command");
-				return { fresh: false, receipt: { id: command.id, status: previous.status, message: previous.message } };
+				return {
+					fresh: false,
+					receipt: {
+						id: command.id,
+						status: previous.status as ApplicationReceipt["status"],
+						message: previous.message,
+					},
+				};
 			}
-			this.db.db
-				.prepare(
-					"INSERT INTO workspace_commands(id,session_id,repo_key,action,input,status,at,message) VALUES (?,?,?,?,?,?,?,?)",
-				)
-				.run(
-					`application:${command.id}`,
-					command.sessionId,
-					this.repo,
-					command.action,
-					input,
-					"accepted",
-					Date.now(),
-					"Request recorded. Completion may be unknown after a disconnect.",
-				);
+			commands.insertAccepted(
+				this.db.db,
+				{ id: `application:${command.id}`, session: command.sessionId, repo: this.repo, action: command.action, input },
+				Date.now(),
+				"Request recorded. Completion may be unknown after a disconnect.",
+			);
 			return { fresh: true, receipt: { id: command.id, status: "accepted" } };
 		});
 	}
@@ -58,9 +49,7 @@ export class ApplicationCommands implements ApplicationReceiptStore {
 	finish(id: string, status: "completed" | "failed", message?: string): ApplicationReceipt {
 		if (!this.session) throw new Error("No command session");
 		const safeMessage = message === undefined ? undefined : redactSecrets(message);
-		this.db.db
-			.prepare("UPDATE workspace_commands SET status=?,message=? WHERE repo_key=? AND session_id=? AND id=?")
-			.run(status, safeMessage ?? "", this.repo, this.session, `application:${id}`);
+		commands.setStatus(this.db.db, this.repo, this.session, `application:${id}`, status, safeMessage ?? "");
 		return { id, status, ...(safeMessage ? { message: safeMessage } : {}) };
 	}
 }

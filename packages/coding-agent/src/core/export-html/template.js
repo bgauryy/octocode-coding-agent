@@ -1351,18 +1351,24 @@
             <div class="tools-content">
               ${tools
 								.map((t) => {
+									const params = t.parameters;
+									const hasComposition =
+										params &&
+										["anyOf", "oneOf", "allOf"].some(
+											(keyword) => Array.isArray(params[keyword]) && params[keyword].length > 0,
+										);
 									const hasParams =
-										t.parameters &&
-										typeof t.parameters === "object" &&
-										t.parameters.properties &&
-										Object.keys(t.parameters.properties).length > 0;
+										params &&
+										typeof params === "object" &&
+										(hasComposition || (params.properties && Object.keys(params.properties).length > 0));
 									if (!hasParams) {
 										return `<div class="tool-item"><span class="tool-item-name">${escapeHtml(t.name)}</span> - <span class="tool-item-desc">${escapeHtml(t.description)}</span></div>`;
 									}
-									const params = t.parameters;
-									const properties = params.properties;
+									const properties = hasComposition ? {} : params.properties;
 									const required = params.required || [];
-									let paramsHtml = "";
+									let paramsHtml = hasComposition
+										? `<pre class="tool-param" style="white-space: pre-wrap">${escapeHtml(JSON.stringify(params, null, 2))}</pre>`
+										: "";
 									for (const [name, prop] of Object.entries(properties)) {
 										const isRequired = required.includes(name);
 										const typeStr = prop.type || "any";

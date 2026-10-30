@@ -1,3 +1,4 @@
+import { childCacheLabel } from "./cache-monitor.ts";
 import { Box, type Component, Container } from "@octocodeai/octocode-tui";
 import type {
 	AgentToolResult,
@@ -150,9 +151,10 @@ function runStats(details: Progress): string {
 /** What the expanded summary adds to a finished run's row: compactions, tokens, cost and model. */
 function finishedStats(
 	totals: Parameters<typeof formatTokenUsage>[0] & Parameters<typeof formatCost>[0],
-	details: Pick<RunDetails, "model" | "fallback" | "compactions">,
+	details: Pick<RunDetails, "model" | "fallback" | "compactions" | "cache">,
 ): string {
 	return [compactionLabel(details), formatTokenUsage(totals), formatCost(totals), modelLabel(details)]
+		.concat(details.cache ? [`conversation cache: ${childCacheLabel(details.cache)}`] : [])
 		.filter(Boolean)
 		.join(" · ");
 }
@@ -274,6 +276,7 @@ export function renderAgentResult(
 	if (isPartial) {
 		// Live progress: counts, then the latest steps (the header carries the running clock).
 		const lines = [
+			...(details.cache ? [theme.fg("dim", `Last request cache: ${childCacheLabel(details.cache.latest)}`)] : []),
 			...details.activity.slice(-3).map((line) => theme.fg("dim", clip(line, 200))),
 			...(details.thinking ? [theme.italic(theme.fg("thinkingText", `✻ ${clip(details.thinking, 200)}…`))] : []),
 			...(details.shot ? [theme.fg("dim", `📷 ${clip(shortPath(details.shot), 200)}`)] : []),

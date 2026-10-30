@@ -30,8 +30,12 @@ function renderLastLine(container: Container, width = 120): string {
 	return last.render(width).join("\n");
 }
 
+/** Rendered rows as plain text: listing rows colour their label, count and summary separately. */
 function renderAll(container: Container, width = 120): string {
-	return container.children.flatMap((child) => child.render(width)).join("\n");
+	return container.children
+		.flatMap((child) => child.render(width))
+		.join("\n")
+		.replace(/\u001b\[[0-9;]*m/g, "");
 }
 
 class TestFocusableComponent implements Component, Focusable {
@@ -694,6 +698,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			options: { verbose: options.verbose ?? false },
 			toolOutputExpanded: options.toolOutputExpanded ?? false,
 			loadedResourcesContainer: new Container(),
+			ui: { requestRender: vi.fn() },
 			chatContainer: new Container(),
 			settingsManager: {
 				getQuietStartup: () => options.quietStartup,
@@ -876,9 +881,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toContain("[Skills]");
-		// Names are for ctrl+o: collapsed, the section is one count line.
-		expect(output).toMatch(/1 loaded \(.* ?to list\)/);
+		expect(output).toMatch(/^Skills\s+1/m);
+		// Names are for ctrl+o: collapsed, the section is one count row.
+		expect(output).toMatch(/Skills\s+1\s+.* ?to list/);
 		expect(output).not.toContain("commit");
 		expect(output).not.toContain("resource-list");
 	});
@@ -895,7 +900,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toContain("[Skills]");
+		expect(output).toMatch(/^Skills\s+1/m);
 		expect(output).toContain("resource-list");
 		expect(output).not.toContain("commit");
 	});
@@ -913,12 +918,12 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toContain("[Skills]");
+		expect(output).toMatch(/^Skills\s+1/m);
 		expect(output).toContain("resource-list");
 		expect(output).not.toContain("commit");
 	});
 
-	test("shows current MCP states after skills and refreshes without duplicate sections", () => {
+	test("shows current MCP states after skills and repaints only that row when they change", () => {
 		const events = createEventBus();
 		const server = {
 			name: "octocode",
@@ -934,22 +939,28 @@ describe("InteractiveMode.showLoadedResources", () => {
 			events,
 			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "research" }],
 		});
-		const render = () => {
-			loadedResources.showLoadedResources(createFakeHost(fakeThis));
-			return renderAll(fakeThis.loadedResourcesContainer);
-		};
+		loadedResources.showLoadedResources(createFakeHost(fakeThis));
+		const rows = [...fakeThis.loadedResourcesContainer.children];
+		const render = () => renderAll(fakeThis.loadedResourcesContainer);
 		const initial = render();
-		expect(initial.indexOf("[Skills]")).toBeLessThan(initial.indexOf("[MCPs]"));
-		expect(initial).toContain("octocode: connecting");
-		expect(initial).toContain("docs: disabled");
+		expect(initial.indexOf("Skills")).toBeLessThan(initial.indexOf("MCP "));
+		expect(initial).toContain("○ octocode connecting…");
+		expect(initial).toContain("○ docs disabled");
 		setMcpSessionStatus(events, [
 			{ ...server, state: "connected", toolCount: 9 },
 			{ ...server, name: "docs", enabled: false },
 		]);
 		const connected = render();
-		expect(connected).toContain("octocode: connected");
+		expect(connected).toContain("● octocode connected (9 tools)");
 		expect(connected).not.toContain("connecting");
-		expect(connected.match(/\[MCPs\]/g)).toHaveLength(1);
+		expect(connected.match(/^MCP\s+2/gm)).toHaveLength(1);
+		// Nothing was rebuilt: the same components, one frame asked for by the status change.
+		expect(fakeThis.loadedResourcesContainer.children).toEqual(rows);
+		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
+		// After the listing is disposed, status changes no longer reach it.
+		loadedResources.disposeLoadedResources(fakeThis.loadedResourcesContainer);
+		setMcpSessionStatus(events, [{ ...server, state: "failed" }]);
+		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
 	});
 
 	test("abbreviates extensions in compact listing", () => {
@@ -963,7 +974,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toContain("[Extensions]");
+		expect(output).toMatch(/^Extensions\s+2/m);
 		expect(output).toContain("answer.ts, btw.ts");
 		expect(output).not.toContain("extensions/answer.ts");
 	});
@@ -979,9 +990,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index"`,
+		);
 	});
 
 	test("adds more parent folders until local extension labels are unique", () => {
@@ -1025,9 +1036,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  alpha/one, beta/one, gamma/one"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  3  alpha/one, beta/one, gamma/one"`,
+		);
 	});
 
 	test("strips index.ts from local extension label, showing parent dir", () => {
@@ -1053,9 +1064,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  plan-mode"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  1  plan-mode"`,
+		);
 	});
 
 	test("strips index.js from local extension label, showing parent dir", () => {
@@ -1081,9 +1092,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  plan-mode"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  1  plan-mode"`,
+		);
 	});
 
 	test("mixed single-file and subdirectory index.ts extensions strip index.ts", () => {
@@ -1118,9 +1129,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  plan-mode, webfetch.ts"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  2  plan-mode, webfetch.ts"`,
+		);
 	});
 
 	test("multiple index.ts with unique parent dirs need no disambiguation", () => {
@@ -1155,9 +1166,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  bar, foo"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  2  bar, foo"`,
+		);
 	});
 
 	test("multiple index.ts with same parent dir name disambiguated with grandparent", () => {
@@ -1192,9 +1203,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  alpha/tools, beta/tools"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  2  alpha/tools, beta/tools"`,
+		);
 	});
 
 	test("non-index file in subdirectory stays as filename", () => {
@@ -1220,9 +1231,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  main.ts"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  1  main.ts"`,
+		);
 	});
 
 	test("package extensions still strip index.ts correctly (regression guard)", () => {
@@ -1251,9 +1262,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  pi-markdown-preview"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  1  pi-markdown-preview"`,
+		);
 	});
 
 	test("labels npm sibling extensions relative to the declaring package", () => {
@@ -1288,9 +1299,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  primary-package, primary-package:../sibling-package"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  2  primary-package, primary-package:../sibling-package"`,
+		);
 	});
 
 	test("labels Windows npm sibling extensions relative to the declaring package", () => {
@@ -1328,9 +1339,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 			force: false,
 		});
 
-		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  primary-package, primary-package:../sibling-package"`);
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
+			`"Extensions  2  primary-package, primary-package:../sibling-package"`,
+		);
 	});
 
 	test("captures mixed extension layouts in expanded output", () => {
@@ -1346,21 +1357,22 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-"[Extensions]
-  project
-    /tmp/project/.octocode/extensions/answer.ts
-    /tmp/project/.octocode/extensions/local-index
-    git:github.com/HazAT/pi-interactive-subagents
-      extensions
-      extensions/subagents
-    npm:@scope/pi-scoped
-      extensions
-    npm:pi-markdown-preview
-      extensions
-  user
-    /tmp/agent/extensions/user-index
-  path
-    /tmp/temp/cli-extension.ts"`);
+			"Extensions  8
+			               project
+			                 /tmp/project/.octocode/extensions/answer.ts
+			                 /tmp/project/.octocode/extensions/local-index
+			                 git:github.com/HazAT/pi-interactive-subagents
+			                   extensions
+			                   extensions/subagents
+			                 npm:@scope/pi-scoped
+			                   extensions
+			                 npm:pi-markdown-preview
+			                   extensions
+			               user
+			                 /tmp/agent/extensions/user-index
+			               path
+			                 /tmp/temp/cli-extension.ts"
+		`);
 	});
 
 	test("shows context paths relative to cwd while preserving full external paths", () => {
@@ -1380,7 +1392,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
-		expect(output).toContain("[Context]");
+		expect(output).toMatch(/^Context\s+\d/m);
 		expect(output).toContain("~/.octocode/agent/AGENTS.md, AGENTS.md");
 		expect(output).not.toContain(`${cwd.replace(/\\/g, "/")}/AGENTS.md`);
 	});
@@ -1400,7 +1412,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
-		expect(output).toContain("[Context]");
+		expect(output).toMatch(/^Context\s+\d/m);
 		expect(output).toContain(".octocode/SYSTEM.md, .octocode/APPEND_SYSTEM.md, AGENTS.md");
 	});
 
@@ -1422,7 +1434,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
-		expect(output).toContain("[Context]");
+		expect(output).toMatch(/^Context\s+\d/m);
 		expect(output).toContain("~/.octocode/agent/AGENTS.md");
 		expect(output).toContain("~/Development/octocodecode/AGENTS.md");
 		expect(output).not.toContain("~/.octocode/agent/AGENTS.md, AGENTS.md");
@@ -1485,11 +1497,42 @@ describe("InteractiveMode.showLoadedResources", () => {
 		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: false });
 
 		const wide = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 120);
-		expect(wide).toMatch(/\[Skill conflicts\]\n {2}3 skills have duplicates; first found is used \(.*for paths\)/);
+		// The Skills row already says how to list them; the conflict line does not repeat the key.
+		expect(wide).toMatch(/⚠ Skill conflicts\n {2}3 skills have duplicates; first found is used$/m);
 		const narrow = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 40).split("\n");
-		const body = narrow.slice(narrow.indexOf("[Skill conflicts]") + 1).filter((line) => line.length > 0);
+		const body = narrow.slice(narrow.indexOf("⚠ Skill conflicts") + 1).filter((line) => line.length > 0);
 		expect(body.length).toBeGreaterThan(1);
 		expect(body.every((line) => line.startsWith("  "))).toBe(true);
+	});
+
+	test("separates its blocks by one blank line and leaves the gap after it to what follows", () => {
+		const collision = {
+			type: "collision" as const,
+			message: 'name "commit" collision',
+			collision: {
+				resourceType: "skill" as const,
+				name: "commit",
+				winnerPath: "/a/commit/SKILL.md",
+				loserPath: "/b/commit/SKILL.md",
+			},
+		};
+		const fakeThis = createShowLoadedResourcesThis({
+			quietStartup: false,
+			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "commit" }],
+			skillDiagnostics: [collision],
+		});
+
+		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: false });
+
+		// Untrimmed: the transcript and the editor each open with their own blank line.
+		const lines = renderAll(fakeThis.loadedResourcesContainer)
+			.split("\n")
+			.map((line) => line.trimEnd());
+		const heading = lines.indexOf("⚠ Skill conflicts");
+		expect(heading).toBeGreaterThan(0);
+		expect(lines[heading - 1]).toBe("");
+		expect(lines.at(-1)).not.toBe("");
+		expect(lines.some((line, index) => line === "" && lines[index + 1] === "")).toBe(false);
 	});
 
 	test("still shows diagnostics on quiet startup when requested", () => {
@@ -1505,7 +1548,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toContain("[Skill conflicts]");
-		expect(output).not.toContain("[Skills]");
+		expect(output).toContain("⚠ Skill conflicts");
+		expect(output).not.toMatch(/^Skills\s/m);
 	});
 });

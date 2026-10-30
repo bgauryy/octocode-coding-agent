@@ -1,7 +1,7 @@
 import type { Model, OpenAIResponsesCompat, ProviderEnv, ProviderHeaders, TranscriptContext } from "../../types.ts";
 import { providerHeadersToRecord } from "../../utils/headers.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
-import { getProviderEnvValue } from "../../utils/provider-env.ts";
+import { openAIEnvironmentHeaders } from "../openai-environment-headers.ts";
 import { resolveTranscriptTools } from "../../utils/transcript.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
 import { resolveOpenAIResponsesCacheFields } from "../openai-prompt-cache.ts";
@@ -26,15 +26,6 @@ export function createRequestHeaders(
 	env?: ProviderEnv,
 ) {
 	const compat = getCompat(model);
-	const environmentHeaders: ProviderHeaders = {};
-	const organization = getProviderEnvValue("OPENAI_ORG_ID", env);
-	const project = getProviderEnvValue("OPENAI_PROJECT_ID", env);
-	if (organization) environmentHeaders["OpenAI-Organization"] = organization;
-	if (project) environmentHeaders["OpenAI-Project"] = project;
-	for (const line of getProviderEnvValue("OPENAI_CUSTOM_HEADERS", env)?.split("\n") ?? []) {
-		const colon = line.indexOf(":");
-		if (colon >= 0) environmentHeaders[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
-	}
 	const headers: ProviderHeaders =
 		providerHeadersToRecord(
 			{
@@ -42,7 +33,7 @@ export function createRequestHeaders(
 				Accept: "text/event-stream",
 				Authorization: `Bearer ${apiKey}`,
 			},
-			environmentHeaders,
+			openAIEnvironmentHeaders(env),
 			{ "User-Agent": getUserAgent() },
 			model.headers,
 		) ?? {};

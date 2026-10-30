@@ -35,8 +35,8 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "plan",
 		requiresNative: true,
-		description: "Enter native planning or review the current plan",
-		argumentHint: "<description|--off|--approve revision>",
+		description: "Enter native planning (optionally with a task), show it with --show, leave with --off",
+		argumentHint: "<description|--show|--off|--approve revision>",
 	},
 	{
 		name: "btw",
@@ -85,7 +85,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "<path>",
 		argumentKind: "path",
 	},
-	{ name: "share", description: "Share session as a private GitHub gist" },
+	{ name: "share", description: "Share session as a secret GitHub gist (anyone with the link can read it)" },
 	{
 		name: "bug",
 		description: "Report a bug to the Octocode developers",
@@ -99,7 +99,12 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "changelog", description: "Show changelog entries" },
 	{ name: "keys", description: "Show all keyboard shortcuts" },
-	{ name: "fork", description: "Create a new fork from a previous user message" },
+	{
+		name: "fork",
+		description: "Create a new fork from a previous user message, or open this session's fork in a tmux pane or window",
+		argumentHint: "[pane [right|down]|window]",
+		argumentValues: ["pane", "window"],
+	},
 	{ name: "clone", description: "Duplicate the current session at the current position" },
 	{ name: "queue", description: "Edit, remove or reorder queued messages" },
 	{
@@ -120,7 +125,11 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "<status|login|logout>",
 		argumentValues: ["status", "login", "logout"],
 	},
-	{ name: "new", description: "Start a new session", argumentHint: "<previous-name>" },
+	{
+		name: "new",
+		description: "Start a new session, optionally naming the one you are leaving",
+		argumentHint: "<name-for-current-session>",
+	},
 	{ name: "compact", description: "Manually compact the session context", argumentHint: "<instructions>" },
 	{ name: "resume", description: "Browse and resume saved sessions", argumentHint: "<search>" },
 	{

@@ -1,5 +1,9 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { Context, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
+import { SUMMARIZER_RESULT_CHARS } from "../../src/octocode/compaction/checkpoint-text.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { SHARED_SUMMARY_PROMPT, sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
@@ -34,11 +38,11 @@ const answer = { role: "assistant", content: [{ type: "text", text: "Done, the p
 const entry = (id: string, ...messages: unknown[]) => ({ sourceEntry: { id, type: "message" }, messages });
 const entries = [entry("e0", system), entry("e1", ask), entry("e2", call), entry("e3", result), entry("e4", answer)];
 const usage = { input: 100, output: 50, cacheRead: 9_000, cacheWrite: 10, totalTokens: 9_160 };
-const reply = (content: unknown[], stopReason = "stop") => ({
+const reply = (content: unknown[], stopReason = "stop", output = usage.output) => ({
 	role: "assistant",
 	content,
 	stopReason,
-	usage,
+	usage: { ...usage, output },
 	timestamp: at,
 });
 const text = (value: string) => ({ type: "text", text: value });
@@ -49,6 +53,7 @@ interface Setup {
 	settings?: Record<string, unknown>;
 	branch?: unknown[];
 	projection?: () => unknown;
+	sessionFile?: string;
 	firstKeptEntryId?: string;
 	previousSummary?: string;
 	customInstructions?: string;
@@ -85,7 +90,7 @@ function setup(options: Setup = {}) {
 		},
 		sessionManager: {
 			getSessionId: () => "sid-1",
-			getSessionFile: () => undefined,
+			getSessionFile: () => options.sessionFile,
 			getBranch: () => options.branch ?? [],
 			buildSessionProjection:
 				options.projection ?? (() => ({ entries, messages: entries.flatMap((item) => item.messages) })),
@@ -307,7 +312,7 @@ describe("cache-sharing compaction summary", () => {
 		expect(calls[0].context.messages.slice(0, -1)).toEqual(without.calls[0].context.messages.slice(0, -1));
 	});
 
-	it("keeps the structured sections of Octocode and denies tool calls in words", () => {
+	it("states the checkpoint format once and denies tool calls in words", () => {
 		for (const section of [
 			"## Goal",
 			"## Constraints & Preferences",
@@ -315,10 +320,14 @@ describe("cache-sharing compaction summary", () => {
 			"### In Progress",
 			"### Blocked",
 			"## Key Decisions",
-			"## Next Steps",
+			"## Errors & Fixes",
+			"## Where We Stopped",
 			"## Critical Context",
+			"## TL;DR",
 		])
-			expect(SHARED_SUMMARY_PROMPT).toContain(section);
+			expect(SHARED_SUMMARY_PROMPT.split(section)).toHaveLength(2);
+		expect(SHARED_SUMMARY_PROMPT).not.toContain("## Next Steps");
+		expect(SHARED_SUMMARY_PROMPT).not.toMatch(/EXACT format/);
 		expect(SHARED_SUMMARY_PROMPT).toMatch(/text only/i);
 		expect(SHARED_SUMMARY_PROMPT).toMatch(/not part of the conversation/);
 	});
@@ -334,10 +343,23 @@ describe("cache-sharing compaction summary", () => {
 			"text and a tool call",
 			() => reply([text("## Goal\nx"), { type: "toolCall", id: "x", name: "read", arguments: {} }], "toolUse"),
 		],
-		["a summary over the cap", () => reply([text("x".repeat(8_000 * CHARS_PER_TOKEN + 100))])],
+		["a summary over the cap", () => reply([text("x".repeat(8_000 * CHARS_PER_TOKEN + 100))], "stop", 8_001)],
+		[
+			"a summary over the cap in characters when the usage has no output count",
+			() => reply([text("x".repeat(8_000 * CHARS_PER_TOKEN + 100))], "stop", 0),
+		],
 	])("gives up on %s", async (_name, build) => {
 		const { api, ctx, event } = setup({ reply: build });
 		expect(await sharedSummary(api, event, ctx, model as never, "x")).toBeUndefined();
+	});
+
+	it("judges the cap by the provider's output tokens: a reply at the cap whose text exceeds the character estimate is accepted", async () => {
+		const long = text("y".repeat(8_000 * CHARS_PER_TOKEN + 100));
+		const atCap = setup({ reply: () => reply([long], "stop", 8_000) });
+		expect(await sharedSummary(atCap.api, atCap.event, atCap.ctx, model as never, "x")).toBeDefined();
+		// Without a count, the character estimate decides: the same text is over it.
+		const unknown = setup({ reply: () => ({ ...reply([long]), usage: { ...usage, output: undefined } }) });
+		expect(await sharedSummary(unknown.api, unknown.event, unknown.ctx, model as never, "x")).toBeUndefined();
 	});
 
 	it.each([
@@ -355,7 +377,7 @@ describe("cache-sharing compaction summary", () => {
 		["empty text", () => reply([text(" ")]), "the reply was empty"],
 		[
 			"a summary over the cap",
-			() => reply([text("x".repeat(8_000 * CHARS_PER_TOKEN + 100))]),
+			() => reply([text("x".repeat(8_000 * CHARS_PER_TOKEN + 100))], "stop", 8_001),
 			"the reply was longer than the cap",
 		],
 		[
@@ -473,7 +495,7 @@ describe("writeSummary with the shared path", () => {
 		// The extra cost is not silent: the user is told why the cache was not used.
 		expect(notices).toEqual([
 			expect.stringMatching(
-				/could not write the compaction summary from the prompt cache \(the reply stopped with toolUse\).*pays for the whole input/,
+				/could not write the compaction summary inside the session's cached request \(the reply stopped with toolUse\).*standalone request/,
 			),
 		]);
 		// The session keeps it too: the method and the reason are in the compaction's own details.
@@ -491,11 +513,18 @@ describe("writeSummary with the shared path", () => {
 		expect(notices).toEqual([]);
 	});
 
-	it("summarizes a downshift on the previous model with the standalone request only", async () => {
-		const { calls, api, ctx, event } = setup();
+	it("summarizes a downshift on the previous model with the standalone request only, routed and cached as the session is", async () => {
+		const { calls, api, ctx, event } = setup({
+			settings: { cacheRetention: "long", instructionCacheRetention: "short" },
+		});
 		const out = await writeSummary(api, event, ctx, { ...model, id: "previous" } as never);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
+		expect(calls[0].options).toMatchObject({
+			sessionId: "sid-1",
+			cacheRetention: "long",
+			instructionCacheRetention: "short",
+		});
 		expect(out?.compaction?.summary).toContain("## Goal");
 		expect(out?.compaction?.details).toMatchObject({
 			[SUMMARY_METHOD_DETAILS]: {
@@ -505,15 +534,43 @@ describe("writeSummary with the shared path", () => {
 		});
 	});
 
-	it("skips the shared request when the prompt cache has expired, without a warning", async () => {
+	it("shares the session request when the prompt cache is cold too: one request, on the session's prefix", async () => {
 		const { calls, api, ctx, event, notices } = setup();
-		const out = await writeSummary(api, event, ctx, undefined, { cacheCold: true });
+		const out = await writeSummary(api, event, ctx, undefined);
 		expect(calls).toHaveLength(1);
-		expect(finalPrompt(calls[0])).toContain("<conversation>");
-		expect(out?.compaction?.details).toMatchObject({
-			[SUMMARY_METHOD_DETAILS]: { method: "standalone", reason: expect.stringContaining("prompt cache had expired") },
-		});
+		expect(calls[0].context.messages[0]).toBe(system);
+		expect(calls[0].options).toMatchObject({ sessionId: "sid-1", cacheRetention: "short" });
+		expect(out?.compaction?.details).toMatchObject({ [SUMMARY_METHOD_DETAILS]: { method: "cache-shared" } });
 		expect(notices).toEqual([]);
+	});
+
+	it("saves long tool results for the summarizer only when the standalone request reads them", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-shared-summary-"));
+		const checkpoints = () => fs.readdirSync(dir).filter((name) => name.includes(".checkpoint-"));
+		const long = {
+			role: "toolResult",
+			toolCallId: "c1",
+			toolName: "read",
+			content: [{ type: "text", text: "line\n".repeat(SUMMARIZER_RESULT_CHARS) }],
+			isError: false,
+			timestamp: at,
+		};
+		const withLong = (event: never) =>
+			Object.assign((event as { preparation: object }).preparation, { messagesToSummarize: [ask, call, long] });
+		try {
+			const shared = setup({ sessionFile: path.join(dir, "session.jsonl") });
+			withLong(shared.event);
+			expect(await writeSummary(shared.api, shared.event, shared.ctx)).toBeDefined();
+			expect(checkpoints()).toEqual([]);
+			const standalone = setup({ sessionFile: path.join(dir, "session.jsonl") });
+			withLong(standalone.event);
+			expect(
+				await writeSummary(standalone.api, standalone.event, standalone.ctx, { ...model, id: "previous" } as never),
+			).toBeDefined();
+			expect(checkpoints()).toHaveLength(1);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("skips the shared request after a context overflow, which would only overflow again", async () => {
@@ -535,7 +592,7 @@ describe("writeSummary with the shared path", () => {
 		});
 		expect(await writeSummary(api, event, ctx)).toBeUndefined();
 		expect(notices).toEqual([
-			expect.stringContaining("prompt cache (down)"),
+			expect.stringContaining("cached request (down)"),
 			expect.stringContaining("compaction summary failed (down)"),
 		]);
 		// Octocode writes its default summary: the session records that and why (one entry, not sent to the model).

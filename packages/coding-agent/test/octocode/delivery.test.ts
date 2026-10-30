@@ -96,7 +96,8 @@ describe("Delivery", () => {
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
 		t.api.sendMessage(report("a"), { deliverAs: "steer" });
-		expect(t.ctx.ui.statuses.get(STATUS.queued)).toContain("1 queued");
+		expect(t.ctx.ui.statuses.get(STATUS.queued)).toMatch(/^\S+ 1 queued$/);
+		expect(t.ctx.ui.statusTones.get(STATUS.queued)).toBe("accent");
 		const next = fakeCtx({ cwd: "/x", mode: "tui" });
 		next.ui.setStatus(STATUS.queued, "stale");
 		await t.emit("session_start", {}, next);

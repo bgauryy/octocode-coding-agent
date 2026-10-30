@@ -8,7 +8,6 @@ import {
 	McpSessionExpiredError,
 	StreamableHttpTransport,
 } from "../../src/client/index.ts";
-import { consumeSseStream, type SseEvent } from "../../src/client/transports/streamable-http/sse.ts";
 import { closeServers, listen, readBody } from "./helpers.ts";
 
 interface RecordedRequest {
@@ -87,64 +86,6 @@ async function protocolHandler(
 }
 
 afterEach(closeServers);
-
-describe("consumeSseStream", () => {
-	it("cancels the body when its signal aborts or an event is rejected, so the connection is released", async () => {
-		const open = (first: string) => {
-			let cancelled = false;
-			const stream = new ReadableStream<Uint8Array>({
-				start(controller) {
-					controller.enqueue(new TextEncoder().encode(first));
-				},
-				cancel() {
-					cancelled = true;
-				},
-			});
-			return { stream, cancelled: () => cancelled };
-		};
-		const waiting = open("data: one\n\n");
-		const controller = new AbortController();
-		const reading = consumeSseStream(waiting.stream, { onEvent: () => controller.abort(), signal: controller.signal });
-		await reading.catch(() => undefined);
-		expect(waiting.cancelled()).toBe(true);
-
-		const oversized = open(`data: ${"x".repeat(64)}\n`);
-		await expect(consumeSseStream(oversized.stream, { maxEventBytes: 16, onEvent: () => {} })).rejects.toThrow(
-			/exceeds/,
-		);
-		expect(oversized.cancelled()).toBe(true);
-	});
-
-	it("parses chunked CRLF events, comments, IDs, and multiline data", async () => {
-		const encoder = new TextEncoder();
-		const chunks = [': keepalive\r\nid: 7\r\ndata: {"one":\r\n', "data: 1}\r\n\r\n"];
-		const stream = new ReadableStream<Uint8Array>({
-			start(controller) {
-				for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-				controller.close();
-			},
-		});
-		const events: SseEvent[] = [];
-		await consumeSseStream(stream, { onEvent: (event) => events.push(event) });
-		expect(events).toEqual([{ id: "7", data: '{"one":\n1}' }]);
-	});
-
-	it("rejects events whose data lines exceed the limit without a blank line", async () => {
-		const encoder = new TextEncoder();
-		let sent = 0;
-		const stream = new ReadableStream<Uint8Array>({
-			pull(controller) {
-				// Never sends a blank line, so the event is never dispatched.
-				if (sent++ > 1000) controller.close();
-				else controller.enqueue(encoder.encode("data: xxxxxxxxxxxxxxxx\n"));
-			},
-		});
-		await expect(consumeSseStream(stream, { maxEventBytes: 256, onEvent: () => {} })).rejects.toThrow(
-			"MCP SSE event exceeds 256 bytes",
-		);
-		expect(sent).toBeLessThan(100);
-	});
-});
 
 describe("StreamableHttpTransport", () => {
 	it("handles JSON and SSE responses with session and protocol headers", async () => {
@@ -250,18 +191,20 @@ describe("StreamableHttpTransport", () => {
 
 	it("resumes a response stream the server closed before answering", async () => {
 		const resumeHeaders: (string | undefined)[] = [];
+		let responseId: unknown;
 		const { url } = await startServer(async (request, response, requests) => {
 			if (request.method === "GET" && request.headers["last-event-id"]) {
 				resumeHeaders.push(request.headers["last-event-id"] as string);
 				response.writeHead(200, { "content-type": "text/event-stream" });
 				response.end(
-					`id: 2\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: 2, result: { content: [{ type: "text", text: "resumed" }] } })}\n\n`,
+					`id: 2\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: responseId, result: { content: [{ type: "text", text: "resumed" }] } })}\n\n`,
 				);
 				return;
 			}
 			if (request.method !== "POST") return protocolHandler(request, response, requests);
 			const message = JSON.parse(await readBody(request)) as Record<string, unknown>;
 			if (message.method !== "tools/call") return protocolHandler(request, response, requests, message);
+			responseId = message.id;
 			// Priming event (ID, no data) and a retry hint, then the server drops the stream.
 			response.writeHead(200, { "content-type": "text/event-stream" });
 			response.end("id: 1\nretry: 5\ndata:\n\n");

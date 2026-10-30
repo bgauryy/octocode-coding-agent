@@ -89,6 +89,7 @@ export function loadSkillsFromDirInternal(
 	ignoreMatcher?: IgnoreMatcher,
 	rootDir?: string,
 	protocol?: LoadSkillsFromDirOptions["protocol"],
+	ancestors: ReadonlySet<string> = new Set(),
 ): LoadSkillsResult {
 	const skills: Skill[] = [];
 	const diagnostics: ResourceDiagnostic[] = [];
@@ -102,6 +103,13 @@ export function loadSkillsFromDirInternal(
 	addIgnoreRules(ig, dir, root);
 
 	try {
+		const canonicalDir = realpathSync(dir);
+		if (ancestors.has(canonicalDir)) {
+			diagnostics.push({ type: "warning", message: "Skipped cyclic skill directory link", path: dir });
+			return { skills, diagnostics };
+		}
+		// Track this branch, not every discovered directory: independent aliases still retain their source precedence.
+		const parents = new Set(ancestors).add(canonicalDir);
 		const entries = readdirSync(dir, { withFileTypes: true });
 
 		for (const entry of entries) {
@@ -166,7 +174,7 @@ export function loadSkillsFromDirInternal(
 			}
 
 			if (isDirectory) {
-				const subResult = loadSkillsFromDirInternal(fullPath, source, false, ig, root, protocol);
+				const subResult = loadSkillsFromDirInternal(fullPath, source, false, ig, root, protocol, parents);
 				skills.push(...subResult.skills);
 				diagnostics.push(...subResult.diagnostics);
 				continue;

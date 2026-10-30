@@ -2,11 +2,13 @@
 
 This private workspace owns the MCP protocol client, transports, configuration, registry, lifecycle, tools, authentication and Octocode default presets. The client lives in `src/client/`; the host integration lives beside it, with the default presets in `src/presets/octocode/` (research) and `src/presets/browser/` (the `@octocodeai/octocode-chrome-devtools` browser server).
 
-The protocol client can run without an agent session and does not depend on the official MCP SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-host-sources.mjs` compiles its sources into coding-agent's `dist/mcp/`. The temporary compilation tree is removed after each build. Source maps point to the original files and the MCP SDK license ships with the host.
+The protocol client can run without an agent session and uses the official `@modelcontextprotocol/client` SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-host-sources.mjs` compiles its sources into coding-agent's `dist/mcp/`. The temporary compilation tree is removed after each build. Source maps point to the original files and the MCP SDK license ships with the host.
 
 The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocodecode/mcp`, `/mcp/oauth` and `/mcp/testing`. Internal workspace exports resolve directly to source.
 
-The package provides a transport-neutral client core, stdio, Streamable HTTP and legacy HTTP+SSE transports, and an in-memory testing transport.
+The package provides a transport-neutral client core, stdio and Streamable HTTP transports, and an in-memory testing transport.
+
+The official SDK owns JSON-RPC validation, serialization, handshake, dispatch and Streamable HTTP framing. The stdio adapter retains host process supervision so environment isolation, bounded output and whole-process-group cleanup continue to work. HTTP wrappers enforce redirect and credential boundaries, body limits and cancellation. Legacy SSE configuration (`type: "sse"`) is rejected; use a Streamable HTTP endpoint.
 
 The low-level client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
 
@@ -34,7 +36,6 @@ await client.close();
 ```
 
 For a remote server, use `new StreamableHttpTransport({ url, headers })`. Fetch can be injected for proxying or custom networking.
-For a server using the older HTTP+SSE transport, use `new LegacySseTransport({ url, headers })` with its SSE URL. It waits for the server's `endpoint` event before posting messages to the advertised same-origin URL. Its GET stream closes with the client; dropped streams are not replayed, and POST requests are not retried after ordinary failures. `endpointTimeoutMs` defaults to 10 seconds. The transport rejects redirects, URL credentials and cross-origin POST endpoints.
 
 ### Tools for an LLM
 
@@ -62,11 +63,11 @@ const tools: AgentTool[] = (await client.listTools()).map((tool) => ({
 }));
 ```
 
-Hosts can also forward progress and retain `structuredContent` for programmatic consumers.
+Hosts can also forward progress and retain `structuredContent` for programmatic consumers. The SDK's `onProgress` callback supplies `progress`, `total` and `message`; the opaque `progressToken` remains available through `onNotification("notifications/progress", ...)`. Progress renews the idle timeout, while the host enforces a separate absolute total deadline. A nonpositive or nonfinite idle timeout maps to the platform's maximum timer delay (about 24.8 days); the default 30-minute total deadline and caller cancellation still apply.
 
 ### OAuth
 
-`@octocodeai/octocodecode/mcp/oauth` provides the MCP OAuth client subset without depending on the official SDK:
+`@octocodeai/octocodecode/mcp/oauth` adapts the official SDK's MCP OAuth primitives to the host's credential storage and authorization lifecycle:
 
 ```typescript
 import { McpClient, StreamableHttpTransport } from "@octocodeai/octocodecode/mcp";
@@ -118,7 +119,7 @@ await connected;
 
 Inject `McpOAuthStateStore` into `McpOAuthProvider` for durable credentials. The package does not open a browser or choose where credentials are stored.
 
-The OAuth implementation is adapted from the MIT-licensed Model Context Protocol TypeScript SDK v1.29.0. Its license is included under `LICENSES/`.
+OAuth discovery, registration, PKCE and token exchanges use the official MCP SDK. Host policy retains configured metadata overrides, cancellation, credential storage and scope-consent decisions. The historical SDK attribution and license remain under `LICENSES/`.
 
 An MCP transport owns framing and I/O. It delivers individual JSON-RPC messages to `McpClient`; the client owns request correlation, initialization, timeouts, cancellation, server requests, and protocol-level helpers.
 
@@ -132,7 +133,6 @@ An MCP transport owns framing and I/O. It delivers individual JSON-RPC messages 
 - progress notifications and timeout renewal
 - request cancellation
 - Streamable HTTP sessions, the server-to-client GET stream with reconnection, and resumption of dropped response streams with `Last-Event-ID`
-- Legacy HTTP+SSE sessions with one GET stream and a same-origin POST endpoint supplied by the server
 - stdio shutdown per the spec (close stdin, then SIGTERM, then SIGKILL), applied to the server's whole process group
 - server `ping` and `roots/list` requests
 - logging and tool-list-change notifications through the generic notification API

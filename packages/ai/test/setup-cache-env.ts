@@ -8,3 +8,5 @@
 delete process.env.OCTOCODE_CACHE_RETENTION;
 delete process.env.OCTOCODE_INSTRUCTION_CACHE_RETENTION;
 delete process.env.OCTOCODE_INSTRUCTION_CACHE_SPLIT;
+
+delete process.env.OCTOCODE_PROMPT_CACHE_KEY;

@@ -1,4 +1,3 @@
-import type { JsonRpcId } from "../protocol/jsonrpc.ts";
 import type {
 	ClientCapabilities,
 	Implementation,
@@ -25,26 +24,10 @@ export interface McpClientOptions extends Implementation {
 
 export interface McpRequestOptions {
 	signal?: AbortSignal;
-	/** Idle timeout: renewed by each progress notification. */
+	/** Idle timeout, renewed on progress. Non-positive/nonfinite settings use the SDK's platform ceiling (~24.8 days). */
 	timeoutMs?: number;
 	/** Total timeout: progress does not extend it. */
 	maxTotalTimeoutMs?: number;
-	onProgress?: (progress: ProgressNotification) => void;
-}
-
-export interface PendingRequest {
-	resolve: (value: unknown) => void;
-	reject: (reason: unknown) => void;
-	timeoutMs: number;
-	maxTotalTimeoutMs: number;
-	/** When the total timeout ends (epoch ms), or Infinity. */
-	deadline: number;
-	timer: ReturnType<typeof setTimeout> | undefined;
-	signal: AbortSignal | undefined;
-	onAbort: () => void;
-	/** Aborted when the request settles, so the transport does not dispatch (or retry) it afterwards. */
-	sendController: AbortController;
-	cancellable: boolean;
-	onProgress: ((progress: ProgressNotification) => void) | undefined;
-	progressToken: JsonRpcId | undefined;
+	/** SDK progress payload; the opaque routing token remains available through notifications/progress. */
+	onProgress?: (progress: Omit<ProgressNotification, "progressToken">) => void;
 }

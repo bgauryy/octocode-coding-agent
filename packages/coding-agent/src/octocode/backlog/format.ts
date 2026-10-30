@@ -3,6 +3,7 @@ import { visibleControls } from "../shared/sanitize.ts";
 import { refText } from "./row.ts";
 import { type BacklogStore, type Item, priorityName } from "./store.ts";
 import { type Note, STATES, type State } from "@octocodeai/octocode-contacts/snapshot";
+import type { WorkLink } from "@octocodeai/octocode-contacts/backlogs";
 
 export const STATE_TITLE: Record<State, string> = {
 	ongoing: "Ongoing",
@@ -69,7 +70,20 @@ function noteLine(note: Note, now: number, self?: string, parents?: ReadonlySet<
 	return `- ${ago(note.at, now)} ${who(note.author, self, parents)}${note.kind === "change" ? " ·" : ":"} ${indented(note.text, "  ")}`;
 }
 
-/** The item's saved fields in reading order, empty ones omitted: Goal, Where, Why, Evidence (one `-` line per entry), Plan. */
+/** A link target as a reader writes it: a path, item id or URL; other stored resources as `resource:namespace/id`. */
+function linkText({ relation, target }: WorkLink): string {
+	const text =
+		target.resource === "files"
+			? target.path
+			: target.resource === "backlogs"
+				? target.id
+				: target.resource === "external"
+					? target.url
+					: `${target.resource}:${target.namespace}/${target.id}`;
+	return `- ${relation}: ${visibleControls(text)}`;
+}
+
+/** The item's saved fields in reading order, empty ones omitted: Goal, Where, Why, Evidence (one `-` line per entry), Links, Plan. */
 function itemFields(item: Item): string[] {
 	const lines: string[] = [`Type: ${item.type}`];
 	if (item.parentId) lines.push(`Parent: ${item.parentId}`);
@@ -77,7 +91,7 @@ function itemFields(item: Item): string[] {
 	const completion = item.completions.at(-1);
 	if (completion)
 		lines.push(
-			`Result: ${visibleControls(completion.summary)}`,
+			`Result (completion ${completion.id}): ${visibleControls(completion.summary)}`,
 			`Verification: ${completion.verification.status} — ${visibleControls(completion.verification.summary)}`,
 			`Files: ${completion.files.map((file) => visibleControls(file.path)).join(", ") || "none"}`,
 		);
@@ -86,6 +100,7 @@ function itemFields(item: Item): string[] {
 	if (item.paths.length) lines.push(`Where: ${item.paths.map((path) => visibleControls(path)).join(", ")}`);
 	if (item.why) lines.push(`Why: ${indented(item.why, "  ")}`);
 	if (item.evidence.length) lines.push("Evidence:", ...item.evidence.map((entry) => `- ${visibleControls(entry)}`));
+	if (item.links.length) lines.push("Links:", ...item.links.map(linkText));
 	if (item.plan) lines.push(`Plan: ${indented(item.plan, "  ")}`);
 	return lines;
 }

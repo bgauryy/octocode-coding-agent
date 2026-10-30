@@ -12,7 +12,7 @@ import {
 import type { FileGuard } from "../files/tool/guard.ts";
 import { readOnlyCommand } from "../permission/shell/read-only.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
-import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN, estimateTokens } from "../../core/compaction/tokens.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { shortPath } from "../shared/format.ts";
 import { readPaths } from "../shared/home.ts";
@@ -122,22 +122,65 @@ function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<str
 }
 
 /**
- * Clears the old results when the cache lifetime `ttlMs` has passed since the cache was last used (`now`): saves each,
- * records the decision with `api.appendEntry`, and makes the file guard forget the files whose read was cleared and that
- * no read left in the context still shows (the rule `contextReads` rebuilds the guard by on a resume). Does
- * nothing when the lifetime is unknown, the session has no reply yet, or less than `CLEAR_AT_LEAST_TOKENS` would be freed.
+ * Share of the working context past which a request that rewrites the prefix anyway (a system update, a model switch,
+ * a cold cache) clears old results first: the rewrite is paid regardless, so the clearing costs nothing extra, and the
+ * smaller history is read back cheaper on every request that follows.
  */
-export function clearColdResults(
+export const CLEAR_ABOVE_CONTEXT_SHARE = 0.5;
+
+/**
+ * Whether the request about to be made rewrites the history's cache entry anyway: its last message is a system update
+ * (a section patch or tool change recorded after the leading system message), or the model is not the one that
+ * answered last (a model switch).
+ */
+export function prefixRewritten(messages: readonly unknown[], model: { provider?: string; id?: string } | undefined) {
+	const last = messages.at(-1);
+	const firstSystem = messages.findIndex((message) => isRecord(message) && message.role === "system");
+	if (isRecord(last) && last.role === "system" && firstSystem >= 0 && firstSystem !== messages.length - 1) return true;
+	if (!model?.provider || !model.id) return false;
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (!isRecord(message) || message.role !== "assistant") continue;
+		if (typeof message.provider !== "string" || typeof message.model !== "string") return false;
+		return message.provider !== model.provider || message.model !== model.id;
+	}
+	return false;
+}
+
+/** What else, besides a cold cache, lets a request clear old results: see `clearStaleResults`. */
+export interface ClearingOccasion {
+	/** The request rewrites the prefix anyway (`prefixRewritten`). */
+	rewrite?: boolean;
+	/** The working context in tokens (the model's window after the session's context budget). */
+	contextWindow?: number;
+}
+
+/**
+ * Clears the old results when the cache lifetime `ttlMs` has passed since the cache was last used (`now`), or when the
+ * request rewrites the prefix anyway (`occasion.rewrite`) and the context is past `CLEAR_ABOVE_CONTEXT_SHARE` of its
+ * window: saves each, records the decision with `api.appendEntry`, and makes the file guard forget the files whose read
+ * was cleared and that no read left in the context still shows (the rule `contextReads` rebuilds the guard by on a
+ * resume). Does nothing when neither applies, the session has no reply yet, or less than `CLEAR_AT_LEAST_TOKENS` would
+ * be freed.
+ */
+export function clearStaleResults(
 	api: Pick<ExtensionAPI, "appendEntry">,
 	ctx: ExtensionContext,
 	guard: Pick<FileGuard, "forget">,
 	ttlMs: number | undefined,
+	occasion: ClearingOccasion = {},
 	now = Date.now(),
 ): void {
-	if (ttlMs === undefined) return;
 	const lastUse = cacheClock(ctx.sessionManager).useAt;
-	if (lastUse === undefined || now - lastUse <= ttlMs) return;
+	if (lastUse === undefined) return;
+	const cold = ttlMs !== undefined && now - lastUse > ttlMs;
 	const messages = contextMessages(ctx);
+	const crowded =
+		occasion.rewrite === true &&
+		occasion.contextWindow !== undefined &&
+		messages.reduce((sum, { message }) => sum + estimateTokens(message as never), 0) >
+			occasion.contextWindow * CLEAR_ABOVE_CONTEXT_SHARE;
+	if (!cold && !crowded) return;
 	const older = olderResults(clearableResults(messages), sessionCleared(ctx.sessionManager));
 	if (older.length === 0) return;
 	const saved = older.flatMap((candidate) => {

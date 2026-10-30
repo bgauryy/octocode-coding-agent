@@ -50,6 +50,24 @@ export function clearedResults(branch: readonly unknown[]): Map<string, string> 
 
 const clearedIndex = new BranchIndex<Map<string, string>>(() => new Map(), noteCleared);
 
+/** Adds when the results one `CLEARED_RESULTS_TYPE` entry cleared were cleared (the entry's time) to `at`. */
+function noteClearedAt(at: Map<string, number>, entry: unknown): void {
+	if (!isRecord(entry) || typeof entry.timestamp !== "string") return;
+	const cleared = new Map<string, string>();
+	noteCleared(cleared, entry);
+	if (cleared.size === 0) return;
+	const time = Date.parse(entry.timestamp);
+	if (Number.isNaN(time)) return;
+	for (const id of cleared.keys()) at.set(id, time);
+}
+
+const clearedAtIndex = new BranchIndex<Map<string, number>>(() => new Map(), noteClearedAt);
+
+/** When each result cleared on the session's current branch was cleared, as `tool call id → epoch milliseconds`. */
+export function sessionClearedAt(session: BranchSource): ReadonlyMap<string, number> {
+	return clearedAtIndex.read(session);
+}
+
 /**
  * The results cleared on the session's current branch, like `clearedResults` but resumed: a request reads only the entries
  * added since the last one (`BranchIndex`). Read-only: it is the shared state.

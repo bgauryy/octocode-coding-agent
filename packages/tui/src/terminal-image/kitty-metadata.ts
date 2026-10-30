@@ -2,6 +2,12 @@ import type { ImageCellSize } from "./types.ts";
 
 export const KITTY_PREFIX = "\x1b_G";
 
+/**
+ * A Kitty command outside tmux passthrough, with its control keys captured. Under passthrough the escape is doubled
+ * (`ESC ESC _ G`); those sequences belong to placeholder rows, which the placement and crop logic must leave alone.
+ */
+const KITTY_COMMAND = /(?<!\x1b)\x1b_G([^;]*);/;
+
 interface KittyImageMetadata extends ImageCellSize {
 	imageId: number;
 	widthPx: number;
@@ -41,7 +47,7 @@ function getRegisteredKittyImageMetadataFromControls(controls: string): Register
 }
 
 function getRegisteredKittyImageMetadata(line: string): RegisteredKittyImageMetadata | undefined {
-	const controls = /\x1b_G([^;]*);/.exec(line)?.[1];
+	const controls = KITTY_COMMAND.exec(line)?.[1];
 	return controls === undefined ? undefined : getRegisteredKittyImageMetadataFromControls(controls);
 }
 
@@ -90,7 +96,7 @@ const KITTY_PLACEMENT_CONTROL_KEYS = new Set([
 
 /** Read the number of rows covered by an image placement without scanning its payload. */
 export function getKittyImagePlacementRows(line: string): number | undefined {
-	const controls = /\x1b_G([^;]*);/.exec(line)?.[1];
+	const controls = KITTY_COMMAND.exec(line)?.[1];
 	if (controls === undefined) return undefined;
 	const explicitRows = getExplicitKittyImageRows(controls);
 	if (explicitRows !== undefined) return explicitRows;
@@ -99,7 +105,7 @@ export function getKittyImagePlacementRows(line: string): number | undefined {
 
 /** Build a placement-only command for an image line emitted by {@link renderImage}. */
 export function getKittyImagePlacement(line: string): KittyImagePlacement | undefined {
-	const match = /\x1b_G([^;]*);/.exec(line);
+	const match = KITTY_COMMAND.exec(line);
 	if (!match) return undefined;
 	const metadata = getRegisteredKittyImageMetadataFromControls(match[1]);
 	if (!metadata) return undefined;
@@ -136,7 +142,7 @@ export function getKittyImagePlacement(line: string): KittyImagePlacement | unde
 
 export function cropKittyImageLine(line: string, hiddenRows: number, visibleRows: number): string {
 	const metadata = getKittyImageMetadata(line);
-	const match = /\x1b_G([^;]*);/.exec(line);
+	const match = KITTY_COMMAND.exec(line);
 	if (!metadata || !match || hiddenRows < 0 || hiddenRows >= metadata.rows || visibleRows <= 0) return line;
 	const croppedRows = Math.min(visibleRows, metadata.rows - hiddenRows);
 	if (hiddenRows === 0 && croppedRows === metadata.rows) return line;

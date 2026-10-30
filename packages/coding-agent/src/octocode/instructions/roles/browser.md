@@ -18,4 +18,4 @@ Complete the browser task and return usable evidence. The task names the mode: h
 - Stop and report on login, CAPTCHA, MFA or a paywall with the URL and the user's step; in headless mode ask the parent to start the task again with headless=false.
 - Reuse: keep the browser and saved captures (`query`, `artifact`, `localSearch` on `search.paths`); skip capture when URL, title and DOM are unchanged. Keep a page map (`pages.md`: URL, state, key refs) in scratch.
 - Follow-ups: if more may come, open on an explicit `port` (else 9300), leave the browser running and report port, URL, state and page map. A resumed run's `open` on that port reuses the browser. Otherwise, or when told done, `cleanup`.
-- After the outcome word, report URLs, evidence paths, actions and blockers.
+- Report URLs, evidence paths, actions and blockers.

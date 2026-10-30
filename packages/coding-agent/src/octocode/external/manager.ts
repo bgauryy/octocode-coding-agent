@@ -5,10 +5,12 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
+import type { ReferenceContext } from "../shared/references.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { AcpBackend, type AcpPermission } from "../../../../acp/src/client/client.ts";
 import { type InstalledAcpAgent, installedAcpAgents } from "./discover.ts";
 import { OctocodeBackend } from "./octocode.ts";
+import { expandPromptRefs } from "./refs.ts";
 import { type ExternalBackend, type ExternalInfo, type ExternalParams, parseExternalParams } from "./protocol.ts";
 
 export const MAX_EXTERNAL_CONNECTIONS = 8;
@@ -26,6 +28,8 @@ export interface ExternalPolicy {
 	afterReceive(message: MessageEnvelope, ctx: ExtensionContext): Promise<void>;
 	permission(ctx: ExtensionContext): AcpPermission;
 	sender(ctx: ExtensionContext): string;
+	/** What a prompt's `refs` resolve against; without it, a prompt with refs is refused. */
+	references?(ctx: ExtensionContext): ReferenceContext;
 }
 
 interface Connection {
@@ -127,8 +131,11 @@ export class ExternalAgents {
 			const promptSignal = AbortSignal.any([signal, entry.controller.signal, pending.signal]);
 			const id = randomUUID();
 			const from = this.policy.sender(ctx);
+			// Expanded first, so the send hooks, the permission dialog and the peer all see the same text.
+			const text = await this.expand(input, ctx);
+			promptSignal.throwIfAborted();
 			await this.policy.beforeSend(
-				{ channel: "external", direction: "outbound", from, to: entry.info.id, text: input.text!, id },
+				{ channel: "external", direction: "outbound", from, to: entry.info.id, text, id },
 				ctx,
 				promptSignal,
 			);
@@ -136,6 +143,7 @@ export class ExternalAgents {
 			await this.policy.authorize(
 				{
 					...input,
+					text,
 					cwd: entry.info.cwd,
 					transport: entry.info.transport,
 					vendor: entry.info.vendor,
@@ -147,7 +155,7 @@ export class ExternalAgents {
 			promptSignal.throwIfAborted();
 			let reply: Awaited<ReturnType<typeof entry.backend.prompt>>;
 			try {
-				reply = await entry.backend.prompt(input.text!, {
+				reply = await entry.backend.prompt(text, {
 					timeoutMs: input.timeoutMs ?? EXTERNAL_PROMPT_DEFAULT_MS,
 					signal: promptSignal,
 					key: id,
@@ -190,6 +198,17 @@ export class ExternalAgents {
 		} finally {
 			entry.info.busy = false;
 			if (entry.pending === pending) entry.pending = undefined;
+		}
+	}
+
+	/** The prompt text with its refs' content appended; a refusal here is not-sent. */
+	private async expand(input: ExternalParams, ctx: ExtensionContext): Promise<string> {
+		if (!input.refs?.length) return input.text!;
+		if (!this.policy.references) throw notSent("refs are unavailable in this session; nothing was sent.");
+		try {
+			return await expandPromptRefs(input.text!, input.refs, this.policy.references(ctx));
+		} catch (error) {
+			throw notSent(errorMessage(error));
 		}
 	}
 

@@ -11,6 +11,7 @@ vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
 		return `/checkpoint-${savedTexts.length}.txt`;
 	},
 }));
+import { SUMMARY_CHECKPOINT_FORMAT } from "../../src/core/compaction/summary-format.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import {
 	carryFileLists,
@@ -31,15 +32,20 @@ import {
 const fileOps = () => ({ read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() });
 
 describe("compaction summary", () => {
-	it("includes the built-in recovery sections", () => {
-		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## Follow-ups", "## TL;DR"])
-			expect(SUMMARY_FOCUS).toContain(section);
-		expect(SUMMARY_FOCUS).toMatch(
-			/\n## TL;DR\nOne or two lines on what the messages above did[^\n]*"Topics: " with 3 to 8 comma-separated keywords/,
+	it("asks for judgment only and leaves the format to the checkpoint format and the appended parts to code", () => {
+		// The sections are stated once, in the checkpoint format every summary request carries; the focus adds none.
+		expect(SUMMARY_FOCUS).not.toMatch(/^#+ /m);
+		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## TL;DR"])
+			expect(SUMMARY_CHECKPOINT_FORMAT.split(section)).toHaveLength(2);
+		expect(SUMMARY_CHECKPOINT_FORMAT).toMatch(
+			/\n## TL;DR\nOne or two lines[^\n]*"Topics: " with 3 to 8 comma-separated keywords/,
 		);
-		expect(SUMMARY_FOCUS).toMatch(/except ## TL;DR: write it afresh/);
+		expect(SUMMARY_CHECKPOINT_FORMAT).not.toMatch(/Next Steps|EXACT|Follow-ups/);
+		expect(SUMMARY_CHECKPOINT_FORMAT).toMatch(/next step only when it follows directly/i);
 		expect(SUMMARY_FOCUS).toMatch(/only record/);
-		expect(SUMMARY_FOCUS).toMatch(/appended after your summary word for word by code, so do not copy them/);
+		expect(SUMMARY_FOCUS).toMatch(/word for word after your summary, so do not quote them/);
+		// What code appends is not asked for: no verbatim latest request, no file lists, no follow-up list.
+		expect(SUMMARY_FOCUS).not.toMatch(/verbatim|Follow-ups|read-files|Next Steps/);
 	});
 
 	it("names the transcript and the backlog only when there are ones", () => {
@@ -111,6 +117,7 @@ describe("compaction summary", () => {
 			({
 				model,
 				modelRegistry: {
+					getCachePolicy: () => ({ options: {} }),
 					streamSimple: () => {
 						throw new Error("down");
 					},

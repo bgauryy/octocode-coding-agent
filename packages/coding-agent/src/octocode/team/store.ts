@@ -1,9 +1,7 @@
-import type { DatabaseSync } from "node:sqlite";
+import { type Db, agents, deliveries, leases } from "../agentdb/api.ts";
 import { type AgentDb, dbStamp, openAgentDb, sharedAgentDb } from "../agentdb/db.ts";
-import { num, type Row } from "../agentdb/rows.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
-import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
 import type { DeadLetter, Lease, LeaseRequest, Message, SendOptions } from "./model.ts";
@@ -18,31 +16,14 @@ import {
 } from "./store/limits.ts";
 import {
 	claimMember,
-	insertMember,
 	listMembers,
 	type ProcessIdentity,
-	processOf,
 	reachableMembers,
 	reapMember,
-	refreshMember,
 	resumeMembers,
 	retireOwned,
-} from "./store/member-rows.ts";
-import {
-	asks,
-	deadLetters,
-	insertMessage,
-	markDelivered,
-	markNotified,
-	pending,
-	pendingUrgent,
-	pruneMessages,
-	recent,
-	replyTarget,
-	type SignProof,
-	waiting,
-	waitingThrough,
-} from "./store/message-rows.ts";
+} from "./store/members.ts";
+import { asks, deadLetters, insertMessage, pending, pendingUrgent, recent, type SignProof } from "./store/mail.ts";
 import {
 	conflictingLease,
 	liveLeases,
@@ -50,7 +31,8 @@ import {
 	releaseLeases,
 	resumeLeases,
 	writeLeases,
-} from "./store/lease-rows.ts";
+} from "./store/leasing.ts";
+import { MessageRefs } from "./store/refs.ts";
 import { pathKey, teamWorkspace } from "./store/workspace.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
 
@@ -67,9 +49,11 @@ import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
  */
 
 export class TeamStore {
-	private readonly db: DatabaseSync;
+	private readonly db: Db;
 	/** Who changed which file recently, in the same database. */
 	readonly edits: EditLog;
+	/** Stored messages used by reference: read by id, forward, resume rows and relays (`store/refs.ts`). */
+	readonly refs: MessageRefs;
 	private prunedAt = -Infinity;
 	/** Nested `quick` calls: only the outermost restores the long busy wait. */
 	private quickDepth = 0;
@@ -89,6 +73,12 @@ export class TeamStore {
 
 		this.db = agent.db;
 		this.edits = new EditLog(agent.db, workspace);
+		this.refs = new MessageRefs(
+			agent.db,
+			workspace,
+			(work) => this.transaction(work),
+			() => this.reachable(),
+		);
 	}
 
 	/** Opens its own connection to the agent database (`agentDbPath`), which checks the file is ours and adds any missing schema first. */
@@ -127,11 +117,11 @@ export class TeamStore {
 
 	/** Runs background work with a short busy wait, so a database held by another process never freezes this one. */
 	quick<T>(work: () => T): T {
-		if (this.quickDepth++ === 0) this.db.exec(`PRAGMA busy_timeout=${QUICK_BUSY_MS}`);
+		if (this.quickDepth++ === 0) agents.setBusyTimeout(this.db, QUICK_BUSY_MS);
 		try {
 			return work();
 		} finally {
-			if (--this.quickDepth === 0) this.db.exec(`PRAGMA busy_timeout=${BUSY_MS}`);
+			if (--this.quickDepth === 0) agents.setBusyTimeout(this.db, BUSY_MS);
 		}
 	}
 
@@ -149,8 +139,8 @@ export class TeamStore {
 
 	private prune(now = Date.now()): void {
 		if (now - this.prunedAt < PRUNE_INTERVAL_MS) return;
-		pruneMessages(this.db, now - MESSAGE_RETENTION_MS);
-		this.db.prepare("DELETE FROM leases WHERE expires_at < ?").run(now);
+		deliveries.pruneMessages(this.db, now - MESSAGE_RETENTION_MS);
+		leases.pruneExpired(this.db, now);
 		this.edits.prune(now);
 		this.sweep(now);
 		this.prunedAt = now;
@@ -165,7 +155,7 @@ export class TeamStore {
 	 */
 	save(member: Member): boolean {
 		this.prune(member.updatedAt);
-		return refreshMember(this.db, member) || insertMember(this.db, this.workspace, member);
+		return agents.refresh(this.db, member) || agents.insert(this.db, this.workspace, member);
 	}
 
 	/**
@@ -192,10 +182,8 @@ export class TeamStore {
 	 * joined again under the same name meanwhile is left alone. What was retired is read back with `names`.
 	 */
 	sweep(now = Date.now()): void {
-		const rows = this.db.prepare("SELECT id, pid, started FROM agents").all() as Row[];
-		for (const row of rows) {
-			if (!sameProcess(num(row.pid), optionalString(row.started), now))
-				this.reap(String(row.id), { pid: num(row.pid), started: optionalString(row.started) }, now);
+		for (const { id, ...identity } of agents.allProcesses(this.db)) {
+			if (!sameProcess(identity.pid, identity.started, now)) this.reap(id, identity, now);
 		}
 	}
 
@@ -219,7 +207,7 @@ export class TeamStore {
 
 	/** Every agent name in the shared database, whatever its workspace (ids are unique across all of them), live or not yet dropped. */
 	names(): string[] {
-		return (this.db.prepare("SELECT id FROM agents").all() as Row[]).map((row) => String(row.id));
+		return agents.ids(this.db);
 	}
 
 	/**
@@ -260,7 +248,7 @@ export class TeamStore {
 
 	/** The sender of message `id` in this workspace and whether it asked for a reply; undefined when there is no such message. */
 	replyTarget(id: number): { from: string; replyRequired: boolean } | undefined {
-		return replyTarget(this.db, this.workspace, id);
+		return deliveries.replyTarget(this.db, this.workspace, id);
 	}
 
 	/**
@@ -279,33 +267,33 @@ export class TeamStore {
 	/** Records that the sender was told these dead letters went unread. */
 	markNotified(letters: DeadLetter[], now = Date.now()): void {
 		if (letters.length === 0) return;
-		this.transaction(() => markNotified(this.db, letters, now));
+		this.transaction(() => deliveries.markNotified(this.db, letters, now));
 	}
 
 	/** How many messages newer than `after` wait undelivered for `id` (the inbox index alone): the inbox reads them only when this is non-zero. */
 	waiting(id: string, after = 0): number {
-		return waiting(this.db, this.workspace, id, after);
+		return deliveries.countWaiting(this.db, id, after);
 	}
 
 	/** The ids of the messages up to `through` that still wait undelivered for `id`: the inbox handed those over, or its mark ran ahead of this database. */
 	waitingThrough(id: string, through: number): number[] {
-		return waitingThrough(this.db, this.workspace, id, through);
+		return deliveries.waitingIds(this.db, id, through);
 	}
 
 	/** One bounded batch of messages newer than `after` waiting for `id`, oldest first. `ack` marks the ones the model saw. */
 	pending(id: string, after = 0): Message[] {
-		return pending(this.db, this.workspace, id, after);
+		return pending(this.db, id, after);
 	}
 
 	/** One control message can pass an unseen ordinary batch: interrupts always, waking requests while idle. */
 	pendingUrgent(id: string, after: number, idle: boolean): Message | undefined {
-		return pendingUrgent(this.db, this.workspace, id, after, idle);
+		return pendingUrgent(this.db, id, after, idle);
 	}
 
 	/** Mark messages delivered to `id` (FYI messages are complete on delivery). One reader per recipient, so no lease. */
 	ack(id: string, messageIds: number[], now = Date.now()): void {
 		if (messageIds.length === 0) return;
-		this.transaction(() => markDelivered(this.db, id, messageIds, now));
+		this.transaction(() => deliveries.markDelivered(this.db, id, messageIds, now));
 	}
 
 	/**
@@ -329,7 +317,7 @@ export class TeamStore {
 
 	/** Retires a lease owner that is gone (it has no row, or its process died or was replaced); whether it was. */
 	private retireOwner(owner: string, now: number): boolean {
-		const judged = processOf(this.db, owner);
+		const judged = agents.processOf(this.db, owner);
 		if (judged && sameProcess(judged.pid, judged.started, now)) return false;
 		return this.reap(owner, judged, now);
 	}
@@ -365,8 +353,8 @@ export class TeamStore {
 	 */
 	renew(owner: string, now = Date.now()): void {
 		this.transaction(() => {
-			this.db.prepare("DELETE FROM leases WHERE owner = ? AND expires_at <= ?").run(owner, now);
-			this.db.prepare("UPDATE leases SET expires_at = ? WHERE owner = ?").run(now + LEASE_MS, owner);
+			leases.dropLapsed(this.db, owner, now);
+			leases.extendOwner(this.db, owner, now + LEASE_MS);
 		});
 		this.prune(now);
 	}

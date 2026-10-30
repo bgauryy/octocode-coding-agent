@@ -27,7 +27,7 @@ describe("truncateToWidth", () => {
 		const close = "\x1b]8;;\x07";
 		const text = `${open}some-longer-label-here${close}`;
 
-		assert.strictEqual(truncateToWidth(text, 15), `${open}some-longer-${close}\x1b[0m...\x1b[0m`);
+		assert.strictEqual(truncateToWidth(text, 15), `${open}some-longer-la${close}\x1b[0m…\x1b[0m`);
 	});
 
 	it("handles malformed ANSI escape prefixes without hanging", () => {

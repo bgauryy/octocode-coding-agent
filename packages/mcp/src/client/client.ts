@@ -1,13 +1,13 @@
-import { IncomingRequests } from "./client/incoming.ts";
-import { PendingRequests } from "./client/pending.ts";
 import {
-	isTool,
-	toTool,
-	type ListRequest,
-	listAll,
-	validateCallToolResult,
-	validateInitializeResult,
-} from "./client/results.ts";
+	Client,
+	ProtocolError,
+	SdkError,
+	SdkErrorCode,
+	type StandardSchemaV1,
+	type ClientCapabilities,
+} from "@modelcontextprotocol/client";
+import { isTool, listAll, toTool, validateCallToolResult } from "./client/results.ts";
+import { SdkTransportAdapter } from "./client/sdk-transport.ts";
 import type {
 	ClientState,
 	CloseListener,
@@ -19,148 +19,171 @@ import type {
 } from "./client/types.ts";
 import type { CallToolResult } from "./protocol/content.ts";
 import {
-	isJsonRpcNotification,
-	isJsonRpcRequest,
-	isJsonRpcResponse,
-	isObject,
-	JSON_RPC_ERROR_CODES,
-	type JsonRpcId,
-	type JsonRpcMessage,
-	type JsonRpcRequest,
-	type JsonRpcResponse,
+	McpAbortError,
 	McpConnectionClosedError,
 	McpError,
+	McpTimeoutError,
 	toError,
-	McpAbortError,
+	isObject,
 } from "./protocol/jsonrpc.ts";
-import {
-	type ClientCapabilities,
-	type Implementation,
-	type InitializeResult,
-	LATEST_PROTOCOL_VERSION,
-	type ServerCapabilities,
-	SUPPORTED_PROTOCOL_VERSIONS,
-	type Tool,
-} from "./protocol/types.ts";
+import { SUPPORTED_PROTOCOL_VERSIONS, type InitializeResult, type Tool } from "./protocol/types.ts";
 import type { McpTransport } from "./transports/transport.ts";
 
+// Extension methods are application-defined. The tool/content projection below remains the host's trust boundary.
+const extensionResult: StandardSchemaV1<unknown, unknown> = {
+	"~standard": { version: 1, vendor: "octocode", validate: (value) => ({ value }) },
+};
+// The SDK always arms an idle timer; its longest non-overflowing platform delay preserves disabled/very long settings.
+const MAX_IDLE_TIMEOUT_MS = 2_147_483_647;
+
+/** Long absolute deadlines are armed in platform-sized chunks instead of overflowing into a 1 ms timer. */
+function absoluteDeadline(timeout: number) {
+	const controller = new AbortController();
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const expires = Date.now() + timeout;
+	const arm = () => {
+		const remaining = expires - Date.now();
+		if (remaining <= 0) controller.abort(new McpTimeoutError(timeout));
+		else timer = setTimeout(arm, Math.min(remaining, MAX_IDLE_TIMEOUT_MS));
+	};
+	if (Number.isFinite(timeout) && timeout > 0) arm();
+	return { signal: controller.signal, dispose: () => clearTimeout(timer) };
+}
+
+/** Application compatibility facade; the official SDK owns handshake, dispatch, cancellation and deadlines. */
 export class McpClient {
 	readonly options: Readonly<McpClientOptions>;
+	private readonly sdk: Client;
 	private state: ClientState = "idle";
-	private transport: McpTransport | undefined;
-	private nextRequestId = 1;
-	private serverInfoValue: Implementation | undefined;
-	private serverCapabilitiesValue: ServerCapabilities | undefined;
-	private instructionsValue: string | undefined;
-	private protocolVersionValue: string | undefined;
-	private pending = new PendingRequests({
-		sendCancelled: (id, reason) => this.sendCancelled(id, reason),
-		emitError: (error) => this.emitError(error),
-	});
-	private incoming = new IncomingRequests((error) => this.emitError(error));
-	private notificationListeners = new Map<string, Set<NotificationListener>>();
-	private errorListeners = new Set<ErrorListener>();
-	private closeListeners = new Set<CloseListener>();
-	private disposers: (() => void)[] = [];
-	/** Pagination requests go through `request`. */
-	private readonly list: ListRequest = (method, params, options) => this.request(method, params, options);
+	private adapter?: SdkTransportAdapter;
+	private readonly handlers = new Map<string, RequestHandler>();
+	private readonly notificationListeners = new Map<string, Set<NotificationListener>>();
+	private readonly errorListeners = new Set<ErrorListener>();
+	private readonly closeListeners = new Set<CloseListener>();
 
 	constructor(options: McpClientOptions) {
 		this.options = Object.freeze({ ...options });
-		this.incoming.setHandler("ping", () => ({}));
+		this.sdk = new Client(
+			{ name: options.name, version: options.version, ...(options.title ? { title: options.title } : {}) },
+			{
+				capabilities: {
+					...options.capabilities,
+					...(options.roots ? { roots: options.capabilities?.roots ?? {} } : {}),
+				} as ClientCapabilities,
+				supportedProtocolVersions: options.protocolVersion
+					? [
+							options.protocolVersion,
+							...SUPPORTED_PROTOCOL_VERSIONS.filter((version) => version !== options.protocolVersion),
+						]
+					: [...SUPPORTED_PROTOCOL_VERSIONS],
+			},
+		);
+		this.sdk.onerror = (error) => this.emitError(error);
+		this.sdk.onclose = () => this.markClosed();
+		this.sdk.fallbackRequestHandler = async (request, context) => {
+			const handler = this.handlers.get(request.method);
+			if (!handler) throw new ProtocolError(-32601, `Method not found: ${request.method}`);
+			try {
+				const result = (await handler(request.params, { signal: context.mcpReq.signal })) ?? {};
+				if (!isObject(result)) throw new ProtocolError(-32603, "MCP request handler must return an object");
+				return result;
+			} catch (error) {
+				if (error instanceof McpError) throw new ProtocolError(error.code, error.message, error.data);
+				throw error;
+			}
+		};
 		const roots = options.roots;
-		if (roots) {
-			this.incoming.setHandler("roots/list", async () => ({
+		if (roots)
+			this.sdk.setRequestHandler("roots/list", async () => ({
 				roots: [...(typeof roots === "function" ? await roots() : roots)],
 			}));
-		}
 	}
 
 	get connectionState(): ClientState {
 		return this.state;
 	}
-
-	get serverInfo(): Implementation | undefined {
-		return this.serverInfoValue;
+	get serverInfo() {
+		return this.sdk.getServerVersion();
 	}
-
-	get serverCapabilities(): ServerCapabilities | undefined {
-		return this.serverCapabilitiesValue;
+	get serverCapabilities() {
+		return this.sdk.getServerCapabilities();
 	}
-
-	get instructions(): string | undefined {
-		return this.instructionsValue;
+	get instructions() {
+		return this.sdk.getInstructions();
 	}
-
-	get protocolVersion(): string | undefined {
-		return this.protocolVersionValue;
+	get protocolVersion() {
+		return this.sdk.getNegotiatedProtocolVersion();
 	}
 
 	async connect(transport: McpTransport): Promise<InitializeResult> {
 		if (this.state !== "idle") throw new Error(`Cannot connect MCP client in ${this.state} state`);
 		this.state = "connecting";
-		this.transport = transport;
-		this.disposers = [
-			transport.onMessage((message) => this.handleMessage(message)),
-			// Transport errors are reported only. Pending requests fail when the transport closes.
-			transport.onError((error) => this.emitError(error)),
-			transport.onClose(() => this.handleTransportClose()),
-		];
-
-		try {
-			await transport.start();
-			const capabilities: ClientCapabilities = { ...this.options.capabilities };
-			if (this.options.roots && capabilities.roots === undefined) capabilities.roots = {};
-			const result = validateInitializeResult(
-				await this.requestInternal(
-					"initialize",
-					{
-						protocolVersion: this.options.protocolVersion ?? LATEST_PROTOCOL_VERSION,
-						capabilities,
-						clientInfo: {
-							name: this.options.name,
-							version: this.options.version,
-							...(this.options.title === undefined ? {} : { title: this.options.title }),
-						},
-					},
-					{},
-					true,
-				),
-			);
-			if (!(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(result.protocolVersion)) {
-				throw new Error(`MCP server selected unsupported protocol version ${result.protocolVersion}`);
+		const adapter = new SdkTransportAdapter(transport, (method, params) => {
+			for (const listener of this.notificationListeners.get(method) ?? []) {
+				try {
+					listener(params);
+				} catch (error) {
+					this.emitError(error);
+				}
 			}
-			this.protocolVersionValue = result.protocolVersion;
-			this.serverInfoValue = result.serverInfo;
-			this.serverCapabilitiesValue = result.capabilities;
-			this.instructionsValue = result.instructions;
-			transport.setProtocolVersion?.(result.protocolVersion);
-			await this.notifyInternal("notifications/initialized", undefined, true);
-			// close() may have run while the notification was being sent; it wins over finishing the connect.
+		});
+		this.adapter = adapter;
+		const total = this.options.maxTotalTimeoutMs ?? 30 * 60_000;
+		const deadline = absoluteDeadline(total);
+		try {
+			await this.sdk.connect(adapter, this.requestOptions({ signal: deadline.signal }));
 			if ((this.state as ClientState) === "closed")
 				throw new McpConnectionClosedError("MCP client closed while connecting");
 			this.state = "connected";
-			return result;
+			return {
+				protocolVersion: this.protocolVersion!,
+				capabilities: this.serverCapabilities!,
+				serverInfo: this.serverInfo!,
+				...(this.instructions === undefined ? {} : { instructions: this.instructions }),
+			};
 		} catch (error) {
 			await this.close().catch(() => {});
-			throw error;
+			if (deadline.signal.aborted) throw deadline.signal.reason;
+			throw this.mapError(error, {});
+		} finally {
+			deadline.dispose();
 		}
 	}
 
-	request<Result = unknown>(
+	async request<Result = unknown>(
 		method: string,
 		params?: Record<string, unknown>,
 		options: McpRequestOptions = {},
 	): Promise<Result> {
-		return this.requestInternal(method, params, options, false) as Promise<Result>;
+		this.requireConnected();
+		if (options.signal?.aborted) throw new McpAbortError(undefined, options.signal.reason);
+		const total = options.maxTotalTimeoutMs ?? this.options.maxTotalTimeoutMs ?? 30 * 60_000;
+		const deadline = absoluteDeadline(total);
+		const signal = options.signal ? AbortSignal.any([options.signal, deadline.signal]) : deadline.signal;
+		try {
+			return (await this.sdk.request(
+				{ method, ...(params === undefined ? {} : { params }) },
+				extensionResult,
+				this.requestOptions({ ...options, signal }),
+			)) as Result;
+		} catch (error) {
+			if (deadline.signal.aborted && !options.signal?.aborted) throw deadline.signal.reason;
+			throw this.mapError(error, options);
+		} finally {
+			deadline.dispose();
+		}
 	}
 
-	notify(method: string, params?: Record<string, unknown>): Promise<void> {
-		return this.notifyInternal(method, params, false);
+	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+		this.requireConnected();
+		await this.sdk.notification({ method, ...(params === undefined ? {} : { params }) });
 	}
 
 	setRequestHandler(method: string, handler: RequestHandler): () => void {
-		return this.incoming.setHandler(method, handler);
+		this.handlers.set(method, handler);
+		return () => {
+			if (this.handlers.get(method) === handler) this.handlers.delete(method);
+		};
 	}
 
 	onNotification(method: string, listener: NotificationListener): () => void {
@@ -169,29 +192,31 @@ export class McpClient {
 		listeners.add(listener);
 		return () => {
 			listeners.delete(listener);
-			if (listeners.size === 0) this.notificationListeners.delete(method);
+			if (!listeners.size) this.notificationListeners.delete(method);
 		};
 	}
-
 	onError(listener: ErrorListener): () => void {
 		this.errorListeners.add(listener);
 		return () => this.errorListeners.delete(listener);
 	}
-
-	/** Called once when the connection closes, whether the transport dropped or `close()` was called. */
 	onClose(listener: CloseListener): () => void {
 		this.closeListeners.add(listener);
 		return () => this.closeListeners.delete(listener);
 	}
-
 	async ping(options: McpRequestOptions = {}): Promise<void> {
 		await this.request("ping", undefined, options);
 	}
-
 	async listTools(options: McpRequestOptions = {}): Promise<Tool[]> {
-		return (await listAll(this.list, "tools/list", "tools", isTool, options)).map(toTool);
+		return (
+			await listAll(
+				(method, params, requestOptions) => this.request(method, params, requestOptions),
+				"tools/list",
+				"tools",
+				isTool,
+				options,
+			)
+		).map(toTool);
 	}
-
 	async callTool(
 		name: string,
 		args?: Record<string, unknown>,
@@ -201,133 +226,69 @@ export class McpClient {
 			await this.request("tools/call", { name, ...(args === undefined ? {} : { arguments: args }) }, options),
 		);
 	}
-
 	async close(): Promise<void> {
-		const transport = this.transport;
-		this.transport = undefined;
-		this.disposeTransportListeners();
-		this.markClosed(new McpConnectionClosedError());
-		await transport?.close();
+		this.markClosed();
+		try {
+			await this.sdk.close();
+		} finally {
+			await this.adapter?.close();
+		}
 	}
 
-	private async requestInternal(
-		method: string,
-		params: Record<string, unknown> | undefined,
-		options: McpRequestOptions,
-		allowConnecting: boolean,
-	): Promise<unknown> {
-		const transport = this.requireTransport(allowConnecting);
-		if (options.signal?.aborted) throw new McpAbortError();
-		const id = this.nextRequestId++;
-		const progressToken = options.onProgress ? id : undefined;
-		const requestParams =
-			progressToken === undefined
-				? params
-				: { ...params, _meta: { ...(isObject(params?._meta) ? params._meta : {}), progressToken } };
-		const message: JsonRpcRequest = {
-			jsonrpc: "2.0",
-			id,
-			method,
-			...(requestParams === undefined ? {} : { params: requestParams }),
+	private requestOptions(options: McpRequestOptions) {
+		const total = options.maxTotalTimeoutMs ?? this.options.maxTotalTimeoutMs ?? 30 * 60_000;
+		const idle = options.timeoutMs ?? this.options.requestTimeoutMs ?? 30_000;
+		return {
+			signal: options.signal,
+			timeout: Number.isFinite(idle) && idle > 0 ? Math.min(idle, MAX_IDLE_TIMEOUT_MS) : MAX_IDLE_TIMEOUT_MS,
+			maxTotalTimeout: Number.isFinite(total) && total > 0 ? total : undefined,
+			resetTimeoutOnProgress: true,
+			onprogress: options.onProgress
+				? (progress: Parameters<NonNullable<McpRequestOptions["onProgress"]>>[0]) => {
+						try {
+							options.onProgress!(progress);
+						} catch (error) {
+							this.emitError(error);
+						}
+					}
+				: undefined,
 		};
-		return this.pending.start(id, method, options, progressToken, this.options, (signal) =>
-			transport.send(message, { signal }),
-		);
 	}
-
-	private async notifyInternal(
-		method: string,
-		params: Record<string, unknown> | undefined,
-		allowConnecting: boolean,
-	): Promise<void> {
-		await this.requireTransport(allowConnecting).send({
-			jsonrpc: "2.0",
-			method,
-			...(params === undefined ? {} : { params }),
-		});
+	private mapError(error: unknown, options: McpRequestOptions): Error {
+		if (options.signal?.aborted) return new McpAbortError(undefined, options.signal.reason);
+		if (error instanceof ProtocolError) return new McpError(error.code, error.message, error.data);
+		if (error instanceof SdkError && error.code === SdkErrorCode.ConnectionClosed)
+			return new McpConnectionClosedError();
+		if (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout) {
+			const timeout =
+				isObject(error.data) && typeof error.data.timeout === "number"
+					? error.data.timeout
+					: (options.timeoutMs ?? this.options.requestTimeoutMs ?? 30_000);
+			return new McpTimeoutError(timeout);
+		}
+		return toError(error);
 	}
-
-	private requireTransport(allowConnecting: boolean): McpTransport {
-		if (this.transport && (this.state === "connected" || (allowConnecting && this.state === "connecting"))) {
-			return this.transport;
-		}
-		throw new McpConnectionClosedError(`MCP client is ${this.state}`);
+	private requireConnected(): void {
+		if (this.state !== "connected") throw new McpConnectionClosedError(`MCP client is ${this.state}`);
 	}
-
-	private handleMessage(message: JsonRpcMessage): void {
-		if (isJsonRpcResponse(message)) {
-			this.handleResponse(message);
-			return;
-		}
-		if (isJsonRpcRequest(message)) {
-			const transport = this.transport;
-			if (transport) void this.incoming.handle(message, transport);
-			return;
-		}
-		if (isJsonRpcNotification(message)) {
-			this.handleNotification(message.method, message.params);
-			return;
-		}
-		this.emitError(new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Received invalid JSON-RPC message"));
-	}
-
-	private handleResponse(message: JsonRpcResponse): void {
-		if (!this.pending.settle(message)) {
-			this.emitError(new Error(`Received response for unknown MCP request ${String(message.id)}`));
-		}
-	}
-
-	private handleNotification(method: string, params: unknown): void {
-		if (method === "notifications/progress") this.pending.progress(params);
-		else if (method === "notifications/cancelled") this.incoming.cancel(params);
-		for (const listener of this.notificationListeners.get(method) ?? []) {
+	private markClosed(): void {
+		if (this.state === "closed") return;
+		this.state = "closed";
+		for (const listener of Array.from(this.closeListeners)) {
 			try {
-				listener(params);
+				listener();
 			} catch (error) {
 				this.emitError(error);
 			}
 		}
 	}
-
-	/** Tell the server a request was cancelled, when a transport is still attached. */
-	private sendCancelled(id: JsonRpcId, reason: string | undefined): void {
-		if (!this.transport) return;
-		void this.transport
-			.send({
-				jsonrpc: "2.0",
-				method: "notifications/cancelled",
-				params: { requestId: id, ...(reason ? { reason } : {}) },
-			})
-			.catch((sendError) => this.emitError(sendError));
-	}
-
-	private handleTransportClose(): void {
-		this.markClosed(new McpConnectionClosedError());
-	}
-
-	/** Idempotent: rejects in-flight requests, aborts server requests we are serving, and flips the state. */
-	private markClosed(error: Error): void {
-		const wasClosed = this.state === "closed";
-		this.state = "closed";
-		this.pending.rejectAll(error);
-		this.incoming.abortAll(error);
-		if (wasClosed) return;
-		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during close do not change iteration
-		for (const listener of [...this.closeListeners]) {
+	private emitError(error: unknown): void {
+		for (const listener of this.errorListeners) {
 			try {
-				listener();
-			} catch (listenerError) {
-				this.emitError(listenerError);
+				listener(toError(error));
+			} catch {
+				/* Error observers cannot interrupt protocol cleanup. */
 			}
 		}
-	}
-
-	private emitError(error: unknown): void {
-		const normalized = toError(error);
-		for (const listener of this.errorListeners) listener(normalized);
-	}
-
-	private disposeTransportListeners(): void {
-		for (const dispose of this.disposers.splice(0)) dispose();
 	}
 }

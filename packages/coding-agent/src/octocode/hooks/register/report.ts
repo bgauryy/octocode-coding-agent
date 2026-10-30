@@ -35,7 +35,7 @@ export function hooksReport(
 		enabled ? "Hooks: on" : "Hooks: off in this subagent (its profile does not set hooks: true).",
 		...(enabled ? [`Loaded (${loaded.length}):`, ...(loaded.length > 0 ? loaded : ["  none"])] : []),
 		"",
-		'Hook files ({"hooks": {...}}; /hooks events lists what each profile accepts):',
+		'Hook files ({"hooks": {...}}; /hooks events lists what each profile accepts, /plugins switches them):',
 		...configFileLines(hookFiles(cwd, true, home), hookFiles(cwd, false, home), home),
 		...(errors.length > 0 ? ["", "Hook configuration diagnostics:", ...errors.map((error) => `  ${error}`)] : []),
 	].join("\n");

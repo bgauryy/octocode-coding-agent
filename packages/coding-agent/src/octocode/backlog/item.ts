@@ -13,7 +13,6 @@ export interface Item {
 	dependsOn: BacklogRef[];
 	links: WorkLink[];
 	completions: Completion[];
-	reason: string;
 	/** Database row id (notes hang from it). */
 	rowId: number;
 	seq: number;
@@ -22,12 +21,13 @@ export interface Item {
 	title: string;
 	/** What done means: the observable result or check that closes the item. */
 	goal: string;
+	/** Free text from before the structured fields; read-only (no writer sets it any more). */
 	body: string;
 	/** Repo-relative files, directories or components the work touches. */
 	paths: string[];
 	/** Why it matters: the problem and who it affects. */
 	why: string;
-	/** Observations that justify it: `path:line — what it shows`, a command and its result, or a link. */
+	/** Observations that justify it: `path:line — what it shows`, or a command and its result; a bare path or URL is a link. */
 	evidence: string[];
 	/** The intended approach and steps. */
 	plan: string;
@@ -53,6 +53,8 @@ export interface Actor {
 	kind?: "human" | "agent";
 	/** Set for a subagent: its parent's sessions, the only assignees whose items it may update (it never claims). */
 	owners?: ReadonlySet<string>;
+	/** Set for a subagent its parent started for one item (`B12`): the only item it may update; it may still propose. */
+	item?: string;
 }
 
 /** Who the agent database records as making a change: `actor`, else the user; without a kind, the user is human. */

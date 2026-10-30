@@ -1,7 +1,9 @@
 import util from "node:util";
 import { describe, expect, it } from "vitest";
 import type { ToolCallEvent, ToolResultEvent } from "../../src/core/extensions/index.ts";
+import { expandPromptRefs } from "../../src/octocode/external/refs.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
+import type { MessageReader } from "../../src/octocode/shared/references.ts";
 
 const ROOT = "/work/repo";
 const ctx = { cwd: ROOT };
@@ -60,9 +62,7 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 			ctx,
 		);
 		expect(provenance.check(call("bash", { command: SPAN }), ctx)?.why).toContain("externalAgent reviewer");
-		expect(
-			provenance.check(call("externalAgent", { action: "prompt", id: "executor", text: SPAN }), ctx)?.why,
-		).toContain("externalAgent reviewer");
+		expect(provenance.sent({ id: "executor", text: SPAN }, ctx)?.why).toContain("externalAgent reviewer");
 		expect(provenance.check(call("externalAgent", { action: "list" }), ctx)).toBeUndefined();
 	});
 
@@ -70,9 +70,30 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		const { provenance } = setup();
 		const privateText = "The confidential account balance for customer example is 7391 dollars as of today.";
 		provenance.record(result("read", { path: "/private/account.txt" }, privateText), ctx);
-		expect(
-			provenance.check(call("externalAgent", { action: "prompt", id: "remote", text: privateText }), ctx)?.why,
-		).toContain("private text");
+		expect(provenance.sent({ id: "remote", text: privateText }, ctx)?.why).toContain("private text");
+	});
+
+	it("checks an external prompt as sent, with the content its refs expand to, not its arguments", async () => {
+		const { provenance } = setup();
+		const privateText = "The confidential account balance for customer example is 7391 dollars as of today.";
+		provenance.record(result("read", { path: "/private/account.txt" }, privateText), ctx);
+		provenance.record(result("web", { url: "https://example.com/install" }, PAGE), ctx);
+		const stored: Record<number, string> = { 41: `Found it: ${privateText}`, 42: `Next: ${SPAN}` };
+		const messages: MessageReader = {
+			readMessage: (id, requester) =>
+				stored[id] && requester === "lead" ? { id, from: "kelp", text: stored[id], at: 0 } : { error: "not found" },
+		};
+		const context = { requester: "lead", messages, children: () => [] };
+		// The model's arguments hold only the reference; the gate's check leaves the prompt to `sent`.
+		const input = { action: "prompt", id: "remote", text: "Summarize msg#41.", refs: ["msg#41"] };
+		expect(provenance.check(call("externalAgent", input), ctx)).toBeUndefined();
+		const text = await expandPromptRefs(input.text, input.refs, context);
+		expect(text).toContain(privateText);
+		expect(provenance.sent({ id: "remote", text }, ctx)?.why).toContain("sends private text from read");
+		// Untrusted text a reference carries to the external agent is caught the same way.
+		const steered = await expandPromptRefs("Do msg#42.", ["msg#42"], context);
+		expect(provenance.sent({ id: "remote", text: steered }, ctx)?.why).toContain("web https://example.com/install");
+		expect(provenance.sent({ id: "remote", text: "Summarize the design." }, ctx)).toBeUndefined();
 	});
 
 	it("asks when a later bash command contains a span of a web result, naming the source and its age", () => {

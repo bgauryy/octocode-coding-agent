@@ -1,31 +1,45 @@
-/** Checkpoint structure shared by standalone and cache-sharing compaction requests. */
-export const SUMMARY_CHECKPOINT_FORMAT = `Use this EXACT format:
+/** The heading of a summary's closing label, and the line inside it that lists keywords (the archive index reads both). */
+export const TLDR_HEADING = "## TL;DR";
+export const TOPICS_LABEL = "Topics:";
+
+/**
+ * The one statement of the checkpoint a compaction summary is written in. The standalone prompts (`summarization.ts`,
+ * `branch-summarization.ts`) and the cache-sharing request (`octocode/compaction/shared-summary.ts`) compose it; none
+ * restates a section. It asks for judgment the next model cannot read back from a file: what is wanted, what was
+ * decided, what went wrong and where the work stopped. What code attaches after the summary (file lists, saved
+ * results, the user's own messages, recovery pointers) is not asked for.
+ */
+export const SUMMARY_CHECKPOINT_FORMAT = `Write these sections, in this order, with the headings as given:
 
 ## Goal
-[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+[What the user is trying to accomplish; several items when the session covers different tasks]
 
 ## Constraints & Preferences
-- [Any constraints, preferences, or requirements mentioned by user]
-- [Or "(none)" if none were mentioned]
+- [Constraints, preferences or requirements the user stated, or "(none)"]
 
 ## Progress
 ### Done
-- [x] [Completed tasks/changes]
+- [x] [Completed work]
 
 ### In Progress
-- [ ] [Current work]
+- [ ] [Work under way]
 
 ### Blocked
-- [Issues preventing progress, if any]
+- [What prevents progress, if anything]
 
 ## Key Decisions
 - **[Decision]**: [Brief rationale]
 
-## Next Steps
-1. [Ordered list of what should happen next]
+## Errors & Fixes
+- [Each error or failed approach: the exact error text, its cause, and the fix, or "unresolved". The user's corrections of the approach belong here.]
+
+## Where We Stopped
+- [The work under way in the last messages, with its exact file paths, and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
 
 ## Critical Context
-- [Any data, examples, or references needed to continue]
-- [Or "(none)" if not applicable]
+- [Data, examples or references needed to continue, or "(none)"]
 
-Keep each section concise. Preserve exact file paths, function names, and error messages.`;
+${TLDR_HEADING}
+One or two lines on what the summarized messages did, then a line "${TOPICS_LABEL} " with 3 to 8 comma-separated keywords. An index of the conversation's history uses it as this stretch's label.
+
+Keep each section concise. Keep file paths, symbols, commands, error strings, URLs and identifiers exact.`;

@@ -2,7 +2,11 @@ import type { Api, Model } from "@octocodeai/octocode-ai";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { withCacheCapabilities, withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { describeCachePolicy, resolveConfiguredCache } from "../src/core/cache-configuration.ts";
+import {
+	describeCachePolicy,
+	headlessCachePreferences,
+	resolveConfiguredCache,
+} from "../src/core/cache-configuration.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -16,7 +20,7 @@ describe("cache configuration", () => {
 	it("uses application defaults without changing the environment", () => {
 		environment();
 		expect(resolveConfiguredCache(model, undefined).options).toEqual({
-			cacheRetention: "short",
+			cacheRetention: "long",
 			instructionCacheRetention: "long",
 		});
 		expect(process.env.OCTOCODE_CACHE_RETENTION).toBeUndefined();
@@ -194,5 +198,18 @@ describe("cache configuration", () => {
 				expect(text, api).not.toMatch(/\b(1h|12h|24h)\b/);
 			}
 		});
+	});
+});
+
+describe("headless runs", () => {
+	it("default to short history behind long instructions unless a setting or the environment chose", () => {
+		expect(headlessCachePreferences([], {})).toEqual({ cacheRetention: "short", instructionCacheRetention: "long" });
+		expect(
+			headlessCachePreferences([{ source: "global settings", values: { cacheRetention: "long" } }], {}),
+		).toBeUndefined();
+		expect(
+			headlessCachePreferences([{ source: "project settings", values: { instructionCacheRetention: "short" } }], {}),
+		).toBeUndefined();
+		expect(headlessCachePreferences([], { OCTOCODE_CACHE_RETENTION: "long" })).toBeUndefined();
 	});
 });

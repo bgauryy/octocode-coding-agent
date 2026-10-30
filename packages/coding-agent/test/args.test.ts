@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { normalizeSessionName, parseArgs } from "../src/cli/args.ts";
+import { normalizeSessionName, parseArgs, restoreBooleanFlagWords } from "../src/cli/args.ts";
 
 describe("parseArgs", () => {
 	describe("--version flag", () => {
@@ -418,13 +418,13 @@ describe("parseArgs", () => {
 		test("rejects invalid modes", () => {
 			const result = parseArgs(["--tui-mode", "other"]);
 			expect(result.diagnostics).toEqual([
-				{ type: "error", message: 'Invalid TUI mode "other". Valid values: regular, fullscreen' },
+				{ type: "error", message: 'Invalid TUI mode "other". Valid values: fullscreen, regular' },
 			]);
 		});
 
 		test("requires a mode", () => {
 			const result = parseArgs(["--tui-mode"]);
-			expect(result.diagnostics).toEqual([{ type: "error", message: "--tui-mode requires regular or fullscreen" }]);
+			expect(result.diagnostics).toEqual([{ type: "error", message: "--tui-mode requires fullscreen or regular" }]);
 		});
 
 		test("does not recognize the old --ui-mode flag", () => {
@@ -566,6 +566,39 @@ describe("parseArgs", () => {
 			expect(result.thinking).toBe("high");
 			expect(result.fileArgs).toEqual(["prompt.md"]);
 			expect(result.messages).toEqual(["Do the task"]);
+		});
+	});
+
+	describe("one flag table", () => {
+		test("names the flag whose value is missing instead of calling it unknown", () => {
+			expect(parseArgs(["--model"]).diagnostics).toEqual([{ type: "error", message: "--model requires a value" }]);
+		});
+		test("never takes another flag as a value", () => {
+			const result = parseArgs(["--model", "--print", "hi"]);
+			expect(result.model).toBeUndefined();
+			expect(result.print).toBe(true);
+			expect(result.messages).toEqual(["hi"]);
+			expect(result.diagnostics).toEqual([{ type: "error", message: "--model requires a value" }]);
+			// Text that merely starts with a dash is still a value.
+			expect(parseArgs(["--system-prompt", "- be brief"]).systemPrompt).toBe("- be brief");
+		});
+		test("accepts --flag=value for every flag that takes one and rejects it for switches", () => {
+			expect(parseArgs(["--model=sonnet"]).model).toBe("sonnet");
+			expect(parseArgs(["--thinking=high"]).thinking).toBe("high");
+			expect(parseArgs(["--offline=yes"]).diagnostics).toEqual([
+				{ type: "error", message: "--offline does not take a value" },
+			]);
+		});
+		test("treats an invalid thinking level as an error, like other enumerated flags", () => {
+			expect(parseArgs(["--thinking", "huge"]).diagnostics[0]).toMatchObject({ type: "error" });
+		});
+		test("gives a boolean extension flag's word back to the prompt", () => {
+			const result = parseArgs(["--plan", "fix the bug", "--depth", "3", "now"]);
+			expect(result.messages).toEqual(["now"]);
+			restoreBooleanFlagWords(result, (name) => name === "plan");
+			expect(result.messages).toEqual(["fix the bug", "now"]);
+			expect(result.unknownFlags.get("plan")).toBe(true);
+			expect(result.unknownFlags.get("depth")).toBe("3");
 		});
 	});
 });

@@ -1,17 +1,17 @@
-import { type Component, GLYPH, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { type Component, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { formatCost, formatDuration, formatTokenUsage, toolCallCount } from "../shared/format.ts";
+import { formatCost, formatTokens } from "../shared/format.ts";
 import { plural } from "../shared/render/text.ts";
-import { statusColor } from "../shared/render/status.ts";
+import type { StatusTone } from "../../core/footer-data-provider.ts";
 import { STATUS } from "../shared/status.ts";
-import { GOAL_SHOWN_CHARS } from "./identity.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
-import { collapsedRows, FINISHED_MS, type Finished, fitName, NAME_MIN, panelBudget, safe } from "./panel-compact.ts";
+import { collapsedRows, FINISHED_MS, type Finished, panelBudget, safe } from "./panel-compact.ts";
 import { FinishedTracker } from "./panel-finished.ts";
 import { PanelMotion } from "./panel-motion.ts";
 import { descendants, liveMembers, roster } from "./panel-roster.ts";
-import { type PanelEntry, panelColor, panelMark, panelState } from "./panel-state.ts";
+import { memberRows, rootRow, totalTokens } from "./panel-rows.ts";
+import { panelState } from "./panel-state.ts";
 import { ownTraffic, trafficRow } from "./panel-traffic.ts";
 import type { Team } from "./session.ts";
 
@@ -22,106 +22,6 @@ const WIDGET_KEY = "octocode-agents";
 const MAX_ROWS = 6;
 /** Recent messages shown under the agents, picked after filtering out other sessions' traffic. */
 const TRAFFIC_ROWS = 3;
-
-const MODEL_MAX = 28;
-
-/** `painted` replaces the coloured `text` for a cell that is already styled (the state mark); `text` still sets its width. */
-type Cell = { text: string; color: Parameters<Theme["fg"]>[0]; right?: boolean; painted?: string };
-/**
- * Optional columns, dropped left to right when the terminal is too narrow (flags first, tokens last): what the agent does
- * right now keeps at least `ACTIVITY_MIN` columns. Compact rows prioritize identity and state, then show activity below.
- */
-const OPTIONAL = ["flags", "tools", "cost", "tokens"] as const;
-type Column = "glyph" | "name" | "goal" | "model" | "state" | "age" | "tokens" | (typeof OPTIONAL)[number];
-const ORDER: Column[] = ["glyph", "name", "goal", "model", "state", "age", "tokens", "tools", "cost", "flags"];
-/** The goal is shortened down to this many columns before anything else on the row is cut. */
-const GOAL_MIN = 12;
-/** Columns kept for the current activity before optional columns are dropped. */
-const ACTIVITY_MIN = 20;
-
-/** `anthropic/claude-opus-4-5` → `claude-opus-4-5`: the provider adds width, not meaning, in a one-line row. */
-const modelLabel = (model: string | undefined) => safe(model?.slice(model.lastIndexOf("/") + 1), MODEL_MAX);
-
-/**
- * One agent's cells. The row says who it is (name), what it is for (goal), which model it runs, its state, how long it
- * has run, its tokens (with the cached share), and what it does right now; its tools, estimated cost and flags when the
- * width allows.
- */
-function cells(entry: PanelEntry, now: number, theme: Theme): Record<Column, Cell> & { detail: string } {
-	const { member, depth } = entry;
-	const state = panelState(entry, now);
-	const color = panelColor(state);
-	const working = state.state === "running";
-	const detail = working ? safe(member.activity) : "";
-	const flags = [
-		member.pending ? `${GLYPH.message} ${member.pending} waiting` : "",
-		member.locks?.length ? plural(member.locks.length, "lock") : "",
-	]
-		.filter(Boolean)
-		.join("  ");
-	return {
-		glyph: { text: GLYPH[state.state], color, painted: panelMark(theme, state, now) },
-		name: {
-			text: `${depth > 0 ? `${"  ".repeat(depth - 1)} └ ` : ""}${safe(member.id, 64)}`,
-			color: working ? "text" : "muted",
-		},
-		goal: { text: safe(member.goal, GOAL_SHOWN_CHARS), color: working ? "text" : "muted" },
-		model: { text: modelLabel(member.model), color: "muted" },
-		state: { text: state.label, color },
-		age: { text: formatDuration((entry.doneAt ?? now) - member.joinedAt), color: "dim", right: true },
-		tools: { text: toolCallCount(member.toolCalls), color: "dim", right: true },
-		tokens: { text: formatTokenUsage(member), color: "dim", right: true },
-		cost: { text: formatCost(member), color: "dim", right: true },
-		flags: { text: flags, color: member.pending ? "warning" : "dim" },
-		detail,
-	};
-}
-
-/** Rows with every column padded to its widest cell, so state, time and stats line up down the list. */
-function memberRows(tree: PanelEntry[], now: number, theme: Theme, width: number): string[] {
-	const rows = tree.map((entry) => cells(entry, now, theme));
-	const goalWidth = Math.max(...rows.map((row) => visibleWidth(row.goal.text)));
-	let goalCap = goalWidth;
-	const widthOf = (column: Column) =>
-		column === "goal" ? Math.min(goalWidth, goalCap) : Math.max(...rows.map((row) => visibleWidth(row[column].text)));
-	let columns = ORDER.filter((column) => widthOf(column) > 0);
-	const used = () =>
-		1 + columns.reduce((sum, column) => sum + widthOf(column) + (column === "glyph" ? 1 : SEPARATOR.length), 0);
-	// Keep room for the activity: drop optional columns until it fits.
-	for (const column of OPTIONAL) if (used() + ACTIVITY_MIN > width) columns = columns.filter((kept) => kept !== column);
-	// Still too wide for the columns that always stay: shorten the goal (keeping room for the activity) rather than cut time or model.
-	const reserve = rows.some((row) => row.detail) ? ACTIVITY_MIN : 0;
-	if (used() + reserve > width) goalCap = Math.max(GOAL_MIN, goalWidth - (used() + reserve - width));
-	if (used() > width) {
-		// Narrow: a head row (who, state, elapsed) and one detail row (activity when working, otherwise the goal).
-		return rows.flatMap((row) => {
-			const state = [row.state.text, row.age.text, row.flags.text].filter(Boolean).join(" · ");
-			const nameRoom = Math.max(NAME_MIN, width - visibleWidth(state) - 7);
-			const head = ` ${row.glyph.painted} ${theme.fg(row.name.color, fitName(row.name.text, nameRoom))} · ${theme.fg(row.flags.text ? "warning" : row.state.color, state)}`;
-			const detail = row.detail || row.goal.text;
-			return [
-				truncateToWidth(head, Math.max(1, width), "…"),
-				...(detail ? [truncateToWidth(`   ${theme.fg("muted", detail)}`, Math.max(1, width), "…")] : []),
-			];
-		});
-	}
-	for (const row of rows) row.goal.text = fitName(row.goal.text, goalCap);
-	return rows.map((row) => {
-		// Trailing empty cells (no cost yet, nothing waiting) leave no dangling separator.
-		const last = columns.reduce((found, column, index) => (row[column].text !== "" ? index : found), -1);
-		const parts = columns.slice(0, last + 1).map((column, index) => {
-			const cell = row[column];
-			const pad = " ".repeat(widthOf(column) - visibleWidth(cell.text));
-			const text = cell.painted ?? theme.fg(cell.color, cell.text);
-			return (
-				(cell.right ? pad + text : text + pad) +
-				(index === last ? "" : column === "glyph" ? " " : theme.fg("dim", SEPARATOR))
-			);
-		});
-		const detail = row.detail ? `  ${theme.fg("muted", row.detail)}` : "";
-		return truncateToWidth(` ${parts.join("")}${detail}`.trimEnd(), Math.max(1, width), "…");
-	});
-}
 
 /** Rows for the widget under the editor; empty when this session has no live subagents. Recent messages follow the agents. */
 export function widgetLines(
@@ -146,16 +46,23 @@ export function widgetLines(
 		unpriced: others.some((member) => member.unpriced),
 	});
 	const idle = others.length - busy - over;
+	const tokens = others.reduce((total, member) => total + totalTokens(member), 0);
 	const summary = [
 		...(busy ? [`${busy} working`] : []),
 		...(idle ? [`${idle} idle`] : []),
 		...(over ? [`${over} done`] : []),
+		...(tokens ? [`${formatTokens(tokens)} tok`] : []),
 		...(cost ? [cost] : []),
-	].join(" · ");
-	const head = truncateToWidth(
-		` ${theme.fg("toolTitle", theme.bold("agents"))}${theme.fg("dim", SEPARATOR)}${theme.fg("muted", summary)}`,
-		Math.max(1, width),
-		"…",
+	].join(SEPARATOR);
+	const agentRows = memberRows(shown, now, theme, width);
+	const alignTo = Math.max(0, ...agentRows.map((line) => visibleWidth(line)));
+	const head = rootRow(
+		members.find((member) => member.id === selfId),
+		selfId,
+		summary,
+		theme,
+		width,
+		alignTo,
 	);
 	const recent = ownTraffic(traffic, others, selfId).slice(0, TRAFFIC_ROWS);
 	const moreRow = (count: number) => truncateToWidth(theme.fg("muted", ` +${count} more`), Math.max(1, width), "…");
@@ -163,10 +70,7 @@ export function widgetLines(
 		const hidden = tree.length - agents.length;
 		return [head, ...lines, ...(hidden > 0 ? [moreRow(hidden)] : [])];
 	};
-	const full = [
-		...build(shown, memberRows(shown, now, theme, width)),
-		...recent.map((m) => trafficRow(m, now, theme, width)),
-	];
+	const full = [...build(shown, agentRows), ...recent.map((m) => trafficRow(m, now, theme, width))];
 	const budget = rows === undefined ? undefined : panelBudget(rows);
 	if (budget === undefined || full.length <= budget) return full;
 	// Few terminal rows: one row per agent, as many as fit beside the header and a "+N more" row, then traffic if room is left.
@@ -223,14 +127,11 @@ export class AgentsView {
 	}
 
 	private showBackground(ctx: ExtensionContext): void {
-		const text =
-			this.background > 0 && !this.shown
-				? statusColor(ctx, "accent", plural(this.background, "background agent"))
-				: undefined;
+		const text = this.background > 0 && !this.shown ? plural(this.background, "background agent") : undefined;
 		if (text === this.backgroundStatus) return;
 		this.backgroundStatus = text;
 		try {
-			ctx.ui.setStatus(STATUS.subagents, text);
+			ctx.ui.setStatus(STATUS.subagents, text, "accent");
 		} catch {
 			// The session was replaced.
 		}
@@ -256,10 +157,11 @@ export class AgentsView {
 		this.finished.clear();
 	}
 
-	private setStatus(ctx: ExtensionContext, text: string | undefined): void {
-		if (text === this.status) return;
-		this.status = text;
-		ctx.ui.setStatus(STATUS.team, text);
+	private setStatus(ctx: ExtensionContext, text: string | undefined, tone?: StatusTone): void {
+		const shown = text === undefined ? undefined : `${tone ?? ""}\0${text}`;
+		if (shown === this.status) return;
+		this.status = shown;
+		ctx.ui.setStatus(STATUS.team, text, tone);
 	}
 
 	private clear(ctx: ExtensionContext): void {
@@ -290,21 +192,20 @@ export class AgentsView {
 				// Either way the widget keeps its state, and mounts once a read succeeds.
 				this.setStatus(
 					ctx,
-					retrying
-						? statusColor(ctx, "warning", `team retrying: ${safe(error, 80)}`)
-						: statusColor(ctx, "error", `team off: ${safe(error, 80)}`),
+					retrying ? `team retrying: ${safe(error, 80)}` : `team off: ${safe(error, 80)}`,
+					retrying ? "warning" : "error",
 				);
 				this.showBackground(ctx);
 				return;
 			}
-			const named = self ? statusColor(ctx, "muted", `main: ${safe(self, 64)}`) : undefined;
+			const named = self ? `main: ${safe(self, 64)}` : undefined;
 			if (!visible) {
 				if (this.shown) this.clear(ctx);
-				this.setStatus(ctx, named);
+				this.setStatus(ctx, named, "muted");
 				this.showBackground(ctx);
 				return;
 			}
-			this.setStatus(ctx, named);
+			this.setStatus(ctx, named, "muted");
 			if (!this.shown) {
 				this.shown = true;
 				ctx.ui.setWidget(

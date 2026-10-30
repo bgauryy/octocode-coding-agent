@@ -202,8 +202,15 @@ export function registerTrustCommand(commands: Subcommands, home?: string): void
 			if (files.length === 0) return say(ctx, "This project has no hook, MCP, agent or skill config to trust.");
 			const off = action === "off";
 			if (!off && !ctx.isProjectTrusted())
-				return say(ctx, "Octocode does not trust this project; run /trust first.", "warning");
+				return say(ctx, "Trust this project's resources first with /trust project.", "warning");
 			// The decision covers exactly what was shown: fingerprinted before the dialog and re-checked after it.
+			// Trust is a decision about what will run: without a terminal there is no review, so there is no trust.
+			if (!off && !ctx.hasUI)
+				return say(
+					ctx,
+					"Trusting project config needs a review: run /trust config in the interactive terminal.",
+					"warning",
+				);
 			let sha = fingerprint(files);
 			let details = describeProjectConfig(ctx.cwd, files);
 			for (let attempt = 1; !off && ctx.hasUI; attempt++) {

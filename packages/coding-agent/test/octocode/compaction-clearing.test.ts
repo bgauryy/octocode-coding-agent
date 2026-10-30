@@ -181,6 +181,25 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		});
 	});
 
+	it("clears old results while the cache is warm when the request rewrites the prefix anyway and the context is past half its budget", async () => {
+		// 200k working context: 40 reads of 10k characters are about 133k tokens, past half.
+		const items = reads(40);
+		const head = { role: "system", content: "base prompt", timestamp: T0 - 1 };
+		const update = { role: "system", content: "", sections: { planning: "on" }, timestamp: T0 + 150 };
+		const s = setup([head, ...idleMessages(items), update]);
+		await s.start(T0 + 100 + 60_000);
+		expect(s.entries).toHaveLength(1);
+		const outcome = resultTexts(await s.context());
+		expect(outcome.slice(0, 40 - KEEP_RECENT_RESULTS).every(cleared)).toBe(true);
+		// The same request without a rewrite ahead, or under half the budget, clears nothing while warm.
+		const warm = setup(idleMessages(reads(40)));
+		await warm.start(T0 + 100 + 60_000);
+		expect(warm.entries).toEqual([]);
+		const small = setup([head, ...idleMessages(reads(12)), update]);
+		await small.start(T0 + 100 + 60_000);
+		expect(small.entries).toEqual([]);
+	});
+
 	it("applies the decision identically on every later request, so the prompt stays byte-stable", async () => {
 		const s = setup(idleMessages(reads(12)));
 		await s.start(T0 + 100 + HOUR + 1_000);

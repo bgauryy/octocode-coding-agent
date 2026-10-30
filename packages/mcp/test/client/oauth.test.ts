@@ -273,6 +273,7 @@ describe("MCP OAuth", () => {
 			refresh_token: "refresh-token",
 			token_type: "Bearer",
 			scope: "org:read",
+			issuer: origin,
 		});
 		expect(refreshes).toBe(1);
 		await refreshedClient.close();
@@ -634,6 +635,7 @@ describe("MCP OAuth", () => {
 		refreshing.tokenSet = { access_token: "a1", refresh_token: "r1", token_type: "Bearer" };
 		refreshing.discovery = {
 			authorizationServerUrl: origin,
+			resourceMetadata: { resource: `${origin}/mcp` },
 			authorizationServerMetadata: {
 				issuer: origin,
 				authorization_endpoint: `${origin}/authorize`,

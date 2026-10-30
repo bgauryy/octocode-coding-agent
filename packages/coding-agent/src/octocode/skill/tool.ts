@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { Type } from "typebox";
 import { expandClaudeArguments, expandClaudeVariables } from "../../core/claude-arguments.ts";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
@@ -55,7 +56,7 @@ function body(entry: CatalogSkill, sessionId: string, cwd: string): { text: stri
 			? expandClaudeVariables(expandClaudeArguments(raw, "", [], skill.argumentNames), {
 					sessionId,
 					projectDir: repoKey(cwd).root,
-					skillDir: skill.baseDir,
+					skillDir: path.dirname(entry.file),
 					pluginRoot: skill.claudePluginRoot,
 					pluginData: skill.claudePluginData,
 				})
@@ -82,13 +83,13 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 		timedTool({
 			name: "skill",
 			label: "Skill",
+			// The skills section says when to load a skill; this text says only what the tool does.
 			description:
-				"Load a skill's instructions by name. Call it before starting a task when the task matches the description of a skill " +
-				"listed in <available_skills>, then follow it; do not call it for a skill that does not match. The result holds the skill's " +
-				"SKILL.md and its directory: resolve relative paths in the instructions against that directory. Only listed skills load.",
-			promptSnippet: "Load a listed skill's instructions when the task matches its description",
+				"Load a skill's instructions by name and follow them. The result holds the skill's SKILL.md and its directory: " +
+				"resolve relative paths in the instructions against that directory. Only skills listed in <available_skills> load.",
+			promptSnippet: "Load a listed skill's instructions by name",
 			parameters: Type.Object({
-				name: Type.String({ description: "The skill's name, as listed in <available_skills>" }),
+				name: Type.String({ description: "Listed skill name" }),
 			}),
 			// The declaration is worth its tokens only when a model can load a skill. A child whose skills ride in its task
 			// keeps it even without any: siblings with and without skills then send the same tool list and share its cache.
@@ -100,7 +101,7 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 				signal?.throwIfAborted();
 				const requested = bareName(params.name ?? "");
 				if (!requested) throw new Error("skill needs the name of a listed skill.");
-				const all = catalog.refresh();
+				const all = catalog.refresh({ allowStale: false });
 				const entry =
 					all.find((candidate) => candidate.skill.name === requested) ??
 					all.find((candidate) => candidate.skill.name.toLowerCase() === requested.toLowerCase());
@@ -121,15 +122,16 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 					throw new Error(`Skill "${skill.name}" could not be read: ${errorMessage(error)}`);
 				}
 				const lines = loaded.text.split("\n").length;
+				const baseDir = path.dirname(entry.file);
 				const cut = loaded.truncated
-					? `\n\n[Cut at ${MAX_SKILL_BYTES / 1024} KB. Read the rest of ${skill.filePath} with a file reader.]`
+					? `\n\n[Cut at ${MAX_SKILL_BYTES / 1024} KB. Read the rest of ${entry.file} with a file reader.]`
 					: "";
 				return textResult(
-					`<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${loaded.text}${cut}\n</skill>`,
+					`<skill name="${skill.name}" location="${entry.file}">\nReferences are relative to ${baseDir}.\n\n${loaded.text}${cut}\n</skill>`,
 					{
 						name: skill.name,
-						location: skill.filePath,
-						baseDir: skill.baseDir,
+						location: entry.file,
+						baseDir,
 						lines,
 						...(loaded.truncated ? { truncated: true } : {}),
 					} satisfies SkillDetails,

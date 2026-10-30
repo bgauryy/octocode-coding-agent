@@ -5,6 +5,7 @@
 
 import { Spacer } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
@@ -44,12 +45,14 @@ type StatusIndicatorsHost = Pick<
 	| "workingVisible"
 >;
 
-/**
- * Set extension status text in the footer.
- */
-export function setExtensionStatus(host: StatusIndicatorsHost, key: string, text: string | undefined): void {
-	host.footerDataProvider.setExtensionStatus(key, text);
-	host.ui.requestRender();
+/** Set extension status text in the footer; the footer data subscription draws it when it changed. */
+export function setExtensionStatus(
+	host: StatusIndicatorsHost,
+	key: string,
+	text: string | undefined,
+	tone?: StatusTone,
+): void {
+	host.footerDataProvider.setExtensionStatus(key, text, tone);
 }
 
 export function setEditorWorkingStatusIndicator(

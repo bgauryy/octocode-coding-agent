@@ -106,6 +106,16 @@ export class McpOAuthProvider implements OAuthClientProvider {
 		const expiresAt = tokens.expires_in === undefined ? undefined : Date.now() + tokens.expires_in * 1000;
 		await this.update((value) => {
 			const next: McpOAuthState = { ...value, tokens };
+			// The SDK stamps an issuer on pre-migration credentials before a refresh. That bookkeeping
+			// write must not extend the old access token's lifetime if the refresh then fails.
+			const keys = new Set([...Object.keys(value.tokens ?? {}), ...Object.keys(tokens)]);
+			const issuerStamp =
+				!value.tokens?.issuer &&
+				tokens.issuer &&
+				[...keys].every(
+					(key) => key === "issuer" || value.tokens?.[key as keyof OAuthTokens] === tokens[key as keyof OAuthTokens],
+				);
+			if (issuerStamp) return next;
 			if (expiresAt === undefined) delete next.tokensExpireAt;
 			else next.tokensExpireAt = expiresAt;
 			return next;

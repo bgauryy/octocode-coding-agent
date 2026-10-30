@@ -1,3 +1,4 @@
+import { mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 // Per-tier provider regression for issues/provider-error-body-passthrough.
 //
 // Routes a 403-with-body error through the real provider catch path for one
@@ -15,19 +16,6 @@ import { stream as streamOpenAICompletions } from "../src/api/openai-completions
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
 import type { Model } from "../src/types.ts";
 
-// openai SDK APIError shape: "<status> status code (no body)" message, the
-// parsed body kept on `.error`.
-class FakeAPIError extends Error {
-	status: number;
-	error: unknown;
-	constructor(status: number, parsedBody: unknown) {
-		super(`${status} status code (no body)`);
-		this.name = "PermissionDeniedError";
-		this.status = status;
-		this.error = parsedBody;
-	}
-}
-
 const bedrockMock = vi.hoisted(() => ({
 	sendError: undefined as unknown,
 }));
@@ -37,19 +25,7 @@ const openaiMock = vi.hoisted(() => ({
 	parsedBody: { error: "blocked by gateway WAF" } as unknown,
 }));
 
-vi.mock("openai", () => {
-	function throwingCreate() {
-		const promise = Promise.resolve(undefined) as unknown as { withResponse: () => Promise<never> };
-		promise.withResponse = async () => {
-			throw new FakeAPIError(403, openaiMock.parsedBody);
-		};
-		return promise;
-	}
-	class FakeOpenAI {
-		chat = { completions: { create: throwingCreate } };
-	}
-	return { default: FakeOpenAI };
-});
+mockCompletionsFetch(() => new Response(JSON.stringify(openaiMock.parsedBody), { status: 403 }));
 
 vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 	class BedrockRuntimeServiceException extends Error {}

@@ -321,7 +321,8 @@ describe("skills", () => {
 			const introText = result.substring(0, xmlStart);
 
 			expect(introText).toContain("The following skills provide specialized instructions");
-			expect(introText).toContain("Use the read tool to load a skill's file");
+			// Octocode ships no `read` tool; bash is the default loader.
+			expect(introText).toContain("Use bash to load a skill's file");
 		});
 
 		it("should escape XML special characters", () => {
@@ -431,11 +432,21 @@ describe("skills", () => {
 				expect(result).toMatch(/To fit the prompt, \d+ skills are listed without a description/);
 			});
 
-			it("names the skills left out when even bare entries do not fit", () => {
-				const result = formatSkillsForPrompt(many(30), "bash", { budgetChars: 1000 });
+			it("bounds overflow names and reports how many remain when bare entries do not fit", () => {
+				const result = formatSkillsForPrompt(many(100), "bash", { budgetChars: 1000 });
 				expect(result).toContain("<name>skill-0</name>");
-				expect(result).toMatch(/Not listed, to fit the prompt .*skill-29$/);
-				for (let index = 0; index < 30; index++) expect(result).toContain(`skill-${index}`);
+				expect(result).toMatch(/\d+ skills are outside the XML list .*skill-\d+.*; \d+ more$/);
+				expect(result).not.toContain("skill-99");
+				const overflow = result.split("asks for one): ")[1] ?? "";
+				expect(entries(result).length - "<available_skills>".length + overflow.length).toBeLessThanOrEqual(1000);
+			});
+
+			it("keeps a very large catalog bounded instead of appending every omitted name", () => {
+				const result = formatSkillsForPrompt(many(10_000), "skill");
+				expect(result.length).toBeLessThan(9000);
+				expect(result).toContain("skills are outside the XML list");
+				expect(result).toMatch(/\d+ more$/);
+				expect(result).not.toContain("skill-9999");
 			});
 
 			it("cuts a description over the Agent Skills limit", () => {

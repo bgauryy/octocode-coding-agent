@@ -80,7 +80,7 @@ export interface PreparedChange {
 export interface FileReplacementOwner {
 	enabled(input: Record<string, unknown>, cwd: string): boolean;
 	refresh(ctx: ExtensionToolContext): Promise<void>;
-	committed?(id: string, input: Record<string, unknown>): void;
+	committed?(id: string, input: Record<string, unknown>, cwd: string): void;
 }
 
 /** The batch's `purpose`: what its changes' `reason` fields say, in order; none when they say nothing (the assistant's message then stands in). */

@@ -612,6 +612,13 @@ describe("Input component", () => {
 			assert.strictEqual(input.getValue(), "");
 		});
 
+		it("drops tmux-encoded newlines in a paste without leaking the sequence (xterm and csi-u formats)", () => {
+			const input = new Input();
+
+			input.handleInput("\x1b[200~one\x1b[27;5;106~two\x1b[106;5uthree\x1b[201~");
+			assert.strictEqual(input.getValue(), "onetwothree");
+		});
+
 		it("undoes paste atomically", () => {
 			const input = new Input();
 

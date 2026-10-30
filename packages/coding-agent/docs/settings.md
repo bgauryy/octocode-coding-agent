@@ -26,7 +26,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cacheRetention` | `"none" \| "short" \| "long"` | `"short"` | Conversation cache retention. Without a separate instruction preference, applies to both layers. |
+| `cacheRetention` | `"none" \| "short" \| "long"` | `"long"` | Conversation cache retention. Without a separate instruction preference, applies to both layers. |
 | `instructionCacheRetention` | `"none" \| "short" \| "long"` | `"long"` | Instruction cache retention, limited by endpoint capabilities. Long writes can cost more. |
 | `retry` | object |  | Automatic retry of transient model failures. |
 | `retry.enabled` | boolean | `true` | `false` turns off all retries. |

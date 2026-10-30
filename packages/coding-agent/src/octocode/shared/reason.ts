@@ -6,7 +6,7 @@ import { isRecord } from "../../utils/guards.ts";
  * wrapper adds it to each native tool's parameters (`withReason`) and removes it before the tool runs (`withoutReason`);
  * permission requests and tool rows read it from the call's input (`callReason`).
  */
-const REASON_DESCRIPTION = "The goal this call serves, in one short sentence";
+const REASON_DESCRIPTION = "This call's goal in one sentence";
 
 const reasonSchema = () => Type.String({ description: REASON_DESCRIPTION });
 
@@ -17,11 +17,35 @@ export function callReason(input: unknown): string | undefined {
 }
 
 /**
- * The parameters with a required `reason` added. A tool that declares `reason` itself keeps its own definition, and
- * parameters that are not an object schema (no `properties`) are returned unchanged.
+ * The parameters with a required `reason` added. A tool that declares `reason` itself keeps its own definition.
+ * Object-root alternatives get one definition at the root (required there) and an unconstrained `reason` slot in each
+ * closed branch, so the model reads the description once and every projection (lifted or composed) still requires it;
+ * parameters without object properties are unchanged.
  */
 export function withReason<T extends TSchema>(parameters: T): T {
-	const schema = parameters as unknown as { properties?: Record<string, unknown>; required?: string[] };
+	const schema = parameters as unknown as {
+		type?: string;
+		properties?: Record<string, unknown>;
+		required?: string[];
+		anyOf?: TSchema[];
+	};
+	if (
+		schema.type === "object" &&
+		!schema.properties &&
+		Array.isArray(schema.anyOf) &&
+		schema.anyOf.length > 0 &&
+		schema.anyOf.every((branch) => isRecord(branch) && isRecord(branch.properties) && !("reason" in branch.properties))
+	) {
+		return {
+			...parameters,
+			properties: { reason: reasonSchema() },
+			required: [...(schema.required ?? []), "reason"],
+			anyOf: schema.anyOf.map((branch) => ({
+				...branch,
+				properties: { ...(branch as { properties: Record<string, unknown> }).properties, reason: {} },
+			})),
+		};
+	}
 	if (!isRecord(schema.properties) || "reason" in schema.properties) return parameters;
 	return {
 		...parameters,

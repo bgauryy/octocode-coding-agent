@@ -13,9 +13,9 @@ import {
 	noteCount as countNotes,
 	notes as itemNotes,
 } from "./reads.ts";
-import { addItem, removeItem, updateItem } from "./writes.ts";
+import { addItem, COMPLETION_GUIDANCE, removeItem, updateItem } from "./writes.ts";
 
-export { BacklogError, PRIORITIES, parseRef, priorityName, refuseSecrets };
+export { BacklogError, COMPLETION_GUIDANCE, PRIORITIES, parseRef, priorityName, refuseSecrets };
 export type { Actor, Item };
 export type { UpdateInput };
 

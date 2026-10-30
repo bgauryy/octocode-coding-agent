@@ -1,4 +1,6 @@
+import { resetMultiplexerCache } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { type FakeTmux, installFakeTmux } from "../../../tui/test/helpers/fake-tmux.ts";
 import { titledDialog } from "../../src/octocode/shared/locks.ts";
 import {
 	type Notice,
@@ -47,7 +49,13 @@ async function run(s: ReturnType<typeof setup>, text = "All done.\nMore", stopRe
 	await s.fake.fire("agent_settled", {}, s.ctx);
 }
 
-afterEach(() => vi.useRealTimers());
+let fakeTmux: FakeTmux | undefined;
+afterEach(() => {
+	vi.useRealTimers();
+	fakeTmux?.restore();
+	fakeTmux = undefined;
+	resetMultiplexerCache();
+});
 
 describe("notify settings", () => {
 	it("reads the condition and picks a method from the terminal", () => {
@@ -73,9 +81,75 @@ describe("notify settings", () => {
 		expect(notificationSequence("osc99", "Octocode", "body", {})).toBe(
 			"\x1b]99;i=octocode:d=0;Octocode\x1b\\\x1b]99;i=octocode:p=body;body\x1b\\",
 		);
-		expect(notificationSequence("osc9", "Octocode", "b", { TMUX: "/tmp/t" })).toBe(
-			"\x1bPtmux;\x1b\x1b]9;Octocode: b\x07\x1b\\",
+	});
+
+	const TMUX = { TMUX: "/tmp/tmux-1/default,1,0", TMUX_PANE: "%1" };
+
+	it("wraps an OSC in tmux passthrough and appends a bell fallback in the same write", () => {
+		fakeTmux = installFakeTmux({ allowPassthrough: "on" });
+		expect(notificationSequence("osc9", "Octocode", "b", TMUX)).toBe("\x1bPtmux;\x1b\x1b]9;Octocode: b\x07\x1b\\\x07");
+		expect(notificationSequence("bel", "t", "b", TMUX)).toBe("\x07");
+	});
+
+	it("wraps the notification for allow-passthrough all, the setting that also passes hidden windows", () => {
+		fakeTmux = installFakeTmux({ allowPassthrough: "all" });
+		expect(notificationSequence("osc777", "Octocode", "b", TMUX)).toBe(
+			"\x1bPtmux;\x1b\x1b]777;notify;Octocode;b\x07\x1b\\\x07",
 		);
+	});
+
+	it("finds the terminal of a client that attaches after the session started detached", () => {
+		const env = { ...TMUX, TERM_PROGRAM: "tmux" };
+		fakeTmux = installFakeTmux({ clientTermtype: "", clientTermname: "", allowPassthrough: "on" });
+		expect(notifyMethod(env)).toBe("bel");
+		fakeTmux.restore();
+		// No cache reset between the two answers: the empty one must not be remembered.
+		fakeTmux = installFakeTmux({
+			clientTermtype: "ghostty 1.3.1",
+			clientTermname: "xterm-ghostty",
+			allowPassthrough: "on",
+		});
+		expect(notifyMethod(env)).toBe("osc777");
+		expect(notificationSequence(notifyMethod(env), "Octocode", "b", env).startsWith("\x1bPtmux;")).toBe(true);
+	});
+
+	it("sends only the bell inside tmux when the pane blocks passthrough or tmux cannot be asked", () => {
+		fakeTmux = installFakeTmux({ allowPassthrough: "off" });
+		expect(notificationSequence("osc777", "Octocode", "b", TMUX)).toBe("\x07");
+		fakeTmux.restore();
+		resetMultiplexerCache();
+		fakeTmux = installFakeTmux({ fail: ["passthrough"] });
+		expect(notificationSequence("osc99", "Octocode", "b", TMUX)).toBe("\x07");
+	});
+
+	it("picks the method from the attached tmux client instead of TERM_PROGRAM=tmux", () => {
+		const cases: [string, string, string][] = [
+			["kitty(0.35.2)", "xterm-kitty", "osc99"],
+			["iTerm2 3.5.0", "xterm-256color", "osc9"],
+			["ghostty 1.0.1", "xterm-ghostty", "osc777"],
+			["WezTerm 20240203", "xterm-256color", "osc777"],
+			["", "xterm-kitty", "osc99"],
+			["Terminal.app", "xterm-256color", "bel"],
+		];
+		for (const [termtype, termname, method] of cases) {
+			resetMultiplexerCache();
+			const fake = installFakeTmux({ clientTermtype: termtype, clientTermname: termname });
+			try {
+				expect(notifyMethod({ ...TMUX, TERM_PROGRAM: "tmux" })).toBe(method);
+			} finally {
+				fake.restore();
+			}
+		}
+	});
+
+	it("keeps the override and falls back to the environment when tmux cannot name the client", () => {
+		fakeTmux = installFakeTmux({ clientTermtype: "kitty(1)", clientTermname: "xterm-kitty" });
+		expect(notifyMethod({ ...TMUX, OCTOCODE_NOTIFY_METHOD: "bel" })).toBe("bel");
+		fakeTmux.restore();
+		resetMultiplexerCache();
+		fakeTmux = installFakeTmux({ fail: ["client"] });
+		expect(notifyMethod({ ...TMUX, TERM_PROGRAM: "ghostty" })).toBe("osc777");
+		expect(notifyMethod({ ...TMUX, TERM_PROGRAM: "tmux" })).toBe("bel");
 	});
 });
 

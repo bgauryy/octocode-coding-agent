@@ -20,7 +20,7 @@ import { modeSummary } from "./ask/text.ts";
 
 /** Audit entries `/permissions log` shows, newest last. */
 const LOG_ENTRIES = 50;
-const USAGE = `Usage: /permissions [${PERMISSION_MODES.join("|")}|grants [clear]|log]`;
+const USAGE = `Usage: /permissions [${PERMISSION_MODES.join("|")}|plan [off]|grants [clear]|log]`;
 const NOT_A_SANDBOX =
 	"Modes and reasons decide what Octocode asks about and records; they are not a sandbox (the OS user's rights stay as they are).";
 
@@ -34,7 +34,7 @@ function status(permission: Permission, provenanceSize: number): string {
 		...grants.map((grant) => `  ${grant}`),
 		`Provenance index: ${provenanceSize} shingles`,
 		`${shortcutText("app.permission.cycle")} in the editor cycles ${PERMISSION_CYCLE.join(" → ")}; start mode: ${PERMISSION_ENV}, else full.`,
-		"Thinking level: /thinking.",
+		"Thinking level: /effort.",
 		NOT_A_SANDBOX,
 	].join("\n");
 }

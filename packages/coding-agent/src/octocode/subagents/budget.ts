@@ -8,17 +8,17 @@ import type { Team } from "../team/session.ts";
 import type { Usage } from "@octocodeai/octocode-ai";
 
 /**
- * A subagent run's request budget: how many model requests the child may make before the parent asks it to wrap up (the
+ * A subagent task's request budget: how many model requests the child may make before the parent asks it to wrap up (the
  * soft limit) and, past `HARD_LIMIT_FACTOR` times that, stops it. The parent counts one request per assistant reply
- * (`reduceEvent`); a compaction summary is not a reply. A message that resumes a lingering child starts a new run and a new count.
+ * (`reduceEvent`); a compaction summary is not a reply. Resuming the same child continues its saved request count.
  */
 
 export const MAX_REQUESTS_ENV = "OCTOCODE_SUBAGENT_MAX_REQUESTS";
 
 /**
- * The soft limit when neither the profile nor the environment sets one. Set above every one of 154 measured subagent runs
- * (2026-10-26: p50 40, p95 120, p99 219, max 236 requests), so its hard limit (240) stops only a runaway and the steer
- * reaches about 4% of runs. 0 in a profile or the environment turns the budget off.
+ * The soft limit when neither the profile nor the environment sets one. In 154 measured subagent runs
+ * (2026-10-26: p50 40, p95 120, p99 219, max 236 requests), the steer reached about 4% of runs and the hard limit (240)
+ * exceeded the observed maximum. That historical sample is not a guarantee for future tasks. 0 turns the budget off.
  */
 export const DEFAULT_MAX_REQUESTS = 160;
 
@@ -52,11 +52,13 @@ export class RequestBudget {
 	private readonly soft: number;
 	private readonly steer: (message: string) => void;
 	private readonly stop: () => void;
+	private readonly previous: number;
 
-	constructor(soft: number, steer: (message: string) => void, stop: () => void) {
+	constructor(soft: number, steer: (message: string) => void, stop: () => void, previous = 0) {
 		this.soft = soft;
 		this.steer = steer;
 		this.stop = stop;
+		this.previous = previous;
 	}
 
 	/** Whether the budget stopped the run; its request count. */
@@ -68,8 +70,16 @@ export class RequestBudget {
 		return this.soft;
 	}
 
-	/** A reply ended: `count` replies so far; `continues`: it asked for tools. */
+	/** A resumed task already at its soft limit sees the wrap-up instruction before spending another request. */
+	prompt(task: string): string {
+		if (this.soft < 1 || this.previous < this.soft) return task;
+		this.steered = true;
+		return `${task}\n\n${steerMessage(this.previous, this.soft)}`;
+	}
+
+	/** A reply ended: `count` replies in this process; `continues`: it asked for tools. */
 	onReply(count: number, continues: boolean): void {
+		count += this.previous;
 		if (this.soft < 1 || this.stoppedAt !== undefined || !continues) return;
 		if (count >= hardLimit(this.soft)) {
 			this.stoppedAt = count;

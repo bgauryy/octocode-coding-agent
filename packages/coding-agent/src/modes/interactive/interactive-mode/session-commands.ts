@@ -5,17 +5,18 @@ import { validateCompactionInstructions } from "../../../core/compaction/manual-
  */
 
 import { type Component, Container, Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
-import { APP_NAME } from "../../../config.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import { SessionImportFileNotFoundError, SessionImportInvalidError } from "../../../core/agent-session-runtime.ts";
+import {
+	SessionImportFileNotFoundError,
+	SessionImportInvalidError,
+	SessionNameError,
+} from "../../../core/agent-session-runtime.ts";
 import { NothingToCompactError } from "../../../core/agent-session/compaction-control.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
-import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../../core/trust-manager.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { reportBug } from "../bug-report.ts";
 import { DynamicBorder } from "../components/dynamic-border.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { TrustSelectorComponent } from "../components/trust-selector.ts";
 import { shareSession } from "../session-share.ts";
 import { setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
@@ -150,55 +151,6 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 	}
 }
 
-export function maybeSaveImplicitProjectTrustAfterReload(host: SessionCommandsHost): boolean {
-	const cwd = host.sessionManager.getCwd();
-	if (host.autoTrustOnReloadCwd !== cwd) {
-		return false;
-	}
-	if (!host.settingsManager.isProjectTrusted() || !hasTrustRequiringProjectResources(cwd)) {
-		return false;
-	}
-
-	const trustStore = new ProjectTrustStore(host.runtimeHost.services.agentDir);
-	try {
-		if (trustStore.get(cwd) !== null) {
-			host.autoTrustOnReloadCwd = undefined;
-			return false;
-		}
-		trustStore.set(cwd, true);
-		host.autoTrustOnReloadCwd = undefined;
-		return true;
-	} catch (error) {
-		host.showWarning(`Could not save project trust after reload: ${errorMessage(error)}`);
-		return false;
-	}
-}
-
-export function showTrustSelector(host: SessionCommandsHost): void {
-	const cwd = host.sessionManager.getCwd();
-	const trustStore = new ProjectTrustStore(host.runtimeHost.services.agentDir);
-	const savedDecision = trustStore.getEntry(cwd);
-	host.showSelector((done) => {
-		const selector = new TrustSelectorComponent({
-			cwd,
-			savedDecision,
-			projectTrusted: host.settingsManager.isProjectTrusted(),
-			onSelect: (selection) => {
-				trustStore.setMany(selection.updates);
-				done();
-				host.showStatus(
-					`Saved trust decision: ${selection.trusted ? "trusted" : "untrusted"}. Restart ${APP_NAME} for this to take effect.`,
-				);
-			},
-			onCancel: () => {
-				done();
-				host.ui.requestRender();
-			},
-		});
-		return { component: selector, focus: selector };
-	});
-}
-
 export async function handleExportCommand(host: SessionCommandsHost, text: string): Promise<void> {
 	const outputPath = host.getPathCommandArgument(text, "/export");
 
@@ -291,6 +243,14 @@ export async function handleImportCommand(host: SessionCommandsHost, text: strin
 }
 
 export async function handleShareCommand(host: SessionCommandsHost): Promise<void> {
+	const confirmed = await host.showExtensionConfirm(
+		"Share session",
+		"Uploads this whole session (every branch, the system prompt and tool definitions) to a secret GitHub gist. It is unlisted, but anyone with the link can read it. Continue?",
+	);
+	if (!confirmed) {
+		host.showStatus("Share cancelled");
+		return;
+	}
 	await shareSession({
 		session: host.session,
 		ui: host.ui,
@@ -332,7 +292,7 @@ export async function handleCopyCommand(
 
 	const text = host.session.getLastAssistantText();
 	if (!text) {
-		host.showError("No agent messages to copy yet.");
+		host.showWarning("No agent messages to copy yet.");
 		return;
 	}
 
@@ -356,7 +316,7 @@ export function handleNameCommand(host: SessionCommandsHost, text: string): void
 			host.chatContainer.addChild(new Spacer(1));
 			host.chatContainer.addChild(new ThemedText(() => theme.fg("dim", `Session name: ${currentName}`), 1, 0));
 		} else {
-			host.showWarning("Usage: /name <name>");
+			host.showWarning("Usage: /rename <name>");
 		}
 		host.ui.requestRender();
 		return;
@@ -382,6 +342,8 @@ export async function handleClearCommand(host: SessionCommandsHost, previousName
 		host.chatContainer.addChild(noticeLine("success", "New session started", host.outputPad));
 		host.ui.requestRender();
 	} catch (error: unknown) {
+		if (error instanceof SessionNameError)
+			return host.showWarning(`${error.message} Usage: /new [name-for-the-current-session]`);
 		await host.handleFatalRuntimeError("Failed to create session", error);
 	}
 }

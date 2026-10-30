@@ -27,6 +27,8 @@ export const DAEMON_ROUTES = {
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",
+	/** The daemon's remote publication (`/remote`): GET its status, POST to publish a link, DELETE to stop. */
+	remote: "/api/admin/remote",
 	scope: { session: "/s", repo: "/r" },
 } as const;
 
@@ -96,9 +98,10 @@ export const BacklogMutationSchema = Type.Object(
 		id: Type.Optional(Type.String()),
 		title: Type.Optional(Type.String()),
 		goal: Type.Optional(Type.String()),
-		body: Type.Optional(Type.String()),
 		plan: Type.Optional(Type.String()),
 		why: Type.Optional(Type.String()),
+		/** The former name of `why`, still accepted from older clients: the host maps it to `why` and refuses a conflict. */
+		reason: Type.Optional(Type.String()),
 		paths: Type.Optional(Type.Array(Type.String())),
 		evidence: Type.Optional(Type.Array(Type.String())),
 		tags: Type.Optional(Type.Array(Type.String())),

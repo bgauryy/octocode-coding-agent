@@ -255,14 +255,31 @@ describe("cache warming", () => {
 		]).toEqual([false, true, true, true]);
 	});
 
-	it("prices a miss at the long tier when the history would be rewritten there after an idle gap", async () => {
+	it("prices a miss at the long tier when the request wrote its history there", async () => {
 		vi.useFakeTimers();
 		const { warmer, events } = fakeRuntime();
-		warmer.start({ ...request(adaptiveModel), rewriteRetention: "long" }, current);
-		await vi.advanceTimersByTimeAsync(270_000);
+		warmer.start(request(adaptiveModel, { cacheRetention: "long", instructionCacheRetention: "long" }), current);
+		// A one-hour entry is refreshed shortly before it expires.
+		await vi.advanceTimersByTimeAsync(3_570_000);
 		// 100k expiring tokens rewritten at the 1-hour rate ($10/M) instead of the 5-minute rate ($6.25/M), less the read.
 		expect(events[0].missCost).toBeCloseTo(0.95);
 		warmer.cancel();
+	});
+
+	it("allows exactly one idle refresh for a one-hour entry, then stops at the idle limit", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		const { warmer, calls } = fakeRuntime();
+		warmer.start(request(adaptiveModel, { cacheRetention: "long", instructionCacheRetention: "long" }), current);
+		warmer.onAgentSettled();
+		expect(warmer.status.state).not.toBe("inactive");
+		// The refresh lands at 90% of the hour; the 30-minute idle cap must not cut it off.
+		await vi.advanceTimersByTimeAsync(3_570_000);
+		await vi.waitFor(() => expect(calls).toHaveLength(1));
+		await vi.waitFor(() => expect(warmer.status.state).toBe("inactive"));
+		expect(warmer.status).toMatchObject({ reason: expect.stringContaining("idle safety limit") });
+		await vi.advanceTimersByTimeAsync(3_600_000);
+		expect(calls).toHaveLength(1);
 	});
 
 	it("replays profitable requests and preserves options across repeated refreshes", async () => {

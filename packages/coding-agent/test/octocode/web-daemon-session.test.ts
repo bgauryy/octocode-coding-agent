@@ -107,7 +107,7 @@ describe("/octocode with the daemon", () => {
 			invocation: { command: process.execPath, prefix: ["--import", resolver, entry] },
 			open: async (url) => void opened.push(url),
 		});
-		const handler = webCommand(async () => {}, open);
+		const handler = webCommand(async () => "http://127.0.0.1/", open);
 		await handler.handler("backlogs", ctx);
 		const record = readDaemonRecord(webDaemonPaths(env).record)!;
 		cleanup.push(() => {

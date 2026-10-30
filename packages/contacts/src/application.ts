@@ -37,6 +37,20 @@ export const ApplicationCommandSchema = Type.Union([
 		},
 		{ additionalProperties: false },
 	),
+	// An answer to the blocking dialog `awaiting` names: one of its options, or text where it accepts text.
+	Type.Object(
+		{
+			...identity,
+			action: Type.Literal("answer"),
+			dialogId: Type.String({ minLength: 1, maxLength: 64 }),
+			choice: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+			text: Type.Optional(Type.String({ maxLength: 4000 })),
+		},
+		{
+			additionalProperties: false,
+			oneOf: [{ required: ["choice"] }, { required: ["text"] }],
+		},
+	),
 ]);
 export type ApplicationCommand = Static<typeof ApplicationCommandSchema>;
 export type ApplicationCursor = Static<typeof ApplicationCursorSchema>;
@@ -160,10 +174,17 @@ const ApplicationModelSchema = Type.Object({
 	name: Type.String(),
 	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
 });
-/** A blocking dialog the run waits on: an approval, or a question or other input only the terminal user can answer. */
+/**
+ * A blocking dialog the run waits on: an approval, or a question or other input. With `id` a client may answer it with
+ * the `answer` command: one of `options` (an approval's choices are the host's own words), or `text` where
+ * `allowsText`. Without `id` only the terminal can answer (an older host, or an editor or custom dialog).
+ */
 const AwaitingSchema = Type.Object({
 	kind: Type.Union([Type.Literal("approval"), Type.Literal("question")]),
 	title: Type.Optional(Type.String({ maxLength: 200 })),
+	id: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+	options: Type.Optional(Type.Array(Type.String({ maxLength: 200 }), { maxItems: 50 })),
+	allowsText: Type.Optional(Type.Boolean()),
 });
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,
@@ -246,7 +267,13 @@ export const ApplicationSnapshotSchema = Type.Object({
 	followUp: Type.Array(Type.String()),
 	receipts: Type.Array(ReceiptSchema),
 	capabilities: Type.Array(
-		Type.Union([Type.Literal("prompt"), Type.Literal("steer"), Type.Literal("followUp"), Type.Literal("abort")]),
+		Type.Union([
+			Type.Literal("prompt"),
+			Type.Literal("steer"),
+			Type.Literal("followUp"),
+			Type.Literal("abort"),
+			Type.Literal("answer"),
+		]),
 	),
 });
 const frameFields = {
@@ -332,6 +359,12 @@ export function applicationCommandFingerprint(command: ApplicationCommand): stri
 		action: command.action,
 		...(command.action === "abort"
 			? { runId: command.runId }
-			: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
+			: command.action === "answer"
+				? {
+						dialogId: command.dialogId,
+						...(command.choice !== undefined ? { choice: command.choice } : {}),
+						...(command.text !== undefined ? { text: command.text } : {}),
+					}
+				: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
 	});
 }

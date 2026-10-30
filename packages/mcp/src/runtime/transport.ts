@@ -1,14 +1,8 @@
-/** Default transports: stdio for commands, streamable HTTP for URLs, and legacy SSE when selected. */
+/** Default transports: stdio for commands and Streamable HTTP for URLs. */
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import {
-	type AuthProvider,
-	type McpTransport,
-	LegacySseTransport,
-	StdioTransport,
-	StreamableHttpTransport,
-} from "../client/index.ts";
+import { type AuthProvider, type McpTransport, StdioTransport, StreamableHttpTransport } from "../client/index.ts";
 import {
 	resolveConfigValueOrThrow,
 	resolveHeadersOrThrow,
@@ -44,7 +38,7 @@ export function createDefaultTransport(
 				: resolveHeadersOrThrow(config.headers, `MCP server "${name}"`),
 			authProvider,
 		};
-		return config.type === "sse" ? new LegacySseTransport(options) : new StreamableHttpTransport(options);
+		return new StreamableHttpTransport(options);
 	}
 	const env: Record<string, string> = {};
 	for (const [key, value] of Object.entries(config.env ?? {})) {

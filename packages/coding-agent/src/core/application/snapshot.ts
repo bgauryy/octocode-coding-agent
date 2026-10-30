@@ -26,6 +26,6 @@ export function applicationSnapshot(
 			...receipt,
 			...(receipt.message ? { message: receipt.message.slice(0, 1000) } : {}),
 		})),
-		capabilities: ["prompt", "steer", "followUp", "abort"],
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
 	};
 }

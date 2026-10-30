@@ -26,11 +26,15 @@ export function noticeBand(tokens: number, limit: number): number | undefined {
 
 const kilo = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
+/** From this band on, an agent with the `compact` tool is told it can compact at a task boundary. */
+const COMPACT_HINT_BAND = 0.75;
+
 /** Octocode always compacts automatically at the limit (`getCompactionEnabled`). */
-export function contextNoticeText(tokens: number, limit: number, window: number): string {
+export function contextNoticeText(tokens: number, limit: number, window: number, compactHint = false): string {
 	const left = Math.max(0, limit - tokens);
 	const percent = Math.round((tokens / limit) * 100);
-	return `[Context] ${kilo(tokens)} of ${kilo(limit)} usable tokens used (${percent}%); about ${kilo(left)} left before automatic compaction summarizes older turns. The window is ${kilo(window)}.`;
+	const hint = compactHint ? " At a task boundary, `compact` can summarize sooner." : "";
+	return `[Context] ${kilo(tokens)} of ${kilo(limit)} usable tokens used (${percent}%); about ${kilo(left)} left before automatic compaction summarizes older turns. The window is ${kilo(window)}.${hint}`;
 }
 
 /** The band of the last notice in the context, if any. */
@@ -53,6 +57,7 @@ export function noticeContextUsage(
 	ctx: Pick<ExtensionContext, "model" | "getContextUsage">,
 	messages: readonly Pick<MessageRef, "message">[],
 	thinking?: CompactionThinking,
+	compactTool = false,
 ): void {
 	const model = ctx.model;
 	const tokens = ctx.getContextUsage()?.tokens;
@@ -66,7 +71,7 @@ export function noticeContextUsage(
 		void api.sendMessage(
 			{
 				customType: CONTEXT_NOTICE_TYPE,
-				content: contextNoticeText(tokens, limit, model.contextWindow),
+				content: contextNoticeText(tokens, limit, model.contextWindow, compactTool && band >= COMPACT_HINT_BAND),
 				display: false,
 				details: { band, tokens, limit },
 			},

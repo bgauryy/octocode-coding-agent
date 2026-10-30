@@ -2,7 +2,6 @@ import {
 	type Component,
 	isKeyRelease,
 	isKeyRepeat,
-	type KeybindingsManager,
 	type TuiMouseEvent,
 	truncateToWidth,
 	visibleWidth,
@@ -10,8 +9,6 @@ import {
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { shortcutText } from "../shared/keys.ts";
-import { thinkingTranscript } from "./thinking.ts";
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 type Paint = Pick<Theme, "fg">;
@@ -30,16 +27,10 @@ const LABEL = "octocode";
 
 /**
  * The empty-prompt hint, most useful first: parts drop from the end until it fits, and the first is cut last. Octocode owns
- * `/`, `@` and `!`; Shift+Tab is Octocode's permission cycle.
+ * `/`, `@` and `!`. The permission key is not repeated here: the footer chip always shows it.
  */
-export function hintText(width: number, keybindings?: KeybindingsManager): string {
-	const parts = [
-		"Ask about any code",
-		"/ commands",
-		"@ files",
-		"! shell",
-		`${shortcutText("app.permission.cycle", keybindings).toLowerCase()} permission`,
-	];
+export function hintText(width: number): string {
+	const parts = ["Ask about any code", "/ commands", "@ files", "! shell"];
 	for (let count = parts.length; count > 1; count -= 1) {
 		const text = parts.slice(0, count).join(" · ");
 		if (visibleWidth(text) <= width) return text;
@@ -52,13 +43,13 @@ export function hintText(width: number, keybindings?: KeybindingsManager): strin
  * marker and the reverse-video cursor, then spaces); only its trailing spaces are replaced, so the cursor and IME
  * position stay where Octocode put them.
  */
-export function withHint(row: string, width: number, theme: Paint, keybindings?: KeybindingsManager): string {
+export function withHint(row: string, width: number, theme: Paint): string {
 	// `muted`, not `dim`: placeholder text still needs 4.5:1 contrast (WCAG 1.4.3), and `dim` falls short on light themes.
 	const head = row.replace(/ +$/, "");
 	const used = visibleWidth(head);
 	const room = width - used - 1;
 	if (room < 4) return row;
-	const hint = hintText(room, keybindings);
+	const hint = hintText(room);
 	return `${head} ${theme.fg("muted", hint)}${" ".repeat(Math.max(0, room - visibleWidth(hint)))}`;
 }
 
@@ -95,12 +86,7 @@ function borderTint(text: string, api: (text: string) => string, theme: Paint): 
  * the inner width, and clicks shift by the same inset, so wrapping, scrolling, the cursor marker and click-to-place
  * keep working. Colour is never the only signal: the mode is written next to the tint.
  */
-export function decorateEditor(
-	editor: CustomEditor,
-	theme: () => Paint,
-	hint: () => boolean,
-	keybindings?: KeybindingsManager,
-): CustomEditor {
+export function decorateEditor(editor: CustomEditor, theme: () => Paint, hint: () => boolean): CustomEditor {
 	const render = editor.render.bind(editor);
 	const handleMouse = editor.handleMouse.bind(editor);
 	const setIndicator = editor.setWorkingStatusIndicator.bind(editor);
@@ -147,7 +133,7 @@ export function decorateEditor(
 		const indent = " ".repeat(BOX_INSET);
 		return lines.map((line, index) => {
 			if (index === 0) return `${rule("╭─")}${line}${rule("─╮")}`;
-			if (index <= rows) return side(hinted && index === 1 ? withHint(line, inner, theme(), keybindings) : line);
+			if (index <= rows) return side(hinted && index === 1 ? withHint(line, inner, theme()) : line);
 			if (index === rows + 1) return `${rule("╰─")}${line}${rule("─╯")}`;
 			// Autocomplete rows sit under the box, aligned with the text.
 			return `${indent}${line}${indent}`;
@@ -191,7 +177,6 @@ export function registerEditor(api: ExtensionAPI, permission: EditorPermission):
 		if (installed && previous === installed) return;
 		installed = (tui, theme, keybindings) => {
 			const editor = previous?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-			const transcript = thinkingTranscript(tui);
 			const handleInput = editor.handleInput?.bind(editor);
 			// Preserve the editor object: Octocode copies its native action handlers and appearance onto this instance.
 			editor.handleInput = (data) => {
@@ -199,10 +184,8 @@ export function registerEditor(api: ExtensionAPI, permission: EditorPermission):
 					if (!isKeyRelease(data) && !isKeyRepeat(data)) void permission.cycle(context);
 					return;
 				}
-				if (keybindings.matches(data, "app.thinking.toggle")) {
-					if (!isKeyRelease(data) && !isKeyRepeat(data)) transcript.toggle();
-					return;
-				}
+				// The host's action owns thinking visibility; a held key toggles once, not on every repeat.
+				if (keybindings.matches(data, "app.thinking.toggle") && (isKeyRelease(data) || isKeyRepeat(data))) return;
 				handleInput?.(data);
 			};
 			return isEditor(editor)
@@ -210,7 +193,6 @@ export function registerEditor(api: ExtensionAPI, permission: EditorPermission):
 						editor,
 						() => context.ui.theme,
 						() => !started,
-						keybindings,
 					)
 				: editor;
 		};

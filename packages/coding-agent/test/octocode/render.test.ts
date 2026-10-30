@@ -8,7 +8,6 @@ import { resultBlock, toolHeader } from "../../src/octocode/shared/render.ts";
 import { wholeSeconds } from "../../src/octocode/shared/util.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/render/text.ts";
-import { livePaint, statusColor } from "../../src/octocode/shared/render/status.ts";
 import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/shared/render/rows.ts";
 import type { ToolRow } from "../../src/octocode/shared/render/types.ts";
 
@@ -478,19 +477,6 @@ describe("resultBlock colouring", () => {
 				}),
 			),
 		).toContain("… +48 earlier lines");
-	});
-});
-
-describe("statusColor", () => {
-	it("lets the footer repaint a status in the live theme", () => {
-		const old = { fg: (color: string, text: string) => `<old ${color}>${text}` };
-		const status = statusColor({ mode: "tui", ui: { theme: old } } as never, "accent", "✉ 2 queued");
-		expect(status).toBe("<old accent>✉ 2 queued");
-		expect(livePaint(status, { fg: (color: string, text: string) => `<new ${color}>${text}` })).toBe(
-			"<new accent>✉ 2 queued",
-		);
-		expect(livePaint("plain", { fg: () => "x" })).toBe("plain");
-		expect(statusColor({ mode: "rpc", ui: { theme: old } } as never, "accent", "x")).toBe("x");
 	});
 });
 

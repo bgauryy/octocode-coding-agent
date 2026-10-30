@@ -1,7 +1,7 @@
 import { Value } from "typebox/value";
-import type { DatabaseSync } from "node:sqlite";
 import { EntityFieldsSchema, type EntityInput, type BacklogRef } from "@octocodeai/octocode-contacts/backlogs";
 import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import { type Db, backlog } from "../agentdb/api.ts";
 import { entityInput } from "./entities.ts";
 import { type Actor, type Item, BacklogError, refuseSecrets } from "./item.ts";
 import { getItem, list } from "./reads.ts";
@@ -20,7 +20,6 @@ export function validateEntityInput(input: EntityInput): void {
 	if (input.completion && !input.completion.operationKey.trim())
 		throw new BacklogError("Completion needs an operationKey.");
 	refuseSecrets({
-		reason: input.reason,
 		links: input.links === undefined ? undefined : JSON.stringify(input.links),
 		completion: input.completion === undefined ? undefined : JSON.stringify(input.completion),
 	});
@@ -42,7 +41,7 @@ export function validateEntityInput(input: EntityInput): void {
 
 /** Writes an item's entities: type, parent, dependencies and links, then checks the board for cycles and blocked work. */
 export function applyEntities(
-	db: DatabaseSync,
+	db: Db,
 	repo: string,
 	before: Item,
 	input: EntityInput & { state?: State },
@@ -53,9 +52,9 @@ export function applyEntities(
 		const parent = input.parentId === null ? undefined : getItem(db, repo, input.parentId);
 		if (input.parentId !== null && !parent) throw new BacklogError("Parent does not exist in this repository.");
 		if (parent?.state === "done") throw new BacklogError("Reopen the parent before adding children.");
-		db.prepare("UPDATE backlog SET parent_id = ? WHERE id = ?").run(parent?.rowId ?? null, before.rowId);
+		backlog.setParent(db, before.rowId, parent?.rowId ?? null);
 	}
-	if (input.type !== undefined) db.prepare("UPDATE backlog SET type = ? WHERE id = ?").run(input.type, before.rowId);
+	if (input.type !== undefined) backlog.setType(db, before.rowId, input.type);
 	if (input.dependsOn !== undefined) {
 		const refs = input.dependsOn.map((value): BacklogRef => {
 			const ref = typeof value === "string" ? { resource: "backlogs" as const, repositoryKey: repo, id: value } : value;
@@ -63,21 +62,12 @@ export function applyEntities(
 			if (!target) throw new BacklogError("Dependencies must exist in the same repository.");
 			return { resource: "backlogs", repositoryKey: repo, id: target.ref };
 		});
-		db.prepare("DELETE FROM backlog_links WHERE item = ? AND relation = 'depends_on'").run(before.rowId);
-		for (const ref of refs)
-			db.prepare("INSERT OR IGNORE INTO backlog_links VALUES (?, 'depends_on', ?)").run(
-				before.rowId,
-				JSON.stringify(ref),
-			);
+		backlog.clearLinks(db, before.rowId, true);
+		for (const ref of refs) backlog.addLink(db, before.rowId, "depends_on", JSON.stringify(ref));
 	}
 	if (input.links !== undefined) {
-		db.prepare("DELETE FROM backlog_links WHERE item = ? AND relation != 'depends_on'").run(before.rowId);
-		for (const link of input.links)
-			db.prepare("INSERT OR IGNORE INTO backlog_links VALUES (?, ?, ?)").run(
-				before.rowId,
-				link.relation,
-				JSON.stringify(link.target),
-			);
+		backlog.clearLinks(db, before.rowId, false);
+		for (const link of input.links) backlog.addLink(db, before.rowId, link.relation, JSON.stringify(link.target));
 	}
 	const items = list(db, repo).items;
 	const current = items.find((i) => i.rowId === before.rowId)!;
@@ -113,16 +103,24 @@ export function applyEntities(
 	if (closing && descendants(current.ref).some((i) => i.state !== "done"))
 		throw new BacklogError("Finish child items before completing their parent.");
 	if (input.completion && current.state === "done") {
-		const c = input.completion;
+		// On a done item a completion corrects the latest one: `replaces` defaults to it and may only name it.
+		const latest = before.completions.at(-1)?.id;
+		const c =
+			before.state === "done" && input.completion.replaces === undefined && latest !== undefined
+				? { ...input.completion, replaces: latest }
+				: input.completion;
 		if (!c.summary.trim() || !c.verification.summary.trim())
 			throw new BacklogError("Completion needs a summary and verification explanation.");
 		if (actor.kind !== "human" && !["passed", "not_applicable"].includes(c.verification.status))
 			throw new BacklogError("Agents must verify the goal before completing it.");
-		if (before.state === "done" && c.replaces !== before.completions.at(-1)?.id)
-			throw new BacklogError("A correction must replace the latest completion.");
+		if (before.state === "done" && c.replaces !== latest)
+			throw new BacklogError(
+				`${before.ref} is done: a correction replaces the latest completion, ${latest}; omit completion.replaces or set it to ${latest}, with a new operationKey.`,
+			);
 		if (c.replaces !== undefined && !before.completions.some((old) => old.id === c.replaces))
 			throw new BacklogError("Completion to replace does not exist.");
-		db.prepare("INSERT INTO backlog_completions (item, operation_key, payload) VALUES (?, ?, ?)").run(
+		backlog.addCompletion(
+			db,
 			before.rowId,
 			c.operationKey,
 			JSON.stringify({ ...c, actor: actor.id, at, version: current.version, goal: current.goal }),

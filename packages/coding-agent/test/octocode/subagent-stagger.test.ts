@@ -71,6 +71,32 @@ describe("PrefixStagger", () => {
 		await expect(second).resolves.toBe("ok");
 	});
 
+	it("keeps a prefix warm for the child's own cache lifetime, not a fixed four minutes", async () => {
+		const stagger = new PrefixStagger();
+		const log: string[] = [];
+		const [a, c, d] = ["a", "c", "d"].map((name) => fakeChild(log, name));
+		const HOUR = 3_600_000;
+		void stagger.run("k", undefined, a.start, HOUR);
+		a.reply();
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		// Ten minutes later the one-hour entry is still warm: both start at once, nobody waits for a first reply.
+		void stagger.run("k", undefined, c.start, HOUR);
+		void stagger.run("k", undefined, d.start, HOUR);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(log).toEqual(["start a", "start c", "start d"]);
+		// A five-minute entry has lapsed by then: the next child leads and its sibling waits for its reply.
+		const short = new PrefixStagger();
+		const log2: string[] = [];
+		const [e, f, g] = ["e", "f", "g"].map((name) => fakeChild(log2, name));
+		void short.run("k", undefined, e.start, 300_000);
+		e.reply();
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		void short.run("k", undefined, f.start, 300_000);
+		void short.run("k", undefined, g.start, 300_000);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(log2).toEqual(["start e", "start f"]);
+	});
+
 	it("does not delay children of another prefix, nor children of a warm prefix", async () => {
 		const stagger = new PrefixStagger();
 		const log: string[] = [];

@@ -1,86 +1,35 @@
 import { truncateToWidth } from "@octocodeai/octocode-tui";
 
 /**
- * The "OCTOCODE CODE" banner drawn as Octocode's header. Pure in (paint, width, version, shine). Its height is fixed
- * per size class (BANNER_HEIGHT with the full art, COMPACT_BANNER_HEIGHT below it): a height change on resize makes
- * Octocode redraw (and clear) the whole scrollback, so it may change only where the art itself does, and narrow
- * terminals do not pay for rows only the full art needs. Three layouts by width: the 6-row
- * ANSI Shadow block font, a 2-row half-block font, then plain text. Strokes run along a left-to-right gradient taken
- * from the theme, box-drawing shadows are a darker shade of the same hue, and `shine` (0..1) is the position of a
- * light band that sweeps across once on start.
+ * The "OCTOCODE CODE" header: two rows of half-block art and the beta notice. Pure in (paint, width), with no animation:
+ * the header sits at the top of the scrollback, where any changed row makes the terminal renderer clear and redraw
+ * everything, so it changes only when the width or theme does. Its height is the same at every width; a terminal
+ * narrower than the art gets the plain name in its place. Strokes run along a left-to-right gradient from the theme.
  */
-
-type Shade = "stroke" | "shadow";
 
 export interface BannerPaint {
 	/** Text in a theme colour token (`accent`, `muted`, `dim`, …). */
 	fg(token: string, text: string): string;
-	/**
-	 * Text at gradient position `t` (0 = left edge, 1 = right edge), lit by `glow` (0..1) of the shine band. Without it
-	 * strokes fall back to one theme colour per word.
-	 */
-	ramp?(t: number, shade: Shade, glow: number, text: string): string;
+	/** Text at gradient position `t` (0 = left edge, 1 = right edge). Without it each word takes one theme colour. */
+	ramp?(t: number, text: string): string;
 }
 
-/** ANSI Shadow glyphs: `█` strokes and box-drawing shadow. */
-const SHADOW: Record<string, string[]> = {
-	O: [" ██████╗ ", "██╔═══██╗", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
-	C: [" ██████╗", "██╔════╝", "██║     ", "██║     ", "╚██████╗", " ╚═════╝"],
-	T: ["████████╗", "╚══██╔══╝", "   ██║   ", "   ██║   ", "   ██║   ", "   ╚═╝   "],
-	D: ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
-	E: ["███████╗", "██╔════╝", "█████╗  ", "██╔══╝  ", "███████╗", "╚══════╝"],
-};
-
-/** Half-block glyphs, two rows high. */
-const COMPACT: Record<string, string[]> = {
-	O: ["█▀█", "█▄█"],
-	C: ["█▀▀", "█▄▄"],
-	T: ["▀█▀", " █ "],
-	D: ["█▀▄", "█▄▀"],
-	E: ["█▀▀", "██▄"],
-};
-
-const WORDS = [
-	{ text: "OCTOCODE", color: "accent" },
-	{ text: "CODE", color: "mdLink" },
+export const BANNER_ART = [
+	"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀",
+	"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄",
 ] as const;
-const WORD_GAP = "   ";
-const ART_ROWS = 6;
-/** Art, tagline, hints and a blank separator. */
-export const BANNER_HEIGHT = ART_ROWS + 3;
-/** Blank row, compact art (the plain name takes fewer rows), tagline, hints and a blank separator: every width below the full art. */
-export const COMPACT_BANNER_HEIGHT = 6;
+export const ISSUES_URL = "https://github.com/bgauryy/octocodecode/issues";
+/** Art rows and the beta notice; the header container adds the blank rows around it. */
+export const BANNER_HEIGHT = BANNER_ART.length + 1;
+/** Every art character is one cell wide and one UTF-16 unit long. */
+const ART_WIDTH = BANNER_ART[0].length;
+/** Column where "CODE" starts, for the per-word fallback colours. */
+const SPLIT = BANNER_ART[0].indexOf("   ") + 3;
 /** Gradient steps: neighbouring cells of one step share one escape sequence. */
 const STEPS = 32;
-/** Half-width of the shine band, as a fraction of the art width. */
-const BAND = 0.09;
 
-const word = (font: Record<string, string[]>, text: string, row: number, gap: string) =>
-	// oxlint-disable-next-line typescript/no-misused-spread -- the words are ASCII letters, one code point each
-	[...text].map((letter) => font[letter][row]).join(gap);
-const artLines = (font: Record<string, string[]>, rows: number, letterGap: string) =>
-	Array.from({ length: rows }, (_, row) => WORDS.map(({ text }) => word(font, text, row, letterGap)).join(WORD_GAP));
-
-const FULL = artLines(SHADOW, ART_ROWS, "");
-const SMALL = artLines(COMPACT, 2, " ");
-export const FULL_WIDTH = Math.max(...FULL.map((line) => line.length));
-const SMALL_WIDTH = Math.max(...SMALL.map((line) => line.length));
-/** Column where the second word starts, for the per-word fallback colours. */
-const splitAt = (font: Record<string, string[]>, gap: string) => word(font, WORDS[0].text, 0, gap).length + 1;
-
-const isStroke = (char: string) => /[█▀▄]/.test(char);
-
-/** How lit a column is by a band centred at `shine` (outside 0..1: no band). */
-export function glowAt(t: number, shine: number | undefined): number {
-	if (shine === undefined || shine < 0 || shine > 1) return 0;
-	// The band enters from beyond the left edge and leaves beyond the right one.
-	const centre = -BAND + shine * (1 + 2 * BAND);
-	const distance = Math.abs(t - centre);
-	return distance >= BAND ? 0 : Math.round((1 - distance / BAND) * 8) / 8;
-}
-
-/** One art line, cut into runs that share a paint (gradient step, shade, glow). */
-function paintArt(paint: BannerPaint, line: string, width: number, split: number, shine: number | undefined): string {
+/** One art line, cut into runs that share a paint. */
+function paintArt(paint: BannerPaint, line: string): string {
 	let out = "";
 	let run = "";
 	let key = "";
@@ -89,22 +38,17 @@ function paintArt(paint: BannerPaint, line: string, width: number, split: number
 		if (run) out += style ? style(run) : run;
 		run = "";
 	};
-	// oxlint-disable-next-line typescript/no-misused-spread -- art lines hold single-code-point block and space characters
-	[...line].forEach((char, column) => {
-		let nextKey: string;
+	for (let column = 0; column < line.length; column++) {
+		const char = line[column];
+		let nextKey = " ";
 		let nextStyle: ((text: string) => string) | undefined;
-		if (char === " ") {
-			nextKey = " ";
-			nextStyle = undefined;
-		} else {
-			const shade: Shade = isStroke(char) ? "stroke" : "shadow";
+		if (char !== " ") {
 			if (paint.ramp) {
-				const t = Math.round((column / Math.max(1, width - 1)) * STEPS) / STEPS;
-				const glow = glowAt(t, shine);
-				nextKey = `${shade}:${t}:${glow}`;
-				nextStyle = (text) => paint.ramp!(t, shade, glow, text);
+				const t = Math.round((column / (ART_WIDTH - 1)) * STEPS) / STEPS;
+				nextKey = `t:${t}`;
+				nextStyle = (text) => paint.ramp!(t, text);
 			} else {
-				const color = shade === "shadow" ? "dim" : column < split ? WORDS[0].color : WORDS[1].color;
+				const color = column < SPLIT ? "accent" : "mdLink";
 				nextKey = color;
 				nextStyle = (text) => paint.fg(color, text);
 			}
@@ -115,32 +59,17 @@ function paintArt(paint: BannerPaint, line: string, width: number, split: number
 			style = nextStyle;
 		}
 		run += char;
-	});
+	}
 	flush();
 	return out;
 }
 
-interface BannerInfo {
-	version?: string | undefined;
-	/** Short key hints for the second line, e.g. `ctrl+o expand`. */
-	hints?: string[] | undefined;
-}
-
-export function bannerLines(paint: BannerPaint, width: number, info: BannerInfo = {}, shine?: number): string[] {
-	let art: string[];
-	if (width >= FULL_WIDTH) art = FULL.map((line) => paintArt(paint, line, FULL_WIDTH, splitAt(SHADOW, ""), shine));
-	else if (width >= SMALL_WIDTH)
-		art = ["", ...SMALL.map((line) => paintArt(paint, line, SMALL_WIDTH, splitAt(COMPACT, " "), shine))];
-	else art = ["", WORDS.map(({ text, color }) => paint.fg(color, text)).join(" ")];
-	const dot = paint.fg("dim", " · ");
-	const tagline = `${paint.fg("accent", "◆")} ${paint.fg("muted", "research-driven coding agent")}${info.version ? `${dot}${paint.fg("dim", `v${info.version}`)}` : ""}`;
-	const hints = (info.hints ?? []).map((hint) => {
-		const [key = "", ...label] = hint.split(" ");
-		return `${paint.fg("muted", key)}${label.length > 0 ? ` ${paint.fg("dim", label.join(" "))}` : ""}`;
-	});
-	const all = [...art, tagline, hints.join(dot)];
-	const height = width >= FULL_WIDTH ? BANNER_HEIGHT : COMPACT_BANNER_HEIGHT;
-	while (all.length < height) all.push("");
+export function bannerLines(paint: BannerPaint, width: number): string[] {
+	const art =
+		width >= ART_WIDTH
+			? BANNER_ART.map((line) => paintArt(paint, line))
+			: [`${paint.fg("accent", "OCTOCODE")} ${paint.fg("mdLink", "CODE")}`, ""];
+	const notice = `${paint.fg("warning", "BETA version")} ${paint.fg("muted", "; please assign issues here")} ${paint.fg("mdLink", ISSUES_URL)}`;
 	// Every line must fit the width, however narrow the terminal.
-	return all.slice(0, height).map((line) => truncateToWidth(line, Math.max(1, width), ""));
+	return [...art, notice].map((line) => truncateToWidth(line, Math.max(1, width), ""));
 }

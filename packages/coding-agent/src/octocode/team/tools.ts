@@ -20,6 +20,7 @@ import { teamWorkspace } from "./store/workspace.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "./identity.ts";
 import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
+import { teamNameToResume } from "./session/rejoin.ts";
 import { registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
 
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
@@ -116,7 +117,7 @@ function registerCoordinateTool(
 			description:
 				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them.",
 			promptGuidelines: [
-				"Before edits that may overlap another agent's, use coordinate: list agents, lock your edit paths, then unlock when done. Resolve conflicts with the owner.",
+				"Before overlapping edits, use `agent` type `coordinate`: `input.action` list, lock your paths, then unlock when done. Resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {
@@ -248,7 +249,9 @@ function registerTeamEvents(
 	beforeLeave?: (reason: string) => Promise<unknown>,
 	shellChanges?: (command: string) => Promise<string[]>,
 ): void {
-	api.on("session_start", async (_event, ctx) => team.start(ctx));
+	api.on("session_start", async (event, ctx) =>
+		team.start(ctx, teamNameToResume(ctx.sessionManager.getBranch(), event.reason)),
+	);
 	api.on("session_shutdown", async (event) => {
 		try {
 			// The shutdown's reason (`reload`, `quit`…) names what stopped the subagents in their reports.

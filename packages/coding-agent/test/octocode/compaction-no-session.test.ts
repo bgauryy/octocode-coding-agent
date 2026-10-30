@@ -45,6 +45,7 @@ function setup(sessionManager: unknown) {
 	const ctx = {
 		model,
 		modelRegistry: {
+			getCachePolicy: () => ({ options: {} }),
 			streamSimple: (_model: unknown, context: { messages: unknown[] }) => {
 				requests.push(context);
 				return {
@@ -138,7 +139,7 @@ describe("compaction without a session file (--no-session)", () => {
 		directories.push(directory);
 		const blocker = path.join(directory, "file");
 		fs.writeFileSync(blocker, "x");
-		const manager = { getSessionFile: () => path.join(blocker, "session.jsonl") };
+		const manager = { getSessionFile: () => path.join(blocker, "session.jsonl"), getSessionId: () => "s" };
 		const { requests, notes, api, ctx, event } = setup(manager);
 		const out = await writeSummary(api, event, ctx, model as never);
 		expect(out).toMatchObject({ cancel: true, failure: expect.stringContaining("Cannot persist") });
@@ -153,7 +154,7 @@ describe("compaction without a session file (--no-session)", () => {
 		directories.push(directory);
 		const blocker = path.join(directory, "file");
 		fs.writeFileSync(blocker, "x");
-		const manager = { getSessionFile: () => path.join(blocker, "session.jsonl") };
+		const manager = { getSessionFile: () => path.join(blocker, "session.jsonl"), getSessionId: () => "s" };
 		const { requests, api, ctx, event } = setup(manager);
 		(event as { preparation: { messagesToSummarize: unknown[] } }).preparation.messagesToSummarize = [
 			user,

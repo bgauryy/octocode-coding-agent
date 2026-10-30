@@ -10,8 +10,7 @@ import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "./files/tool/guard.t
 import { plural } from "./shared/render/text.ts";
 import { errorMessage } from "../utils/guards.ts";
 import { spilledMessage } from "./team/session/spilled-message.ts";
-import { webCommand } from "./workspace/command.ts";
-import { registerWebDaemon } from "./web-daemon/open.ts";
+import { registerWebCommands } from "./remote/register.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
 import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
@@ -25,17 +24,18 @@ import { registerBacklog } from "./backlog/index.ts";
 import { registerBrowserTool } from "./browser/tool.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
 import { registerArchiveTool } from "./compaction/archive-tool.ts";
-import { registerCompaction } from "./compaction/register.ts";
+import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
 import { registerDebugTool } from "./debug/tool.ts";
+import { registerOllamaTool } from "./ollama/tool.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import { externalPermissionDialog } from "./external/permission-dialog.ts";
-import { registerExternal } from "./external/register.ts";
+import { externalIdentity, registerExternal } from "./external/register.ts";
 import { registerBashTool } from "./files/bash.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
 import { contextReads } from "./files/reads.ts";
-import { registerFileTool } from "./files/tool.ts";
+import { projectEditHunk, registerFileTool } from "./files/tool.ts";
 import { registerHooks } from "./hooks/register.ts";
 import { registerMemory } from "./memory/register.ts";
 import { registerSourcePolicy } from "./permission/source-policy-loader.ts";
@@ -87,7 +87,6 @@ import { registerWebTool } from "./web/web.ts";
  * - `agent_before_settle`: the Stop hook continuation (`hooks/register`) and the too-large retry
  *   (`compaction/register`) are registered before the headless hold at the end of this function, so a continued or
  *   retried run is decided before the hold waits for background work.
- *
  */
 export default function octocode(api: ExtensionAPI): void {
 	api = withNativePermissionOwners(api);
@@ -133,7 +132,7 @@ export default function octocode(api: ExtensionAPI): void {
 		checkpoints,
 		{
 			enabled: (input, cwd) => hooks.hasFilePermissionRequest(input, cwd),
-			committed: (id, input) => hooks.fileInputCommitted(id, input),
+			committed: (id, input, cwd) => hooks.fileInputCommitted(id, input, cwd),
 			refresh: (ctx) => sourcePolicy.refresh(ctx),
 		},
 		{ enabled: envFlag(process.env, "OCTOCODE_EDIT_DIAGNOSTICS", true) },
@@ -152,6 +151,7 @@ export default function octocode(api: ExtensionAPI): void {
 	const confirmLeave = async (ctx: ExtensionContext, action: string) => {
 		if (!interactive(ctx, isSubagent)) return undefined;
 		const running = [
+			ctx.mode === "tui" && !ctx.isIdle() && "the running reply",
 			jobs.jobs.size && plural(jobs.jobs.size, "bash job"),
 			agents?.background() && plural(agents.background(), "background subagent"),
 			external?.running && plural(external.running, "external prompt"),
@@ -186,13 +186,24 @@ export default function octocode(api: ExtensionAPI): void {
 		agentId: () => team.id,
 		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
-	if (!isSubagent) commands.add("octocode", webCommand(openWorkspace, registerWebDaemon(api, workspace)));
+	if (!isSubagent) registerWebCommands(api, { commands, workspace, openWorkspace });
 	registerMemory(api, { commands, isSubagent, permission });
-	const skillCount = () => api.getCommands().filter((command) => command.source === "skill").length;
-	commands.add("status", statusCommand(api));
+	commands.add(
+		"status",
+		statusCommand(api, () =>
+			[
+				`Octocode ${packageVersion() ?? ""}`.trim(),
+				`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
+				`Hooks: ${hooks.summary()}`,
+				// The registered commands, so a child session lists only its own; `/mcp` belongs to the MCP extension.
+				`Commands: ${[...commands.list().map(([name]) => name), "mcp"].map((name) => `/${name}`).join(", ")}`,
+			].join("\n"),
+		),
+	);
 	registerWebTool(api, permission);
 	registerBrowserTool(api, new BrowserTool(permission));
 	registerDebugTool(api);
+	if (!isSubagent) registerOllamaTool(api);
 	const agentTool = agentModes();
 	const collab = registerCollab(api, team, {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
@@ -241,6 +252,7 @@ export default function octocode(api: ExtensionAPI): void {
 			agentType: process.env[AGENT_ROLE_ENV],
 		}),
 		planning.blocked,
+		(query, path, cwd) => projectEditHunk(query, path, guard, cwd),
 	);
 	const applySourcePolicy = () => permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected);
 	const sourcePolicy = registerSourcePolicy(api, undefined, applySourcePolicy);
@@ -278,12 +290,14 @@ export default function octocode(api: ExtensionAPI): void {
 			api,
 			commands,
 			{
-				sender: (ctx) => team.id ?? ctx.sessionManager.getSessionId(),
+				...externalIdentity(team),
 				beforeSend: beforeMessage,
 				afterReceive: (message, ctx) => hooks.messageReceive(message, ctx),
 				authorize: async (input, ctx, signal) => {
 					if (planning.blocked()) throw new Error("External agent dispatch is blocked during planning.");
+					const hit = input.action === "prompt" ? provenance.sent(input, ctx) : undefined;
 					const checked = await permission.check(ctx, {
+						...(hit ? { reasons: ["provenance" as const], reason: hit.why } : {}),
 						action: "agent.spawn",
 						title: input.action === "connect" ? "Connect this external agent?" : "Send this external prompt?",
 						what: [JSON.stringify(input)],
@@ -302,11 +316,11 @@ export default function octocode(api: ExtensionAPI): void {
 	agentTool.register(api);
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
 	// paths to the file lists Octocode carries into its summary. Octocode writes the summary itself.
-	registerCompaction(api, guard, isSubagent);
+	registerCompactTool(api, registerCompaction(api, guard, isSubagent), isSubagent);
 	registerArchiveCommand(commands);
 	registerArchiveTool(api);
 	registerSkillTool(api);
-	registerRunGuards(api); // after the file guard and the Stop hook: see run-guards.ts
+	registerRunGuards(api); // after the file guard: see run-guards.ts
 	registerExtensibilityCommands(commands, hooks, api);
 	// Subagents have no terminal of their own: their parent's row and report carry their state.
 	if (!isSubagent) registerNotify(api, { onNotice: hooks.notification });
@@ -381,20 +395,5 @@ export default function octocode(api: ExtensionAPI): void {
 	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
 
 	// Register each native command once, after every feature has supplied its handler.
-	commands.register(api, () =>
-		[
-			`Octocode ${packageVersion() ?? ""}`.trim(),
-			`MCP: ${
-				getMcpSessionStatus(api.events)
-					.filter((server) => server.enabled)
-					.map((server) => `${server.name} ${server.state}`)
-					.join(", ") || "none enabled"
-			}`,
-			`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
-			`Skills: ${skillCount()}`,
-			`Hooks: ${hooks.summary()}`,
-			// The registered commands, so a child session lists only its own; `/mcp` belongs to the MCP extension.
-			`Commands: ${[...commands.list().map(([name]) => name), "mcp"].map((name) => `/${name}`).join(", ")}`,
-		].join("\n"),
-	);
+	commands.register(api);
 }

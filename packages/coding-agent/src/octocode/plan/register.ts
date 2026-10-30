@@ -97,15 +97,16 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 				/* Inspection leaves the constraint unchanged. */
 			} else if (args === "--off") await control({ action: "leave" }, ctx);
 			else if (args.startsWith("--approve")) {
-				if (!/^--approve [1-9]\d*$/.test(args)) throw new Error("Usage: /plan --approve <revision>");
+				if (!/^--approve [1-9]\d*$/.test(args)) return say(ctx, "Usage: /plan --approve <revision>", "warning");
 				const approved = { ...state };
 				await control({ action: "approve", revision: Number(args.split(" ")[1]) }, ctx);
 				api.sendUserMessage(approvedPlanPrompt(approved), {
 					expandPromptTemplates: false,
 				});
 			} else {
-				if (args.startsWith("--")) throw new Error("Usage: /plan [description|--off|--approve <revision>]");
-				if (args.length > 8000) throw new Error("Plan descriptions must be at most 8000 characters.");
+				if (args.startsWith("--"))
+					return say(ctx, "Usage: /plan [description|--show|--off|--approve <revision>]", "warning");
+				if (args.length > 8000) return say(ctx, "Plan descriptions must be at most 8000 characters.", "warning");
 				await control({ action: "enter" }, ctx);
 				if (args) api.sendUserMessage(args, { expandPromptTemplates: false });
 			}

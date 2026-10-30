@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { atomicWriteFile, atomicWriteFileSync } from "../../src/utils/atomic-file.ts";
 import { dirsToRepoRoot, repoKey, workspaceRoot } from "../../src/octocode/shared/home/repo.ts";
+import { statusCommand } from "../../src/octocode/status-command.ts";
 import { Subcommands, say, wordCompletions, legacyNativeCommandGuidance } from "../../src/octocode/shared/commands.ts";
 import {
 	envFlag,
@@ -420,14 +421,28 @@ describe("native commands", () => {
 		expect(handler).toHaveBeenCalledWith("manual", ctx);
 		expect(commands.get("permission")).toBeUndefined();
 	});
-	it("registers status as one registry entry", () => {
+	it("registers status as one registry entry with one message", async () => {
 		const fake = fakeHost();
-		new Subcommands().register(fake.api, () => "status");
+		const commands = new Subcommands();
+		commands.add(
+			"status",
+			statusCommand(fake.api, () => "Octocode 1.0"),
+		);
+		commands.register(fake.api);
 		expect([...fake.commands.keys()]).toEqual(["status"]);
+		const ctx = fakeCtx({ cwd: ".", hasUI: true });
+		await fake.commands.get("status")!.handler("", ctx);
+		expect(ctx.ui.notes).toHaveLength(1);
+		expect(ctx.ui.notes[0].message).toMatch(/^Octocode 1\.0\n\nSkills \(\d+\)[\s\S]*MCPs \(\d+\)/);
 	});
 	it("handles retired namespace input before model execution and leaves ordinary text alone", async () => {
 		const fake = fakeHost();
-		new Subcommands().register(fake.api, () => "status");
+		const commands = new Subcommands();
+		commands.add(
+			"status",
+			statusCommand(fake.api, () => "status"),
+		);
+		commands.register(fake.api);
 		const ctx = fakeCtx({ cwd: ".", hasUI: true });
 		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });
 		expect(ctx.ui.notes.at(-1)?.message).toBe(

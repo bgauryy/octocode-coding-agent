@@ -119,11 +119,31 @@ describe("agent stats", () => {
 		expect(text).toContain("Subagent stats for this session: 5 runs, 2 profiles");
 		expect(text).toContain("researcher — 3 runs (3 background)");
 		expect(text).toContain("done 1 · partial 0 · blocked 0 · failed 1 · unknown 1 · outcome word 50%");
-		expect(text).toContain("cold start 14k avg");
+		expect(text).toContain("initial context 14k avg");
 		expect(text).toContain("general — 2 runs (2 foreground)");
 		expect(text).toContain("cost ≈$0.02 + n/a");
 		expect(text).toContain("1 ask");
 		expect(renderStats([])).toBe("No subagent runs in this session yet.");
+	});
+
+	it("labels cached first-request tokens as initial context rather than cold spend", () => {
+		const stats = agentStats([
+			report(
+				{
+					id: "cached",
+					profile: "reviewer",
+					status: "done",
+					firstTurnTokens: 10000,
+					usage: usage(100, 20, 9900),
+					cache: { requests: 1, promptTokens: 10000, cacheRead: 9900, cacheWrite: 0 },
+				},
+				"cached-first-request",
+			),
+		]);
+		const text = renderStats(stats);
+		expect(text).toContain("initial context 10k avg");
+		expect(text).toContain("99% cached");
+		expect(text).not.toContain("cold start");
 	});
 
 	it("records a trailing-line outcome apart from first-word compliance", () => {
@@ -157,6 +177,30 @@ describe("agent stats", () => {
 		expect(text).toContain("cost n/a");
 		expect(text).toContain("outcome word 0%");
 	});
+	it("reports token-weighted conversation cache reads and writes separately from total spend", () => {
+		const stats = agentStats([
+			foreground(
+				{
+					id: "a",
+					profile: "general",
+					status: "done",
+					cache: { requests: 2, promptTokens: 10000, cacheRead: 8000, cacheWrite: 1000 },
+				},
+				usage(100000, 10, 90000),
+			),
+			report(
+				{
+					id: "b",
+					profile: "general",
+					status: "done",
+					cache: { requests: 1, promptTokens: 10000, cacheRead: 2000, cacheWrite: 7000 },
+				},
+				"cache-report",
+			),
+		]);
+		expect(stats[0].cache).toEqual({ requests: 3, promptTokens: 20000, cacheRead: 10000, cacheWrite: 8000 });
+		expect(renderStats(stats)).toContain("conversation cache: 50% cached · 10k read · 8k written · 3 requests");
+	});
 });
 
 describe("/agents stats command", () => {
@@ -177,6 +221,6 @@ describe("/agents stats command", () => {
 		expect(notes.at(-1)?.type).toBe("info");
 		expect(notes.at(-1)?.message).toContain("researcher — 3 runs");
 		await command.handler("bogus", ctx as never);
-		expect(notes.at(-1)?.message).toContain("| stats | history]");
+		expect(notes.at(-1)?.message).toContain("| stats | history | external ...]");
 	});
 });

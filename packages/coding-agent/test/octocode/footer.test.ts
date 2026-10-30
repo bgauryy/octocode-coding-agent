@@ -1,10 +1,9 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { chipText } from "../../src/octocode/permission/mode.ts";
-import { statusColor } from "../../src/octocode/shared/render/status.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
 import * as importedModule2 from "../../src/octocode/ui/footer.ts";
-import { contextBar, type FooterState, footerLines } from "../../src/octocode/ui/footer.ts";
+import { contextBar, type FooterState, footerLines as paintFooter } from "../../src/octocode/ui/footer.ts";
 import { reasoningTwin } from "../../src/octocode/ui/footer/notices.ts";
 import * as importedModule1 from "./fake-host.ts";
 
@@ -36,6 +35,15 @@ const statuses = new Map([
 	["octocode-speed", "58 tok/s"],
 	["other-ext", "lint ok"],
 ]);
+
+/** Statuses as text-only writers set them, in the footer data's shape. */
+const footerLines = (
+	s: FooterState,
+	branch: string | null,
+	texts: ReadonlyMap<string, string>,
+	paint: never,
+	width: number,
+) => paintFooter(s, branch, new Map([...texts].map(([key, text]) => [key, { text }])), paint, width);
 
 describe("footer", () => {
 	it("shows the model, context, mode and running work first, and where you are second", () => {
@@ -201,16 +209,23 @@ describe("footer line 1 work statuses", () => {
 		expect(bottom.match(/2 ongoing/g)).toHaveLength(1);
 	});
 
-	it("repaints statusColor statuses with the theme of the frame", () => {
-		const before = { fg: (color: string, text: string) => `[before ${color}]${text}` };
-		const queued = statusColor({ mode: "tui", ui: { theme: before } } as never, "accent", "✉ 1 queued");
-		const after = {
-			fg: (color: string, text: string) => (color === "accent" ? `[after]${text}` : text),
-			bold: (text: string) => text,
-		} as never;
-		const [top] = footerLines(state, null, new Map([[STATUS.queued, queued]]), after, 200);
-		expect(top).toContain("[after]✉ 1 queued");
-		expect(top).not.toContain("[before");
+	it("paints each status in its tone with the theme of the frame, and a tone-less status as written", () => {
+		const frame = { fg: (color: string, text: string) => `[${color}]${text}`, bold: (text: string) => text } as never;
+		const [top, bottom] = paintFooter(
+			state,
+			null,
+			new Map([
+				[STATUS.queued, { text: "✉ 1 queued", tone: "accent" as const }],
+				["lint-ext", { text: "lint failed", tone: "error" as const }],
+				["other-ext", { text: "lint ok" }],
+			]),
+			frame,
+			200,
+		);
+		expect(top).toContain("[accent]✉ 1 queued");
+		expect(bottom).toContain("[error]lint failed");
+		expect(bottom).toContain("lint ok");
+		expect(bottom).not.toContain("]lint ok");
 	});
 
 	it("gives a long branch a third of the row", () => {
@@ -427,7 +442,10 @@ describe("footer wiring", () => {
 		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		const rates = (rate: number) => ({ cost: { input: rate, output: rate, cacheRead: rate, cacheWrite: rate } });
-		ctx.modelRegistry = { find: (provider: string) => (provider === "local" ? rates(0) : rates(3)) };
+		ctx.modelRegistry = {
+			billedBySubscription: () => false,
+			find: (provider: string) => (provider === "local" ? rates(0) : rates(3)),
+		};
 		ctx.model = { id: "llama", reasoning: false, contextWindow: 100_000 };
 		ctx.getContextUsage = () => ({ tokens: 1000, contextWindow: 100_000, percent: 1 });
 		await fake.emit("session_start", {}, ctx);
@@ -480,7 +498,7 @@ describe("footer wiring", () => {
 		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
 		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
-		ctx.modelRegistry = { getAll: () => [copy, builtIn], find: () => undefined };
+		ctx.modelRegistry = { billedBySubscription: () => false, getAll: () => [copy, builtIn], find: () => undefined };
 		ctx.model = { ...copy, contextWindow: 200_000 };
 		ctx.getContextUsage = () => undefined;
 		await fake.emit("session_start", {}, ctx);

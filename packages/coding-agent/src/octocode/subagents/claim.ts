@@ -13,6 +13,7 @@ import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
 import { type ModelRoute, routedModel, routeModel } from "./model.ts";
+import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsTool, profileTools } from "./profiles.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
@@ -35,13 +36,14 @@ function lingerSeconds(env: NodeJS.ProcessEnv = process.env): number {
 
 /**
  * Seconds a background run stays resumable even with the linger setting at 0 when it waits for an answer: it reported
- * `blocked`, or it ended with a `replyRequired` message to its parent still unanswered.
+ * `blocked`, or it ended with a `replyRequired` message to its parent or a peer still unanswered
+ * (`Team.unansweredPeerAsks` counts the peer ones).
  */
 export const BLOCKED_LINGER_SECONDS = 600;
 
 /**
  * The window a finished background run stays reachable: the profile's `linger` when it sets one, else the setting; at
- * least `BLOCKED_LINGER_SECONDS` after a `blocked` report or while it has an unanswered ask to its parent
+ * least `BLOCKED_LINGER_SECONDS` after a `blocked` report or while it has an unanswered ask to its parent or a peer
  * (`awaitsReply`), whatever outcome it reported.
  */
 export function reachableSeconds(
@@ -272,6 +274,8 @@ export function claimRun(
 		identity.cachePreferences = ctx.modelRegistry.getCachePolicy(childModel, [
 			{ source: "parent settings", values: runs.api.getSettings() },
 		]).options;
+		// How long the entry the child writes lives: the stagger keeps its prefix warm for that long.
+		identity.cacheTtlMs = getPromptCacheTtlMs(childModel, identity.cachePreferences);
 	}
 	const scratch = agentScratch(cwd, identity.id);
 	if (scratch) identity.scratch = scratch;

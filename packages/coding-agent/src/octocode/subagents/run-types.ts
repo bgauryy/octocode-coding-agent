@@ -1,8 +1,10 @@
 import type { Usage } from "@octocodeai/octocode-ai";
+import type { ChildCacheMetrics } from "./cache-monitor.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import type { Ask } from "../team/asks.ts";
 import type { ChildNotices, Compactions } from "./events.ts";
 import type { StructuredResultV1 } from "./result-schema.ts";
+import type { ReportArtifact } from "../shared/report-artifact.ts";
 
 /**
  * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/sessions/<id>`),
@@ -29,6 +31,8 @@ export interface RunDetails {
 	toolCalls: number;
 	/** Model requests the child made in this run (`budget.ts`); absent before its first reply. */
 	requests?: number;
+	/** Conversation cache usage, excluding auxiliary requests; latest is the last completed message. */
+	cache?: ChildCacheMetrics;
 	/** Tool calls the child could not run without the user's approval. */
 	denied?: number | undefined;
 	/** Its latest steps: tool calls (`→ bash ls`), thoughts (`✻ …`) and narration (`› …`). */
@@ -69,9 +73,11 @@ export interface RunDetails {
 	outcomeSource?: "first" | "last";
 	/** Host-validated final JSON result, if the caller requested a result contract. */
 	structured?: StructuredResultV1;
+	/** The exact saved report version; absent in legacy session entries. */
+	reportArtifact?: ReportArtifact;
 	/** The subagent's latest screenshot, saved to this path. */
 	shot?: string;
-	/** Prompt tokens (uncached, cache reads and writes) of its first model reply: what its cold start cost. */
+	/** Initial context of its first model reply: uncached input plus cache reads and writes. */
 	firstTurnTokens?: number;
 	/** The run failed before its first model turn (`cause`: the one error line). */
 	startup?: { failed: true; cause?: string };
@@ -95,6 +101,7 @@ export interface ResultDetails {
 	outcomeSource?: "first" | "last";
 	/** Immutable contract hash and host validation verdict; valid data is available to the caller. */
 	structured?: StructuredResultV1;
+	reportArtifact?: ReportArtifact;
 	/** The `⎿` line, e.g. `Done (name · 4 tool calls · ↑12k ↓2k · ≈$0.12 · 38s)`. */
 	summary: string;
 	durationMs?: number;
@@ -117,5 +124,6 @@ export interface ResultDetails {
 	/** As in `RunDetails`. */
 	firstTurnTokens?: number;
 	requests?: number;
+	cache?: ChildCacheMetrics;
 	startup?: { failed: true; cause?: string };
 }

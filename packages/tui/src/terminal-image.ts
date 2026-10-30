@@ -1,8 +1,14 @@
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import { getCapabilities, getCellDimensions } from "./terminal-image/capabilities.ts";
+import { wrapTmuxPassthrough } from "./multiplexer.ts";
+import { getCapabilities, getCellDimensions, kittyPlaceholderMode } from "./terminal-image/capabilities.ts";
 import { KITTY_PREFIX, registerKittyImageMetadata } from "./terminal-image/kitty-metadata.ts";
+import {
+	isKittyPlaceholderLine,
+	kittyPlaceholderRows,
+	kittyPlaceholdersFit,
+} from "./terminal-image/kitty-placeholder.ts";
 import type { CellDimensions, ImageCellSize, ImageDimensions, ImageRenderOptions } from "./terminal-image/types.ts";
 
 const ITERM2_PREFIX = "\x1b]1337;File=";
@@ -13,7 +19,50 @@ export function isImageLine(line: string): boolean {
 		return true;
 	}
 	// Slow path: sequence elsewhere (multi-row images have cursor-up prefix)
-	return line.includes(KITTY_PREFIX) || line.includes(ITERM2_PREFIX);
+	if (line.includes(KITTY_PREFIX) || line.includes(ITERM2_PREFIX)) return true;
+	// Placeholder rows are cells, not sequences; they only count where tmux placeholders are in use.
+	return isKittyPlaceholderLine(line) && kittyPlaceholderMode();
+}
+
+/** Emit one Kitty APC, wrapped in tmux passthrough when images run under tmux. */
+function kittyOut(sequence: string): string {
+	return kittyPlaceholderMode() ? wrapTmuxPassthrough(sequence) : sequence;
+}
+
+/**
+ * Largest escaped payload put in one tmux passthrough envelope. tmux drops a single escape sequence longer than its
+ * input buffer: `input-buffer-size`, whose default and minimum is `INPUT_BUF_DEFAULT_SIZE` (1048576 bytes, tmux.h).
+ * This leaves room for the `ESC P tmux;` envelope.
+ */
+export const TMUX_PASSTHROUGH_LIMIT = 1_000_000;
+
+function escapedLength(sequence: string): number {
+	return sequence.length + sequence.split("\x1b").length - 1;
+}
+
+/**
+ * Emit the APCs of one chunked transmission. Under tmux they share passthrough envelopes: tmux forwards each envelope
+ * to the client as one write but may put another pane's output between envelopes, and the terminal keeps only one
+ * chunked load in progress, so chunks of two panes' uploads interleaved at the client lose both images. An upload
+ * whose escaped size exceeds `TMUX_PASSTHROUGH_LIMIT` needs several envelopes and can still be interleaved there.
+ */
+function kittyOutChunks(sequences: string[]): string {
+	if (!kittyPlaceholderMode()) return sequences.join("");
+	const envelopes: string[] = [];
+	let group = "";
+	let groupLength = 0;
+	for (const sequence of sequences) {
+		const length = escapedLength(sequence);
+		if (group && groupLength + length > TMUX_PASSTHROUGH_LIMIT) {
+			envelopes.push(wrapTmuxPassthrough(group));
+			group = "";
+			groupLength = 0;
+		}
+		group += sequence;
+		groupLength += length;
+	}
+	if (group) envelopes.push(wrapTmuxPassthrough(group));
+	return envelopes.join("");
 }
 
 /**
@@ -22,8 +71,10 @@ export function isImageLine(line: string): boolean {
  * (e.g., main app vs extensions).
  */
 export function allocateImageId(): number {
-	// Use random ID in range [1, 0xffffffff] to avoid collisions
-	return Math.floor(Math.random() * 0xfffffffe) + 1;
+	// Use random ID in range [1, 0xffffffff] to avoid collisions. Placeholder cells carry the id in a 24-bit
+	// foreground colour; a larger id would need a third diacritic per cell, which tmux redraws one mark at a time.
+	const limit = kittyPlaceholderMode() ? 0xffffff : 0xffffffff;
+	return Math.floor(Math.random() * (limit - 1)) + 1;
 }
 
 export function encodeKitty(
@@ -34,19 +85,22 @@ export function encodeKitty(
 		imageId?: number;
 		/** Whether Kitty should apply its default cursor movement after placement. Default: true. */
 		moveCursor?: boolean;
+		/** Create a virtual placement for Unicode placeholders (`U=1`) instead of drawing at the cursor. */
+		virtual?: boolean;
 	} = {},
 ): string {
 	const CHUNK_SIZE = 4096;
 
 	const params: string[] = ["a=T", "f=100", "q=2"];
 
-	if (options.moveCursor === false) params.push("C=1");
+	if (options.moveCursor === false && !options.virtual) params.push("C=1");
+	if (options.virtual) params.push("U=1");
 	if (options.columns) params.push(`c=${options.columns}`);
 	if (options.rows) params.push(`r=${options.rows}`);
 	if (options.imageId) params.push(`i=${options.imageId}`);
 
 	if (base64Data.length <= CHUNK_SIZE) {
-		return `\x1b_G${params.join(",")};${base64Data}\x1b\\`;
+		return kittyOut(`\x1b_G${params.join(",")};${base64Data}\x1b\\`);
 	}
 
 	const chunks: string[] = [];
@@ -69,7 +123,7 @@ export function encodeKitty(
 		offset += CHUNK_SIZE;
 	}
 
-	return chunks.join("");
+	return kittyOutChunks(chunks);
 }
 
 /**
@@ -77,7 +131,7 @@ export function encodeKitty(
  * Uses uppercase 'I' to also free the image data.
  */
 export function deleteKittyImage(imageId: number): string {
-	return `\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`;
+	return kittyOut(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`);
 }
 
 /**
@@ -85,12 +139,12 @@ export function deleteKittyImage(imageId: number): string {
  * Uses uppercase 'A' to also free the image data.
  */
 export function deleteAllKittyImages(): string {
-	return "\x1b_Ga=d,d=A,q=2\x1b\\";
+	return kittyOut("\x1b_Ga=d,d=A,q=2\x1b\\");
 }
 
 /** Delete all visible Kitty placements while retaining their uploaded image data. */
 export function deleteAllKittyPlacements(): string {
-	return "\x1b_Ga=d,d=a,q=2\x1b\\";
+	return kittyOut("\x1b_Ga=d,d=a,q=2\x1b\\");
 }
 
 export function encodeITerm2(
@@ -182,7 +236,7 @@ export function renderImage(
 	base64Data: string,
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions = {},
-): { sequence: string; columns: number; rows: number; imageId?: number } | null {
+): { sequence: string; columns: number; rows: number; imageId?: number; lines?: string[] } | null {
 	const caps = getCapabilities();
 
 	if (!caps.images) {
@@ -198,6 +252,16 @@ export function renderImage(
 		getCellDimensions(),
 		caps.images === "kitty",
 	);
+
+	if (caps.images === "kitty" && kittyPlaceholderMode()) {
+		// tmux does not track placements, so show the image as placeholder cells that tmux stores and redraws.
+		if (!kittyPlaceholdersFit(size.columns, size.rows)) return null;
+		const imageId = options.imageId ?? allocateImageId();
+		const sequence = encodeKitty(base64Data, { columns: size.columns, rows: size.rows, imageId, virtual: true });
+		const lines = kittyPlaceholderRows(imageId, size.columns, size.rows);
+		lines[0] = sequence + lines[0];
+		return { sequence, columns: size.columns, rows: size.rows, imageId, lines };
+	}
 
 	if (caps.images === "kitty") {
 		if (options.imageId !== undefined) {

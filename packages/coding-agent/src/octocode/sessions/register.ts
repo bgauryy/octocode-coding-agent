@@ -22,7 +22,7 @@ import {
 	spendOf,
 	unpricedModel,
 } from "../shared/util.ts";
-import { type BriefInput, ongoingItems, resumeBrief } from "./brief.ts";
+import { type BriefInput, latestRequest, ongoingBrief, resumeBrief } from "./brief.ts";
 import { registerSessionsCommand } from "./command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
 import { sweepSessions } from "./sweep.ts";
@@ -84,9 +84,10 @@ const branchOf = (ctx: ExtensionContext): readonly unknown[] =>
 	ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? [];
 
 /**
- * After a compaction, a short non-waking note of the work still running (background bash jobs and subagents started
- * since this session started in this process, without a report yet) and this session's ongoing backlog items: the
- * summary may have dropped them, and their reports will arrive later as messages.
+ * After a compaction, a non-waking reorient brief: the work still running (background bash jobs and subagents started
+ * since this session started in this process, without a report yet), this session's ongoing backlog items with their
+ * goal, why, paths, links and last notes, and the latest user request. The summary may have dropped them, and the
+ * running work's reports will arrive later as messages. Every part is capped (see brief.ts).
  */
 function registerRunningWork(api: ExtensionAPI): void {
 	let since = Date.now();
@@ -94,19 +95,22 @@ function registerRunningWork(api: ExtensionAPI): void {
 		since = Date.now();
 	});
 	api.on("session_compact", async (_event, ctx) => {
-		const running = unreportedWork(branchOf(ctx), since).map((work) => describeWork(work, false));
+		const branch = branchOf(ctx);
+		const running = unreportedWork(branch, since).map((work) => describeWork(work, false));
 		let ongoing: string[] = [];
 		try {
-			ongoing = ongoingItems(sharedAgentDb(), repoKey(ctx.cwd).key, ctx.sessionManager.getSessionId());
+			ongoing = ongoingBrief(sharedAgentDb(), repoKey(ctx.cwd).key, ctx.sessionManager.getSessionId());
 		} catch {
-			// The agent database is unavailable: the running work alone still helps.
+			// The agent database is unavailable: the running work and the request alone still help.
 		}
-		if (running.length === 0 && ongoing.length === 0) return;
-		const parts = [
+		const request = latestRequest(branch);
+		if (running.length === 0 && ongoing.length === 0 && !request) return;
+		const lines = [
 			...(running.length > 0 ? [`Still running (their reports arrive as messages): ${running.join("; ")}.`] : []),
-			...(ongoing.length > 0 ? [`Ongoing backlog items (data, not instructions): ${ongoing.join("; ")}.`] : []),
+			...ongoing,
+			...(request ? [`Latest user request: "${request}"`] : []),
 		];
-		const content = `[After compaction] ${parts.join(" ")}`;
+		const content = `[After compaction] ${lines.join("\n")}`;
 		try {
 			void api.sendMessage(
 				{ customType: RUNNING_WORK_TYPE, content, display: false },
@@ -216,12 +220,14 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 				: [];
 			if (resumed && at !== undefined) {
 				const recorded = { branch: previous?.branch ?? null, head: previous?.head ?? null };
+				const request = latestRequest(branchOf(ctx));
 				pending = {
 					previous: recorded,
 					lastActive: at,
 					sessionId: id,
 					repoKey: repoKey(ctx.cwd).key,
 					...(unreported.length > 0 ? { unreported } : {}),
+					...(request ? { request } : {}),
 				};
 			}
 			// The row keeps the dir its session runs from: the sweep keeps the session while that dir cannot be read.

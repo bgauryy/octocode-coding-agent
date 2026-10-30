@@ -56,7 +56,7 @@ Use the exact path when names collide. A session-only or synthetic skill cannot 
 
 At startup, Octocode scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-The skill entries share a budget of 8,000 characters (about 1% of a 200k-token window). A description longer than the 1,024-character limit is cut. When the entries do not fit, descriptions are dropped from the last skills first and the prompt says how many skills are listed without one; if the bare entries still do not fit, the last skills are named on one line without an entry. SDK callers can change the budget with the `budgetChars` option of `formatSkillsForPrompt`.
+The skill catalog shares a budget of 8,000 characters (about 1% of a 200k-token window), covering XML entries and overflow names; fixed loading instructions are separate. A description longer than the 1,024-character limit is cut. When the entries do not fit, descriptions are dropped from the last skills first and the prompt says how many skills are listed without one. If bare entries still do not fit, a bounded share of the budget shows representative omitted names and a count of the remaining skills. SDK callers can change the budget with the `budgetChars` option of `formatSkillsForPrompt`.
 
 ### Optimized descriptions
 
@@ -80,6 +80,8 @@ The project folder is keyed by the repository (worktrees share it), so two proje
 The overrides file is `{ "skills": { "<name>": "<description>" } }`. The bundled `octocode-context-optimization` skill writes it: ask the agent to optimize skill descriptions, or run `/skill:octocode-context-optimization`.
 
 When a task matches, the model loads the skill and follows its instructions; the common policy tells it to do so before starting. Native sessions give the model a `skill` tool for this: it takes a skill's name and returns that skill's `SKILL.md` (front matter removed) with the skill's directory, so relative references resolve. It reads only skills the session loaded, refuses an unknown name with the close matches, and refuses a skill with `disable-model-invocation`. The tool is active in the main session and in subagents, and is left out of requests while no loaded skill allows model invocation, except in a subagent whose parent named its skills: they ride in its task and the tool stays declared, so its siblings share one cached tool list ([subagent prefixes](prompt-caching.md#subagent-prefixes)). A profile can drop it with `excludeTools: skill`. Without the tool (an SDK session, or one that excludes it) the prompt names a file reader instead: Octocode `localFetch`, `read` or `bash`. The terminal draws a load as `Skill: <name>`, whether it came from the `skill` tool or from a `localFetch` read of a loaded skill's `SKILL.md`. Skills do not register an executable tool for each workflow. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use a skill command when you need to load it explicitly.
+
+The native skill tool reads the captured canonical file and returns its canonical directory for references. A changed discovery alias does not redirect that read. If the current resource snapshot no longer validates, execution fails; renderers may retain the last good metadata for display. Slash-command expansion also uses the captured file and reference directory.
 
 The automatically managed Octocode MCP server allows reads inside each loaded skill's directory, including its references and assets. These resource roots include model-only skills and eligible path-selection candidates hidden by a name collision; they do not depend on slash-command visibility. Native sessions apply the same launch defaults to a configured local stdio server named `octocode` when neither its configuration nor the process environment sets `ALLOWED_PATHS`. The defaults are transient; configuration files stay unchanged. An explicit `ALLOWED_PATHS` wins, including an empty value. HTTP servers and custom SDK MCP factories keep their own access policy.
 
@@ -121,7 +123,7 @@ This supports the pinned Codex local-host plaintext selector. Structured vendor 
 
 The native `agent` tool carries the accepted skill inventory into child sessions, including model-only resources and eligible Codex explicit candidates hidden by a name collision. Plugin names, invocation flags, argument substitution metadata and prompt byte limits survive the handoff. An explicit subset uses the parent's available skill command names; `skills: []` means no skills. See [subagent invocation](native-features.md).
 
-The file loader captures canonical identities when it accepts skills; the handoff retains those identities and discovery aliases. Catalog paths, instruction reads and reference access stay with the captured resource when an alias changes. The inventory does not copy instruction bytes; edits to the same canonical file remain visible when read. A changed canonical identity or invalid snapshot fails the launch rather than rediscovering unrelated default resources. Synthetic SDK resources without a backing file cannot be inherited by a child process. Custom SDK loaders can set `Skill.canonicalPath` to retain an acceptance-time identity; when omitted, identity is resolved when the snapshot is captured.
+The file loader captures canonical identities when it accepts skills; the handoff retains those identities and discovery aliases. Catalog paths, instruction reads and reference access stay with the captured resource when an alias changes, including skills inlined into a lean child's task. The inventory does not copy instruction bytes; edits to the same canonical file remain visible when read. A changed canonical identity or invalid snapshot fails the launch rather than rediscovering unrelated default resources. Synthetic SDK resources without a backing file cannot be inherited by a child process. Custom SDK loaders can set `Skill.canonicalPath` to retain an acceptance-time identity; when omitted, identity is resolved when the snapshot is captured.
 
 Inheritance supplies instructions and reference roots. It does not activate executable plugin components or widen the child's tool permissions. Resuming a retained child uses its captured inventory, even if the parent later reloads its skills.
 
@@ -136,7 +138,7 @@ When two skills share a name, the bundled skill beats a user-level copy another 
 1. `--skill` paths and SDK `additionalSkillPaths`.
 2. Entries of the `skills` setting that name a path, and skills from installed packages.
 3. Project folders: `.octocode/skills/`, `.agents/skills/` and, in a trusted project, `.claude/skills/`.
-4. The agent directory's own `skills/` folder (`~/.octocode/agent/skills/`, or the directory `OCTOCODE_HOME` / the SDK `agentDir` selects).
+4. The agent directory's own `skills/` folder (`~/.octocode/octocodecode/skills/`, or the directory `OCTOCODE_HOME` / the SDK `agentDir` selects).
 5. The bundle.
 6. User-level copies in `~/.agents/skills/`, `~/.claude/skills/`, `$CODEX_HOME/skills/` and the Pi fallback folders.
 
@@ -144,7 +146,7 @@ To keep your own version of a bundled skill, put it in the agent directory or th
 
 Use the existing `skills` setting to disable bundled defaults, for example `"skills": ["!octocode-roast"]`, or `"skills": ["!octocode-*"]` for the collection. These patterns also apply to matching auto-discovered skills, including the native host folders below and skill folders that extensions add. A trusted project can override a global exclusion with an exact entry such as `"skills": ["+octocode-roast/SKILL.md"]`.
 
-Place the skill in your user or project skills directory. Directories containing `SKILL.md` are discovered recursively.
+Place the skill in your user or project skills directory. Directories containing `SKILL.md` are discovered recursively. Discovery skips cyclic directory links with a warning; independent aliases remain eligible for the existing collision and deduplication rules.
 
 Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agents/skills/`. Project `.agents/skills/` directories are discovered from the working directory through its ancestors, stopping at the repository root when one exists. From a subdirectory of a repository, the root's `.octocode/skills/` is loaded as a project folder as well, so it keeps precedence over user skills.
 

@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { describe, expect, it, vi } from "vitest";
 import { getCompat } from "../src/api/openai-completions/compat.ts";
 import { sanitizeMoonshotToolParameters } from "../src/api/openai-completions/tool-schema-flavor.ts";
@@ -9,33 +10,14 @@ const mockState = vi.hoisted(() => ({
 	lastParams: undefined as unknown,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (params: unknown) => {
-					mockState.lastParams = params;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield { choices: [{ delta: {}, finish_reason: "stop" }] };
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
-				},
-			},
-		};
-	}
-	return { default: FakeOpenAI };
+mockCompletionsFetch((params: unknown) => {
+	mockState.lastParams = params;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+		},
+	};
+	return completionsResponse(stream);
 });
 
 /** The shape the Kimi API rejected: a type-less `const`, a type-less `enum`, an empty schema, and a typed union parent. */

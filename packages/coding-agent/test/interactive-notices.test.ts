@@ -70,11 +70,12 @@ describe("notices", () => {
 		expect(lines(chatContainer)).toEqual(["✗ boom", "✓ New session started"]);
 	});
 
-	test("each kind is painted in its state colour: success, warning, error", () => {
+	test("the mark carries the state colour and the words stay readable; an error is red throughout", () => {
 		const line = (kind: "success" | "warning" | "error") => display.noticeLine(kind, "x", 0).render(20)[0];
 
-		expect(line("success")).toContain(theme.fg("success", "✓ x"));
-		expect(line("warning")).toContain(theme.fg("warning", "⚠ x"));
+		expect(line("success")).toContain(`${theme.fg("success", "✓")} ${theme.fg("text", "x")}`);
+		// A long warning is not a wall of amber: only its mark is.
+		expect(line("warning")).toContain(`${theme.fg("warning", "⚠")} ${theme.fg("text", "x")}`);
 		expect(line("error")).toContain(theme.fg("error", "✗ x"));
 	});
 });

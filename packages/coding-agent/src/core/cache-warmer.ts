@@ -7,7 +7,7 @@ import {
 	IDLE_CONTINUATION_PROBABILITY,
 	isReplayable,
 	lastPromptTokens,
-	MAX_IDLE_WARMING_AGE_MS,
+	idleWarmingLimitMs,
 	MAX_WARMING_AGE_MS,
 	price,
 } from "./cache-warmer/economics.ts";
@@ -141,9 +141,9 @@ export class CacheWarmer {
 			return;
 		}
 		run.phase = "idle";
-		const deadline = run.startedAt + MAX_IDLE_WARMING_AGE_MS;
+		const deadline = run.startedAt + idleWarmingLimitMs(run.ttlMs);
 		if (run.nextWarmAt > deadline || Date.now() >= deadline) {
-			this.stop("30-minute idle safety limit reached");
+			this.stop("idle safety limit reached");
 		}
 	}
 
@@ -180,9 +180,9 @@ export class CacheWarmer {
 		// late refresh is likely a full-price cache write, not a cache warm.
 		run.refreshDeadlineAt = run.nextWarmAt + Math.floor((run.ttlMs - run.delayMs) / 2);
 		if (this.refreshDeadlineMissed(run)) return;
-		const deadline = run.startedAt + (run.phase === "idle" ? MAX_IDLE_WARMING_AGE_MS : MAX_WARMING_AGE_MS);
+		const deadline = run.startedAt + (run.phase === "idle" ? idleWarmingLimitMs(run.ttlMs) : MAX_WARMING_AGE_MS);
 		if (run.nextWarmAt > deadline || Date.now() >= deadline) {
-			this.stop(run.phase === "idle" ? "30-minute idle safety limit reached" : "one-hour safety limit reached");
+			this.stop(run.phase === "idle" ? "idle safety limit reached" : "one-hour safety limit reached");
 			return;
 		}
 		run.timer = setTimeout(() => void this.refresh(run), Math.max(0, run.nextWarmAt - Date.now()));
@@ -306,11 +306,13 @@ export class CacheWarmer {
 		// With layered lifetimes only the history entry expires; the instruction prefix is still read from its own entry.
 		const expiringTokens = Math.max(0, promptTokens - run.instructionTokens);
 		const cacheHitCost = price(model, { cacheRead: expiringTokens });
-		// A miss rewrites the expiring history at the tier the next request uses, which is the long one after an idle gap.
-		const rewrite =
-			run.rewriteRetention === "long"
-				? { cacheWrite: expiringTokens, cacheWrite1h: expiringTokens }
-				: { cacheWrite: expiringTokens };
+		// A miss rewrites the expiring history at the tier the request wrote it at (long history behind short
+		// instructions is sent at the short tier by the adapters that place both markers).
+		const history = resolveCacheRetention(run.options.cacheRetention, run.options.env);
+		const longHistory = history === "long" && resolveInstructionCacheRetention(run.options) !== "short";
+		const rewrite = longHistory
+			? { cacheWrite: expiringTokens, cacheWrite1h: expiringTokens }
+			: { cacheWrite: expiringTokens };
 		const cacheMissCost = price(model, model.cost.cacheWrite > 0 ? rewrite : { input: expiringTokens });
 		const warmCost = price(model, {
 			cacheRead: promptTokens,

@@ -30,22 +30,6 @@ export class McpSessionExpiredError extends McpHttpError {
 	}
 }
 
-export function contentType(response: Response): string | undefined {
-	return response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
-}
-
-/** 401, or 403 with an `insufficient_scope` bearer challenge (step-up authorization). */
-export function needsAuthorization(response: Response): boolean {
-	if (response.status === 401) return true;
-	if (response.status !== 403) return false;
-	return /(?:^|[\s,])error="?insufficient_scope"?/i.test(response.headers.get("www-authenticate") ?? "");
-}
-
-/** Statuses worth retrying when a stream fails to (re)open. */
-function isTransientStatus(status: number): boolean {
-	return status === 408 || status === 429 || status >= 500;
-}
-
 export function discard(response: Response): Promise<void> {
 	return response.body?.cancel().catch(() => {}) ?? Promise.resolve();
 }
@@ -88,15 +72,4 @@ export function describeHttpFailure(status: number, body: string): string {
 	const text = body.trim();
 	const snippet = text.length > ERROR_MESSAGE_BODY_CHARS ? `${text.slice(0, ERROR_MESSAGE_BODY_CHARS - 3)}...` : text;
 	return `MCP HTTP request failed with status ${status}${snippet ? `: ${snippet}` : ""}`;
-}
-
-/**
- * Network failures and transient statuses are retried; auth, session, and protocol errors are not.
- * `fetch` reports network failures, including a connection dropped mid-body, as `TypeError`.
- */
-export function isRetryable(error: unknown): boolean {
-	if (error instanceof McpHttpError) return isTransientStatus(error.status);
-	if (error instanceof TypeError) return true;
-	const code = (error as { code?: unknown } | undefined)?.code;
-	return typeof code === "string" && (code.startsWith("E") || code.startsWith("UND_ERR"));
 }

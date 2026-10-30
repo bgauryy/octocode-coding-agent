@@ -62,6 +62,32 @@
 	},
 	"overrides": [
 		{
+			"files": ["packages/coding-agent/src/**"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "node:sqlite",
+								"message": "SQL belongs in octocode/agentdb/queries; call it through octocode/agentdb/api.ts."
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": [
+				"packages/coding-agent/src/octocode/agentdb/**",
+				"packages/coding-agent/src/octocode/team/peer-leases.ts",
+				"packages/coding-agent/src/octocode/shared/util.ts"
+			],
+			"rules": {
+				"no-restricted-imports": "off"
+			}
+		},
+		{
 			"files": ["packages/webview/src/**", "packages/webview/test/**"],
 			"plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "react", "jsx-a11y"],
 			"env": {

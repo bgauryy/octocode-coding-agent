@@ -1,5 +1,7 @@
 import type { AgentDb } from "../agentdb/db.ts";
-import { readMeta, writeMeta } from "../agentdb/meta.ts";
+import { memories, meta } from "../agentdb/api.ts";
+import type { MemoryFilter, MemoryScope, ScopeFilter } from "../agentdb/queries/memories.ts";
+export type { MemoryFilter, ScopeFilter };
 import type { Row } from "../agentdb/rows.ts";
 import { storedSecret, storedText } from "../shared/sanitize.ts";
 import { clipText, stringOrEmpty } from "../shared/util.ts";
@@ -7,14 +9,6 @@ import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, 
 
 export const MEMORY_KINDS = ["preference", "fact", "decision", "gotcha", "procedure"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
-type MemoryScope = "global" | "project";
-/** Which memories a read sees: `all` is global plus this repository's project memories. */
-export type ScopeFilter = MemoryScope | "all";
-/** Narrows a list or count: only pinned memories, and none of the `exclude` ids (those already in context). */
-export interface MemoryFilter {
-	pinnedOnly?: boolean;
-	exclude?: ReadonlySet<number>;
-}
 
 export interface Memory {
 	id: number;
@@ -61,8 +55,6 @@ export function refuseMemorySecrets(input: Pick<MemoryInput, "title" | "body" | 
 		throw new MemoryError(`Refused: this looks like a secret (${found.problem}). Never store credentials in memory.`);
 }
 
-/** BM25 column weights for (title, keywords, body), in memories_fts column order. */
-const BM25_WEIGHTS = "5.0, 3.0, 1.0";
 /** A project hit ranks this much above an equally good global one. */
 const PROJECT_BOOST = 1.15;
 /** Token overlap (title + body) at which a new memory counts as a duplicate of an existing one. */
@@ -106,55 +98,25 @@ export class MemoryStore {
 		return this.agentDb.db;
 	}
 
-	/** SQL and parameters restricting `m` to the memories `scope` sees from this repository. */
-	private scopeSql(scope: ScopeFilter): { sql: string; params: string[] } {
-		if (scope === "global") return { sql: "m.scope = 'global'", params: [] };
-		if (scope === "project") return { sql: "m.scope = 'project' AND m.repo_key = ?", params: [this.repoKey] };
-		return { sql: "(m.scope = 'global' OR (m.scope = 'project' AND m.repo_key = ?))", params: [this.repoKey] };
-	}
-
 	/** A memory visible from this repository (global, or project of this repo), else undefined. */
 	get(id: number): Memory | undefined {
-		const scope = this.scopeSql("all");
-		const row = this.db
-			.prepare(`SELECT m.* FROM memories m WHERE m.id = ? AND ${scope.sql}`)
-			.get(id, ...scope.params) as Row | undefined;
+		const row = memories.visible(this.db, this.repoKey, id);
 		return row ? toMemory(row) : undefined;
-	}
-
-	/** `scopeSql` narrowed by `options`: only pinned memories, and none of the `exclude` ids. */
-	private filterSql(scope: ScopeFilter, options: MemoryFilter): { sql: string; params: string[] } {
-		const where = this.scopeSql(scope);
-		return {
-			sql: `${where.sql}${options.pinnedOnly ? " AND m.pinned = 1" : ""}${options.exclude?.size ? " AND m.id NOT IN (SELECT value FROM json_each(?))" : ""}`,
-			params: [...where.params, ...(options.exclude?.size ? [JSON.stringify([...options.exclude])] : [])],
-		};
 	}
 
 	/** Pinned first, then most recently updated. */
 	list(scope: ScopeFilter = "all", limit = 50, options: MemoryFilter = {}): Memory[] {
-		const where = this.filterSql(scope, options);
-		const rows = this.db
-			.prepare(
-				`SELECT m.* FROM memories m WHERE ${where.sql} ORDER BY m.pinned DESC, m.updated_at DESC, m.id DESC LIMIT ?`,
-			)
-			.all(...where.params, limit) as Row[];
-		return rows.map(toMemory);
+		return memories.list(this.db, this.repoKey, scope, limit, options).map(toMemory);
 	}
 
 	/** The `updatedAt` of each of `ids` that still exists, in one query. */
 	updatedAt(ids: readonly number[]): Map<number, number> {
 		if (ids.length === 0) return new Map();
-		const rows = this.db
-			.prepare("SELECT id, updated_at FROM memories WHERE id IN (SELECT value FROM json_each(?))")
-			.all(JSON.stringify(ids)) as Row[];
-		return new Map(rows.map((row) => [Number(row.id), Number(row.updated_at)]));
+		return memories.updatedAt(this.db, ids);
 	}
 
 	count(scope: ScopeFilter = "all", options: MemoryFilter = {}): number {
-		const where = this.filterSql(scope, options);
-		const row = this.db.prepare(`SELECT count(*) AS n FROM memories m WHERE ${where.sql}`).get(...where.params) as Row;
-		return Number(row.n);
+		return memories.count(this.db, this.repoKey, scope, options);
 	}
 
 	/**
@@ -175,24 +137,14 @@ export class MemoryStore {
 	}
 
 	private searchFts(match: string, scope: ScopeFilter, limit: number, exclude: ReadonlySet<number>): MemoryHit[] {
-		const where = this.scopeSql(scope);
-		const rows = this.db
-			.prepare(
-				`SELECT m.*, bm25(memories_fts, ${BM25_WEIGHTS}) AS bm25_score FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid ` +
-					`WHERE memories_fts MATCH ? AND ${where.sql} AND m.id NOT IN (SELECT value FROM json_each(?)) ORDER BY bm25_score LIMIT ?`,
-			)
-			.all(match, ...where.params, JSON.stringify([...exclude]), limit) as Row[];
+		const rows = memories.searchFts(this.db, this.repoKey, match, scope, exclude, limit);
 		// bm25() is lower-is-better and negative for matches; negate so every score reads higher-is-better.
 		return rows.map((row) => ({ ...toMemory(row), score: -Number(row.bm25_score) }));
 	}
 
 	/** BM25-like without FTS5: per-column weights (5/3/1) times each term's inverse document frequency; `words` are stems. */
 	private searchLike(words: string[], scope: ScopeFilter): MemoryHit[] {
-		const where = this.scopeSql(scope);
-		const rows = this.db
-			.prepare(`SELECT m.* FROM memories m WHERE ${where.sql} ORDER BY m.updated_at DESC LIMIT ?`)
-			.all(...where.params, LIKE_SCAN_LIMIT) as Row[];
-		const docs = rows.map((row) => {
+		const docs = memories.newest(this.db, this.repoKey, scope, LIKE_SCAN_LIMIT).map((row) => {
 			const memory = toMemory(row);
 			const stems = (text: string) => new Set(terms(text).map(stem));
 			return { memory, title: stems(memory.title), keywords: stems(memory.keywords), body: stems(memory.body) };
@@ -248,24 +200,19 @@ export class MemoryStore {
 			throw new MemoryError(
 				`Similar memory ${memoryLabel(duplicate.id)} exists: "${duplicate.title}". Call set with id:"${memoryLabel(duplicate.id)}" to update it, or change the title.`,
 			);
-		const result = this.db
-			.prepare(
-				"INSERT INTO memories (scope, repo_key, kind, title, body, keywords, pinned, author, source_session, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			)
-			.run(
-				scope,
-				scope === "project" ? this.repoKey : null,
-				input.kind ?? "fact",
-				title,
-				body,
-				storedText(input.keywords),
-				input.pinned ? 1 : 0,
-				input.author,
-				input.sourceSession ?? null,
-				now,
-				now,
-			);
-		return { memory: this.get(Number(result.lastInsertRowid))!, created: true };
+		const id = memories.insert(this.db, {
+			scope,
+			repoKey: scope === "project" ? this.repoKey : null,
+			kind: input.kind ?? "fact",
+			title,
+			body,
+			keywords: storedText(input.keywords),
+			pinned: input.pinned ?? false,
+			author: input.author,
+			sourceSession: input.sourceSession ?? null,
+			now,
+		});
+		return { memory: this.get(id)!, created: true };
 	}
 
 	/** An edit makes `input.author` the author: an agent edit of a user's memory must not keep the user tag. */
@@ -279,22 +226,17 @@ export class MemoryStore {
 		const title = input.title === undefined ? current.title : storedText(input.title);
 		if (!title) throw new MemoryError("A memory needs a title.");
 		const scope = input.scope ?? current.scope;
-		this.db
-			.prepare(
-				"UPDATE memories SET scope = ?, repo_key = ?, kind = ?, title = ?, body = ?, keywords = ?, pinned = ?, author = ?, updated_at = ? WHERE id = ?",
-			)
-			.run(
-				scope,
-				scope === "project" ? (current.scope === "project" ? current.repoKey : this.repoKey) : null,
-				input.kind ?? current.kind,
-				title,
-				input.body === undefined ? current.body : storedText(input.body),
-				input.keywords === undefined ? current.keywords : storedText(input.keywords),
-				(input.pinned ?? current.pinned) ? 1 : 0,
-				input.author,
-				now,
-				id,
-			);
+		memories.update(this.db, id, {
+			scope,
+			repoKey: scope === "project" ? (current.scope === "project" ? current.repoKey : this.repoKey) : null,
+			kind: input.kind ?? current.kind,
+			title,
+			body: input.body === undefined ? current.body : storedText(input.body),
+			keywords: input.keywords === undefined ? current.keywords : storedText(input.keywords),
+			pinned: input.pinned ?? current.pinned,
+			author: input.author,
+			now,
+		});
 		return { memory: this.get(id)!, created: false };
 	}
 
@@ -313,26 +255,23 @@ export class MemoryStore {
 	delete(id: number): Memory {
 		const current = this.get(id);
 		if (!current) throw noMemory(id);
-		this.db.prepare("DELETE FROM memories WHERE id = ?").run(id);
+		memories.remove(this.db, id);
 		return current;
 	}
 
 	/** Records that `ids` were handed to the model. */
 	markUsed(ids: readonly number[], now = Date.now()): void {
 		if (ids.length === 0) return;
-		this.agentDb.transaction(() => {
-			const statement = this.db.prepare("UPDATE memories SET last_used = ?, use_count = use_count + 1 WHERE id = ?");
-			for (const id of ids) statement.run(now, id);
-		});
+		this.agentDb.transaction(() => memories.markUsed(this.db, ids, now));
 	}
 
 	/** `/memory auto on|off`, shared by every session (the environment can still turn it off). */
 	autoSetting(): boolean {
-		return readMeta(this.db, SETTING_AUTO) !== "off";
+		return meta.read(this.db, SETTING_AUTO) !== "off";
 	}
 
 	setAutoSetting(on: boolean): void {
-		writeMeta(this.db, SETTING_AUTO, on ? "on" : "off");
+		meta.write(this.db, SETTING_AUTO, on ? "on" : "off");
 	}
 }
 

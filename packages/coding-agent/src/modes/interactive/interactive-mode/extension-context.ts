@@ -143,7 +143,7 @@ export function createExtensionUIContext(host: ExtensionContextHost): ExtensionU
 		input: (title, placeholder, opts) => host.showExtensionInput(title, placeholder, opts),
 		notify: (message, type) => showExtensionNotify(host, message, type),
 		onTerminalInput: (handler) => host.addExtensionTerminalInputListener(handler),
-		setStatus: (key, text) => host.setExtensionStatus(key, text),
+		setStatus: (key, text, tone) => host.setExtensionStatus(key, text, tone),
 		setWorkingMessage: (message) => {
 			host.workingMessage = message;
 			if (host.activeStatusIndicator?.kind === "working") {

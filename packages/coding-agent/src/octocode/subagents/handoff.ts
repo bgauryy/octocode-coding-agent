@@ -8,6 +8,7 @@ import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
+import { reportFilePath } from "./report.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
@@ -338,8 +339,7 @@ export function noticeText(report: Report): string {
 	const { id, outcome, status } = report.details;
 	const result = outcome ?? (status === "done" ? "finished" : status);
 	// The pointer is the last such line, after anything the child wrote; only a scratch path is ever repeated.
-	const pointers = [...report.content.matchAll(/^Full report: (.+?) \(read only/gm)].map((match) => match[1]);
-	const file = pointers.at(-1)?.includes("tmp/agents/") ? pointers.at(-1) : undefined;
+	const file = reportFilePath(report.content);
 	return `[Octocode notice] Background subagent ${id} ${result}. ${
 		file ? `Its report is saved at ${file}. ` : ""
 	}The full report arrives as its own message when this turn ends; continue your work.`;

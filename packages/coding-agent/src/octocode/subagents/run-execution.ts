@@ -2,11 +2,13 @@ import type { ReportStatus } from "../instructions/report.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { formatCost, formatDuration, shortPath, toolCallCount } from "../shared/format.ts";
 import { USER_SENDER } from "../shared/messages.ts";
+import { reportRef } from "../shared/references.ts";
 import { firstLine } from "../shared/util.ts";
 import type { AgentRuns, Run } from "./claim.ts";
 import type { BackgroundRun } from "./command.ts";
 import { withStopFacts } from "./budget.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
+import type { AwaitedReply } from "./linger.ts";
 import { providerHealth } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
@@ -19,16 +21,29 @@ import { reportFacts, runFooter, withShot } from "./tracking.ts";
 
 type Outcome = Awaited<ReturnType<typeof runSubagent>>;
 
-/** Runs the subagent in the background; its report (or why it stopped) arrives as a message, and then it gives its slot back. */
+/** ` · cite as report:<id>`: how a later task or external prompt passes this report on without retyping it. */
+const citable = (id: string): string => ` · cite as ${reportRef(id)}`;
+
+/** Whom the run's unanswered asks wait on: its parent (`asks`) first, else its peers (the team's record); it lingers while they wait. */
+function awaitedReply(runs: AgentRuns, id: string, details: RunDetails): AwaitedReply | undefined {
+	if (details.asks?.some((ask) => !ask.answer)) return "parent";
+	// An unreadable team database counts no peer asks (`Team.unansweredPeerAsks`), leaving the parent's record to decide.
+	return runs.team.unansweredPeerAsks(id) > 0 ? "peer" : undefined;
+}
+
+/**
+ * Runs the subagent in the background; its report (or why it stopped) arrives as a message, and then it gives its slot
+ * back. `finish` gets the outcome when there is a report, so the parent's own notes on it (its backlog item) ride in the footer.
+ */
 export function startBackground(
 	runs: AgentRuns,
 	run: Run,
 	details: RunDetails,
 	task: string,
 	launch: (signal: AbortSignal) => Promise<Outcome>,
-	finish: () => Promise<string>,
+	finish: (outcome?: Outcome) => Promise<string>,
 	sessionId: string,
-	linger?: (outcome?: ReportStatus, awaitsReply?: boolean) => string,
+	linger?: (outcome?: ReportStatus, awaited?: AwaitedReply) => string,
 ): void {
 	const { background, read } = runs;
 	const { identity } = run;
@@ -53,13 +68,14 @@ export function startBackground(
 		try {
 			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
 			providerHealth.noteRun(run.route.model, outcome.error);
-			const note = await finish();
+			const note = await finish(outcome);
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;
 			const source = outcome.error ? undefined : outcome.outcomeSource;
 			if (source) details.outcomeSource = source;
 			if (outcome.structured) details.structured = outcome.structured;
+			if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
 			const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
 			const stats = [
 				formatDuration(Date.now() - details.startedAt),
@@ -70,18 +86,18 @@ export function startBackground(
 			]
 				.filter(Boolean)
 				.join(" · ");
-			const head = outcome.error
-				? `Background subagent ${who} failed`
-				: `Background subagent ${who} ${reported ? `reported ${reported}` : "finished"} (${stats})`;
+			const head = `${
+				outcome.error
+					? `Background subagent ${who} failed`
+					: `Background subagent ${who} ${reported ? `reported ${reported}` : "finished"} (${stats})`
+			}${citable(identity.id)}`;
 			const durationMs = Date.now() - details.startedAt;
 			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details, durationMs);
-			const alreadyRead = read.consume(identity.id);
+			const alreadyRead = read.consume(identity.id, outcome.reportArtifact);
 			const next = outcome.error ? failedNext(run.route, outcome.error, Boolean(outcome.text)) : "";
 			const notices = noticeLines(details).join("\n");
-			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent lingers whatever it reported.
-			const reachable = outcome.error
-				? ""
-				: (linger?.(reported, details.asks?.some((ask) => !ask.answer) === true) ?? "");
+			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
+			const reachable = outcome.error ? "" : (linger?.(reported, awaitedReply(runs, identity.id, details)) ?? "");
 			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
@@ -120,7 +136,7 @@ export function startBackground(
 				content: by
 					? `Background subagent ${who} ${reason}${by === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${note}${reachable}`
 					: reportMessage(
-							`Background subagent ${who} stopped`,
+							`Background subagent ${who} stopped${citable(identity.id)}`,
 							[errorMessage(error), ...noticeLines(details)].join("\n\n"),
 							[...runFooter(details, true), note, reachable],
 						),
@@ -171,7 +187,7 @@ export async function runForeground(
 	run: Run,
 	details: RunDetails,
 	launch: (signal: AbortSignal) => Promise<Outcome>,
-	finish: () => Promise<string>,
+	finish: (outcome?: Outcome) => Promise<string>,
 	warning: string,
 	signal: AbortSignal | undefined,
 	stopping: () => void,
@@ -197,14 +213,15 @@ export async function runForeground(
 		signal?.removeEventListener("abort", abort);
 		runs.foreground.delete(identity.id);
 	}
-	const note = `${await finish()}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
+	const note = `${await finish(outcome)}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
 	if (outcome.structured) details.structured = outcome.structured;
+	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
 	if (outcome.error) {
 		// An error result rather than a throw, so the child's spent tokens still reach this session's totals.
 		details.status = "failed";
 		details.outcome = "failed";
 		const text = reportMessage(
-			`Subagent ${identity.id} failed`,
+			`Subagent ${identity.id} failed${citable(identity.id)}`,
 			`${outcome.error}${outcome.text ? `\n\nPartial answer:\n${outcome.text}` : ""}`,
 			[failedNext(run.route, outcome.error, Boolean(outcome.text)), note],
 		);
@@ -222,7 +239,7 @@ export async function runForeground(
 			{
 				type: "text" as const,
 				text: reportMessage(
-					heading || `Subagent ${identity.id} finished`,
+					`${heading || `Subagent ${identity.id} finished`}${citable(identity.id)}`,
 					withShot(details, outcome.text || "(subagent returned no text)"),
 					[typedFailure ? `Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : "", note],
 				),

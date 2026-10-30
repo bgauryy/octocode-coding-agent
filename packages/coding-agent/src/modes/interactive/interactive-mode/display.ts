@@ -95,7 +95,12 @@ const NOTICE_MARK: Record<NoticeKind, { glyph: string; color: ThemeColor }> = {
 /** A notice line at the transcript's left pad: `✓ New session started`, `⚠ Project config not loaded`, `✗ Compaction failed`. */
 export function noticeLine(kind: NoticeKind, message: string, pad: number): ThemedText {
 	const { glyph, color } = NOTICE_MARK[kind];
-	return new ThemedText(() => theme.fg(color, `${glyph} ${message}`), pad, 0);
+	// An error must stand out whole; elsewhere the mark carries the state, so a long warning is no wall of amber.
+	const paint = () =>
+		kind === "error"
+			? theme.fg(color, `${glyph} ${message}`)
+			: `${theme.fg(color, glyph)} ${theme.fg("text", message)}`;
+	return new ThemedText(paint, pad, 0);
 }
 
 export function showError(host: DisplayHost, errorMessage: string): void {

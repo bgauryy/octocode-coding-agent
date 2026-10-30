@@ -1,5 +1,5 @@
 import type { Message, Model, Tool, TranscriptContext } from "../../types.ts";
-import { resolveCacheRetention } from "../../utils/cache-policy.ts";
+import { resolveCacheRetention, resolvePromptCacheKey } from "../../utils/cache-policy.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
 import { getCurrentTools } from "../../utils/transcript.ts";
@@ -32,7 +32,8 @@ export function buildChatPayload(
 	if (options?.toolChoice) payload.toolChoice = mapToolChoice(options.toolChoice);
 	if (options?.promptMode) payload.promptMode = options.promptMode;
 	if (options?.reasoningEffort) payload.reasoningEffort = options.reasoningEffort;
-	if (shouldUsePromptCaching(options)) payload.promptCacheKey = options.sessionId;
+	if (resolveCacheRetention(options?.cacheRetention, options?.env) !== "none")
+		payload.promptCacheKey = resolvePromptCacheKey(options);
 
 	return payload;
 }

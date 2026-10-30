@@ -6,13 +6,7 @@ import type {
 	ClassifierResult,
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import {
-	type ClassifierHttpError,
-	isRecord,
-	parseClassifierUsage,
-	postClassifierRequest,
-	requiredNumber,
-} from "./classifier-shared.ts";
+import { isRecord, parseClassifierUsage, postClassifierRequest, requiredNumber } from "./classifier-shared.ts";
 
 /**
  * OpenAI's Decisions API: `POST /v1/decisions` with `{ model, input, questions }`.
@@ -150,7 +144,7 @@ function parseAnswers(value: unknown, context: ClassifierContext): Record<string
 const NO_RETRY_STATUSES = [504];
 
 function errorMessage(error: unknown): string {
-	if ((error as Partial<ClassifierHttpError>).status === 504) {
+	if (normalizeProviderError(error).status === 504) {
 		return `${LABEL} error (504): the request timed out at the gateway. Very large inputs (above roughly 600K tokens) currently exceed its time limit.`;
 	}
 	return formatProviderError(normalizeProviderError(error), `${LABEL} error`);

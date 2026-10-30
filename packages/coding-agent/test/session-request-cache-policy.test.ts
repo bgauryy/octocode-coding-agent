@@ -12,7 +12,6 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { SHORT_HISTORY_TTL_MS } from "../src/core/idle-cache-retention.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
@@ -94,33 +93,5 @@ describe("session request cache policy", () => {
 
 		expect(await send(virtual, START)).toBe("long");
 		expect(await send(virtual, START, { cacheRetention: "none" })).toBe("none");
-	});
-
-	it("moves a routed session's history to the one-hour tier after an idle gap", async () => {
-		const { session, virtual, send } = await createFixture();
-		const sessionRequest = { sessionId: session.sessionId };
-
-		expect(await send(virtual, START, sessionRequest)).toBe("short");
-		expect(await send(virtual, START + SHORT_HISTORY_TTL_MS + 1, sessionRequest)).toBe("long");
-	});
-
-	it("measures idle gaps and switches retention only for session requests", async () => {
-		const { session, routed, send } = await createFixture();
-		const sessionRequest = { sessionId: session.sessionId };
-		const summaryRequest = { sessionId: `${session.sessionId}:summary` };
-
-		expect(await send(routed, START, sessionRequest)).toBe("short");
-		// A summary request after the session's history expired keeps the default retention and does not reset the gap.
-		expect(await send(routed, START + SHORT_HISTORY_TTL_MS + 1, summaryRequest)).toBe("short");
-		expect(await send(routed, START + SHORT_HISTORY_TTL_MS + 2, sessionRequest)).toBe("long");
-	});
-
-	it("does not let a summary request hide the session's idle gap", async () => {
-		const { session, routed, send } = await createFixture();
-		const sessionRequest = { sessionId: session.sessionId };
-
-		await send(routed, START, sessionRequest);
-		await send(routed, START + SHORT_HISTORY_TTL_MS - 1, { sessionId: "summary" });
-		expect(await send(routed, START + 2 * SHORT_HISTORY_TTL_MS - 2, sessionRequest)).toBe("long");
 	});
 });

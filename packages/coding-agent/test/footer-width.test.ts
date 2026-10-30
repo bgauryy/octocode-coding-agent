@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
 import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
-import { initTheme } from "../src/theme/theme.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 type AssistantUsage = {
@@ -106,6 +106,29 @@ function createFooterData(providerCount: number): ReadonlyFooterDataProvider {
 
 	return provider;
 }
+
+describe("footer statuses as data", () => {
+	it("paints each status and the GitHub line in its tone with the live theme", () => {
+		initTheme("dark");
+		const footer = new FooterComponent(createSession({ sessionName: "test" }), {
+			...createFooterData(1),
+			getState: () => ({
+				branch: "main",
+				providerCount: 1,
+				statuses: new Map([
+					["a-jobs", { text: "2 bash jobs", tone: "accent" as const }],
+					["b-lint", { text: "lint ok" }],
+				]),
+				githubStatus: { text: "GitHub ✓ @octo", tone: "success" as const },
+			}),
+			subscribe: () => () => {},
+		});
+		const out = footer.render(120).join("\n");
+		expect(out).toContain(theme.fg("accent", "2 bash jobs"));
+		expect(out).toContain(theme.fg("success", "GitHub ✓ @octo"));
+		expect(stripAnsi(out)).toContain("2 bash jobs lint ok");
+	});
+});
 
 describe("formatCwdForFooter", () => {
 	it("does not abbreviate sibling paths that share the home prefix", () => {

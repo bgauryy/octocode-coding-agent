@@ -10,6 +10,7 @@ import { normalizeContext } from "../src/utils/transcript.ts";
  */
 describe("cache test environment", () => {
 	it("starts without cache retention variables", () => {
+		expect(process.env.OCTOCODE_PROMPT_CACHE_KEY).toBeUndefined();
 		expect(process.env.OCTOCODE_CACHE_RETENTION).toBeUndefined();
 		expect(process.env.OCTOCODE_INSTRUCTION_CACHE_RETENTION).toBeUndefined();
 		expect(process.env.OCTOCODE_INSTRUCTION_CACHE_SPLIT).toBeUndefined();

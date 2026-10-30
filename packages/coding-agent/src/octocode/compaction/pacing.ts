@@ -35,6 +35,11 @@ export class ThrashBreaker {
 		this.#turnInRun = false;
 	}
 
+	/** Turns since the last compaction in this session, if one ran. */
+	get turnsSinceCompaction(): number | undefined {
+		return this.#turnsSince;
+	}
+
 	/** Records a finished compaction; a manual one starts the count over. */
 	compacted(manual: boolean): void {
 		this.#streak = !manual && this.#turnsSince !== undefined && this.#turnsSince <= THRASH_TURNS ? this.#streak + 1 : 0;

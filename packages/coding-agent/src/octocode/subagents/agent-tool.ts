@@ -11,65 +11,70 @@ export function agentToolSpec() {
 		name: "agent",
 		label: "Agent",
 		description:
-			"Delegate a self-contained task to a fresh Octocode session that does not inherit this conversation. " +
-			`Foreground returns the report; background returns the agent's name, the report arrives later. At most ${maxSubagents()} at once; more wait. ` +
-			"Never poll or sleep for reports. " +
-			"A subagent updates only claimed backlog items: claim one first, name its id in the task.",
+			"Delegate a self-contained task to a fresh session without this conversation. " +
+			`Foreground returns its report; background returns its id and delivers the report later. At most ${maxSubagents()} at once; more wait. ` +
+			"Never poll or sleep for reports.",
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description:
-						"Skill names, sent in the task (cache-safe); omit for the profile's skills or the loaded catalog; [] for none.",
+					description: "Skill names included in the task; omit for profile skills or the loaded catalog; [] for none.",
 				}),
 			),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({
 				description:
-					"Task contract: objective; inputs it cannot infer (paths, evidence, decisions); constraints (scope, authorization, budget); output; Definition of Done",
+					"Task contract: objective, required inputs (paths/evidence/decisions), constraints (scope/authorization/budget), output, Definition of Done. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",
 			}),
+			item: Type.Optional(
+				Type.String({
+					description: "Backlog item you hold (ongoing); the child may update only it, and its report is noted there.",
+				}),
+			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Id of a finished or stopped subagent this session started: continues its saved conversation with this task (same profile) instead of a fresh session; an unknown id is refused with this session's subagents",
+						"Finished or stopped child id from this session: continue its saved conversation with this task and its original profile.",
 				}),
 			),
 			profile: Type.Optional(
 				Type.String({
-					description: "Profile from the active Profiles list; omit for general-purpose",
+					description: "Profile name; omit for general-purpose",
 				}),
 			),
 			headless: Type.Optional(
 				Type.Boolean({
-					description: "Browser profile: true headless (default); false visible Chrome with persistent logins",
+					description: "Browser: true headless (default); false visible with persistent logins",
 				}),
 			),
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model override: provider/id, bare id or purpose (small, medium), optional :thinking. Refused when unavailable; omit for the profile's model, else this session's",
+						"Override: provider/id, bare id, small or medium, optional :thinking; unavailable choices refused. Default: profile model, else yours.",
 				}),
 			),
 			resultSchema: Type.Optional(
-				Type.Record(Type.String(), Type.Unknown(), {
+				// A plain object schema: `Type.Record` would add a `patternProperties` block to every request for the same meaning.
+				Type.Unsafe<Record<string, unknown>>({
+					type: "object",
 					description:
 						"Bounded JSON Schema for the child's final marked JSON result (verdict in details). Keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
 				}),
 			),
 			background: Type.Optional(
 				Type.Boolean({
-					description: "Return at once for long or parallel work; message redirects it, coordinate stop ends it",
+					description: "Return at once for independent work; report delivered automatically.",
 				}),
 			),
 			collaborate: Type.Optional(
 				Type.Boolean({
 					description:
-						"true on each call of subagents that must coordinate directly (name each one's owner in the task); false otherwise",
+						"Adds teammate context for shared work; does not enable messaging or grant authority. Name each task's owner.",
 				}),
 			),
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
-						"Private git worktree: changes land on refs/octocode/pi/<id>, not in this tree; the report names the ref, the user runs /agents merge <id>",
+						"Private worktree; changes export to refs/octocode/<id>. Report names the ref; user applies it with /agents merge <id>.",
 				}),
 			),
 			workingCopy: Type.Optional(

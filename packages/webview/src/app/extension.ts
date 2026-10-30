@@ -47,6 +47,8 @@ export interface EditorProps {
  * time, so it ships no transport, Markdown renderer or editor.
  */
 export interface LiveExtension {
+	/** The host refuses writes on this page (a daemon repository scope): offer no edit, comment or Implement control. */
+	readOnly?: boolean;
 	/** Moves a launch token from the URL into session storage and returns the current one. */
 	takeAccess(): string;
 	views: readonly ViewDefinition[];

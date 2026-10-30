@@ -69,7 +69,12 @@ describe("/rewind when an older change cannot be undone", () => {
 		const commands = new Subcommands();
 		const forget = vi.fn();
 		registerCheckpoints(fake.api, checkpoints, forget, commands);
-		const ctx = fakeCtx({ cwd });
+		// Declining the confirmation leaves every file as it is.
+		const declined = fakeCtx({ cwd, ui: { confirms: [false] } });
+		await commands.get("rewind")!.handler("2", declined);
+		expect(fs.readFileSync(file, "utf8")).toBe("v2");
+		expect(declined.ui.notes.at(-1)!.message).toBe("Nothing was rewound.");
+		const ctx = fakeCtx({ cwd, ui: { confirms: [true] } });
 		await commands.get("rewind")!.handler("2", ctx);
 
 		expect(fs.readFileSync(file, "utf8")).toBe("v1");

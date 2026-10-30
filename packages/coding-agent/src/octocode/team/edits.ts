@@ -1,6 +1,6 @@
 import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
-import { num, type Row } from "../agentdb/rows.ts";
+import { type Db, edits } from "../agentdb/api.ts";
+import { num } from "../agentdb/rows.ts";
 import { DAY_MS, MINUTE_MS } from "../shared/util.ts";
 import { canonicalIn } from "./store/workspace.ts";
 
@@ -24,21 +24,22 @@ export const EDIT_RETENTION_MINUTES = DAY_MS / MINUTE_MS;
 const EDIT_RETENTION_MS = DAY_MS;
 
 export class EditLog {
-	private readonly db: DatabaseSync;
+	private readonly db: Db;
 	readonly workspace: string;
-	constructor(db: DatabaseSync, workspace: string) {
+	constructor(db: Db, workspace: string) {
 		this.db = db;
 		this.workspace = workspace;
 	}
 
 	/** Records that `agent` changed `files` (absolute) with `tool`; files outside the workspace are skipped. */
 	record(agent: string, tool: string, files: string[], now = Date.now()): void {
-		const insert = this.db.prepare("INSERT INTO edits (workspace, path, agent, tool, at) VALUES (?, ?, ?, ?, ?)");
+		const relatives: string[] = [];
 		for (const file of files) {
 			const relative = path.relative(this.workspace, canonicalIn(this.workspace, file));
 			if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
-			insert.run(this.workspace, relative.split(path.sep).join("/"), agent, tool, now);
+			relatives.push(relative.split(path.sep).join("/"));
 		}
+		edits.record(this.db, this.workspace, relatives, agent, tool, now);
 	}
 
 	/**
@@ -46,13 +47,7 @@ export class EditLog {
 	 * change and the count), optionally only under `prefixes` (workspace-relative, `/`-separated) and only by `agent`.
 	 */
 	changes(options: { withinMs: number; prefixes?: string[]; agent?: string }, now = Date.now()): Change[] {
-		const byAgent = options.agent === undefined ? "" : " AND agent = ?";
-		const rows = this.db
-			.prepare(
-				// Writes within one millisecond share `at`; the row id, assigned in insertion order, decides which is newer.
-				`SELECT path, agent, tool, MAX(at) AS at, COUNT(*) AS count, MAX(rowid) AS seq FROM edits WHERE workspace = ? AND at > ?${byAgent} GROUP BY path, agent, tool ORDER BY at DESC, seq DESC, path`,
-			)
-			.all(this.workspace, now - options.withinMs, ...(options.agent === undefined ? [] : [options.agent])) as Row[];
+		const rows = edits.changesSince(this.db, this.workspace, now - options.withinMs, options.agent);
 		const prefixes = options.prefixes?.map((prefix) => prefix.replace(/\/+$/, ""));
 		const under = (file: string) =>
 			!prefixes?.length || prefixes.some((prefix) => prefix === "" || file === prefix || file.startsWith(`${prefix}/`));
@@ -82,9 +77,7 @@ export class EditLog {
 	 */
 	adoptUnjoined(agent: string): void {
 		try {
-			this.db
-				.prepare("UPDATE edits SET agent = ? WHERE workspace = ? AND agent = ? AND at >= ?")
-				.run(agent, this.workspace, unjoinedAgent(), Date.now() - Math.ceil(process.uptime() * 1000));
+			edits.reassign(this.db, this.workspace, unjoinedAgent(), agent, Date.now() - Math.ceil(process.uptime() * 1000));
 		} catch {
 			/* keep the pid label */
 		}
@@ -92,6 +85,6 @@ export class EditLog {
 
 	/** Drops rows past retention; the team store runs it with its periodic prune (on heartbeats), not on every edit. */
 	prune(now = Date.now()): void {
-		this.db.prepare("DELETE FROM edits WHERE at < ?").run(now - EDIT_RETENTION_MS);
+		edits.pruneBefore(this.db, now - EDIT_RETENTION_MS);
 	}
 }

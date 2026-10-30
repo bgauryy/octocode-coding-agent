@@ -146,7 +146,7 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				},
 				onCachePreferenceChange: (field, value) => {
 					host.settingsManager.setCachePreference(field, value);
-					host.showStatus("Cache preference saved. Use /session to inspect effective retention.");
+					host.showStatus("Cache preference saved. Use /status to inspect effective retention.");
 				},
 				onModelThinkingLevelChange: (provider, modelId, level) => {
 					host.settingsManager.setModelThinkingLevel(provider, modelId, level);

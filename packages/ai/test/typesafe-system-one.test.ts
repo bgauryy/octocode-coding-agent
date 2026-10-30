@@ -219,6 +219,25 @@ describe("TypeSafe System One", () => {
 		expect(signals).toHaveLength(2);
 		expect(signals[0]).not.toBe(signals[1]);
 	});
+	it.each([200, 503])("cancels a stalled %s body at the request deadline", async (status) => {
+		let cancelled = false;
+		const result = await classify(model, context, {
+			apiKey: "secret",
+			timeoutMs: 5,
+			maxRetries: 0,
+			fetch: async () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						cancel() {
+							cancelled = true;
+						},
+					}),
+					{ status },
+				),
+		});
+		expect(result.errorMessage).toBe("Request timed out after 5ms");
+		expect(cancelled).toBe(true);
+	});
 
 	it("returns malformed responses as classifier errors", async () => {
 		const result = await classify(model, context, {

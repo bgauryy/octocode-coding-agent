@@ -41,7 +41,7 @@ describe("workspace HTTP handlers without network I/O", () => {
 		let item = app.store.add({
 			title: "Implement search",
 			goal: "Results update",
-			reason: "Users need search",
+			why: "Users need search",
 			createdBy: "user",
 		});
 		const comments = Array.from({ length: 25 }, (_, index) => `Requirement ${index}: keep this context`);
@@ -116,7 +116,7 @@ describe("workspace HTTP handlers without network I/O", () => {
 		const item = app.store.add({
 			title: "Finish dispatch",
 			goal: "Queue once",
-			reason: "Preserve acceptance",
+			why: "Preserve acceptance",
 			createdBy: "user",
 		});
 		const previousSession = app.session.sessionId;

@@ -14,7 +14,7 @@ import { FileGuard } from "../src/octocode/files/tool/guard.ts";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const envelope = (body: string) => `*** Begin Patch\n${body}\n*** End Patch`;
-async function fixture(patch: string, mode = "full", once = false, claudeGate = false) {
+async function fixture(patch: string, mode = "full", once = false, claudeGate: boolean | "failClosed" = false) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "patch-update-session-"));
 	const captured = path.join(home, "pre.json");
 	const claudeCaptured = path.join(home, "claude-invoked");
@@ -36,6 +36,7 @@ async function fixture(patch: string, mode = "full", once = false, claudeGate = 
 								{
 									type: "command",
 									command: `${quote(process.execPath)} ${quote(script)}`,
+									...(claudeGate === "failClosed" ? { failClosed: true } : {}),
 								},
 							],
 						},
@@ -606,38 +607,48 @@ it("keeps stale status after applying a valid patch anchor over external changes
 	}
 });
 
-it("refuses a canonical Move when a Claude Write gate cannot receive a faithful destination projection", async () => {
+it("runs a canonical Move without the Claude Write gate that cannot see it losslessly, and refuses only a failClosed gate", async () => {
 	const command = envelope("*** Update File: source.txt\n*** Move to: protected.txt\n@@\n-old\n+new");
-	const f = await fixture(command, "full", false, true);
-	try {
-		const source = path.join(f.harness.tempDir, "source.txt"),
-			destination = path.join(f.harness.tempDir, "protected.txt");
-		fs.writeFileSync(source, "old\n");
-		f.harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("read", { path: source })], {
-				stopReason: "toolUse",
-			}),
-			fauxAssistantMessage(
-				[
-					fauxToolCall("file", {
-						patch: command,
-						reason: "Cross-profile move",
-					}),
-				],
-				{ stopReason: "toolUse" },
-			),
-			fauxAssistantMessage("gate refusal accepted"),
-		]);
-		await f.harness.session.prompt("Move the source.");
-		const result = getToolResult(f.harness, "file");
-		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toMatch(/cannot be represented losslessly/);
-		expect(fs.existsSync(f.captured)).toBe(false);
-		expect(fs.existsSync(f.claudeCaptured)).toBe(false);
-		expect(fs.readFileSync(source, "utf8")).toBe("old\n");
-		expect(fs.existsSync(destination)).toBe(false);
-	} finally {
-		f.cleanup();
+	for (const gate of [true, "failClosed"] as const) {
+		const f = await fixture(command, "full", false, gate);
+		try {
+			const source = path.join(f.harness.tempDir, "source.txt"),
+				destination = path.join(f.harness.tempDir, "protected.txt");
+			fs.writeFileSync(source, "old\n");
+			f.harness.setResponses([
+				fauxAssistantMessage([fauxToolCall("read", { path: source })], {
+					stopReason: "toolUse",
+				}),
+				fauxAssistantMessage(
+					[
+						fauxToolCall("file", {
+							patch: command,
+							reason: "Cross-profile move",
+						}),
+					],
+					{ stopReason: "toolUse" },
+				),
+				fauxAssistantMessage("gate outcome accepted"),
+			]);
+			await f.harness.session.prompt("Move the source.");
+			const result = getToolResult(f.harness, "file");
+			// The per-query Claude hook never sees a canonical patch, so it is not run either way.
+			expect(fs.existsSync(f.claudeCaptured)).toBe(false);
+			if (gate === "failClosed") {
+				expect(result.isError).toBe(true);
+				expect(getMessageText(result)).toMatch(/cannot be represented losslessly/);
+				expect(fs.existsSync(f.captured)).toBe(false);
+				expect(fs.readFileSync(source, "utf8")).toBe("old\n");
+				expect(fs.existsSync(destination)).toBe(false);
+			} else {
+				// Hooks fail open: the move runs with the gate skipped (and reported), as a crashed hook would be.
+				expect(result.isError).toBeFalsy();
+				expect(fs.existsSync(source)).toBe(false);
+				expect(fs.readFileSync(destination, "utf8")).toBe("new\n");
+			}
+		} finally {
+			f.cleanup();
+		}
 	}
 });
 

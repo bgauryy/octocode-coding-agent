@@ -1,6 +1,7 @@
 /** The `/mcp` slash command: its subcommands, argument completions, and the TUI manager entry. */
 
 import type { ExtensionCommandContext } from "../../coding-agent/src/core/extensions/types.ts";
+import { say } from "./notice.ts";
 import type { McpExposure } from "./config.ts";
 import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
@@ -28,13 +29,13 @@ async function pickServer(
 ): Promise<McpServer | undefined> {
 	if (name) {
 		const server = state.findServer(name);
-		if (!server) ctx.ui.notify(`No MCP server named "${name}".`, "error");
-		else if (!options.eligible(server)) ctx.ui.notify(options.none, "error");
+		if (!server) say(ctx, `No MCP server named "${name}".`, "warning");
+		else if (!options.eligible(server)) say(ctx, options.none, "error");
 		return server && options.eligible(server) ? server : undefined;
 	}
 	const candidates = state.servers.filter(options.eligible);
 	if (candidates.length === 0) {
-		ctx.ui.notify(options.none, "info");
+		say(ctx, options.none, "info");
 		return undefined;
 	}
 	const preferred = candidates.filter(options.preferred);
@@ -57,7 +58,7 @@ const oauthPick = {
 async function loginCommand(state: McpExtensionState, server: McpServer, ctx: ExtensionCommandContext): Promise<void> {
 	const { name } = server.entry;
 	if (!ctx.hasUI) {
-		ctx.ui.notify(`Signing in to MCP server "${name}" requires interactive mode.`, "error");
+		say(ctx, `Signing in to MCP server "${name}" requires interactive mode.`, "error");
 		return;
 	}
 	const { signal } = state.session;
@@ -69,7 +70,7 @@ async function loginCommand(state: McpExtensionState, server: McpServer, ctx: Ex
 	} else {
 		failure = await signIn(state, server, {
 			showAuthorizationUrl: (url) => {
-				ctx.ui.notify(`Sign in to MCP server "${name}" in your browser:\n${url.href}`, "info");
+				say(ctx, `Sign in to MCP server "${name}" in your browser:\n${url.href}`, "info");
 				state.openUrl(url.href);
 			},
 			promptForRedirectUrl: (signal) =>
@@ -83,10 +84,10 @@ async function loginCommand(state: McpExtensionState, server: McpServer, ctx: Ex
 	// The session ended meanwhile, which cancelled the sign-in and made ctx stale.
 	if (signal.aborted) return;
 	if (failure) {
-		ctx.ui.notify(failure, failure === "Sign-in cancelled." ? "info" : "error");
+		say(ctx, failure, failure === "Sign-in cancelled." ? "info" : "error");
 		return;
 	}
-	ctx.ui.notify(`Signed in to MCP server "${name}" (${server.connection?.tools.length ?? 0} tools).`, "info");
+	say(ctx, `Signed in to MCP server "${name}" (${server.connection?.tools.length ?? 0} tools).`, "info");
 }
 
 function getArgumentCompletions(state: McpExtensionState, prefix: string) {
@@ -142,23 +143,25 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 /** `/mcp tools [server] [tool]`. */
 function showToolsCommand(state: McpExtensionState, name: string, extra: string[], ctx: ExtensionCommandContext): void {
 	if (extra.length > 1) {
-		ctx.ui.notify(MCP_USAGE, "warning");
+		say(ctx, MCP_USAGE, "warning");
 		return;
 	}
 	const snapshot = getMcpSessionStatus(state.api.events).filter((server) => !name || server.name === name);
 	if (name && snapshot.length === 0) {
-		ctx.ui.notify(`No MCP server named "${name}".`, "error");
+		say(ctx, `No MCP server named "${name}".`, "warning");
 		return;
 	}
 	const toolName = extra[0];
 	if (toolName) {
 		const tool = toolCatalog(state, name).find((candidate) => candidate.name === toolName);
-		ctx.ui.notify(
+		say(
+			ctx,
 			tool ? formatMcpTool(tool, true) : `No available tool named "${toolName}" on MCP server "${name}".`,
 			tool ? "info" : "warning",
 		);
 	} else
-		ctx.ui.notify(
+		say(
+			ctx,
 			snapshot
 				.map((server) =>
 					[
@@ -192,12 +195,12 @@ async function configureCommand(
 		(action === "exposure" && !isMcpExposure(mode)) ||
 		(action === "assign" && !ASSIGNMENTS.some((value) => value === mode))
 	) {
-		ctx.ui.notify(MCP_USAGE, "warning");
+		say(ctx, MCP_USAGE, "warning");
 		return;
 	}
 	const server = state.findServer(name);
 	if (!server) {
-		ctx.ui.notify(`No MCP server named "${name}".`, "error");
+		say(ctx, `No MCP server named "${name}".`, "warning");
 		return;
 	}
 	const failure =
@@ -206,17 +209,20 @@ async function configureCommand(
 			: action === "assign"
 				? saveConfig(state, server, { defaultActive: mode === "all" }, inProject)
 				: await state.track(setEnabled(state, server, action === "enable", inProject));
-	if (failure) ctx.ui.notify(failure, "error");
+	// Where the change was written: the override file, the definition file, or nowhere for a session-only server.
+	const saved = server.entry.scope === "extension" ? "this session" : (server.entry.override ?? server.entry.source);
+	if (failure) say(ctx, failure, "error");
 	else if (action === "assign") {
-		ctx.ui.notify(
+		say(
+			ctx,
 			mode === "all"
-				? `${name}: in every agent's default tool selection from the next session.`
-				: `${name}: only agents whose tools name mcp__${name}__ get it, from the next session.`,
+				? `${name}: in every agent's default tool selection from the next session. Saved to ${saved}.`
+				: `${name}: only agents whose tools name mcp__${name}__ get it, from the next session. Saved to ${saved}.`,
 			"info",
 		);
 	} else {
-		const saved = server.entry.scope === "extension" ? "this session" : (server.entry.override ?? server.entry.source);
-		ctx.ui.notify(
+		say(
+			ctx,
 			`${name}: ${isEnabled(server) ? "enabled" : "disabled"} · ${describeState(server, false)} · ${exposureOf(server.entry)}. Saved to ${saved}.`,
 			"info",
 		);
@@ -229,12 +235,13 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Ext
 		const targets = state.servers
 			.filter((server) => server.connection)
 			.map((server) => ({ name: server.entry.name, run: () => reconnect(server) }));
-		if (targets.length === 0) return ctx.ui.notify("No enabled MCP server to reconnect.", "info");
+		if (targets.length === 0) return say(ctx, "No enabled MCP server to reconnect.", "info");
 		const failures = (
 			await Promise.all(targets.map(async (target) => ({ name: target.name, failure: await target.run() })))
 		).filter((result) => result.failure);
 		if (state.session.signal.aborted) return;
-		ctx.ui.notify(
+		say(
+			ctx,
 			failures.length
 				? `Reconnected ${targets.length - failures.length} of ${targets.length} MCP servers. ${failures.map((result) => `${result.name}: ${result.failure}`).join("; ")}`
 				: `Reconnected ${targets.length} MCP server${targets.length === 1 ? "" : "s"}.`,
@@ -250,9 +257,9 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Ext
 	});
 	if (!server) return;
 	const failure = await reconnect(server);
-	if (failure) ctx.ui.notify(failure, "error");
+	if (failure) say(ctx, failure, "error");
 	else {
-		ctx.ui.notify(`Reconnected to MCP server "${server.entry.name}" (${describeState(server)}).`, "info");
+		say(ctx, `Reconnected to MCP server "${server.entry.name}" (${describeState(server)}).`, "info");
 	}
 }
 
@@ -267,16 +274,16 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				if (ctx.mode === "tui") await showMcpManager(ctx, (ui) => manage(state, ui, ctx));
 				else {
 					await state.pending;
-					ctx.ui.notify(formatStatus(state), "info");
+					say(ctx, formatStatus(state), "info");
 				}
 				return;
 			}
 			if (action === "list") {
-				ctx.ui.notify(name ? MCP_USAGE : formatStatus(state), name ? "warning" : "info");
+				say(ctx, name ? MCP_USAGE : formatStatus(state), name ? "warning" : "info");
 				return;
 			}
 			if (action === "config") {
-				ctx.ui.notify(name ? MCP_USAGE : formatMcpConfigLocations(state.configLocations()), name ? "warning" : "info");
+				say(ctx, name ? MCP_USAGE : formatMcpConfigLocations(state.configLocations()), name ? "warning" : "info");
 				return;
 			}
 			if (action === "tools") {
@@ -288,7 +295,7 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				return;
 			}
 			if (extra.length > 0) {
-				ctx.ui.notify(MCP_USAGE, "warning");
+				say(ctx, MCP_USAGE, "warning");
 				return;
 			}
 			await state.pending;
@@ -302,7 +309,8 @@ export function registerMcpCommand(state: McpExtensionState): void {
 					const server = await pickServer(state, name, ctx, oauthPick);
 					if (!server) return;
 					const removed = await signOut(state, server);
-					ctx.ui.notify(
+					say(
+						ctx,
 						removed
 							? `Signed out of MCP server "${server.entry.name}".`
 							: `No stored credentials for MCP server "${server.entry.name}".`,
@@ -313,7 +321,7 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				case "reconnect":
 					return reconnectCommand(state, name, ctx);
 				default:
-					ctx.ui.notify(MCP_USAGE, "warning");
+					say(ctx, MCP_USAGE, "warning");
 			}
 		},
 	});

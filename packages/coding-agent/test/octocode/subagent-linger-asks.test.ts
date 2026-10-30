@@ -107,7 +107,7 @@ describe("a background subagent that ended with an unanswered replyRequired ask 
 			);
 			await t.control.settle();
 			expect(t.reports()).toHaveLength(2);
-			expect(t.reports()[1]).toContain("Follow-up from your parent:\nlinger use the second");
+			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your parent agent [\s\S]*linger use the second/);
 			// The follow-up asked nothing: with the setting at 0 nothing keeps the run reachable.
 			expect(t.reports()[1]).not.toContain("resumable");
 		} finally {

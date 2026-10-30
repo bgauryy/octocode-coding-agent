@@ -471,6 +471,7 @@ describe("the pointer in the summary and after a default summary", () => {
 		const ctx = {
 			model,
 			modelRegistry: {
+				getCachePolicy: () => ({ options: {} }),
 				streamSimple: () => ({
 					result: async () => ({
 						role: "assistant",

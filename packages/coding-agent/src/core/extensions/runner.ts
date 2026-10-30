@@ -48,7 +48,7 @@ import {
 	resolveShortcuts,
 } from "./runner/registrations.ts";
 import type * as Runner from "./runner/types.ts";
-import { UIPromptTracker } from "./runner/ui-prompt.ts";
+import { type DialogAnswer, type DialogAnswerResult, UIPromptTracker } from "./runner/ui-prompt.ts";
 import type * as Types from "./types.ts";
 
 export { emitProjectTrustEvent } from "./runner/event-handlers.ts";
@@ -225,6 +225,11 @@ export class ExtensionRunner {
 	reportUnhandledMcpServers(): void {
 		if (this.hasHandlers("mcp_servers_change")) return;
 		reportMcpServersOnce(this.runtime, this.reportedMcpServers, (error) => this.emitError(error));
+	}
+
+	/** Answer the open dialog `id` for a client other than this mode's UI (`UIPromptTracker.answer`). */
+	answerDialog(id: string, answer: DialogAnswer): DialogAnswerResult {
+		return this.uiPrompts.answer(id, answer);
 	}
 
 	hasHandlers(eventType: string): boolean {

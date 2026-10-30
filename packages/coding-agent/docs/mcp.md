@@ -34,7 +34,7 @@ Use `octocode mcp add -l ...` to save to a trusted workspace instead of your use
 }
 ```
 
-A `command` starts a local stdio server; a `url` uses streamable HTTP by default. Add `"type": "sse"` only for a legacy SSE server. Keep credentials in environment variables, and trust a workspace before its file loads. `/mcp config` shows the actual paths and trust state. Older Pi and other supported config files still load in precedence order; see [configuration details](mcp-reference.md#configuration-and-precedence) and [CONFIGURATIONS.md](../../../CONFIGURATIONS.md).
+A `command` starts a local stdio server; a `url` uses streamable HTTP by default. Legacy `"type": "sse"` definitions are rejected; use a Streamable HTTP endpoint. Keep credentials in environment variables, and trust a workspace before its file loads. `/mcp config` shows the actual paths and trust state. Older Pi and other supported config files still load in precedence order; see [configuration details](mcp-reference.md#configuration-and-precedence) and [CONFIGURATIONS.md](../../../CONFIGURATIONS.md).
 
 To disable an inherited server only in one workspace, use a control-only override (no command or URL):
 
@@ -105,7 +105,7 @@ Every server is in each agent's default tool selection. Set `"defaultActive": fa
 
 ## Host and protocol support
 
-The host supports stdio, streamable HTTP, and legacy SSE, with stateful MCP through `2025-11-25`. It does not support stateless `2026-07-28`, elicitation, resources, prompts, sampling, tasks, or MCP Apps. [Protocol detail](../../mcp/README.md#supported-protocol-surface).
+The host supports stdio and Streamable HTTP, with stateful MCP through `2025-11-25`. It does not support stateless `2026-07-28`, elicitation, resources, prompts, sampling, tasks, or MCP Apps. [Protocol detail](../../mcp/README.md#supported-protocol-surface).
 
 ## Let the model manage servers
 

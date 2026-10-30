@@ -2,6 +2,14 @@ import type { CacheRetention, ProviderEnv, StreamOptions } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
 
 export const INSTRUCTION_CACHE_RETENTION_ENV = "OCTOCODE_INSTRUCTION_CACHE_RETENTION";
+export const PROMPT_CACHE_KEY_ENV = "OCTOCODE_PROMPT_CACHE_KEY";
+
+/** Cache affinity is independent of transport identity, so sibling sessions can reuse their common prefix. */
+export function resolvePromptCacheKey(
+	options?: Pick<StreamOptions, "promptCacheKey" | "sessionId" | "env">,
+): string | undefined {
+	return options?.promptCacheKey ?? getProviderEnvValue(PROMPT_CACHE_KEY_ENV, options?.env) ?? options?.sessionId;
+}
 export type CachePreferences = Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention">;
 export interface CachePreferenceLayer {
 	source: string;

@@ -9,8 +9,18 @@ import {
 	resolveBranchWithGitSync,
 	shouldPollGitHead,
 } from "./footer-data-provider/git.ts";
+import { sameStatus, type StatusEntry, type StatusTone, statusEntry } from "./footer-data-provider/status.ts";
 
 export { findGitPaths } from "./footer-data-provider/git.ts";
+export type { StatusEntry, StatusTone } from "./footer-data-provider/status.ts";
+
+/** One immutable snapshot of the footer data, a new object after each change; plain data any renderer can draw. */
+export interface FooterData {
+	readonly branch: string | null;
+	readonly statuses: ReadonlyMap<string, StatusEntry>;
+	readonly githubStatus: StatusEntry | undefined;
+	readonly providerCount: number;
+}
 
 /**
  * Provides git branch and extension statuses - data not otherwise accessible to extensions.
@@ -20,8 +30,10 @@ export class FooterDataProvider {
 	private cwd: string;
 	private static readonly WATCH_DEBOUNCE_MS = 500;
 
-	private githubStatusText: string | undefined;
-	private extensionStatuses = new Map<string, string>();
+	private githubStatus: StatusEntry | undefined;
+	private extensionStatuses = new Map<string, StatusEntry>();
+	/** The statuses' texts, as extensions read them; derived once per change. */
+	private statusTexts: ReadonlyMap<string, string> | undefined;
 	private cachedBranch: string | null | undefined = undefined;
 	private gitPaths: GitPaths | null | undefined = undefined;
 	private headWatcher: FSWatcher | null = null;
@@ -41,6 +53,8 @@ export class FooterDataProvider {
 	/** Git state the cached branch was last resolved from; null forces the next refresh to resolve again. */
 	private lastRefreshSignature: string | null = null;
 	private disposed = false;
+	private snapshot: FooterData | undefined;
+	private readonly listeners = new Set<() => void>();
 
 	constructor(cwd: string) {
 		this.cwd = cwd;
@@ -57,16 +71,43 @@ export class FooterDataProvider {
 	}
 
 	getGithubStatusText(): string | undefined {
-		return this.githubStatusText;
+		return this.githubStatus?.text;
 	}
 
-	setGithubStatusText(text: string): void {
-		if (!this.disposed) this.githubStatusText = text;
+	setGithubStatusText(text: string, tone?: StatusTone): void {
+		const next = statusEntry(text, tone);
+		if (this.disposed || sameStatus(this.githubStatus, next)) return;
+		this.githubStatus = next;
+		this.changed();
 	}
 
-	/** Extension status texts set via ctx.ui.setStatus() */
+	/** The current snapshot (the `StateSource` read side). */
+	getState(): FooterData {
+		this.snapshot ??= {
+			branch: this.getGitBranch(),
+			statuses: this.extensionStatuses,
+			githubStatus: this.githubStatus,
+			providerCount: this.availableProviderCount,
+		};
+		return this.snapshot;
+	}
+
+	/** Called after each change of any footer data; unchanged writes notify nobody. Returns the unsubscribe function. */
+	subscribe(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+
+	private changed(): void {
+		this.snapshot = undefined;
+		this.statusTexts = undefined;
+		for (const listener of this.listeners) listener();
+	}
+
+	/** Extension status texts set via ctx.ui.setStatus(); `getState().statuses` adds each one's tone. */
 	getExtensionStatuses(): ReadonlyMap<string, string> {
-		return this.extensionStatuses;
+		this.statusTexts ??= new Map([...this.extensionStatuses].map(([key, entry]) => [key, entry.text]));
+		return this.statusTexts;
 	}
 
 	/** Subscribe to git branch changes. Returns unsubscribe function. */
@@ -76,17 +117,22 @@ export class FooterDataProvider {
 	}
 
 	/** Internal: set extension status */
-	setExtensionStatus(key: string, text: string | undefined): void {
-		if (text === undefined) {
-			this.extensionStatuses.delete(key);
-		} else {
-			this.extensionStatuses.set(key, text);
-		}
+	setExtensionStatus(key: string, text: string | undefined, tone?: StatusTone): void {
+		const entry = text === undefined ? undefined : statusEntry(text, tone);
+		if (sameStatus(this.extensionStatuses.get(key), entry)) return;
+		// Copy on write: a snapshot taken earlier keeps the statuses it had.
+		const next = new Map(this.extensionStatuses);
+		if (entry === undefined) next.delete(key);
+		else next.set(key, entry);
+		this.extensionStatuses = next;
+		this.changed();
 	}
 
 	/** Internal: clear extension statuses */
 	clearExtensionStatuses(): void {
-		this.extensionStatuses.clear();
+		if (this.extensionStatuses.size === 0) return;
+		this.extensionStatuses = new Map();
+		this.changed();
 	}
 
 	/** Number of unique providers with available models (for footer display) */
@@ -96,7 +142,9 @@ export class FooterDataProvider {
 
 	/** Internal: update available provider count */
 	setAvailableProviderCount(count: number): void {
+		if (this.availableProviderCount === count) return;
 		this.availableProviderCount = count;
+		this.changed();
 	}
 
 	setCwd(cwd: string): void {
@@ -126,10 +174,12 @@ export class FooterDataProvider {
 		}
 		this.clearGitWatchers();
 		this.branchChangeCallbacks.clear();
+		this.listeners.clear();
 	}
 
 	private notifyBranchChange(): void {
 		for (const cb of this.branchChangeCallbacks) cb();
+		this.changed();
 	}
 
 	private scheduleRefresh(): void {
@@ -335,9 +385,12 @@ export class FooterDataProvider {
 	}
 }
 
-/** Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose */
+/**
+ * Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose. The host's
+ * provider always has `getState`/`subscribe` (a state source of `FooterData`); they are optional for older test doubles.
+ */
 export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
 	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
 > &
-	Partial<Pick<FooterDataProvider, "getGithubStatusText">>;
+	Partial<Pick<FooterDataProvider, "getGithubStatusText" | "getState" | "subscribe">>;

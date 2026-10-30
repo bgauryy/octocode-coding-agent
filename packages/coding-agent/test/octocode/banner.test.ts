@@ -1,33 +1,23 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
-import {
-	BANNER_HEIGHT,
-	COMPACT_BANNER_HEIGHT,
-	type BannerPaint,
-	bannerLines,
-	FULL_WIDTH,
-	glowAt,
-} from "../../src/octocode/ui/banner.ts";
+import { BANNER_HEIGHT, type BannerPaint, bannerLines, ISSUES_URL } from "../../src/octocode/ui/banner.ts";
 
 const plain: BannerPaint = { fg: (_color, text) => text };
+const NOTICE = `BETA version ; please assign issues here ${ISSUES_URL}`;
 
 describe('banner "OCTOCODE CODE"', () => {
-	it("draws both words in the 6-row block font when the terminal is wide enough", () => {
-		const lines = bannerLines(plain, 120, { version: "19.2.0", hints: ["/octocode help", "ctrl+o expand"] });
-		expect(lines).toHaveLength(BANNER_HEIGHT);
-		expect(FULL_WIDTH).toBeLessThanOrEqual(106);
-		expect(lines[0]).toBe(
-			" ██████╗  ██████╗████████╗ ██████╗  ██████╗ ██████╗ ██████╗ ███████╗    ██████╗ ██████╗ ██████╗ ███████╗",
-		);
-		expect(lines[5]).toBe(
-			" ╚═════╝  ╚═════╝   ╚═╝    ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝    ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
-		);
-		expect(lines[6]).toBe("◆ research-driven coding agent · v19.2.0");
-		expect(lines[7]).toContain("/octocode help");
-		expect(lines[8]).toBe("");
+	it("is only the half-block art and the beta notice", () => {
+		const lines = bannerLines(plain, 120);
+		expect(lines).toEqual([
+			"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀",
+			"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄",
+			NOTICE,
+		]);
+		expect(ISSUES_URL).toBe("https://github.com/bgauryy/octocodecode/issues");
+		expect(lines.join("\n")).not.toMatch(/research-driven|\/status|interrupt/);
 	});
 
-	it("falls back to theme tokens without a gradient: OCTOCODE accent, CODE mdLink, shadow dim", () => {
+	it("falls back to theme tokens without a gradient: OCTOCODE accent, CODE mdLink", () => {
 		const painted: Array<[string, string]> = [];
 		bannerLines(
 			{
@@ -38,59 +28,34 @@ describe('banner "OCTOCODE CODE"', () => {
 			},
 			120,
 		);
-		expect(painted.slice(0, 4).map(([color]) => color)).toEqual(["accent", "dim", "accent", "dim"]);
-		expect(painted.some(([color, text]) => color === "mdLink" && text.includes("██"))).toBe(true);
-		expect(painted.filter(([color]) => color === "dim").every(([, text]) => !text.includes("█"))).toBe(true);
+		expect(painted.some(([color, text]) => color === "accent" && text.includes("█"))).toBe(true);
+		expect(painted.some(([color, text]) => color === "mdLink" && text.includes("█"))).toBe(true);
+		expect(painted).toContainEqual(["mdLink", ISSUES_URL]);
 	});
 
-	it("paints strokes and shadows along a left-to-right gradient, and lights the shine band only near its position", () => {
-		const calls: Array<{ t: number; shade: string; glow: number; text: string }> = [];
-		const paint: BannerPaint = {
-			fg: (_c, text) => text,
-			ramp: (t, shade, glow, text) => {
-				calls.push({ t, shade, glow, text });
-				return text;
+	it("paints the art along a left-to-right gradient", () => {
+		const positions: number[] = [];
+		bannerLines(
+			{
+				fg: (_c, text) => text,
+				ramp: (t, text) => {
+					positions.push(t);
+					return text;
+				},
 			},
-		};
-		bannerLines(paint, 120);
-		const strokes = calls.filter((call) => call.shade === "stroke");
-		expect(strokes[0].t).toBe(0);
-		expect(Math.max(...strokes.map((call) => call.t))).toBeGreaterThan(0.95);
-		expect(calls.filter((call) => call.shade === "shadow").every((call) => !call.text.includes("█"))).toBe(true);
-		expect(calls.every((call) => call.glow === 0)).toBe(true);
-		calls.length = 0;
-		bannerLines(paint, 120, {}, 0.5);
-		const lit = calls.filter((call) => call.glow > 0);
-		expect(lit.length).toBeGreaterThan(0);
-		expect(lit.every((call) => Math.abs(call.t - 0.5) < 0.15)).toBe(true);
-		// The band enters and leaves off the art: nothing is lit at either end of the sweep.
-		expect(glowAt(0, 0)).toBe(0);
-		expect(glowAt(1, 1)).toBe(0);
-		expect(glowAt(0.5, undefined)).toBe(0);
+			120,
+		);
+		expect(positions[0]).toBe(0);
+		expect(Math.max(...positions)).toBe(1);
 	});
 
-	it("falls back to a compact 2-row font, then plain text, at one shorter height and within the width", () => {
-		const compact = bannerLines(plain, 80);
-		expect(compact).toHaveLength(COMPACT_BANNER_HEIGHT);
-		expect(COMPACT_BANNER_HEIGHT).toBeLessThan(BANNER_HEIGHT);
-		const art = compact.filter((line) => line.trim() !== "").slice(0, 2);
-		expect(art[0]).toBe("█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀");
-		expect(art[1]).toBe("█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄");
-		const tiny = bannerLines(plain, 30, { version: "1.0.0" });
-		expect(tiny).toHaveLength(COMPACT_BANNER_HEIGHT);
-		expect(tiny.join("\n")).toContain("OCTOCODE CODE");
-		for (const width of [4, 20, 49, 50, 80, FULL_WIDTH - 1, FULL_WIDTH, 200]) {
-			for (const shine of [undefined, 0.3]) {
-				const lines = bannerLines(
-					plain,
-					width,
-					{ version: "1.0.0", hints: ["/octocode help", "ctrl+o expand"] },
-					shine,
-				);
-				// The height changes only where the art does, so a resize inside a size class never redraws the scrollback.
-				expect(lines, `width ${width}`).toHaveLength(width >= FULL_WIDTH ? BANNER_HEIGHT : COMPACT_BANNER_HEIGHT);
-				expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-			}
+	it("keeps one height at every width and fits each line, with the plain name below the art's width", () => {
+		expect(bannerLines(plain, 30)[0]).toBe("OCTOCODE CODE");
+		for (const width of [1, 4, 20, 46, 47, 80, 200]) {
+			const lines = bannerLines(plain, width);
+			// A resize never changes the rows above the transcript, so it never forces a scrollback redraw by itself.
+			expect(lines, `width ${width}`).toHaveLength(BANNER_HEIGHT);
+			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 		}
 	});
 });

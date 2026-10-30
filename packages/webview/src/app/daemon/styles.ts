@@ -6,6 +6,8 @@ export const DAEMON_CSS = `/* Web daemon shell */
 .daemon-list > .daemon-row:last-child { border-bottom: 0; }
 .daemon-row-main { display: grid; gap: 2px; min-width: 0; }
 .daemon-path { overflow-wrap: anywhere; font-size: 12px; }
+.daemon-row.needs-you { background: color-mix(in srgb, var(--warning, #d97706) 8%, transparent); }
+.daemon-needs-you { font-weight: 600; }
 .daemon-actions, .daemon-status { display: inline-flex; align-items: center; gap: 8px; }
 .daemon-note { justify-self: end; }
 @media (forced-colors: active) { .daemon-row { border-bottom-color: CanvasText; } }

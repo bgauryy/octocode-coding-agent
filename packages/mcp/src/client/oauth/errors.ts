@@ -1,14 +1,4 @@
-export class OAuthError extends Error {
-	readonly code: string;
-	readonly errorUri: string | undefined;
-
-	constructor(code: string, message: string, errorUri?: string) {
-		super(message || code);
-		this.name = "OAuthError";
-		this.code = code;
-		this.errorUri = errorUri;
-	}
-}
+export { OAuthError } from "@modelcontextprotocol/client";
 
 export class OAuthIssuerMismatchError extends Error {
 	/** `undefined` when no authorization server metadata was discovered. */

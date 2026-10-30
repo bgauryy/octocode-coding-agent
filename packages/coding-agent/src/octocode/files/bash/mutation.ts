@@ -33,5 +33,5 @@ export async function recordShellMutation(
 	sessionId: string,
 	powershell = false,
 ): Promise<void> {
-	if (await changesWorkspace(command, cwd, powershell)) recordMutation(sessionId, "bash");
+	if (await changesWorkspace(command, cwd, powershell)) recordMutation(sessionId);
 }

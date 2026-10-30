@@ -19,12 +19,14 @@ import {
 /**
  * Git worktree isolation for implementer subagents, adapted from the native host's worker worktrees: each isolated
  * subagent works in a detached worktree under `<Octocode home>/worktrees/<repo-hash>/<agent-id>`; on finish its
- * changes are committed to `refs/octocode/pi/<agent-id>` and the worktree is removed; when saving fails the worktree is
+ * changes are committed to `refs/octocode/<agent-id>` and the worktree is removed; when saving fails the worktree is
  * kept so nothing is lost. Merging stays manual (`/agents merge`).
  * Ignored files (`node_modules`, builds) are not in the worktree.
  */
 
-const REF_PREFIX = "refs/octocode/pi/";
+const REF_PREFIX = "refs/octocode/";
+/** Where an earlier version saved results; they are still listed and merged, never written. */
+const LEGACY_REF_PREFIX = "refs/octocode/pi/";
 /** Commits and merges made here never run the repository's hooks. */
 const NO_HOOKS = ["-c", "core.hooksPath=/dev/null"];
 const ID_PATTERN = /^[A-Za-z0-9._-]{1,80}$/;
@@ -248,13 +250,19 @@ export function isolationReport(agentId: string, result: WorktreeResult | { erro
 	return `\n\nIsolated changes are on ${result.ref}, not in this tree:\n${result.stat}\nMerge with \`/agents merge ${result.ref.slice(REF_PREFIX.length)}\` or \`git merge --no-ff ${result.ref}\`.`;
 }
 
+/** The agent's saved ref under the current path, else the legacy one, else undefined. */
+async function savedRef(repo: string, agentId: string): Promise<string | undefined> {
+	const [ref, legacy] = [REF_PREFIX, LEGACY_REF_PREFIX].map((prefix) => `${prefix}${agentId}`);
+	const exists = (candidate: string) => quiet(git(repo, ["rev-parse", "--verify", "--quiet", candidate]));
+	return (await exists(ref)) ? ref : (await exists(legacy)) ? legacy : undefined;
+}
+
 /** Merges an isolated subagent's ref into the main tree with hooks disabled; on conflict aborts and lists the paths. */
 export async function mergeAgent(cwd: string, agentId: string): Promise<{ ok: boolean; text: string }> {
 	if (!ID_PATTERN.test(agentId)) return { ok: false, text: `Invalid agent id "${agentId}"` };
 	const repo = repoRoot(cwd);
-	const ref = `${REF_PREFIX}${agentId}`;
-	if (!(await quiet(git(repo, ["rev-parse", "--verify", "--quiet", ref]))))
-		return { ok: false, text: `No isolated changes for ${agentId} (${ref} does not exist).` };
+	const ref = await savedRef(repo, agentId);
+	if (!ref) return { ok: false, text: `No isolated changes for ${agentId} (${REF_PREFIX}${agentId} does not exist).` };
 	if (await quiet(git(repo, ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"]))) {
 		return {
 			ok: false,
@@ -287,15 +295,11 @@ export async function mergeAgent(cwd: string, agentId: string): Promise<{ ok: bo
 	};
 }
 
-/** Refs of isolated results not merged yet. */
+/** Agent ids of isolated results not merged yet, under the current ref path or the legacy one. */
 export async function pendingRefs(cwd: string): Promise<string[]> {
-	const out = await quiet(git(cwd, ["for-each-ref", "--format=%(refname)", REF_PREFIX]));
-	return out
-		? out
-				.split("\n")
-				.filter(Boolean)
-				.map((ref) => ref.slice(REF_PREFIX.length))
-		: [];
+	const out = (await quiet(git(cwd, ["for-each-ref", "--format=%(refname)", REF_PREFIX]))) ?? "";
+	const id = (ref: string) => ref.slice((ref.startsWith(LEGACY_REF_PREFIX) ? LEGACY_REF_PREFIX : REF_PREFIX).length);
+	return [...new Set(out.split("\n").filter(Boolean).map(id))];
 }
 
 interface PruneReport {

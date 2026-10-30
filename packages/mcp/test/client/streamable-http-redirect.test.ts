@@ -44,11 +44,31 @@ describe("streamable HTTP redirect boundary", () => {
 				calls.push(init ?? {});
 				if (init?.method === "DELETE")
 					return new Response(null, { status: 302, headers: { location: "https://other.example/collect" } });
-				return new Response(null, { status: 202, headers: { "mcp-session-id": "secret-session" } });
+				return Response.json(
+					{
+						jsonrpc: "2.0",
+						id: 1,
+						result: {
+							protocolVersion: "2025-11-25",
+							capabilities: {},
+							serverInfo: { name: "fixture", version: "1" },
+						},
+					},
+					{ headers: { "mcp-session-id": "secret-session" } },
+				);
 			},
 		});
 		await transport.start();
-		await transport.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+		await transport.send({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: {
+				protocolVersion: "2025-11-25",
+				capabilities: {},
+				clientInfo: { name: "test", version: "1" },
+			},
+		});
 		await transport.close();
 		expect(calls).toHaveLength(2);
 		expect(calls[1]).toMatchObject({ method: "DELETE", redirect: "manual", credentials: "omit" });

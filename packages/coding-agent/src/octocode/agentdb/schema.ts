@@ -25,7 +25,10 @@ export const AGENT_APPLICATION_ID = 0x4f635067;
  * notes (`kind`: the agent's text or the change log the store writes on every update), memories and the team tables
  * (`agents.cache_read`: prompt tokens read from cache; `agents.started`: the start time of the process `pid` names, so
  * heartbeats and liveness tell it from a later process that got the same pid; `deliveries.proof`: the signature that
- * lets a subagent verify a message the user typed, see `team/proof.ts`).
+ * lets a subagent verify a message the user typed, see `team/proof.ts`; `deliveries.forwarded_by`: the agent that
+ * forwarded the stored message to this recipient; `deliveries.relay_to`: a child's message to an agent it cannot reach,
+ * held for its parent process to resume that agent with it; `deliveries.note`: the forwarder's note, or why a relay
+ * failed; see `team/store/refs.ts`).
  */
 const SCHEMA = `
 CREATE TABLE sessions (
@@ -173,7 +176,8 @@ CREATE TABLE messages (
 CREATE INDEX messages_age ON messages(created_at);
 CREATE TABLE deliveries (
   message INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE, recipient TEXT NOT NULL,
-  delivered_at INTEGER, completed_at INTEGER, dead_at INTEGER, wake INTEGER, notified_at INTEGER, proof TEXT, PRIMARY KEY(message, recipient));
+  delivered_at INTEGER, completed_at INTEGER, dead_at INTEGER, wake INTEGER, notified_at INTEGER, proof TEXT,
+  forwarded_by TEXT, relay_to TEXT, note TEXT, PRIMARY KEY(message, recipient));
 CREATE INDEX deliveries_inbox ON deliveries(recipient, delivered_at);
 CREATE INDEX deliveries_unnotified ON deliveries(message) WHERE dead_at IS NOT NULL AND notified_at IS NULL;
 CREATE TABLE leases (

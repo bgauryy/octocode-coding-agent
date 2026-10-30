@@ -1,13 +1,9 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import { azureProvider } from "../src/providers/azure.ts";
 import type { AssistantMessage, Context } from "../src/types.ts";
-
-interface FakeOpenAIClientOptions {
-	apiKey: string;
-	baseURL: string;
-}
 
 interface CapturedCompletionsPayload {
 	model?: string;
@@ -20,60 +16,31 @@ interface CapturedCompletionsPayload {
 
 const mockState = vi.hoisted(() => ({
 	lastParams: undefined as CapturedCompletionsPayload | undefined,
-	lastClientOptions: undefined as FakeOpenAIClientOptions | undefined,
+	lastUrl: undefined as string | undefined,
 	dispatchedTo: undefined as "chat.completions" | "responses" | undefined,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (params: CapturedCompletionsPayload) => {
-					mockState.lastParams = params;
-					mockState.dispatchedTo = "chat.completions";
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								choices: [{ delta: {}, finish_reason: "stop" }],
-								usage: {
-									prompt_tokens: 1,
-									completion_tokens: 1,
-									prompt_tokens_details: { cached_tokens: 0 },
-								},
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
-				},
-			},
-		};
-
-		constructor(options: FakeOpenAIClientOptions) {
-			mockState.lastClientOptions = options;
-		}
-	}
-
-	class FakeAzureOpenAI {
+mockCompletionsFetch((params: CapturedCompletionsPayload, _request, url) => {
+	mockState.lastParams = params;
+	mockState.lastUrl = url;
+	mockState.dispatchedTo = "chat.completions";
+	return completionsResponse([
+		{
+			choices: [{ delta: {}, finish_reason: "stop" }],
+			usage: { prompt_tokens: 1, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 0 } },
+		},
+	]);
+});
+vi.mock("openai", () => ({
+	AzureOpenAI: class {
 		responses = {
 			create: () => {
 				mockState.dispatchedTo = "responses";
 				throw new Error("responses reached");
 			},
 		};
-	}
-
-	return { default: FakeOpenAI, AzureOpenAI: FakeAzureOpenAI };
-});
+	},
+}));
 
 const azure = azureProvider();
 
@@ -83,7 +50,7 @@ const originalDeploymentMap = process.env.AZURE_OPENAI_DEPLOYMENT_NAME_MAP;
 
 beforeEach(() => {
 	mockState.lastParams = undefined;
-	mockState.lastClientOptions = undefined;
+	mockState.lastUrl = undefined;
 	mockState.dispatchedTo = undefined;
 	delete process.env.OCTOCODE_CACHE_RETENTION;
 	delete process.env.AZURE_OPENAI_DEPLOYMENT_NAME_MAP;
@@ -218,7 +185,7 @@ describe("azure Chat Completions endpoint resolution", () => {
 	it("normalizes the Azure endpoint the completions client is built with", async () => {
 		await azure.stream(deepSeekModel(), context, { apiKey: "test-key" }).result();
 
-		expect(mockState.lastClientOptions?.baseURL).toBe("https://my-resource.services.ai.azure.com/openai/v1");
+		expect(mockState.lastUrl).toBe("https://my-resource.services.ai.azure.com/openai/v1/chat/completions");
 	});
 
 	it("surfaces an unconfigured endpoint as an error event rather than throwing out of stream()", async () => {

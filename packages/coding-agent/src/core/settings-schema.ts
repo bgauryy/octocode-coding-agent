@@ -266,6 +266,30 @@ export const SettingsSchema = Type.Object(
 				description: 'HTTP header or body idle timeout in milliseconds; 0 or "disabled" disables it.',
 			}),
 		),
+		remote: Type.Optional(
+			Type.Object(
+				{
+					transport: Type.Optional(
+						Type.Union([Type.Literal("ssh"), Type.Literal("relay")], {
+							description:
+								'How /remote reaches this machine: "ssh" prints a port forward to run; "relay" dials remote.relayUrl.',
+							default: SETTINGS_DEFAULTS.remote.transport,
+						}),
+					),
+					relayUrl: Type.Optional(
+						Type.String({ description: "The ws:// or wss:// relay the daemon dials for relay links." }),
+					),
+					autoStart: Type.Optional(
+						Type.Union([Type.Literal("off"), Type.Literal("view"), Type.Literal("control")], {
+							description:
+								'Publish a link when a session starts. A project settings file can set "off" but never turn it on.',
+							default: SETTINGS_DEFAULTS.remote.autoStart,
+						}),
+					),
+				},
+				{ additionalProperties: false },
+			),
+		),
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
 				description:
@@ -332,6 +356,7 @@ export type PackageSource = Static<typeof PackageSourceSchema>;
 export type FullscreenExitOutput = NonNullable<SettingsInput["fullscreenExitOutput"]>;
 export type TuiMode = NonNullable<SettingsInput["tuiMode"]>;
 export type CacheWarmingMode = NonNullable<SettingsInput["cacheWarming"]>;
+export type RemoteSettings = NonNullable<SettingsInput["remote"]>;
 export interface Settings extends Omit<SettingsInput, "queueMode" | "retry" | "skills" | "websockets"> {
 	retry?: RetrySettings;
 	skills?: string[];

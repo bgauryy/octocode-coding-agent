@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
@@ -70,18 +71,31 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	return ` ✗ ${refused ? "credential refused" : "check failed"} (${source}, ${when}): ${status.detail ?? "no detail"}${refused ? " — fix with /login" : ""}`;
 }
 
-/** One model per provider: this session's model for its own provider, otherwise the cheapest priced one. */
-export function checkTargets(available: readonly Model<Api>[], parent: ModelRef | undefined): Model<Api>[] {
-	const byProvider = new Map<string, Model<Api>>();
+/**
+ * Models a check tries per provider before it gives up: one model may be refused for itself (an account opt-in, a
+ * retired id). Five, because the cheapest models of a gateway catalog are often opt-in or retired ones (OpenCode Go,
+ * 2026-10-29: two contributor models and a deprecated one before the first that answered).
+ */
+const CHECK_CANDIDATES = 5;
+
+/**
+ * Each provider's models in the order a check tries them: this session's model for its own provider first, then the
+ * cheapest priced ones; at most `limit` per provider.
+ */
+export function checkCandidates(
+	available: readonly Model<Api>[],
+	parent: ModelRef | undefined,
+	limit = CHECK_CANDIDATES,
+): Model<Api>[][] {
 	const price = (model: Model<Api>) =>
 		model.cost && model.cost.input + model.cost.output > 0 ? 3 * model.cost.input + model.cost.output : Infinity;
-	for (const model of available) {
-		const chosen = byProvider.get(model.provider);
-		const isParent = parent?.provider === model.provider && parent.id === model.id;
-		const chosenIsParent = chosen && parent?.provider === chosen.provider && parent.id === chosen.id;
-		if (!chosen || isParent || (!chosenIsParent && price(model) < price(chosen))) byProvider.set(model.provider, model);
-	}
-	return [...byProvider.values()];
+	const rank = (model: Model<Api>) =>
+		parent?.provider === model.provider && parent.id === model.id ? -1 : price(model);
+	const byProvider = new Map<string, Model<Api>[]>();
+	for (const model of available) byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
+	// Unpriced models rank Infinity; compare rather than subtract so two of them do not yield NaN.
+	const order = (a: Model<Api>, b: Model<Api>) => (rank(a) < rank(b) ? -1 : rank(a) > rank(b) ? 1 : 0);
+	return [...byProvider.values()].map((models) => [...models].sort(order).slice(0, limit));
 }
 
 type CheckRegistry = Pick<ModelRegistry, "streamSimple"> &
@@ -113,18 +127,46 @@ async function listAccepted(registry: CheckRegistry, providerId: string, signal:
 	return listed?.ok === true;
 }
 
+/** One tiny request; the provider's error text, or undefined when it answered. */
+async function tinyRequest(
+	registry: CheckRegistry,
+	model: Model<Api>,
+	signal: AbortSignal,
+): Promise<string | undefined> {
+	try {
+		const reply = await registry
+			.streamSimple(
+				model,
+				{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
+				// Session-routed providers refuse a request without a session: OpenCode requires `x-opencode-session`.
+				{ maxTokens: 64, signal, sessionId: `credential-check-${randomUUID()}` },
+			)
+			.result();
+		if (reply.stopReason === "error" || reply.stopReason === "aborted")
+			return reply.errorMessage ?? `the request ended: ${reply.stopReason}`;
+		return undefined;
+	} catch (caught) {
+		return errorMessage(caught);
+	}
+}
+
 /**
- * Check each model's provider and record whether it answered: by its model list where the provider has one, otherwise
- * with one tiny request. Runs in parallel with a 20 s bound each; results of a check the caller cancelled are not recorded.
+ * Check each provider and record whether it answered: by its model list where the provider has one, otherwise with one
+ * tiny request. An entry may list several models of one provider: a refusal that is not about the credential tries the
+ * next, since one model can be closed to an account that others serve. Providers run in parallel with a 20 s bound each;
+ * results of a check the caller cancelled are not recorded.
  */
 export async function checkProviders(
 	registry: CheckRegistry,
-	models: readonly Model<Api>[],
+	entries: readonly (Model<Api> | readonly Model<Api>[])[],
 	health: ProviderHealth,
 	signal?: AbortSignal,
 ): Promise<void> {
 	await Promise.all(
-		models.map(async (model) => {
+		entries.map(async (entry) => {
+			const candidates: readonly Model<Api>[] = Array.isArray(entry) ? entry : [entry as Model<Api>];
+			const model = candidates[0];
+			if (!model) return;
 			const timeout = AbortSignal.timeout(CHECK_TIMEOUT_MS);
 			const bounded = signal ? AbortSignal.any([signal, timeout]) : timeout;
 			const accepted = await listAccepted(registry, model.provider, bounded).catch(() => false);
@@ -137,18 +179,10 @@ export async function checkProviders(
 				return;
 			}
 			let error: string | undefined;
-			try {
-				const reply = await registry
-					.streamSimple(
-						model,
-						{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
-						{ maxTokens: 64, signal: bounded },
-					)
-					.result();
-				if (reply.stopReason === "error" || reply.stopReason === "aborted")
-					error = reply.errorMessage ?? `the request ended: ${reply.stopReason}`;
-			} catch (caught) {
-				error = errorMessage(caught);
+			for (const candidate of candidates) {
+				const refused = await tinyRequest(registry, candidate, bounded);
+				error = refused && candidates.length > 1 ? `${candidate.id}: ${refused}` : refused;
+				if (!refused || CREDENTIAL_REFUSED.test(refused) || bounded.aborted) break;
 			}
 			if (signal?.aborted) return;
 			if (error && timeout.aborted) error = `no answer within ${CHECK_TIMEOUT_MS / 1000} s (${error})`;

@@ -1,8 +1,9 @@
-import OpenAI from "openai";
-import type { Model, ProviderHeaders } from "../../types.ts";
+import type { Model, ProviderEnv, ProviderHeaders } from "../../types.ts";
+import { providerHeadersToRecord } from "../../utils/headers.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
+import { openAIEnvironmentHeaders } from "../openai-environment-headers.ts";
 import { getCompat } from "./compat.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
@@ -14,6 +15,7 @@ export function createClient(
 	fetch?: typeof globalThis.fetch,
 	sessionId?: string,
 	compat: ResolvedOpenAICompletionsCompat = getCompat(model),
+	env?: ProviderEnv,
 ) {
 	const headers: ProviderHeaders = { "User-Agent": getUserAgent(), ...model.headers };
 	if (model.provider === "github-copilot") {
@@ -41,16 +43,16 @@ export function createClient(
 		headers["x-grok-conv-id"] = sessionId;
 	}
 
-	// Merge options headers last so they can override defaults
-	if (optionsHeaders) {
-		Object.assign(headers, optionsHeaders);
-	}
-
-	return new OpenAI({
-		apiKey,
-		baseURL: model.baseUrl,
-		dangerouslyAllowBrowser: true,
+	const url = new URL(model.baseUrl);
+	url.pathname = `${url.pathname.replace(/\/$/, "")}/chat/completions`;
+	return {
+		url: url.href,
 		fetch,
-		defaultHeaders: headers,
-	});
+		headers: providerHeadersToRecord(
+			{ Authorization: `Bearer ${apiKey}` },
+			openAIEnvironmentHeaders(env),
+			headers,
+			optionsHeaders,
+		),
+	};
 }

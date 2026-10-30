@@ -63,7 +63,7 @@ describe("lean profiles", () => {
 		expect(subagentProcessEnv(undefined, {}, { id: "c", skillsInTask: true }).OCTOCODE_SKILLS_IN_TASK).toBe("1");
 	});
 
-	it("get a short subagent prompt with the report contract instead of the full policy", async () => {
+	it("get a short subagent prompt instead of the full policy; the report contract rides in the task", async () => {
 		vi.stubEnv("OCTOCODE_LEAN", "1");
 		const fake = fakeHost();
 		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
@@ -80,7 +80,8 @@ describe("lean profiles", () => {
 		await fake.emit("before_agent_start", event, {});
 		const text = Object.values(allSections(event)).join("\n");
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("octocode_lean");
-		expect(text).toMatch(/Start it with one word: done/);
+		expect(text).toContain("your task names your goal, parent, scratch folder and how to report");
+		expect(text).not.toContain("Start it with one word");
 		expect(text).not.toContain("# Work and verification");
 		expect(text).not.toContain("Octocode MCP");
 		expect(event.systemPromptOptions.skills).toEqual([]);

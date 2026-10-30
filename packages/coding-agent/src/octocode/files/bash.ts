@@ -1,3 +1,4 @@
+import { StringEnum } from "@octocodeai/octocode-contacts/schema";
 import { Type } from "typebox";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
@@ -33,7 +34,6 @@ import {
 } from "./bash/verification.ts";
 import { recordShellMutation } from "./bash/mutation.ts";
 import { plural } from "../shared/render/text.ts";
-import { statusColor } from "../shared/render/status.ts";
 import { timedTool } from "../shared/render/rows.ts";
 import { isRecord } from "../../utils/guards.ts";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
@@ -78,9 +78,8 @@ export function registerBashTool(
 			if (current)
 				current.ui.setStatus(
 					STATUS.bash,
-					jobs.jobs.size > 0
-						? statusColor(current, "accent", `${jobs.jobs.size} bash job${jobs.jobs.size === 1 ? "" : "s"}`)
-						: undefined,
+					jobs.jobs.size > 0 ? `${jobs.jobs.size} bash job${jobs.jobs.size === 1 ? "" : "s"}` : undefined,
+					"accent",
 				);
 		} catch {
 			// The session was replaced.
@@ -219,7 +218,7 @@ export function registerBashTool(
 			],
 			parameters: Type.Object({
 				type: Type.Optional(
-					Type.Union([Type.Literal("bash"), Type.Literal("powershell")], {
+					StringEnum(["bash", "powershell"] as const, {
 						description: "Shell syntax: bash (default, configured shell) or powershell (Windows)",
 					}),
 				),
@@ -231,14 +230,13 @@ export function registerBashTool(
 				),
 				background: Type.Optional(
 					Type.Boolean({
-						description:
-							"Start the command and return at once; its exit arrives later as a message. For servers, watchers and long builds",
+						description: "Return at once; the exit arrives later as a message. For servers and long builds",
 					}),
 				),
 				verify: Type.Optional(
 					Type.Boolean({
 						description:
-							"Record a verification receipt tied to the current edits; a zero exit proves only that the command succeeded.",
+							"Record a verification receipt tied to the current edits; a later edit makes it stale, and a zero exit proves only that the command succeeded.",
 					}),
 				),
 			}),

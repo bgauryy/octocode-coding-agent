@@ -11,8 +11,10 @@ import {
 	type UsageTotals,
 } from "../../../core/usage-totals.ts";
 import { formatCost, formatTokens } from "../../../octocode/shared/format.ts";
+import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
+import { billedBySubscription } from "../../../core/subscription.ts";
 
 /**
  * Sanitize text for display in a single-line status.
@@ -172,9 +174,8 @@ export class FooterComponent implements Component {
 			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
 		}
 
-		// Kimi Coding is subscription-backed despite using API-key authentication.
 		const usingSubscription = state.model
-			? state.model.provider === "kimi-coding" || this.session.modelRuntime.isUsingSubscription(state.model.provider)
+			? billedBySubscription(this.session.modelRuntime, state.model.provider)
 			: false;
 		if (usageTotals.cost || usingSubscription) {
 			const money = formatCost({ cost: usageTotals.cost, unpriced: false }) || "≈$0.00";
@@ -195,7 +196,8 @@ export class FooterComponent implements Component {
 		} else {
 			contextPercentStr = contextPercentDisplay;
 		}
-		statsParts.push(contextPercentStr);
+		// Context fill is the signal users act on: first, so narrow terminals cut the token counters before it.
+		statsParts.unshift(contextPercentStr);
 		if (areExperimentalFeaturesEnabled()) {
 			statsParts.push(`${theme.fg("dim", "·")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
@@ -207,15 +209,20 @@ export class FooterComponent implements Component {
 			theme.fg("dim", statsLine),
 			...coordinatorFooterLines(this.session, width).map((line) => theme.fg("dim", line)),
 		];
-		const githubStatus = this.footerData.getGithubStatusText?.();
-		if (githubStatus) lines.push(truncateToWidth(githubStatus, width, ELLIPSIS));
+		// Statuses are data (text and tone); the live theme paints them. A provider without state gives plain text.
+		const data = this.footerData.getState?.();
+		const githubText = this.footerData.getGithubStatusText?.();
+		const githubStatus = data ? data.githubStatus : githubText ? { text: githubText } : undefined;
+		if (githubStatus) lines.push(truncateToWidth(paintStatus(githubStatus, theme), width, ELLIPSIS));
 
 		// Add extension statuses on a single line, sorted by key alphabetically
-		const extensionStatuses = this.footerData.getExtensionStatuses();
+		const extensionStatuses =
+			data?.statuses ??
+			new Map([...this.footerData.getExtensionStatuses()].map(([key, text]) => [key, { text }] as const));
 		if (extensionStatuses.size > 0) {
 			const sortedStatuses = Array.from(extensionStatuses.entries())
 				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([, text]) => sanitizeStatusText(text));
+				.map(([, status]) => paintStatus({ ...status, text: sanitizeStatusText(status.text) }, theme));
 			const statusLine = sortedStatuses.join(" ");
 			// Truncate to terminal width with dim ellipsis for consistency with footer style
 			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", ELLIPSIS)));

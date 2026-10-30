@@ -73,8 +73,9 @@ describe("lossless compaction references", () => {
 		const ctx = {
 			model: { id: "test", provider: "p", api: "x", maxTokens: 1000, contextWindow: 100_000 },
 			hasUI: false,
-			sessionManager: { getSessionFile: () => undefined },
+			sessionManager: { getSessionFile: () => undefined, getSessionId: () => "s" },
 			modelRegistry: {
+				getCachePolicy: () => ({ options: {} }),
 				streamSimple: () => ({
 					result: async () => ({
 						role: "assistant",
@@ -124,6 +125,7 @@ describe("lossless compaction references", () => {
 			hasUI: false,
 			sessionManager: { getSessionFile: () => sessionFile, getSessionId: () => "s" },
 			modelRegistry: {
+				getCachePolicy: () => ({ options: {} }),
 				streamSimple: () => ({
 					result: async () => ({
 						role: "assistant",

@@ -134,6 +134,8 @@ export function addMessageToChat(
 					requestRender: () => host.ui.requestRender(),
 				},
 			);
+			// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
+			assistantComponent.setMouseHint(host.ui.mode === "fullscreen");
 			assistantComponent.updateMessage(port.normalizeMessage(message), false);
 			host.chatContainer.addChild(assistantComponent);
 			break;

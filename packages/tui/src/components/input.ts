@@ -6,7 +6,7 @@ import { UndoStack } from "../undo-stack.ts";
 import { isWhitespaceChar } from "../utils/chars.ts";
 import { getGraphemeSegmenter } from "../utils/width.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
-import { BracketedPasteBuffer } from "./input/paste.ts";
+import { BracketedPasteBuffer, singleLinePaste } from "./input/paste.ts";
 import { cursorAtColumn, renderInputLine } from "./input/render.ts";
 
 const segmenter = getGraphemeSegmenter();
@@ -370,7 +370,7 @@ export class Input implements Component, Focusable {
 		this.pushUndo();
 
 		// Clean the pasted text - remove newlines and carriage returns
-		const cleanText = pastedText.replace(/\r\n/g, "").replace(/\r/g, "").replace(/\n/g, "").replace(/\t/g, "    ");
+		const cleanText = singleLinePaste(pastedText);
 
 		// Insert at cursor position
 		this.value = this.value.slice(0, this.cursor) + cleanText + this.value.slice(this.cursor);

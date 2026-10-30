@@ -29,12 +29,25 @@ describe("CLI value completion", () => {
 	});
 });
 
-it("keeps completion flags aligned with the argument parser", async () => {
-	const { readFileSync } = await import("node:fs");
+it("parses, documents and completes every flag from one table", async () => {
 	const { CLI_FLAGS } = await import("../src/cli/completion.ts");
-	const source = readFileSync(new URL("../src/cli/args.ts", import.meta.url), "utf8");
-	const flags = [...source.matchAll(/arg === "(-[^" ]+)"/g)].map((match) => match[1]);
-	expect(new Set(CLI_FLAGS)).toEqual(new Set(flags));
+	const { FLAG_SPECS } = await import("../src/cli/args/flags.ts");
+	const { parseArgs } = await import("../src/cli/args.ts");
+	const { flagHelpRows } = await import("../src/cli/args/flags.ts");
+	const help = flagHelpRows().join("\n");
+	for (const spec of FLAG_SPECS) {
+		expect(CLI_FLAGS).toContain(spec.name);
+		if (spec.short) expect(CLI_FLAGS).toContain(spec.short);
+		expect(help).toContain(spec.name);
+		// Every flag is recognized: none falls through to the unknown-flag path.
+		const value = spec.values?.[0] ?? "x";
+		const parsed = parseArgs(spec.kind === "boolean" || spec.kind === "optional" ? [spec.name] : [spec.name, value]);
+		expect(parsed.unknownFlags.size, spec.name).toBe(0);
+		expect(
+			parsed.diagnostics.filter((d) => d.message.startsWith("Unknown option")),
+			spec.name,
+		).toEqual([]);
+	}
 });
 
 it("completes catalog providers and models without resolving credentials", () => {

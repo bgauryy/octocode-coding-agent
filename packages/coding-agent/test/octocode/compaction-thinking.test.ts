@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import { bindsThinkingToPrefix, stripStaleThinking } from "../../src/octocode/compaction/thinking.ts";
+import {
+	bindsThinkingToPrefix,
+	stripStaleThinking,
+	stripThinkingBeforeClearing,
+} from "../../src/octocode/compaction/thinking.ts";
+import { CLEARED_RESULTS_TYPE, sessionClearedAt } from "../../src/octocode/files/reads.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -79,6 +84,35 @@ describe("stale thinking after a compaction", () => {
 		expect(bindsThinkingToPrefix({ compat: { supportsMidConvoEffort: true } })).toBe(true);
 		expect(bindsThinkingToPrefix({ compat: {} })).toBe(false);
 		expect(bindsThinkingToPrefix(undefined)).toBe(false);
+	});
+});
+
+describe("stale thinking after a cleared result", () => {
+	// c1's result was cleared at T + 100: the turn after it (T + 20) was produced before, the turn at T + 200 after.
+	const clearedAt = new Map([["c1", T + 100]]);
+
+	it("is the thinking of turns after the cleared result and older than the clearing; the rest is unchanged", () => {
+		const messages = [...kept, fresh, result("c3", T + 201)];
+		const out = stripThinkingBeforeClearing(messages, clearedAt);
+		expect(thinkingOf(out)).toEqual(["old", "new"]);
+		expect(out[2]).toEqual(assistant(T + 20, { type: "text", text: "next" }, call("c2")));
+		for (const index of [0, 1, 3, 4, 5]) expect(out[index]).toBe(messages[index]);
+		expect(stripThinkingBeforeClearing(messages, new Map())).toBe(messages);
+	});
+
+	it("reads when each result was cleared from the branch's clearing entries", () => {
+		const branch = [
+			{ type: "message", id: "m1", message: kept[0] },
+			{
+				type: "custom",
+				id: "x1",
+				customType: CLEARED_RESULTS_TYPE,
+				timestamp: new Date(T + 100).toISOString(),
+				data: { results: [{ id: "c1", saved: "~/saved/c1.txt" }] },
+			},
+		];
+		const session = { getBranch: () => branch };
+		expect([...sessionClearedAt(session)]).toEqual([["c1", T + 100]]);
 	});
 });
 

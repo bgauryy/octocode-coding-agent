@@ -22,7 +22,7 @@ afterEach(() => {
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 const actor = { id: "parent", kind: "agent" as const };
-const add = () => store.add({ title: "Build it", goal: "Checks pass", reason: "Users need it", createdBy: "user" });
+const add = () => store.add({ title: "Build it", goal: "Checks pass", why: "Users need it", createdBy: "user" });
 function setup() {
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: dir });
@@ -44,7 +44,7 @@ describe("workspace data and commands", () => {
 		store.update(
 			item.ref,
 			{
-				body: "Context",
+				plan: "Context",
 				type: "epic",
 				links: [{ relation: "evidence", target: { resource: "external", url: "https://example.com" } }],
 			},
@@ -56,7 +56,7 @@ describe("workspace data and commands", () => {
 		const events = store.audit(item.ref);
 		expect(events.some((e) => e.entity === "backlog_links" && e.action === "insert")).toBe(true);
 		expect(events.some((e) => e.entity === "backlog_comments" && e.actor.kind === "human")).toBe(true);
-		expect(events.some((e) => e.entity === "backlog" && (e.after as { body?: string })?.body === "Context")).toBe(true);
+		expect(events.some((e) => e.entity === "backlog" && (e.after as { plan?: string })?.plan === "Context")).toBe(true);
 		expect(() => db.db.prepare("DELETE FROM backlog_audits").run()).toThrow(/immutable/);
 		store.remove(item.ref, undefined, actor);
 		expect(

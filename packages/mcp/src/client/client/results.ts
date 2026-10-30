@@ -1,6 +1,6 @@
 import type { CallToolResult, ContentBlock } from "../protocol/content.ts";
 import { isObject, JSON_RPC_ERROR_CODES, McpError } from "../protocol/jsonrpc.ts";
-import type { InitializeResult, Tool } from "../protocol/types.ts";
+import type { Tool } from "../protocol/types.ts";
 import type { McpRequestOptions } from "./types.ts";
 
 const MAX_LIST_PAGES = 1_000;
@@ -17,21 +17,6 @@ export type ListRequest = (
 	params: { cursor: string } | undefined,
 	options: McpRequestOptions,
 ) => Promise<unknown>;
-
-export function validateInitializeResult(value: unknown): InitializeResult {
-	if (
-		!isObject(value) ||
-		typeof value.protocolVersion !== "string" ||
-		!isObject(value.capabilities) ||
-		!isObject(value.serverInfo) ||
-		typeof value.serverInfo.name !== "string" ||
-		typeof value.serverInfo.version !== "string" ||
-		(value.instructions !== undefined && typeof value.instructions !== "string")
-	) {
-		throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid MCP initialize result");
-	}
-	return value as unknown as InitializeResult;
-}
 
 function invalid(message: string): McpError {
 	return new McpError(JSON_RPC_ERROR_CODES.invalidRequest, message);

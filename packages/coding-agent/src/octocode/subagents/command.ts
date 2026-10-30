@@ -7,7 +7,8 @@ import { type Ask, UserQuestions } from "../team/asks.ts";
 import type { Member } from "@octocodeai/octocode-contacts/team";
 import { describeMembers } from "../team/routing.ts";
 import type { Team } from "../team/session.ts";
-import { describeChild, sessionChildren } from "./children.ts";
+import { sessionChildren } from "../shared/session-children.ts";
+import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
 import { mergeAgent, pendingRefs } from "./worktree.ts";
 
@@ -20,7 +21,7 @@ export interface BackgroundRun {
 export type Background = Map<string, BackgroundRun>;
 
 const AGENTS_USAGE =
-	"Usage: /agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history]";
+	"Usage: /agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history | external ...]";
 const AGENTS_SUBCOMMANDS: Array<[string, string]> = [
 	["tell", "tell <agent|all> <message> — message an agent, or every agent of this session"],
 	["interrupt", "interrupt <id> <message> — stop a subagent's current step and continue it with the message"],

@@ -1,19 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import type * as NativeConfig from "../../src/config.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { transcriptNote } from "../../src/octocode/compaction/summary.ts";
 import { archiveFolder, archiveSearch, LIBRARY_FILE } from "../../src/octocode/shared/archive.ts";
-import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
-import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
-import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
+import { rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { setup } from "./subagent-record-fixture.ts";
 import { buildAgentArgs, childSession, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
@@ -45,29 +42,6 @@ afterAll(() => {
 	process.argv[1] = savedArgv!;
 	process.env = savedEnv;
 });
-
-function setup(cwd = tmp("octocode-agent-cwd-")) {
-	const f = fakeHost();
-	const team = new Team(f.api);
-	const control = registerAgentTool(f.api, () => new Map(), team, fakePermission());
-	const commands = new Subcommands();
-	commands.add("agents", control.command);
-	const ctx = fakeCtx({ cwd, hasUI: true });
-	Object.assign(ctx, {
-		model: { provider: "faux", id: "model" },
-		modelRegistry: {
-			getAvailable: () => [],
-			find: () => undefined,
-			getCachePolicy: (_model: unknown, settings: readonly CachePreferenceLayer[] = []) =>
-				mergeCachePreferences(settings),
-		},
-	});
-	team.start(ctx);
-	const agent = f.tools.get("agent");
-	const run = (params: Record<string, unknown>, onUpdate?: (update: unknown) => void) =>
-		agent.execute("call-1", { goal: "check things", ...params }, undefined, onUpdate, ctx);
-	return { ...f, team, ctx, agent, run, control };
-}
 
 describe("a child's saved session", () => {
 	it("lives in its scratch folder under its own name, so it goes away with that folder", () => {
@@ -147,8 +121,8 @@ describe("what the parent keeps of a child's run", () => {
 		});
 		expect(path.dirname(result.details.session.file)).toBe(result.details.session.dir);
 		expect(fs.existsSync(result.details.session.file)).toBe(true);
-		// A run that saved nothing has only its id and the folder its transcript would have been written to.
-		const bare = await s.run({ task: "report" });
+		// A prompt handled without starting a conversation has only its id and prospective transcript folder.
+		const bare = await s.run({ task: "handled" });
 		expect(bare.details.session).toEqual({
 			id: bare.details.id,
 			dir: expect.stringMatching(new RegExp(`agents[\\\\/]${bare.details.id}[\\\\/]session$`)),
@@ -233,6 +207,27 @@ describe("what the parent keeps of a child's run", () => {
 		}
 	});
 
+	it("groups sibling cache keys, retains distinct sessions and monitors conversation replies separately from compaction", async () => {
+		const first = await s.run({ task: "cache turns" });
+		const second = await s.run({ task: "cache turns" });
+		const key = (result: typeof first) => String(result.content[0].text).match(/CACHE (\S+) SESSION/)?.[1];
+		expect(key(first)).toMatch(/^octocode-child-[a-f0-9]{48}$/);
+		expect(key(second)).toBe(key(first));
+		expect(first.details.session.id).not.toBe(second.details.session.id);
+		expect(first.details.cache).toEqual({
+			requests: 3,
+			promptTokens: 11150,
+			cacheRead: 6000,
+			cacheWrite: 4500,
+			latest: { promptTokens: 2500, cacheRead: 2000, cacheWrite: 0 },
+		});
+		// Compaction adds 100 prompt tokens to spend, independently of the conversation cache rate.
+		expect(first.details.input).toBe(11250);
+		await s.run({ task: "cache turns", background: true });
+		await vi.waitFor(() => expect(s.sent.length).toBe(1));
+		expect(s.sent[0].message.details).toMatchObject({ cache: first.details.cache });
+	});
+
 	it("counts a child's compactions into its row, its cost and its report, and records a failed and a cancelled one", async () => {
 		const updates: Array<{ content: Array<{ text?: string }>; details: { compacting?: boolean } }> = [];
 		const result = await s.run({ task: "compacts" }, (update) => updates.push(update as never));
@@ -249,6 +244,14 @@ describe("what the parent keeps of a child's run", () => {
 			updates.some((update) => update.details.compacting && update.content[0]?.text === "compacting its context"),
 		).toBe(true);
 		expect(result.details.compacting).toBeUndefined();
+		expect(s.ctx.ui.notes.map((note) => note.message)).toEqual([
+			expect.stringContaining("compaction started"),
+			expect.stringContaining("compaction finished"),
+			expect.stringContaining("compaction started"),
+			expect.stringContaining("compaction failed"),
+			expect.stringContaining("compaction started"),
+			expect.stringContaining("compaction cancelled"),
+		]);
 		// The summary's own model usage is in the run's: the reply (100 in, 20 out, 0.01) plus the compaction (50, 10, 0.005), once.
 		expect(result.details).toMatchObject({ input: 150, output: 30 });
 		expect(result.details.cost).toBeCloseTo(0.015);
@@ -282,6 +285,8 @@ describe("what the parent keeps of a child's run", () => {
 	it("puts a background run's compaction counts in the parent's footer and its failure text inside the fence", async () => {
 		await s.run({ task: "compacts", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+		expect(s.ctx.ui.notes).toHaveLength(6);
+		expect(s.ctx.ui.notes[1].message).toContain("150k → 32k");
 		const content = String(s.sent[0].message.content);
 		const [fenced, footer] = content.split(/untrusted-[0-9a-f]{16}>>>/);
 		expect(footer).toContain("Compactions: 1 done, 1 aborted, 1 failed; latest 150k → 32k tokens.");
@@ -301,7 +306,7 @@ describe("what the parent keeps of a child's run", () => {
 		expect(result.isError).toBe(true);
 		const text = result.content[0].text as string;
 		expect(text).toMatch(
-			/failed:\n<<<untrusted-[0-9a-f]{16} [^\n]*\nSubagent stopped: Automatic compaction stopped: the context refilled to the limit within 2 turns/,
+			/failed · cite as report:\S+:\n<<<untrusted-[0-9a-f]{16} [^\n]*\nSubagent stopped: Automatic compaction stopped: the context refilled to the limit within 2 turns/,
 		);
 		expect(text).not.toContain("cancelled before its run settled");
 		// Every warning and error it showed is kept (the info note is not), the cancelled compaction is counted, and the transcript is named.
@@ -314,12 +319,12 @@ describe("what the parent keeps of a child's run", () => {
 		expect(result.details.notices.kept.map((notice: { level: string }) => notice.level)).toEqual(["warning", "error"]);
 	});
 
-	it("reports the same reason for a background child, with its notices inside the fence and no popup in the parent", async () => {
+	it("reports the same reason for a background child, with its notices inside the fence and a compaction lifecycle notification in the parent", async () => {
 		await s.run({ task: "thrash", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 		const content = String(s.sent[0].message.content);
 		expect(content).toMatch(
-			/failed:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: Subagent stopped: Automatic compaction stopped:[\s\S]*- warning: Compaction summary fell back[\s\S]*>>>\n/,
+			/failed · cite as report:\S+:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: Subagent stopped: Automatic compaction stopped:[\s\S]*- warning: Compaction summary fell back[\s\S]*>>>\n/,
 		);
 		expect(s.sent[0].message.details).toMatchObject({
 			status: "failed",
@@ -327,7 +332,10 @@ describe("what the parent keeps of a child's run", () => {
 			notices: { kept: [{ level: "warning" }, { level: "error" }], more: 0 },
 			session: { file: expect.stringMatching(/\.jsonl$/) },
 		});
-		expect(s.ctx.ui.notes).toEqual([]);
+		expect(s.ctx.ui.notes.map((note) => note.message)).toEqual([
+			expect.stringContaining("compaction started"),
+			expect.stringContaining("compaction cancelled"),
+		]);
 	});
 
 	it("keeps the first few notices inline and names the file that holds every one of them", async () => {

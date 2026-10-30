@@ -6,6 +6,7 @@ import chalk from "chalk";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { disposeLoadedResources } from "./loaded-resources.ts";
 
 /** Interactive-mode members used by shutdown and signal handling. */
 type LifecycleHost = Pick<
@@ -33,7 +34,7 @@ type LifecycleHost = Pick<
 	| "uncaughtCrash"
 	| "unregisterSignalHandlers"
 	| "unsubscribe"
-	| "unsubscribeMcpStatus"
+	| "loadedResourcesContainer"
 >;
 
 export function handleCtrlC(host: LifecycleHost): void {
@@ -201,8 +202,7 @@ export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsMa
 	host.themeController.disableAutoSync();
 	host.clearExtensionTerminalInputListeners();
 	host.footerDataProvider.dispose();
-	host.unsubscribeMcpStatus?.();
-	host.unsubscribeMcpStatus = undefined;
+	disposeLoadedResources(host.loadedResourcesContainer);
 	if (host.unsubscribe) {
 		host.unsubscribe();
 	}

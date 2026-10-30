@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
 import { normalizeContext } from "../src/compat.ts";
@@ -13,42 +14,22 @@ const mockState = vi.hoisted(() => ({
 	lastParams: undefined as CapturedCompletionsPayload | undefined,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (params: CapturedCompletionsPayload) => {
-					mockState.lastParams = params;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								choices: [{ delta: {}, finish_reason: "stop" }],
-								usage: {
-									prompt_tokens: 1,
-									completion_tokens: 1,
-									prompt_tokens_details: { cached_tokens: 0 },
-									completion_tokens_details: { reasoning_tokens: 0 },
-								},
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
+mockCompletionsFetch((params: CapturedCompletionsPayload) => {
+	mockState.lastParams = params;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			yield {
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1,
+					completion_tokens: 1,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 0 },
 				},
-			},
-		};
-	}
-
-	return { default: FakeOpenAI };
+			};
+		},
+	};
+	return completionsResponse(stream);
 });
 
 function createModel(overrides: Partial<Model<"openai-completions">> = {}): Model<"openai-completions"> {

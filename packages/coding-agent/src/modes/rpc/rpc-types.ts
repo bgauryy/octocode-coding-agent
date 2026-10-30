@@ -12,6 +12,7 @@ import type { PromptDisposition, QueuedInput, QueuedInputDisposition, SessionSta
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionUIPermissionRequest } from "../../core/extensions/types.ts";
+import type { StatusTone } from "../../core/footer-data-provider.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import type { Static } from "typebox";
@@ -244,6 +245,8 @@ export type RpcExtensionUIRequest =
 			method: "setStatus";
 			statusKey: string;
 			statusText: string | undefined;
+			/** How the status should read; `statusText` itself carries no colour codes. */
+			statusTone?: StatusTone;
 	  }
 	| {
 			type: "extension_ui_request";

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import { currentMutationRevision, mutationEpoch, recordPassingCheck } from "../feedback/revisions.ts";
+import { currentMutationRevision, mutationEpoch } from "../feedback/revisions.ts";
 import type { BashJob, JobExit, VerificationReceipt } from "../bash-jobs/types.ts";
 import type { BashDetails } from "../render.ts";
 import { isRecord } from "../../../utils/guards.ts";
@@ -97,8 +97,6 @@ export function finishVerification(
 	}
 	const state = job?.stopped ? "stopped" : code === 0 && !signal ? "finished" : "failed";
 	const stale = receipt.mutationEpoch !== mutationEpoch || revisionAtCompletion !== receipt.revisionAtLaunch;
-	// Read when a run settles (`files/verify-nudge.ts`): only a check that saw the current files counts.
-	if (state === "finished" && !stale) recordPassingCheck(receipt.sessionId, receipt.revisionAtLaunch);
 	return {
 		...receipt,
 		completedAt: Date.now(),

@@ -364,11 +364,14 @@ export function registerActivity(
 		activity.toolEnd(event.toolCallId, Date.now());
 		paint();
 	});
+	// A dialog over another (an input after "type my own") is one wait, not two.
 	api.on("ui_prompt_start", async (event) => {
+		if (event.nested) return;
 		activity.promptStart(promptTitle(event), Date.now());
 		paint();
 	});
-	api.on("ui_prompt_end", async () => {
+	api.on("ui_prompt_end", async (event) => {
+		if (event.nested) return;
 		activity.promptEnd();
 		paint();
 	});

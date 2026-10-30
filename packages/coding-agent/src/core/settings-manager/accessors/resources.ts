@@ -99,6 +99,17 @@ export abstract class ResourceSettingsAccessors extends EnvironmentSettingsAcces
 		return { ...this.settings.toggles };
 	}
 
+	addPlugin(scope: "global" | "project", entry: { path: string; protocol: "claude" | "codex" }): void {
+		const update = (settings: Settings) => {
+			if (!settings.plugins?.some((plugin) => plugin.path === entry.path))
+				settings.plugins = [...(settings.plugins ?? []), entry];
+		};
+		if (scope === "project") return this.updateProjectSettings("plugins", update);
+		update(this.globalSettings);
+		this.markModified("plugins");
+		this.save();
+	}
+
 	setToggle(scope: "global" | "project", id: string, on: boolean | undefined): void {
 		const update = (settings: Settings) => {
 			const toggles = { ...settings.toggles };

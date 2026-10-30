@@ -25,7 +25,7 @@ const result = (operationKey = "done") => ({
 const add = (title: string, fields = {}) =>
 	store.add({
 		title,
-		reason: "Users need this",
+		why: "Users need this",
 		goal: "Result can be checked",
 		createdBy: "user",
 		...fields,
@@ -42,12 +42,76 @@ afterEach(async () => {
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 
+describe("evidence links", () => {
+	const file = (p: string) => ({ relation: "evidence", target: { resource: "files", repositoryKey: "repo", path: p } });
+	const url = (u: string) => ({ relation: "evidence", target: { resource: "external", url: u } });
+	it("stores evidence that is a repository path or an http(s) URL as typed links, and leaves other text", () => {
+		const evidence = [
+			"./.octocode/x/report.md",
+			"https://example.com/issues/1",
+			"src/backlog/",
+			"src/a.ts:12 — shows it",
+			"README.md",
+			"and/or",
+			"../outside.md",
+			"https://user:pw@example.com/x",
+		];
+		const item = add("refs", {
+			evidence,
+			links: [{ relation: "output", target: { resource: "external", url: "https://o.example" } }],
+		});
+		expect(item.evidence).toEqual([
+			"src/a.ts:12 — shows it",
+			"README.md",
+			"and/or",
+			"../outside.md",
+			"https://user:pw@example.com/x",
+		]);
+		expect(item.links).toEqual([
+			{ relation: "output", target: { resource: "external", url: "https://o.example" } },
+			file(".octocode/x/report.md"),
+			url("https://example.com/issues/1"),
+			file("src/backlog/"),
+		]);
+		// An update's evidence adds its links to the current ones; a repeat is not duplicated.
+		const updated = store.update(item.ref, { evidence: ["docs/b.md", "src/backlog/", "yarn test → ok"] }, actor);
+		expect(updated.evidence).toEqual(["yarn test → ok"]);
+		expect(updated.links.slice(1)).toEqual([
+			file(".octocode/x/report.md"),
+			url("https://example.com/issues/1"),
+			file("src/backlog/"),
+			file("docs/b.md"),
+		]);
+	});
+	it("reads path and URL evidence stored before links as links, and keeps them when any update rewrites the row", () => {
+		const item = add("old row");
+		// A row written by an older build: references sit in the evidence text.
+		db.db
+			.prepare("UPDATE backlog SET evidence = ? WHERE id = ?")
+			.run("docs/a.md\nhttps://example.com/a\nsaw it fail", item.rowId);
+		const read = store.get(item.ref)!;
+		expect(read.evidence).toEqual(["saw it fail"]);
+		expect(read.links).toEqual([file("docs/a.md"), url("https://example.com/a")]);
+		const noted = store.update(item.ref, { state: "ongoing", note: "starting" }, actor);
+		expect(noted).toMatchObject({ evidence: ["saw it fail"], links: read.links });
+		expect(store.notes(noted, 10).map((note) => note.text)).toEqual([
+			"state backlog → ongoing · assignee none → session",
+			"starting",
+		]);
+		expect(db.db.prepare("SELECT evidence FROM backlog WHERE id = ?").get(item.rowId)).toEqual({
+			evidence: "saw it fail",
+		});
+	});
+});
+
 describe("backlog composition", () => {
 	it("captures a title, then enforces context and completion at the store", () => {
 		const item = store.add({ title: "Quick thought", createdBy: "user" });
-		expect(item).toMatchObject({ type: "task", dependsOn: [], goal: "", reason: "" });
-		expect(() => store.update(item.ref, { state: "ongoing" }, actor)).toThrow(/reason and goal/);
-		store.update(item.ref, { state: "ongoing", reason: "Need it", goal: "Works" }, actor);
+		expect(item).toMatchObject({ type: "task", dependsOn: [], goal: "", why: "" });
+		expect(() => store.update(item.ref, { state: "ongoing" }, actor)).toThrow(
+			/B1 needs goal \(the done criterion\) and why \(the reason for the work\)/,
+		);
+		store.update(item.ref, { state: "ongoing", why: "Need it", goal: "Works" }, actor);
 		expect(() => store.update(item.ref, { state: "done" }, actor)).toThrow(/completion/);
 		expect(store.get(item.ref)?.state).toBe("ongoing");
 	});
@@ -102,7 +166,8 @@ describe("backlog composition", () => {
 		expect(item.ref).toBe("B1");
 		store.update(item.ref, { title: "edited", version: item.version }, actor);
 		expect(() => store.update(item.ref, { title: "stale", version: item.version }, actor)).toThrow(/reload/);
-		expect(() => store.update(item.ref, { reason: "one", why: "two" }, actor)).toThrow(/agree/);
+		// `reason` is no longer a store field: the API maps it to why (workspace server), and the store refuses it.
+		expect(() => store.update(item.ref, { reason: "one" } as never, actor)).toThrow(/Invalid backlog entity fields/);
 		expect(() =>
 			store.update(
 				item.ref,
@@ -173,8 +238,8 @@ describe("backlog composition", () => {
 		const item = add("Assigned");
 		store.update(item.ref, { state: "ongoing" }, actor);
 		const child = { id: "child", owners: new Set([actor.id]) };
-		expect(() => store.update(item.ref, { title: "Changed" }, child)).toThrow(/only state/);
-		expect(() => store.update(item.ref, { state: "todo" }, child)).toThrow(/release/);
+		expect(() => store.update(item.ref, { title: "Changed" }, child)).toThrow(/only the state/);
+		expect(() => store.update(item.ref, { state: "todo" }, child)).toThrow(/only ongoing or done/);
 		expect(store.update(item.ref, { state: "done", completion: result() }, child).assignee).toBe(actor.id);
 	});
 
@@ -241,7 +306,7 @@ describe("live local backlog", () => {
 			op: "update",
 			id: item.ref,
 			version: item.version,
-			reason: "Need a board",
+			why: "Need a board",
 			goal: "Users can manage work",
 			state: "ongoing",
 		};
@@ -253,5 +318,23 @@ describe("live local backlog", () => {
 		expect(html).toContain('data-live="true"');
 		expect(html).not.toContain(token);
 		expect(html).not.toContain("From browser");
+	});
+	it("maps the API's former reason to why, refuses a conflicting pair, and no longer accepts body", async () => {
+		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo", repoRoot: dir });
+		const url = new URL(web.url);
+		const headers = { Authorization: `Bearer ${url.hash.slice(8)}`, "Content-Type": "application/json" };
+		const post = (body: unknown) =>
+			fetch(url.origin + "/api/backlogs", { method: "POST", headers, body: JSON.stringify(body) });
+		const added = await post({ op: "add", title: "Old client", goal: "Works", reason: "Kept as why" });
+		expect(added.status).toBe(200);
+		const { item } = (await added.json()) as { item: { ref: string; version: number; why: string } };
+		expect(item.why).toBe("Kept as why");
+		const conflict = await post({ op: "update", id: item.ref, version: item.version, reason: "a", why: "b" });
+		expect(conflict.status).toBe(400);
+		expect(await conflict.json()).toEqual({ error: "reason is the former name of why: give only why." });
+		const same = await post({ op: "update", id: item.ref, version: item.version, reason: "Same", why: "Same" });
+		expect(((await same.json()) as { item: { why: string } }).item.why).toBe("Same");
+		expect((await post({ op: "update", id: item.ref, version: item.version + 1, body: "x" })).status).toBe(400);
+		expect(store.get(item.ref)).toMatchObject({ why: "Same", body: "" });
 	});
 });

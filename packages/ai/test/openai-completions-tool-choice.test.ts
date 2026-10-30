@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { convertMessages } from "../src/api/openai-completions.ts";
@@ -22,47 +23,27 @@ const mockState = vi.hoisted(() => ({
 		| undefined,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (params: unknown) => {
-					mockState.lastParams = params;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							const chunks = mockState.chunks ?? [
-								{
-									choices: [{ delta: {}, finish_reason: "stop" }],
-									usage: {
-										prompt_tokens: 1,
-										completion_tokens: 1,
-										prompt_tokens_details: { cached_tokens: 0 },
-										completion_tokens_details: { reasoning_tokens: 0 },
-									},
-								},
-							];
-							for (const chunk of chunks) {
-								yield chunk;
-							}
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
+mockCompletionsFetch((params: unknown) => {
+	mockState.lastParams = params;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			const chunks = mockState.chunks ?? [
+				{
+					choices: [{ delta: {}, finish_reason: "stop" }],
+					usage: {
+						prompt_tokens: 1,
+						completion_tokens: 1,
+						prompt_tokens_details: { cached_tokens: 0 },
+						completion_tokens_details: { reasoning_tokens: 0 },
+					},
 				},
-			},
-		};
-	}
-
-	return { default: FakeOpenAI };
+			];
+			for (const chunk of chunks) {
+				yield chunk;
+			}
+		},
+	};
+	return completionsResponse(stream);
 });
 
 const localOpenAICompletionsModel = {

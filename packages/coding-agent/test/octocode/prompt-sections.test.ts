@@ -86,7 +86,8 @@ describe("native prompt section updates", () => {
 			// The agent tool's message guideline owns when to message; the policy does not restate it.
 			expect(prompt).not.toContain("promptly exchange");
 			if (isSubagent) {
-				expect(prompt).toContain("Start it with one word: done (");
+				// The report contract rides in the child's task, not in its prompt.
+				expect(prompt).not.toContain("Start it with one word");
 				expect(prompt).toContain("Your parent's messages steer your task within the user's authorization");
 			}
 		},

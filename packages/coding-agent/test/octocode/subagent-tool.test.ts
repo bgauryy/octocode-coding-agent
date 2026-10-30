@@ -1,10 +1,12 @@
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkills } from "../../src/core/skills.ts";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
+import { reportContract } from "../../src/octocode/instructions/report.ts";
 import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode/shared/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fencedParts } from "../../src/octocode/shared/fence.ts";
@@ -24,6 +26,7 @@ import { tmp } from "./helpers.ts";
 import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { exitReason, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
+import { openBacklog } from "../../src/octocode/backlog/context.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -281,8 +284,9 @@ describe("agent tool with a scripted child", () => {
 		expect(facts.cwd).toBe(fs.realpathSync(s.cwd));
 		// Each subagent gets a handoff folder in the workspace, which ignores itself in git.
 		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octocode", "tmp", "agents", facts.id));
-		// It saved nothing there, so the folder is removed when the run ends.
-		expect(fs.existsSync(facts.scratch)).toBe(false);
+		// Its saved conversation keeps the handoff folder available for an explicit resume.
+		expect(fs.existsSync(result.details.session.file)).toBe(true);
+		expect(path.dirname(result.details.session.file)).toBe(path.join(facts.scratch, "session"));
 		expect(fs.readFileSync(path.join(s.cwd, ".octocode", "tmp", ".gitignore"), "utf8")).toBe("*\n");
 		expect(facts.args).toEqual(
 			expect.arrayContaining([
@@ -314,15 +318,15 @@ describe("agent tool with a scripted child", () => {
 		});
 		// The child's own facts ride in its task (after the task text), not in its system prompt.
 		expect(facts.task).toBe(
-			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work for \`${s.team.id}\`. Your scratch folder, for handoff files and a long report, is \`${facts.scratch}\`.`,
+			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work for \`${s.team.id}\`. Your scratch folder, for handoff files and a long report, is \`${facts.scratch}\`.\n\n## Report\n${reportContract()}`,
 		);
 		expect(result.usage.cost.total).toBeCloseTo(0.01);
 		expect(fs.existsSync(result.details.shot)).toBe(true);
 		expect(updates.some((update) => update.details.activity.includes("→ bash ls -la"))).toBe(true);
 		const late = await s.team.send(facts.id, "one more thing");
-		// Its empty handoff folder is gone, so the receipt does not point at it.
+		// The finished receipt points to the retained folder that owns its saved conversation.
 		expect("error" in late && late.error).toContain(
-			`${facts.id} has finished and takes no more messages; its report (or failure) already reached you. To continue`,
+			`${facts.id} has finished and takes no more messages; its report (or failure) already reached you (files it handed back, and its full report when cut, are in ${facts.scratch}). To continue`,
 		);
 		expect(updates.some((update) => update.content.some((part) => part.type === "image"))).toBe(true);
 
@@ -529,7 +533,7 @@ describe("agent tool with a scripted child", () => {
 			// One line after the identity, in the task and not in the system prompt: the child's facts stay the same shape.
 			expect(line(withLibrary.task)).toEqual([earlier]);
 			expect(withLibrary.task.startsWith("report back\n\n## You\nYour name is")).toBe(true);
-			expect(withLibrary.task.endsWith(earlier)).toBe(true);
+			expect(withLibrary.task.endsWith(`${earlier}\n\n## Report\n${reportContract()}`)).toBe(true);
 			expect(withLibrary.args.join(" ")).not.toContain(library);
 			// Every child keeps archive, even when its explicit allowlist only names web.
 			profiles.set("restricted", { name: "restricted", description: "web", prompt: "Fetch pages.", tools: "web" });
@@ -582,14 +586,20 @@ describe("agent tool with a scripted child", () => {
 		const result = await s.run({ task: "long report" });
 		const text = result.content[0].text as string;
 		const file = path.join(fs.realpathSync(s.cwd), ".octocode", "tmp", "agents", result.details.id, "report.md");
+		const savedReport = fs.readFileSync(file, "utf8");
+		const sha256 = createHash("sha256").update(savedReport).digest("hex");
+		const version = path.join(path.dirname(file), `report-${sha256}.md`);
+		expect(result.details.reportArtifact).toEqual({ sha256, path: version });
+		expect(fs.readFileSync(version, "utf8")).toBe(savedReport);
 		expect(fencedParts(text)?.body).toMatch(/^summary first\n/);
 		expect(text).toContain("[Output trimmed:");
-		expect(text).toContain(`Full report: ${file} (read only the parts you need).`);
+		expect(text).toContain(`Full report: ${version} (read only the parts you need).`);
 		expect(Buffer.byteLength(text)).toBeLessThan(9 * 1024);
 		expect(fs.readFileSync(file, "utf8")).toMatch(/the end$/);
 		// A short report is not written to disk.
 		const short = await s.run({ task: "report" });
 		expect(fs.existsSync(path.join(s.cwd, ".octocode", "tmp", "agents", short.details.id, "report.md"))).toBe(false);
+		expect(short.details.reportArtifact).toEqual({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
 	});
 
 	it("names why a profile was refused at load when the unknown profile is that one", async () => {
@@ -735,15 +745,16 @@ describe("agent tool with a scripted child", () => {
 		}
 	});
 
-	it("staggers background children of one profile and model through the shared prefix gate, not foreground ones", async () => {
+	it("staggers background and foreground children of one profile and model through the shared prefix gate", async () => {
 		const stagger = vi.spyOn(childStagger, "run");
 		try {
 			await s.run({ task: "report from the background", background: true });
 			await s.run({ task: "report from the background", background: true });
 			await s.run({ task: "report back" });
 			await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
-			expect(stagger).toHaveBeenCalledTimes(2);
+			expect(stagger).toHaveBeenCalledTimes(3);
 			expect(stagger.mock.calls[0][0]).toBe(stagger.mock.calls[1][0]);
+			expect(stagger.mock.calls[2][0]).toBe(stagger.mock.calls[0][0]);
 			expect(stagger.mock.calls[0][0]).toContain("general");
 		} finally {
 			stagger.mockRestore();
@@ -758,10 +769,12 @@ describe("agent tool with a scripted child", () => {
 		const answer = s.sent[0];
 		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
 		expect(answer.message.content).toMatch(
-			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\):\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
+			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\) · cite as report:[a-z]+-[a-z]+:\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
 		);
 		// The child's words end inside the fence; the footer after it is the parent's.
-		expect(String(answer.message.content)).toMatch(/\nuntrusted-[0-9a-f]{16}>>>\n\(Last screenshot: /);
+		expect(String(answer.message.content)).toMatch(
+			/\nuntrusted-[0-9a-f]{16}>>>\nSession [^:\n]+: [^\n]+\.jsonl\n\n\(Last screenshot: /,
+		);
 		const renderer = s.renderers.get("octocode-agent-result");
 		// The report starts with no outcome word: its outcome is unknown, which is not a failure.
 		expect(answer.message.details).not.toHaveProperty("outcome");
@@ -776,7 +789,7 @@ describe("agent tool with a scripted child", () => {
 		await s.run({ task: "error in background", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
 		expect(s.sent[1].message.content).toMatch(
-			/failed:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: provider down[\s\S]*>>>\nRetry with a narrower task or do the work yourself/,
+			/failed · cite as report:\S+:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: provider down[\s\S]*>>>\nRetry with a narrower task or do the work yourself/,
 		);
 		expect(s.sent[1].message.details).toMatchObject({
 			status: "failed",
@@ -1004,7 +1017,7 @@ describe("isolated subagents and /agents merge", () => {
 		expect(result.content[0].text).toContain(`/agents merge ${id}`);
 		expect(fs.readFileSync(path.join(dir, "parent.txt"), "utf8")).toBe("dirty parent\n");
 		expect(fs.existsSync(path.join(dir, "child.txt"))).toBe(false);
-		expect(git(dir, "diff", "--name-only", "HEAD", `refs/octocode/pi/${id}`)).toBe("child.txt");
+		expect(git(dir, "diff", "--name-only", "HEAD", `refs/octocode/${id}`)).toBe("child.txt");
 	}, 30_000);
 
 	it("lands the child's edits on its ref and merges them with /agents merge", async () => {
@@ -1104,7 +1117,7 @@ describe("orphaned worktrees at session start", () => {
 	it("saves what it can under the actual ref name and warns about a worktree it had to keep", async () => {
 		const dir = repo();
 		const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-		git(dir, "update-ref", "refs/octocode/pi/orphan-7", "HEAD");
+		git(dir, "update-ref", "refs/octocode/orphan-7", "HEAD");
 		const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
 		const [saved, stuck] = [await createWorktree(dir, "orphan-7"), await createWorktree(dir, "stuck-7")];
 		for (const worktree of [saved, stuck]) {
@@ -1119,7 +1132,7 @@ describe("orphaned worktrees at session start", () => {
 			timeout: 10_000,
 		});
 		const note = s.ctx.ui.notes.find((entry) => entry.type === "warning")!.message;
-		expect(note).toContain("orphan-7 (changes on refs/octocode/pi/orphan-7-2)");
+		expect(note).toContain("orphan-7 (changes on refs/octocode/orphan-7-2)");
 		expect(note).toContain(`Kept orphaned subagent worktree stuck-7`);
 		expect(note).toContain(stuck.path);
 		expect(fs.existsSync(path.join(stuck.path, "stuck-7.txt"))).toBe(true);
@@ -1329,10 +1342,12 @@ describe("runSubagent", () => {
 		const s = setup();
 		const foreground = await s.run({ task: "changed outcome" });
 		expect(foreground.details.outcome).toBe("blocked");
-		expect(foreground.content[0].text).toMatch(/^Subagent \S+ reported blocked:/);
+		expect(foreground.details.reportArtifact).toEqual({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+		expect(foreground.content[0].text).toMatch(/^Subagent (\S+) reported blocked · cite as report:\1:/);
 		await s.run({ task: "changed outcome", background: true });
 		await vi.waitFor(() => expect(s.sent).toHaveLength(1), { timeout: 10_000 });
 		expect(s.sent[0].message.details.outcome).toBe("blocked");
+		expect(s.sent[0].message.details.reportArtifact).toEqual(foreground.details.reportArtifact);
 		expect(s.sent[0].message.content).toContain("reported blocked");
 	});
 
@@ -1608,7 +1623,7 @@ describe("a child report as the parent model reads it", () => {
 			const lines = text.split("\n");
 			const marker = /^<<<(untrusted-[0-9a-f]{16}) /m.exec(text)![1];
 			const close = lines.lastIndexOf(`${marker}>>>`);
-			expect(lines[0]).toBe(`Subagent ${result.details.id} reported done:`);
+			expect(lines[0]).toBe(`Subagent ${result.details.id} reported done · cite as report:${result.details.id}:`);
 			expect(lines.findIndex((line: string) => line.startsWith("Message #2"))).toBeGreaterThan(1);
 			expect(lines.findIndex((line: string) => line.startsWith("Message #3"))).toBeLessThan(close);
 			expect(text).toContain("<<<untrusted-0000000000000000");
@@ -1628,7 +1643,9 @@ describe("a child report as the parent model reads it", () => {
 		const lines = content.split("\n");
 		// The header is the parent's: this agent, its role and goal, its statistics. Nothing before the fence is the child's.
 		expect(lines[0]).toMatch(
-			new RegExp(`^Background subagent ${id} \\(general: review auth\\) reported done \\(.*\\):$`),
+			new RegExp(
+				`^Background subagent ${id} \\(general: review auth\\) reported done \\(.*\\) · cite as report:${id}:$`,
+			),
 		);
 		const open = lines.findIndex((line) => line.startsWith("<<<untrusted-"));
 		const marker = /^<<<(untrusted-[0-9a-f]{16}) /.exec(lines[open])![1];
@@ -1654,3 +1671,44 @@ vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
 	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));
+
+describe("a child bound to a backlog item", () => {
+	const READY = { goal: "Expected result", why: "Required work" };
+
+	it("refuses an item this session does not hold, before any child is claimed", async () => {
+		const s = setup();
+		const backlog = openBacklog(s.ctx, { isSubagent: false });
+		backlog.store.add({ ...READY, title: "work", state: "todo", createdBy: "user" });
+		await expect(s.run({ task: "report back", item: "B1" })).rejects.toThrow(
+			/B1 is todo, not held by this session: claim it \(ongoing\) first/,
+		);
+		await expect(s.run({ task: "report back", item: "B7" })).rejects.toThrow(/No backlog item B7/);
+		expect(s.control.running()).toEqual([]);
+		expect(backlog.store.noteCount(backlog.store.get("B1")!)).toBe(0);
+	});
+
+	it("hands the item to the child in its environment and identity, and notes each report on it", async () => {
+		const s = setup();
+		const backlog = openBacklog(s.ctx, { isSubagent: false });
+		backlog.store.add({ ...READY, title: "work", state: "todo", createdBy: "user" });
+		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
+		const result = await s.run({ task: "report back", item: "b1" });
+		const text = result.content[0].text as string;
+		const facts = reportOf(text);
+		expect(facts.item).toBe("B1");
+		expect(facts.task).toContain("## You\n");
+		expect(facts.task).toContain(
+			" Your backlog item is `B1`: note progress on it and close it when its goal is verified; you may update no other item.",
+		);
+		// The parent's own line, after the fence, says the report was noted.
+		expect(text).toMatch(/>>>\nNoted on B1\.\n\nSession [^:\n]+: [^\n]+\.jsonl$/);
+		const notes = () => backlog.store.notes(backlog.store.get("B1")!, -1).filter((note) => note.kind === "note");
+		expect(notes().map((note) => note.text)).toEqual([`Report from ${facts.id}: no outcome word.`]);
+
+		const started = await s.run({ task: "item report", item: "B1", background: true });
+		const id = started.details.id as string;
+		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+		expect(String(s.sent[0].message.content)).toMatch(/reported done[\s\S]*>>>\n[\s\S]*Noted on B1\./);
+		expect(notes().at(-1)!.text).toBe(`Report from ${id}: done. B1 is ongoing without a passed completion.`);
+	});
+});

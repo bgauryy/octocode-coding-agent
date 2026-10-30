@@ -53,11 +53,6 @@ export interface CacheWarmRequest {
 	model: Model<Api>;
 	context: Context;
 	options: ModelsSimpleStreamOptions;
-	/**
-	 * Tier the history is rewritten at when the entry expires: a request after an idle gap moves to the long tier
-	 * (`IdleHistoryCache`), so a miss costs a long write. Unset: the request's own tier.
-	 */
-	rewriteRetention?: "short" | "long";
 }
 
 export interface ActiveRun extends CacheWarmRequest {

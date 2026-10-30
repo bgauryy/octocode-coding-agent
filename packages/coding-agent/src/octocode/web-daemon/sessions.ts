@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AttachRecord, DaemonSession, DaemonUnavailableSession } from "@octocodeai/octocode-contacts/daemon";
-import { sharedAgentDb } from "../agentdb/db.ts";
 import { runningPid } from "../agentdb/liveness.ts";
+import { sharedAgentDb } from "../agentdb/db.ts";
+import { sessions } from "../agentdb/api.ts";
 import { sha256 } from "../../utils/atomic-file.ts";
 import { AttachClient } from "./attach-client.ts";
 import { webDaemonPaths } from "./paths.ts";
 import { readAttachRecord, recordProcessAlive, removeRecord } from "./records.ts";
+import { byAttention, SessionWatch } from "./session-state.ts";
 
 const POLL_MS = 1000;
 const RETRY_MS = 3000;
@@ -17,6 +19,8 @@ export const repoId = (key: string): string => sha256(key).slice(0, 16);
 interface Link {
 	record: AttachRecord;
 	client?: AttachClient;
+	/** Follows the session's run state while the client is connected. */
+	watch?: SessionWatch;
 	connecting: boolean;
 	retryAt: number;
 	/** Why the last attach was refused, when the session itself said so (an older protocol, for one). */
@@ -51,9 +55,7 @@ export class SessionRegistry {
 
 	private endedInDatabase(sessionId: string): boolean {
 		try {
-			const row = sharedAgentDb(this.env)
-				.db.prepare("SELECT pid, pid_started FROM sessions WHERE id = ?")
-				.get(sessionId) as { pid: number | null; pid_started: string | null } | undefined;
+			const row = sessions.pidOf(sharedAgentDb(this.env).db, sessionId);
 			return row !== undefined && runningPid(row.pid, row.pid_started) === undefined;
 		} catch {
 			return false;
@@ -86,6 +88,7 @@ export class SessionRegistry {
 			}
 			for (const [id, link] of this.links) {
 				if (seen.has(id)) continue;
+				link.watch?.close();
 				link.client?.close();
 				this.links.delete(id);
 				this.changed();
@@ -98,6 +101,7 @@ export class SessionRegistry {
 	private attach(record: AttachRecord): void {
 		let link = this.links.get(record.sessionId);
 		if (link && link.record.token !== record.token) {
+			link.watch?.close();
 			link.client?.close();
 			this.links.delete(record.sessionId);
 			link = undefined;
@@ -115,7 +119,11 @@ export class SessionRegistry {
 				if (this.stopped || this.links.get(record.sessionId) !== current) return client.close();
 				current.client = client;
 				current.problem = undefined;
+				current.watch?.close();
+				current.watch = new SessionWatch(client.application, record.sessionId, this.changed);
 				client.onClose(() => {
+					current.watch?.close();
+					current.watch = undefined;
 					current.retryAt = Date.now() + RETRY_MS;
 					this.changed();
 				});
@@ -138,19 +146,21 @@ export class SessionRegistry {
 		return link?.client?.connected ? { record: link.record, client: link.client } : undefined;
 	}
 
-	/** Sessions with a live attach connection, newest first. */
+	/** Sessions with a live attach connection: the ones that need the user first, then the busy ones, newest first. */
 	list(): DaemonSession[] {
 		return [...this.links.values()]
 			.filter((link) => link.client?.connected)
-			.map(({ record }) => ({
+			.map(({ record, watch }) => ({
 				id: record.sessionId,
 				repoId: repoId(record.repo.key),
 				repoName: record.repo.name.slice(0, 256),
 				cwd: record.cwd.slice(0, 4096),
 				startedAt: record.startedAt,
 				attached: true,
+				...(watch?.state ? { busy: watch.state.busy } : {}),
+				...(watch?.state?.needsYou ? { needsYou: watch.state.needsYou } : {}),
 			}))
-			.sort((a, b) => b.startedAt - a.startedAt);
+			.sort(byAttention);
 	}
 
 	/** Live sessions that refused the daemon with a reason worth showing ("restart this session"). */
@@ -173,7 +183,10 @@ export class SessionRegistry {
 	close(): void {
 		this.stopped = true;
 		clearInterval(this.timer);
-		for (const link of this.links.values()) link.client?.close();
+		for (const link of this.links.values()) {
+			link.watch?.close();
+			link.client?.close();
+		}
 		this.links.clear();
 	}
 }

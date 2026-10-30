@@ -1,0 +1,147 @@
+import { Type } from "typebox";
+import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import { MAX_COMPACTION_INSTRUCTIONS } from "../../core/compaction/manual-options.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
+import { isStaleSessionError, textResult } from "../shared/util.ts";
+import { contextTokens, type ThrashBreaker, toolDefinitionChars } from "./pacing.ts";
+
+/**
+ * The main agent's own compaction request (Codex's `new_context` tool sets a flag that its turn loop consumes; see
+ * .octocode/compaction-tool/decision.md). The tool only queues the request: `compact()` aborts the running session
+ * first, so it runs once the run settles, and a hidden message then resumes the task from the summary. It counts as
+ * automatic for the thrash breaker, and is refused while the context is small or right after a compaction.
+ * Subagents do not get it: a child's run settling is its report.
+ */
+export const COMPACT_TOOL = "compact";
+/** Below this share of the room before automatic compaction, a summary frees too little to pay for itself. */
+export const COMPACT_MIN_SHARE = 0.5;
+/** A request this few turns after the previous compaction is refused (an automatic one may still refill). */
+export const COMPACT_COOLDOWN_TURNS = 2;
+export const COMPACT_RESUME_TYPE = "octocode-compact-resume";
+
+export const COMPACT_RESUME_TEXT =
+	"[Compaction] The compaction you requested is done. Continue the task from the summary; read again what you need.";
+
+interface Pending {
+	focus?: string;
+	/** Compactions counted when the request was made: a later one already did the job. */
+	compactions: number;
+}
+
+export class CompactRequests {
+	readonly #thrash: ThrashBreaker;
+	#pending: Pending | undefined;
+	#inFlight = false;
+	#compactions = 0;
+	/** Set by `registerCompactTool`: subagents never have the tool. */
+	toolRegistered = false;
+
+	constructor(thrash: ThrashBreaker) {
+		this.#thrash = thrash;
+	}
+
+	/** Whether the compaction now running was requested by the agent (it counts as automatic). */
+	get inFlight(): boolean {
+		return this.#inFlight;
+	}
+
+	get pending(): boolean {
+		return this.#pending !== undefined;
+	}
+
+	reset(): void {
+		this.#pending = undefined;
+		this.#inFlight = false;
+	}
+
+	compacted(): void {
+		this.#compactions += 1;
+	}
+
+	/** The refusal for a request now, if any. */
+	refusal(
+		api: Pick<ExtensionAPI, "getActiveTools" | "getAllTools" | "getThinkingLevel" | "getSettings">,
+		ctx: Pick<ExtensionContext, "model" | "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+	): string | undefined {
+		const thrash = this.#thrash;
+		if (thrash.tripped())
+			return "Compaction refused: the context refilled right after each of the last compactions, so another summary would not make room. Reduce the large inputs, or ask the user to start a new session.";
+		const since = thrash.turnsSinceCompaction;
+		if (since !== undefined && since < COMPACT_COOLDOWN_TURNS)
+			return `Compaction refused: the context was compacted ${since === 0 ? "in this turn" : "one turn ago"}. Continue the task.`;
+		const model = ctx.model;
+		const tokens = contextTokens(ctx, toolDefinitionChars(api));
+		if (!model || model.contextWindow <= 0 || tokens === undefined)
+			return "Compaction refused: the context size is unknown.";
+		const limit = autoCompactAt(model, compactionThinking(api));
+		if (tokens < COMPACT_MIN_SHARE * limit) {
+			const percent = Math.round((tokens / Math.max(1, limit)) * 100);
+			return `Compaction refused: the context is ${percent}% of the room before automatic compaction, under ${COMPACT_MIN_SHARE * 100}%, so a summary would free little. Continue the task.`;
+		}
+		return undefined;
+	}
+
+	request(focus: string | undefined): void {
+		this.#pending = { focus, compactions: this.#compactions };
+	}
+
+	/**
+	 * After a run settles: runs the pending request, then resumes the task with a hidden message. A run the user stopped
+	 * drops it, and so does a compaction that already ran since the request.
+	 */
+	settle(api: Pick<ExtensionAPI, "sendMessage">, ctx: Pick<ExtensionContext, "compact">, aborted: boolean): void {
+		const pending = this.#pending;
+		this.#pending = undefined;
+		if (!pending || aborted || pending.compactions !== this.#compactions) return;
+		this.#inFlight = true;
+		const send = (content: string, triggerTurn: boolean) => {
+			try {
+				void api.sendMessage({ customType: COMPACT_RESUME_TYPE, content, display: false }, { triggerTurn });
+			} catch (error) {
+				if (!isStaleSessionError(error)) throw error;
+			}
+		};
+		ctx.compact({
+			customInstructions: pending.focus,
+			onComplete: () => {
+				this.#inFlight = false;
+				send(COMPACT_RESUME_TEXT, true);
+			},
+			// The session reports the failure to the user; the model learns of it on its next turn, without a new one.
+			onError: (error) => {
+				this.#inFlight = false;
+				send(`[Compaction] The compaction you requested did not run: ${errorMessage(error)}`, false);
+			},
+		});
+	}
+}
+
+/** Registers the tool for the main agent only (see above); `requests` comes from `registerCompaction`. */
+export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests, isSubagent: boolean): void {
+	if (isSubagent) return;
+	requests.toolRegistered = true;
+	api.registerTool({
+		name: COMPACT_TOOL,
+		label: "Compact",
+		description:
+			"Summarize older turns to free context, after this reply ends; the task then resumes from the summary. Use at a task " +
+			"boundary when the context is over half full, or when the user asks. End your reply after calling it.",
+		promptSnippet: "Compact the context after this reply",
+		parameters: Type.Object({
+			// No schema bound (tool schemas carry none, `schema-shape.test`): the length is applied in `execute`.
+			focus: Type.Optional(Type.String({ description: "What the summary must keep" })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (requests.pending)
+				return textResult("Compaction is already queued for the end of this reply. End your reply now.");
+			const refusal = requests.refusal(api, ctx);
+			if (refusal) throw new Error(refusal);
+			const focus = params.focus?.trim() ? params.focus.trim().slice(0, MAX_COMPACTION_INSTRUCTIONS) : undefined;
+			requests.request(focus);
+			return textResult(
+				"Compaction queued: it runs when this reply ends, and the task resumes from the summary. End your reply now with a one-line status.",
+			);
+		},
+	});
+}

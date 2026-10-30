@@ -6,7 +6,7 @@ import { existingLibrary } from "../shared/archive.ts";
 import { type Subcommand, notify } from "../shared/commands.ts";
 import { timedTool } from "../shared/render/rows.ts";
 import { errorMessage } from "../../utils/guards.ts";
-import { modelLookup, settleWithin } from "../shared/util.ts";
+import { modelLookup, settleWithin, textResult } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
 import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
 import { checkGoal } from "../team/identity.ts";
@@ -20,11 +20,11 @@ import { ReportQueue } from "./handoff.ts";
 import { LateReports } from "./late.ts";
 import { Lingering } from "./linger.ts";
 import { runSubagent } from "./process.ts";
-import { SUBAGENT_STOP_GRACE_MS } from "./process/outcome.ts";
+import { SUBAGENT_STOP_GRACE_MS, type SubagentOutcome } from "./process/outcome.ts";
 import { buildAgentArgs, type ChildSession, childSession } from "./process/session.ts";
 import { type AgentProfile, askSpawn } from "./profiles.ts";
 import { startGate } from "./rate-gate.ts";
-import { childStagger } from "./stagger.ts";
+import { staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
@@ -32,9 +32,11 @@ import { describePrune, pendingRefs, pruneWorktrees, recordWorktreePid } from ".
 import { agentToolSpec } from "./agent-tool.ts";
 import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask } from "./children.ts";
 import { Isolation } from "./isolation.ts";
+import { itemLink } from "./item-link.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { runForeground, startBackground } from "./run-execution.ts";
-import { prefixKey, taskSkillPlan, taskSkillText } from "./task-skills.ts";
+import { childCacheGroup, taskSkillPlan, taskSkillText } from "./task-skills.ts";
+import { childTaskInput, taskReferences } from "./task-text.ts";
 import { type AgentUpdate, recordRun, runDetails, tracker, waitingUpdate } from "./tracking.ts";
 
 /** What the rest of the extension may do with the subagents this session started. */
@@ -126,7 +128,7 @@ export function registerAgentTool(
 		(run, ctx, { text, message }) => {
 			const session = childSession(run.identity);
 			const details = runDetails(run, session);
-			const track = tracker(run.identity, details, modelLookup(ctx));
+			const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 			const args = buildAgentArgs(run.profile, run.route.model, session, []);
 			const host = relayHost(ctx);
 			const launch = (signal: AbortSignal) =>
@@ -242,8 +244,9 @@ export function registerAgentTool(
 					: undefined;
 				if (resumed && params.isolate)
 					throw new Error("resume continues a child in this tree; isolate does not apply.");
-				// Refusals first (unknown profile, unavailable model), then a slot, then the spawn ask: the user is never asked
-				// for a run that cannot start, and a denied spawn claims and starts nothing.
+				// Refusals first (an item this session does not hold, unknown profile, unavailable model), then a slot, then the
+				// spawn ask: the user is never asked for a run that cannot start, and a denied spawn claims and starts nothing.
+				const linked = itemLink(ctx, params.item);
 				const plan = planRun(
 					getProfiles(),
 					resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
@@ -252,6 +255,8 @@ export function registerAgentTool(
 				);
 				const skillPlan = taskSkillPlan(plan.profile, params.skills);
 				const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
+				const artifactAccess = plan.profile?.lean ? "none" : "local";
+				const referenced = await taskReferences(params.task, team, ctx, artifactAccess);
 				await startGate.wait(launchSignal); // a child just failed on a rate limit: the next start would meet it too
 				await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
 				let claimed: Run | undefined;
@@ -279,14 +284,17 @@ export function registerAgentTool(
 				const run = claimed;
 				const isolation = new Isolation(run.identity.id);
 				let finalized: Promise<string> | undefined;
-				const finish = () => {
-					finalized ??= isolation.finish().finally(run.release);
-					return finalized;
-				};
+				// With the report's outcome (the success paths), the item the child worked on gets the report noted on it.
+				const finish = (outcome?: SubagentOutcome) =>
+					(finalized ??= isolation
+						.finish()
+						.then((note) => `${note}${linked?.attach(outcome, run.identity.id) ?? ""}`)
+						.finally(run.release));
 				let handedOff = false;
 				// From the claim on, every failure goes through `finish`: the slot and the name are given back.
 				try {
 					if (resultContract) run.identity.resultContract = resultContract;
+					if (linked) run.identity.item = linked.ref;
 					// A lean child reads its skills inlined in the task; it loads none itself.
 					if (!skillPlan.inline) run.identity.skillResources = skillResources;
 					run.identity.skillsInTask = skillPlan.inTask;
@@ -310,10 +318,7 @@ export function registerAgentTool(
 					const library = existingLibrary();
 					const browserMode = run.profile?.headless;
 					const skillText = skillPlan.inTask && !resumed ? taskSkillText(skillResources, skillPlan.inline) : "";
-					const taskInput = `${params.task}${browserMode === undefined ? "" : `\n\nBrowser mode: headless=${browserMode}.`}${skillText ? `\n\n${skillText}` : ""}`;
-					const contractTask = resultContract
-						? `${taskInput}\n\nResult contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
-						: taskInput;
+					const contractTask = childTaskInput(params.task, { referenced, browserMode, skillText, resultContract });
 					const own = withIdentity(
 						resumed ? `Follow-up from your parent:\n${contractTask}` : contractTask,
 						run.identity,
@@ -322,7 +327,7 @@ export function registerAgentTool(
 					const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
 					const session = resumed?.session ?? childSession(run.identity);
 					const details = runDetails(run, session);
-					const track = tracker(run.identity, details, modelLookup(ctx));
+					const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 					// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 					const lingers = params.background === true && !params.isolate;
 					const args = buildAgentArgs(run.profile, run.route.model, session, []);
@@ -339,8 +344,8 @@ export function registerAgentTool(
 							runSubagent(task, args, cwd, run.profile, run.identity, runSignal, progress, onSpawn, undefined, host),
 						);
 					};
-					// Siblings with the same profile and model share a prompt prefix: the later ones wait (bounded) for the first one's reply, which writes the cache.
-					const prefix = prefixKey(run.identity.role, run.route.model ?? run.route.parent, skillPlan);
+					const prefix = childCacheGroup(run, skillPlan, ctx.sessionManager.getSessionId());
+					const staggered = staggeredLaunch(prefix, run.identity.cacheTtlMs, launch);
 					const stopping = () => {
 						details.stopping = true;
 						onUpdate?.({ content: [{ type: "text", text: "stopping…" }], details: { ...details } });
@@ -350,7 +355,7 @@ export function registerAgentTool(
 							runs,
 							run,
 							details,
-							(runSignal) => launch(runSignal, onUpdate),
+							staggered(onUpdate),
 							finish,
 							warning,
 							launchSignal,
@@ -361,22 +366,17 @@ export function registerAgentTool(
 						run,
 						details,
 						params.task,
-						(runSignal) => childStagger.run(prefix, runSignal, (warm) => launch(runSignal, undefined, warm)),
+						staggered(),
 						finish,
 						ctx.sessionManager.getSessionId(),
 						lingers ? lingering.window(run, ctx) : undefined,
 					);
 					handedOff = true;
 					details.status = "background";
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message.${warning}`,
-							},
-						],
+					return textResult(
+						`Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message.${warning}`,
 						details,
-					};
+					);
 				} finally {
 					// A failure before the run started still removes the worktree.
 					if (!handedOff) await finish();
@@ -386,7 +386,7 @@ export function registerAgentTool(
 			renderResult: renderAgentResult,
 		}),
 	);
-	team.setResumer((id, text, from, signal) => lingering.resume(id, text, from, signal));
+	team.setResumer((id, text, from, signal, request) => lingering.resume(id, text, from, signal, request));
 	return {
 		// A lingering run has nothing running: stopping it ends its window.
 		stop: (id, by) => (lingering.forget(id) ? undefined : stopBackground(background, id, by)),

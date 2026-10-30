@@ -23,6 +23,7 @@ type GithubCommandHost = Pick<
 	| "editorContainer"
 	| "programStatus"
 	| "showError"
+	| "showExtensionConfirm"
 	| "showStatus"
 	| "showWarning"
 	| "ui"
@@ -47,6 +48,11 @@ export async function handleGithubCommand(
 	}
 	try {
 		if (action === "logout") {
+			// As /logout does: removing a stored sign-in asks first.
+			if (!(await host.showExtensionConfirm("Sign out of GitHub", "Remove Octocode's stored GitHub sign-in?"))) {
+				host.showStatus("Still signed in to GitHub.");
+				return;
+			}
 			const result = await run("logout");
 			await refreshGithubFooter(host, run);
 			host.showStatus(`Signed out of GitHub on ${result.hostname}. Environment and gh CLI credentials are unchanged.`);

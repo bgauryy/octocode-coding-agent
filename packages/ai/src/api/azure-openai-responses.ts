@@ -3,7 +3,7 @@ import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import { resolveCacheRetention } from "../utils/cache-policy.ts";
+import { resolveCacheRetention, resolvePromptCacheKey } from "../utils/cache-policy.ts";
 import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
@@ -191,7 +191,7 @@ function buildParams(
 		prompt_cache_key:
 			resolveCacheRetention(options?.cacheRetention, options?.env) === "none"
 				? undefined
-				: clampOpenAIPromptCacheKey(options?.sessionId),
+				: clampOpenAIPromptCacheKey(resolvePromptCacheKey(options)),
 		store: false,
 	};
 

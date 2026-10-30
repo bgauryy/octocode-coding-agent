@@ -3,7 +3,7 @@
  * the editor border color, and the selector shown in place of the editor.
  */
 
-import { type Component, type TuiAltScreen, TuiMainScreen } from "@octocodeai/octocode-tui";
+import { type Component, Container, type TuiAltScreen, TuiMainScreen } from "@octocodeai/octocode-tui";
 import * as TuiLayouts from "@octocodeai/octocode-tui";
 import { getAgentDir } from "../../../config.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../../core/settings-manager.ts";
@@ -109,6 +109,7 @@ export function switchTuiMode(
 	host.renderer = nextUi;
 	host.options.tuiMode = mode;
 	host.mountInteractiveTui(nextUi, components);
+	forEachAssistantMessage(host.chatContainer, (message) => message.setMouseHint(mode === "fullscreen"));
 	nextUi.invalidate();
 	nextUi.setFocus(focus);
 	if (!startRenderer) return true;
@@ -145,13 +146,9 @@ function showTransientNotice(host: ViewStateHost, message: string): void {
 	const { footerDataProvider } = host;
 	clearTimeout(noticeTimers.get(footerDataProvider));
 	footerDataProvider.setExtensionStatus(NOTICE_KEY, message);
-	const timer = setTimeout(() => {
-		footerDataProvider.setExtensionStatus(NOTICE_KEY, undefined);
-		host.ui.requestRender();
-	}, NOTICE_MS);
+	const timer = setTimeout(() => footerDataProvider.setExtensionStatus(NOTICE_KEY, undefined), NOTICE_MS);
 	timer.unref?.();
 	noticeTimers.set(footerDataProvider, timer);
-	host.ui.requestRender();
 }
 
 export function toggleToolOutputExpansion(host: ViewStateHost): void {
@@ -176,13 +173,17 @@ export function setToolsExpanded(host: ViewStateHost, expanded: boolean): void {
 	showTransientNotice(host, `Tool output: ${expanded ? "expanded" : "collapsed"}`);
 }
 
+/** Visits every assistant message in the transcript, including those nested in groups. */
+function forEachAssistantMessage(container: Container, visit: (message: AssistantMessageComponent) => void): void {
+	for (const child of container.children) {
+		if (child instanceof AssistantMessageComponent) visit(child);
+		else if (child instanceof Container) forEachAssistantMessage(child, visit);
+	}
+}
+
 /** Update rendered assistant messages without rebuilding live tool components. */
 export function updateThinkingBlockVisibility(host: ViewStateHost): void {
-	for (const child of host.chatContainer.children) {
-		if (child instanceof AssistantMessageComponent) {
-			child.setHideThinkingBlock(host.hideThinkingBlock);
-		}
-	}
+	forEachAssistantMessage(host.chatContainer, (message) => message.setHideThinkingBlock(host.hideThinkingBlock));
 	host.ui.requestRender();
 }
 

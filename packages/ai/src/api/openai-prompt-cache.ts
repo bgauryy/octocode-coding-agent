@@ -1,5 +1,9 @@
 import type { CacheRetention, OpenAIResponsesCompat, StreamOptions } from "../types.ts";
-import { resolveCacheRetention, resolveInstructionCacheRetention } from "../utils/cache-policy.ts";
+import {
+	resolveCacheRetention,
+	resolveInstructionCacheRetention,
+	resolvePromptCacheKey,
+} from "../utils/cache-policy.ts";
 
 // OpenAI prompt caching fields, verified 2026-10-24 against
 // https://developers.openai.com/api/docs/guides/prompt-caching
@@ -46,12 +50,14 @@ function toTtl(retention: CacheRetention, compat: CacheCompat): OpenAIPromptCach
  */
 export function resolveOpenAIResponsesCacheFields(
 	compat: CacheCompat,
-	options: Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "sessionId" | "env"> | undefined,
+	options:
+		| Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "sessionId" | "promptCacheKey" | "env">
+		| undefined,
 	omitUnsupportedFields: boolean,
 ): OpenAIResponsesCacheFields {
 	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
 	const fields: OpenAIResponsesCacheFields = {
-		prompt_cache_key: history === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
+		prompt_cache_key: history === "none" ? undefined : clampOpenAIPromptCacheKey(resolvePromptCacheKey(options)),
 	};
 	if (omitUnsupportedFields) return fields;
 	if (!compat.supportsExplicitPromptCacheMode) {

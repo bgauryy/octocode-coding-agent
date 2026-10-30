@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { describeWork, unreportedWork } from "../../src/octocode/sessions/work.ts";
 import { tildePath } from "../../src/octocode/shared/home.ts";
-import { describeChild, resumableChild, resumedTask, sessionChildren } from "../../src/octocode/subagents/children.ts";
+import { sessionChildren } from "../../src/octocode/shared/session-children.ts";
+import { describeChild, resumableChild, resumedTask } from "../../src/octocode/subagents/children.ts";
 import { runFooter } from "../../src/octocode/subagents/tracking.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
 import { agentsCommand } from "../../src/octocode/subagents/command.ts";
@@ -60,7 +61,7 @@ function scratch(id: string, withReport = false): { dir: string; session: string
 }
 
 describe("a resumed session's unreported subagents", () => {
-	it("names the child's transcript folder and report file, not only its id and goal", () => {
+	it("names the child's transcript folder without presenting an unversioned file as its pending report", () => {
 		const child = scratch("general-ab12", true);
 		const entries = agentCall(
 			"call-1",
@@ -75,7 +76,7 @@ describe("a resumed session's unreported subagents", () => {
 		);
 		const [work] = unreportedWork(entries);
 		expect(describeWork(work)).toBe(
-			`general-ab12 (goal "Review the parser", transcript folder ${tildePath(child.session)}, report ${tildePath(path.join(child.dir, "report.md"))})`,
+			`general-ab12 (goal "Review the parser", transcript folder ${tildePath(child.session)})`,
 		);
 	});
 

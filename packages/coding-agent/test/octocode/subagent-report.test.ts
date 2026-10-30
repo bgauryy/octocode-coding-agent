@@ -3,7 +3,13 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { REPORT_MAX_BYTES } from "../../src/octocode/instructions/report.ts";
 import { capOutput } from "../../src/octocode/shared/util.ts";
-import { ReportTracker, reportOutcome, reportStatus } from "../../src/octocode/subagents/report.ts";
+import {
+	ReportTracker,
+	reportChecks,
+	reportFilePath,
+	reportOutcome,
+	reportStatus,
+} from "../../src/octocode/subagents/report.ts";
 import { tmp } from "./helpers.ts";
 
 describe("the outcome word a report starts with", () => {
@@ -135,6 +141,7 @@ describe("incremental subagent reports", () => {
 			text: "Verified complete report",
 			body: "Verified complete report",
 			answered: true,
+			reportArtifact: { sha256: expect.stringMatching(/^[a-f0-9]{64}$/) },
 		});
 	});
 
@@ -252,5 +259,42 @@ describe("incremental subagent reports", () => {
 		} finally {
 			append.mockRestore();
 		}
+	});
+});
+
+describe("the checks a report names in its verification section", () => {
+	it.each([
+		[
+			"done\n\n## Verification\n- yarn test: 3 passed\n- tsc clean\n\n## Open questions\nnone",
+			["yarn test: 3 passed", "tsc clean"],
+		],
+		["done\n**Verification:**\n1. `yarn lint`\n2. [x] yarn tsc\n\nNext: nothing", ["`yarn lint`", "yarn tsc"]],
+		[
+			"done\nVerified: ran yarn vitest run a.test.ts (4 passed)\nFiles: a.ts",
+			["ran yarn vitest run a.test.ts (4 passed)"],
+		],
+		["done\n### Checks\n\nyarn check\n", ["yarn check"]],
+		["done\n## Verification\n\n## Result\nok", []],
+	])("reads %j", (text, checks) => expect(reportChecks(text)).toEqual(checks));
+
+	it.each([[undefined], [""], ["done\nResult: fine\nverification is pending"], ["done\n## Results\n- a"]])(
+		"names none for %j",
+		(text) => expect(reportChecks(text)).toBeUndefined(),
+	);
+});
+
+describe("the saved report a report points at", () => {
+	it("is the last pointer line, and only a scratch path", () => {
+		expect(reportFilePath("x\nFull report: /r/.octocode/tmp/agents/a/report.md (read only the parts you need).")).toBe(
+			"/r/.octocode/tmp/agents/a/report.md",
+		);
+		expect(
+			reportFilePath(
+				"Full report: /elsewhere/report.md (read only the parts you need).\nFull report: /r/.octocode/tmp/agents/b/report.md (read only the parts you need).",
+			),
+		).toBe("/r/.octocode/tmp/agents/b/report.md");
+		expect(reportFilePath("Full report: /elsewhere/report.md (read only the parts you need).")).toBeUndefined();
+		expect(reportFilePath("no pointer")).toBeUndefined();
+		expect(reportFilePath(undefined)).toBeUndefined();
 	});
 });

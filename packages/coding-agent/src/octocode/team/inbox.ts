@@ -13,8 +13,11 @@ export class Inbox {
 	private handed = 0;
 	/** Handed to Octocode, not yet seen by the model. */
 	private readonly unseen = new Set<number>();
-	/** A handoff rejected asynchronously: these rows remain in SQLite and get another attempt next tick. */
-	private readonly failed = new Set<number>();
+	/**
+	 * Rows to hand over by id, below the watermark: a handoff rejected asynchronously (another attempt next tick), or mail
+	 * that arrived below it (a forward or relay of an older message), so mail still in flight is not handed over twice.
+	 */
+	private readonly retry = new Set<number>();
 	private urgent: number | undefined;
 	/** Seen by the model, not yet recorded (the database was busy): recorded on the next tick. */
 	private readonly seenIds = new Set<number>();
@@ -37,7 +40,7 @@ export class Inbox {
 		}
 		this.handed = 0;
 		this.unseen.clear();
-		this.failed.clear();
+		this.retry.clear();
 		this.urgent = undefined;
 		this.seenIds.clear();
 		this.idleAt = undefined;
@@ -50,31 +53,28 @@ export class Inbox {
 		const stamp = db.stamp();
 		const state = () => `${id}|${this.handed}|${stamp}`;
 		if (state() === this.idleAt) return;
-		if (this.failed.size > 0) {
-			const first = Math.min(...this.failed);
-			const batch = db.pending(id, first - 1).filter((message) => this.failed.has(message.id));
+		if (this.handed > 0)
+			for (const late of db.waitingThrough(id, this.handed)) if (!this.unseen.has(late)) this.retry.add(late);
+		if (this.retry.size > 0) {
+			const first = Math.min(...this.retry);
+			const batch = db.pending(id, first - 1).filter((message) => this.retry.has(message.id));
 			if (batch.length === 0) {
 				// The first rejected row is no longer pending. Later failed rows may be beyond the bounded read.
-				this.failed.delete(first);
+				this.retry.delete(first);
 				return;
 			} else {
 				for (const message of batch) {
-					this.failed.delete(message.id);
+					this.retry.delete(message.id);
 					this.unseen.add(message.id);
 				}
 				if (!send(batch, this.onRejected(batch))) {
 					for (const message of batch) {
 						this.unseen.delete(message.id);
-						this.failed.add(message.id);
+						this.retry.add(message.id);
 					}
 				}
 				return;
 			}
-		}
-		if (this.handed > 0 && db.waitingThrough(id, this.handed).some((message) => !this.unseen.has(message))) {
-			this.handed = 0;
-			this.unseen.clear();
-			this.urgent = undefined;
 		}
 		if (db.waiting(id, this.handed) === 0) {
 			this.idleAt = state();
@@ -115,7 +115,7 @@ export class Inbox {
 		return () => {
 			if (generation !== this.generation) return;
 			for (const message of batch) {
-				if (this.unseen.delete(message.id)) this.failed.add(message.id);
+				if (this.unseen.delete(message.id)) this.retry.add(message.id);
 				if (this.urgent === message.id) this.urgent = undefined;
 			}
 			this.idleAt = undefined;

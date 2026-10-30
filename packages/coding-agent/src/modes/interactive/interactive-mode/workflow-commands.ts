@@ -5,6 +5,7 @@ import { CommandReport } from "../components/command-report.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { handleContextSize } from "./context-controls.ts";
+import { fence } from "../../../octocode/shared/archive/text.ts";
 
 type Host = Pick<
 	InteractiveModeHost,
@@ -83,11 +84,12 @@ export async function handleWorkflowCommand(host: Host, name: string, args: stri
 		const work = port
 			.invoke("getRepositoryDiff", args || undefined, controller.signal)
 			.then(async (diff) => {
-				text = `Snapshot: ${new Date().toISOString()}\nAll repository changes; ownership is not inferred.\n\n## Staged\n\n\`\`\`diff\n${diff.staged || "No staged changes."}\n\`\`\`\n\n## Unstaged\n\n\`\`\`diff\n${diff.unstaged || "No unstaged changes."}\n\`\`\`\n\n## Untracked\n\n${diff.untracked.map((file) => JSON.stringify(file)).join("\n") || "None."}${diff.truncated ? "\n\n[Output truncated.]" : ""}`;
+				// Fences sized to the content: a diff that itself contains ``` cannot close the block early.
+				text = `Snapshot: ${new Date().toISOString()}\nAll repository changes; ownership is not inferred.\n\n## Staged\n\n${fence(diff.staged || "No staged changes.", "diff")}\n\n## Unstaged\n\n${fence(diff.unstaged || "No unstaged changes.", "diff")}\n\n## Untracked\n\n${diff.untracked.map((file) => JSON.stringify(file)).join("\n") || "None."}${diff.truncated ? "\n\n[Output truncated.]" : ""}`;
 				if (diff.selectedUntracked) {
 					const file = diff.selectedUntracked;
 					const content = await port.invoke("getUntrackedDiff", diff.root, file);
-					text += `\n\n## Selected untracked file: ${JSON.stringify(file)}\n\n\`\`\`\n${content}\n\`\`\``;
+					text += `\n\n## Selected untracked file: ${JSON.stringify(file)}\n\n${fence(content)}`;
 				} else if (diff.untracked.length) text += "\n\nUse /diff <path> to inspect one untracked file.";
 			})
 			.catch((error) => {

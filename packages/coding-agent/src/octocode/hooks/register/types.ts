@@ -36,7 +36,7 @@ interface HookNotice {
 export interface HooksView {
 	suspend?(): Promise<void>;
 	hasFilePermissionRequest(input: Record<string, unknown>, cwd: string): boolean;
-	fileInputCommitted(id: string, input: Record<string, unknown>): void;
+	fileInputCommitted(id: string, input: Record<string, unknown>, cwd?: string): void;
 	permissionRequest(
 		invocation: ToolInvocation,
 		ctx: ExtensionContext,

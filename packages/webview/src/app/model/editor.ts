@@ -17,13 +17,12 @@ export interface EditorValues {
 	title: string;
 	type: string;
 	state: string;
-	reason: string;
+	why: string;
 	goal: string;
 	parentId: string;
 	dependsOn: string;
 	priority: string;
 	tags: string;
-	body: string;
 	plan: string;
 	paths: string;
 	evidence: string;
@@ -47,13 +46,12 @@ export function editorDefaults(it?: SnapshotItem, correction = false): EditorVal
 		title: it?.title ?? "",
 		type: it?.type ?? "task",
 		state: it?.state ?? "backlog",
-		reason: it?.why ?? "",
+		why: it?.why ?? "",
 		goal: it?.goal ?? "",
 		parentId: it?.parentId ?? "",
 		dependsOn: (it?.dependsOn ?? []).map((dep) => dep.id).join(", "),
 		priority: it?.priority ?? "p2",
 		tags: it?.tags.join(", ") ?? "",
-		body: it?.body ?? "",
 		plan: it?.plan ?? "",
 		paths: it?.paths.join("\n") ?? "",
 		evidence: it?.evidence.join("\n") ?? "",
@@ -68,11 +66,25 @@ export function editorDefaults(it?: SnapshotItem, correction = false): EditorVal
 	};
 }
 
+/**
+ * A tab-local draft over the editor defaults. Drafts saved before the editor used `why` and dropped the details field
+ * keep their text: `reason` becomes `why`, and details the user changed join the note, so nothing typed is lost.
+ */
+export function restoreDraft(text: string, it?: SnapshotItem, correction = false): EditorValues {
+	const { reason, body, ...saved } = JSON.parse(text) as Partial<EditorValues> & { reason?: string; body?: string };
+	const values = { ...editorDefaults(it, correction), ...saved };
+	if (saved.why === undefined && typeof reason === "string") values.why = reason;
+	const details = typeof body === "string" ? body.trim() : "";
+	if (details && details !== (it?.body ?? "").trim())
+		values.note = [values.note.trim(), details].filter(Boolean).join("\n\n");
+	return values;
+}
+
 /** Whether saving these values records a completion, and so shows the completion fields. */
 export function needsCompletion(values: Pick<EditorValues, "state">, it?: SnapshotItem, correction = false): boolean {
 	return values.state === "done" && (correction || !it || it.state !== "done");
 }
-/** Goal and reason are frozen once an item is done; reopen it to change them. */
+/** Goal and why are frozen once an item is done; reopen it to change them. */
 export function locksIntent(values: Pick<EditorValues, "state">, it?: SnapshotItem): boolean {
 	return values.state === "done" && it?.state === "done";
 }
@@ -102,12 +114,11 @@ export function toMutation(raw: EditorValues, context: MutationContext): Backlog
 		type: choice(values.type, ITEM_TYPES),
 		state: choice(values.state, context.states),
 		goal: values.goal,
-		reason: values.reason,
+		why: values.why,
 		parentId: values.parentId || null,
 		dependsOn: words(values.dependsOn),
 		priority: PRIORITIES.indexOf(choice(values.priority, PRIORITIES)),
 		tags: words(values.tags),
-		body: values.body,
 		plan: values.plan,
 		paths: lines(values.paths),
 		evidence: lines(values.evidence),
@@ -128,7 +139,7 @@ export function toMutation(raw: EditorValues, context: MutationContext): Backlog
 	}
 	if (locksIntent(values, it)) {
 		delete mutation.goal;
-		delete mutation.reason;
+		delete mutation.why;
 	}
 	if (values.note) mutation.note = values.note;
 	if (needsCompletion(values, it, correction)) {

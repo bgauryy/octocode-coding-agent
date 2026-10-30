@@ -23,6 +23,33 @@ describe("ChatGPT OIDC identity validation", () => {
 		await expect(validate(signedOpenAIIdToken("nonce"))).resolves.toBe("test-subject");
 	});
 
+	it("accepts multiple audiences only when the authorized party names this client", async () => {
+		stubKeys();
+		await expect(
+			validate(signedOpenAIIdToken("nonce", { aud: ["oaiapp_issued", "other-client"], azp: "oaiapp_issued" })),
+		).resolves.toBe("test-subject");
+		await expect(validate(signedOpenAIIdToken("nonce", { azp: "other-client" }))).rejects.toThrow("issuer or audience");
+	});
+
+	it("rejects ambiguous signing keys rather than accepting the first matching key", async () => {
+		stubKeys({ keys: [...openAIJwks.keys, ...openAIJwks.keys] });
+		await expect(validate(signedOpenAIIdToken("nonce"))).rejects.toThrow("ambiguous");
+	});
+
+	it("rejects a token without an expiration", async () => {
+		stubKeys();
+		await expect(validate(signedOpenAIIdToken("nonce", { exp: undefined }))).rejects.toThrow("expired");
+	});
+
+	it("does not fetch signing keys after the login attempt is cancelled", async () => {
+		const fetchMock = stubKeys();
+		const aborted = AbortSignal.abort(new Error("Login cancelled"));
+		await expect(
+			validateOpenAIIdToken(signedOpenAIIdToken("nonce"), "oaiapp_issued", "nonce", aborted),
+		).rejects.toThrow("Login cancelled");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it.each([false, true])(
 		"releases a failed signing-key response when cancellation rejects=%s",
 		async (rejectCancel) => {

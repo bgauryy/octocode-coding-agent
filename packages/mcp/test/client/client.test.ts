@@ -78,7 +78,7 @@ describe("McpClient", () => {
 		expect(server.messages).toEqual([
 			{
 				jsonrpc: "2.0",
-				id: 1,
+				id: expect.any(Number),
 				method: "initialize",
 				params: {
 					protocolVersion: LATEST_PROTOCOL_VERSION,
@@ -223,7 +223,7 @@ describe("McpClient", () => {
 		await vi.advanceTimersByTimeAsync(40);
 		await vi.advanceTimersByTimeAsync(40);
 		expect(await result).toEqual({ content: [{ type: "text", text: "done" }] });
-		expect(progress).toHaveBeenCalledWith({ progressToken: 2, progress: 1, total: 2 });
+		expect(progress).toHaveBeenCalledWith({ progress: 1, total: 2 });
 		await client.close();
 	});
 
@@ -262,7 +262,12 @@ describe("McpClient", () => {
 		expect(server.messages).toContainEqual({
 			jsonrpc: "2.0",
 			method: "notifications/cancelled",
-			params: { requestId: 2, reason: "stop" },
+			params: {
+				requestId: (
+					server.messages.find((message) => "method" in message && message.method === "tools/call") as JsonRpcRequest
+				).id,
+				reason: "stop",
+			},
 		});
 
 		await expect(client.callTool("wait", {}, { timeoutMs: 5 })).rejects.toBeInstanceOf(McpTimeoutError);
@@ -311,7 +316,9 @@ describe("McpClient", () => {
 			serverInfo: { name: "ancient-server", version: "0.1.0" },
 		}));
 		const rejected = new McpClient({ name: "test-client", version: "1.0.0" });
-		await expect(rejected.connect(unsupported.clientTransport)).rejects.toThrow("unsupported protocol version");
+		await expect(rejected.connect(unsupported.clientTransport)).rejects.toThrow(
+			/protocol version.*(?:unsupported|not supported)/i,
+		);
 		expect(rejected.connectionState).toBe("closed");
 	});
 

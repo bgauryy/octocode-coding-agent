@@ -51,7 +51,7 @@ export class AcpBroker {
 						loadSession: true,
 						sessionCapabilities: { close: {}, resume: {}, list: {} },
 						promptCapabilities: { image: true, embeddedContext: true },
-						mcpCapabilities: { http: true, sse: true },
+						mcpCapabilities: { http: true, sse: false },
 					},
 				};
 			})

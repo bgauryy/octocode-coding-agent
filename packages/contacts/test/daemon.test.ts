@@ -11,6 +11,9 @@ import {
 	DaemonRecordSchema,
 	DaemonSessionsSchema,
 	DaemonStatusSchema,
+	RemoteLinkSchema,
+	RemotePublishSchema,
+	RemoteStatusSchema,
 } from "../src/daemon.ts";
 import { DAEMON_ROUTES } from "../src/protocol.ts";
 
@@ -97,4 +100,37 @@ it("caps unsolicited lines below responses and lets lists say they were cut shor
 	).toBe(true);
 	expect(Value.Check(DaemonReposSchema, { repos: [], truncated: true })).toBe(true);
 	expect(Value.Check(DaemonReposSchema, { repos: [], truncated: "yes" })).toBe(false);
+});
+
+it("lets a listed session say it is busy or needs the user, and keeps older lists valid without it", () => {
+	const session = { id: "s", repoId: "r", repoName: "demo", cwd: "/w", startedAt: 1, attached: true };
+	expect(Value.Check(DaemonSessionsSchema, { sessions: [session] })).toBe(true);
+	expect(Value.Check(DaemonSessionsSchema, { sessions: [{ ...session, busy: true, needsYou: "Run tests?" }] })).toBe(
+		true,
+	);
+	expect(Value.Check(DaemonSessionsSchema, { sessions: [{ ...session, needsYou: 1 }] })).toBe(false);
+});
+
+it("describes remote publication: a transport, an access level, links with their capability in the fragment", () => {
+	expect(DAEMON_ROUTES.remote).toBe("/api/admin/remote");
+	expect(Value.Check(RemotePublishSchema, { transport: "ssh", access: "view" })).toBe(true);
+	expect(Value.Check(RemotePublishSchema, { transport: "relay", access: "control", relayUrl: "wss://r" })).toBe(true);
+	expect(Value.Check(RemotePublishSchema, { transport: "tunnel", access: "control" })).toBe(false);
+	expect(Value.Check(RemotePublishSchema, { transport: "ssh", access: "admin" })).toBe(false);
+	const link = {
+		transport: "ssh",
+		access: "control",
+		url: "http://127.0.0.1:4040/#access=t",
+		issuedAt: 1,
+		forward: "ssh -L",
+	};
+	expect(Value.Check(RemoteLinkSchema, link)).toBe(true);
+	expect(Value.Check(RemoteLinkSchema, { ...link, token: "t" })).toBe(false);
+	expect(Value.Check(RemoteStatusSchema, { links: [link] })).toBe(true);
+	expect(Value.Check(RemoteStatusSchema, { links: [], relay: { url: "wss://r", state: "connected", peers: 2 } })).toBe(
+		true,
+	);
+	expect(Value.Check(RemoteStatusSchema, { links: [], relay: { url: "wss://r", state: "open", peers: 0 } })).toBe(
+		false,
+	);
 });

@@ -1,7 +1,12 @@
+import { APICallError } from "@ai-sdk/provider";
+import { createStatusCodeErrorResponseHandler, postToApi } from "@ai-sdk/provider-utils";
 import type { Model } from "../../types.ts";
+import { raceWithAbortSignal } from "../../utils/abort.ts";
+import { retryProviderRequest } from "../../utils/provider-retry.ts";
 import { combineAbortSignals } from "../../utils/abort-signals.ts";
-import { safeJsonStringify, truncateErrorText } from "../../utils/error-body.ts";
+import { formatProviderError, normalizeProviderError } from "../../utils/error-body.ts";
 import { headersToRecord } from "../../utils/headers.ts";
+import { iterateSseMessages } from "../../utils/server-sent-events.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import { shouldUsePromptCaching } from "./request.ts";
 import type {
@@ -12,20 +17,8 @@ import type {
 	MistralOptions,
 } from "./types.ts";
 
-const MAX_MISTRAL_ERROR_BODY_CHARS = 4000;
-
 export function formatMistralError(error: unknown): string {
-	if (error instanceof Error) {
-		const httpError = error as Error & { statusCode?: unknown; body?: unknown };
-		const statusCode = typeof httpError.statusCode === "number" ? httpError.statusCode : undefined;
-		const bodyText = typeof httpError.body === "string" ? httpError.body.trim() : undefined;
-		if (statusCode !== undefined && bodyText) {
-			return `Mistral API error (${statusCode}): ${truncateErrorText(bodyText, MAX_MISTRAL_ERROR_BODY_CHARS)}`;
-		}
-		if (statusCode !== undefined) return `Mistral API error (${statusCode}): ${error.message}`;
-		return error.message;
-	}
-	return safeJsonStringify(error);
+	return formatProviderError(normalizeProviderError(error), "Mistral API error");
 }
 
 export async function requestMistralStream(
@@ -34,6 +27,22 @@ export async function requestMistralStream(
 	apiKey: string,
 	options?: MistralOptions,
 ): Promise<AsyncIterable<MistralCompletionEvent>> {
+	const response = await retryProviderRequest(() => requestMistralResponse(model, payload, apiKey, options), options);
+	try {
+		await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+	} catch (error) {
+		await response.body?.cancel().catch(() => {});
+		throw error;
+	}
+	return readMistralEvents(response.body!, options?.signal);
+}
+
+async function requestMistralResponse(
+	model: Model<"mistral-conversations">,
+	payload: MistralChatPayload,
+	apiKey: string,
+	options?: MistralOptions,
+): Promise<Response> {
 	const baseUrl = new URL(model.baseUrl);
 	baseUrl.pathname = `${baseUrl.pathname.replace(/\/+$/u, "")}/`;
 	const url = new URL("v1/chat/completions", baseUrl);
@@ -48,44 +57,43 @@ export async function requestMistralStream(
 	const combinedSignal = combineAbortSignals([requestSignal, headerTimeoutSignal]);
 	let response: Response;
 	try {
-		response = await (options?.fetch ?? globalThis.fetch)(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(toMistralWirePayload(payload)),
-			signal: combinedSignal.signal,
+		const wirePayload = toMistralWirePayload(payload);
+		const pending = postToApi({
+			url: url.href,
+			headers: Object.fromEntries(headers),
+			body: { content: JSON.stringify(wirePayload), values: wirePayload },
+			abortSignal: combinedSignal.signal,
+			fetch: async (input, init) => {
+				// Preserve explicit host header overrides, including removing a default header.
+				const received = await (options?.fetch ?? globalThis.fetch)(input, { ...init, headers });
+				if (combinedSignal.signal?.aborted) {
+					void received.body?.cancel().catch(() => {});
+					combinedSignal.signal.throwIfAborted();
+				}
+				return !received.ok && received.body
+					? new Response(received.body.pipeThrough(new TransformStream(), { signal: combinedSignal.signal }), received)
+					: received;
+			},
+			failedResponseHandler: createStatusCodeErrorResponseHandler(),
+			successfulResponseHandler: async ({ response }) => ({ value: response }),
 		});
+		response = (await raceWithAbortSignal(pending, combinedSignal.signal)).value;
 	} catch (error) {
 		if (headerTimeoutSignal.aborted && !options?.signal?.aborted) {
-			throw new Error(`Mistral response headers timed out after ${timeoutMs}ms`);
+			throw Object.assign(new Error(`Mistral response headers timed out after ${timeoutMs}ms`), {
+				status: undefined,
+				headers: undefined,
+			});
 		}
+		if (error instanceof Error && !APICallError.isInstance(error))
+			throw Object.assign(error, { status: undefined, headers: undefined });
 		throw error;
 	} finally {
 		combinedSignal.cleanup();
 	}
 
-	await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
-
-	if (!response.ok) {
-		const body = await response.text();
-		throw new MistralHttpError(response.status, body, response.statusText);
-	}
-	if (!response.body) {
-		throw new Error("Mistral response has no body");
-	}
-
-	return readMistralEvents(response.body, options?.signal);
-}
-
-class MistralHttpError extends Error {
-	statusCode: number;
-	body: string;
-
-	constructor(statusCode: number, body: string, statusText: string) {
-		super(statusText || `Request failed with status ${statusCode}`);
-		this.name = "MistralHttpError";
-		this.statusCode = statusCode;
-		this.body = body;
-	}
+	if (!response.body) throw new Error("Mistral response has no body");
+	return response;
 }
 
 function buildMistralHeaders(model: Model<"mistral-conversations">, apiKey: string, options?: MistralOptions): Headers {
@@ -190,72 +198,17 @@ function isMistralRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const MISTRAL_STREAM_DONE = Symbol("mistral-stream-done");
-
 async function* readMistralEvents(
 	body: ReadableStream<Uint8Array>,
 	signal: AbortSignal | undefined,
 ): AsyncGenerator<MistralCompletionEvent> {
-	const reader = body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = "";
-	const onAbort = () => {
-		void reader.cancel().catch(() => {});
-	};
-	signal?.addEventListener("abort", onAbort, { once: true });
-
-	try {
-		while (true) {
-			if (signal?.aborted) throw signal.reason;
-			const { done, value } = await reader.read();
-			if (signal?.aborted) throw signal.reason;
-			buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-
-			let boundary = findMistralEventBoundary(buffer);
-			while (boundary) {
-				const event = parseMistralEvent(buffer.slice(0, boundary.index));
-				buffer = buffer.slice(boundary.index + boundary.length);
-				if (event === MISTRAL_STREAM_DONE) return;
-				if (event) yield event;
-				boundary = findMistralEventBoundary(buffer);
-			}
-
-			if (done) break;
-		}
-
-		if (buffer.trim()) {
-			const event = parseMistralEvent(buffer);
-			if (event !== MISTRAL_STREAM_DONE && event) yield event;
-		}
-	} finally {
-		signal?.removeEventListener("abort", onAbort);
-		try {
-			await reader.cancel();
-		} catch {}
-		try {
-			reader.releaseLock();
-		} catch {}
+	for await (const event of iterateSseMessages(body, signal)) {
+		const data = event.data.trim();
+		if (!data) continue;
+		if (data === "[DONE]") return;
+		if (event.event === "error") throw new Error(data);
+		const parsed: unknown = JSON.parse(data);
+		if (!isMistralRecord(parsed) || !Array.isArray(parsed.choices)) throw new Error("Invalid Mistral streaming event");
+		yield { data: parsed as MistralCompletionEvent["data"] };
 	}
-}
-
-function findMistralEventBoundary(buffer: string): { index: number; length: number } | undefined {
-	const match = /\r\n\r\n|\r\n\r|\r\n\n|\r\r\n|\n\r\n|\r\r|\n\r|\n\n/u.exec(buffer);
-	return match?.index === undefined ? undefined : { index: match.index, length: match[0].length };
-}
-
-function parseMistralEvent(raw: string): MistralCompletionEvent | typeof MISTRAL_STREAM_DONE | undefined {
-	const data = raw
-		.split(/\r\n|\r|\n/u)
-		.filter((line) => line.startsWith("data:"))
-		.map((line) => line.slice(5).trimStart())
-		.join("\n")
-		.trim();
-	if (!data) return undefined;
-	if (data === "[DONE]") return MISTRAL_STREAM_DONE;
-
-	const parsed: unknown = JSON.parse(data);
-	if (!isMistralRecord(parsed) || !Array.isArray(parsed.choices)) {
-		throw new Error("Invalid Mistral streaming event");
-	}
-	return { data: parsed as MistralCompletionEvent["data"] };
 }

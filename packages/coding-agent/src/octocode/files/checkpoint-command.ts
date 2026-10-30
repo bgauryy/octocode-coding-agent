@@ -165,6 +165,15 @@ export function registerCheckpoints(
 				say(ctx, "No file changes to rewind on this branch.");
 				return;
 			}
+			// Restoring overwrites workspace files and cannot itself be undone: ask first when someone can answer.
+			if (
+				ctx.hasUI &&
+				!(await ctx.ui.confirm(
+					"Rewind file changes?",
+					`Restore the files the last ${turns.length === 1 ? "turn" : `${turns.length} turns`} on this branch changed to their earlier content. Files changed since are left alone. This cannot be undone.`,
+				))
+			)
+				return say(ctx, "Nothing was rewound.");
 			const result = await apply(turns, ctx);
 			// The model still believes its edits are in place: tell it on its next turn (never triggers one itself).
 			if (result.restored.length + result.partly.length > 0) {

@@ -193,6 +193,8 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 						requestRender: () => host.ui.requestRender(),
 					},
 				);
+				// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
+				host.streamingComponent.setMouseHint(host.ui.mode === "fullscreen");
 				host.streamingMessage = event.message;
 				host.chatContainer.addChild(host.streamingComponent);
 				host.streamingComponent.updateMessage(

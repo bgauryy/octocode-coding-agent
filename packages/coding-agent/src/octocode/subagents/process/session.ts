@@ -24,12 +24,13 @@ export function childSession(identity: Pick<Identity, "id" | "scratch">): ChildS
 	return { dir: path.join(root, "session"), id: identity.id };
 }
 
-/** The saved session file (`<timestamp>_<id>.jsonl`, named by Octocode), once the child has written it. */
-export function childSessionFile(session: ChildSession): string | undefined {
+/** The saved session file (`<timestamp>_<id>.jsonl`). Strict callers distinguish absent history from unreadable history. */
+export function childSessionFile(session: ChildSession, strict = false): string | undefined {
 	try {
 		const name = fs.readdirSync(session.dir).find((entry) => entry.endsWith(`_${session.id}.jsonl`));
 		return name ? path.join(session.dir, name) : undefined;
-	} catch {
+	} catch (error) {
+		if (strict && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		return undefined;
 	}
 }

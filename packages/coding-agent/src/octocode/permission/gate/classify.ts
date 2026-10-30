@@ -87,6 +87,16 @@ function classOf(
 		return input.action === "terminate"
 			? undefined
 			: { action: "shell", title: "Run this debugger operation?", what: [args(input), `cwd: ${cwd}`] };
+	// A local model task runs the FreeLlama CLI and spends local compute; `models` and `route` only read its state.
+	if (tool === "ollama")
+		return input.action === "task"
+			? {
+					action: "shell",
+					title: "Run this local model task?",
+					what: [args(input)],
+					grant: { key: "ollama task", label: "local Ollama tasks through FreeLlama" },
+				}
+			: undefined;
 	if (SHELL_TOOLS.has(tool)) {
 		const command = optionalString(input.command) ?? "";
 		const simple = simpleCommand(command);

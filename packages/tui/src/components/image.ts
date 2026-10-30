@@ -122,7 +122,10 @@ export class Image implements Component {
 					this.imageId = result.imageId;
 				}
 
-				if (caps.images === "kitty") {
+				if (result.lines) {
+					// tmux placeholder mode: the rows are text cells, the first carries the transmit sequence.
+					lines = result.lines;
+				} else if (caps.images === "kitty") {
 					// For Kitty: C=1 prevents cursor movement.
 					// Don't need the cursor movement.
 					lines = [result.sequence];

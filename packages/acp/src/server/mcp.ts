@@ -13,7 +13,7 @@ interface ServerDefinition {
 	command?: string;
 	args?: string[];
 	env?: Array<{ name: string; value: string }>;
-	type?: "http" | "sse";
+	type?: "http";
 	url?: string;
 	headers?: Record<string, string>;
 }
@@ -83,7 +83,7 @@ export default function(api) {
       occupied.add(namespace(server.namespace));
       const common = { description: "ACP client MCP server: " + server.name, exposure: "direct" };
       api.registerMcpServer(server.namespace, server.url
-        ? { ...common, type: server.type, url: server.url, headers: server.headers, literalHeaders: true }
+        ? { ...common, type: "http", url: server.url, headers: server.headers, literalHeaders: true }
         : { ...common, command: manifest.runtime, args: [launcherPath, manifestPath, String(index)], cwd: manifest.cwd });
     }
     api.on("session_start", () => report({ ready: true }));
@@ -104,6 +104,7 @@ function definitions(servers: McpServer[]): ServerDefinition[] {
 	return servers.map((server) => {
 		const type: unknown = "type" in server ? server.type : undefined;
 		if (type === "acp") invalid("Experimental ACP-channel MCP transport is unsupported.");
+		if (type === "sse") invalid("Legacy SSE MCP transport is unsupported; use Streamable HTTP.");
 		if (!server.name.trim() || server.name.includes("\0"))
 			invalid("MCP server names must be non-empty and contain no NUL.");
 		if (names.has(server.name)) invalid(`Duplicate ACP MCP server name: ${server.name}`);
@@ -125,7 +126,7 @@ function definitions(servers: McpServer[]): ServerDefinition[] {
 				headerNames.add(name.toLowerCase());
 			}
 			const headers = Object.fromEntries(server.headers.map(({ name, value }) => [name, value]));
-			return { name: server.name, namespace, type: server.type, url: server.url, headers };
+			return { name: server.name, namespace, type: "http" as const, url: server.url, headers };
 		}
 		if (!isAbsolute(server.command) || server.command.includes("\0"))
 			invalid("MCP commands must be absolute paths without NUL.");

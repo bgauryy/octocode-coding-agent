@@ -63,6 +63,14 @@ describe("profile selectors against native Octocode tool exposure", () => {
 		});
 	}
 
+	for (const name of ["implementer", "reviewer", "researcher"]) {
+		cases.push({
+			name: `${name} with graph defaults`,
+			fields: loadProfiles(tmp(), tmp(), false, {}).get(name)!,
+			defaults: ["file", "bash", "graphBuild", "graphQuery"],
+		});
+	}
+
 	it.each(cases)("$name", async ({ fields, defaults }) => {
 		const cwd = tmp();
 		const agentDir = path.join(cwd, "agent");
@@ -130,6 +138,13 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				expect([...active]).toEqual(expect.arrayContaining(["agent", "archive"]));
 				expect(active.has("bash")).toBe(false);
 			}
+			if (defaults?.includes("graphQuery")) {
+				for (const tool of ["graphBuild", "graphQuery"])
+					expect(active.has(tool), `${fields.name} ${tool}`).toBe(fields.name === "researcher");
+				expect(active.has("bash")).toBe(true);
+				// This fixture disables the MCP runtime; its selector still permits management.
+				expect(profileSelectsTool(profile, "mcp", defaults)).toBe(true);
+			}
 			const nativeReach = [
 				...(active.has("file") ? ["file.workspace"] : []),
 				...(["bash", "powershell"].some((name) => active.has(name)) ? ["shell"] : []),
@@ -196,14 +211,39 @@ describe("the spawn grant for a session", () => {
 	});
 });
 
-describe("read-only bundled roles and graph tools", () => {
-	it("keep graphBuild: the permission gate allows it because it writes only derived snapshots", () => {
+describe("bundled roles and graph tools", () => {
+	it("preserves broad general defaults and the explicit lean escape", () => {
+		const defaults = ["bash", "file", "graphBuild", "graphQuery"];
+		for (const tool of defaults) expect(profileSelectsTool(undefined, tool, defaults), tool).toBe(true);
+		const lean = loadProfiles(tmp(), tmp(), false, {}).get("lean");
+		expect(lean?.lean).toBe(true);
+		for (const tool of ["bash", "file"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
+		for (const tool of ["agent", "graphBuild", "graphQuery"])
+			expect(profileSelectsTool(lean, tool, defaults), tool).toBe(false);
+	});
+
+	it("retains graph tools for broad research, while scoped profiles omit their schemas", () => {
 		const roles = loadProfiles(tmp(), tmp(), false, {});
-		for (const name of ["researcher", "reviewer"]) {
+		for (const name of ["researcher", "reviewer", "implementer"]) {
 			const profile = roles.get(name);
-			expect(profile?.readOnly, name).toBe(true);
+			expect(profile?.readOnly, name).toBe(name === "implementer" ? undefined : true);
 			for (const tool of ["graphBuild", "graphQuery"])
-				expect(profileSelectsTool(profile, tool, ["graphBuild", "graphQuery"]), `${name} ${tool}`).toBe(true);
+				expect(profileSelectsTool(profile, tool, ["graphBuild", "graphQuery"]), `${name} ${tool}`).toBe(
+					name === "researcher",
+				);
 		}
+	});
+
+	it("allows trusted profile overrides to opt back into graph tools", () => {
+		const cwd = tmp();
+		const dir = path.join(cwd, ".octocode", "agents");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(
+			path.join(dir, "reviewer.md"),
+			"---\nname: reviewer\nexcludeTools: browser,debug\nreadOnly: true\n---\nReview with graph evidence.",
+		);
+		const profile = loadProfiles(cwd, tmp(), true, {}).get("reviewer");
+		for (const tool of ["graphBuild", "graphQuery", "file", "agent", ...LOCAL_RESEARCH_TOOLS])
+			expect(profileSelectsTool(profile, tool, ["graphBuild", "graphQuery"]), tool).toBe(true);
 	});
 });

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
-import { loadSkillsFromDir } from "../../src/core/skills.ts";
+import { formatSkillsForPrompt, loadSkillsFromDir } from "../../src/core/skills.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { SkillCatalog, closeNames, setActiveSkillCatalog } from "../../src/octocode/skill/catalog.ts";
@@ -78,7 +78,6 @@ describe("skill tool", () => {
 		expect(text).not.toContain("description: Use for alpha");
 		expect(result.details).toMatchObject({ name: "alpha", baseDir: f.alpha, lines: 4 });
 		expect(tool.defaultActive).not.toBe(false);
-		expect(tool.description).toMatch(/matches the description of a skill/);
 		expect(tool.description).toMatch(/directory/);
 	});
 
@@ -122,7 +121,7 @@ describe("skill tool", () => {
 		await expect(call("zzzzzzzz")).rejects.not.toThrow(/hidden/);
 	});
 
-	it("sees skills the session loads later, and survives a failing snapshot", async () => {
+	it("sees skills loaded later but refuses execution with a failing snapshot", async () => {
 		const f = fixtures();
 		let snapshot: () => unknown = () => ({ version: 1, resources: [], explicitSkills: [] });
 		const { call, tool } = setup(() => snapshot());
@@ -134,7 +133,8 @@ describe("skill tool", () => {
 		snapshot = () => {
 			throw new Error("moved");
 		};
-		expect((await call("alpha")).details).toMatchObject({ name: "alpha" });
+		await expect(call("alpha")).rejects.toThrow("moved");
+		expect(tool.prepareLoadout({})).toBeUndefined();
 	});
 
 	it("expands a Claude skill's host variables like the /skill command, and cuts an oversized file", async () => {
@@ -151,6 +151,24 @@ describe("skill tool", () => {
 		expect(text).toContain(`Dir is ${dir}`);
 		expect(text).toContain("[Cut at 256 KB.");
 		expect(text.length).toBeLessThan(270 * 1024);
+	});
+
+	it("pins instructions and references to the captured file and refuses a replaced canonical link", async () => {
+		const f = fixtures();
+		const alias = path.join(f.root, "alias");
+		fs.symlinkSync(f.alpha, alias, "dir");
+		const loaded = loadSkillsFromDir({ dir: alias, source: "test" });
+		const { call } = setup(() => captureSkillResourceSnapshot(loaded));
+		expect((await call("alpha")).details.baseDir).toBe(f.alpha);
+		fs.unlinkSync(alias);
+		fs.symlinkSync(path.join(f.root, "alpine"), alias, "dir");
+		const result = await call("alpha");
+		expect(result.content[0].text).toContain("BODY_alpha");
+		expect(result.content[0].text).not.toContain("BODY_alpine");
+		expect(result.details).toMatchObject({ location: path.join(f.alpha, "SKILL.md"), baseDir: f.alpha });
+		fs.unlinkSync(path.join(f.alpha, "SKILL.md"));
+		fs.symlinkSync(f.secret, path.join(f.alpha, "SKILL.md"));
+		await expect(call("alpha")).rejects.toThrow("Child skill canonical identity changed");
 	});
 
 	describe("rendering", () => {
@@ -285,18 +303,23 @@ describe("close names", () => {
 
 describe("skill policy", () => {
 	const base = { octocode: true, profiles: [], canDelegate: true };
-	const rule =
-		"Before starting a task, when a listed skill's description matches it or the task names one, load that skill first and follow it.";
 
-	it("tells the main session and a subagent once, in the common work section", () => {
+	it("is stated once, by the skills section, so neither the policy nor the tool's listing restates the trigger", () => {
+		const trigger = "when the task matches its description";
 		for (const canDelegate of [true, false]) {
 			const prompt = octocodePrompt({ ...base, canDelegate });
-			expect(prompt.split(rule)).toHaveLength(2);
-			expect(prompt).not.toContain("load any named skill first");
+			expect(prompt).not.toContain(trigger);
+			expect(prompt).not.toMatch(/load (that|a|the|any named) skill/i);
 		}
-		const work = octocodePrompt({ ...base, canDelegate: false }).split("# Context and research")[0];
-		expect(work).toContain(rule);
 		expect(octocodePrompt({ ...base, canDelegate: false })).toContain("Finish it yourself.");
+		// The skills section carries the rule for whichever loader the session has; the tool says only what it does.
+		expect(formatSkillsForPrompt(fixtures().loaded.skills.slice(0, 1), "skill")).toContain(
+			`Use the skill tool with a skill's name to load it ${trigger}.`,
+		);
+		const { tool } = setup(fixtures().snapshot);
+		expect(tool.promptSnippet).toBe("Load a listed skill's instructions by name");
+		expect(tool.description).not.toContain(trigger);
+		expect(tool.description).not.toContain("matches the description");
 	});
 });
 

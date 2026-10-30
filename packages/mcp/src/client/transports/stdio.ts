@@ -1,48 +1,33 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import crossSpawn from "cross-spawn";
+import { serializeMessage, type JSONRPCMessage } from "@modelcontextprotocol/client";
+import { DEFAULT_INHERITED_ENV_VARS } from "@modelcontextprotocol/client/stdio";
+export { DEFAULT_INHERITED_ENV_VARS };
 import {
 	JSON_RPC_ERROR_CODES,
+	McpConnectionClosedError,
+	McpError,
+	parseJsonRpcMessage,
 	type JsonRpcId,
 	type JsonRpcMessage,
-	McpConnectionClosedError,
-	parseJsonRpcMessage,
 } from "../protocol/jsonrpc.ts";
 import { DEFAULT_MAX_MESSAGE_BYTES, type McpTransport, TransportEvents } from "./transport.ts";
+
+/** The JSON of one stdio frame; a frame that is not JSON is reported like a frame that is not a message. */
+function parseFrame(text: string): unknown {
+	try {
+		return JSON.parse(text) as unknown;
+	} catch {
+		throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid JSON-RPC message");
+	}
+}
 
 const DEFAULT_MAX_STDERR_BYTES = 64 * 1024;
 const DEFAULT_CLOSE_TIMEOUT_MS = 2_000;
 /** How long a server gets to exit on its own after stdin closes, before it is sent SIGTERM. */
 const STDIN_CLOSE_GRACE_MS = 500;
 const USE_PROCESS_GROUPS = process.platform !== "win32";
-
-/**
- * Variables a server inherits unless `inheritEnv` is set: the allow-list of the MCP TypeScript SDK's
- * `getDefaultEnvironment` (`packages/client/src/client/stdio.ts`), so secrets in the host environment stay out.
- */
-export const DEFAULT_INHERITED_ENV_VARS =
-	process.platform === "win32"
-		? [
-				"APPDATA",
-				"COMSPEC",
-				"HOMEDRIVE",
-				"HOMEPATH",
-				"LOCALAPPDATA",
-				"PATH",
-				"PATHEXT",
-				"PROCESSOR_ARCHITECTURE",
-				"PROGRAMDATA",
-				"PROGRAMFILES",
-				"PROGRAMFILES(X86)",
-				"PROGRAMW6432",
-				"SYSTEMDRIVE",
-				"SYSTEMROOT",
-				"TEMP",
-				"USERNAME",
-				"USERPROFILE",
-				"WINDIR",
-			]
-		: ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
 
 /** The host's environment reduced to `DEFAULT_INHERITED_ENV_VARS` (exported functions are skipped, as the SDK does). */
 export function getDefaultEnvironment(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
@@ -219,7 +204,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 	async send(message: JsonRpcMessage): Promise<void> {
 		const stdin = this.child?.stdin;
 		if (!this.started || this.closed || !stdin?.writable) throw new McpConnectionClosedError();
-		const payload = `${JSON.stringify(message)}\n`;
+		const payload = serializeMessage(message as JSONRPCMessage);
 		if ("method" in message && "id" in message && message.id !== undefined) this.outstanding.add(message.id);
 		await new Promise<void>((resolve, reject) => {
 			stdin.write(payload, (error) => (error ? reject(error) : resolve()));
@@ -289,7 +274,8 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			const text = line.toString("utf8").replace(/\r$/, "");
 			if (!text.trim()) continue;
 			try {
-				const message = parseJsonRpcMessage(JSON.parse(text));
+				// One error for every malformed frame (unparsable JSON or a non-message), not the validator's issue list.
+				const message = parseJsonRpcMessage(parseFrame(text));
 				if (!("method" in message)) this.outstanding.delete(message.id);
 				this.emitMessage(message);
 			} catch (error) {

@@ -2,10 +2,11 @@ import os from "node:os";
 import path from "node:path";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { StatusEntry } from "../../core/footer-data-provider.ts";
+import { paintStatus } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
 import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
-import { livePaint } from "../shared/render/status.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATUS } from "../shared/status.ts";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
@@ -30,6 +31,10 @@ import { registerReasoningNotice, registerUnpricedNotice } from "./footer/notice
 
 export interface FooterState {
 	model?: string | undefined;
+	/** The model's provider id: the same model id can come from several hosts (Anthropic, Bedrock, OpenRouter). */
+	provider?: string | undefined;
+	/** The model's provider is paid by subscription: the cost shown is an estimate, not a bill. */
+	subscription?: boolean;
 	/** Thinking level, only for models that reason. */
 	thinking?: string | undefined;
 	/**
@@ -141,14 +146,18 @@ function fitLine(left: Part[], right: Part[], theme: Paint, width: number): stri
 export function footerLines(
 	state: FooterState,
 	branch: string | null,
-	statuses: ReadonlyMap<string, string>,
+	statuses: ReadonlyMap<string, StatusEntry>,
 	theme: Paint,
 	width: number,
 ): string[] {
-	// Repainted per frame, so statuses set before a theme switch take the new colours.
-	const status = (key: string) => singleLine(livePaint(statuses.get(key) ?? "", theme));
-	const model = plainRow(state.model ?? "no model");
-	const shortModel = plainRow(truncateToWidth(model, Math.max(1, Math.floor(width / 3)), "…"));
+	// Statuses are data: each is painted in its tone with this frame's theme, so a theme switch reaches every one.
+	const text = (key: string) => singleLine(statuses.get(key)?.text ?? "");
+	const status = (key: string, shown = text(key)) => paintStatus({ text: shown, tone: statuses.get(key)?.tone }, theme);
+	// `provider/id` when it fits; the short form drops the provider before cutting the id.
+	const model = plainRow(
+		state.model ? (state.provider ? `${state.provider}/${state.model}` : state.model) : "no model",
+	);
+	const shortModel = plainRow(truncateToWidth(state.model ?? "no model", Math.max(1, Math.floor(width / 3)), "…"));
 	const context = state.context;
 	// Context is a safety signal: it outranks the ephemeral status counters and shortens to `ctx 42%` before anything is dropped.
 	let ctx: Part = { text: "", priority: 93, keep: true };
@@ -166,7 +175,7 @@ export function footerLines(
 			};
 		}
 	}
-	const cost = formatCost(state.usage);
+	const cost = formatCost(state.usage) + (formatCost(state.usage) && state.subscription ? " (sub)" : "");
 	const top = fitLine(
 		[
 			{
@@ -176,7 +185,12 @@ export function footerLines(
 				...(shortModel !== model ? { short: theme.fg("accent", shortModel) } : {}),
 			},
 			// The one home of the permission mode, with its shortcut: kept on a narrow terminal, shortened after the model.
-			{ text: status(OWN.permission), priority: 95, keep: true, short: shortChip(status(OWN.permission)) },
+			{
+				text: status(OWN.permission),
+				priority: 95,
+				keep: true,
+				short: status(OWN.permission, shortChip(text(OWN.permission))),
+			},
 			// Kept ahead of the status counters (90): a short form first, then the counters give way.
 			{
 				text: state.thinking ? theme.fg("muted", `thinking ${plainRow(state.thinking)}`) : "",
@@ -202,7 +216,7 @@ export function footerLines(
 				priority: 85,
 			},
 			// The speed of the last run, beside its time: hidden while the next one works.
-			{ text: status(OWN.speed) && !state.running ? theme.fg("dim", status(OWN.speed)) : "", priority: 10 },
+			{ text: text(OWN.speed) && !state.running ? theme.fg("dim", text(OWN.speed)) : "", priority: 10 },
 			{ text: cost ? theme.fg("muted", cost) : "", priority: 40 },
 		],
 		theme,
@@ -244,7 +258,7 @@ export function footerLines(
 			// Keep the workspace entry point when counts no longer fit; location and active-work statuses still win.
 			{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/octocode") },
 			// As Octocode's own footer does (sanitizeStatusText): a line break inside a footer row breaks octocode-tui's row tracking.
-			...others.map(([, text]) => ({ text: singleLine(livePaint(text, theme)), priority: 20 })),
+			...others.map(([key]) => ({ text: status(key), priority: 20 })),
 		],
 		[],
 		theme,
@@ -293,6 +307,8 @@ export function registerFooter(api: ExtensionAPI): void {
 		version += 1;
 		const model = ctx.model;
 		state.model = model?.id;
+		state.provider = model?.provider;
+		state.subscription = model ? ctx.modelRegistry.billedBySubscription(model.provider) : false;
 		state.thinking = model?.reasoning ? api.getThinkingLevel() : undefined;
 		const usage = ctx.getContextUsage();
 		const limit = model ? autoCompactAt(model, compactionThinking(api)) : usage?.contextWindow;
@@ -318,13 +334,16 @@ export function registerFooter(api: ExtensionAPI): void {
 		sample(ctx);
 		ctx.ui.setFooter((tui, theme, data) => {
 			repaint = () => tui.requestRender();
-			const unsubscribe = data.onBranchChange(() => tui.requestRender());
+			// Branch and status changes need no subscription here: the host asks for a frame on each footer-data change.
 			let cached: { key: string; lines: string[] } | undefined;
 			return {
 				render: (width: number) => {
 					const branch = data.getGitBranch();
-					const statuses = data.getExtensionStatuses();
-					const key = [version, width, branch ?? "", ...[...statuses].flat()].join("\0");
+					const statuses =
+						data.getState?.().statuses ??
+						new Map<string, StatusEntry>([...data.getExtensionStatuses()].map(([name, text]) => [name, { text }]));
+					const entries = [...statuses].flatMap(([name, entry]) => [name, entry.text, entry.tone ?? ""]);
+					const key = [version, width, branch ?? "", ...entries].join("\0");
 					if (cached?.key !== key) cached = { key, lines: footerLines(state, branch, statuses, theme, width) };
 					return cached.lines;
 				},
@@ -332,7 +351,6 @@ export function registerFooter(api: ExtensionAPI): void {
 					cached = undefined;
 				},
 				dispose: () => {
-					unsubscribe();
 					repaint = undefined;
 					stop();
 				},

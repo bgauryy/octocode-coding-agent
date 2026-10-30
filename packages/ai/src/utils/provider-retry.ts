@@ -1,3 +1,4 @@
+import { APICallError } from "@ai-sdk/provider";
 import { sleepUnlessAborted } from "./abort.ts";
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
@@ -9,17 +10,29 @@ interface ProviderRetryOptions {
 	noRetryStatuses?: readonly number[];
 }
 
-interface ProviderError extends Error {
+interface ProviderError {
+	message: string;
 	status: number | undefined;
 	headers: Headers | undefined;
+	isRetryable?: boolean;
 }
 
-function isProviderError(error: unknown): error is ProviderError {
-	if (!(error instanceof Error) || !("status" in error) || !("headers" in error)) return false;
-	return (
-		(error.status === undefined || typeof error.status === "number") &&
-		(error.headers === undefined || error.headers instanceof Headers)
-	);
+function getProviderError(error: unknown): ProviderError | undefined {
+	if (APICallError.isInstance(error)) {
+		return {
+			message: error.message,
+			status: error.statusCode,
+			headers: error.responseHeaders ? new Headers(error.responseHeaders) : undefined,
+			isRetryable: error.isRetryable,
+		};
+	}
+	if (!(error instanceof Error) || !("status" in error) || !("headers" in error)) return undefined;
+	if (
+		(error.status !== undefined && typeof error.status !== "number") ||
+		(error.headers !== undefined && !(error.headers instanceof Headers))
+	)
+		return undefined;
+	return { message: error.message, status: error.status, headers: error.headers };
 }
 
 /** Mirrors the pinned OpenAI/Anthropic SDK retry policy; review when either SDK is upgraded. */
@@ -28,7 +41,7 @@ function isRetryableProviderError(error: ProviderError): boolean {
 	if (shouldRetry === "true") return true;
 	if (shouldRetry === "false") return false;
 
-	if (error.status === undefined) return true;
+	if (error.status === undefined) return error.isRetryable ?? true;
 	return (
 		error.status === 408 ||
 		error.status === 409 ||
@@ -91,7 +104,8 @@ function googleRetryDelayMs(error: Error): number | undefined {
  */
 export function retryAfterMsFromError(error: unknown): number | undefined {
 	let delayMs: number | undefined;
-	if (isProviderError(error)) delayMs = serverRetryDelayMs(error.headers);
+	const providerError = getProviderError(error);
+	if (providerError) delayMs = serverRetryDelayMs(providerError.headers);
 	if (delayMs === undefined && error instanceof Error) {
 		delayMs = serverRetryDelayMs(awsResponseHeaders(error)) ?? googleRetryDelayMs(error);
 	}
@@ -133,13 +147,14 @@ export async function retryProviderRequest<T>(
 			return await request();
 		} catch (error) {
 			if (options.signal?.aborted) throw createAbortError();
-			if (retriesRemaining <= 0 || !isProviderError(error) || !isRetryableProviderError(error)) throw error;
-			if (error.status !== undefined && options.noRetryStatuses?.includes(error.status)) throw error;
+			const providerError = getProviderError(error);
+			if (retriesRemaining <= 0 || !providerError || !isRetryableProviderError(providerError)) throw error;
+			if (providerError.status !== undefined && options.noRetryStatuses?.includes(providerError.status)) throw error;
 
 			const retryIndex = maxRetries - retriesRemaining;
 			retriesRemaining--;
 			await sleepUnlessAborted(
-				getRetryDelayMs(error, retryIndex, options.maxRetryDelayMs),
+				getRetryDelayMs(providerError, retryIndex, options.maxRetryDelayMs),
 				options.signal,
 				createAbortError,
 			);

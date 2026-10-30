@@ -115,18 +115,76 @@ describe("generateSummary reasoning options", () => {
 		expect(sessionIds[0]).not.toBe(sessionIds[1]);
 	});
 
-	it("honors caller-supplied routing session and tool choice without prompt caching", async () => {
+	it("honors caller-supplied routing session, cache preferences and tool choice", async () => {
 		await completeSummarization(createModel(false), normalizeContext({ systemPrompt: "Summarize", messages: [] }), {
 			sessionId: "current-routing-session",
 			cacheRetention: "long",
+			instructionCacheRetention: "short",
 			toolChoice: "auto",
 		});
 
 		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({
 			sessionId: "current-routing-session",
-			cacheRetention: "none",
+			cacheRetention: "long",
+			instructionCacheRetention: "short",
 			toolChoice: "auto",
 		});
+	});
+
+	it("sends a compaction summary with the session's routing id and cache preferences", async () => {
+		const preparation: CompactionPreparation = {
+			firstKeptEntryId: "entry-keep",
+			messagesToSummarize: messages,
+			turnPrefixMessages: messages,
+			isSplitTurn: true,
+			tokensBefore: 100,
+			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+			settings: { enabled: true, reserveTokens: 2000, keepRecentTokens: 20 },
+		};
+		const cache = { cacheRetention: "long", instructionCacheRetention: "short" } as const;
+		await compact(
+			preparation,
+			createModel(false),
+			"test-key",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"sid",
+			cache,
+		);
+		expect(completeSimpleMock).toHaveBeenCalledTimes(2);
+		for (const call of completeSimpleMock.mock.calls) expect(call[2]).toMatchObject({ sessionId: "sid", ...cache });
+	});
+
+	it("states the checkpoint format once per request, and the focus once per compaction", async () => {
+		const prompts = () =>
+			completeSimpleMock.mock.calls.map((call) => JSON.stringify((call[1] as TranscriptContext).messages));
+		const preparation: CompactionPreparation = {
+			firstKeptEntryId: "entry-keep",
+			messagesToSummarize: messages,
+			turnPrefixMessages: messages,
+			isSplitTurn: true,
+			tokensBefore: 100,
+			previousSummary: "previous checkpoint",
+			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+			settings: { enabled: true, reserveTokens: 2000, keepRecentTokens: 20 },
+		};
+		await compact(preparation, createModel(false), "test-key", undefined, "FOCUS TEXT");
+		const [history, prefix] = prompts();
+		// The update request names the format by reference, not by a second copy, and the format has no Next Steps list.
+		expect(history.split("## Errors & Fixes")).toHaveLength(2);
+		expect(history).not.toMatch(/EXACT format|Next Steps/);
+		expect(history).toContain("FOCUS TEXT");
+		expect(prefix).not.toContain("FOCUS TEXT");
+		// Without a history request, the turn-prefix request is the one that gets the focus.
+		completeSimpleMock.mockClear();
+		await compact({ ...preparation, messagesToSummarize: [] }, createModel(false), "test-key", undefined, "FOCUS TEXT");
+		expect(prompts()).toEqual([expect.stringContaining("FOCUS TEXT")]);
 	});
 
 	it("preserves the previous summary without an empty history request for a split turn", async () => {

@@ -80,6 +80,8 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 					host.getMarkdownTransformers(),
 					contentOptions(),
 				);
+				// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
+				component.setMouseHint(host.ui.mode === "fullscreen");
 				assistants.set(message.id, component);
 				host.chatContainer.addChild(component);
 			}

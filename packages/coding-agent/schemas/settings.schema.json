@@ -710,6 +710,48 @@
       ],
       "description": "HTTP header or body idle timeout in milliseconds; 0 or \"disabled\" disables it."
     },
+    "remote": {
+      "type": "object",
+      "properties": {
+        "transport": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "ssh"
+            },
+            {
+              "type": "string",
+              "const": "relay"
+            }
+          ],
+          "description": "How /remote reaches this machine: \"ssh\" prints a port forward to run; \"relay\" dials remote.relayUrl.",
+          "default": "ssh"
+        },
+        "relayUrl": {
+          "type": "string",
+          "description": "The ws:// or wss:// relay the daemon dials for relay links."
+        },
+        "autoStart": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "view"
+            },
+            {
+              "type": "string",
+              "const": "control"
+            }
+          ],
+          "description": "Publish a link when a session starts. A project settings file can set \"off\" but never turn it on.",
+          "default": "off"
+        }
+      },
+      "additionalProperties": false
+    },
     "cacheWarming": {
       "anyOf": [
         {

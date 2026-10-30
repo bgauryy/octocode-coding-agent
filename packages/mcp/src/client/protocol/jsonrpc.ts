@@ -92,23 +92,27 @@ export function isJsonRpcId(value: unknown): value is JsonRpcId {
 }
 
 export function isJsonRpcRequest(message: unknown): message is JsonRpcRequest {
-	return (
-		isObject(message) && message.jsonrpc === "2.0" && isJsonRpcId(message.id) && typeof message.method === "string"
-	);
+	return isJSONRPCRequest(message);
 }
 
 export function isJsonRpcNotification(message: unknown): message is JsonRpcNotification {
-	return isObject(message) && message.jsonrpc === "2.0" && !("id" in message) && typeof message.method === "string";
+	return isJSONRPCNotification(message);
 }
 
 export function isJsonRpcResponse(message: unknown): message is JsonRpcResponse {
-	if (!isObject(message) || message.jsonrpc !== "2.0" || !isJsonRpcId(message.id)) return false;
-	if ("result" in message) return !("error" in message);
-	if (!("error" in message) || !isObject(message.error)) return false;
-	return typeof message.error.code === "number" && typeof message.error.message === "string";
+	return isJSONRPCResponse(message) && isJsonRpcId(message.id);
 }
 
 export function parseJsonRpcMessage(value: unknown): JsonRpcMessage {
-	if (isJsonRpcRequest(value) || isJsonRpcNotification(value) || isJsonRpcResponse(value)) return value;
-	throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid JSON-RPC message");
+	try {
+		return parseJSONRPCMessage(value) as JsonRpcMessage;
+	} catch {
+		throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid JSON-RPC message");
+	}
 }
+import {
+	isJSONRPCNotification,
+	isJSONRPCRequest,
+	isJSONRPCResponse,
+	parseJSONRPCMessage,
+} from "@modelcontextprotocol/client";

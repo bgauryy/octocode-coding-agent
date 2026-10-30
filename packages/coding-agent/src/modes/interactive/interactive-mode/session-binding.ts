@@ -5,7 +5,6 @@
 
 import { animationClock, setCapabilityOverrides, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import { MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
 import { setRegisteredThemes } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -59,7 +58,6 @@ type SessionBindingHost = Pick<
 	| "subscribeToAgent"
 	| "ui"
 	| "unsubscribe"
-	| "unsubscribeMcpStatus"
 	| "updateAvailableProviderCount"
 	| "updateEditorBorderColor"
 	| "updateTerminalTitle"
@@ -135,11 +133,7 @@ export async function bindCurrentSessionExtensions(host: SessionBindingHost): Pr
 
 	const extensionRunner = host.session.extensionRunner;
 	host.setupExtensionShortcuts(extensionRunner);
-	host.unsubscribeMcpStatus?.();
-	host.unsubscribeMcpStatus = host.session.resourceLoader.getEventBus?.().on(MCP_STATUS_EVENT, () => {
-		host.showLoadedResources({ force: false, showDiagnosticsWhenQuiet: true });
-		host.ui.requestRender();
-	});
+	// Built once per binding: the listing's MCP row follows server status itself.
 	host.showLoadedResources({ force: false, showDiagnosticsWhenQuiet: true });
 	host.showStartupNoticesIfNeeded();
 }
@@ -183,8 +177,6 @@ export async function rebindCurrentSession(
 
 	host.unsubscribe?.();
 	host.unsubscribe = undefined;
-	host.unsubscribeMcpStatus?.();
-	host.unsubscribeMcpStatus = undefined;
 	host.programStatus.reset();
 	host.applyRuntimeSettings();
 

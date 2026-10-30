@@ -43,7 +43,7 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
 }
 
 /**
- * Characters the skill entries of a prompt may take (names, descriptions and locations, as XML): about 1% of a
+ * Characters the skill catalog may take (XML entries and overflow names): about 1% of a
  * 200k-token window, the share Claude Code gives its skill listing. Past it, descriptions are dropped from the last
  * skills first, then the last skills are named without an entry.
  */
@@ -52,7 +52,7 @@ const SKILLS_PROMPT_BUDGET_CHARS = 8_000;
 const SKILL_PROMPT_DESCRIPTION_CHARS = 1024;
 
 export interface FormatSkillsOptions {
-	/** Characters for the skill entries; defaults to {@link SKILLS_PROMPT_BUDGET_CHARS}. */
+	/** Characters for catalog entries and overflow names; fixed instructions are separate. Defaults to {@link SKILLS_PROMPT_BUDGET_CHARS}. */
 	budgetChars?: number;
 }
 
@@ -69,7 +69,7 @@ export interface FormatSkillsOptions {
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
-	fileReadTool: "read" | "bash" | "indirect" | "octocode" | "skill" = "read",
+	fileReadTool: "bash" | "indirect" | "octocode" | "skill" = "bash",
 	options: FormatSkillsOptions = {},
 ): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
@@ -82,22 +82,22 @@ export function formatSkillsForPrompt(
 	const when = visibleSkills.every((s) => !s.description)
 		? "when your task names the skill"
 		: "when the task matches its description";
-	const { entries, undescribed, unlisted } = fitSkillEntries(
-		visibleSkills,
-		options.budgetChars ?? SKILLS_PROMPT_BUDGET_CHARS,
-		fileReadTool !== "skill",
-	);
+	const budget = options.budgetChars ?? SKILLS_PROMPT_BUDGET_CHARS;
+	let fitted = fitSkillEntries(visibleSkills, budget, fileReadTool !== "skill");
+	// Reserve a bounded share for names outside the XML list; appending every omitted name bypasses the catalog budget.
+	const overflowBudget = fitted.unlisted.length ? Math.min(512, Math.max(0, Math.floor(budget / 4))) : 0;
+	if (overflowBudget) fitted = fitSkillEntries(visibleSkills, budget - overflowBudget, fileReadTool !== "skill");
+	const { entries, undescribed, unlisted } = fitted;
+	const overflowNames = fitOverflowNames(unlisted, overflowBudget);
 	const lines = [
 		"\n\nThe following skills provide specialized instructions for specific tasks.",
 		fileReadTool === "skill"
 			? `Use the skill tool with a skill's name to load it ${when}.`
 			: fileReadTool === "octocode"
 				? `Use Octocode localFetch to load a skill file ${when}.`
-				: fileReadTool === "read"
-					? `Use the read tool to load a skill's file ${when}.`
-					: fileReadTool === "bash"
-						? `Use bash to load a skill's file ${when}.`
-						: `Load a skill's file ${when}.`,
+				: fileReadTool === "bash"
+					? `Use bash to load a skill's file ${when}.`
+					: `Load a skill's file ${when}.`,
 		// The skill tool's description says how to resolve a loaded skill's relative paths.
 		...(fileReadTool === "skill"
 			? []
@@ -115,7 +115,7 @@ export function formatSkillsForPrompt(
 		"</available_skills>",
 		...(unlisted.length > 0
 			? [
-					`Not listed, to fit the prompt (load by name only when the user asks for one): ${unlisted.map(escapeXml).join(", ")}`,
+					`${unlisted.length} skills are outside the XML list (load by name only when the user asks for one)${overflowNames ? `: ${overflowNames}` : "."}`,
 				]
 			: []),
 	];
@@ -164,6 +164,24 @@ function fitSkillEntries(
 		unlisted.unshift(skills[index].name);
 	}
 	return { entries, undescribed, unlisted };
+}
+
+/** Representative omitted names and a remainder count, all within the reserved part of the catalog budget. */
+function fitOverflowNames(names: readonly string[], budget: number): string {
+	const shown: string[] = [];
+	let used = 0;
+	for (const name of names) {
+		const escaped = escapeXml(name);
+		const remaining = names.length - shown.length - 1;
+		const suffix = remaining ? `; ${remaining} more` : "";
+		const size = used + (shown.length ? 2 : 0) + escaped.length;
+		if (size + suffix.length > budget) break;
+		shown.push(escaped);
+		used = size;
+	}
+	const remaining = names.length - shown.length;
+	const result = shown.join(", ") + (remaining ? `${shown.length ? "; " : ""}${remaining} more` : "");
+	return result.length <= budget ? result : "";
 }
 
 function escapeXml(str: string): string {

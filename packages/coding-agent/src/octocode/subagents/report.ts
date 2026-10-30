@@ -13,6 +13,8 @@ import {
 	validateResultAnswer,
 } from "./result-schema.ts";
 import { errorMessage as describeError } from "../../utils/guards.ts";
+import { sha256 } from "../../utils/atomic-file.ts";
+import { snapshotReport, type ReportArtifact } from "../shared/report-artifact.ts";
 
 const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
@@ -61,6 +63,42 @@ export function reportOutcome(text: string | undefined): { status: ReportStatus;
 /** The outcome a report names (`reportOutcome`), without where it stands. */
 export function reportStatus(text: string | undefined): ReportStatus | undefined {
 	return reportOutcome(text)?.status;
+}
+
+/** A line that heads a section: a markdown heading, a bold label, or a short label (`Files:`, `Open questions: none`). */
+const HEADING = /^(?:#{1,6}\s+\S|\*\*[^*\n]{1,40}\*\*:?\s*$|[\p{Lu}][\p{L}]{0,24}(?: [\p{L}]{1,24})?:(?:\s|$))/u;
+/** A heading that opens the verification section; with `:`, the same line may carry the whole of it (`Verified: ran X`). */
+const VERIFICATION = /^[^\p{L}\p{N}]*(?:verification|verified|checks?)\b[^\p{L}\p{N}:]*(?::\s*(.*))?$/iu;
+/** What a list line puts before its entry: a bullet, a number, a checkbox. */
+const LIST_MARK = /^(?:[-*+•]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/;
+
+/**
+ * The checks a report names in its verification section (the contract asks for the result, verification and open
+ * questions after the outcome word): the entries under a `Verification`, `Verified` or `Checks` heading, up to the next
+ * heading, or the one line `Verified: ran X` names. Undefined when the report has no such section; empty when it is
+ * there with nothing under it.
+ */
+export function reportChecks(text: string | undefined): string[] | undefined {
+	const lines = (text ?? "").split("\n");
+	const start = lines.findIndex((line) => VERIFICATION.test(line.trim()));
+	if (start < 0) return undefined;
+	const inline = VERIFICATION.exec(lines[start].trim())?.[1]?.trim() ?? "";
+	if (/[\p{L}\p{N}]/u.test(inline)) return [inline];
+	const checks: string[] = [];
+	for (const line of lines.slice(start + 1)) {
+		const trimmed = line.trim();
+		if (HEADING.test(trimmed)) break;
+		const entry = trimmed.replace(LIST_MARK, "").trim();
+		if (entry) checks.push(entry);
+	}
+	return checks;
+}
+
+/** The saved whole report a report points at: the last pointer line, and only a scratch path (never one the child wrote). */
+export function reportFilePath(text: string | undefined): string | undefined {
+	const pointers = [...(text ?? "").matchAll(/^Full report: (.+?) \(read only/gm)].map((match) => match[1]);
+	const file = pointers.at(-1);
+	return file?.includes("tmp/agents/") ? file : undefined;
 }
 
 interface ReportHead {
@@ -116,6 +154,7 @@ export class ReportTracker {
 	private failure: string | undefined;
 	private outcome: { status: ReportStatus; source: OutcomeSource } | undefined;
 	private file: string | undefined;
+	private artifact: ReportArtifact | undefined;
 	private partialFile: string | undefined;
 	private spillFailed = false;
 	private structured: StructuredResultV1 | undefined;
@@ -192,6 +231,7 @@ export class ReportTracker {
 		}
 		const section = `${this.sections > 1 ? SEPARATOR : ""}${followUp ? `Follow-up to the report above (${followUp}):\n` : ""}${text}`;
 		const whole = appendHead(this.before, section);
+		this.artifact = undefined;
 		const capped = headPreview(whole);
 		try {
 			if (this.file) {
@@ -230,6 +270,7 @@ export class ReportTracker {
 		outcomeSource?: OutcomeSource;
 		answered: boolean;
 		structured?: StructuredResultV1;
+		reportArtifact?: ReportArtifact;
 	} {
 		if (this.sections === 0) {
 			const pointer = this.partialFile
@@ -245,7 +286,19 @@ export class ReportTracker {
 			};
 		}
 		const body = this.failure ? `${this.text}${SEPARATOR}(A later follow-up turn failed: ${this.failure})` : this.text;
-		const pointer = this.file ? `Full report: ${shortPath(this.file)} (read only the parts you need).` : undefined;
+		if (!this.artifact) {
+			try {
+				this.artifact = this.file ? snapshotReport(this.file) : { sha256: sha256(body) };
+			} catch {
+				// A failed snapshot cannot advertise a mutable or incomplete artifact as this report's version.
+				this.artifact = { sha256: sha256(body) };
+			}
+		}
+		// A failed follow-up's current answer includes the failure notice, not only the older saved report.
+		const artifact = this.failure ? { sha256: sha256(body) } : this.artifact;
+		const pointer = artifact.path
+			? `Full report: ${shortPath(artifact.path)} (read only the parts you need).`
+			: undefined;
 		return {
 			text: `${body}${pointer ? `\n${pointer}` : ""}`,
 			body,
@@ -254,6 +307,7 @@ export class ReportTracker {
 			...(this.failure ? { error: this.failure } : {}),
 			...(this.resultContract ? { structured: this.structured ?? unavailableResult(this.resultContract) } : {}),
 			answered: true,
+			reportArtifact: artifact,
 		};
 	}
 }

@@ -153,13 +153,13 @@ describe("what the team shows about an agent", () => {
 		}),
 	];
 
-	it("draws the panel row as name · goal · model · state · time, within the width", () => {
+	it("draws the panel row as tree, name, role, goal › activity, then aligned flags, model, state and time, within the width", () => {
 		const lines = widgetLines(team, "salty-squid", NOW, theme, 150);
 		expect(lines[1]).toBe(
-			" ⠋ inky-kraken   · audit auth token refresh · claude-opus-5-5 · working · 8m38s · 56 tool calls · ≈$2.28 · 20 locks  Thinking",
+			" ├ ⠋ inky-kraken    implementer  audit auth token refresh › Thinking  20 locks  claude-opus-5-5  working  8m38s  56 tool calls  ≈$2.28",
 		);
 		expect(lines[2]).toBe(
-			" ○ deep-nautilus · review parser changes    ·                 · idle    ·   45s ·  0 tool calls",
+			" └ ○ deep-nautilus  reviewer     review parser changes                                           idle       45s",
 		);
 		for (const width of [150, 100, 70, 40])
 			for (const line of widgetLines(team, "salty-squid", NOW, theme, width))
@@ -167,11 +167,16 @@ describe("what the team shows about an agent", () => {
 	});
 
 	it("keeps name, model, state and time when the terminal is narrow, dropping stats and shortening the goal first", () => {
-		const narrow = widgetLines(team, "salty-squid", NOW, theme, 70)[1];
-		for (const kept of ["inky-kraken", "claude-opus-5-5", "working", "8m38s"]) expect(narrow).toContain(kept);
-		expect(narrow).toMatch(/audit auth[^·]*…/);
-		expect(narrow).not.toContain("implementer");
-		expect(narrow).not.toContain("≈$2.28");
+		const medium = widgetLines(team, "salty-squid", NOW, theme, 100)[1];
+		for (const kept of ["inky-kraken", "claude-opus-5-5", "working", "8m38s", "› Thinking"])
+			expect(medium).toContain(kept);
+		expect(medium).toMatch(/audit auth[^›]*… ›/);
+		expect(medium).not.toContain("≈$2.28");
+		// Narrower still: a head row (who, state, time, flags, model) and the activity under it.
+		const narrow = widgetLines(team, "salty-squid", NOW, theme, 70);
+		expect(narrow[1]).toBe(" ├ ⠋ inky-kraken · working · 8m38s · 20 locks · claude-opus-5-5");
+		expect(narrow[2]).toBe(" │   Thinking");
+		expect(narrow.join("\n")).not.toContain("implementer");
 	});
 
 	it("lists name, role and goal in `coordinate list` and /agents", () => {

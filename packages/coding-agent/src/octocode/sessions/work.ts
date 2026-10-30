@@ -3,7 +3,8 @@ import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { tildePath } from "../shared/home.ts";
 import { stringOrEmpty } from "../shared/util.ts";
-import { type ChildFiles, childFiles, describeFiles } from "../subagents/children.ts";
+import { type ChildFiles, childFiles } from "../shared/session-children.ts";
+import { describeFiles } from "../subagents/children.ts";
 import { flatLine } from "./store.ts";
 
 /**
@@ -72,6 +73,8 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			const task = isRecord(input.input) ? input.input : input;
 			const goal = typeof task.goal === "string" ? flatLine(task.goal) : "";
 			const files = childFiles(details.session);
+			// A start receipt has no current report; report.md may be left by an earlier continuation.
+			delete files.report;
 			const key = agentKey(details.id, details.runId);
 			const previous = latestAgent.get(details.id);
 			if (previous) started.delete(previous);
@@ -90,8 +93,8 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 }
 
 /**
- * One item per line part: `bash-3 (`yarn test`, log ~/…/bash-3-….log)`, `general-ab12 (goal "…", transcript folder ~/…,
- * report ~/…)` or, without a goal, `(task "…")`. A log that is gone (the retention sweep removed it) is not offered.
+ * One item per line part: `bash-3 (`yarn test`, log ~/…/bash-3-….log)`, `general-ab12 (goal "…", transcript folder ~/…)`
+ * or, without a goal, `(task "…")`. A log that is gone (the retention sweep removed it) is not offered.
  */
 export function describeWork(work: BackgroundWork, checkLog = true): string {
 	if (work.kind === "agent")

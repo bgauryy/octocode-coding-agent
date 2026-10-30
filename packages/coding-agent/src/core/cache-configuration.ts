@@ -1,11 +1,37 @@
-import { type Api, type Model, resolveModelCapabilities, type StreamOptions } from "@octocodeai/octocode-ai";
+import {
+	type Api,
+	type Model,
+	type ProviderEnv,
+	resolveModelCapabilities,
+	type StreamOptions,
+} from "@octocodeai/octocode-ai";
 import {
 	type CachePreferenceLayer,
+	type CachePreferences,
 	cacheEnvironmentPreferences,
 	mergeCachePreferences,
 } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { ModelsJsonProvider } from "./model-config.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
+
+/**
+ * The retention a headless `--print` run uses when nobody chose one: long instructions (the block every session with
+ * the same tools shares) over short history (a one-shot run has no second turn to profit from a one-hour entry).
+ * Undefined when a settings layer or the environment set a retention, which then applies as configured.
+ */
+export function headlessCachePreferences(
+	layers: readonly CachePreferenceLayer[],
+	env: NodeJS.ProcessEnv,
+): CachePreferences | undefined {
+	const fromEnv = cacheEnvironmentPreferences(env as ProviderEnv);
+	const chosen =
+		layers.some(
+			({ values }) => values.cacheRetention !== undefined || values.instructionCacheRetention !== undefined,
+		) ||
+		fromEnv.cacheRetention !== undefined ||
+		fromEnv.instructionCacheRetention !== undefined;
+	return chosen ? undefined : { cacheRetention: "short", instructionCacheRetention: "long" };
+}
 
 export function resolveConfiguredCache(
 	model: Model<Api>,

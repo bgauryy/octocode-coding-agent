@@ -10,7 +10,7 @@ import {
 	originChain,
 	TABLE_COLUMNS,
 } from "../src/app/model/backlog.ts";
-import { editorDefaults, locksIntent, needsCompletion, toMutation } from "../src/app/model/editor.ts";
+import { editorDefaults, locksIntent, needsCompletion, restoreDraft, toMutation } from "../src/app/model/editor.ts";
 import { choice, errorMessage, median, plural, span } from "../src/app/model/format.ts";
 import { hashFor, parseHash, readLaunch, resolveRoute } from "../src/app/model/route.ts";
 import { snapshotItem } from "./helpers.ts";
@@ -168,12 +168,33 @@ describe("editor rules", () => {
 		expect(locksIntent({ state: "done" })).toBe(false);
 	});
 
-	it("editing a done item without correcting drops goal and reason and records no completion", () => {
+	it("saves why (never the former reason) and no body", () => {
+		const item = snapshotItem("B1", { state: "todo", why: "old why" });
+		const mutation = toMutation(
+			{ ...editorDefaults(item), why: " new why " },
+			{ item, baseVersion: 1, operationKey: "op", states: STATES },
+		);
+		expect(mutation.why).toBe("new why");
+		expect(mutation).not.toHaveProperty("reason");
+		expect(mutation).not.toHaveProperty("body");
+	});
+
+	it("restores a draft saved before the rename: reason becomes why and changed details join the note", () => {
+		const item = snapshotItem("B1", { state: "todo", why: "stored", body: "Stored details" });
+		const old = JSON.stringify({ title: "t", reason: "typed why", body: "Typed details", note: "n" });
+		expect(restoreDraft(old, item)).toMatchObject({ title: "t", why: "typed why", note: "n\n\nTyped details" });
+		const unchanged = JSON.stringify({ reason: "r", body: "Stored details" });
+		expect(restoreDraft(unchanged, item)).toMatchObject({ why: "r", note: "" });
+		expect(restoreDraft(JSON.stringify({ why: "current", reason: "stale" }), item).why).toBe("current");
+		expect(restoreDraft(JSON.stringify({}), item)).not.toHaveProperty("body");
+	});
+
+	it("editing a done item without correcting drops goal and why and records no completion", () => {
 		const done = snapshotItem("B1", { state: "done", goal: "old goal", why: "old why" });
-		const values = { ...editorDefaults(done), goal: "new goal", reason: "new why", note: " remember " };
+		const values = { ...editorDefaults(done), goal: "new goal", why: "new why", note: " remember " };
 		const mutation = toMutation(values, { item: done, baseVersion: 1, operationKey: "op", states: STATES });
 		expect(mutation).not.toHaveProperty("goal");
-		expect(mutation).not.toHaveProperty("reason");
+		expect(mutation).not.toHaveProperty("why");
 		expect(mutation).not.toHaveProperty("completion");
 		expect(mutation.note).toBe("remember");
 	});

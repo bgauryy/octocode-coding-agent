@@ -274,6 +274,7 @@ describe("backlog schemas", () => {
 		expect(Value.Check(EntityFieldsSchema, { type: "story" })).toBe(false);
 		expect(Value.Check(EntityFieldsSchema, { parentId: "B1", bogus: 1 })).toBe(false);
 		expect(Value.Check(EntityFieldsSchema, { version: 1.5 })).toBe(false);
+		expect(Value.Check(EntityFieldsSchema, { reason: "why" })).toBe(false);
 		expect(Value.Check(EntityFieldsSchema, { dependsOn: [{ resource: "files", repositoryKey: "r", path: "p" }] })).toBe(
 			false,
 		);
@@ -281,6 +282,11 @@ describe("backlog schemas", () => {
 });
 
 describe("workspace protocol schemas", () => {
+	it("backlog mutation still accepts the former reason (the host maps it to why) and no longer accepts body", () => {
+		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", reason: "r" })).toBe(true);
+		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", why: "w" })).toBe(true);
+		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", body: "b" })).toBe(false);
+	});
 	it("backlog mutation accepts every state and rejects priority outside 0..3 and unknown ops", () => {
 		for (const state of STATES)
 			expect(Value.Check(BacklogMutationSchema, { op: "update", id: "B1", state })).toBe(true);

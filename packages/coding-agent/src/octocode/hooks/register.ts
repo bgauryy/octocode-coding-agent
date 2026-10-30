@@ -9,7 +9,7 @@ import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { commandsFor, hookCalls } from "./config/calls.ts";
 import { emptyHooks } from "./config/parse.ts";
 import type { HookVerdict } from "./contracts.ts";
-import { CODEX_PATCH_NAMES, projectCodexPatch } from "./patch.ts";
+import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch } from "./patch.ts";
 import type { HookProtocol } from "./catalog.ts";
 import { createDispatcher } from "./register/dispatcher.ts";
 import {
@@ -51,6 +51,8 @@ export function registerHooks(
 	onFailure?: HookFailureSink,
 	metadata?: () => HookHostMetadata,
 	paused?: () => boolean,
+	/** The file tool's projection of edit queries for Codex apply_patch hooks; without it those edits are refused. */
+	projectEdit?: EditProjector,
 ): HooksView {
 	const session: HookSession = { config: emptyHooks(), errors: [], root: undefined };
 	const enabled = hooksEnabled(env);
@@ -99,10 +101,10 @@ export function registerHooks(
 		hookCalls("file", input, cwd).some((call) =>
 			commandsFor(session.config, "PermissionRequest", call.names).some((hook) => hook.protocol === "claude"),
 		) || commandsFor(session.config, "PermissionRequest", CODEX_PATCH_NAMES).some((hook) => hook.protocol === "codex");
-	view.fileInputCommitted = (id, input) => {
+	view.fileInputCommitted = (id, input, cwd) => {
 		patches.delete(id);
 		try {
-			patches.set(id, projectCodexPatch(input));
+			patches.set(id, projectCodexPatch(input, projectEdit && cwd ? { projectEdit, cwd } : undefined));
 		} catch {
 			/* Unsupported projections are diagnosed by the existing post-hook owner. */
 		}
@@ -156,7 +158,9 @@ export function registerHooks(
 							{
 								names: CODEX_PATCH_NAMES,
 								tool_name: "apply_patch",
-								tool_input: { command: projectCodexPatch(input) },
+								tool_input: {
+									command: projectCodexPatch(input, projectEdit ? { projectEdit, cwd: ctx.cwd } : undefined),
+								},
 							},
 							protocol,
 						),
@@ -212,7 +216,7 @@ export function registerHooks(
 				}
 			: undefined;
 	};
-	view.preToolUse = preToolUseGate(api, runner.dispatch, session, patches);
+	view.preToolUse = preToolUseGate(api, runner.dispatch, session, patches, projectEdit);
 	view.notification = notificationHook(api, runner);
 	registerPostToolUseHook(api, runner.dispatch, session, patches);
 	registerPreCompactHook(api, runner.dispatch);
@@ -233,7 +237,7 @@ export function registerHooksCommand(commands: Subcommands, hooks: HooksView): v
 			if (arg)
 				return say(
 					ctx,
-					'Usage: /hooks [events] (inspection only). Set "disableAllHooks": true in a hook file to turn hooks off.',
+					'Usage: /hooks [events] (inspection only). Switch hooks on or off with /plugins; "disableAllHooks": true in a hook file turns them all off.',
 					"warning",
 				);
 			say(ctx, hooks.report(ctx.cwd));

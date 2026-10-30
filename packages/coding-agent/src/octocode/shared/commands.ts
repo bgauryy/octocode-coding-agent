@@ -86,18 +86,7 @@ export class Subcommands {
 				?.map((item) => ({ ...item, value: `${match[1]} ${item.value}` })) ?? null
 		);
 	}
-	register(api: ExtensionAPI, status?: () => string): void {
-		if (status) {
-			const details = this.get("status");
-			this.add("status", {
-				description: "Session status, skills and MCP connections",
-				dialog: "interaction",
-				handler: async (args, ctx) => {
-					say(ctx, status());
-					await details?.handler(args, ctx);
-				},
-			});
-		}
+	register(api: ExtensionAPI): void {
 		for (const [name, command] of this.list()) {
 			api.registerCommand(name, {
 				description: command.description,

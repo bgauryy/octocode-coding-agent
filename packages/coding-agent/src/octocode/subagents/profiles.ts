@@ -24,7 +24,7 @@ export interface AgentProfile {
 	model?: string;
 	/** Browser mode: true (default) is headless; false uses visible Chrome and its persistent login profile. */
 	headless?: boolean;
-	/** Soft limit on the child's model requests per run (`budget.ts`): a steer to wrap up there, a stop at 1.5 times it. 0 turns the budget off for this profile; absent: `OCTOCODE_SUBAGENT_MAX_REQUESTS`, then `DEFAULT_MAX_REQUESTS` (160). */
+	/** Soft limit on the child's model requests per task, including resumes (`budget.ts`): a steer to wrap up there, a stop at 1.5 times it. 0 turns the budget off for this profile; absent: `OCTOCODE_SUBAGENT_MAX_REQUESTS`, then `DEFAULT_MAX_REQUESTS` (160). */
 	maxRequests?: number;
 	/** Seconds a finished background run of this profile stays reachable for a follow-up message (`linger.ts`); replaces `OCTOCODE_SUBAGENT_LINGER_SECONDS` for it, and 0 turns it off. A `blocked` report still gets at least `BLOCKED_LINGER_SECONDS`. */
 	linger?: number;

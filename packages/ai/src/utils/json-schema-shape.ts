@@ -131,6 +131,24 @@ function liftObject(schema: unknown, root: unknown): LiftedObject {
 	return lifted;
 }
 
+/** Keep a closed envelope only when every alternative closes exactly the lifted property names. */
+function hasClosedAlternatives(schema: Schema, properties: Schema): boolean {
+	const alternatives = schema.anyOf ?? schema.oneOf;
+	if (!Array.isArray(alternatives) || alternatives.length === 0) return false;
+	const names = Object.keys(properties);
+	return alternatives.every((value) => {
+		const option = resolveLocalRef(value, schema);
+		if (!isSchema(option) || option.additionalProperties !== false || option.patternProperties !== undefined)
+			return false;
+		const declared = option.properties;
+		return (
+			isSchema(declared) &&
+			Object.keys(declared).length === names.length &&
+			names.every((name) => Object.hasOwn(declared, name))
+		);
+	});
+}
+
 /**
  * The tool schema as one plain object for providers that reject `anyOf`/`oneOf`/`allOf` at the root (Anthropic, and
  * Bedrock or Vertex when they serve Claude) and read only `properties`/`required`. Every property any alternative
@@ -148,6 +166,9 @@ export function liftRootComposition<T>(schema: T): T {
 		...withoutRequired,
 		type: rest.type ?? "object",
 		properties,
+		...(rest.additionalProperties === undefined && hasClosedAlternatives(schema, properties)
+			? { additionalProperties: false }
+			: {}),
 		...(required.size > 0 ? { required: [...required] } : {}),
 	} as T;
 }

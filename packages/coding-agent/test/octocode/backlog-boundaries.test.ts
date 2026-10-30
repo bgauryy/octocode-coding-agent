@@ -42,7 +42,7 @@ describe("backlog input and retrieval boundaries", () => {
 		await expect(call({ op: "add" })).rejects.toThrow(/title/);
 		await call({ op: "list" });
 		expect(changed).not.toHaveBeenCalled();
-		await call({ op: "add", title: "item", goal: "verified" });
+		await call({ op: "add", title: "item", goal: "verified", why: "needed" });
 		expect(changed).toHaveBeenCalledTimes(1);
 		await call({ op: "get", id: "B1" });
 		await expect(call({ op: "update", id: "B99", note: "missing" })).rejects.toThrow();

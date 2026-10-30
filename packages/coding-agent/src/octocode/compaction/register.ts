@@ -5,7 +5,7 @@ import type {
 	SessionBeforeCompactEvent,
 	SessionCompactEvent,
 } from "../../core/extensions/index.ts";
-import { contextReads, seenFiles, sessionCleared, type WorkedFile } from "../files/reads.ts";
+import { contextReads, seenFiles, sessionCleared, sessionClearedAt, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { writeSessionRecord } from "../shared/archive/record.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
@@ -16,8 +16,9 @@ import { CACHE_RETENTION_ENV } from "../shared/env.ts";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "../shared/turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
-import { cacheClock, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
-import { clearColdResults } from "./clearing.ts";
+import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { clearStaleResults, prefixRewritten } from "./clearing.ts";
+import { COMPACT_TOOL, CompactRequests } from "./compact-tool.ts";
 import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
 import {
@@ -59,13 +60,17 @@ function editedReadPaths(entries: ContextEntry[], edited: ReadonlySet<string>, c
 	return [...seenFiles(entries, cwd).values()].filter((seen) => edited.has(seen.id)).map((seen) => seen.file);
 }
 
-export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubagent = false): void {
+export { registerCompactTool } from "./compact-tool.ts";
+
+/** Returns the agent's compaction requests, for the `compact` tool (`registerCompactTool`). */
+export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubagent = false): CompactRequests {
 	// One assistant message's tool results share a text budget; the overflow is saved to a file (`shared/turn-budget.ts`).
 	registerTurnBudget(api);
 	const tooLarge = new TooLargeRecovery();
 	const lifetimes = new PromptCacheLifetimes();
 	const thrash = new ThrashBreaker();
 	const archive = new ArchiveCapture();
+	const requests = new CompactRequests(thrash);
 	const cacheEnv = (ctx: ExtensionContext): NodeJS.ProcessEnv => ({
 		[CACHE_RETENTION_ENV]: ctx.model
 			? ctx.modelRegistry.getCachePolicy(ctx.model, [{ source: "session settings", values: api.getSettings() }]).options
@@ -86,6 +91,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 			ctx,
 			event.context.contextEntries.flatMap((entry) => entry.messages.map((message) => ({ message }))),
 			compactionThinking(api),
+			requests.toolRegistered && api.getActiveTools().includes(COMPACT_TOOL),
 		);
 		const current = ctx.sessionManager.getSessionId();
 		if (current !== session) {
@@ -106,17 +112,21 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 	api.on("agent_before_settle", async (event) =>
 		tooLarge.shouldRetry(event.outcome) ? { continue: true } : undefined,
 	);
-	api.on("agent_settled", async () => thrash.runSettled());
+	api.on("agent_settled", async (event, ctx) => {
+		thrash.runSettled();
+		requests.settle(api, ctx, event.aborted);
+	});
 	// The files worked on in the summarized part, most recent first, come back after the compaction.
 	let restoreCandidates: WorkedFile[] = [];
 	let restoreBudget = RESTORE_TOTAL_CHARS;
 	let pendingRestore: PendingRestore | undefined;
 	api.on("session_before_compact", async (event, ctx) => {
-		if (event.reason !== "manual" && thrash.tripped()) {
+		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.
+		if ((event.reason !== "manual" || requests.inFlight) && thrash.tripped()) {
 			recordCompactionNote(api, "thrash-stop", THRASH_MESSAGE);
 			// While the context still fits the window, the run (and a prompt about to be sent) goes on; the refusal is a
 			// failure, which the session reports as the compaction's error.
-			if (event.reason !== "overflow" && fitsWindow(ctx, toolDefinitionChars(api)))
+			if (requests.inFlight || (event.reason !== "overflow" && fitsWindow(ctx, toolDefinitionChars(api))))
 				return { cancel: true, failure: THRASH_MESSAGE };
 			if (ctx.hasUI) notify(ctx.ui, THRASH_MESSAGE, "error");
 			ctx.abort("internal");
@@ -137,17 +147,13 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		carryFileLists(event.preparation, event.branchEntries);
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
-		// Past the cache lifetime, a cache-sharing summary would rewrite the whole context at the cache-write price.
-		const ttlMs =
-			ctx.model && from === undefined ? promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)) : undefined;
-		const lastUse = ttlMs === undefined ? undefined : cacheClock(ctx.sessionManager).useAt;
-		const cacheCold = ttlMs !== undefined && lastUse !== undefined && Date.now() - lastUse > ttlMs;
-		return writeSummary(api, event, ctx, from, { cacheCold });
+		return writeSummary(api, event, ctx, from);
 	});
 
 	api.on("session_start", async (_event, ctx) => {
 		tooLarge.reset();
 		thrash.reset();
+		requests.reset();
 		downshiftFrom = undefined;
 		restoreCandidates = [];
 		pendingRestore = undefined;
@@ -190,7 +196,8 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		});
 	});
 	api.on("session_compact", async (event, ctx) => {
-		thrash.compacted(event.reason === "manual");
+		thrash.compacted(event.reason === "manual" && !requests.inFlight);
+		requests.compacted();
 		archiveCompaction(api, archive, event, ctx);
 		guard.restore(contextReads(ctx));
 		const pending = restoreCandidates;
@@ -203,11 +210,19 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 	api.on("context", async (event, ctx) => {
 		// Before every request, in a run or at its start: when the cache was last used longer ago than its lifetime (an idle
 		// gap, or a long tool in the run), this request rewrites it anyway, so old results are cleared first.
-		clearColdResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)));
+		clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
+			rewrite: prefixRewritten(event.messages, ctx.model),
+			contextWindow: ctx.model?.contextWindow,
+		});
 		if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
 		// Every request shows the results cleared on this branch as their placeholders, the same way each time, and no
 		// thinking a compaction made stale (`thinking.ts`).
-		const messages = requestMessages(event.messages, ctx.model, sessionCleared(ctx.sessionManager));
+		const messages = requestMessages(
+			event.messages,
+			ctx.model,
+			sessionCleared(ctx.sessionManager),
+			sessionClearedAt(ctx.sessionManager),
+		);
 		return messages === event.messages ? undefined : { messages };
 	});
 	api.on("session_tree", async (_event, ctx) => {
@@ -216,6 +231,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		pendingRestore = undefined;
 		guard.restore(contextReads(ctx));
 	});
+	return requests;
 }
 
 type Preparation = SessionBeforeCompactEvent["preparation"];

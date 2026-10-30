@@ -9,6 +9,7 @@ import { builtInCompactionSettings } from "./settings.ts";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
+import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
 	buildSessionProjection,
 	type CompactionEntry,
@@ -220,8 +221,10 @@ export function prepareCompaction(
  * Returns CompactionResult - SessionManager adds uuid/parentUuid when saving.
  *
  * @param preparation - Pre-calculated preparation from prepareCompaction()
- * @param customInstructions - Optional custom focus for the summary
- * @param sessionId - Optional routing session ID forwarded without enabling prompt caching
+ * @param customInstructions - Optional custom focus for the summary; a split turn sends it with the history request,
+ * or with the turn-prefix request when there is no history to summarize, never with both
+ * @param sessionId - Optional routing session ID; with `cache`, the session's cache preferences, so the summary request
+ * is routed and cached as the session's own are (without them: a fresh id and no cache writes)
  */
 export async function compact(
 	preparation: CompactionPreparation,
@@ -236,6 +239,7 @@ export async function compact(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
+	cache?: CachePreferences,
 ): Promise<CompactionResult> {
 	const {
 		firstKeptEntryId,
@@ -270,6 +274,7 @@ export async function compact(
 				retry,
 				callbacks,
 				sessionId,
+				cache,
 			);
 			historyText = historyResult.text;
 			historyUsage = historyResult.usage;
@@ -286,7 +291,8 @@ export async function compact(
 			retry,
 			callbacks,
 			sessionId,
-			customInstructions,
+			messagesToSummarize.length > 0 ? undefined : customInstructions,
+			cache,
 		);
 		// Merge into single summary
 		summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
@@ -308,6 +314,7 @@ export async function compact(
 			retry,
 			callbacks,
 			sessionId,
+			cache,
 		);
 		summary = result.text;
 		summaryUsage = result.usage;

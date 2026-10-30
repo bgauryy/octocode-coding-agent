@@ -8,6 +8,7 @@ import {
 	FILE_ROLES,
 	locksIntent,
 	needsCompletion,
+	restoreDraft,
 	toMutation,
 	VERIFICATION_LABELS,
 	VERIFICATION_STATUSES,
@@ -28,9 +29,7 @@ export function Editor({ item, correction, onClose }: EditorProps) {
 	const draftKey = `editor:${item ? item.ref : "new"}${correction ? ":correction" : ""}`;
 	const [initial] = useState(() => {
 		const draft = workspace.getState().drafts[draftKey];
-		const restored = draft
-			? { ...editorDefaults(item, correction), ...(JSON.parse(draft.text) as Partial<EditorValues>) }
-			: undefined;
+		const restored = draft ? restoreDraft(draft.text, item, correction) : undefined;
 		return {
 			values: restored ?? editorDefaults(item, correction),
 			version: draft?.version ?? item?.version,
@@ -203,7 +202,7 @@ export function Editor({ item, correction, onClose }: EditorProps) {
 						correction,
 					)}
 				</div>
-				{text("reason", "Reason — why it matters", { disabled: intentLocked })}
+				{text("why", "Reason — why it matters", { disabled: intentLocked })}
 				{text("goal", "Goal — what done means", {
 					disabled: intentLocked,
 					hint: intentLocked ? "Reopen the item to change its goal or reason." : undefined,
@@ -226,7 +225,6 @@ export function Editor({ item, correction, onClose }: EditorProps) {
 					<summary>More details (optional)</summary>
 					{pick("priority", "Priority", PRIORITY_OPTIONS)}
 					{text("tags", "Tags", { rows: 1, hint: "Separate tags with commas or spaces." })}
-					{text("body", "Details", { rows: 4 })}
 					{text("plan", "Approach", { rows: 3 })}
 					{text("paths", "Scope paths (one per line)")}
 					{text("evidence", "Evidence (one per line)")}

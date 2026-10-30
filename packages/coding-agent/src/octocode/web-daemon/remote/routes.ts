@@ -1,0 +1,46 @@
+import type { IncomingMessage } from "node:http";
+import { Value } from "typebox/value";
+import { RemotePublishSchema, RemoteStatusSchema } from "@octocodeai/octocode-contacts/daemon";
+import { errorMessage } from "../../../utils/guards.ts";
+import { redactSecrets } from "../../shared/sanitize.ts";
+import { readJsonBody, type Reply } from "../http-util.ts";
+import type { RemotePublisher } from "./publisher.ts";
+
+/**
+ * `/api/admin/remote` for the control token only (the caller checked): GET the publication status, POST one link to
+ * publish, DELETE to stop publishing. Returns true when answered.
+ */
+export async function handleRemoteRequest(
+	req: IncomingMessage,
+	reply: Reply,
+	publisher: RemotePublisher,
+): Promise<boolean> {
+	if (req.method === "GET") {
+		const status = publisher.status();
+		if (!Value.Check(RemoteStatusSchema, status)) {
+			reply(500, { error: "Remote status is invalid" });
+			return true;
+		}
+		reply(200, status);
+		return true;
+	}
+	if (req.method === "DELETE") {
+		publisher.stop();
+		reply(200, { stopped: true });
+		return true;
+	}
+	if (req.method !== "POST") return false;
+	const input = await readJsonBody(req, reply);
+	if (input === undefined) return true;
+	if (!Value.Check(RemotePublishSchema, input)) {
+		reply(400, { error: "Invalid remote publication request" });
+		return true;
+	}
+	try {
+		const link = publisher.publish(input);
+		reply(200, { link });
+	} catch (error) {
+		reply(409, { error: redactSecrets(errorMessage(error)).slice(0, 500) });
+	}
+	return true;
+}

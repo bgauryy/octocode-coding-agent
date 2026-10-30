@@ -97,8 +97,9 @@ export function registerAskUser(api: ExtensionAPI): void {
 			name: "askUser",
 			label: "Ask user",
 			description:
-				"Ask the user for preferences or facts that tools cannot discover and that change your next step. Batch related, self-contained questions in one call. " +
-				"Decision request: 2-4 options when known (none for free text), a supported recommendation first labelled ' (Recommended)'; the UI always adds a write-in field, so do not add \"Other\".",
+				"Ask the user when you need their answer to continue: a preference or decision, a fact tools cannot discover, or a confirmation only they can give (what they see on screen), including a question a subagent relays. " +
+				"Call it instead of ending your reply with a question; the answer arrives in the same turn. Batch related, self-contained questions in one call. " +
+				"Decisions: 2-4 options when known (none for free text), a supported recommendation first labelled ' (Recommended)'; the UI adds a write-in field, so never add \"Other\".",
 			promptSnippet: "Ask the user a question only they can answer",
 			parameters: Type.Object({
 				questions: Type.Array(
@@ -106,7 +107,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 						question: Type.String({ description: "Self-contained question with the context needed to answer" }),
 						header: Type.Optional(
 							Type.String({
-								description: "Short tab label (about 12 characters are shown); omit for an automatic question number",
+								description: "Tab label, about 12 characters shown; omit for a question number",
 							}),
 						),
 						options: Type.Optional(
@@ -115,7 +116,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 									label: Type.String({ description: "Concise answer label" }),
 									description: Type.Optional(
 										Type.String({
-											description: "Practical effect or trade-off, when it helps distinguish the choices",
+											description: "Effect or trade-off that distinguishes it",
 										}),
 									),
 								}),
@@ -123,8 +124,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 						),
 						multiSelect: Type.Optional(
 							Type.Boolean({
-								description:
-									"true: choices are not exclusive; the user may pick several. Default false: exactly one choice",
+								description: "true: the user may pick several. Default false: exactly one",
 							}),
 						),
 					}),

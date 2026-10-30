@@ -6,7 +6,8 @@ import type * as NativeConfig from "../../src/config.ts";
 import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
 import { readParked } from "../../src/octocode/subagents/parked.ts";
 import { sessionDir } from "../../src/octocode/shared/home.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
+import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
+import { scratchRoot } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -92,7 +93,9 @@ describe("a background subagent that reported blocked", () => {
 			);
 			await t.control.settle();
 			expect(t.reports()).toHaveLength(2);
-			expect(t.reports()[1]).toContain("Follow-up from your parent:\nlinger answered: use the second option");
+			expect(t.reports()[1]).toMatch(
+				/Message #[1-9]\d* from your parent agent [^\n]*:\n<<<untrusted-[0-9a-f]{16} \(from your parent agent[^\n]*\n[^\n]*linger answered: use the second option/,
+			);
 			// The follow-up reported no outcome: with the setting at 0 nothing keeps the run reachable.
 			expect(t.reports()[1]).not.toContain("reachable");
 			expect(t.reports()[1]).not.toContain("resumable");
@@ -126,7 +129,7 @@ describe("a background subagent that reported blocked", () => {
 		await run(undefined, async (t) => {
 			const id = await t.start("linger finished");
 			await t.control.settle();
-			expect(t.reports()[0]).not.toContain("reachable");
+			expect(t.reports()[0]).not.toContain("stays reachable");
 			expect(t.reports()[0]).not.toContain("resumable");
 			expect(await t.team.send(id, "linger later", { replyRequired: false })).toEqual({
 				error: expect.stringMatching(/has finished/),
@@ -175,7 +178,7 @@ describe("a profile's linger seconds", () => {
 			expect(t.reports()[0]).toContain(`${id} stays reachable for 900 s`);
 			expect(await t.team.send(id, "linger follow-up", { replyRequired: false })).toHaveProperty("resumed");
 			await t.control.settle();
-			expect(t.reports()[1]).toContain("Follow-up from your parent:\nlinger follow-up");
+			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your parent agent [\s\S]*linger follow-up/);
 		});
 	});
 
@@ -188,7 +191,7 @@ describe("a profile's linger seconds", () => {
 		await run("60", 0, async (t) => {
 			await t.start("linger off", { profile: "watcher" });
 			await t.control.settle();
-			expect(t.reports()[0]).not.toContain("reachable");
+			expect(t.reports()[0]).not.toContain("stays reachable");
 		});
 	});
 
@@ -486,6 +489,10 @@ describe("a lingering background subagent", () => {
 		const t = setup("full");
 		try {
 			const id = await t.start("hang");
+			// The fixture must have received its prompt; cancelling the queued launch has no conversation to resume.
+			await vi.waitFor(() =>
+				expect(childSessionFile({ dir: path.join(scratchRoot(t.ctx.cwd), id, "session"), id })).toBeDefined(),
+			);
 			t.permission.setMode("manual", t.ctx);
 			await t.control.settle();
 			expect(t.control.background()).toBe(0);

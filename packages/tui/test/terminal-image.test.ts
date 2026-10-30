@@ -661,7 +661,7 @@ describe("Kitty image cursor movement", () => {
 				visibleWidth(lines[0]) <= width,
 				`fallback line wider than ${width}: visible=${visibleWidth(lines[0])} raw=${JSON.stringify(lines[0])}`,
 			);
-			assert.ok(lines[0].includes("..."), "expected ellipsis when truncating long fallback path");
+			assert.ok(lines[0].includes("…"), "expected ellipsis when truncating long fallback path");
 			assert.ok(lines[0].includes("~"), "expected home-shortened path in fallback");
 		} finally {
 			resetCapabilitiesCache();

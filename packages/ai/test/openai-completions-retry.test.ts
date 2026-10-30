@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
 import type { Model } from "../src/types.ts";
@@ -5,47 +6,22 @@ import { normalizeContext } from "../src/utils/transcript.ts";
 
 const mockState = vi.hoisted(() => ({
 	requestOptions: [] as unknown[],
-	requestErrors: [] as Error[],
+	requestErrors: [] as Array<Error & { status?: number; headers?: Headers }>,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (_params: unknown, options: unknown) => {
-					mockState.requestOptions.push(options);
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								id: "chatcmpl-test",
-								choices: [{ index: 0, delta: { content: "ok" } }],
-							};
-							yield {
-								id: "chatcmpl-test",
-								choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => {
-						const error = mockState.requestErrors.shift();
-						if (error) throw error;
-						return {
-							data: stream,
-							response: { status: 200, headers: new Headers() },
-						};
-					};
-					return promise;
-				},
-			},
-		};
-	}
-	return { default: FakeOpenAI };
+mockCompletionsFetch((_params: unknown, request) => {
+	mockState.requestOptions.push(request);
+	const error = mockState.requestErrors.shift();
+	if (error)
+		return new Response(error.message, {
+			status: error.status ?? 500,
+			statusText: error.message,
+			headers: error.headers,
+		});
+	return completionsResponse([
+		{ id: "chatcmpl-test", choices: [{ index: 0, delta: { content: "ok" } }] },
+		{ id: "chatcmpl-test", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+	]);
 });
 
 const model: Model<"openai-completions"> = {
@@ -85,9 +61,9 @@ describe("openai-completions provider retries", () => {
 		vi.useRealTimers();
 	});
 
-	it("disables SDK retries by default", async () => {
+	it("makes one HTTP attempt by default", async () => {
 		await consume();
-		expect(mockState.requestOptions).toEqual([expect.objectContaining({ maxRetries: 0 })]);
+		expect(mockState.requestOptions).toEqual([expect.objectContaining({ method: "POST" })]);
 	});
 
 	it("copies the provider's retry-after onto the error message when retries are off", async () => {
@@ -101,7 +77,7 @@ describe("openai-completions provider retries", () => {
 		expect(result.retryAfterMs).toBe(7000);
 	});
 
-	it("honors provider retries while keeping SDK retries disabled", async () => {
+	it("honors the configured retry budget without hidden SDK retries", async () => {
 		vi.useFakeTimers();
 		mockState.requestErrors = [
 			Object.assign(new Error("rate limited"), {
@@ -127,9 +103,9 @@ describe("openai-completions provider retries", () => {
 		await result;
 
 		expect(mockState.requestOptions).toEqual([
-			expect.objectContaining({ maxRetries: 0 }),
-			expect.objectContaining({ maxRetries: 0 }),
-			expect.objectContaining({ maxRetries: 0 }),
+			expect.objectContaining({ method: "POST" }),
+			expect.objectContaining({ method: "POST" }),
+			expect.objectContaining({ method: "POST" }),
 		]);
 	});
 
@@ -146,6 +122,6 @@ describe("openai-completions provider retries", () => {
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toContain("Server requested 277403s retry delay (max: 1s)");
 		expect(result.errorMessage).toContain("rate limited");
-		expect(mockState.requestOptions).toEqual([expect.objectContaining({ maxRetries: 0 })]);
+		expect(mockState.requestOptions).toEqual([expect.objectContaining({ method: "POST" })]);
 	});
 });

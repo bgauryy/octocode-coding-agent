@@ -156,7 +156,7 @@ export function registerSessionsCommand(
 			const scope = all
 				? "all directories"
 				: `${shownLine(path.basename(ctx.cwd) || ctx.cwd, 60)}${query ? ` matching "${shownLine(query, 60)}"` : ""}`;
-			if (rows.length === 0) return say(ctx, `No saved sessions for ${scope}.${all ? "" : " Try /sessions all."}`);
+			if (rows.length === 0) return say(ctx, `No saved sessions for ${scope}.${all ? "" : " Try /resume all."}`);
 			const lines = uniqueLines(rows.map((row) => sessionLine(row, current, all)));
 			if (!ctx.hasUI)
 				return say(

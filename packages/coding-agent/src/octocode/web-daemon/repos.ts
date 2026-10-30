@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { DaemonRepo } from "@octocodeai/octocode-contacts/daemon";
+import { backlog } from "../agentdb/api.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
 import { BacklogStore } from "../backlog/store.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
@@ -30,10 +31,7 @@ export class RepoCatalog {
 
 	private keys(): string[] {
 		try {
-			const rows = sharedAgentDb(this.env).db.prepare("SELECT DISTINCT repo_key FROM backlog").all() as Array<{
-				repo_key: string;
-			}>;
-			return rows.map((row) => row.repo_key);
+			return backlog.repoKeys(sharedAgentDb(this.env).db);
 		} catch {
 			return [];
 		}

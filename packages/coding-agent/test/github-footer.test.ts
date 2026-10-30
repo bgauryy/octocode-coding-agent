@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { refreshGithubFooter, updateGithubFooter } from "../src/modes/interactive/interactive-mode/github-footer.ts";
-import { initTheme, theme } from "../src/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import type { GithubStatus } from "../../mcp/src/presets/octocode/github-auth.ts";
 const status: GithubStatus = {
 	authenticated: true,
@@ -24,13 +24,14 @@ describe("GitHub footer", () => {
 	] as const)("renders the verification state %j", (value, color, label) => {
 		const target = host();
 		updateGithubFooter(target, value);
-		expect(target.footerDataProvider.setGithubStatusText).toHaveBeenCalledWith(theme.fg(color, label));
+		expect(target.footerDataProvider.setGithubStatusText).toHaveBeenCalledWith(label, color);
 	});
 	it("reports unavailable verification on network errors", async () => {
 		const target = host();
 		await refreshGithubFooter(target, vi.fn().mockRejectedValue(new Error("offline")));
 		expect(target.footerDataProvider.setGithubStatusText).toHaveBeenCalledWith(
-			theme.fg("warning", "GitHub ? verification unavailable · /github status"),
+			"GitHub ? verification unavailable · /github status",
+			"warning",
 		);
 	});
 	it("does not overwrite a newer login with a stale startup response", async () => {
@@ -62,7 +63,8 @@ describe("GitHub footer", () => {
 			await vi.advanceTimersByTimeAsync(10000);
 			await pending;
 			expect(target.footerDataProvider.setGithubStatusText).toHaveBeenCalledWith(
-				theme.fg("warning", "GitHub ? verification unavailable · /github status"),
+				"GitHub ? verification unavailable · /github status",
+				"warning",
 			);
 		} finally {
 			vi.useRealTimers();

@@ -372,6 +372,57 @@ describe("daemon with attached sessions and repositories", () => {
 		expect(late).toBe(503);
 	});
 
+	it("gives a view token every read and the live stream without capabilities, and never a write", async () => {
+		const { server, origin, session, get } = await attached();
+		const viewed = (path: string, init: RequestInit = {}) =>
+			get(path, { ...init, headers: { Authorization: `Bearer ${server.viewToken}`, ...(init.headers as object) } });
+		expect(server.viewToken).not.toBe(server.token);
+		expect((await viewed("/api/health")).status).toBe(200);
+		expect((await (await viewed("/api/health")).json()).nonce).toBe(server.nonce);
+		expect((await (await viewed("/api/sessions")).json()).sessions).toHaveLength(1);
+		expect((await viewed("/s/sess-1/api/workspace")).status).toBe(200);
+		expect((await viewed("/s/sess-1/api/application/history?sessionId=sess-1&limit=5")).status).toBe(200);
+		const command = { id: "v1", sessionId: "sess-1", action: "prompt", text: "hello" };
+		const sent = await viewed("/s/sess-1/api/application", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(command),
+		});
+		expect(sent.status).toBe(403);
+		expect((await sent.json()).error).toMatch(/view-only/);
+		expect(session.executed).toHaveLength(0);
+		expect((await viewed("/api/admin/drain", { method: "POST" })).status).toBe(403);
+		expect((await viewed("/api/admin/remote", { method: "POST" })).status).toBe(403);
+		const socket = new WebSocket(`ws://127.0.0.1:${server.port}/s/sess-1/api/backlogs/live`, {
+			headers: { Origin: origin },
+		});
+		cleanup.push(() => socket.terminate());
+		const packets: Array<{ type: string; data: any }> = [];
+		socket.on("message", (data) => packets.push(JSON.parse(String(data))));
+		await new Promise<void>((resolve) => socket.on("open", () => resolve()));
+		socket.send(JSON.stringify({ token: server.viewToken, protocolVersion: 1 }));
+		// The registry follows the session's run state on a stream of its own; the tab's stream is the second one.
+		await vi.waitFor(() => expect(session.connects.length).toBe(2));
+		session.push({
+			protocolVersion: 1,
+			cursor: { sessionId: "sess-1", epoch: "e", sequence: 1 },
+			at: 1,
+			type: "snapshot",
+			snapshot: {
+				sessionId: "sess-1",
+				messages: [],
+				streaming: true,
+				steering: [],
+				followUp: [],
+				receipts: [],
+				capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+			},
+		});
+		await vi.waitFor(() => expect(packets.some((packet) => packet.type === "application")).toBe(true));
+		expect(packets.find((packet) => packet.type === "application")!.data.snapshot.capabilities).toEqual([]);
+		expect(server.tabs.count).toBe(1);
+	});
+
 	it("tells a detached session's tabs to reconnect: a closed session leaves the list", async () => {
 		const { server, authed, endpoint } = await attached();
 		await endpoint.close();

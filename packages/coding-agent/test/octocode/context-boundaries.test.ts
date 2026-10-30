@@ -9,6 +9,7 @@ describe("agent context boundaries", () => {
 	it("starts children with a fresh identity and browser mode while retaining user settings", () => {
 		const inherited = {
 			OCTOCODE_AGENT_ID: "old",
+			OCTOCODE_PROMPT_CACHE_KEY: "old-group",
 			OCTOCODE_PARENT_ID: "old-parent",
 			OCTOCODE_AGENT_GOAL: "old-task",
 			OCTOCODE_AGENT_SCRATCH: "/old",
@@ -27,6 +28,7 @@ describe("agent context boundaries", () => {
 		});
 		for (const key of [
 			"OCTOCODE_PARENT_ID",
+			"OCTOCODE_PROMPT_CACHE_KEY",
 			"OCTOCODE_AGENT_GOAL",
 			"OCTOCODE_AGENT_SCRATCH",
 			"OCTOCODE_TRUST_ROOT",

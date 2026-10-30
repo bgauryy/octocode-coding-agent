@@ -51,7 +51,7 @@ describe("isolated subagent worktrees", () => {
 		expect(git(dir, "diff", "--binary")).toBe(unstaged);
 		fs.writeFileSync(path.join(worktree.path, "worker.txt"), "worker result\n");
 		const result = await finishWorktree(worktree);
-		expect(result.ref).toBe("refs/octocode/pi/snapshot-1");
+		expect(result.ref).toBe("refs/octocode/snapshot-1");
 		expect(git(dir, "show", `${result.ref}:worker.txt`)).toBe("worker result");
 		expect(git(dir, "diff", "--name-only", "HEAD", result.ref!)).toBe("worker.txt");
 		expect(git(dir, "diff", "--cached", "--binary")).toBe(staged);
@@ -137,10 +137,10 @@ describe("isolated subagent worktrees", () => {
 		const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
 		fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
 		expect(await pruneWorktrees(dir, home)).toEqual({
-			saved: [{ agentId: "snapshot-orphan", ref: "refs/octocode/pi/snapshot-orphan" }],
+			saved: [{ agentId: "snapshot-orphan", ref: "refs/octocode/snapshot-orphan" }],
 			kept: [],
 		});
-		expect(git(dir, "diff", "--name-only", "HEAD", "refs/octocode/pi/snapshot-orphan")).toBe("worker.txt");
+		expect(git(dir, "diff", "--name-only", "HEAD", "refs/octocode/snapshot-orphan")).toBe("worker.txt");
 		expect(fs.readFileSync(path.join(dir, "parent.txt"), "utf8")).toBe("parent baseline\n");
 	});
 
@@ -191,7 +191,7 @@ describe("isolated subagent worktrees", () => {
 		},
 	);
 
-	it("lands the change on refs/octocode/pi/<id>, not the main tree, removes the worktree and merges with /agents merge", async () => {
+	it("lands the change on refs/octocode/<id>, not the main tree, removes the worktree and merges with /agents merge", async () => {
 		const dir = repo();
 		const home = tmp();
 		// A pre-commit hook that would fail proves hooks are disabled for the private commit and the merge.
@@ -204,12 +204,12 @@ describe("isolated subagent worktrees", () => {
 		fs.writeFileSync(path.join(worktree.cwd, "new.txt"), "new\n");
 
 		const result = await finishWorktree(worktree);
-		expect(result.ref).toBe("refs/octocode/pi/impl-1");
+		expect(result.ref).toBe("refs/octocode/impl-1");
 		expect(result.stat).toMatch(/2 files changed/);
 		expect(isolationReport("impl-1", result)).toContain("/agents merge impl-1");
 		expect(fs.readFileSync(path.join(dir, "src", "a.txt"), "utf8")).toBe("one\ntwo\n");
 		expect(fs.existsSync(path.join(dir, "src", "new.txt"))).toBe(false);
-		expect(git(dir, "show", "refs/octocode/pi/impl-1:src/a.txt")).toBe("one\nTWO");
+		expect(git(dir, "show", "refs/octocode/impl-1:src/a.txt")).toBe("one\nTWO");
 		expect(fs.existsSync(worktree.path)).toBe(false);
 		expect(git(dir, "worktree", "list")).not.toContain(worktree.path);
 		expect(await pendingRefs(dir)).toEqual(["impl-1"]);
@@ -228,12 +228,12 @@ describe("isolated subagent worktrees", () => {
 			fs.writeFileSync(path.join(worktree.cwd, "src", "a.txt"), text);
 			const result = await finishWorktree(worktree);
 			if (text === "second\n") {
-				expect(result.ref).toBe("refs/octocode/pi/dup-1-2");
+				expect(result.ref).toBe("refs/octocode/dup-1-2");
 				expect(isolationReport("dup-1", result)).toContain("/agents merge dup-1-2");
 			}
 		}
-		expect(git(dir, "show", "refs/octocode/pi/dup-1:src/a.txt")).toBe("first");
-		expect(git(dir, "show", "refs/octocode/pi/dup-1-2:src/a.txt")).toBe("second");
+		expect(git(dir, "show", "refs/octocode/dup-1:src/a.txt")).toBe("first");
+		expect(git(dir, "show", "refs/octocode/dup-1-2:src/a.txt")).toBe("second");
 	});
 
 	it("saves an agent named like an earlier fallback ref to the next free name, and merges each by its own id", async () => {
@@ -251,11 +251,34 @@ describe("isolated subagent worktrees", () => {
 			fs.writeFileSync(path.join(worktree.cwd, "src", "a.txt"), text);
 			refs.push((await finishWorktree(worktree)).ref!);
 		}
-		expect(refs).toEqual(["refs/octocode/pi/dup-1", "refs/octocode/pi/dup-1-2", "refs/octocode/pi/dup-1-2-2"]);
-		expect(git(dir, "show", "refs/octocode/pi/dup-1-2:src/a.txt")).toBe("second");
-		expect(git(dir, "show", "refs/octocode/pi/dup-1-2-2:src/a.txt")).toBe("named like a fallback");
+		expect(refs).toEqual(["refs/octocode/dup-1", "refs/octocode/dup-1-2", "refs/octocode/dup-1-2-2"]);
+		expect(git(dir, "show", "refs/octocode/dup-1-2:src/a.txt")).toBe("second");
+		expect(git(dir, "show", "refs/octocode/dup-1-2-2:src/a.txt")).toBe("named like a fallback");
 		expect(await mergeAgent(dir, "dup-1-2-2")).toMatchObject({ ok: true });
 		expect(await pendingRefs(dir)).toEqual(["dup-1", "dup-1-2"]);
+	});
+
+	it("still lists and merges a result saved under the earlier refs/octocode/pi/<id> path", async () => {
+		const dir = repo();
+		const home = tmp();
+		const worktree = await createWorktree(dir, "old-1", home);
+		fs.writeFileSync(path.join(worktree.cwd, "src", "a.txt"), "from an earlier version\n");
+		const { ref } = await finishWorktree(worktree);
+		expect(ref).toBe("refs/octocode/old-1");
+		// An earlier version saved this ref under refs/octocode/pi/; a new result sits beside it.
+		git(dir, "update-ref", "refs/octocode/pi/old-1", "refs/octocode/old-1");
+		git(dir, "update-ref", "-d", "refs/octocode/old-1");
+		const fresh = await createWorktree(dir, "new-1", home);
+		fs.writeFileSync(path.join(fresh.cwd, "src", "a.txt"), "new\n");
+		await finishWorktree(fresh);
+		expect(await pendingRefs(dir)).toEqual(["new-1", "old-1"]);
+		expect(await mergeAgent(dir, "old-1")).toMatchObject({
+			ok: true,
+			text: expect.stringContaining("refs/octocode/pi/old-1"),
+		});
+		expect(git(dir, "show", "HEAD:src/a.txt")).toBe("from an earlier version");
+		expect(() => git(dir, "rev-parse", "--verify", "--quiet", "refs/octocode/pi/old-1")).toThrow();
+		expect(await pendingRefs(dir)).toEqual(["new-1"]);
 	});
 
 	it("reports no ref when nothing changed", async () => {
@@ -304,7 +327,7 @@ describe("isolated subagent worktrees", () => {
 		await finishWorktree(worktree);
 		fs.writeFileSync(path.join(dir, "src", "a.txt"), "user change\n");
 		git(dir, "commit", "-q", "-am", "user change");
-		expect(() => git(dir, "merge", "--no-ff", "--no-edit", "refs/octocode/pi/existing-merge")).toThrow();
+		expect(() => git(dir, "merge", "--no-ff", "--no-edit", "refs/octocode/existing-merge")).toThrow();
 		fs.writeFileSync(path.join(dir, "src", "a.txt"), "resolution in progress\n");
 		const mergeHead = git(dir, "rev-parse", "MERGE_HEAD");
 		const index = fs.readFileSync(path.join(dir, ".git", "index"));
@@ -338,12 +361,12 @@ describe("isolated subagent worktrees", () => {
 		fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
 
 		expect(await pruneWorktrees(dir, home)).toEqual({
-			saved: [{ agentId: "orphan-1", ref: "refs/octocode/pi/orphan-1" }],
+			saved: [{ agentId: "orphan-1", ref: "refs/octocode/orphan-1" }],
 			kept: [],
 		});
 		expect(fs.existsSync(worktree.path)).toBe(false);
 		expect(fs.existsSync(meta)).toBe(false);
-		expect(git(dir, "show", "refs/octocode/pi/orphan-1:src/a.txt")).toBe("orphaned work");
+		expect(git(dir, "show", "refs/octocode/orphan-1:src/a.txt")).toBe("orphaned work");
 		expect(fs.existsSync(live.path)).toBe(true);
 		await finishWorktree(live);
 	});
@@ -364,14 +387,14 @@ describe("isolated subagent worktrees", () => {
 		const pending = [pruneWorktrees(dir, home), pruneWorktrees(dir, home)];
 		expect(pending[0]).toBe(pending[1]);
 		const [first] = await Promise.all(pending);
-		expect(first.saved).toEqual([{ agentId: "race-1", ref: "refs/octocode/pi/race-1" }]);
-		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/pi/")).toBe("refs/octocode/pi/race-1");
+		expect(first.saved).toEqual([{ agentId: "race-1", ref: "refs/octocode/race-1" }]);
+		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/")).toBe("refs/octocode/race-1");
 
 		// A session that died mid-prune leaves its claim behind; the next prune takes it over.
 		const stuck = await orphan("stuck-1");
 		fs.renameSync(`${stuck.path}.json`, `${stuck.path}.json.pruning-${dead}`);
 		expect(await pruneWorktrees(dir, home)).toEqual({
-			saved: [{ agentId: "stuck-1", ref: "refs/octocode/pi/stuck-1" }],
+			saved: [{ agentId: "stuck-1", ref: "refs/octocode/stuck-1" }],
 			kept: [],
 		});
 		expect(fs.readdirSync(worktreesDir(dir, home))).toEqual([]);
@@ -399,7 +422,7 @@ describe("isolated subagent worktrees", () => {
 			const held = await orphan("held-1");
 			fs.renameSync(`${held.path}.json`, `${held.path}.json.pruning-${process.ppid}-${processStartTime(process.ppid)}`);
 			expect(await pruneWorktrees(dir, home)).toEqual({
-				saved: [{ agentId: "reused-1", ref: "refs/octocode/pi/reused-1" }],
+				saved: [{ agentId: "reused-1", ref: "refs/octocode/reused-1" }],
 				kept: [],
 			});
 			expect(fs.existsSync(`${held.path}.json.pruning-${process.ppid}-${processStartTime(process.ppid)}`)).toBe(true);
@@ -419,12 +442,12 @@ describe("isolated subagent worktrees", () => {
 		// Once stale it is orphaned: its start commit is recovered from the main tree, so its edit is saved on one ref.
 		fs.writeFileSync(path.join(worktree.path, "new.txt"), "kept work\n");
 		expect(await pruneWorktrees(dir, home)).toEqual({
-			saved: [{ agentId: "midwrite-1", ref: "refs/octocode/pi/midwrite-1" }],
+			saved: [{ agentId: "midwrite-1", ref: "refs/octocode/midwrite-1" }],
 			kept: [],
 		});
 		expect(fs.existsSync(worktree.path)).toBe(false);
 		expect(await pruneWorktrees(dir, home)).toEqual({ saved: [], kept: [] });
-		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode").trim()).toBe("refs/octocode/pi/midwrite-1");
+		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode").trim()).toBe("refs/octocode/midwrite-1");
 	});
 
 	it("removes an unchanged worktree with an unreadable stale record, writing no ref", async () => {
@@ -497,12 +520,12 @@ describe("isolated subagent worktrees", () => {
 		expect(fs.readFileSync(path.join(worktree.path, "src", "a.txt"), "utf8")).toBe("precious\n");
 		expect(fs.readFileSync(path.join(worktree.path, "src", "new.txt"), "utf8")).toBe("untracked work\n");
 		expect(fs.existsSync(`${worktree.path}.json`)).toBe(true);
-		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/pi/")).toBe("");
+		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/")).toBe("");
 
 		fs.rmSync(lock);
 		const result = await finishWorktree(worktree);
-		expect(result.ref).toBe("refs/octocode/pi/broken-1");
-		expect(git(dir, "show", "refs/octocode/pi/broken-1:src/new.txt")).toBe("untracked work");
+		expect(result.ref).toBe("refs/octocode/broken-1");
+		expect(git(dir, "show", "refs/octocode/broken-1:src/new.txt")).toBe("untracked work");
 		expect(fs.existsSync(worktree.path)).toBe(false);
 	});
 
@@ -512,7 +535,7 @@ describe("isolated subagent worktrees", () => {
 		const worktree = await createWorktree(dir, "locked-1", home);
 		fs.writeFileSync(path.join(worktree.path, "src", "a.txt"), "precious\n");
 		// A held ref lock makes update-ref fail while the ref itself does not exist.
-		const refDir = path.join(dir, ".git", "refs", "octocode", "pi");
+		const refDir = path.join(dir, ".git", "refs", "octocode");
 		fs.mkdirSync(refDir, { recursive: true });
 		const lock = path.join(refDir, "locked-1.lock");
 		fs.writeFileSync(lock, "");
@@ -520,23 +543,21 @@ describe("isolated subagent worktrees", () => {
 			() => undefined,
 			(error: Error) => error,
 		);
-		expect(failure?.message).toMatch(
-			/Could not save the subagent's changes under refs\/octocode\/pi\/locked-1: .*\.lock/,
-		);
+		expect(failure?.message).toMatch(/Could not save the subagent's changes under refs\/octocode\/locked-1: .*\.lock/);
 		expect(failure?.message).not.toContain("are taken");
 		expect(failure?.message).toContain(`worktree is kept at ${worktree.path}`);
 		expect(fs.readFileSync(path.join(worktree.path, "src", "a.txt"), "utf8")).toBe("precious\n");
-		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/pi/")).toBe("");
+		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/")).toBe("");
 
 		fs.rmSync(lock);
-		expect((await finishWorktree(worktree)).ref).toBe("refs/octocode/pi/locked-1");
+		expect((await finishWorktree(worktree)).ref).toBe("refs/octocode/locked-1");
 	});
 
 	it("keeps an orphan it cannot save and reports it, with the actual ref names of saved ones", async () => {
 		const dir = repo();
 		const home = tmp();
 		// An earlier ref already holds lost-1: the orphan's save goes to lost-1-2.
-		git(dir, "update-ref", "refs/octocode/pi/lost-1", "HEAD");
+		git(dir, "update-ref", "refs/octocode/lost-1", "HEAD");
 		const saved = await createWorktree(dir, "lost-1", home);
 		const stuck = await createWorktree(dir, "stuck-1", home);
 		const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
@@ -552,7 +573,7 @@ describe("isolated subagent worktrees", () => {
 		]);
 		expect(fs.readFileSync(path.join(stuck.path, "src", "a.txt"), "utf8")).toBe("stuck-1 work\n");
 		const ref = report.saved[0].ref!;
-		expect(ref).toBe("refs/octocode/pi/lost-1-2");
+		expect(ref).toBe("refs/octocode/lost-1-2");
 		expect(git(dir, "show", `${ref}:src/a.txt`)).toBe("lost-1 work");
 		const note = describePrune(report)!;
 		expect(note.level).toBe("warning");

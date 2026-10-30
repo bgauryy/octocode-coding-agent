@@ -3,7 +3,8 @@ import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
 export function webCommand(
-	open: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void>,
+	/** Opens the page and resolves to its address. */
+	open: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<string>,
 	/** The user-level daemon (`OCTOCODE_WEB_DAEMON=1`): true when it opened the page, false when it is off; a throw falls back to `open`. */
 	daemon?: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<boolean>,
 ): Subcommand {
@@ -31,8 +32,11 @@ export function webCommand(
 						);
 					}
 				}
-				await open(ctx, view);
-				say(ctx, "Opened the web workspace. Keep this session open for live updates.");
+				const url = await open(ctx, view);
+				say(
+					ctx,
+					`Opened the web workspace at ${url}\nKeep this session open for live updates; it stops when the session ends.`,
+				);
 			} catch (error) {
 				say(ctx, "Could not open the web workspace: " + errorMessage(error), "error");
 			}

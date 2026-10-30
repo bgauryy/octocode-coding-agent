@@ -18,21 +18,21 @@ Hooks, plugins and extensions all run with your operating-system permissions and
 
 **Yes** means the format loads and its documented behavior works. **Partial** means it loads with the limits listed in its section. **No** means Octocode does not read it.
 
-| Format                                                              | Support | Notes                                                                              |
-| ------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------- |
-| Native hooks: `<Octocode home>/hooks.json`, `.octocode/hooks.json`  | Yes     | Native profile                                                                     |
-| Claude hooks in `settings.json` and `settings.local.json`           | Partial | Claude profile; see [hook events](packages/coding-agent/docs/hook-events.md)       |
-| Codex `hooks.json` and `[hooks]` in `config.toml`                   | Partial | Codex profile; `[features] hooks = false` turns Codex hooks off                    |
-| Claude plugin, `.claude-plugin/plugin.json`                         | Partial | Skills, plain prompt commands, hooks and MCP servers; added explicitly in settings |
-| Codex plugin, `.codex-plugin/plugin.json`                           | Partial | Skills, hooks and MCP servers; added explicitly in settings                        |
-| Portable root `plugin.json` (with optional `extensions.com.openai`) | Partial | Read with `"protocol": "codex"`; same components as Codex                          |
-| Native extension (`.ts` or `.js` module exporting a factory)        | Yes     | Octocode `ExtensionAPI`                                                            |
-| Octocode package (`package.json` with an `octocode` key)            | Yes     | Legacy `pi` key is still read                                                      |
-| Agent Skills (`SKILL.md` directories)                               | Yes     | Also read from Claude and Codex skill folders                                      |
-| Claude Code marketplaces, `enabledPlugins`, `/plugin install`       | No      | Add each plugin by local path instead                                              |
-| Claude Mods modules                                                 | No      | Different API; not loaded through extensions                                       |
-| Plugin agents, LSP servers, output styles, dependencies             | No      | Not activated; see [plugin limits](#plugin-component-support)                      |
-| Hook handler `type: "agent"`                                        | No      | Reported as unsupported                                                            |
+| Format                                                              | Support | Notes                                                                                         |
+| ------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| Native hooks: `<Octocode home>/hooks.json`, `.octocode/hooks.json`  | Yes     | Native profile                                                                                |
+| Claude hooks in `settings.json` and `settings.local.json`           | Partial | Claude profile; see [hook events](packages/coding-agent/docs/hook-events.md)                  |
+| Codex `hooks.json` and `[hooks]` in `config.toml`                   | Partial | Codex profile; `[features] hooks = false` turns Codex hooks off                               |
+| Claude plugin, `.claude-plugin/plugin.json`                         | Partial | Skills, plain prompt commands, hooks and MCP servers; added explicitly in settings            |
+| Codex plugin, `.codex-plugin/plugin.json`                           | Partial | Skills, hooks and MCP servers; added explicitly in settings                                   |
+| Portable root `plugin.json` (with optional `extensions.com.openai`) | Partial | Read with `"protocol": "codex"`; same components as Codex                                     |
+| Native extension (`.ts` or `.js` module exporting a factory)        | Yes     | Octocode `ExtensionAPI`                                                                       |
+| Octocode package (`package.json` with an `octocode` key)            | Yes     | Legacy `pi` key is still read                                                                 |
+| Agent Skills (`SKILL.md` directories)                               | Yes     | Also read from Claude and Codex skill folders                                                 |
+| Plugins installed by Claude Code or Codex                           | Partial | Listed in `/plugins`; switching one on adds it. Marketplaces and installing are not supported |
+| Claude Mods modules                                                 | No      | Different API; not loaded through extensions                                                  |
+| Plugin agents, LSP servers, output styles, dependencies             | No      | Not activated; see [plugin limits](#plugin-component-support)                                 |
+| Hook handler `type: "agent"`                                        | No      | Reported as unsupported                                                                       |
 
 ## Add a command hook
 
@@ -94,7 +94,7 @@ Every profile accepts `type`, `command`, `timeout`, `failClosed` and `statusMess
 
 ## Add a Claude or Codex plugin
 
-Octocode does not install plugins or read marketplaces. Point it at a plugin directory on disk, then approve its executable parts.
+Octocode does not install plugins or read marketplaces. Plugins Claude Code or Codex already installed appear in `/plugins` as "installed in Claude Code" or "installed in Codex"; switching one on adds it to your settings with the right protocol, and its hooks and MCP servers still wait for review (step 3). For any other plugin, point Octocode at its directory on disk, then approve its executable parts.
 
 1. Add the plugin to the `plugins` array in `~/.octocode/octocodecode/settings.json`, or in `.octocode/settings.json` for a trusted project:
 

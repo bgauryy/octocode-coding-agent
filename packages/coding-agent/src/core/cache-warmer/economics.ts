@@ -17,6 +17,13 @@ import type { SessionEntry } from "../session-manager.ts";
 export const MAX_WARMING_AGE_MS = 60 * 60_000;
 /** Idle warming uses a shorter horizon because continuation estimates become less reliable with age. */
 export const MAX_IDLE_WARMING_AGE_MS = 30 * 60_000;
+/**
+ * How long after its start an idle run may still refresh: the idle horizon, or one lifetime when the entry lives longer,
+ * so a one-hour entry gets the one refresh that falls at 90% of its lifetime instead of none.
+ */
+export function idleWarmingLimitMs(ttlMs: number): number {
+	return Math.max(MAX_IDLE_WARMING_AGE_MS, ttlMs);
+}
 /** A refresh is sent only when it is expected to save at least this many dollars. */
 export const CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS = 0.05;
 /**

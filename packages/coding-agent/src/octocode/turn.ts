@@ -41,12 +41,11 @@ export function registerTurnSetup(
 		const browserMcp =
 			(browserServer?.enabled === true && browserServer.state !== "unselected") ||
 			selected.some((name) => browserMcpTool(name) !== undefined);
-		// A server may still be connecting when the prompt is built; the prompt says how to recover when a tool turns out to
-		// be missing, so an enabled server that has not failed counts as reachable. The native `mcp` tool is always selected
-		// where MCP is allowed, so the answer does not change when the server's own tools appear.
-		const octocode =
-			selected.some(isOctocodeTool) ||
-			(server?.enabled === true && !["failed", "stopped", "disabled"].includes(server.state) && canReachMcp(selected));
+		// Only enablement and selection count, never connection state: the prompt says how to recover when a tool turns
+		// out to be missing, so a server that is still connecting, or that failed or stopped later, keeps the same policy
+		// bytes and the cached prefix. `mcp_status` carries the state. The native `mcp` tool is always selected where MCP
+		// is allowed, so the answer does not change when the server's own tools appear.
+		const octocode = selected.some(isOctocodeTool) || (server?.enabled === true && canReachMcp(selected));
 		// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 		const canWrite = !readOnlyRole && ["file", "write", "edit"].some((name) => selected.includes(name));
 		const profiles = [...options.profiles().values()];

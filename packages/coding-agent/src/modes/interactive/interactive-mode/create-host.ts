@@ -98,7 +98,6 @@ export function createInteractiveModeHost(
 
 		// Agent subscription unsubscribe function
 		unsubscribe: undefined,
-		unsubscribeMcpStatus: undefined,
 		signalCleanupHandlers: [],
 
 		// Track if editor is in bash mode (text starts with !)

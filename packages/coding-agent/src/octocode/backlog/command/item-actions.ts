@@ -21,7 +21,6 @@ const EDITABLE: Record<string, { text(item: Item): string; patch(text: string): 
 	},
 	Title: { text: (item) => item.title, patch: (text) => ({ title: text }) },
 	Goal: { text: (item) => item.goal, patch: (text) => ({ goal: text }) },
-	Body: { text: (item) => item.body, patch: (text) => ({ body: text }) },
 	Paths: { text: (item) => item.paths.join("\n"), patch: (text) => ({ paths: text.split("\n") }) },
 	Reason: { text: (item) => item.why, patch: (text) => ({ why: text }) },
 	Evidence: { text: (item) => item.evidence.join("\n"), patch: (text) => ({ evidence: text.split("\n") }) },
@@ -42,7 +41,8 @@ export function detail(backlog: Backlog, item: Item, notes = 10): string {
 
 export interface CommandDeps extends BacklogOptions {
 	items(): Item[];
-	openView(ctx: ExtensionCommandContext, backlog: Backlog): Promise<void>;
+	/** Opens the live board and resolves to its address. */
+	openView(ctx: ExtensionCommandContext, backlog: Backlog): Promise<string>;
 	/** Opens a file in the default application; replaceable so a test opens nothing. */
 	open?: (file: string) => Promise<void>;
 	/** Repaint the footer counts after a change. */
@@ -100,9 +100,9 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		const patch: UpdateInput = { state, version: item.version, force: true };
 		if (state === "ongoing" || state === "done") {
 			if (!item.why) {
-				const reason = await ctx.ui.input("Why does this matter?");
-				if (!reason) return "Move cancelled: reason needed.";
-				patch.reason = reason;
+				const why = await ctx.ui.input("Why does this matter?");
+				if (!why) return "Move cancelled: reason needed.";
+				patch.why = why;
 			}
 			if (!item.goal) {
 				const goal = await ctx.ui.input("What result means done?");

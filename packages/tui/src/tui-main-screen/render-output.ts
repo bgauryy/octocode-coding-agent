@@ -2,10 +2,28 @@ import { isImageLine } from "../terminal-image.ts";
 import { getKittyImageReservedRows } from "./kitty-images.ts";
 import type { BoundedTerminalWriter } from "./terminal-writer.ts";
 
-/** Append every line of a full render, reserving the rows each Kitty image covers when it fits the screen. */
-export function appendFullRenderLines(output: BoundedTerminalWriter, newLines: string[], height: number): void {
+const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
+/** tmux ends a synchronized update one second after it begins; renewing this often keeps a long replay inside one. */
+export const SYNC_RENEW_INTERVAL_CHARS = 16 * 1024;
+
+/**
+ * Append every line of a full render, reserving the rows each Kitty image covers when it fits the screen.
+ * With `renewSync`, re-issue `?2026h` between rows once `SYNC_RENEW_INTERVAL_CHARS` have been written since the last
+ * one: tmux restarts its one-second expiry on each, so a multi-second history replay stays one atomic update.
+ */
+export function appendFullRenderLines(
+	output: BoundedTerminalWriter,
+	newLines: string[],
+	height: number,
+	renewSync = false,
+): void {
+	let lastSyncAt = output.length;
 	for (let i = 0; i < newLines.length; i++) {
 		if (i > 0) output.append("\r\n");
+		if (renewSync && output.length - lastSyncAt >= SYNC_RENEW_INTERVAL_CHARS) {
+			output.append(BEGIN_SYNCHRONIZED_OUTPUT);
+			lastSyncAt = output.length;
+		}
 		const line = newLines[i];
 		const isImage = isImageLine(line);
 		const imageReservedRows = isImage ? getKittyImageReservedRows(newLines, i) : 1;

@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type * as NativeConfig from "../../src/config.ts";
 import { MAX_REQUESTS_ENV } from "../../src/octocode/subagents/budget.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
+import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 import { tmp } from "./helpers.ts";
 
 // The child is the scripted stand-in: run the current script (`process.argv[1]`, set below) with node.
@@ -55,6 +56,149 @@ const alive = (pid: number): boolean => {
 };
 
 describe("a subagent child over its request budget", () => {
+	it("does no model work for cancelled launches or unreadable accounting history", async () => {
+		process.env[MAX_REQUESTS_ENV] = "3";
+		const workspace = tmp();
+		const session = { dir: path.join(workspace, "session"), id: "a-invalid-budget" };
+		const args = buildAgentArgs(undefined, undefined, session);
+		const spawned = vi.fn();
+		const launch = (signal?: AbortSignal) =>
+			runSubagent("budget loop 40", args, workspace, undefined, { id: session.id }, signal, () => undefined, spawned);
+		await expect(launch(AbortSignal.abort())).rejects.toThrow("Subagent cancelled");
+		expect(fs.existsSync(session.dir)).toBe(false);
+		fs.writeFileSync(session.dir, "not a directory");
+		await expect(launch()).rejects.toThrow(/ENOTDIR/);
+		fs.rmSync(session.dir);
+		fs.mkdirSync(session.dir);
+		const transcript = path.join(session.dir, `history_${session.id}.jsonl`);
+		const broken = `${JSON.stringify({ type: "session", id: session.id })}\n{"type":"message"`;
+		fs.writeFileSync(transcript, broken);
+		await expect(launch()).rejects.toThrow(/repair the invalid transcript record/);
+		expect(fs.readFileSync(transcript, "utf8")).toBe(broken);
+		expect(spawned).not.toHaveBeenCalled();
+	});
+
+	it("shares its budget across resumed processes, including an inherited transcript, and refuses an exhausted reopen", async () => {
+		process.env[MAX_REQUESTS_ENV] = "3";
+		const lines = childLog();
+		const workspace = tmp();
+		const session = { dir: path.join(workspace, "session"), id: "a-resumed-budget" };
+		const args = buildAgentArgs(undefined, undefined, session);
+		const first = await runSubagent(
+			"budget loop 2",
+			args,
+			workspace,
+			undefined,
+			{ id: session.id },
+			undefined,
+			() => undefined,
+		);
+		expect(first.outcome).toBe("done");
+		const progress: number[] = [];
+		const resumed = await runSubagent(
+			"budget loop 40",
+			args,
+			workspace,
+			undefined,
+			{ id: session.id, parentSession: "forked-parent", scratch: path.join(workspace, "new-parent") },
+			undefined,
+			(update) => {
+				if (update.requests !== undefined) progress.push(update.requests);
+			},
+		);
+		expect(resumed.budget).toEqual({ requests: 5, limit: 3 });
+		expect(progress).toEqual([1, 2]);
+		expect(resumed.usage.totalTokens).toBe(240);
+		expect(
+			lines()
+				.filter((line) => line.startsWith("prompt "))
+				.at(-1),
+		).toContain("You have used 3 of 3 model requests. Finish now:");
+		const transcript = fs.readFileSync(childSessionFile(session)!, "utf8");
+		const spawned = vi.fn();
+		const exhausted = await runSubagent(
+			"budget loop 40",
+			args,
+			workspace,
+			undefined,
+			{ id: session.id },
+			undefined,
+			() => undefined,
+			spawned,
+		);
+		expect(exhausted.budget).toEqual({ requests: 5, limit: 3 });
+		expect(exhausted.usage.totalTokens).toBe(0);
+		expect(spawned).not.toHaveBeenCalled();
+		expect(fs.readFileSync(childSessionFile(session)!, "utf8")).toBe(transcript);
+		const fresh = { dir: session.dir, id: "a-new-budget" };
+		expect(
+			(
+				await runSubagent(
+					"budget loop 2",
+					buildAgentArgs(undefined, undefined, fresh),
+					workspace,
+					undefined,
+					{ id: fresh.id },
+					undefined,
+					() => undefined,
+				)
+			).outcome,
+		).toBe("done");
+	});
+
+	it("counts prior failed replies and all branches, excludes compactions, and preserves a final answer at the hard limit", async () => {
+		process.env[MAX_REQUESTS_ENV] = "3";
+		const workspace = tmp();
+		const session = { dir: path.join(workspace, "session"), id: "a-history-budget" };
+		fs.mkdirSync(session.dir);
+		fs.writeFileSync(
+			path.join(session.dir, `2026-01-01T00-00-00-000Z_${session.id}.jsonl`),
+			[
+				{ type: "session", id: session.id },
+				{ type: "message", id: "old-branch", message: { role: "assistant", stopReason: "toolUse" } },
+				{ type: "message", id: "failed", message: { role: "assistant", stopReason: "error" } },
+				{
+					type: "message",
+					id: "current-branch",
+					parentId: "old-branch",
+					message: { role: "assistant", stopReason: "stop" },
+				},
+				{ type: "compaction", summary: "summary", usage: { totalTokens: 9000 } },
+				{ type: "message", message: { role: "toolResult" } },
+			]
+				.map((entry) => JSON.stringify(entry))
+				.join("\n") + "\n",
+		);
+		const args = buildAgentArgs(undefined, undefined, session);
+		const outcome = await runSubagent(
+			"budget loop 1",
+			args,
+			workspace,
+			undefined,
+			{ id: session.id },
+			undefined,
+			() => undefined,
+		);
+		expect(outcome.outcome).toBe("done");
+		expect(outcome.budget).toBeUndefined();
+		expect(outcome.usage.totalTokens).toBe(240);
+		const stopped = await runSubagent(
+			"budget loop 40",
+			args,
+			workspace,
+			undefined,
+			{ id: session.id },
+			undefined,
+			() => undefined,
+		);
+		expect(stopped.budget).toEqual({ requests: 5, limit: 3 });
+		process.env[MAX_REQUESTS_ENV] = "0";
+		expect(
+			(await runSubagent("budget loop 6", args, workspace, undefined, { id: session.id }, undefined, () => undefined))
+				.outcome,
+		).toBe("done");
+	});
+
 	it("is steered once at the soft limit, stopped at the hard limit and reports partial; its process is gone", async () => {
 		process.env[MAX_REQUESTS_ENV] = "3";
 		const lines = childLog();

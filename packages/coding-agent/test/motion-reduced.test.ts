@@ -6,7 +6,7 @@ import { initTheme } from "../src/theme/theme.ts";
 import { bannerHeader } from "../src/octocode/ui/chrome.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
-/** A theme with concrete colours, so the banner has a ramp and therefore a shine. */
+/** A theme with concrete colours, so the banner has a gradient ramp. */
 const colorTheme = {
 	fg: (_color: string, text: string) => text,
 	appearance: "dark",
@@ -87,33 +87,11 @@ describe("paint timers on the animation clock", () => {
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("sweeps the banner shine for 1.1 s on the clock and stops it", () => {
-		const tui = fakeTui();
-		const header = bannerHeader(tui, colorTheme, Date.now());
-		expect(animationClock.isRunning()).toBe(true);
-		advance(400);
-		expect(tui.requestRender.mock.calls.length).toBeGreaterThanOrEqual(8);
-		advance(1_000);
-		header.render(80);
-		expect(animationClock.isRunning()).toBe(false);
-		header.dispose?.();
-	});
-
-	it("skips the banner shine entirely in reduced motion", () => {
-		animationClock.setReducedMotion(true);
-		const tui = fakeTui();
-		const header = bannerHeader(tui, colorTheme, Date.now());
+	it("never puts the banner on the clock", () => {
+		const header = bannerHeader(colorTheme);
+		const first = header.render(80);
 		expect(animationClock.isRunning()).toBe(false);
 		advance(1_500);
-		expect(tui.requestRender).not.toHaveBeenCalled();
-		header.dispose?.();
-	});
-
-	it("drops a running banner shine when motion is reduced mid-sweep", () => {
-		const header = bannerHeader(fakeTui(), colorTheme, Date.now());
-		advance(200);
-		animationClock.setReducedMotion(true);
-		expect(animationClock.isRunning()).toBe(false);
-		header.dispose?.();
+		expect(header.render(80)).toBe(first);
 	});
 });

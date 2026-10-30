@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import { envFlag, ownNonce, SUBAGENT_ENV } from "../shared/env.ts";
 import { peerDbPath, peerRegistryDir } from "../shared/home.ts";
 import { interactive } from "../shared/interactive.ts";
-import type { MessageEnvelope } from "../shared/messages.ts";
 import { terminateSelf } from "../shared/process.ts";
 import { storedText } from "../shared/sanitize.ts";
 import type { Ask } from "./asks.ts";
@@ -13,13 +12,16 @@ import { agentName, LINE_MAX } from "./identity.ts";
 import { Mail } from "./mail.ts";
 import type { Lease, SendOptions } from "./model.ts";
 import { PeerLeases } from "./peer-leases.ts";
-import { userProof } from "./proof.ts";
+import { Relays } from "./relay.ts";
 import { Activity, HEARTBEAT_MS } from "./session/activity.ts";
 import { TeamDatabase } from "./session/database.ts";
 import { claimName } from "./session/membership.ts";
+import { SessionTeamName } from "./session/rejoin.ts";
 import { watchParentProcess } from "./session/parent.ts";
 import { lockPaths, type ReservationHost, reservationText, unlockPaths } from "./session/reservations.ts";
-import { type SendHost, sendMessage } from "./session/send.ts";
+import * as refs from "./session/references.ts";
+import { type MessageHook, type Resumer, type SendResult, sendMessage } from "./session/send.ts";
+import { Vouches } from "./session/vouches.ts";
 import { type TeamStore } from "./store.ts";
 import { TeamTicker, type TeamView } from "./ticker.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
@@ -47,26 +49,26 @@ export class Team {
 	private readonly delivery: Delivery;
 	/** This agent's status, tool counts and usage, written with the heartbeat (`session/activity.ts`). */
 	private readonly activity: Activity;
-	/** A subagent's check that its parent still runs: on from the session start, whether or not it joins the team. */
-	/** Stops the parent check (a subagent only). */
+	/** Stops the check that the parent still runs (a subagent only; on from the session start, joined or not). */
 	private stopParentWatch: (() => void) | undefined;
 	/** Subagents this session started that have finished: id → where their report went, for a later message to them. */
 	private readonly finished = new Map<string, string>();
 	/** Resumes a finished subagent that still lingers (set by the subagents domain); its receipt, else undefined. */
-	setResumer(
-		resume: (to: string, text: string, from: string, signal?: AbortSignal) => Promise<string | undefined>,
-	): void {
+	setResumer(resume: Resumer): void {
 		this.resumer = resume;
 	}
-	private resumer:
-		| ((to: string, text: string, from: string, signal?: AbortSignal) => Promise<string | undefined>)
-		| undefined;
-	private messageHook:
-		| ((message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>)
-		| undefined;
-	setMessageHook(hook: (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>): void {
+	private resumer: Resumer | undefined;
+	private messageHook: MessageHook | undefined;
+	setMessageHook(hook: MessageHook): void {
 		this.messageHook = hook;
 	}
+	/** Settles children's relay requests to agents they cannot reach (B200), before mail reaches the model. */
+	private readonly relays = new Relays({
+		id: () => this.me?.id,
+		finished: this.finished,
+		started: (id) => this.finished.has(id) || this.vouches.has(id),
+		resumer: () => this.resumer,
+	});
 
 	/** Recent completion receipts; active-agent limits cannot bound a long session's history. */
 	rememberFinished(id: string, receipt: string): void {
@@ -75,9 +77,10 @@ export class Team {
 		if (this.finished.size > 128) this.finished.delete(this.finished.keys().next().value!);
 	}
 	private readonly env: NodeJS.ProcessEnv;
+	private readonly name: SessionTeamName;
 	constructor(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env) {
 		this.env = env;
-
+		this.name = new SessionTeamName(api, env);
 		this.mail = new Mail(api, () => ownNonce(this.env));
 		this.activity = new Activity({
 			me: () => this.me,
@@ -92,23 +95,18 @@ export class Team {
 				ctx: () => this.ctx,
 				headless: () => this.headless(),
 				heartbeat: (db) => this.activity.heartbeat(db),
+				relays: (db) => this.relays.take(db),
 			},
 			this.mail,
 		);
 	}
-
-	/** Secrets of the subagents this session started, by agent id (`vouch`): what signs a message the user types for one. */
-	private readonly secrets = new Map<string, string>();
-
+	private readonly vouches = new Vouches();
 	/**
 	 * Registers the secret this session gave subagent `id` (the secret in its `PERMISSION_NONCE_FILE_ENV` file), so `/agents tell` can sign for it and
 	 * the child can tell the user's message from a forged one. Returns what ends it, when the child is gone.
 	 */
 	vouch(id: string, secret: string): () => void {
-		this.secrets.set(id, secret);
-		return () => {
-			if (this.secrets.get(id) === secret) this.secrets.delete(id);
-		};
+		return this.vouches.vouch(id, secret);
 	}
 
 	/** Aborted while an interrupt waits for this agent's run to stop (`agent_before_settle` waits end early on it). */
@@ -124,8 +122,8 @@ export class Team {
 		return this.env[PARENT_ID_ENV];
 	}
 
-	/** Bind to the session and, in a subagent, join straight away (the parent chose the id). */
-	start(ctx: ExtensionContext): void {
+	/** Bind to the session; join straight away in a subagent (the parent chose the id) or under the name a resumed session recorded. */
+	start(ctx: ExtensionContext, resumeAs?: string): void {
 		try {
 			this.stop();
 		} catch {
@@ -135,7 +133,7 @@ export class Team {
 		this.database.clearProblem();
 		this.activity.resetEarly();
 		this.watchParent();
-		if (this.env[AGENT_ID_ENV]) this.join();
+		if (this.name.start(resumeAs) || this.env[AGENT_ID_ENV]) this.join();
 	}
 
 	/**
@@ -143,8 +141,7 @@ export class Team {
 	 * and exits (ARCHITECTURE: Liveness). Its own unref'd timer, so a child that could not join the team stops too.
 	 */
 	private watchParent(): void {
-		if (this.stopParentWatch) return;
-		this.stopParentWatch = watchParentProcess(this.env, () => {
+		this.stopParentWatch ??= watchParentProcess(this.env, () => {
 			this.stopParentWatch?.();
 			this.stopParentWatch = undefined;
 			// Where a signal ends the process outright (Windows) nothing runs after it: the row and reservations go now, not when a peer's sweep finds the pid dead.
@@ -183,7 +180,7 @@ export class Team {
 		const db = this.store(); // throws before the session starts
 		const ctx = this.ctx!;
 		if (!this.me) {
-			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost));
+			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost), this.name);
 			db.edits.adoptUnjoined(this.me.id);
 			this.activity.joined(this.me);
 			this.ticker.sync();
@@ -219,7 +216,7 @@ export class Team {
 			this.peers = undefined;
 			this.ticker.reset();
 			this.finished.clear();
-			this.secrets.clear();
+			this.vouches.clear();
 			this.ctx = undefined;
 		}
 	}
@@ -265,12 +262,25 @@ export class Team {
 		recipient: string | undefined,
 		text: string,
 		options: SendOptions & { from?: string | undefined; signal?: AbortSignal } = {},
-	): Promise<{ sent: string[]; id: number; departed?: string[]; resumed?: string } | { error: string }> {
+	): Promise<SendResult> {
 		return sendMessage(this.sendHost(), recipient, text, options);
 	}
 
-	/** The team as sending sees it (`session/send.ts`). */
-	private sendHost(): SendHost {
+	/** Stored message `id` for `requester` (`msg#N`): its sender, a recipient, or the session that started one; else an error. */
+	readMessage(id: number, requester: string): refs.StoredMessage | { error: string } {
+		return refs.readMessage(this.sendHost(), id, requester);
+	}
+	/** Delivers stored message `id` from `by` to `to` (an id, role, "parent" or "all") without copying it (`references.ts`). */
+	forwardMessage(id: number, by: string, to: string, note?: string, signal?: AbortSignal) {
+		return refs.forwardMessage(this.sendHost(), id, by, to, note, signal);
+	}
+	/** Unanswered `replyRequired` questions agent `agentId` sent to agents other than this session (decision 6). */
+	unansweredPeerAsks(agentId: string): number {
+		return refs.unansweredPeerAsks(this.sendHost(), agentId);
+	}
+
+	/** The team as sending and references see it (`session/send.ts`, `session/references.ts`). */
+	private sendHost(): refs.ReferenceHost {
 		return {
 			me: () => this.me,
 			ctx: () => this.ctx,
@@ -280,15 +290,10 @@ export class Team {
 			finished: this.finished,
 			resumer: () => this.resumer,
 			messageHook: () => this.messageHook,
-			signed: (id, recipient, text) => this.signed(id, recipient, text),
+			signed: (id, recipient, text) => this.vouches.signed(id, recipient, text),
+			started: (id) => this.finished.has(id) || this.vouches.has(id),
 			mail: this.mail,
 		};
-	}
-
-	/** The signature of the user's message `text` (stored as message `id`) for child `recipient`; undefined when this session did not start it. */
-	private signed(id: number, recipient: string, text: string): string | undefined {
-		const secret = this.secrets.get(recipient);
-		return secret ? userProof(secret, { id, to: recipient, text }) : undefined;
 	}
 
 	/** Reserve paths (a trailing `/` marks a whole directory tree) for this agent. */
@@ -312,14 +317,10 @@ export class Team {
 			store: () => this.store(),
 			existing: () => this.existing(),
 			held: this.held,
-			collaborating: () => this.collaborating(),
+			// Whether this agent takes part in the team: it joined, or still tracks reservations.
+			collaborating: () => this.me !== undefined || this.held.any,
 			peerLeases: () => this.peerLeases(),
 		};
-	}
-
-	/** Whether this agent takes part in the team: it joined, or still tracks reservations. */
-	private collaborating(): boolean {
-		return this.me !== undefined || this.held.any;
 	}
 
 	/** The package reads its home from the process environment, so this does too (not the team's injected `env`, which only carries a subagent's identity). */

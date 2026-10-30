@@ -1,11 +1,6 @@
-import { truncateToWidth } from "@octocodeai/octocode-tui";
-import { getAgentDir } from "../../config.ts";
-import {
-	buildInventory,
-	HOST_TITLES,
-	type InventoryItem,
-	renderInventory,
-} from "../../core/extensibility/inventory.ts";
+import path from "node:path";
+import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
+import { buildInventory, type InventoryItem, renderInventory } from "../../core/extensibility/inventory.ts";
 import { type SwitchScope, switchItem } from "../../core/extensibility/switch.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
@@ -13,7 +8,8 @@ import { errorMessage } from "../../utils/guards.ts";
 import { registerHooksCommand } from "../hooks/register.ts";
 import type { HooksView } from "../hooks/register/types.ts";
 import { type Subcommand, type Subcommands, say } from "../shared/commands.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { tildePath } from "../shared/home.ts";
+import { PluginsPicker } from "./picker.ts";
 
 const USAGE = "Usage: /plugins [list] | /plugins enable|disable <id> [--local] [--force]";
 
@@ -31,82 +27,6 @@ async function load(api: ExtensionAPI, ctx: ExtensionCommandContext) {
 	return { agentDir, manager, inventory };
 }
 
-/** The terminal list: ↑↓ move, Space switch, Tab scope, r reload and close, Esc close. */
-function showPicker(
-	ctx: ExtensionCommandContext,
-	items: InventoryItem[],
-	apply: (item: InventoryItem, on: boolean, scope: SwitchScope, force: boolean) => string,
-): Promise<"reload" | "changed" | "unchanged"> {
-	return ctx.ui.custom<"reload" | "changed" | "unchanged">((tui, theme, keybindings, done) => {
-		let cursor = 0;
-		let scope: SwitchScope = "global";
-		let changed = false;
-		let flash: string | undefined;
-		let confirmGate: string | undefined;
-		const refresh = () => tui.requestRender();
-		function toggle(item: InventoryItem) {
-			const on = !item.on;
-			const force = confirmGate === item.id;
-			if (!on && item.gate && !force) {
-				confirmGate = item.id;
-				flash = `${item.label} denies when it fails. Press Space again to switch it off.`;
-				return;
-			}
-			confirmGate = undefined;
-			try {
-				flash = apply(item, on, scope, force);
-				item.on = on;
-				changed = true;
-			} catch (error) {
-				flash = errorMessage(error);
-			}
-		}
-		return {
-			handleInput(data: string) {
-				const item = items[cursor];
-				if (keybindings.matches(data, "tui.select.cancel")) return done(changed ? "changed" : "unchanged");
-				if (data === "r") return done("reload");
-				if (keybindings.matches(data, "tui.select.up")) cursor = (cursor + items.length - 1) % items.length;
-				else if (keybindings.matches(data, "tui.select.down")) cursor = (cursor + 1) % items.length;
-				else if (data === "\t") {
-					scope = scope === "global" ? "project" : "global";
-					flash = scope === "project" && !ctx.isProjectTrusted() ? "Trust this project first (/trust)." : undefined;
-				} else if (data === " " && item) toggle(item);
-				refresh();
-			},
-			render(width: number): string[] {
-				const lines: string[] = [];
-				const push = (text: string) => lines.push(truncateToWidth(text, Math.max(20, width), "…"));
-				push(theme.fg("accent", "─".repeat(Math.max(20, width))));
-				push(
-					` ${theme.bold("Plugins, extensions and hooks")}  ${theme.fg("muted", `Scope: ${scope === "global" ? "[Global]  Project" : "Global  [Project]"}`)}`,
-				);
-				let host: string | undefined;
-				items.forEach((item, index) => {
-					if (item.host !== host) {
-						host = item.host;
-						push(` ${theme.fg("accent", theme.bold(HOST_TITLES[item.host]))}`);
-					}
-					const box = item.locked ? "[-]" : item.on ? "[x]" : "[ ]";
-					const text = `${"  ".repeat(item.depth)}${box} ${sanitizeTerminalText(item.label)}${item.detail ? theme.fg("dim", ` — ${sanitizeTerminalText(item.detail)}`) : ""}`;
-					push(index === cursor ? `${theme.fg("accent", " › ")}${text}` : `   ${text}`);
-				});
-				if (!items.length) push(theme.fg("dim", "   Nothing configured."));
-				if (flash) push(` ${theme.fg("warning", sanitizeTerminalText(flash))}`);
-				push(
-					theme.fg(
-						"dim",
-						` Space switch · Tab scope · r reload and close · Esc close${changed ? " (changes apply after /reload)" : ""}`,
-					),
-				);
-				push(theme.fg("accent", "─".repeat(Math.max(20, width))));
-				return lines;
-			},
-			invalidate() {},
-		};
-	});
-}
-
 /** `/plugins`: every plugin, extension and hook per host, with a switch for each. */
 export function pluginsCommand(api: ExtensionAPI): Subcommand {
 	return {
@@ -122,10 +42,12 @@ export function pluginsCommand(api: ExtensionAPI): Subcommand {
 			const apply = (item: InventoryItem, on: boolean, scope: SwitchScope, force: boolean) =>
 				switchItem(item, on, scope, manager, { cwd: ctx.cwd, agentDir, force });
 			if (action === "enable" || action === "disable") {
+				if (!id) return say(ctx, `${USAGE}\nRun /plugins for the IDs.`, "warning");
+				const unknownFlags = flags.filter((flag) => flag !== "--local" && flag !== "--force");
+				if (unknownFlags.length) return say(ctx, `${USAGE}\nUnknown option ${unknownFlags.join(" ")}.`, "warning");
 				const item = inventory.items.find((candidate) => candidate.id === id);
-				const stale = id !== undefined && inventory.stale.includes(id);
-				if (!id || (!item && !stale))
-					return say(ctx, `${USAGE}\nUnknown id ${id ?? ""}; run /plugins for the list.`, "warning");
+				const stale = inventory.stale.includes(id);
+				if (!item && !stale) return say(ctx, `Unknown id ${id}; run /plugins for the list.`, "warning");
 				try {
 					const scope: SwitchScope = flags.includes("--local") ? "project" : "global";
 					if (stale) manager.setToggle(scope, id, undefined);
@@ -141,10 +63,45 @@ export function pluginsCommand(api: ExtensionAPI): Subcommand {
 			}
 			if (action && action !== "list") return say(ctx, USAGE, "warning");
 			if (action === "list" || ctx.mode !== "tui" || !ctx.hasUI) return say(ctx, renderInventory(inventory));
-			const result = await showPicker(ctx, inventory.items, apply);
+			const changed = await ctx.ui.custom<boolean>(
+				(tui, theme, keybindings, done) =>
+					new PluginsPicker(
+						{
+							items: inventory.items,
+							apply,
+							projectTrusted: ctx.isProjectTrusted(),
+							paths: {
+								global: tildePath(path.join(agentDir, "settings.json")),
+								project: path.join(CONFIG_DIR_NAME, "settings.json"),
+							},
+							height: process.stdout.rows ?? 24,
+							summary: [
+								inventory.stale.length &&
+									`${inventory.stale.length} stale switch${inventory.stale.length === 1 ? "" : "es"}`,
+								inventory.ignored.length &&
+									`${inventory.ignored.length} ignored project switch${inventory.ignored.length === 1 ? "" : "es"}`,
+								inventory.notes.length &&
+									`${inventory.notes.length} diagnostic${inventory.notes.length === 1 ? "" : "s"}`,
+							]
+								.filter(Boolean)
+								.join(" · "),
+							done,
+							requestRender: () => tui.requestRender(),
+						},
+						theme,
+						keybindings,
+					),
+			);
 			await manager.flush();
-			if (result === "reload") await ctx.reload();
-			else if (result === "changed") say(ctx, "Switches saved. Run /reload to apply them.");
+			if (!changed) return;
+			if (
+				await ctx.ui.confirm(
+					"Apply the changes?",
+					"Reload now so the switched plugins, extensions and hooks take effect.",
+				)
+			)
+				await ctx.reload();
+			else say(ctx, "Switches saved. Run /reload to apply them.");
 		},
 	};
 }

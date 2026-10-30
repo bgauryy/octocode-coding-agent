@@ -17,7 +17,7 @@ export function commandImages(
 	assets: ApplicationAssets,
 	session: Pick<AgentSession, "model">,
 ): ImageContent[] | undefined {
-	if (command.action === "abort") return undefined;
+	if (command.action === "abort" || command.action === "answer") return undefined;
 	if (!command.text.trim() && !command.attachments?.length) throw new Error("Enter a message or attach an image");
 	if (!command.attachments?.length) return undefined;
 	const images: ImageContent[] = command.attachments.map((id) => {
@@ -33,6 +33,30 @@ export function commandImages(
 	assertImageInputSupported(session.model, images);
 	if (session.model) assertImageCounts(session.model, [images.length]);
 	return images;
+}
+
+/** The session operation a command names, with its arguments; an answer the broker refuses fails the command. */
+export function invokeCommand(
+	command: ApplicationCommand,
+	images: ImageContent[] | undefined,
+	session: Pick<AgentSession, "abort" | "prompt" | "steer" | "followUp" | "answerDialog">,
+): unknown {
+	switch (command.action) {
+		case "abort":
+			return session.abort();
+		case "prompt":
+			return session.prompt(command.text, { images });
+		case "answer": {
+			const result = session.answerDialog(command.dialogId, {
+				...(command.choice !== undefined ? { choice: command.choice } : {}),
+				...(command.text !== undefined ? { text: command.text } : {}),
+			});
+			if (!result.ok) throw new Error(result.reason);
+			return undefined;
+		}
+		default:
+			return session[command.action](command.text, images);
+	}
 }
 
 /** What dispatching an accepted command needs of the application service. */

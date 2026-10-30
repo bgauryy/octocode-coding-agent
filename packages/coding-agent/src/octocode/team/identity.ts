@@ -9,7 +9,7 @@ import { AGENT_GOAL_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "./store/env.ts";
 /**
  * Every agent's name comes from here: `adjective-creature` (`inky-kraken`), drawn from a closed list so names stay
  * short, friendly and easy to type. The name is the team id: it is the `sendMessage` address, the worktree ref
- * (`refs/octocode/pi/<name>`) and the scratch folder, so it holds only lowercase letters, hyphens and digits.
+ * (`refs/octocode/<name>`) and the scratch folder, so it holds only lowercase letters, hyphens and digits.
  */
 export const ADJECTIVES: readonly string[] = [
 	"inky",
@@ -109,7 +109,7 @@ export function agentName(taken: Iterable<string> = [], random: () => number = M
  */
 export const GOAL_SHOWN_CHARS = 48;
 const GOAL_EXAMPLE = "audit auth token refresh";
-export const GOAL_DESCRIPTION = `Crisp verb phrase for the panel and teammates; about ${GOAL_SHOWN_CHARS} characters fit, e.g. "${GOAL_EXAMPLE}"`;
+export const GOAL_DESCRIPTION = `Verb phrase for the panel; about ${GOAL_SHOWN_CHARS} characters fit, e.g. "${GOAL_EXAMPLE}"`;
 
 /** The goal as it is stored and shown: terminal escapes removed and whitespace collapsed. Only a missing goal is refused. */
 export function checkGoal(input: unknown): string {

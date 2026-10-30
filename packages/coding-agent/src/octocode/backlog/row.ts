@@ -1,28 +1,7 @@
+import type { ItemRow } from "../agentdb/queries/backlog.ts";
+
 /** A persisted item, including the joined sequence number of its origin. */
-export interface Row<State extends string> {
-	id: number;
-	seq: number;
-	title: string;
-	goal: string;
-	body: string;
-	paths: string;
-	why: string;
-	evidence: string;
-	plan: string;
-	state: State;
-	priority: number;
-	tags: string;
-	assignee: string | null;
-	created_by: string;
-	source_session: string | null;
-	created_at: number;
-	updated_at: number;
-	started_at: number | null;
-	done_at: number | null;
-	from_item: number | null;
-	from_seq: number | null;
-	version: number;
-}
+export type Row<State extends string> = ItemRow<State>;
 
 /** An item's number as people write it (`B12`); `none` when it has none. */
 export const refText = (seq: number | undefined) => (seq === undefined ? "none" : `B${seq}`);

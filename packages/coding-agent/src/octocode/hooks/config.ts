@@ -113,6 +113,8 @@ export function loadHooks(
 				const enabled = features.hooks ?? features.codex_hooks;
 				if (typeof enabled === "boolean") codexEnabled = enabled;
 				else if (enabled !== undefined) errors.push(`${file}: features.hooks must be a boolean`);
+				// `[hooks.state.*]` is Codex's own ledger of reviewed hook hashes, not an event.
+				if (isRecord(value.hooks)) delete value.hooks.state;
 				if (isRecord(value.hooks))
 					for (const groups of Object.values(value.hooks)) {
 						if (!Array.isArray(groups)) continue;

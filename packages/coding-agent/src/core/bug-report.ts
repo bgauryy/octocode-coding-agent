@@ -1,5 +1,6 @@
 import * as os from "node:os";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import { hasTmuxSession } from "@octocodeai/octocode-tui";
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@octocodeai/octocode-ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
 import { VERSION } from "../config.ts";
@@ -83,7 +84,7 @@ function collectEnvironment() {
 			program: env("TERM_PROGRAM"),
 			programVersion: env("TERM_PROGRAM_VERSION"),
 			colorterm: env("COLORTERM"),
-			tmux: Boolean(process.env.TMUX),
+			tmux: hasTmuxSession(),
 			ssh: Boolean(process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY),
 			ci: Boolean(process.env.CI),
 		},

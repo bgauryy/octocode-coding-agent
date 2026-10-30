@@ -1,6 +1,6 @@
 import type { ExtensionContext, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
-import { PARENT_SESSION_ENV } from "../shared/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../shared/env.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { type Actor, BacklogStore } from "./store.ts";
 
@@ -31,8 +31,13 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 	const id = options.agentId?.() || session;
 	// A subagent never claims: it may update only what the session that started it holds (named by the parent, not inferred).
 	const parent = env[PARENT_SESSION_ENV];
-	const owners = new Set(parent ? [parent] : []);
-	return { store, actor: { id, owners }, session, repoName: repo.name, repoRoot: repo.root };
+	if (!parent)
+		throw new Error(
+			`This subagent's parent session is unknown (${PARENT_SESSION_ENV} is unset), so no backlog item is its parent's to update: report changes and proposals to your parent.`,
+		);
+	const item = env[BACKLOG_ITEM_ENV];
+	const actor: Actor = { id, owners: new Set([parent]), ...(item ? { item } : {}) };
+	return { store, actor, session, repoName: repo.name, repoRoot: repo.root };
 }
 
 export interface BacklogWeb {

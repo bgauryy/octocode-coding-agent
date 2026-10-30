@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type JsonRpcMessage,
-	LegacySseTransport,
 	LATEST_PROTOCOL_VERSION,
 	McpAuthRequiredError,
 	McpHttpError,
@@ -96,27 +95,13 @@ describe("MCP config", () => {
 		return { agentDir, cwd };
 	}
 
-	it("validates SSE and literal headers, preserving literal values at transport creation", () => {
-		expect(validateMcpServerConfig("legacy", { type: "sse", url: "https://user@example.com/events" })).toContain(
-			"SSE url must not contain credentials",
+	it("rejects legacy SSE and preserves literal HTTP headers", () => {
+		expect(validateMcpServerConfig("legacy", { type: "sse", url: "https://example.com/events" })).toContain(
+			"legacy SSE is unsupported",
 		);
 		expect(
-			validateMcpServerConfig("legacy", { type: "sse", url: "https://example.com/events", literalHeaders: "yes" }),
+			validateMcpServerConfig("remote", { type: "http", url: "https://example.com/mcp", literalHeaders: "yes" }),
 		).toContain("literalHeaders must be a boolean");
-		const config = validateMcpServerConfig("legacy", {
-			type: "sse",
-			url: "https://example.com/events",
-			literalHeaders: true,
-			headers: { Authorization: TOKEN_HEADER, "X-Command": "!false" },
-		});
-		expect(typeof config).toBe("object");
-		if (typeof config === "string") return;
-		const legacy = createDefaultTransport({ name: "legacy", source: "test", config }, process.cwd(), undefined);
-		expect(legacy).toBeInstanceOf(LegacySseTransport);
-		expect((legacy as LegacySseTransport).options.headers).toEqual({
-			Authorization: TOKEN_HEADER,
-			"X-Command": "!false",
-		});
 		const standard = createDefaultTransport(
 			{
 				name: "remote",
@@ -164,12 +149,12 @@ describe("MCP config", () => {
 			["shared", "project", { command: "project-cmd", exposure: "direct" }],
 			["remote", "global", { url: "https://example.com/mcp", headers: { Authorization: TOKEN_HEADER } }],
 			["off", "global", { command: "x", enabled: false }],
-			["legacy", "global", { type: "sse", url: "https://example.com/sse" }],
 		]);
-		expect(trusted.errors).toHaveLength(3);
+		expect(trusted.errors).toHaveLength(4);
 		expect(trusted.errors[0]).toContain('server "bad" needs either "command"');
-		expect(trusted.errors[1]).toContain('server "badUrl": url must be an http or https URL');
-		expect(trusted.errors[2]).toContain('invalid server name "bad name"');
+		expect(trusted.errors[1]).toContain("legacy SSE is unsupported");
+		expect(trusted.errors[2]).toContain('server "badUrl": url must be an http or https URL');
+		expect(trusted.errors[3]).toContain('invalid server name "bad name"');
 
 		// Untrusted projects cannot add or override servers, since stdio servers run commands.
 		const untrusted = loadMcpConfig({ ...paths, projectTrusted: false });
@@ -958,7 +943,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 			await servers.at(-1)?.send({ jsonrpc: "2.0", unexpected: true } as never);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(readFileSync(path, "utf8").replace(/^\S+ /gm, "")).toBe(
-				"[fake] error client: Received invalid JSON-RPC message\n",
+				'[fake] error client: Unknown message type: {"jsonrpc":"2.0","unexpected":true}\n',
 			);
 			await connection.close();
 		} finally {

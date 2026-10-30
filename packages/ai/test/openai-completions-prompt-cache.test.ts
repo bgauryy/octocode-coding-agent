@@ -1,14 +1,13 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
 
-interface FakeOpenAIClientOptions {
-	apiKey: string;
-	baseURL: string;
-	dangerouslyAllowBrowser: boolean;
-	defaultHeaders?: Record<string, string>;
+interface CapturedRequest {
+	url: string;
+	headers?: Record<string, string>;
 }
 
 interface CapturedCompletionsPayload {
@@ -19,49 +18,26 @@ interface CapturedCompletionsPayload {
 
 const mockState = vi.hoisted(() => ({
 	lastParams: undefined as CapturedCompletionsPayload | undefined,
-	lastClientOptions: undefined as FakeOpenAIClientOptions | undefined,
+	lastRequest: undefined as CapturedRequest | undefined,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (params: CapturedCompletionsPayload) => {
-					mockState.lastParams = params;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								choices: [{ delta: {}, finish_reason: "stop" }],
-								usage: {
-									prompt_tokens: 1,
-									completion_tokens: 1,
-									prompt_tokens_details: { cached_tokens: 0 },
-									completion_tokens_details: { reasoning_tokens: 0 },
-								},
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
+mockCompletionsFetch((params: CapturedCompletionsPayload, request, url) => {
+	mockState.lastRequest = { url, headers: Object.fromEntries(new Headers(request.headers)) };
+	mockState.lastParams = params;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			yield {
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1,
+					completion_tokens: 1,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 0 },
 				},
-			},
-		};
-
-		constructor(options: FakeOpenAIClientOptions) {
-			mockState.lastClientOptions = options;
-		}
-	}
-
-	return { default: FakeOpenAI };
+			};
+		},
+	};
+	return completionsResponse(stream);
 });
 
 describe("openai-completions prompt caching", () => {
@@ -69,7 +45,7 @@ describe("openai-completions prompt caching", () => {
 
 	beforeEach(() => {
 		mockState.lastParams = undefined;
-		mockState.lastClientOptions = undefined;
+		mockState.lastRequest = undefined;
 		delete process.env.OCTOCODE_CACHE_RETENTION;
 	});
 
@@ -94,6 +70,7 @@ describe("openai-completions prompt caching", () => {
 		options?: {
 			cacheRetention?: "none" | "short" | "long";
 			sessionId?: string;
+			promptCacheKey?: string;
 			headers?: Record<string, string>;
 		},
 		model: Model<"openai-completions"> = createModel(),
@@ -109,9 +86,16 @@ describe("openai-completions prompt caching", () => {
 
 		return {
 			payload: mockState.lastParams,
-			headers: mockState.lastClientOptions?.defaultHeaders ?? {},
+			headers: mockState.lastRequest?.headers ?? {},
 		};
 	}
+
+	it("groups OpenAI prompt caching independently of each child's session", async () => {
+		const { payload } = await captureRequest({ sessionId: "child-a", promptCacheKey: "siblings" });
+		expect(payload?.prompt_cache_key).toBe("siblings");
+		const disabled = await captureRequest({ sessionId: "child-b", promptCacheKey: "siblings", cacheRetention: "none" });
+		expect(disabled.payload?.prompt_cache_key).toBeUndefined();
+	});
 
 	it("uses Grok chat affinity without sending OpenAI cache fields", async () => {
 		const model = createModel({ provider: "xai", baseUrl: "https://api.x.ai/v1" });

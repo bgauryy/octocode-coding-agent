@@ -3,12 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type McpServer } from "@agentclientprotocol/sdk";
-import {
-	LegacySseTransport,
-	McpClient,
-	StdioTransport,
-	StreamableHttpTransport,
-} from "../../../mcp/src/client/index.ts";
+import { McpClient, StdioTransport, StreamableHttpTransport } from "../../../mcp/src/client/index.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadExtensions } from "../../../coding-agent/src/core/extensions/loader.ts";
 import { createDefaultTransport } from "../../../mcp/src/runtime/transport.ts";
@@ -99,7 +94,7 @@ for await (const line of createInterface({input: process.stdin})) {
 			prepare([{ type: "http", name: "credentials", url: "https://user:pass@example.com/mcp", headers: [] }]),
 		).rejects.toThrow("credentials or fragment");
 		await expect(
-			prepare([{ type: "sse", name: "fragment", url: "https://example.com/events#token", headers: [] }]),
+			prepare([{ type: "http", name: "fragment", url: "https://example.com/events#token", headers: [] }]),
 		).rejects.toThrow("credentials or fragment");
 		await expect(
 			prepare([
@@ -170,19 +165,10 @@ for await (const line of createInterface({input: process.stdin})) {
 		).rejects.toThrow("Duplicate MCP HTTP header");
 	});
 
-	it("registers legacy SSE using the native transport and preserves literal headers", async () => {
-		const literal = "!printf never; ${MISSING_ENV}";
-		const entry = await prepare([
-			{ type: "sse", name: "events", url: "https://example.com/events", headers: [{ name: "X-Key", value: literal }] },
-		]);
-		const loaded = await loadExtensions([entry.args[1]], workspace);
-		expect(loaded.errors).toEqual([]);
-		const config = loaded.runtime.mcpServers.list()[0].config;
-		expect(config).toMatchObject({ type: "sse", url: "https://example.com/events", literalHeaders: true });
-		const transport = createDefaultTransport({ name: "events", config, source: entry.args[1] }, workspace, undefined);
-		expect(transport).toBeInstanceOf(LegacySseTransport);
-		if (!(transport instanceof LegacySseTransport)) throw new Error("Expected legacy SSE transport");
-		expect(transport.options.headers?.["X-Key"]).toBe(literal);
+	it("rejects legacy SSE client registrations", async () => {
+		await expect(
+			prepare([{ type: "sse", name: "events", url: "https://example.com/events", headers: [] }]),
+		).rejects.toThrow("Legacy SSE MCP transport is unsupported");
 	});
 
 	it("closes a wrapped server that ignores SIGTERM when the MCP transport closes", async () => {

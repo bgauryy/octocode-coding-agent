@@ -9,7 +9,7 @@ import {
 	Text,
 	type SlashCommand,
 } from "@octocodeai/octocode-tui";
-import { getSelectListTheme } from "../../../theme/theme.ts";
+import { getSelectListTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
 
@@ -39,7 +39,7 @@ export class CommandSelectorComponent extends Container implements Focusable {
 		this.onSelect = onSelect;
 		this.onCancel = onCancel;
 		this.addChild(new DynamicBorder());
-		this.addChild(new Text(title, 1, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", title)), 1, 0));
 		this.addChild(new Spacer(1));
 		this.input.setValue(query);
 		this.input.onSubmit = () => this.list.handleInput("\r");
@@ -60,7 +60,12 @@ export class CommandSelectorComponent extends Container implements Focusable {
 			(command) => `${command.name} ${command.description ?? ""}`,
 		);
 		this.list = new SelectList(
-			commands.map((command) => ({ value: command.name, label: `/${command.name}`, description: command.description })),
+			// The arguments a command takes, as autocomplete shows them, lead its description.
+			commands.map((command) => ({
+				value: command.name,
+				label: `/${command.name}`,
+				description: [command.argumentHint, command.description].filter(Boolean).join("  "),
+			})),
 			12,
 			getSelectListTheme(),
 			{ maxPrimaryColumnWidth: 36 },

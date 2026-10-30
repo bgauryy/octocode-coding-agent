@@ -40,6 +40,15 @@ export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Design tokens and the shared animation clock
 export { type AnimationClock, type AnimationKind, type AnimationSubscription, animationClock } from "./tokens/clock.ts";
 export { breathe, ELLIPSIS, GLYPH, MOTION, SEPARATOR, SPINNER, settle, type UiState } from "./tokens/design.ts";
+// State binding: views follow a selection of a state source
+export {
+	Connected,
+	type ConnectedOptions,
+	type Equality,
+	shallowEqual,
+	type StateSource,
+	watchSelection,
+} from "./state-source.ts";
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";
@@ -105,6 +114,17 @@ export { type RenderLatexOptions, renderLatex } from "./latex.ts";
 // Native platform integration
 export { getNativeClipboard, type NativeClipboard } from "./native-platform.ts";
 export { oklabToOkhslLightness } from "./oklab.ts";
+// Terminal multiplexer detection and tmux queries
+export {
+	detectMultiplexer,
+	hasTmuxSession,
+	type MultiplexerId,
+	resetMultiplexerCache,
+	tmuxClientTermFeatures,
+	tmuxClientTerminalNames,
+	tmuxPaneAllowsPassthrough,
+	wrapTmuxPassthrough,
+} from "./multiplexer.ts";
 // Program status reporting (OSC 7501)
 export { formatProgramStatus, type ProgramStatus } from "./program-status.ts";
 // Input buffering for batch splitting

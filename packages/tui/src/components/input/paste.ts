@@ -1,3 +1,5 @@
+import { decodePastedControlKeys } from "../../bracketed-paste.ts";
+
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
@@ -46,4 +48,11 @@ export class BracketedPasteBuffer {
 		this.pasteBuffer = "";
 		return { content, remaining };
 	}
+}
+
+/** Pasted text for a single-line input: tmux-encoded control keys decoded, line breaks dropped, tabs expanded. */
+export function singleLinePaste(text: string): string {
+	return decodePastedControlKeys(text)
+		.replace(/\r\n|\r|\n/g, "")
+		.replace(/\t/g, "    ");
 }

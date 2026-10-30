@@ -55,6 +55,7 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 - [Agent guide and runtime references](packages/coding-agent/README.md)
 - [Native features and extension migration](packages/coding-agent/docs/native-features.md)
 - [Configuration locations and controls](CONFIGURATIONS.md)
+- [Running Octocode inside tmux](packages/coding-agent/docs/tmux.md)
 - [Add hooks, plugins and extensions](PLUGINS.md)
 - [Configuration and Pi compatibility](packages/coding-agent/docs/configuration.md)
 - [Agent instructions](packages/coding-agent/docs/instructions.md)

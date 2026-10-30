@@ -476,7 +476,7 @@ describe("external manager policy and lifecycle", () => {
 		state.permission.mockReturnValue(decision);
 		const manager = registerExternal(fake.api, commands, state.policy);
 		managers.push(manager);
-		commands.register(fake.api, () => "status");
+		commands.register(fake.api);
 		const journal = join(state.cwd, "acp-events.jsonl");
 		const fixture = fileURLToPath(new URL("./fixtures/external-acp-agent.mjs", import.meta.url));
 		const tool = fake.tools.get("externalAgent")!;

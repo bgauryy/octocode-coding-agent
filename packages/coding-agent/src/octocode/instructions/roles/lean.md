@@ -9,4 +9,4 @@ model: small
 Finish the task with the fewest commands that prove the result.
 
 - Read only what the task needs; prefer one short script over many commands.
-- After the outcome word, give the result and the command or file that shows it.
+- Report the result and the command or file that shows it.

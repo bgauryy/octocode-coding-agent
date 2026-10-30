@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { streamSimple } from "../src/compat.ts";
 import type { Model, SimpleStreamOptions, ThinkingBudgets } from "../src/types.ts";
@@ -6,39 +7,22 @@ const mockState = vi.hoisted(() => ({
 	lastParams: undefined as unknown,
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (params: unknown) => {
-					mockState.lastParams = params;
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								choices: [{ delta: {}, finish_reason: "stop" }],
-								usage: {
-									prompt_tokens: 1,
-									completion_tokens: 1,
-									prompt_tokens_details: { cached_tokens: 0 },
-									completion_tokens_details: { reasoning_tokens: 0 },
-								},
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{ data: typeof stream; response: { status: number; headers: Headers } }>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
+mockCompletionsFetch((params: unknown) => {
+	mockState.lastParams = params;
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			yield {
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1,
+					completion_tokens: 1,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 0 },
 				},
-			},
-		};
-	}
-
-	return { default: FakeOpenAI };
+			};
+		},
+	};
+	return completionsResponse(stream);
 });
 
 type CapturedParams = {

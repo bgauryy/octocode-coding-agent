@@ -122,7 +122,7 @@ describe("workspace WebSocket handlers without network I/O", () => {
 		const item = app.store.add({
 			title: "Keep working",
 			goal: "Keep healthy views",
-			reason: "A disconnected view is local",
+			why: "A disconnected view is local",
 			createdBy: "user",
 		});
 		const command = { id: "keep-healthy-view", action: "work", backlogId: item.ref, version: item.version };
@@ -147,7 +147,7 @@ describe("workspace WebSocket handlers without network I/O", () => {
 		expect(snapshot.mock.calls.length).toBeLessThanOrEqual(2);
 		const sent = socket.packets.filter((packet) => packet.type === "workspace").length;
 
-		const item = app.store.add({ title: "Stamp", goal: "Push", reason: "Stale page", createdBy: "user" });
+		const item = app.store.add({ title: "Stamp", goal: "Push", why: "Stale page", createdBy: "user" });
 		const command = { id: "stamp-push", action: "work", backlogId: item.ref, version: item.version };
 		expect(await app.request("/api/workspace", command)).toMatchObject({ status: 200 });
 		await vi.waitFor(() =>

@@ -30,6 +30,7 @@ import {
 	renameReasoning,
 } from "./tool/queries.ts";
 import { runQuery } from "./tool/run.ts";
+export { projectEditHunk } from "./tool/patch-projection.ts";
 import { formatFeedback, inspectMutations } from "./feedback/diagnostics.ts";
 import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./feedback/parse.ts";
 
@@ -68,7 +69,7 @@ export function registerFileTool(
 				label: "File",
 				description:
 					"Create, edit or delete files; it does not read them. Pass queries (one object per change: type, path, reason, plus edits or content) or a Codex-style patch string, not both; put all of one file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
-					"Read an existing file in this session before changing it (an unread file is refused with a read-first error); edits need exact text that matches once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval. Inspect every outcome.",
+					"Read an existing file in this session before changing it (unread files are refused); edits need exact text that matches once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval. Inspect every outcome.",
 				promptSnippet: "Create, edit or delete files (guarded)",
 				promptGuidelines: [
 					"Use file, not shell redirection or sed -i, for authored changes: it refuses stale edits and checkpoints each change for /rewind. Batch related files in one call. After a formatter or generator rewrites files, inspect its changes.",
@@ -180,7 +181,7 @@ export function registerFileTool(
 								if (approvalSignal.aborted || signal?.aborted || !invocationActive())
 									throw new Error("File replacement expired before commit");
 								for (const key of Object.keys(params)) delete (params as Record<string, unknown>)[key];
-								replacementOwner.committed?.(id, candidate);
+								replacementOwner.committed?.(id, candidate, ctx.cwd);
 								Object.assign(params, candidate);
 								queries = params.queries!;
 								effectivePrepared = final.prepared;

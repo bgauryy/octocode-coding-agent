@@ -500,6 +500,8 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 		},
 		ui: {
 			notify: (text: string) => notices.push(text),
+			// /rewind asks before restoring files: these tests accept.
+			confirm: async () => true,
 			select: async (title: string, options: string[]) => {
 				selects.push(title);
 				return options[0];

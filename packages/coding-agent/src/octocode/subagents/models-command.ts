@@ -1,3 +1,4 @@
+import { StringEnum } from "@octocodeai/octocode-contacts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
@@ -17,8 +18,8 @@ import {
 import { isModelTier, MODEL_TIERS, type ModelRef, resolveTier, routeModel } from "./model.ts";
 import type { AgentProfile } from "./profiles.ts";
 import {
+	checkCandidates,
 	checkProviders,
-	checkTargets,
 	describeHealth,
 	providerHealth,
 	type ProviderStatus,
@@ -150,7 +151,7 @@ function registerModelsMode(
 		parameters: Type.Object({
 			query: Type.Optional(Type.String()),
 			check: Type.Optional(Type.Boolean()),
-			scope: Type.Optional(Type.Union([Type.Literal("connected"), Type.Literal("catalog")])),
+			scope: Type.Optional(StringEnum(["connected", "catalog"] as const)),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();
@@ -162,7 +163,7 @@ function registerModelsMode(
 			if (query && available.length === 0 && unconnected.length === 0)
 				return textResult(`No model matches "${params.query}". Call again without query to list all ${all.length}.`);
 			if (params.check)
-				await checkProviders(ctx.modelRegistry, checkTargets(available, ctx.model), providerHealth, signal);
+				await checkProviders(ctx.modelRegistry, checkCandidates(available, ctx.model), providerHealth, signal);
 			const listing = await modelListing(available, ctx.model, getProfiles());
 			return textResult(
 				[
@@ -232,7 +233,7 @@ export function registerModels(
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			if (args.trim() === "check") {
 				const available = ctx.modelRegistry.getAvailable();
-				const targets = checkTargets(available, ctx.model);
+				const targets = checkCandidates(available, ctx.model);
 				say(ctx, `Checking ${targets.length} provider credential${targets.length === 1 ? "" : "s"}…`);
 				await checkProviders(ctx.modelRegistry, targets, providerHealth, ctx.signal);
 			} else if (args.trim()) return say(ctx, "Usage: /modelsettings [check]", "warning");

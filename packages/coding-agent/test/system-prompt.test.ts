@@ -311,7 +311,9 @@ describe("buildSystemPrompt", () => {
 		test("keeps skills without naming a hidden reader", () => {
 			expect(build(["read", "bash"])).toContain("\nLoad a skill's file when the task matches its description.");
 			expect(build(["read"])).toContain("Use bash to load a skill's file");
-			expect(build([])).toContain("Use the read tool to load a skill's file");
+			// Octocode ships no `read` tool: a tool registered under that name is not a skill loader.
+			expect(build([])).toContain("Use bash to load a skill's file");
+			expect(build([])).not.toContain("Use the read tool");
 		});
 	});
 });

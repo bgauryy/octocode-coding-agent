@@ -8,15 +8,14 @@ import { storedText, visibleControls } from "../shared/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
-import { entityFields, SUBAGENT_REFUSED_ADD } from "./tool-schema.ts";
-import { type Item, PRIORITIES, refuseSecrets } from "./store.ts";
+import { entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
+import { COMPLETION_GUIDANCE, type Item, PRIORITIES } from "./store.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 200;
 const DEFAULT_LIST_STATES: State[] = ["ongoing", "todo"];
-const DONE_NOTE = "Done needs completion with summary, files, verification and a unique operationKey.";
 
 interface BacklogToolDetails {
 	item?: Item;
@@ -43,7 +42,10 @@ function backlogSummary(op: unknown, details: BacklogToolDetails, text: string):
 	return text.split("\n", 1)[0] ?? "";
 }
 
-/** What the model reads about `backlog`: the description says what it is, `op` owns the operations, the guidelines only when to use it. */
+/**
+ * What the model reads about `backlog`: the description says what it is, `op` owns the operations, the guidelines only
+ * when to use it. The write rules (who may change what) live in `writes.ts`; this tool checks the shape of a call.
+ */
 function backlogPrompt(subagent: boolean): {
 	description: string;
 	ops: string;
@@ -52,9 +54,9 @@ function backlogPrompt(subagent: boolean): {
 } {
 	const description =
 		// The same text for every role, so parent and child declare identical bytes; a role's limits are stated when it hits them.
-		"Repository work: backlog proposed, todo accepted, ongoing claimed, done completed. History is retained. " +
+		"Repository work: backlog proposed, todo accepted, ongoing claimed, done completed. " +
 		"An item another running session holds takes only notes. " +
-		"Claiming (ongoing) needs reason and goal; done needs completion. Use version for edits. Secrets are refused.";
+		"Claiming (ongoing) needs why and goal; done needs completion.";
 	const ops =
 		"list/get: read; follow Next for more. " +
 		(subagent
@@ -68,11 +70,11 @@ function backlogPrompt(subagent: boolean): {
 			: "Propose, claim and close repository tasks",
 		promptGuidelines: subagent
 			? [
-					"Record progress on assigned work. Propose follow-ups, and failures you leave unfixed (trigger, evidence, fix), with goal and from; do not execute them. Verify the goal before done.",
+					`Note progress on your item; close it after verifying its goal. ${COMPLETION_GUIDANCE} Propose, never do, follow-ups and unfixed failures (trigger, evidence, fix) with from and links.`,
 				]
 			: [
-					"Use backlog for work that outlives this turn, that a subagent should report progress on, or that the user asks to track: add it with a goal and claim it before starting or delegating. Questions and one-step tasks need no item.",
-					"Close an item only after verifying its goal. If you stop with a failure unfixed, add an item with its trigger, evidence and proposed fix. Propose follow-ups with a goal and from.",
+					"Add an item when the user asks to track something, work outlives this turn, or you leave a follow-up or failure for later (from; trigger, evidence, fix). Claim it before starting or delegating; note progress.",
+					`Give every item why, paths and links (docs, reports, URLs, items). Close only after verifying the goal; ${COMPLETION_GUIDANCE} Questions and one-step tasks need no item.`,
 				],
 	};
 }
@@ -104,11 +106,10 @@ export function registerBacklogTool(
 			),
 			paths: Type.Optional(Type.Array(Type.String(), { description: "files, dirs or components affected" })),
 			why: Type.Optional(Type.String({ description: "why it matters" })),
-			evidence: Type.Optional(Type.Array(Type.String(), { description: "observations: paths, measurements, links" })),
-			plan: Type.Optional(Type.String({ description: "approach and steps" })),
-			body: Type.Optional(
-				Type.String({ description: subagent ? "anything else" : "anything else; update replaces the whole text" }),
+			evidence: Type.Optional(
+				Type.Array(Type.String(), { description: "observations with source (path:line, command)" }),
 			),
+			plan: Type.Optional(Type.String({ description: "approach and steps" })),
 			state: Type.Optional(
 				subagent
 					? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
@@ -154,12 +155,17 @@ export function registerBacklogTool(
 				parameters,
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
-					const unknown = Object.keys(params).filter(
+					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
+					const { reason: _reason, links, ...rest } = params as Params & { reason?: string; links?: LinkArgument[] };
+					const unknown = Object.keys(rest).filter(
 						(key) => !Object.hasOwn(parameters.properties, key) && !Object.hasOwn(EntityFields, key),
 					);
 					if (unknown.length) throw new Error(`Unknown backlog fields: ${unknown.join(", ")}.`);
 					const backlog = openBacklog(ctx, options);
-					const result = run(backlog, params);
+					const result = run(backlog, {
+						...rest,
+						...(links !== undefined ? { links: linkInput(links, backlog.store.repo) } : {}),
+					});
 					if (params.op !== "list" && params.op !== "get") options.changed?.(ctx);
 					return result;
 				},
@@ -199,7 +205,6 @@ export function registerBacklogTool(
 		id?: string;
 		title?: string;
 		goal?: string;
-		body?: string;
 		paths?: string[];
 		why?: string;
 		evidence?: string[];
@@ -216,8 +221,7 @@ export function registerBacklogTool(
 	};
 
 	/** The descriptive fields a call sets, only those it names. */
-	const text = ({ body, paths, why, evidence, plan }: Params) => ({
-		...(body !== undefined ? { body } : {}),
+	const text = ({ paths, why, evidence, plan }: Params) => ({
 		...(paths !== undefined ? { paths } : {}),
 		...(why !== undefined ? { why } : {}),
 		...(evidence !== undefined ? { evidence } : {}),
@@ -251,25 +255,9 @@ export function registerBacklogTool(
 		}
 		if (params.op === "add") {
 			if (!params.title?.trim()) throw new Error("add needs a title.");
-			const refused = SUBAGENT_REFUSED_ADD.filter((key) => subagent && params[key] !== undefined);
-			if (refused.length)
-				throw new Error(
-					`A subagent proposal cannot set ${refused.join(", ")}: put the details in body or ask your parent.`,
-				);
-			// A subagent proposes; the user or the parent accepts.
-			const wanted = subagent ? "backlog" : (params.state ?? "backlog");
-			// Creation, initial claim/completion and notes commit together in the store.
-			refuseSecrets({ note: params.note });
-			if (params.note !== undefined && subagent) {
-				// A proposal is not claimed by the parent, so a follow-up update with the note would be refused too.
-				throw new Error("A subagent adds without a note: put the details in body.");
-			}
-			if (params.note !== undefined && wanted !== "ongoing" && wanted !== "done") {
-				throw new Error(
-					"add takes a note only with state ongoing or done; put details in body, or add then update with the note.",
-				);
-			}
-			if (wanted === "done" && !params.completion) throw new Error(DONE_NOTE);
+			if (!params.why?.trim())
+				throw new Error("add needs why: the reason for the work (user request, failure found, follow-up of an item).");
+			// Creation, initial claim/completion and notes commit together in the store, which applies the write rules.
 			const item = store.add(
 				{
 					...entities(params),
@@ -277,7 +265,7 @@ export function registerBacklogTool(
 					title: params.title,
 					...(params.goal !== undefined ? { goal: params.goal } : {}),
 					...text(params),
-					state: wanted,
+					...(params.state !== undefined ? { state: params.state } : {}),
 					...(priority !== undefined ? { priority } : {}),
 					...(params.tags ? { tags: params.tags } : {}),
 					...(params.from ? { from: params.from } : {}),
@@ -312,7 +300,6 @@ export function registerBacklogTool(
 			return textResult(`${detail}${next}`, { item });
 		}
 		if (params.op === "remove") {
-			if (subagent) throw new Error("A subagent cannot remove backlog items; report it to your parent.");
 			const item = store.remove(params.id, params.version, actor);
 			return textResult(`Removed ${item.ref} "${visibleControls(item.title)}" and its notes.`, {
 				removed: item.ref,
@@ -323,7 +310,6 @@ export function registerBacklogTool(
 			parentId: params.parentId,
 			dependsOn: params.dependsOn,
 			links: params.links,
-			reason: params.reason,
 			title: params.title,
 			goal: params.goal,
 			...text(params),
@@ -331,24 +317,18 @@ export function registerBacklogTool(
 			tags: params.tags,
 			from: params.from,
 		};
-		if (subagent && Object.values(fields).some((value) => value !== undefined))
-			throw new Error("A subagent changes only the state and notes of an item; report other changes to your parent.");
-		// Moving an item back to todo or backlog would release the parent's claim behind its back.
-		if (subagent && (params.state === "todo" || params.state === "backlog"))
-			throw new Error(`A subagent sets only ongoing or done; ask your parent to move an item to ${params.state}.`);
 		if (
 			params.state === undefined &&
 			params.note === undefined &&
+			params.completion === undefined &&
 			Object.values(fields).every((value) => value === undefined)
 		)
 			throw new Error(
-				"update needs something to change: state, note, title, goal, paths, why, evidence, plan, body, priority, tags or from.",
+				"update needs something to change: state, note, completion, title, goal, paths, why, evidence, plan, links, priority, tags or from.",
 			);
 		// The goal is the done criterion an agent's items always have (`store.add`): an update may change it, not blank it.
 		if (params.goal !== undefined && !storedText(params.goal))
 			throw new Error("update cannot clear the goal: give the new done criterion, a check someone else can run.");
-		const current = store.get(params.id);
-		if (params.state === "done" && current?.state !== "done" && !params.completion) throw new Error(DONE_NOTE);
 		const item = store.update(
 			params.id,
 			{

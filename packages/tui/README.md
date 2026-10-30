@@ -711,7 +711,7 @@ On interactive stdin and stdout, `ProcessTerminal` also sends a Kitty graphics q
 
 The optional third callback to `Terminal.start(onInput, onResize, onCapabilitiesChange)` reports capability changes. The TUI uses it to invalidate mounted components, query cell dimensions, and repaint images in both renderers. Custom components that choose an image or text fallback during construction should reconsider that choice in `invalidate()`.
 
-Explicit capability overrides take precedence. Automatic probing is skipped for redirected streams, tmux/screen, Rex, and terminals detected as using the iTerm2 image protocol. `OCTOCODE_IMAGE_PROTOCOL=kitty`, `iterm2`, or `none` forces the corresponding choice; `auto` keeps detection enabled.
+Explicit capability overrides take precedence. Automatic probing is skipped for redirected streams, tmux/screen (inside tmux, Kitty images use passthrough and Unicode placeholders; see [Terminal multiplexers](#terminal-multiplexers)), Rex, and terminals detected as using the iTerm2 image protocol. `OCTOCODE_IMAGE_PROTOCOL=kitty`, `iterm2`, or `none` forces the corresponding choice; `auto` keeps detection enabled.
 
 #### Alternate-screen image compatibility
 
@@ -824,6 +824,25 @@ interface Terminal {
 - `ProcessTerminal` - Uses `process.stdin/stdout`
 - `VirtualTerminal` - For testing (uses `@xterm/headless`)
 
+### Terminal multiplexers
+
+`detectMultiplexer(env?)` returns `"tmux"`, `"screen"`, `"zellij"` or `null`, checking the session markers (`TMUX`, `STY`, `ZELLIJ`) before the `TERM` prefix. `hasTmuxSession(env?)` is true only with `TMUX` set; a `tmux*` `TERM` alone is not a session. The tmux queries below run `tmux` synchronously with a short timeout, ignore stderr, cache their answer per `TMUX` and `TMUX_PANE`, and never throw:
+
+- `tmuxClientTerminalNames(env?)` lists the attached client's emulator names, best first: the name from `#{client_termtype}` (`kitty(0.35.2)` gives `kitty`), then `#{client_termname}`. It is `[]` when tmux cannot answer or no client is attached; that answer is not cached, so a client that attaches later is found.
+- `tmuxClientTermFeatures(env?)` lists `#{client_termfeatures}`. Hyperlink detection inside tmux emits OSC 8 only when it contains `hyperlinks`.
+- `tmuxPaneAllowsPassthrough(env?)` is true when the pane's `allow-passthrough` is `on` or `all`, or when tmux is older than 3.3 and has no such option. `wrapTmuxPassthrough(payload)` builds the `ESC P tmux; ... ESC \` envelope with every ESC doubled; wrap only when the pane allows it, because tmux drops the envelope otherwise.
+- `resetMultiplexerCache()` clears the caches.
+
+**Images.** Inside a tmux session, automatic detection turns Kitty images on only when all of these hold: the attached client is Kitty or Ghostty (the only outer terminals here that draw Unicode placeholders; WezTerm and Warp do not), the pane's `allow-passthrough` lets the envelope through, and 24-bit colour reaches the client (`RGB` in `client_termfeatures`, or a truecolor `COLORTERM`). Otherwise images stay off and components render their text fallback. Probing is skipped, because tmux does not forward the reply.
+
+In that mode `getCapabilities().kittyPlaceholders` is `true`. Every Kitty command is wrapped in `wrapTmuxPassthrough`; all chunks of one transmission share one envelope, because tmux can put another pane's output between envelopes and the terminal keeps only one chunked load in progress, so interleaved uploads from panes redrawing together would both be lost. A transmission over `TMUX_PASSTHROUGH_LIMIT` (1,000,000 escaped bytes, under tmux's 1 MiB `input-buffer-size` default, beyond which tmux drops the sequence) is split into several envelopes at chunk boundaries and can still be interleaved. The image is transmitted with a virtual placement (`a=T,U=1`), and `Image` returns one text line per row made of U+10EEEE cells. Each cell names its row and column with a combining mark, and the image id (kept within 24 bits) is the 24-bit foreground colour. tmux stores and redraws those cells like text, so the image follows scrolling, pane switches and redraws, which a cursor-positioned placement cannot do. The first row starts with the transmit sequence; `isImageLine` is true for every placeholder row so padding, truncation and overlay compositing leave them alone. If the first row scrolls out of the fullscreen viewport, the image is not re-sent, so it can show blank cells once the terminal has dropped its data. The placeholder cells stay in tmux, but an outer terminal attached later never received the uploads. With tmux's `focus-events on` and focus reports enabled, tmux sends the pane a focus-in on attach; the TUI then lists the session's clients (`tmux list-clients`, without blocking) and, when one is new or tmux cannot answer, writes the upload envelopes of its rendered lines again. A pane or window switch with the same clients sends nothing. Without focus events, a same-size attach shows blank cells until the next full redraw.
+
+`OCTOCODE_IMAGE_PROTOCOL=kitty` (or the `terminal.images` setting) forces this mode inside tmux without the checks above; `none` disables it. iTerm2 inline images stay off inside tmux: tmux does not track where the outer terminal draws them, so they would not stay with the text, and there is no placeholder equivalent.
+
+`packages/tui/test/helpers/fake-tmux.ts` puts a fake `tmux` first on `PATH` for tests (`display-message`, `show-options` and `show` replies); `helpers/real-tmux.ts` stops a private tmux server and removes its socket. `yarn run test:tmux` runs every tmux test.
+
+**Pasted control keys.** With extended keys on, tmux can re-encode control bytes as extended keys: `ESC [ 27 ; 5 ; <codepoint> ~` with its default `extended-keys-format xterm`, or `ESC [ <codepoint> ; 5 u` with `csi-u`. `Editor` and `Input` decode both forms back to the control byte (Ctrl+J becomes a newline) when they appear inside a bracketed paste, so neither format leaks sequence text into the input. In a tmux 3.8 check, bracketed pastes arrived unchanged and only unbracketed input was re-encoded; that input arrives as key presses, and the editor inserts a newline for Ctrl+J.
+
 ## Utilities
 
 ```typescript
@@ -833,7 +852,7 @@ import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from "@octocodeai/oct
 const width = visibleWidth("\x1b[31mHello\x1b[0m"); // 5
 
 // Truncate string to width (preserving ANSI codes, adds ellipsis)
-const truncated = truncateToWidth("Hello World", 8); // "Hello..."
+const truncated = truncateToWidth("Hello World", 8); // "Hello W…"
 
 // Truncate without ellipsis
 const truncatedNoEllipsis = truncateToWidth("Hello World", 8, ""); // "Hello Wo"
@@ -930,7 +949,7 @@ import chalk from "chalk";
 
 const styled = chalk.red("Hello") + " " + chalk.blue("World");
 const width = visibleWidth(styled); // 11 (not counting ANSI codes)
-const truncated = truncateToWidth(styled, 8); // Red "Hello" + " W..." with proper reset
+const truncated = truncateToWidth(styled, 8); // Red "Hello" + " " + blue "W" + "…" with proper reset
 ```
 
 ### Caching

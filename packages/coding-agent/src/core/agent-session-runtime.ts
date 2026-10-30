@@ -6,6 +6,7 @@ import {
 	openImportedSession,
 	prepareImportDestination,
 	SessionImportFileNotFoundError,
+	SessionNameError,
 } from "./agent-session-runtime/import.ts";
 import { extractUserMessageText } from "./agent-session-runtime/messages.ts";
 import type {
@@ -22,7 +23,11 @@ import { emitSessionShutdownEvent } from "./extensions/runner.ts";
 import { assertSessionCwdExists } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
 
-export { SessionImportFileNotFoundError, SessionImportInvalidError } from "./agent-session-runtime/import.ts";
+export {
+	SessionImportFileNotFoundError,
+	SessionImportInvalidError,
+	SessionNameError,
+} from "./agent-session-runtime/import.ts";
 export type {
 	CreateAgentSessionRuntimeFactory,
 	CreateAgentSessionRuntimeResult,
@@ -213,7 +218,7 @@ export class AgentSessionRuntime {
 	}): Promise<{ cancelled: boolean }> {
 		const previousName = options?.previousName?.replace(/[\r\n]+/g, " ").trim();
 		if (options?.previousName !== undefined && (!previousName || previousName.length > 200))
-			throw new Error("Session name must contain 1–200 characters.");
+			throw new SessionNameError();
 		const previousManager = this.session.sessionManager;
 		const beforeResult = await this.emitBeforeSwitch("new");
 		if (beforeResult.cancelled) {

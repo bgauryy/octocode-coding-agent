@@ -21,6 +21,7 @@ import { readDaemonRecord, recordOrigin, recordProcessAlive, recordToken, remove
 export const WEB_DAEMON_COMMAND = "__web-daemon";
 
 const PROBE_MS = 1000;
+const REQUEST_MS = 10_000;
 const START_TIMEOUT_MS = 10_000;
 const DRAIN_WAIT_MS = 5000;
 
@@ -57,18 +58,29 @@ interface Answer {
  * dispatcher for it (`HTTP_PROXY`), and the daemon token must never be handed to a proxy. `node:http` with its own agent
  * connects straight to 127.0.0.1.
  */
-function call(origin: string, route: string, token: string, method = "GET"): Promise<Answer | undefined> {
+function call(
+	origin: string,
+	route: string,
+	token: string,
+	method = "GET",
+	body?: unknown,
+	timeout = PROBE_MS,
+): Promise<Answer | undefined> {
 	return new Promise((resolve) => {
 		const target = new URL(route, origin);
+		const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body), "utf8");
 		const request = http.request(
 			{
 				host: "127.0.0.1",
 				port: Number(target.port),
 				path: target.pathname + target.search,
 				method,
-				headers: { Authorization: `Bearer ${token}` },
+				headers: {
+					Authorization: `Bearer ${token}`,
+					...(payload ? { "content-type": "application/json", "content-length": String(payload.length) } : {}),
+				},
 				agent: new http.Agent({ keepAlive: false }),
-				timeout: PROBE_MS,
+				timeout,
 			},
 			(response) => {
 				const chunks: Buffer[] = [];
@@ -90,8 +102,24 @@ function call(origin: string, route: string, token: string, method = "GET"): Pro
 		);
 		request.on("timeout", () => request.destroy());
 		request.on("error", () => resolve(undefined));
+		if (payload) request.write(payload);
 		request.end();
 	});
+}
+
+/** One authenticated request to a daemon's own route; undefined when it did not answer. */
+export function daemonRequest(
+	daemon: Pick<LaunchedDaemon, "origin" | "token">,
+	route: string,
+	options: { method?: "GET" | "POST" | "DELETE"; body?: unknown } = {},
+): Promise<{ status: number; json(): unknown } | undefined> {
+	return call(daemon.origin, route, daemon.token, options.method ?? "GET", options.body, REQUEST_MS);
+}
+
+/** The daemon that is running now, if any; never starts one. */
+export async function findWebDaemon(env: NodeJS.ProcessEnv = process.env): Promise<LaunchedDaemon | undefined> {
+	const current = await live(webDaemonPaths(env).record);
+	return current && { origin: current.origin, token: current.token, record: current.record };
 }
 
 /**

@@ -43,6 +43,13 @@ export function reportDiagnostics(diagnostics: readonly AgentSessionRuntimeDiagn
 	}
 }
 
+/** A non-interactive run without a prompt has nothing to do: say so and exit 2 instead of succeeding silently. */
+export function requirePrompt(appMode: AppMode, initialMessage: string | undefined, parsed: Args): void {
+	if ((appMode !== "print" && appMode !== "json") || initialMessage?.trim() || parsed.messages.length > 0) return;
+	console.error(chalk.red("Error: no prompt given. Pass a message, an @file, or pipe text on stdin."));
+	process.exit(2);
+}
+
 export function resolveAppMode(parsed: Args, stdinIsTTY: boolean, stdoutIsTTY: boolean): AppMode {
 	if (parsed.mode === "rpc") {
 		return "rpc";

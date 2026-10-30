@@ -2,11 +2,10 @@ import { GLYPH } from "@octocodeai/octocode-tui";
 import type { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { type GithubStatus, runGithubAuth } from "../../../../../mcp/src/presets/octocode/github-auth.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
-import { theme } from "../../../theme/theme.ts";
 
+/** The footer data subscription draws the status; this only writes it. */
 type Host = {
 	footerDataProvider: Pick<FooterDataProvider, "setGithubStatusText">;
-	ui: { requestRender(): void };
 };
 const revisions = new WeakMap<Host["footerDataProvider"], number>();
 
@@ -23,9 +22,9 @@ export function updateGithubFooter(host: Host, status?: GithubStatus): void {
 				? `GitHub ${GLYPH.failed} credential rejected · /github status`
 				: `GitHub ${GLYPH.failed} signed out · /github login`;
 	host.footerDataProvider.setGithubStatusText(
-		theme.fg(verified ? STATE_COLOR.done : unknown ? STATE_COLOR.waiting : STATE_COLOR.failed, text),
+		text,
+		verified ? STATE_COLOR.done : unknown ? STATE_COLOR.waiting : STATE_COLOR.failed,
 	);
-	host.ui.requestRender();
 }
 
 export async function refreshGithubFooter(host: Host, run = runGithubAuth): Promise<void> {

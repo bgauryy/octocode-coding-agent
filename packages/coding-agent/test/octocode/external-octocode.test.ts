@@ -75,10 +75,13 @@ describe("native external Octocode adapter", () => {
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		await expect(backend.prompt("other", { timeoutMs: 1000 })).rejects.toThrow("in flight");
 		await settle();
-		await expect(result).resolves.toEqual({ text: "finished", stopReason: "stop" });
+		const first = await result;
+		expect(first).toEqual({ text: "finished", stopReason: "stop", remoteMessageId: expect.any(String) });
+		// A keyed replay settles to the same remote message, so the id cites one reply.
 		await expect(backend.prompt("run this", { timeoutMs: 1000, key: "one" })).resolves.toEqual({
 			text: "finished",
 			stopReason: "stop",
+			remoteMessageId: first.remoteMessageId,
 		});
 		await expect(backend.prompt("changed", { timeoutMs: 1000, key: "one" })).rejects.toMatchObject({ code: -32602 });
 		expect(fake.sent).toHaveLength(1);
@@ -145,7 +148,11 @@ describe("native external Octocode adapter", () => {
 			await expect(backend.prompt("other task", { timeoutMs: 1000, key: "other" })).rejects.toThrow("earlier");
 			const retry = backend.prompt("long task", { timeoutMs: 1000, key: "stable" });
 			await settle("eventual result");
-			await expect(retry).resolves.toEqual({ text: "eventual result", stopReason: "stop" });
+			await expect(retry).resolves.toEqual({
+				text: "eventual result",
+				stopReason: "stop",
+				remoteMessageId: expect.any(String),
+			});
 			expect(fake.sent).toHaveLength(1);
 		},
 	);

@@ -256,10 +256,13 @@ describe("team tools on a fake Octocode", () => {
 		await expect(run(send, { replyTo: 987654, message: "x" }, a.ctx)).rejects.toThrow(/No message #987654/);
 		expect(rendered(send.renderCall({ replyTo: 41, message: "m" }, theme, {}))).toBe("○ Send(reply to #41)");
 		const properties = send.parameters.properties;
-		expect(send.parameters.required).toEqual(["message"]);
+		expect(send.parameters.required ?? []).toEqual([]);
+		expect(properties.forward.type).toBe("integer");
 		expect(properties.replyRequired.description).toContain("Default false");
 		expect(properties.replyRequired.description).toContain("a request you need answered");
-		expect(send.description).toMatch(/lingering child resumes on a message/);
+		expect(send.description).toContain("Messages resume only reachable non-isolated background children");
+		expect(send.description).toContain("(yours, or siblings via your parent)");
+		expect(properties.forward.description).toContain("message becomes an optional note");
 		expect(send.description).not.toContain("cannot receive");
 		// The same text serves a parent and a child (a child cannot start tasks), so it names no role.
 		expect(send.description).not.toMatch(/start a new task|your child/);
@@ -554,8 +557,8 @@ describe("AgentsView", () => {
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			const done = widget.render(120).join("\n");
 			expect(done).toContain("2 done");
-			expect(done).toMatch(/✓ reviewer-1a2b .* · done · /);
-			expect(done).toMatch(/✓ tester-3c4d .* · done · /);
+			expect(done).toMatch(/✓ reviewer-1a2b .* done +\d/);
+			expect(done).toMatch(/✓ tester-3c4d .* done +\d/);
 			expect(done).not.toContain("working");
 			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
 			vi.advanceTimersByTime(11_000);

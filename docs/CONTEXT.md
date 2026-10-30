@@ -6,7 +6,7 @@ Diagram colors: green is cached content shared across projects, blue is cached p
 
 ## What the model sees
 
-Each request has two instruction blocks followed by the history. By default the instruction blocks are cached for one hour and the history for five minutes (one hour after the session's first pause longer than that), so a new message never invalidates the instructions.
+Each request has two instruction blocks followed by the history. By default both the instruction blocks and the history are cached for one hour (`cacheRetention` and `instructionCacheRetention` in settings), so a new message never invalidates the instructions and a pause shorter than an hour keeps the history.
 
 ```mermaid
 flowchart TB
@@ -86,7 +86,7 @@ Providers without mid-conversation system messages receive a section patch as a 
 
 ## Keeping the history small between compactions
 
-Tool results are bounded when they are written, and old results are cleared only when the cache has already expired, because clearing a warm cache would make the next request rewrite it.
+Tool results are bounded when they are written, and old results are cleared only when the next request rewrites the history's cache entry anyway: the cache has expired, or the request carries a system update or a model switch and the context is past half its working window (`CLEAR_ABOVE_CONTEXT_SHARE`). Clearing a warm entry on its own would make the next request rewrite it. Clearing a result changes the prefix every later thinking block was bound to, so for a model that binds thinking to its prefix the request also drops the thinking of turns that follow a cleared result and were produced before it was cleared (`octocode/compaction/thinking.ts`); the provider would drop those blocks anyway, and the request no longer carries them.
 
 ```mermaid
 flowchart TB
@@ -153,10 +153,10 @@ sequenceDiagram
     S->>S: stop cache warming; choose the cut point
     S->>X: session_before_compact
     X->>X: capture messages for the archive; pick files to restore
-    alt cache warm, same model, not an overflow
+    alt same model, not an overflow
         X->>P: the session's own request + "write a checkpoint"
-    else otherwise, or the shared request failed
-        X->>P: standalone summary request
+    else a downshift, an overflow, or the shared request failed
+        X->>P: standalone summary request, routed and cached as the session's
     end
     P-->>X: checkpoint text
     X-->>S: summary + read and modified file lists
@@ -173,7 +173,7 @@ sequenceDiagram
     X->>S: re-read up to 5 recent files
 ```
 
-The cache-shared request keeps the session's system prompt, tools and thinking settings, so the provider reads the cached prefix instead of billing the whole history as new input. Restored files get at most 20k characters each and 50k in total, capped at 10% of the window left after the reserve. Without Octocode's handler, the core's default (`core/compaction/compaction.ts`) sends a standalone request. A cut never lands on a tool result; a cut inside a turn adds a second summary of that turn's start.
+The cache-shared request keeps the session's system prompt, tools and thinking settings, so the provider reads the cached prefix instead of billing the whole history as new input; a cold cache does not change the choice, since the session's next request would rewrite the prefix anyway, and the summary request pays that write once. The reply is accepted when the provider's reported output tokens are within the cap (`maxTokens`); the character estimate decides only when no count was reported. The standalone request (a downshift, an overflow, a failed shared request) serializes the conversation under its own system prompt and sends the session's routing id and cache preferences; only that request saves long tool results whole and shows them as references. Both requests carry one statement of the checkpoint format (`core/compaction/summary-format.ts`: goal, constraints, progress, decisions, errors and fixes, where we stopped, critical context, TL;DR), composed into the standalone, update and branch prompts, and one focus text; a split turn sends the focus with the history request, or with the turn-prefix request when there is no history to summarize. The summary is asked only for judgment: code appends the user's messages word for word, the file lists, the saved results and the recovery pointers. Restored files get at most 20k characters each and 50k in total, capped at 10% of the window left after the reserve. Without Octocode's handler, the core's default (`core/compaction/compaction.ts`) sends a standalone request. A cut never lands on a tool result; a cut inside a turn adds a second summary of that turn's start.
 
 ```mermaid
 flowchart LR

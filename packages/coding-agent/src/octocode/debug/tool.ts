@@ -1,3 +1,4 @@
+import { StringEnum } from "@octocodeai/octocode-contacts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { timedTool } from "../shared/render/rows.ts";
@@ -43,7 +44,7 @@ function checkDebugInput(params: {
 }
 
 // Sent with every request: keep it to what decides a call. docs/debugging.md holds the detail.
-const DESCRIPTION = `Debug a program when logs and test output cannot explain a failure. Supports line breakpoints, exception stops, stepping, pause, stack, scopes, nested variables, output and exit code; not attach, evaluation, or conditional or log breakpoints. Adapters: "xcrun" ["lldb-dap"] or "lldb-dap" (C, C++, Rust, Swift; launch {program, args, cwd}); "python3" ["-m","debugpy.adapter"] (Python; launch {program} or {module, args} with console "internalConsole", subProcess false); "node" ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"] with tcp true (Node, TypeScript, vitest; launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exception filter "all" for ES modules). Launch runs the program and needs permission. launch, continue, next, stepIn, stepOut, pause and output wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, reason, frame, exception, exitCode and output. At a stop, pass the latest generation to scopes with frame.id, then variables; each resume replaces generation and ids. If running, call output again, pause or terminate; after ended, launch again.`;
+const DESCRIPTION = `Debug a program when logs and test output cannot explain a failure: line breakpoints, exception stops, stepping, pause, stack, scopes, nested variables, output and exit code; no attach, evaluation, conditional or log breakpoints. Adapters: "xcrun" ["lldb-dap"] or "lldb-dap" (C, C++, Rust, Swift; launch {program, args, cwd}); "python3" ["-m","debugpy.adapter"] (Python; launch {program} or {module, args}, console "internalConsole", subProcess false); "node" ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"] with tcp true (Node, TypeScript, vitest; launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exception filter "all" for ES modules). Launch runs the program and needs permission. launch, continue, next, stepIn, stepOut, pause and output wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, reason, frame, exception, exitCode and output. At a stop, pass the latest generation to scopes with frame.id, then variables; each resume replaces them. While running, call output again, pause or terminate; after ended, launch again.`;
 
 /** Opt-in native debugger. The shared tool-call permission gate must authorize launch before execute. */
 export function registerDebugTool(api: ExtensionAPI): void {
@@ -69,23 +70,25 @@ export function registerDebugTool(api: ExtensionAPI): void {
 					"Use debug when a failing test or runtime behavior needs stopped-state inspection that logs and bash output cannot give.",
 				],
 				parameters: Type.Object({
-					action: Type.Union([
-						Type.Literal("launch"),
-						Type.Literal("breakpoints"),
-						Type.Literal("continue"),
-						Type.Literal("next"),
-						Type.Literal("stepIn"),
-						Type.Literal("stepOut"),
-						Type.Literal("stack"),
-						Type.Literal("scopes"),
-						Type.Literal("variables"),
-						Type.Literal("pause"),
-						Type.Literal("output"),
-						Type.Literal("terminate"),
-					]),
+					action: StringEnum([
+						"launch",
+						"breakpoints",
+						"continue",
+						"next",
+						"stepIn",
+						"stepOut",
+						"stack",
+						"scopes",
+						"variables",
+						"pause",
+						"output",
+						"terminate",
+					] as const),
 					adapter: Type.Optional(Type.String({ description: "launch: one executable, no shell" })),
 					adapterArgs: Type.Optional(Type.Array(Type.String())),
-					launch: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "launch: adapter config" })),
+					launch: Type.Optional(
+						Type.Unsafe<Record<string, unknown>>({ type: "object", description: "launch: adapter config" }),
+					),
 					tcp: Type.Optional(Type.Boolean({ description: "launch: adapter prints a loopback port" })),
 					exceptions: Type.Optional(Type.Array(Type.String(), { description: "launch: filter ids to stop on" })),
 					breakpoints: Type.Optional(

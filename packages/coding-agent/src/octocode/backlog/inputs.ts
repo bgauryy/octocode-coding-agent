@@ -5,7 +5,6 @@ export interface AddInput extends EntityInput {
 	note?: string;
 	title: string;
 	goal?: string;
-	body?: string;
 	paths?: readonly string[];
 	why?: string;
 	evidence?: readonly string[];
@@ -22,7 +21,6 @@ export interface AddInput extends EntityInput {
 export interface UpdateInput extends EntityInput {
 	title?: string;
 	goal?: string;
-	body?: string;
 	paths?: readonly string[];
 	why?: string;
 	evidence?: readonly string[];

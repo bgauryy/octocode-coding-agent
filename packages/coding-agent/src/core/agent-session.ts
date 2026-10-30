@@ -659,6 +659,10 @@ export class AgentSession implements AgentSessionApi {
 	hasExtensionHandlers(eventType: string): boolean {
 		return this._extensionRunner.hasHandlers(eventType);
 	}
+	/** Answer the dialog a run is blocked on (`awaiting.id`) for a client other than this mode's UI. */
+	answerDialog(id: string, answer: { choice?: string; text?: string }): { ok: true } | { ok: false; reason: string } {
+		return this._extensionRunner.answerDialog(id, answer);
+	}
 	get extensionRunner(): ExtensionRunner {
 		return this._extensionRunner;
 	}

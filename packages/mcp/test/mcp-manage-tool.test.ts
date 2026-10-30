@@ -218,7 +218,7 @@ describe("mcp tool", () => {
 		expect(message).not.toContain("READS");
 	});
 
-	it("accepts an explicit legacy SSE session server with literal headers", async () => {
+	it("rejects a legacy SSE session server before registration", async () => {
 		const { run, operations } = setup();
 		const config = {
 			type: "sse",
@@ -226,8 +226,8 @@ describe("mcp tool", () => {
 			literalHeaders: true,
 			headers: { Authorization: "Bearer literal" },
 		};
-		await run({ intent: "add", server: "events", config });
-		expect(operations.add).toHaveBeenCalledWith("events", config);
+		await expect(run({ intent: "add", server: "events", config })).rejects.toThrow("legacy SSE is unsupported");
+		expect(operations.add).not.toHaveBeenCalled();
 	});
 
 	it("refuses an invalid or duplicate add before asking", async () => {

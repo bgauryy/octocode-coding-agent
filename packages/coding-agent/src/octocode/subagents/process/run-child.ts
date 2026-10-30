@@ -16,7 +16,8 @@ import {
 	reduceEvent,
 	type WatchdogLimits,
 } from "../events.ts";
-import { budgetOutcome, maxRequests, RequestBudget } from "../budget.ts";
+import { budgetOutcome, RequestBudget } from "../budget.ts";
+import { requestBudgetHistory } from "../budget-history.ts";
 import type { AgentProfile } from "../profiles.ts";
 import { ChildRelay, type RelayHost } from "../relay.ts";
 import { ReportTracker } from "../report.ts";
@@ -45,13 +46,7 @@ import { savedNotices, StderrTail } from "./stderr.ts";
 /** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
 const INTERRUPT_FOLLOW_UP_MS = 1_500;
 
-/**
- * Runs one child in Octocode's RPC mode and resolves with its report. The task is sent as a `prompt` command on stdin. The
- * child's dialogs (`extension_ui_request`) go to `host.ui` when the parent can ask a person (see `ChildRelay`) and are
- * answered `cancelled` otherwise, which is what a child with no UI got before; its audit entries go to `host.permission`.
- * stdin is closed once the run settles (RPC children do not exit by themselves), and a stop is `abort`, then
- * `agent_settled`, then closed stdin, with signals only for a child that does not follow.
- */
+/** Runs one RPC child to its report; cancellation settles it before closing stdin and stopping its process tree. */
 export async function runChild(
 	task: string,
 	args: string[],
@@ -65,6 +60,8 @@ export async function runChild(
 	host?: RelayHost,
 ): Promise<SubagentOutcome> {
 	if (signal?.aborted) throw new Error("Subagent cancelled");
+	const history = await requestBudgetHistory(args, profile, identity.resultContract, signal);
+	if (history.exhausted) return history.exhausted;
 	const { command, prefix } = getCliInvocation();
 	// Windows: the helper that owns the child's job runs before the child, so no grandchild escapes the job.
 	await prepareTree();
@@ -148,7 +145,8 @@ export async function runChild(
 			};
 			signal?.addEventListener("abort", abort, { once: true });
 			// The request budget: one steer at the soft limit, the same stop as above at the hard limit (0: off).
-			const budget = new RequestBudget(maxRequests(profile), (message) => void send({ type: "steer", message }), abort);
+			const steer = (message: string) => void send({ type: "steer", message });
+			const budget = new RequestBudget(history.limit, steer, abort, history.requests);
 			// Watchdog: a child stuck on a stalled model stream emits nothing; stop it instead of spinning forever.
 			let activeAt = Date.now();
 			let stalled: Error | undefined;
@@ -319,6 +317,7 @@ export async function runChild(
 					outcome,
 					outcomeSource,
 					structured,
+					reportArtifact,
 				} = report.result();
 				startGate.noteFailure(error);
 				if (streamFailure) reject(streamFailure);
@@ -356,6 +355,7 @@ export async function runChild(
 						: (error ?? (answered ? undefined : NO_ANSWER));
 					resolve({
 						text: finalText,
+						...(reportArtifact ? { reportArtifact } : {}),
 						...(identity.resultContract
 							? {
 									structured:
@@ -377,7 +377,7 @@ export async function runChild(
 				streamFailure = error instanceof Error ? error : new Error(String(error));
 				abort();
 			}
-			if (!streamFailure) send({ type: "prompt", message: task });
+			if (!streamFailure) send({ type: "prompt", message: budget.prompt(task) });
 		});
 	} finally {
 		try {

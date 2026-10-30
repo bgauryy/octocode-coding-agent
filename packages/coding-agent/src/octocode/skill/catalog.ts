@@ -27,15 +27,16 @@ export class SkillCatalog {
 		this.snapshot = snapshot;
 	}
 
-	/** Every visible skill, whether or not a model may invoke it; a failing snapshot keeps the last good list. */
-	refresh(): CatalogSkill[] {
+	/** Rendering may retain the last good list; execution requires a currently valid snapshot. */
+	refresh({ allowStale = true }: { allowStale?: boolean } = {}): CatalogSkill[] {
 		this.refreshedAt = Date.now();
 		try {
 			this.loaded = this.snapshot().resources.flatMap((resource) =>
 				resource.visible ? [{ skill: resource.skill, file: resource.canonicalPath }] : [],
 			);
-		} catch {
-			/* A snapshot refuses synthetic or moved skills; the previous list stays usable. */
+		} catch (error) {
+			if (!allowStale) throw error;
+			/* A failing snapshot may retain display metadata, but it must never authorize a file read. */
 		}
 		return this.loaded;
 	}

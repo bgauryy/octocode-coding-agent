@@ -8,7 +8,7 @@
  */
 
 const MAX_WAIT_MS = 10_000;
-/** Shorter than the shortest provider cache lifetime (5 minutes), so a lapsed entry is not assumed warm. */
+/** When a child's own cache lifetime is unknown: shorter than the shortest provider lifetime (5 minutes). */
 const WARM_FOR_MS = 240_000;
 
 const cancelled = () => new Error("Subagent cancelled");
@@ -52,22 +52,28 @@ export class PrefixStagger {
 	 * Runs `start` for a child of the prefix `key`: at once when it is the first of its prefix or the prefix is warm,
 	 * otherwise after the first child's first reply began, at most `maxWaitMs` later. `start` receives `warm`, which
 	 * the caller invokes when this child's first reply starts; it is a no-op for a child that is not the first.
-	 * An abort while waiting rejects with a cancellation without starting anything.
+	 * An abort while waiting rejects with a cancellation without starting anything. `warmForMs` is how long the entry
+	 * this child writes stays warm: its resolved cache lifetime, shortened a little for the clock skew of a late sibling.
 	 */
-	async run<T>(key: string, signal: AbortSignal | undefined, start: (warm: () => void) => Promise<T>): Promise<T> {
+	async run<T>(
+		key: string,
+		signal: AbortSignal | undefined,
+		start: (warm: () => void) => Promise<T>,
+		warmForMs = this.warmForMs,
+	): Promise<T> {
 		const deadline = this.now() + this.maxWaitMs;
 		for (;;) {
 			if (signal?.aborted) throw cancelled();
 			if ((this.warmUntil.get(key) ?? 0) > this.now()) return start(() => undefined);
 			const leader = this.leaders.get(key);
-			if (!leader) return this.lead(key, start);
+			if (!leader) return this.lead(key, start, warmForMs);
 			const left = deadline - this.now();
 			if (left <= 0) return start(() => undefined);
 			await waitFor(leader.released, left, signal);
 		}
 	}
 
-	private async lead<T>(key: string, start: (warm: () => void) => Promise<T>): Promise<T> {
+	private async lead<T>(key: string, start: (warm: () => void) => Promise<T>, warmForMs: number): Promise<T> {
 		let release = () => {};
 		const released = new Promise<void>((resolve) => (release = resolve));
 		const leader: Leader = { released, release };
@@ -77,7 +83,7 @@ export class PrefixStagger {
 		timer.unref();
 		try {
 			return await start(() => {
-				this.warmUntil.set(key, this.now() + this.warmForMs);
+				this.warmUntil.set(key, this.now() + warmForMs);
 				this.end(key, leader);
 			});
 		} finally {
@@ -94,3 +100,18 @@ export class PrefixStagger {
 
 /** One per parent process: its children share the provider's cache. */
 export const childStagger = new PrefixStagger();
+
+/**
+ * Launches of one child of `prefix` through the stagger: `staggeredLaunch(prefix, ttl, launch)(update)` is the launch
+ * function for one run, which waits its turn and then runs `launch` with the warm signal. Foreground and background
+ * launches both go through it, so parallel siblings of either kind write their prefix once.
+ */
+export function staggeredLaunch<T, U>(
+	prefix: string,
+	ttlMs: number | undefined,
+	launch: (signal: AbortSignal | undefined, update: U | undefined, warm: () => void) => Promise<T>,
+): (update?: U) => (signal: AbortSignal | undefined) => Promise<T> {
+	// A sibling that starts right before the entry lapses would still miss: keep a tenth as margin.
+	const warmForMs = ttlMs === undefined ? undefined : Math.floor(ttlMs * 0.9);
+	return (update) => (signal) => childStagger.run(prefix, signal, (warm) => launch(signal, update, warm), warmForMs);
+}

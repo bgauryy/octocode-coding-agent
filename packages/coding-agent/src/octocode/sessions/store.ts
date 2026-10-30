@@ -1,30 +1,10 @@
+import type { SessionExtra } from "../agentdb/queries/sessions.ts";
+export type { SessionExtra };
 import { execFile } from "node:child_process";
 import type { AgentDb } from "../agentdb/db.ts";
-import { readMeta, writeMeta } from "../agentdb/meta.ts";
+import { meta, sessions } from "../agentdb/api.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-
-/**
- * What Octocode adds to one Octocode session (`sessions` row): the git branch and HEAD it last saw, its cost and tokens, the
- * files it changed, and the pid (with start time) of the process that has it open (the one record of whether a session is
- * running; see `agentdb/liveness`). Everything else (file, cwd, name, first message,
- * times) comes from Octocode's session listing.
- */
-export interface SessionExtra {
-	id: string;
-	branch: string | null;
-	head: string | null;
-	cost: number;
-	tokens: number;
-	files_changed: number;
-	pid: number | null;
-	/** When that process started (`processStartTime`); null in rows from before it was recorded, or where it is unknown. */
-	pid_started: string | null;
-	/** 1 when part of the session's usage came from a model without pricing (its cost is incomplete). */
-	unpriced: number;
-	/** The session dir it last ran from (resolved); null in rows from before it was recorded. */
-	dir: string | null;
-}
 
 interface SessionStats {
 	cost: number;
@@ -97,15 +77,14 @@ export class SessionIndex {
 	}
 
 	get(id: string): SessionExtra | undefined {
-		return this.agent.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as SessionExtra | undefined;
+		return sessions.byId(this.agent.db, id);
 	}
 
 	/** Extras of the given sessions, by id. */
 	extras(ids: readonly string[]): Map<string, SessionExtra> {
 		const rows = new Map<string, SessionExtra>();
-		const select = this.agent.db.prepare("SELECT * FROM sessions WHERE id = ?");
 		for (const id of ids) {
-			const row = select.get(id) as SessionExtra | undefined;
+			const row = sessions.byId(this.agent.db, id);
 			if (row) rows.set(id, row);
 		}
 		return rows;
@@ -113,59 +92,44 @@ export class SessionIndex {
 
 	/** This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded. */
 	start(id: string, dir?: string): void {
-		this.agent.db
-			.prepare(
-				"INSERT INTO sessions (id, pid, pid_started, dir) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, pid_started = excluded.pid_started, dir = COALESCE(excluded.dir, sessions.dir)",
-			)
-			.run(id, process.pid, processStartTime(process.pid) ?? null, dir ?? null);
+		sessions.start(this.agent.db, id, process.pid, processStartTime(process.pid) ?? null, dir ?? null);
 	}
 
 	stats(id: string, stats: SessionStats): void {
-		this.agent.db
-			.prepare(
-				`INSERT INTO sessions (id, cost, tokens, files_changed, unpriced, branch, head, pid, pid_started) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET cost = excluded.cost, tokens = excluded.tokens, files_changed = excluded.files_changed,
-           unpriced = excluded.unpriced, branch = COALESCE(excluded.branch, sessions.branch), head = COALESCE(excluded.head, sessions.head)`,
-			)
-			.run(
-				id,
-				stats.cost,
-				stats.tokens,
-				stats.filesChanged,
-				stats.unpriced ? 1 : 0,
-				stats.branch ?? null,
-				stats.head ?? null,
-				process.pid,
-				processStartTime(process.pid) ?? null,
-			);
+		sessions.saveStats(this.agent.db, id, {
+			cost: stats.cost,
+			tokens: stats.tokens,
+			filesChanged: stats.filesChanged,
+			unpriced: stats.unpriced,
+			branch: stats.branch ?? null,
+			head: stats.head ?? null,
+			pid: process.pid,
+			pidStarted: processStartTime(process.pid) ?? null,
+		});
 	}
 
 	/** Records where git stood, without touching the stats. */
 	git(id: string, state: { branch?: string; head?: string }): void {
-		this.agent.db
-			.prepare("UPDATE sessions SET branch = COALESCE(?, branch), head = COALESCE(?, head) WHERE id = ?")
-			.run(state.branch ?? null, state.head ?? null, id);
+		sessions.saveGit(this.agent.db, id, state.branch ?? null, state.head ?? null);
 	}
 
 	/** The session's process has ended: it is no longer live. */
 	end(id: string): void {
-		this.agent.db
-			.prepare("UPDATE sessions SET pid = NULL, pid_started = NULL WHERE id = ? AND pid = ?")
-			.run(id, process.pid);
+		sessions.clearPid(this.agent.db, id, process.pid);
 	}
 
 	all(): SessionExtra[] {
-		return this.agent.db.prepare("SELECT * FROM sessions").all() as unknown as SessionExtra[];
+		return sessions.all(this.agent.db);
 	}
 
 	forget(id: string): void {
-		this.agent.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+		sessions.forget(this.agent.db, id);
 	}
 
 	/** Session dirs other than Octocode's default that a session ran from (meta `session_dirs`): the sweep lists their sessions too. */
 	sessionDirs(): string[] {
 		try {
-			const dirs: unknown = JSON.parse(readMeta(this.agent.db, SESSION_DIRS_KEY) ?? "[]");
+			const dirs: unknown = JSON.parse(meta.read(this.agent.db, SESSION_DIRS_KEY) ?? "[]");
 			return Array.isArray(dirs) ? dirs.filter((dir): dir is string => typeof dir === "string") : [];
 		} catch {
 			return [];
@@ -175,7 +139,7 @@ export class SessionIndex {
 	addSessionDir(dir: string): void {
 		this.agent.transaction(() => {
 			const dirs = this.sessionDirs();
-			if (!dirs.includes(dir)) writeMeta(this.agent.db, SESSION_DIRS_KEY, JSON.stringify([...dirs, dir]));
+			if (!dirs.includes(dir)) meta.write(this.agent.db, SESSION_DIRS_KEY, JSON.stringify([...dirs, dir]));
 		});
 	}
 }

@@ -37,11 +37,11 @@ Inline image display is enabled by default when the terminal supports it. `/sett
 
 Automatic detection recognizes Kitty, including `TERM=xterm-kitty`, and checks interactive terminals with a graphics query during startup. Confirmed support repaints existing attachments as images. A negative reply falls back to text; a terminal that sends no replies retains the environment-based choice. Input remains available while detection runs.
 
-Set `terminal.images` to `"kitty"` or `"iterm2"` to force a known protocol, or `false` to disable graphics. Explicit settings take precedence over the `OCTOCODE_IMAGE_PROTOCOL` environment override, which accepts `kitty`, `iterm2`, `none`, or `auto`. Automatic detection leaves images off inside tmux/screen and Rex. iTerm2 inline images work in regular mode; fullscreen mode uses text placeholders. See the [TUI image reference](../../tui/README.md#image-capability-detection) for protocol and renderer details.
+Set `terminal.images` to `"kitty"` or `"iterm2"` to force a known protocol, or `false` to disable graphics. Explicit settings take precedence over the `OCTOCODE_IMAGE_PROTOCOL` environment override, which accepts `kitty`, `iterm2`, `none`, or `auto`. Inside tmux, automatic detection enables Kitty images only for a Kitty or Ghostty client when the pane's `allow-passthrough` is on and 24-bit colour reaches the client; images then use passthrough and Unicode placeholders, and `kitty` forces that mode. Detection leaves images off in other tmux sessions, in screen and in Rex. iTerm2 inline images work in regular mode; fullscreen mode uses text placeholders. See the [TUI image reference](../../tui/README.md#image-capability-detection) for protocol and renderer details.
 
 ## Reduced motion
 
-`terminal.reduceMotion` accepts `true`, `false` or `"auto"` (the default). While motion is reduced, spinners stay on their first frame, the working-line shimmer is plain and the banner's start-up sweep is skipped; elapsed times and retry countdowns still update once a second. `"auto"` reduces motion when `OCTOCODE_REDUCE_MOTION` is `1` or `true`; an explicit `true` or `false` overrides the environment. `/settings` exposes **Reduce motion** and applies a change immediately.
+`terminal.reduceMotion` accepts `true`, `false` or `"auto"` (the default). While motion is reduced, spinners stay on their first frame, and the working-line shimmer is plain; elapsed times and retry countdowns still update once a second. `"auto"` reduces motion when `OCTOCODE_REDUCE_MOTION` is `1` or `true`; an explicit `true` or `false` overrides the environment. `/settings` exposes **Reduce motion** and applies a change immediately.
 
 ```json
 {
@@ -57,7 +57,7 @@ Interface-visible runtime state uses a session-scoped Zustand vanilla store in t
 
 `OCTOCODE_AGENT_DB` overrides the native database file; otherwise the shared home supplies `agent/octocode.db`. The process opens one shared connection per canonical file path. Distinct configured files can coexist without closing each other's connections; symlink aliases reuse a connection. Process cleanup closes all shared connections. This does not make concurrent native sessions supported: the native runtime still has other process-scoped resources. The separate peer-communication database remains read-only to Octocode.
 
-All native tables are reconciled by `octocode/agentdb/schema.ts`. Feature repositories own entity validation and transactions; interfaces do not write SQL. Runtime store changes require no database migration. See the [interface architecture](../../../docs/INTERFACE_ARCHITECTURE.md#runtime-state-and-database-ownership) for runtime ownership and snapshot subscriptions.
+All native tables are reconciled by `octocode/agentdb/schema.ts`. Every SQL statement lives in `octocode/agentdb/queries/` and features call it through `octocode/agentdb/api.ts`, holding the handle only as its `Db` type; feature repositories own entity validation and transactions, and interfaces do not write SQL. `yarn run check:db-boundary` and the `no-restricted-imports` lint rule on `node:sqlite` enforce it. Runtime store changes require no database migration. See the [interface architecture](../../../docs/INTERFACE_ARCHITECTURE.md#runtime-state-and-database-ownership) for runtime ownership and snapshot subscriptions.
 
 ## Pi configuration fallback
 
@@ -132,7 +132,7 @@ Automatic compaction is always enabled. `/compact` starts the same built-in summ
 
 The built-in policy reserves room for summarization and responses and retains up to 20,000 recent tokens (one quarter of smaller windows). The reserve is the larger of 16,384 tokens (one eighth of smaller windows) and the active thinking budget plus 12,288 tokens of answer and safety room, capped at one sixth of the window, so a turn near the threshold keeps its thinking budget. For example, a 200,000-token window compacts at 183,616 tokens with thinking off and at 171,328 at `high`. The native context display and model-switch checks use the same policy.
 
-Summary requests reuse the session transcript and resolved cache preferences when possible. A failed cache-sharing summary falls back to standalone summarization. Actual cache hits are determined by the provider. Old tool results are cleared only after the known cache lifetime expires, only when enough space can be recovered, and only after saving a readable copy.
+Summary requests reuse the session transcript and resolved cache preferences when the summary model is the session's and the compaction is not an overflow; a cold cache does not change that. A failed cache-sharing summary falls back to standalone summarization with the same routing id and cache preferences. Actual cache hits are determined by the provider. Old tool results are cleared only after the known cache lifetime expires, only when enough space can be recovered, and only after saving a readable copy.
 
 Session transcripts and compaction entries are saved in local JSONL files under the agent directory's `sessions/` folder. Compaction changes the active context while retaining original entries on disk. Native compaction also saves searchable Markdown archives. New transcript entries are flushed to disk. Transcript rewrites use atomic replacement so a failed replacement preserves the previous file. The separate agents-communication SQLite database stores peer coordination data; it is not the conversation transcript store.
 
@@ -143,10 +143,10 @@ Set `cacheWarming` in the global `settings.json`: `"off"` disables refreshes, `"
 ```json
 {
 	"cacheWarming": "idle",
-	"cacheRetention": "short"
+	"cacheRetention": "long"
 }
 ```
 
-Warming replays the request with a one-token output cap. It requires a known model cache lifetime and a replay-safe request; it does not execute returned tool calls. Refreshes stop when context changes, the cache deadline is missed, a refresh fails, or the provider reports no cache read. A real request can restart warming. Existing limits cap active warming at one hour and idle warming at thirty minutes from the original request. Completed refresh usage is recorded separately, including cache misses. `/status` shows status and usage. Provider cache hits and savings are not guaranteed.
+Warming replays the request with a one-token output cap. It requires a known model cache lifetime and a replay-safe request; it does not execute returned tool calls. Refreshes stop when context changes, the cache deadline is missed, a refresh fails, or the provider reports no cache read. A real request can restart warming. Existing limits cap active warming at one hour from the original request, and idle warming at thirty minutes or one cache lifetime, whichever is later. Completed refresh usage is recorded separately, including cache misses. `/status` shows status and usage. Provider cache hits and savings are not guaranteed.
 
 External `session_before_compact` handlers receive isolated snapshots for observation. Their returned summaries and cancellation flags are ignored. Extensions cannot inject compaction entries at turn boundaries. The built-in implementation retains its summary, archive and recovery behavior. Automatic compaction stops after three consecutive failures; successful manual compaction resets the failure count. User cancellation does not count as a failure.

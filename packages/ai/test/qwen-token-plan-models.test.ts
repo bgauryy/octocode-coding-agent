@@ -1,43 +1,24 @@
-import { describe, expect, it, vi } from "vitest";
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
+import { describe, expect, it } from "vitest";
 import { streamSimple } from "../src/compat.ts";
 import { getBuiltinModels } from "../src/providers/all.ts";
 import { findEnvKeys } from "../src/env-api-keys.ts";
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: () => {
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							yield {
-								choices: [{ delta: {}, finish_reason: "stop" }],
-								usage: {
-									prompt_tokens: 1,
-									completion_tokens: 1,
-									prompt_tokens_details: { cached_tokens: 0 },
-									completion_tokens_details: { reasoning_tokens: 0 },
-								},
-							};
-						},
-					};
-					const promise = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{
-							data: typeof stream;
-							response: { status: number; headers: Headers };
-						}>;
-					};
-					promise.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return promise;
+mockCompletionsFetch((_params: unknown) => {
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			yield {
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1,
+					completion_tokens: 1,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 0 },
 				},
-			},
-		};
-	}
-
-	return { default: FakeOpenAI };
+			};
+		},
+	};
+	return completionsResponse(stream);
 });
 
 const TEXT_MODELS = [

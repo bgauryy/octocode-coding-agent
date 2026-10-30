@@ -64,6 +64,7 @@ function summarize(
 	const ctx = {
 		model,
 		modelRegistry: {
+			getCachePolicy: () => ({ options: {} }),
 			streamSimple: () => ({
 				result: async () => ({
 					role: "assistant",

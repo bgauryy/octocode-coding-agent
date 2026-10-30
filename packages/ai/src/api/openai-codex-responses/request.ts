@@ -1,6 +1,9 @@
+import { decodeJwt } from "jose";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import type { Model, ProviderHeaders, TranscriptContext } from "../../types.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
+import { resolveCacheRetention, resolvePromptCacheKey } from "../../utils/cache-policy.ts";
+import { clampOpenAIPromptCacheKey } from "../openai-prompt-cache.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
 import { getDeclaredTools, getInitialSystemMessage, resolveTranscriptTools } from "../../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "../constrained-sampling.ts";
@@ -60,7 +63,10 @@ export function buildRequestBody(
 		input: messages,
 		text: { verbosity: options?.textVerbosity || "low" },
 		include: ["reasoning.encrypted_content"],
-		prompt_cache_key: cacheSessionId,
+		prompt_cache_key:
+			resolveCacheRetention(options?.cacheRetention, options?.env) === "none"
+				? undefined
+				: clampOpenAIPromptCacheKey(resolvePromptCacheKey(options) ?? cacheSessionId),
 		tool_choice: options?.toolChoice ?? "auto",
 		parallel_tool_calls: true,
 	};
@@ -137,11 +143,11 @@ const OPENAI_BETA_RESPONSES_WEBSOCKETS = "responses_websockets=2026-02-06";
 
 export function extractAccountId(token: string): string {
 	try {
-		const parts = token.split(".");
-		if (parts.length !== 3) throw new Error("Invalid token");
-		const payload = JSON.parse(atob(parts[1]));
-		const accountId = payload?.[JWT_CLAIM_PATH]?.chatgpt_account_id;
-		if (!accountId) throw new Error("No account ID in token");
+		// Unverified routing metadata only; token verification belongs to the login flow.
+		const auth = decodeJwt(token)[JWT_CLAIM_PATH];
+		const accountId =
+			auth && typeof auth === "object" && "chatgpt_account_id" in auth ? auth.chatgpt_account_id : undefined;
+		if (typeof accountId !== "string" || !accountId) throw new Error("No account ID in token");
 		return accountId;
 	} catch {
 		throw new Error("Failed to extract accountId from token");

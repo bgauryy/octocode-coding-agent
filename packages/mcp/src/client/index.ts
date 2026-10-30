@@ -53,7 +53,6 @@ export {
 } from "./transports/stdio.ts";
 export { McpAuthRequiredError, McpHttpError, McpSessionExpiredError } from "./transports/streamable-http/http.ts";
 export { StreamableHttpTransport, type StreamableHttpTransportOptions } from "./transports/streamable-http.ts";
-export { LegacySseTransport, type LegacySseTransportOptions } from "./transports/legacy-sse.ts";
 export type {
 	McpTransport,
 	McpTransportCloseListener,

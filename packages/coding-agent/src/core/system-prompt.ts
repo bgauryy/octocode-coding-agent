@@ -5,6 +5,7 @@ import { isOctocodeReader, isOctocodeSearch } from "../../../mcp/src/presets/oct
 
 import { getSystemMessageText } from "@octocodeai/octocode-ai";
 import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
+import { policyRoutesSearchToOctocode } from "../octocode/instructions/policy.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 
 export interface BuildSystemPromptOptions {
@@ -114,6 +115,7 @@ function buildRules(
 	toolGuidelines: Record<string, string[]>,
 	promptGuidelines: string[],
 	includeFloor: boolean,
+	bashSearch: boolean,
 ): string {
 	const rules: string[] = [];
 	const seen = new Set<string>();
@@ -124,9 +126,7 @@ function buildRules(
 		rules.push(normalized);
 	};
 
-	const hasLocalSearch = selectedTools.some(isOctocodeSearch);
-
-	if (selectedTools.includes("bash") && !hasLocalSearch) addRule("Use bash for file operations like ls, rg, find");
+	if (bashSearch) addRule("Use bash for file operations like ls, rg, find");
 
 	for (const name of selectedTools) {
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
@@ -176,11 +176,15 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
 		promptSections.tools = tools;
+		// One predicate decides who owns code search: Octocode, when one of its search tools is declared or the policy's
+		// research section already routes search to it (a server still connecting); otherwise bash, when it is declared.
+		const octocodeSearch = declaredTools.some(isOctocodeSearch) || policyRoutesSearchToOctocode(customSections);
 		promptSections.rules = buildRules(
 			declaredTools,
 			toolGuidelines,
 			promptGuidelines,
 			!customSections.octocode_communication,
+			declaredTools.includes("bash") && !octocodeSearch,
 		);
 		promptSections.docs = `Octocode documentation (read only when the user asks about Octocode itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: ${getReadmePath()}
@@ -193,17 +197,17 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
 	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
-	// Octocode ships no `read` tool, but an extension or SDK caller may register one under that name.
-	const readers = ["read", "bash"] as const;
-	// The skill tool loads a skill by name and needs no file reader, so it comes first.
+	// The skill tool loads a skill by name and needs no file reader, so it comes first. Octocode ships no `read` tool;
+	// an SDK session that declares its own file reader still lists its skills, with a hint that names no tool.
 	const skillFileReadTool = declaredTools.includes("skill")
 		? "skill"
 		: declaredTools.some(isOctocodeReader)
 			? "octocode"
-			: (readers.find((tool) => declaredTools.includes(tool)) ??
-				(readers.some((tool) => selectedTools.includes(tool)) || selectedTools.some(isOctocodeReader)
+			: declaredTools.includes("bash")
+				? "bash"
+				: declaredTools.includes("read") || selectedTools.includes("bash") || selectedTools.some(isOctocodeReader)
 					? "indirect"
-					: undefined));
+					: undefined;
 	if (skillFileReadTool && skills.length > 0) {
 		const skillsPrompt = formatSkillsForPrompt(skills, skillFileReadTool).trim();
 		if (skillsPrompt) promptSections.skills = skillsPrompt;

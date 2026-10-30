@@ -1,3 +1,4 @@
+import { childCacheLabel } from "./cache-monitor.ts";
 import { REPORT_STATUSES } from "../instructions/report.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
@@ -27,10 +28,11 @@ interface ProfileStats {
 	/** Runs that failed before their first model turn (`details.startup.failed`). */
 	startupFailures: number;
 	compactions: number;
-	/** Runs that reported their first-turn context size, and the sum of those sizes. */
+	/** First-request context, including cached input. Keep the legacy field name for stats consumers. */
 	cold: { runs: number; tokens: number };
 	/** Model requests of each run that recorded them (`details.requests`), in the order the runs came. */
 	requests: number[];
+	cache: { requests: number; promptTokens: number; cacheRead: number; cacheWrite: number };
 }
 
 const emptyStats = (profile: string): ProfileStats => ({
@@ -50,6 +52,7 @@ const emptyStats = (profile: string): ProfileStats => ({
 	compactions: 0,
 	cold: { runs: 0, tokens: 0 },
 	requests: [],
+	cache: { requests: 0, promptTokens: 0, cacheRead: 0, cacheWrite: 0 },
 });
 
 interface Run {
@@ -145,6 +148,10 @@ export function agentStats(entries: readonly unknown[]): ProfileStats[] {
 		if (details.unpriced === true) stats.unpriced = true;
 		if (Array.isArray(details.asks)) stats.asks += details.asks.length;
 		stats.compactions += compactionsOf(details);
+		if (isRecord(details.cache)) {
+			for (const key of ["requests", "promptTokens", "cacheRead", "cacheWrite"] as const)
+				stats.cache[key] += finiteOrZero(details.cache[key]);
+		}
 		if (isRecord(details.startup) && details.startup.failed === true) stats.startupFailures++;
 		if (typeof details.firstTurnTokens === "number" && details.firstTurnTokens > 0) {
 			stats.cold.runs++;
@@ -164,8 +171,10 @@ function describe(stats: ProfileStats): string[] {
 	]
 		.filter(Boolean)
 		.join(", ");
-	const cold =
-		stats.cold.runs > 0 ? ` · cold start ${formatTokens(Math.round(stats.cold.tokens / stats.cold.runs))} avg` : "";
+	const initialContext =
+		stats.cold.runs > 0
+			? ` · initial context ${formatTokens(Math.round(stats.cold.tokens / stats.cold.runs))} avg`
+			: "";
 	const requests =
 		stats.requests.length > 0
 			? ` · requests p50 ${quantile(stats.requests, 0.5)} · p95 ${quantile(stats.requests, 0.95)} · max ${Math.max(...stats.requests)}`
@@ -174,7 +183,10 @@ function describe(stats: ProfileStats): string[] {
 	return [
 		`${stats.profile} — ${plural(stats.runs, "run")} (${split})`,
 		`  outcomes: done ${outcomes.done} · partial ${outcomes.partial} · blocked ${outcomes.blocked} · failed ${outcomes.failed} · unknown ${outcomes.unknown} · outcome word ${compliance}${stats.trailing ? ` · trailing outcome ${stats.trailing}` : ""}`,
-		`  tokens: ${formatTokens(stats.tokens)} total · ${formatTokens(Math.round(stats.tokens / stats.runs))} avg${cold}`,
+		`  tokens: ${formatTokens(stats.tokens)} total · ${formatTokens(Math.round(stats.tokens / stats.runs))} avg${initialContext}`,
+		...(stats.cache.requests > 0
+			? [`  conversation cache: ${childCacheLabel(stats.cache)} · ${stats.cache.requests} requests`]
+			: []),
 		`  cost ${cost} · ${plural(stats.asks, "ask")} · ${plural(stats.startupFailures, "startup failure")} · ${plural(stats.compactions, "compaction")}${requests}`,
 	];
 }

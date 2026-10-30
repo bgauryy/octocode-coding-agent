@@ -17,7 +17,7 @@ describe("inbound ACP protocol", () => {
 		expect(response.agentCapabilities?.sessionCapabilities?.list).toEqual({});
 		expect(response.agentCapabilities?.sessionCapabilities?.resume).toEqual({});
 		expect(response.agentCapabilities?.mcpCapabilities?.http).toBe(true);
-		expect(response.agentCapabilities?.mcpCapabilities?.sse).toBe(true);
+		expect(response.agentCapabilities?.mcpCapabilities?.sse).toBe(false);
 		expect(response.agentCapabilities?.promptCapabilities?.image).toBe(true);
 		await expect(h.initialize()).rejects.toThrow();
 	});

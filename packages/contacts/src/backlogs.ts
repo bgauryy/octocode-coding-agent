@@ -64,7 +64,6 @@ export const CompletionSchema = Type.Object(
 );
 export const EntityFields = {
 	type: Type.Optional(StringEnum(ITEM_TYPES, { description: "Default task; epic groups work." })),
-	reason: Type.Optional(Type.String({ description: "Why; alias of why." })),
 	parentId: Type.Optional(
 		Type.Union([Type.String(), Type.Null()], {
 			description: "Parent ID; null clears.",
@@ -82,7 +81,8 @@ export const EntityFields = {
 	),
 	completion: Type.Optional({
 		...CompletionSchema,
-		description: "Done result; operationKey deduplicates retries; replaces corrects history.",
+		description:
+			"Done result; operationKey deduplicates retries; on a done item it corrects the latest completion (replaces names it; omitted means the latest).",
 	}),
 	version: Type.Optional(Type.Integer({ description: "Version from get." })),
 };

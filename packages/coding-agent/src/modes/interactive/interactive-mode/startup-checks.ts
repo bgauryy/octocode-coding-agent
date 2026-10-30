@@ -3,7 +3,7 @@
  * the new-version and package-update notifications.
  */
 
-import { getCapabilities, hyperlink, Markdown, Spacer, Text } from "@octocodeai/octocode-tui";
+import { getCapabilities, hasTmuxSession, hyperlink, Markdown, Spacer, Text } from "@octocodeai/octocode-tui";
 import { spawn } from "child_process";
 import { APP_NAME, getAgentDir, VERSION } from "../../../config.ts";
 import { DefaultPackageManager } from "../../../core/package-manager.ts";
@@ -49,7 +49,7 @@ export async function checkForPackageUpdates(host: StartupChecksHost): Promise<s
 }
 
 export async function checkTmuxKeyboardSetup(): Promise<string | undefined> {
-	if (!process.env.TMUX) return undefined;
+	if (!hasTmuxSession()) return undefined;
 
 	const runTmuxShow = (option: string): Promise<string | undefined> => {
 		return new Promise((resolve) => {
@@ -76,20 +76,13 @@ export async function checkTmuxKeyboardSetup(): Promise<string | undefined> {
 		});
 	};
 
-	const [extendedKeys, extendedKeysFormat] = await Promise.all([
-		runTmuxShow("extended-keys"),
-		runTmuxShow("extended-keys-format"),
-	]);
+	const extendedKeys = await runTmuxShow("extended-keys");
 
 	// If we couldn't query tmux (timeout, sandbox, etc.), don't warn
 	if (extendedKeys === undefined) return undefined;
 
 	if (extendedKeys !== "on" && extendedKeys !== "always") {
 		return "tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.";
-	}
-
-	if (extendedKeysFormat === "xterm") {
-		return "tmux extended-keys-format is xterm. Octocode works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux.";
 	}
 
 	return undefined;

@@ -1,11 +1,14 @@
-import { REPORT_MAX_BYTES, REPORT_STATUS_MEANING, REPORT_STATUSES } from "./report.ts";
+import { MCP_CONTRACT_SECTION_PREFIX } from "../../../../mcp/src/section.ts";
+import { OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
+import { cleanupDays } from "../shared/env.ts";
 
 /**
  * Octocode guidance, added to Octocode's structured system prompt as the `octocode`
  * sections (Octocode wraps each section in tags and records only changed sections).
  * Octocode already lists the active tools with their guidelines, AGENTS.md context and
  * skills, so this only adds judgment and routing; per-tool usage lives in each
- * tool's description and guidelines. Octocode's base prompt already sets the identity.
+ * tool's description and guidelines. Octocode's base prompt already sets the identity; the skills section owns when to
+ * load a skill; a child's task owns its report contract (`report.ts`).
  * It is rebuilt only when its inputs change, preserving a stable prefix; cache reuse depends on the provider. A subagent's prompt carries nothing
  * unique to that child (its id, parent and scratch folder arrive in its task), so siblings can share a stable prefix.
  */
@@ -34,6 +37,15 @@ interface PromptInputs {
 	canMcp?: boolean;
 	/** Selected native graph tools, independent of the MCP connection. */
 	graphTools?: readonly string[];
+	/** Days an untouched scratch folder is kept (`OCTOCODE_CLEANUP_DAYS`; 0 keeps it); default from the environment. */
+	scratchDays?: number;
+}
+
+/** What the prompt says about scratch retention, from the sweep's own setting (`handoff/scratch.ts`). */
+function scratchRetention(days: number): string {
+	return days === 0
+		? "Scratch is not cleared automatically."
+		: `Scratch is cleared after ${days} day${days === 1 ? "" : "s"} without writes.`;
 }
 
 /**
@@ -54,20 +66,31 @@ function graphWorkflows(tools: readonly string[], readOnly: boolean): string[] {
 		: [];
 }
 
-const OUTCOMES = REPORT_STATUSES.map((status) => `${status} (${REPORT_STATUS_MEANING[status]})`)
-	.join(", ")
-	.replace(/, ([^,]*)$/, " or $1");
+/**
+ * The research line that sends code search to Octocode MCP. `core/system-prompt.ts` leaves its own bash search rule
+ * out of the rules while a session's sections carry this one, so only one of the two shows, whether or not the
+ * server's tools are declared yet.
+ */
+export const OCTOCODE_SEARCH_RULE = "Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it";
+
+/** Whether these prompt sections route code search to Octocode MCP. */
+export const policyRoutesSearchToOctocode = (sections: Record<string, string | undefined>): boolean =>
+	sections.octocode_research?.includes(OCTOCODE_SEARCH_RULE) === true;
+
+/** The base section that carries the Octocode server's contract (`mcp/src/section.ts` names it from the server name). */
+const OCTOCODE_CONTRACT_SECTION = `${MCP_CONTRACT_SECTION_PREFIX}${OCTOCODE_SERVER}`;
 
 export function octocodePromptSections(input: PromptInputs): Record<string, string> {
 	const readOnly = input.readOnlyRole === true;
 	const canSave = input.canSave ?? input.canWrite !== false;
 	const shell = input.canShell !== false;
 	const web = input.canWeb !== false;
+	const retention = scratchRetention(input.scratchDays ?? cleanupDays());
 	// The prompt says when to reach for Octocode MCP; which tool answers which question is the server's own business (its
 	// instructions and tool descriptions), so this block names none and stays identical before and after the server connects.
 	const research = input.octocode
 		? [
-				`- Use Octocode MCP (\`mcp__octocode__*\`) to check code before you rely on it, here${shell ? " (instead of ls, rg, grep or find in bash)" : ""} and in GitHub or package registries outside this repository (instead of answering from memory). Its mcp_contract section routes each question to a tool.`,
+				`- ${OCTOCODE_SEARCH_RULE}, here${shell ? " (instead of ls, rg, grep or find in bash)" : ""} and in GitHub or package registries outside this repository (instead of answering from memory). Its \`${OCTOCODE_CONTRACT_SECTION}\` section routes each question to a tool.`,
 				`- Use \`localFetch\` for ${readOnly ? "files you know" : "a file you will edit"}.${shell && !readOnly ? " Use bash for builds, tests, git and running commands." : ""} If an Octocode tool is unavailable, say so${shell ? " and use permitted bash search (`rg`, `fd`, `sed -n`)" : ""}. A permission refusal is not a reason to retry through another tool.`,
 			]
 		: [
@@ -86,19 +109,21 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 		? [
 				"# Delegation",
 				// The agent tool description owns the mechanics: the parallel limit, background delivery and report files.
-				"- You coordinate your subagents. Use `agent` for bounded work needing separate context; handle small tasks yourself. Start independent tasks together; own user communication, approvals and integration; check reports against acceptance checks.",
-				"- Scale delegation to the task: none for a lookup or small change, one agent for a scoped investigation, two to four for independent parts or a comparison, more only for broad work. Delegate output-heavy triage (a full suite's failures, wide searches) so only the answer reaches your context.",
+				"- You coordinate your subagents. Delegate bounded work needing separate context; own user communication, approvals and integration, and verify reports against acceptance checks.",
+				"- Scale delegation: none for a lookup or small change, one for investigation, two to four for independent parts or comparison; more only for broad work. Delegate output-heavy triage so only the answer enters your context.",
 				"- Start a child in the background when it may need your decisions: a foreground child's messages reach you only after its report.",
 				"- Answer a child's request only within the user's authorization; otherwise ask the user.",
-				"- Set each task's `model` by the reasoning it needs: `small` with low thinking for lookups and mechanical steps, `medium` for scoped implementation or review, and omit `model` (this session's model) for root causes and design. Spend within the user's budget.",
-				"- Keep coupled work in one agent. For disjoint-file parallel work, name owners and shared interfaces in `.octocode/<topic>/contract.md`.",
-				"- Resolve design questions before parallel implementation; review the combined diff.",
+				// The agent tool's `model` field owns the choice of model and thinking; only the budget is policy.
+				"- Spend within the user's budget.",
+				// The agent task owns ownership and interfaces; coordinate owns path locks.
+				"- Resolve designs and interfaces before parallel edits; give coupled work one owner and independent work disjoint files. Review the combined diff.",
 				...(input.browserProfiles?.length
 					? [
-							`- Delegate browser interaction to ${input.browserProfiles.map((name) => `\`${name}\``).join(", ")}, which has the browser tools you lack; start it in the background with the task, URL, required evidence, headless choice and whether follow-ups may come; message that same agent for follow-ups while it stays reachable instead of starting a new one, and tell it to close the browser when done.`,
+							// The agent tool owns `headless`, `background` and `resume`; the browser role owns cleanup.
+							`- Delegate browser interaction to ${input.browserProfiles.map((name) => `\`${name}\``).join(", ")}, which has the browser tools you lack: give it the task, URL and the evidence you need, and send follow-ups to that same agent while it is reachable.`,
 						]
 					: []),
-				"- For durable results, name a Markdown output path under `.octocode/<topic>/` (or the user/skill destination) in the task and cite it. Scratch is cleared after a week.",
+				`- For durable results, name a Markdown output path under \`.octocode/<topic>/\` (or the user/skill destination) in the task and cite it. ${retention}`,
 				...(input.profiles.length > 0
 					? [
 							"- Profiles:",
@@ -110,16 +135,17 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			]
 		: [
 				"# Subagent",
-				"- You are a subagent; your task names your role, goal, parent, teammates and scratch folder. Finish it yourself.",
-				`- Your final answer is your report and reaches your parent by itself. Start it with one word: ${OUTCOMES}, then the result, verification and open questions. For partial or blocked work, include current state, evidence, blockers and the next action. Your parent keeps the first ${REPORT_MAX_BYTES / 1024} KB and gets the path of the whole report in your scratch folder.`,
+				// The task carries the report contract (`report.ts`), so siblings share this section byte for byte.
+				"- You are a subagent; your task names your role, goal, parent, teammates, scratch folder and how to report. Finish it yourself.",
 				...(!canSave
 					? []
 					: [
-							"- Put substantial results in a Markdown doc in your scratch folder and cite its path; checkpoint long tasks there. Scratch is cleared after a week; save durable work where your task or skill names.",
+							`- Put substantial results in a Markdown doc in your scratch folder and cite its path; checkpoint long tasks there. ${retention} Save durable work where your task or skill names.`,
 						]),
 				input.canUseAgent === false
 					? "- You cannot ask the user and no messaging tool is active. Continue independent work and include unresolved decisions in your report."
-					: "- You cannot ask the user. When you need a decision, send it to your parent with `agent` type `message` (`replyRequired` true, SBAR) and keep working on what does not depend on it. If it blocks completion, finish with `blocked` and the question: a child that ends with an unanswered question stays resumable, and its parent's reply continues this conversation, so do not poll for it. Otherwise `done`, `partial` and `failed` end the conversation.",
+					: // The message tool owns its fields; the report contract in the task owns what `blocked` does.
+						"- You cannot ask the user. When you need a decision, send it to your parent with `agent` type `message` and keep working on what does not depend on it. If it blocks completion, finish with `blocked` and the question.",
 			];
 
 	// A read-only agent gets one investigate-and-report rule instead of the rules about changing files. It says where
@@ -149,8 +175,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 	return {
 		octocode_work: [
 			"# Work and verification",
-			// One rule for the main session and subagents; the `skills` section lists them and the `skill` tool description owns loading.
-			"- Before starting a task, when a listed skill's description matches it or the task names one, load that skill first and follow it.",
+			// The `skills` section says when to load a skill and the `skill` tool how; neither is repeated here.
 			// One rule for research scope: supplied facts are not re-researched; the code you change or rely on, and what the
 			// user asks to verify, is. The Research section below owns which tool does the checking.
 			`- Treat facts the user supplied and relevant skill instructions as given; do not re-research them. Research the code you change or rely on, and anything the user asks you to verify.${input.canDelegate ? " In a delegated task, say which facts are settled and what to verify." : ""}`,
@@ -158,7 +183,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			"- Ancestor instructions are already loaded. Before working under a subdirectory, read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md; apply deeper instructions within their directory; a deeper file wins over a shallower one, and direct user instructions win over both.",
 			readOnly
 				? "- For code questions: read affected code and callers before concluding; run the deciding check when a read-only one exists."
-				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it); after editing, run the deciding check across it (focused test, typecheck or reproduction).",
+				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it); run the deciding check across it (focused test, typecheck or reproduction). After your last edit, and before you report the work as done, rerun the check that proves the final state (an edit or revert after a check needs a new check); if no check can run, say so and why.",
 			"- When writing or reviewing tests, prefer observable behavior and public contracts over implementation details. Mock external boundaries; keep internal flows real where feasible. Use focused unit tests when useful; preserve coverage.",
 			...(readOnly
 				? []
@@ -169,8 +194,12 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			...checks,
 			// Roles name this protocol ("run a hypothesis test"); it is defined only here.
 			`- When a failure is unexplained, run a hypothesis test: compare the likely cause with its strongest rival; test before retrying. ${readOnly ? "Name causes" : "Fix causes"}; report blockers without suppressing errors.`,
+			// User request (2026-10-29): a move the user could not follow gets its reason; obvious steps need none.
+			`- When a step's reason would not be obvious to ${input.canDelegate ? "the user" : "your parent"} (a deletion, a costly run, a change of plan), state it in one line${input.canDelegate ? "" : " in your report"}.`,
+			// User request (2026-10-29): long work drifts. The resume and compaction briefs (`sessions/brief.ts`) name the claimed items, their last notes and the latest request.
+			"- Reorient after a compaction, resume or long run, and before reporting, starting from the latest resume or compaction brief.",
 			`- Run independent calls together and dependent ones in sequence.${shell ? " For repeated mechanical work, write one short script instead of many calls." : ""}`,
-			`- ${readOnly ? "" : "Prefer reversible changes. "}In your ${input.canDelegate ? "answer" : "report"}, label facts, assumptions and unknowns.`,
+			`- ${readOnly ? "" : "Prefer reversible changes. "}Label a claim as an assumption or unknown only when you did not verify it.`,
 			input.canDelegate
 				? "- Work until the request is done and checked, or you are blocked."
 				: "- Work until the Definition of Done or a blocker.",
@@ -201,11 +230,12 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 		].join("\n"),
 		octocode_communication: [
 			"# Communication",
+			...(input.canUseAgent === false
+				? []
+				: ["- Across parent trees, share evidence; scope changes and shared interfaces go through the owning parent."]),
 			// The agent tool's message guideline owns when to message; a subagent's tools and task already name its teammates; only the main session meets a second coordination system.
 			...(input.canDelegate && input.canUseAgent !== false
-				? [
-						"- Use `agent` type `external` to reach configured agents in other hosts; connection and prompt permissions still apply.",
-					]
+				? ["- Reach configured agents in other hosts with `agent` type `external`; its permissions still apply."]
 				: []),
 			// Each protocol is defined once here; roles and the Subagent section name it. askUser owns the decision request.
 			"- Lead with the result and match detail to the task; use a format below only when it fits:",
@@ -219,15 +249,14 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 						"- When a flow, sequence or dependency graph explains the answer better than prose, add a small Mermaid block (`flowchart TD`, `sequenceDiagram` or `stateDiagram-v2`) with short labels; the terminal draws it when it fits.",
 					]
 				: []),
-			...(readOnly
+			// A child's report contract (in its task) already asks for verification and open questions, so only the main
+			// session summarizes, and only when there is more than one change to track or a check to explain. The backlog
+			// tool owns closing items and coordinate owns locks.
+			...(readOnly || !input.canDelegate
 				? []
-				: input.canDelegate
-					? [
-							"- After changing files or other multi-step work, end with a short summary for the user: what was done, changed paths, checks run and the blast radius. Leave nothing open: finish or revert partial edits, stop jobs and agents you started, release locks and close claimed items; name any work left unfinished.",
-						]
-					: [
-							"- After changing files, end with a short summary in your report: changed paths, checks and remaining work.",
-						]),
+				: [
+						"- When more than one file changed or a check failed, end with a short summary for the user: changed paths, checks run and the blast radius. Leave nothing open: finish or revert partial edits, stop jobs and agents you started; name any work left unfinished.",
+					]),
 		].join("\n"),
 	};
 }

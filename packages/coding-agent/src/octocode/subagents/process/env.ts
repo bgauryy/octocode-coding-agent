@@ -3,10 +3,15 @@ import type { SkillResourceSnapshot } from "../../../core/skill-resource-snapsho
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { type CachePreferences, INSTRUCTION_CACHE_RETENTION_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
+import {
+	type CachePreferences,
+	INSTRUCTION_CACHE_RETENTION_ENV,
+	PROMPT_CACHE_KEY_ENV,
+} from "@octocodeai/octocode-ai/utils/cache-policy";
 import { ROLE_PROMPT_FILE_ENV } from "../../instructions/role.ts";
 import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
+	BACKLOG_ITEM_ENV,
 	BROWSER_VISIBLE_ENV,
 	CACHE_RETENTION_ENV,
 	SUBAGENT_HOOKS_ENV,
@@ -41,6 +46,10 @@ export interface Identity {
 	/** MCP servers the parent's `mcp` tool added this session (the user confirmed them): the child registers them, and nothing is written to `mcp.json`. */
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	cachePreferences?: CachePreferences;
+	/** Lifetime of the history entry the child's requests write, when known (`cache-warmer/economics`). */
+	cacheTtlMs?: number;
+	/** Shared cache group; transport sessions remain unique to each child. */
+	promptCacheKey?: string;
 	/** The parent chose its skills: they ride in its task and its prompt lists none (`SKILLS_IN_TASK_ENV`). */
 	skillsInTask?: boolean;
 	id: string;
@@ -62,6 +71,8 @@ export interface Identity {
 	scratch?: string;
 	/** The parent's Octocode session id: the backlog claims the child may update. */
 	parentSession?: string;
+	/** The backlog item the parent started the child for (`B12`): the only one it may update; its report is noted on it. */
+	item?: string;
 	parentTranscript?: string;
 	/**
 	 * The parent's permission mode now, and what its spawn ask granted. A spawn the user approved in `manual` or
@@ -91,6 +102,7 @@ export function subagentProcessEnv(
 	const inherited = { ...base };
 	// User settings survive; run identity, trust delegation, permissions and browser mode belong to this child.
 	const owned = [
+		PROMPT_CACHE_KEY_ENV,
 		ROLE_PROMPT_FILE_ENV,
 		SKILL_SNAPSHOT_FILE_ENV,
 		MCP_SESSION_SERVERS_FILE_ENV,
@@ -114,10 +126,12 @@ export function subagentProcessEnv(
 		PARENT_SESSION_ENV,
 		PARENT_TRANSCRIPT_ENV,
 		PARENT_PID_ENV,
+		BACKLOG_ITEM_ENV,
 	];
 	for (const key of owned) delete inherited[key];
 	return {
 		...inherited,
+		...(identity?.promptCacheKey ? { [PROMPT_CACHE_KEY_ENV]: identity.promptCacheKey } : {}),
 		...(identity?.cachePreferences?.cacheRetention
 			? { [CACHE_RETENTION_ENV]: identity.cachePreferences.cacheRetention }
 			: {}),
@@ -146,6 +160,7 @@ export function subagentProcessEnv(
 		...(identity?.scratch ? { [AGENT_SCRATCH_ENV]: identity.scratch } : {}),
 		...(identity?.parentTranscript ? { [PARENT_TRANSCRIPT_ENV]: identity.parentTranscript } : {}),
 		...(identity?.parentSession ? { [PARENT_SESSION_ENV]: identity.parentSession } : {}),
+		...(identity?.item ? { [BACKLOG_ITEM_ENV]: identity.item } : {}),
 		// The pid and its start time name this process, so a child never mistakes a later process with the pid for its parent.
 		...(identity ? { [PARENT_PID_ENV]: [process.pid, processStartTime(process.pid)].filter(Boolean).join(" ") } : {}),
 		...(nonceFile ? { [PERMISSION_NONCE_FILE_ENV]: nonceFile } : {}),

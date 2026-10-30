@@ -21,7 +21,7 @@ import {
 	type ApplicationOperationResult,
 } from "@octocodeai/octocode-contacts";
 import type { AgentSession, AgentSessionEvent, AgentSessionEventListener } from "../agent-session.ts";
-import { commandImages, dispatchCommand } from "./service/commands.ts";
+import { commandImages, dispatchCommand, invokeCommand } from "./service/commands.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
 import { lifecycleEvent } from "./service/lifecycle.ts";
@@ -347,12 +347,10 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			receiptStore,
 			isCurrent: () => !this.disposed && this.sessionId === sessionAtDispatch,
 			runId: () => this.state.getState().runId,
-			invoke: () =>
-				command.action === "abort"
-					? this.invoke("abort")
-					: command.action === "prompt"
-						? this.invoke("prompt", command.text, { images })
-						: this.invoke(command.action, command.text, images),
+			invoke: () => {
+				if (this.disposed) throw new Error("Application service is closed");
+				return invokeCommand(command, images, this.session);
+			},
 			publishDomain: (event) => this.publishDomain(event),
 		});
 		return { ...receipt };

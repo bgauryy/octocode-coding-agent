@@ -1,6 +1,7 @@
 import type { Args } from "../cli/args.ts";
 import { createProjectTrustContext } from "../cli/project-trust.ts";
 import type { CreateAgentSessionRuntimeFactory } from "../core/agent-session-runtime.ts";
+import { headlessCachePreferences } from "../core/cache-configuration.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
 	createAgentSessionFromServices,
@@ -108,6 +109,11 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			},
 		});
 		const { settingsManager, modelRuntime, resourceLoader } = services;
+		// A one-shot run writes its instruction blocks for the next run with the same tools and keeps its history short.
+		if (getAppMode() === "print") {
+			const headless = headlessCachePreferences(settingsManager.getCachePreferenceLayers(), process.env);
+			if (headless) settingsManager.applyOverrides(headless);
+		}
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...projectTrustDiagnostics,
 			...services.diagnostics,

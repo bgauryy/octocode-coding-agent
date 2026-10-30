@@ -152,19 +152,22 @@ class Provenance {
 		}
 	}
 
-	/** Why `event` should be asked about (untrusted text in a consequential argument, private text in egress), if at all. */
+	/**
+	 * Why `event` should be asked about (untrusted text in a consequential argument, private text in egress), if at all.
+	 * An external prompt is skipped: its arguments lack the content its `refs` add, so `sent` checks it instead.
+	 */
 	check(event: ToolCallEvent, ctx: { cwd: string }): ProvenanceHit | undefined {
-		if (this.index.size === 0) return undefined;
 		const input = event.input as Record<string, unknown>;
-		for (const value of this.consequential(event.toolName, input, ctx.cwd)) {
-			const hit = this.untrustedIn(value);
-			if (hit) return SHELL_TOOLS.has(event.toolName) ? { ...hit, why: `${hit.why}${SHELL_HINT}` } : hit;
-		}
-		for (const value of this.egress(event.toolName, input)) {
-			const hit = this.privateIn(value);
-			if (hit) return hit;
-		}
-		return undefined;
+		if (event.toolName === "externalAgent" && input.action === "prompt") return undefined;
+		return this.inspect(event.toolName, input, ctx.cwd);
+	}
+
+	/**
+	 * The same check for an external prompt as it is sent (`ExternalPolicy.authorize`): `text` already holds the content
+	 * its `refs` expanded to, so both checks see exactly the text that leaves.
+	 */
+	sent(prompt: { id?: string; text?: string }, ctx: { cwd: string }): ProvenanceHit | undefined {
+		return this.inspect("externalAgent", { action: "prompt", id: prompt.id, text: prompt.text }, ctx.cwd);
 	}
 
 	clear(): void {
@@ -178,6 +181,19 @@ class Provenance {
 	/** Hashes held (shingles and atoms). */
 	size(): number {
 		return this.index.size;
+	}
+
+	private inspect(toolName: string, input: Record<string, unknown>, cwd: string): ProvenanceHit | undefined {
+		if (this.index.size === 0) return undefined;
+		for (const value of this.consequential(toolName, input, cwd)) {
+			const hit = this.untrustedIn(value);
+			if (hit) return SHELL_TOOLS.has(toolName) ? { ...hit, why: `${hit.why}${SHELL_HINT}` } : hit;
+		}
+		for (const value of this.egress(toolName, input)) {
+			const hit = this.privateIn(value);
+			if (hit) return hit;
+		}
+		return undefined;
 	}
 
 	private origin(event: ToolResultEvent, cwd: string): { kind: Kind; label: string } | undefined {

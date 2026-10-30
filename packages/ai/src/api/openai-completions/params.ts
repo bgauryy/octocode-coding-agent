@@ -8,7 +8,11 @@ import type {
 	ThinkingBudgetReduction,
 	ThinkingTokenBudgetField,
 } from "../../types.ts";
-import { resolveCacheRetention, resolveInstructionCacheRetention } from "../../utils/cache-policy.ts";
+import {
+	resolveCacheRetention,
+	resolveInstructionCacheRetention,
+	resolvePromptCacheKey,
+} from "../../utils/cache-policy.ts";
 import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import {
@@ -95,7 +99,7 @@ export function buildParams(
 		prompt_cache_key:
 			(model.baseUrl.includes("api.openai.com") && cacheRetention !== "none") ||
 			(cacheRetention === "long" && compat.supportsLongCacheRetention)
-				? clampOpenAIPromptCacheKey(options?.sessionId)
+				? clampOpenAIPromptCacheKey(resolvePromptCacheKey(options))
 				: undefined,
 		prompt_cache_retention:
 			cacheRetention === "long" && compat.supportsLongCacheRetention && acceptsPromptCacheRetention(model)

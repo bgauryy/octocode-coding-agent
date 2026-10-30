@@ -1,30 +1,16 @@
+import { createStatusCodeErrorResponseHandler, postToApi } from "@ai-sdk/provider-utils";
 import { calculateCost } from "../models/model-helpers.ts";
 import type { ClassifierApi, ClassifierModel, ClassifierOptions, ProviderHeaders, Usage } from "../types.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { raceWithAbortSignal } from "../utils/abort.ts";
 
-/** An HTTP failure in the shape `retryProviderRequest` and `normalizeProviderError` understand. */
-export interface ClassifierHttpError extends Error {
-	status: number | undefined;
-	headers: Headers | undefined;
-	body: string;
-}
-
-function httpError(label: string, response: Response, body: string): ClassifierHttpError {
-	const error = new Error(`${label} returned ${response.status}`) as ClassifierHttpError;
-	error.status = response.status;
-	error.headers = response.headers;
-	error.body = body;
-	return error;
-}
-
-function timeoutError(timeoutMs: number): ClassifierHttpError {
-	const error = new Error(`Request timed out after ${timeoutMs}ms`) as ClassifierHttpError;
-	error.name = "TimeoutError";
-	error.status = undefined;
-	error.headers = undefined;
-	error.body = "";
-	return error;
+function timeoutError(timeoutMs: number): Error {
+	return Object.assign(new Error(`Request timed out after ${timeoutMs}ms`), {
+		name: "TimeoutError",
+		status: undefined,
+		headers: undefined,
+	});
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +57,8 @@ export async function postClassifierRequest(
 	const transformed = await options.onPayload?.(payload, model);
 	if (transformed !== undefined) payload = transformed;
 	const requestFetch = options.fetch ?? globalThis.fetch;
+	const headers = requestHeaders(model, apiKey, options.headers);
+	const failedResponse = createStatusCodeErrorResponseHandler();
 	const { response, json } = await retryProviderRequest(
 		async () => {
 			const timeoutSignal = options.timeoutMs !== undefined ? AbortSignal.timeout(options.timeoutMs) : undefined;
@@ -79,14 +67,34 @@ export async function postClassifierRequest(
 					? AbortSignal.any([options.signal, timeoutSignal])
 					: (options.signal ?? timeoutSignal);
 			try {
-				const next = await requestFetch(url, {
-					method: "POST",
-					headers: requestHeaders(model, apiKey, options.headers),
-					body: JSON.stringify(payload),
-					signal,
+				signal?.throwIfAborted();
+				const request = postToApi({
+					url: url.href,
+					headers,
+					body: { content: JSON.stringify(payload), values: payload },
+					abortSignal: signal,
+					fetch: async (input, init) => {
+						const received = await requestFetch(input, { ...init, headers });
+						if (signal?.aborted) {
+							void received.body?.cancel().catch(() => {});
+							signal.throwIfAborted();
+						}
+						return signal && received.body
+							? new Response(received.body.pipeThrough(new TransformStream(), { signal }), received)
+							: received;
+					},
+					failedResponseHandler: async (args) => {
+						const result = await failedResponse(args);
+						result.value.message = `${label} returned ${args.response.status}`;
+						return result;
+					},
+					successfulResponseHandler: async ({ response }) => ({
+						// Answer dictionaries may legitimately contain __proto__ as a question name.
+						// Native parsers preserve own keys and validate the provider-specific answer shapes.
+						value: { response, json: (await response.json()) as unknown },
+					}),
 				});
-				if (!next.ok) throw httpError(label, next, await next.text());
-				return { response: next, json: (await next.json()) as unknown };
+				return (await raceWithAbortSignal(request, signal)).value;
 			} catch (error) {
 				if (timeoutSignal?.aborted && !options.signal?.aborted) throw timeoutError(options.timeoutMs!);
 				throw error;

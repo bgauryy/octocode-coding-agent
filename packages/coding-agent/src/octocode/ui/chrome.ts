@@ -1,16 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { animationClock, type Color, mixColors, rgbColor, SPINNER, type TUI } from "@octocodeai/octocode-tui";
+import { type Color, mixColors, SPINNER } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
-import { appKey, expandKey } from "../shared/render/text.ts";
-import { statusColor } from "../shared/render/status.ts";
 import { stopRowTimers } from "../shared/render/rows.ts";
 import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
-import { thinkingTranscript } from "./thinking.ts";
 import { registerAwaiting } from "./awaiting.ts";
 import { registerTurnLine } from "./turn-line.ts";
 
@@ -27,10 +24,6 @@ export function packageVersion(): string | undefined {
 	return version.value;
 }
 
-/** How long the banner's light band takes to cross, and its frame interval. */
-const SHINE_MS = 1_100;
-const SHINE_FRAME_MS = 40;
-
 /** Colour at `t` (0..1) along evenly spaced stops. */
 function along(stops: Color[], t: number): Color {
 	if (stops.length === 1) return stops[0];
@@ -41,8 +34,7 @@ function along(stops: Color[], t: number): Color {
 
 /**
  * The banner's gradient, from the theme: accent → borderAccent → mdLink → syntaxOperator (purple to teal in the
- * Octocode themes). Shadows are the same hue sunk toward `dim`; the shine lifts strokes toward white (dark themes) or
- * the text colour (light ones). Undefined when the theme has no concrete colours, so the banner uses tokens instead.
+ * Octocode themes), in bold. Undefined when the theme has no concrete colours, so the banner uses tokens instead.
  */
 export function themeRamp(theme: Theme): BannerPaint["ramp"] {
 	let colors: Theme["colors"] | undefined;
@@ -56,20 +48,14 @@ export function themeRamp(theme: Theme): BannerPaint["ramp"] {
 		(color): color is Color => color !== undefined,
 	);
 	if (stops.length === 0 || typeof theme.style !== "function") return undefined;
-	// The dark theme's `text` is the terminal's default foreground (an empty token), which cannot be mixed: it glows white.
-	const highlight = theme.appearance === "light" ? colors.text : rgbColor(255, 255, 255);
-	const cache = new Map<string, Color>();
-	return (t, shade, glow, text) => {
-		const key = `${t}:${shade}:${glow}`;
-		let color = cache.get(key);
+	const cache = new Map<number, Color>();
+	return (t, text) => {
+		let color = cache.get(t);
 		if (!color) {
 			color = along(stops, t);
-			if (shade === "shadow") color = mixColors(color, colors.dim ?? color, 0.6);
-			if (glow > 0 && highlight)
-				color = mixColors(color, highlight, Math.min(1, glow * (shade === "shadow" ? 0.35 : 0.8)));
-			cache.set(key, color);
+			cache.set(t, color);
 		}
-		return theme.style(text, { fg: color, ...(shade === "stroke" ? { bold: true } : {}) });
+		return theme.style(text, { fg: color, bold: true });
 	};
 }
 
@@ -79,73 +65,27 @@ export function spinnerFrames(theme: Theme): string[] {
 	return SPINNER.braille.map((frame, index) => {
 		// Out and back, so the colour loops without a jump.
 		const t = 1 - Math.abs(1 - (2 * index) / SPINNER.braille.length);
-		return ramp ? ramp(t, "stroke", 0, frame) : theme.fg("accent", frame);
+		return ramp ? ramp(t, frame) : theme.fg("accent", frame);
 	});
 }
 
 /**
- * The banner as Octocode's header component. `shineFrom` starts the one-time light sweep. `onInvalidate` runs when Octocode
- * invalidates the header: a theme switch does, and Octocode has no theme event for extensions.
+ * The banner as Octocode's header component. It is static: lines are computed once per width and kept until
+ * `invalidate`, so the header never asks for a frame and never makes the renderer redraw the scrollback on its own.
+ * `onInvalidate` runs when Octocode invalidates the header: a theme switch does, and Octocode has no theme event for
+ * extensions.
  */
-export function bannerHeader(
-	tui: Pick<TUI, "requestRender">,
-	theme: Theme,
-	shineFrom: number | undefined,
-	onInvalidate?: () => void,
-) {
+export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
 	// Read from the theme again on invalidate: Octocode invalidates components when the theme changes.
 	const painted = (): BannerPaint => {
 		const ramp = themeRamp(theme);
 		return { fg: (color, text) => theme.fg(color as never, text), ...(ramp ? { ramp } : {}) };
 	};
 	let paint = painted();
-	const ramp = paint.ramp;
-	const info = {
-		version: packageVersion(),
-		hints: [
-			"/status",
-			`${expandKey()} expand`,
-			`${appKey("app.interrupt").replace(/^escape$/, "esc")} interrupt`,
-			"/agents team",
-		],
-	};
-	let unsubscribe: (() => void) | undefined;
-	const shine = (): number | undefined => {
-		if (shineFrom === undefined || !ramp) return undefined;
-		// Reduced motion: no sweep at all, also when it is switched on mid-sweep.
-		if (animationClock.isReducedMotion()) {
-			stop();
-			return undefined;
-		}
-		const progress = (Date.now() - shineFrom) / SHINE_MS;
-		if (progress >= 1) {
-			stop();
-			return undefined;
-		}
-		return Math.max(0, progress);
-	};
-	const stop = () => {
-		unsubscribe?.();
-		unsubscribe = undefined;
-		shineFrom = undefined;
-	};
-	if (shineFrom !== undefined && ramp) {
-		if (animationClock.isReducedMotion()) shineFrom = undefined;
-		else
-			unsubscribe = animationClock.subscribe(
-				() => {
-					shine();
-					tui.requestRender();
-				},
-				{ everyMs: SHINE_FRAME_MS, kind: "decor" },
-			);
-	}
-	let cached: { width: number; shine: number | undefined; lines: string[] } | undefined;
+	let cached: { width: number; lines: string[] } | undefined;
 	return {
 		render(width: number): string[] {
-			const now = shine();
-			if (!cached || cached.width !== width || cached.shine !== now)
-				cached = { width, shine: now, lines: bannerLines(paint, width, info, now) };
+			if (cached?.width !== width) cached = { width, lines: bannerLines(paint, width) };
 			return cached.lines;
 		},
 		invalidate(): void {
@@ -153,13 +93,12 @@ export function bannerHeader(
 			paint = painted();
 			onInvalidate?.();
 		},
-		dispose: stop,
 	};
 }
 
 /**
- * Octocode's look in the TUI: the "OCTOCODE CODE" banner as the header (in place of Octocode's logo and key hints; it is
- * not in the session, so it stays put across /new, /resume and /fork), a two-line footer, a gradient working
+ * Octocode's look in the TUI: the static "OCTOCODE CODE" banner as the header (in place of the built-in key hints; it
+ * is not in the session, so it stays put across /new, /resume and /fork), a two-line footer, a gradient working
  * spinner, and the generation speed of the last run. Only time spent streaming assistant
  * messages counts toward the speed, so tool calls, subagents and askUser waits don't drag the number down.
  */
@@ -170,15 +109,10 @@ export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
 	registerAwaiting(api);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;
-	api.on("session_start", async (event, ctx) => {
+	api.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI) return;
 		ctx.ui.setStatus(STATUS.speed, undefined);
-		// Shine once, on a fresh start with nothing below the banner. Module state cannot remember it: Octocode re-imports
-		// extensions for every runtime (/new, /resume, /fork, /reload). And a resumed transcript pushes the banner above
-		// the viewport, where every changed frame makes octocode-tui clear and redraw the whole scrollback.
-		const fresh =
-			event.reason === "startup" && !ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
-		if (ctx.mode === "tui") decorate(ctx, fresh ? Date.now() : undefined);
+		if (ctx.mode === "tui") decorate(ctx);
 	});
 	api.on("agent_start", async () => {
 		generated = { output: 0, ms: 0 };
@@ -199,26 +133,13 @@ export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
 		if (!ctx.hasUI) return;
 		const speed = tokensPerSecond(generated.output, generated.ms);
 		// A run too short to measure clears the previous run's figure rather than leaving it beside this run's time.
-		ctx.ui.setStatus(
-			STATUS.speed,
-			speed === undefined ? undefined : statusColor(ctx, "dim", `${speed.toFixed(0)} tok/s`),
-		);
+		ctx.ui.setStatus(STATUS.speed, speed === undefined ? undefined : `${speed.toFixed(0)} tok/s`, "dim");
 	});
 }
 
-function decorate(ctx: ExtensionContext, shineFrom: number | undefined): void {
-	// The spinner and thinking label are painted strings: repaint them whenever a theme switch invalidates the header.
-	ctx.ui.setHeader((tui, current) => {
-		const header = bannerHeader(tui, current, shineFrom, () => paintIndicators(ctx));
-		const transcript = thinkingTranscript(tui);
-		return {
-			...header,
-			render(width: number) {
-				transcript.refresh();
-				return header.render(width);
-			},
-		};
-	});
+function decorate(ctx: ExtensionContext): void {
+	// The spinner is a painted string: repaint it whenever a theme switch invalidates the header.
+	ctx.ui.setHeader((_tui, current) => bannerHeader(current, () => paintIndicators(ctx)));
 	paintIndicators(ctx);
 }
 

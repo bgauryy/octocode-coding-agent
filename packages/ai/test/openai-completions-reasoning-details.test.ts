@@ -1,3 +1,4 @@
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
@@ -9,33 +10,17 @@ const mockState = vi.hoisted(() => ({
 	payloads: [] as unknown[],
 }));
 
-vi.mock("openai", () => {
-	class FakeOpenAI {
-		chat = {
-			completions: {
-				create: (payload: unknown) => {
-					mockState.payloads.push(payload);
-					const chunks = mockState.chunkSets.shift() ?? [];
-					const stream = {
-						async *[Symbol.asyncIterator]() {
-							for (const chunk of chunks) {
-								yield chunk;
-							}
-						},
-					};
-					const result = Promise.resolve(stream) as Promise<typeof stream> & {
-						withResponse: () => Promise<{ data: typeof stream; response: { status: number; headers: Headers } }>;
-					};
-					result.withResponse = async () => ({
-						data: stream,
-						response: { status: 200, headers: new Headers() },
-					});
-					return result;
-				},
-			},
-		};
-	}
-	return { default: FakeOpenAI };
+mockCompletionsFetch((payload: unknown) => {
+	mockState.payloads.push(payload);
+	const chunks = mockState.chunkSets.shift() ?? [];
+	const stream = {
+		async *[Symbol.asyncIterator]() {
+			for (const chunk of chunks) {
+				yield chunk;
+			}
+		},
+	};
+	return completionsResponse(stream);
 });
 
 const reasoningDetail = { type: "reasoning.encrypted", id: "call_1", data: "encrypted-signature" };

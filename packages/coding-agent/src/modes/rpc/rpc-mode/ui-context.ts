@@ -5,6 +5,7 @@ import type {
 	ExtensionWidgetOptions,
 	WorkingIndicatorOptions,
 } from "../../../core/extensions/index.ts";
+import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
 import type { RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
 
@@ -118,7 +119,7 @@ export const createExtensionUIContext = (
 		return () => {};
 	},
 
-	setStatus(key: string, text: string | undefined): void {
+	setStatus(key: string, text: string | undefined, tone?: StatusTone): void {
 		// Fire and forget - no response needed
 		output({
 			type: "extension_ui_request",
@@ -126,6 +127,7 @@ export const createExtensionUIContext = (
 			method: "setStatus",
 			statusKey: key,
 			statusText: text,
+			...(tone ? { statusTone: tone } : {}),
 		});
 	},
 

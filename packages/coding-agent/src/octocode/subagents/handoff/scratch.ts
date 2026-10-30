@@ -7,6 +7,7 @@ import { cleanupDays } from "../../shared/env.ts";
 import { DAY_MS } from "../../shared/util.ts";
 import { canonicalPath } from "../../shared/home/repo.ts";
 import { teamWorkspace } from "../../team/store/workspace.ts";
+import type { ReportArtifact } from "../../shared/report-artifact.ts";
 
 /**
  * `<team workspace>/.octocode/tmp/agents`: one folder per subagent for the files it hands back. The team workspace
@@ -112,28 +113,39 @@ export async function sweepScratch(
  */
 export class ReadReports {
 	private readonly scratch = new Map<string, string>();
-	private readonly readAt = new Map<string, number>();
+	private readonly readAt = new Map<string, { at: number; sha256?: string }>();
 
 	track(id: string, scratch: string | undefined): void {
 		if (scratch) this.scratch.set(canonicalPath(path.join(path.resolve(scratch), "report.md")), id);
 	}
 
 	observe(toolName: string, input: Record<string, unknown>, cwd: string, details?: unknown): void {
-		for (const file of [...readPaths(toolName, input, cwd), ...recordedLocalReads(details).map((read) => read.file)]) {
-			const id = this.scratch.get(canonicalPath(file));
-			if (id) this.readAt.set(id, Date.now());
+		const reads = [
+			...readPaths(toolName, input, cwd).map((file) => ({ file, sha256: undefined })),
+			...recordedLocalReads(details),
+		];
+		for (const read of reads) {
+			const file = canonicalPath(read.file);
+			const canonical = path.join(path.dirname(file), "report.md");
+			if (this.scratch.has(canonical) && /^report(?:-[a-f0-9]{64})?\.md$/.test(path.basename(file)))
+				this.readAt.set(file, { at: Date.now(), sha256: read.sha256 });
 		}
 	}
 
 	/** Whether the parent read this agent's report file since it was last written; forgets the agent. */
-	consume(id: string): boolean {
-		const at = this.readAt.get(id);
+	consume(id: string, artifact?: ReportArtifact): boolean {
 		const file = [...this.scratch].find(([, owner]) => owner === id)?.[0];
-		this.readAt.delete(id);
-		if (file) this.scratch.delete(file);
-		if (at === undefined || !file) return false;
+		if (!file) return false;
+		const version = artifact?.path ? this.readAt.get(canonicalPath(artifact.path)) : undefined;
+		const canonical = this.readAt.get(file);
+		this.scratch.delete(file);
+		for (const read of this.readAt.keys()) if (path.dirname(read) === path.dirname(file)) this.readAt.delete(read);
+		// A digest-bound completion is acknowledged only by a read of this version, never a predecessor's mtime.
+		if (artifact)
+			return Boolean(artifact.path && (version?.sha256 === artifact.sha256 || canonical?.sha256 === artifact.sha256));
+		if (!canonical) return false;
 		try {
-			return fs.statSync(file).mtimeMs <= at;
+			return fs.statSync(file).mtimeMs <= canonical.at;
 		} catch {
 			return false;
 		}

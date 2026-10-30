@@ -5,9 +5,10 @@ import { rewriteCodexCommand } from "../rewrite.ts";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
 import { rewriteFileQuery } from "../../shared/claude-file.ts";
+import { say } from "../../shared/commands.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { commandsFor, hookCalls } from "../config/calls.ts";
-import { CODEX_PATCH_NAMES, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
+import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../catalog.ts";
 import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from "./types.ts";
@@ -15,15 +16,27 @@ import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from ".
 /**
  * Native and Claude file hooks run once per query. Codex receives one whole-batch apply_patch call.
  * All pre-call decisions run in parallel; any denial blocks the native batch.
+ *
+ * A hook that cannot see a call losslessly (a canonical patch for a per-query hook, a native edit for an apply_patch
+ * hook without a verified read) fails open like a crashed hook: the call runs without it, with a warning that names
+ * what was skipped. Only a hook that opted into `failClosed` denies the call instead.
  */
+/** Whether a matching Codex apply_patch PreToolUse hook asked to deny calls it cannot judge. */
+const codexFailsClosed = (session: HookSession): boolean =>
+	commandsFor(session.config, "PreToolUse", CODEX_PATCH_NAMES).some(
+		(hook) => hook.protocol === "codex" && hook.failClosed,
+	);
+
 export const preToolUseGate =
 	(
 		api: ExtensionAPI,
 		dispatch: Dispatch,
 		session: HookSession,
 		patches: Map<string, string>,
+		projectEdit?: EditProjector,
 	): HooksView["preToolUse"] =>
 	async (event, ctx) => {
+		const snapshots = projectEdit ? { projectEdit, cwd: ctx.cwd } : undefined;
 		if (event.toolName === "file") {
 			try {
 				validateFileInput(event.input);
@@ -34,17 +47,18 @@ export const preToolUseGate =
 		if (event.toolName === "file" && typeof event.input.patch === "string") {
 			try {
 				const patch = parsePatch(event.input.patch);
-				if (
-					patch.hunks.some((h) => h.kind === "update") &&
-					commandsFor(session.config, "PreToolUse", ["file", "Edit", "MultiEdit", "Write", "Delete"]).some(
-						(h) => h.protocol !== "codex",
-					)
-				) {
-					return {
-						block: true,
-						reason:
-							"Canonical Update/Move patches cannot be represented losslessly to matching native or Claude PreToolUse hooks; use native file queries",
-					};
+				const perQuery = commandsFor(session.config, "PreToolUse", [
+					"file",
+					"Edit",
+					"MultiEdit",
+					"Write",
+					"Delete",
+				]).filter((h) => h.protocol !== "codex");
+				if (patch.hunks.some((h) => h.kind === "update") && perQuery.length) {
+					const message =
+						"Canonical Update/Move patches cannot be represented losslessly to matching native or Claude PreToolUse hooks";
+					if (perQuery.some((h) => h.failClosed)) return { block: true, reason: `${message}; use native file queries` };
+					say(ctx, `${message}; they were skipped for this call.`, "warning");
 				}
 			} catch (error) {
 				return { block: true, reason: errorMessage(error) };
@@ -65,7 +79,7 @@ export const preToolUseGate =
 			commandsFor(session.config, "PostToolUse", CODEX_PATCH_NAMES).some((hook) => hook.protocol === "codex");
 		if (codexGate || codexPost) {
 			try {
-				const command = projectCodexPatch(event.input);
+				const command = projectCodexPatch(event.input, snapshots);
 				patches.set(event.toolCallId, command);
 				if (codexGate)
 					dispatches.push({
@@ -76,8 +90,9 @@ export const preToolUseGate =
 						protocol: "codex",
 					});
 			} catch (error) {
-				if (codexGate)
-					return { block: true, reason: `Cannot run matching Codex apply_patch hook: ${errorMessage(error)}` };
+				const reason = `Cannot run matching Codex apply_patch hook: ${errorMessage(error)}`;
+				if (codexGate && codexFailsClosed(session)) return { block: true, reason };
+				say(ctx, `${reason}; the hook was skipped for this call.`, "warning");
 			}
 		}
 		const verdicts = await Promise.all(
@@ -146,11 +161,12 @@ export const preToolUseGate =
 							patches.set(
 								event.toolCallId,
 								// rewriteCodexPatch above refused a rewrite whose command is not a string.
-								codexRewrite ? (codexRewrite.command as string) : projectCodexPatch(replacement),
+								codexRewrite ? (codexRewrite.command as string) : projectCodexPatch(replacement, snapshots),
 							);
 						} catch (error) {
 							patches.delete(event.toolCallId);
-							if (codexGate) throw error;
+							if (codexGate && codexFailsClosed(session)) throw error;
+							say(ctx, `Codex apply_patch hooks skipped for the rewritten call: ${errorMessage(error)}`, "warning");
 						}
 					}
 				}

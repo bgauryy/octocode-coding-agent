@@ -11,6 +11,7 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["graphQuery", "Rust CLI: workspace-scoped immutable graph reads"],
 	["bash", "gate/classify: shell and destructive commands"],
 	["debug", "gate/classify: debugger execution; termination only stops an existing session"],
+	["ollama", "gate/classify: a task runs the FreeLlama CLI on a local model; models and route read its state"],
 	["browser", "gate/classify plus BrowserTool: page actions, host access, uploads and control"],
 	["web", "gate/classify plus Web tool: search, resolved URLs and private hosts"],
 	["file", "File tool: checked mutation transaction and source-policy projection"],
@@ -19,6 +20,7 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["askUser", "Session UI only: collects the user's answers"],
 	["backlog", "Session workspace state only: backlog records and comments"],
 	["archive", "Archive tool: authorized session history, checked by the history reader"],
+	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 ]);
 

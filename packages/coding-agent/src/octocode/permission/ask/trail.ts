@@ -1,5 +1,4 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
-import { statusColor } from "../../shared/render/status.ts";
 import { redactSecrets } from "../../shared/sanitize.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "../audit.ts";
 import { auditLine, auditLines } from "../effect.ts";
@@ -147,7 +146,7 @@ export class PermissionTrail {
 		if (!ctx.hasUI) return undefined;
 		const mode = this.#mode();
 		const chip = CHIPS[mode];
-		ctx.ui.setStatus(PERMISSION_ID, statusColor(ctx, chip.color, chipText(mode, this.#log.count)));
+		ctx.ui.setStatus(PERMISSION_ID, chipText(mode, this.#log.count), chip.color);
 		return undefined;
 	}
 

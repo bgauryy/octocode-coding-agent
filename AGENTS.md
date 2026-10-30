@@ -5,6 +5,7 @@ This repository is a coding agent fork of [Pi](https://github.com/earendil-works
 ## Find the owner
 
 - `packages/coding-agent/src/core/`: sessions, resource loading, SDK and prompt assembly. `core/application/` owns the shared application service and dispatch used by terminal and web adapters.
+- `packages/coding-agent/src/octocode/agentdb/`: the only place SQL against the agent database is written. `queries/` holds one module per table family of named functions; `api.ts` is the single API features import from.
 - `packages/coding-agent/src/octocode/`: native tools, permissions, subagents, collaboration, memory, hooks and recovery. `index.ts` composes their registration and lifecycle.
 - `packages/coding-agent/src/octocode/instructions/`: common policy, bundled roles, child task context and the report contract.
 - `packages/agent/`: reusable agent loop, tool execution and events; no application configuration or UI policy.
@@ -23,6 +24,8 @@ Preserve existing user changes. This checkout may contain imported, untracked so
 
 ## Implementation and instructions
 
+All agent-database access goes through `octocode/agentdb/api.ts`. Add or change a statement as a named function in the matching `agentdb/queries/` module and call it from features; never write `prepare(...)`, `db.exec(...)` or import `node:sqlite` (type imports too) outside `agentdb/`; features name the handle with `type Db` from `agentdb/api.ts`. Before adding a function, search `queries/` for one that already does the job. Keep one statement in one place and delete a query when its last caller goes. `yarn run check:db-boundary` and an oxlint `no-restricted-imports` rule on `node:sqlite` enforce this (only `team/peer-leases.ts`, which reads another package's database, is exempt).
+
 Keep changes scoped to the requested behavior. Preserve safety checks, cancellation, session cleanup and public contracts when simplifying code. The fork no longer resolves `@earendil-works/*` or `@mariozechner/*` imports; do not reintroduce upstream Pi package names or services.
 
 Write agent instructions in plain language, with conditions beside actions. Tool descriptions own tool mechanics; common policy should not repeat them. Avoid imposing a response template on every task. Preserve machine-consumed report outcomes and protocol fields unless their consumers change together.
@@ -36,6 +39,7 @@ When changing native tools or commands, check registration and SDK consumers sep
 Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Follow the root README for installation and model-data hydration. Yarn (the version `packageManager` pins) runs every repository command and owns the only lockfile, `yarn.lock`; npm appears only where the product packs, publishes or installs packages as a consumer would.
 
 - `yarn run check` runs TypeScript, Oxlint, the Oxfmt format check, browser imports, workspace bundle freshness, package-boundary checks and the Pi-name ratchet without rewriting files.
+- `yarn run check:db-boundary` fails when SQL appears outside `octocode/agentdb/`.
 - `yarn run lint` runs Oxlint (`.oxlintrc.json`, type-aware through tsgolint on TypeScript 7) over all packages and scripts; `yarn run lint:fix` applies its safe fixes, which still need `tsc` afterwards. `yarn run format` formats code with Oxfmt (`.oxfmtrc.json`, Prettier-compatible).
 - Source files stay within 400 lines. The `max-lines` override in `.oxlintrc.json` lists the files that were longer when the rule was adopted; split one and remove it from the list (`scripts/check-max-lines-baseline.mjs` fails while a listed file fits). Never add files to it.
 - `scripts/pi-names-baseline.json` records the Pi tokens each file still has; `yarn run check:pi-names` fails when a file gains or loses some. Use Octocode names in new code. After removing Pi names, or when adding an intentional Pi reference (compatibility, attribution, history), run `node scripts/check-pi-names.mjs --update`.
@@ -44,6 +48,8 @@ Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Fo
 - From `packages/coding-agent`, `yarn vitest run --config vitest.octocode.config.ts` runs the native feature suite; append test paths for a focused run. This config excludes live e2e and Chrome tests.
 - `yarn run test:scripts` checks build, packaging and repository scripts.
 - `yarn run build:offline` builds using hydrated model data; `yarn start --help` checks the source CLI.
+
+Start a build or full suite in the background and do independent work until its completion message arrives; do not sleep or poll to wait. Redirect a long or unclear command's output to a file under `.octocode/tmp/` and read it by `grep` or line range before diagnosing, never from a truncated tail alone. When an MCP tool keeps refusing its contract after two corrected calls, or reports a lost connection, restart that server with the `mcp` tool; if it still fails, use the bash equivalent and say so.
 
 Run checks relevant to the change and report failures, skipped live checks and missing dependencies accurately. Do not weaken assertions or coverage thresholds to hide failures. Update tests when an intentionally changed contract requires different expectations.
 

@@ -8,6 +8,7 @@ import { SendIcon, StopIcon } from "../ui/icons.tsx";
 import { Badge, Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
 import { ConnectionNotice, StatusLine } from "./controls.tsx";
+import { DialogAnswer } from "./DialogAnswer.tsx";
 import { SessionAttachments } from "./SessionAttachments.tsx";
 import { SessionRequests } from "./SessionRequests.tsx";
 import { sessionBadge } from "./model.ts";
@@ -89,6 +90,7 @@ function SessionComposerForSession() {
 	if (!session || !connection) return null;
 
 	const badge = sessionBadge(session);
+	const answerable = session.capabilities.includes("answer");
 	const choices = session.capabilities.filter(
 		(action): action is SessionAction => action === "prompt" || action === "steer" || action === "followUp",
 	);
@@ -224,12 +226,27 @@ function SessionComposerForSession() {
 				</Badge>
 			</div>
 			<p className="muted">
-				Messages go to the terminal session that opened this page: <code>{session.sessionId}</code>. Replies appear in
-				Activity below. Approvals appear in that terminal.
+				{session.capabilities.length === 0 ? (
+					<>
+						This link is view-only: it follows session <code>{session.sessionId}</code> and sends nothing. Act from the
+						terminal or a control link.
+					</>
+				) : (
+					<>
+						Messages go to the terminal session that opened this page: <code>{session.sessionId}</code>. Replies appear
+						in Activity below.{" "}
+						{answerable
+							? "Approvals and questions can be answered here or in that terminal."
+							: "Approvals appear in that terminal."}
+					</>
+				)}
 			</p>
 			<output className="visually-hidden" aria-atomic="true">
 				{announcement}
 			</output>
+			{answerable && session.streaming && session.awaiting?.id && (
+				<DialogAnswer key={session.awaiting.id} awaiting={session.awaiting} sessionId={session.sessionId} />
+			)}
 			{choices.length > 0 && (
 				<form className="composer" onSubmit={submit}>
 					<Field label="Message">

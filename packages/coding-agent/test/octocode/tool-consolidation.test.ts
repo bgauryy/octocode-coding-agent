@@ -326,7 +326,11 @@ describe("unified agent", () => {
 		try {
 			const fake = fakeHost();
 			octocode(fake.api);
-			expect(fake.tools.get("agent").parameters.properties.type.enum).toEqual(["coordinate", "message"]);
+			expect(
+				fake.tools
+					.get("agent")
+					.parameters.anyOf.map((branch: { properties: { type: { const: string } } }) => branch.properties.type.const),
+			).toEqual(["coordinate", "message"]);
 			for (const old of ["externalAgent", "coordinate", "sendMessage", "read", "powershell"])
 				expect(fake.tools.has(old)).toBe(false);
 		} finally {

@@ -55,9 +55,19 @@ export function parseTimeoutSetting(value: unknown, settingName: string): number
 	return undefined;
 }
 
-/** Global settings overlaid by trusted project settings; project `toggles` keys keep their scope (see `mergeToggles`). */
+/**
+ * Global settings overlaid by trusted project settings; project `toggles` keys keep their scope (see `mergeToggles`).
+ * `remote.autoStart` publishes this machine to another device, so a project file may only turn it off: the global
+ * value stands unless the project says "off".
+ */
 export function mergeScopedSettings(global: Settings, project: Settings): Settings {
 	const merged = deepMergeSettings(global, project);
 	const toggles = mergeToggles(global.toggles, project.toggles);
-	return toggles === undefined ? merged : { ...merged, toggles };
+	const result = toggles === undefined ? merged : { ...merged, toggles };
+	if (project.remote?.autoStart !== undefined && project.remote.autoStart !== "off") {
+		const autoStart = global.remote?.autoStart;
+		result.remote = { ...result.remote, ...(autoStart === undefined ? {} : { autoStart }) };
+		if (autoStart === undefined) delete result.remote.autoStart;
+	}
+	return result;
 }

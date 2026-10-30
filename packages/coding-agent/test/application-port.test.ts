@@ -402,3 +402,37 @@ it("reports the dialog a run waits on in the snapshot and live frames, and clear
 	expect(service.getSnapshot().awaiting).toBeUndefined();
 	service.dispose();
 });
+
+it("dispatches an answer command to the session's dialog broker and reports its refusal", async () => {
+	const answers: unknown[] = [];
+	const session = {
+		sessionId: "session-A",
+		messages: [],
+		isStreaming: true,
+		subscribe: () => () => undefined,
+		answerDialog(id: string, answer: unknown) {
+			answers.push([id, answer]);
+			return id === "known" ? { ok: true } : { ok: false, reason: "No such dialog" };
+		},
+	} as unknown as AgentSession;
+	const service = getApplicationPort(session);
+	const live = service.connect()[Symbol.asyncIterator]();
+	await live.next();
+	expect(service.getSnapshot().capabilities).toContain("answer");
+	const accepted = await service.execute({
+		id: "a1",
+		sessionId: "session-A",
+		action: "answer",
+		dialogId: "known",
+		choice: "Allow once",
+	});
+	expect(accepted.status).toBe("accepted");
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(answers).toEqual([["known", { choice: "Allow once" }]]);
+	expect(service.getSnapshot().receipts.find((receipt) => receipt.id === "a1")?.status).toBe("completed");
+	await service.execute({ id: "a2", sessionId: "session-A", action: "answer", dialogId: "gone", text: "x" });
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	const refused = service.getSnapshot().receipts.find((receipt) => receipt.id === "a2");
+	expect(refused).toMatchObject({ status: "failed", message: "No such dialog" });
+	service.dispose();
+});

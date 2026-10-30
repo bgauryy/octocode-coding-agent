@@ -4,9 +4,9 @@ import { sha256 } from "../../../utils/atomic-file.ts";
 import { isRecord } from "../../../utils/guards.ts";
 import type { MutationReceipt } from "../render.ts";
 import { matchesResponsePath } from "./path.ts";
+import { knownUnsupported, noteUnsupported, saysUnsupported } from "./support.ts";
 
 const TOOL = "mcp__octocode__astSearch";
-const WAIT_MS = 1200;
 const MAX_FILES = 3;
 
 type ParseState = "parsed" | "recovered" | "unsupported";
@@ -19,6 +19,11 @@ type ParseFeedback = {
 	state: "possible-regression" | "already-invalid" | "observed-parsed" | "unsupported" | "superseded";
 };
 
+/**
+ * The parser's view of `path` now, or undefined when nothing can be claimed. The call is bounded by the caller's
+ * signal and the research server's own request timeout, never by a deadline of this tool: an answer that arrives late
+ * is still the parser's answer. A file type the server already refused in this session is not asked again.
+ */
 async function observe(
 	path: string,
 	ctx: ExtensionToolContext,
@@ -34,25 +39,16 @@ async function observe(
 	)
 		return undefined;
 	const digest = sha256(before);
-	const controller = new AbortController();
-	const abort = () => controller.abort();
-	signal?.addEventListener("abort", abort, { once: true });
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	if (knownUnsupported(sessionId, TOOL, path)) return { digest, state: "unsupported" };
 	try {
-		const timeout = new Promise<undefined>((resolve) => {
-			timer = setTimeout(() => {
-				controller.abort();
-				resolve(undefined);
-			}, WAIT_MS);
-		});
-		const outcome = await Promise.race([
-			// Only schema-declared fields: the tool's query schema rejects unknown fields, and the row carries the
-			// parse evidence (diagnostics, partialReasons) by itself.
-			ctx.executeTool(TOOL, { queries: [{ operation: "syntaxTree", path }] }, { signal: controller.signal }),
-			timeout,
-		]);
+		// Only schema-declared fields: the tool's query schema rejects unknown fields, and the row carries the
+		// parse evidence (diagnostics, partialReasons) by itself.
+		const outcome = await ctx.executeTool(TOOL, { queries: [{ operation: "syntaxTree", path }] }, { signal });
 		if (ctx.sessionManager.getSessionId() !== sessionId) return undefined;
-		if (!outcome || outcome.isError || signal?.aborted) return { digest, state: "unsupported" };
+		if (outcome.isError || signal?.aborted) {
+			if (outcome.isError && saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
+			return { digest, state: "unsupported" };
+		}
 		const after = await fs.readFile(path).catch(() => undefined);
 		if (!after || sha256(after) !== digest || ctx.sessionManager.getSessionId() !== sessionId) return undefined;
 		let value: unknown = outcome.result.structuredContent;
@@ -73,8 +69,10 @@ async function observe(
 			!matchesResponsePath(value, row, path, ctx.cwd) ||
 			data.operation !== "syntaxTree" ||
 			!Array.isArray(data.nodes)
-		)
+		) {
+			if (row && row.status === "error" && saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
 			return { digest, state: "unsupported" };
+		}
 		const reasons = Array.isArray(data.partialReasons) ? data.partialReasons : [];
 		const diagnostics = Array.isArray(data.diagnostics) ? data.diagnostics : [];
 		const recovered =
@@ -90,9 +88,6 @@ async function observe(
 		return { digest, state: recovered ? "recovered" : "parsed" };
 	} catch {
 		return { digest, state: "unsupported" };
-	} finally {
-		if (timer) clearTimeout(timer);
-		signal?.removeEventListener("abort", abort);
 	}
 }
 
@@ -153,8 +148,10 @@ export async function inspectParseAfter(
 	return feedback;
 }
 
+/** The rows that carry a claim; a file type the parser does not serve says nothing worth a line to the model. */
 export function formatParseFeedback(feedback: readonly ParseFeedback[]): string {
 	return feedback
+		.filter(({ state }) => state !== "unsupported")
 		.map(
 			({ path, state }) =>
 				`${path}: ${state === "possible-regression" ? "possible parse regression observed after edit (source version unverified)" : state === "already-invalid" ? "parse errors already observed before this batch" : state === "observed-parsed" ? "parse completed after edit (source version unverified)" : `parse feedback ${state}; no parse claim available`}.`,

@@ -10,6 +10,7 @@ import { CommandSelectorComponent } from "../components/command-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "../../../utils/guards.ts";
+import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { handleSkillsCommand } from "./skills-command.ts";
 import { closeNames } from "../../../octocode/skill/catalog.ts";
 
@@ -48,6 +49,7 @@ type CommandDispatchHost = Pick<
 	| "runtimeHost"
 	| "sessionManager"
 	| "session"
+	| "showExtensionConfirm"
 	| "showError"
 	| "showExtensionSelector"
 	| "showExtensionCustom"
@@ -161,6 +163,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "modelsettings":
 			if (args.trim() === "check" && (await runNativeCommand(host, "modelsettings", "check"))) return;
+			if (args.trim() && args.trim() !== "check") return host.showWarning("Usage: /modelsettings [check]");
 			await showModelsMenu(host);
 			return;
 		case "model":
@@ -198,7 +201,8 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			host.handleHotkeysCommand();
 			return;
 		case "fork":
-			host.showUserMessageSelector();
+			if (args.trim()) await handleForkLaunchCommand(host, args);
+			else host.showUserMessageSelector();
 			return;
 		case "clone":
 			await host.handleCloneCommand();
@@ -247,6 +251,9 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			if (!(await runNativeCommand(host, "resume", args))) host.showSessionSelector();
 			return;
 		case "quit":
+			// Quitting mid-reply discards the reply; ask, as /new and /fork do for running work.
+			if (host.session.isStreaming && !(await host.showExtensionConfirm("Quit", "Stop the running reply and quit?")))
+				return;
 			await host.shutdown();
 			return;
 	}

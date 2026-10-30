@@ -1,6 +1,7 @@
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { type Static, Type } from "typebox";
 import { Check } from "typebox/value";
+import { MAX_HANDOFF_REFERENCES } from "../shared/references.ts";
 
 /** The range of a prompt's `timeoutMs`: checked when the call is parsed and again by the backend that runs it. */
 export const PROMPT_TIMEOUT_MS = { min: 1000, max: 600_000 } as const;
@@ -20,6 +21,7 @@ export const ExternalParamsSchema = Type.Object(
 		sessionId: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),
 		text: Type.Optional(Type.String()),
+		refs: Type.Optional(Type.Array(Type.String(), { maxItems: MAX_HANDOFF_REFERENCES })),
 		timeoutMs: Type.Optional(Type.Integer()),
 	},
 	{ additionalProperties: false },
@@ -46,7 +48,7 @@ export function parseExternalParams(value: unknown): ExternalParams {
 					? ["action", "id", "transport", "instanceId", "cwd"]
 					: ["action", "id", "transport", "vendor", "command", "args", "cwd", "sessionId", "model", "timeoutMs"]
 				: input.action === "prompt"
-					? ["action", "id", "text", "timeoutMs"]
+					? ["action", "id", "text", "refs", "timeoutMs"]
 					: ["action", "id"];
 	const unused = Object.keys(input).filter((key) => !fields.includes(key));
 	if (unused.length) throw new Error(`${input.action} does not accept: ${unused.join(", ")}.`);
@@ -58,6 +60,9 @@ export function parseExternalParams(value: unknown): ExternalParams {
 			throw new Error("Octocode connect requires an exact discovered instanceId.");
 	} else if (input.action !== "list" && !input.id) throw new Error(`${input.action} requires id.`);
 	if (input.action === "prompt" && !input.text) throw new Error("prompt requires text.");
+	if (input.refs) {
+		if (input.refs.some((ref) => !ref.trim())) throw new Error("refs entries must be non-empty.");
+	}
 	return input;
 }
 
@@ -82,6 +87,8 @@ export interface ExternalReply {
 	text: string;
 	stopReason?: string;
 	updates?: unknown[];
+	/** The reply's message id on the remote Octocode instance, when the transport reports one. */
+	remoteMessageId?: string;
 }
 
 export interface ExternalBackend {

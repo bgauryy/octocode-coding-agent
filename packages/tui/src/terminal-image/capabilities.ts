@@ -1,5 +1,11 @@
-import { execSync } from "node:child_process";
 import type { TerminalColorMode } from "../colors.ts";
+import {
+	detectMultiplexer,
+	hasTmuxSession,
+	tmuxClientTermFeatures,
+	tmuxClientTerminalNames,
+	tmuxPaneAllowsPassthrough,
+} from "../multiplexer.ts";
 import type { CellDimensions, ImageProtocol, TerminalCapabilities } from "./types.ts";
 
 let cachedCapabilities: TerminalCapabilities | null = null;
@@ -18,24 +24,25 @@ export function setCellDimensions(dims: CellDimensions): void {
 }
 
 /**
- * Checks whether the attached tmux client forwards OSC 8 hyperlinks to the
- * outer terminal. tmux only re-emits them when its `client_termfeatures` lists
- * `hyperlinks`, and strips them otherwise. On any error fallbacks `false`.
+ * Whether the attached tmux client forwards OSC 8 hyperlinks to the outer terminal. tmux only re-emits them when its
+ * `client_termfeatures` lists `hyperlinks`, and strips them otherwise. A failed query counts as `false`.
  */
 function probeTmuxHyperlinks(): boolean {
-	try {
-		const termfeatures = execSync("tmux display-message -p '#{client_termfeatures}'", {
-			encoding: "utf8",
-			timeout: 250,
-			stdio: ["ignore", "pipe", "ignore"],
-		});
-		return termfeatures
-			.split(",")
-			.map((feature) => feature.trim())
-			.includes("hyperlinks");
-	} catch {
-		return false;
-	}
+	return tmuxClientTermFeatures().includes("hyperlinks");
+}
+
+/** Outer terminals known to draw Kitty Unicode placeholders. WezTerm and Warp lack them, so they stay off. */
+const PLACEHOLDER_TERMINALS = new Set(["kitty", "ghostty"]);
+
+/**
+ * Kitty images under tmux need three things: a client that draws Unicode placeholders, a pane that lets the DCS
+ * passthrough envelope through, and 24-bit colour, because the image id travels in the foreground colour.
+ */
+function detectTmuxKittyImages(hasTrueColorHint: boolean): ImageProtocol {
+	if (!hasTmuxSession()) return null;
+	if (!tmuxClientTerminalNames().some((name) => PLACEHOLDER_TERMINALS.has(name.replace(/^xterm-/, "")))) return null;
+	if (!tmuxPaneAllowsPassthrough()) return null;
+	return hasTrueColorHint || tmuxClientTermFeatures().includes("RGB") ? "kitty" : null;
 }
 
 function detectCapabilitiesFromEnvironment(tmuxForwardsHyperlink: () => boolean): TerminalCapabilities {
@@ -47,13 +54,18 @@ function detectCapabilitiesFromEnvironment(tmuxForwardsHyperlink: () => boolean)
 	const isWindowsConsole = process.platform === "win32";
 
 	// Emit OSC 8 hyperlinks only when tmux confirms it forwards.
-	// Image protocols are unreliable under tmux, so leave `images: null`.
-	if (process.env.TMUX || term.startsWith("tmux")) {
-		return { images: null, trueColor: hasTrueColorHint, hyperlinks: tmuxForwardsHyperlink() };
+	// Kitty images under tmux go through passthrough with Unicode placeholders; other protocols stay off.
+	const multiplexer = detectMultiplexer();
+	if (multiplexer === "tmux") {
+		return {
+			images: detectTmuxKittyImages(hasTrueColorHint),
+			trueColor: hasTrueColorHint,
+			hyperlinks: tmuxForwardsHyperlink(),
+		};
 	}
 
 	// screen does not forward OSC 8 hyperlinks, so keep them off there.
-	if (term.startsWith("screen")) {
+	if (multiplexer === "screen") {
 		return { images: null, trueColor: hasTrueColorHint, hyperlinks: false };
 	}
 
@@ -132,8 +144,8 @@ function imageProtocolOverride(): ImageProtocol | undefined {
 /** Probe only automatic graphics detection; multiplexers and partial implementations stay conservative. */
 export function shouldProbeKittyGraphics(): boolean {
 	if (capabilityOverrides.images !== undefined || imageProtocolOverride() !== undefined) return false;
-	const term = process.env.TERM?.toLowerCase() ?? "";
-	if (process.env.TMUX || term.startsWith("tmux") || term.startsWith("screen")) return false;
+	const multiplexer = detectMultiplexer();
+	if (multiplexer === "tmux" || multiplexer === "screen") return false;
 	if (process.env.TERM_PROGRAM?.toLowerCase() === "rex") return false;
 	return detectCapabilitiesFromEnvironment(() => false).images !== "iterm2";
 }
@@ -165,15 +177,26 @@ export function detectCapabilities(tmuxForwardsHyperlink: () => boolean = probeT
 export function getCapabilities(): TerminalCapabilities {
 	if (!cachedCapabilities) {
 		const hyperlinks = capabilityOverrides.hyperlinks;
-		cachedCapabilities = {
+		const capabilities = {
 			...detectCapabilities(hyperlinks === undefined ? undefined : () => hyperlinks),
 			...(probedImageProtocol !== undefined && imageProtocolOverride() === undefined
 				? { images: probedImageProtocol }
 				: {}),
 			...capabilityOverrides,
 		};
+		// Decided here, not when a sequence is written, so `setCapabilities` in tests never depends on the ambient TMUX.
+		cachedCapabilities =
+			capabilities.images === "kitty" && hasTmuxSession() ? { ...capabilities, kittyPlaceholders: true } : capabilities;
 	}
 	return cachedCapabilities;
+}
+
+/**
+ * Whether Kitty graphics go through tmux passthrough with Unicode placeholders: inside a tmux session whenever the
+ * effective image protocol is Kitty, whether detected or forced with `OCTOCODE_IMAGE_PROTOCOL=kitty` or settings.
+ */
+export function kittyPlaceholderMode(): boolean {
+	return getCapabilities().kittyPlaceholders === true;
 }
 
 export function getTerminalColorMode(capabilities: TerminalCapabilities = getCapabilities()): TerminalColorMode {

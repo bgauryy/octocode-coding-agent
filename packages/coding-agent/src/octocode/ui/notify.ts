@@ -1,3 +1,9 @@
+import {
+	hasTmuxSession,
+	tmuxClientTerminalNames,
+	tmuxPaneAllowsPassthrough,
+	wrapTmuxPassthrough,
+} from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../shared/env.ts";
 import { promptTitle } from "../shared/locks.ts";
@@ -55,10 +61,27 @@ export function notifyCondition(env: NodeJS.ProcessEnv = process.env): NotifyCon
 	return "unfocused";
 }
 
-/** The escape the terminal understands, from `OCTOCODE_NOTIFY_METHOD` or the terminal's own variables. */
+/** The method for a terminal's name (an `$TERM_PROGRAM`, an XTVERSION name or a `$TERM`), or undefined when unknown. */
+function methodForTerminal(name: string): NotifyMethod | undefined {
+	if (name.includes("kitty")) return "osc99";
+	if (name.includes("iterm")) return "osc9";
+	if (name.includes("ghostty") || name.includes("wezterm")) return "osc777";
+	return undefined;
+}
+
+/**
+ * The escape the terminal understands, from `OCTOCODE_NOTIFY_METHOD` or the terminal itself. Inside tmux the terminal's
+ * own variables describe the pane (`TERM_PROGRAM=tmux`) or a stale first client, so the attached client's name decides.
+ */
 export function notifyMethod(env: NodeJS.ProcessEnv = process.env): NotifyMethod {
 	const chosen = env[NOTIFY_METHOD_ENV]?.trim().toLowerCase();
 	if (chosen === "osc9" || chosen === "osc777" || chosen === "osc99" || chosen === "bel") return chosen;
+	if (hasTmuxSession(env)) {
+		for (const name of tmuxClientTerminalNames(env)) {
+			const method = methodForTerminal(name);
+			if (method) return method;
+		}
+	}
 	const program = `${env.TERM_PROGRAM ?? ""} ${env.LC_TERMINAL ?? ""}`.toLowerCase();
 	if (env.KITTY_WINDOW_ID || env.TERM === "xterm-kitty") return "osc99";
 	if (program.includes("iterm")) return "osc9";
@@ -76,7 +99,10 @@ function oscText(text: string): string {
 	);
 }
 
-/** The bytes for one notification; inside tmux an OSC is wrapped in tmux's passthrough (the bell needs none). */
+/**
+ * The bytes for one notification. Inside tmux an OSC goes through tmux's passthrough, and only when the pane allows it
+ * (tmux drops a bare OSC 9, 99 or 777); a bell follows in the same write, so a dropped envelope still flags the pane.
+ */
 export function notificationSequence(
 	method: NotifyMethod,
 	title: string,
@@ -99,7 +125,8 @@ export function notificationSequence(
 			osc = `\x1b]99;i=octocode:d=0;${t}\x1b\\\x1b]99;i=octocode:p=body;${b}\x1b\\`;
 			break;
 	}
-	return env.TMUX ? `\x1bPtmux;${osc.replaceAll("\x1b", "\x1b\x1b")}\x1b\\` : osc;
+	if (!hasTmuxSession(env)) return osc;
+	return (tmuxPaneAllowsPassthrough(env) ? wrapTmuxPassthrough(osc) : "") + BEL;
 }
 
 interface NotifyOptions {
@@ -288,11 +315,14 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		}
 		runStartedAt = undefined;
 	});
-	api.on("ui_prompt_end", async () => {
+	api.on("ui_prompt_end", async (event) => {
+		if (event.nested) return;
 		title.promptEnd();
 		paintTitle();
 	});
 	api.on("ui_prompt_start", async (event) => {
+		// A dialog over another is the same wait: one title change, one notification.
+		if (event.nested) return;
 		title.promptStart();
 		paintTitle();
 		// Only the agent's dialogs: one the user opened (a `/permissions` or `/octocode` picker) needs no call back.

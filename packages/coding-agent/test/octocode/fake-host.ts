@@ -112,6 +112,8 @@ export function fakeHost() {
 export interface FakeUi {
 	notes: Array<{ message: string; type?: string }>;
 	statuses: Map<string, string | undefined>;
+	/** The tone each status was set with (absent: none). */
+	statusTones: Map<string, string>;
 	widgets: Map<string, unknown>;
 	footer?: unknown;
 	header?: unknown;
@@ -135,6 +137,7 @@ export function fakeCtx(options: {
 	const state: FakeUi = {
 		notes: [],
 		statuses: new Map(),
+		statusTones: new Map(),
 		widgets: new Map(),
 		selects: [],
 		inputs: [],
@@ -144,7 +147,11 @@ export function fakeCtx(options: {
 	const ui = {
 		...state,
 		notify: (message: string, type?: string) => state.notes.push({ message, type }),
-		setStatus: (key: string, text: string | undefined) => state.statuses.set(key, text),
+		setStatus: (key: string, text: string | undefined, tone?: string) => {
+			state.statuses.set(key, text);
+			if (tone && text !== undefined) state.statusTones.set(key, tone);
+			else state.statusTones.delete(key);
+		},
 		setWidget: (key: string, content: unknown) =>
 			content === undefined ? state.widgets.delete(key) : state.widgets.set(key, content),
 		setFooter: (factory: unknown) => {
@@ -218,7 +225,11 @@ export function fakeCtx(options: {
 			find: () => undefined,
 			getCachePolicy: fakeCachePolicy,
 			getProviderAuthStatus: () => ({ configured: true, source: "stored" }),
-		} satisfies Pick<ModelRegistry, "getAvailable" | "getAll" | "find" | "getCachePolicy" | "getProviderAuthStatus">,
+			billedBySubscription: () => false,
+		} satisfies Pick<
+			ModelRegistry,
+			"getAvailable" | "getAll" | "find" | "getCachePolicy" | "getProviderAuthStatus" | "billedBySubscription"
+		>,
 		getContextUsage: () => undefined,
 	} as never;
 }

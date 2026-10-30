@@ -167,13 +167,34 @@ async function add(ctx: ExtensionCommandContext, store: MemoryStore, text: strin
 		const { memory } = store.set({ title, body: body.join(" — "), author: USER_AUTHOR, sourceSession });
 		return say(ctx, `Saved ${memoryLine(memory, 60)}`, "info");
 	}
-	const edited = await ctx.ui.editor(
+	const saved = await editUntilValid(
+		ctx,
 		"New memory",
 		memoryTemplate({ title: text, kind: "fact", keywords: "", scope: "project", body: "", pinned: false }),
+		(edited) => store.set({ ...parseTemplate(edited), author: USER_AUTHOR, sourceSession }).memory,
 	);
-	if (edited === undefined) return;
-	const { memory } = store.set({ ...parseTemplate(edited), author: USER_AUTHOR, sourceSession });
-	say(ctx, `Saved ${memoryLine(memory, 60)}`, "info");
+	if (saved) say(ctx, `Saved ${memoryLine(saved, 60)}`, "info");
+}
+
+/** Reopens the editor with the user's own text and the reason when it does not validate, so an edit is never lost. */
+async function editUntilValid<T>(
+	ctx: ExtensionCommandContext,
+	title: string,
+	initial: string,
+	save: (edited: string) => T,
+): Promise<T | undefined> {
+	let text = initial;
+	for (;;) {
+		const edited = await ctx.ui.editor(title, text);
+		if (edited === undefined) return undefined;
+		try {
+			return save(edited);
+		} catch (error) {
+			if (!(error instanceof MemoryError)) throw error;
+			say(ctx, `memory: ${error.message} Fix it and save again, or cancel.`, "warning");
+			text = edited;
+		}
+	}
 }
 
 async function browse(
@@ -224,14 +245,22 @@ async function act(
 		say(ctx, `Deleted ${label}.`, "info");
 		return undefined;
 	}
-	let input: MemoryInput;
+	let updated: Memory | undefined;
 	if (action === "Edit") {
-		const edited = await ctx.ui.editor(`Edit ${label}`, memoryTemplate(memory));
-		if (edited === undefined) return memory;
-		input = parseTemplate(edited);
-	} else if (action === "Pin" || action === "Unpin") input = { pinned: action === "Pin" };
-	else input = { scope: memory.scope === "project" ? "global" : "project" };
-	const { memory: updated } = store.set({ ...input, id: memory.id, author: USER_AUTHOR });
+		updated = await editUntilValid(
+			ctx,
+			`Edit ${label}`,
+			memoryTemplate(memory),
+			(edited) => store.set({ ...parseTemplate(edited), id: memory.id, author: USER_AUTHOR }).memory,
+		);
+		if (!updated) return memory;
+	} else {
+		const input: MemoryInput =
+			action === "Pin" || action === "Unpin"
+				? { pinned: action === "Pin" }
+				: { scope: memory.scope === "project" ? "global" : "project" };
+		updated = store.set({ ...input, id: memory.id, author: USER_AUTHOR }).memory;
+	}
 	say(ctx, `Updated ${memoryLine(updated, 60)}`, "info");
 	return updated;
 }

@@ -4,7 +4,13 @@
 // `hold` (stay running, silent), or `exit` (leave on its own, with no settle). Closing stdin ends it, as it ends Octocode.
 const fs = require("node:fs");
 
-const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
+const emit = (event) => {
+	if (event.type === "message_end" && ["assistant", "user"].includes(event.message?.role)) {
+		const file = saveSession();
+		if (file) fs.appendFileSync(file, `${JSON.stringify({ type: "message", message: event.message })}\n`);
+	}
+	process.stdout.write(`${JSON.stringify(event)}\n`);
+};
 const usage = {
 	input: 100,
 	output: 20,
@@ -61,15 +67,22 @@ const nextCommand = (type) =>
 
 /** What Octocode does for `--session-dir <dir> --session-id <id>`: the conversation is a file `<timestamp>_<id>.jsonl` there. */
 function saveSession() {
+	if (!process.argv.includes("--session-dir") || !process.argv.includes("--session-id")) return;
 	const flag = (name) => process.argv[process.argv.indexOf(name) + 1];
 	fs.mkdirSync(flag("--session-dir"), { recursive: true });
-	fs.writeFileSync(`${flag("--session-dir")}/2026-01-01T00-00-00-000Z_${flag("--session-id")}.jsonl`, "{}\n");
+	const existing = fs
+		.readdirSync(flag("--session-dir"))
+		.find((name) => name.endsWith(`_${flag("--session-id")}.jsonl`));
+	const file = `${flag("--session-dir")}/${existing ?? `2026-01-01T00-00-00-000Z_${flag("--session-id")}.jsonl`}`;
+	if (!existing) fs.writeFileSync(file, `${JSON.stringify({ type: "session", id: flag("--session-id") })}\n`);
+	return file;
 }
 
 async function run() {
 	if (!task.startsWith("rejected") && !task.startsWith("handled")) {
 		emit({ type: "response", command: "prompt", success: true, data: { disposition: "started" } });
 		emit({ type: "agent_start" });
+		emit({ type: "message_end", message: { role: "user", content: task } });
 	}
 	await scenario();
 	if (end === "settle") emit({ type: "agent_settled" });
@@ -89,9 +102,10 @@ async function scenario() {
 	} else if (task.startsWith("structured invalid")) {
 		emit(say('done.\nStructured result:\n```json\n{"verdict":"unknown"}\n```'));
 	} else if (task.split("\n\n## You")[0].includes("linger")) {
+		// The `## Report` contract names every outcome, so only the scenario text decides.
 		emit(
 			say(
-				`${task.includes("blocked") ? "blocked: " : ""}LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ""} mcp=${process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE ? Object.keys(JSON.parse(fs.readFileSync(process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE, "utf8")).servers).join(",") : ""} ${process.argv.slice(2).join(" ")} ${task}`,
+				`${task.split("\n\n## You")[0].includes("blocked") ? "blocked: " : ""}LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ""} mcp=${process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE ? Object.keys(JSON.parse(fs.readFileSync(process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE, "utf8")).servers).join(",") : ""} ${process.argv.slice(2).join(" ")} ${task}`,
 			),
 		);
 	} else if (task.startsWith("think aloud")) {
@@ -126,6 +140,28 @@ async function scenario() {
 		fs.mkdirSync(archive, { recursive: true });
 		fs.writeFileSync(`${archive}/LIBRARY.md`, "# Archive library\n");
 		emit(say("ARCHIVED"));
+	} else if (task.startsWith("cache turns")) {
+		const turn = (input, cacheRead, cacheWrite) => ({
+			...usage,
+			input,
+			cacheRead,
+			cacheWrite,
+			totalTokens: input + cacheRead + cacheWrite + usage.output,
+		});
+		emit(say("first", { usage: turn(50, 0, 4000) }));
+		emit(say("second", { usage: turn(100, 4000, 500) }));
+		emit({ type: "compaction_start", reason: "threshold" });
+		emit({
+			type: "compaction_end",
+			reason: "threshold",
+			result: { tokensBefore: 10000, estimatedTokensAfter: 2000, usage },
+		});
+		emit(
+			say(
+				`CACHE ${process.env.OCTOCODE_PROMPT_CACHE_KEY} SESSION ${process.argv[process.argv.indexOf("--session-id") + 1]}`,
+				{ usage: turn(500, 2000, 0) },
+			),
+		);
 	} else if (task.startsWith("compacts")) {
 		// Octocode's own compaction events: one that finishes (the summary's own model usage rides in `result`), one that fails, one that is cancelled; a nested one is ignored.
 		saveSession();
@@ -323,11 +359,12 @@ async function scenario() {
 		emit({ type: "agent_start" });
 		emit({ type: "message_end", message: { role: "custom", content: "Message #1 (an interrupt): do this instead" } });
 		emit(say("done: switched to the interrupt's request"));
-	} else if (task.startsWith("budget loop")) {
+	} else if (/(?:^|\n)budget loop \d+/.test(task)) {
 		// `budget loop N`: N tool-calling replies, 15 ms apart, then a final answer. A steer is logged with its text; an
 		// abort is logged and settles the run aborted, as Octocode does. The `pid` line lets a test check the process is gone.
 		log(`pid ${process.pid}`);
-		const total = Number(task.match(/^budget loop (\d+)/)[1]);
+		log(`prompt ${JSON.stringify(task)}`);
+		const total = Number(task.match(/(?:^|\n)budget loop (\d+)/)[1]);
 		let seen = 0;
 		for (let n = 1; n <= total; n++) {
 			emit(say(`step ${n}`, { stopReason: "toolUse" }));
@@ -359,6 +396,13 @@ async function scenario() {
 	} else if (task.startsWith("role prompt")) {
 		const file = process.env.OCTOCODE_ROLE_PROMPT_FILE;
 		emit(say(file ? fs.readFileSync(file, "utf8") : "NO ROLE"));
+	} else if (task.startsWith("echo whole task")) {
+		emit(say(task));
+	} else if (task.startsWith("item report")) {
+		// A report on a backlog item: an outcome word, then the checks it ran, as the report contract asks.
+		emit(
+			say("done\n\nChanged src/a.ts.\n\n## Verification\n- yarn vitest run a.test.ts: 3 passed\n- yarn tsc: clean\n"),
+		);
 	} else if (task.startsWith("echo task")) {
 		emit(say(`TASK ${task.length} ${JSON.stringify(task.slice(0, 40))} ${task.slice(-12)}`));
 	} else if (task.startsWith("oversized")) {
@@ -575,6 +619,7 @@ async function scenario() {
 			goal: env.OCTOCODE_AGENT_GOAL,
 			parent: env.OCTOCODE_PARENT_ID,
 			subagent: env.OCTOCODE_SUBAGENT,
+			item: env.OCTOCODE_BACKLOG_ITEM,
 			scratch: env.OCTOCODE_AGENT_SCRATCH,
 			workspace: env.OCTOCODE_TEAM_WORKSPACE,
 			trustRoot: env.OCTOCODE_TRUST_ROOT,

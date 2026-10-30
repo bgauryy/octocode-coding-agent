@@ -10,7 +10,7 @@ import { runCompletionCommand } from "./cli/completion.ts";
 
 import { setCapabilityOverrides } from "@octocodeai/octocode-tui";
 import chalk from "chalk";
-import { normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
+import { normalizeSessionName, parseArgs, printHelp, restoreBooleanFlagWords } from "./cli/args.ts";
 import { listModels } from "./cli/list-models.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "./cli/startup-ui.ts";
 import { APP_NAME, ENV_SESSION_DIR, getAgentDir, getPackageDir, VERSION } from "./config.ts";
@@ -39,6 +39,7 @@ import {
 	promptForMissingSessionCwd,
 	readPipedStdin,
 	reportDiagnostics,
+	requirePrompt,
 	resolveAppMode,
 	toPrintOutputMode,
 } from "./main/startup.ts";
@@ -274,11 +275,15 @@ export async function main(args: string[], options?: MainOptions) {
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs());
 
+	const extensionFlags = resourceLoader
+		.getExtensions()
+		.extensions.flatMap((extension) => Array.from(extension.flags.values()));
+	// A word an unknown `--flag` consumed belongs to the prompt when that flag turns out to be boolean.
+	restoreBooleanFlagWords(parsed, (name) =>
+		extensionFlags.some((flag) => flag.name === name && flag.type === "boolean"),
+	);
 	if (parsed.help) {
 		reportDiagnostics(startupSettingsDiagnostics);
-		const extensionFlags = resourceLoader
-			.getExtensions()
-			.extensions.flatMap((extension) => Array.from(extension.flags.values()));
 		printHelp(extensionFlags);
 		process.exit(0);
 	}
@@ -302,6 +307,7 @@ export async function main(args: string[], options?: MainOptions) {
 
 	const { initialMessage, initialImages } = await prepareInitialMessage(parsed, stdinContent);
 	time("prepareInitialMessage");
+	requirePrompt(appMode, initialMessage, parsed);
 	initTheme(settingsManager.getTheme(), appMode === "interactive");
 	time("initTheme");
 
@@ -320,7 +326,7 @@ export async function main(args: string[], options?: MainOptions) {
 	time("createAgentSession");
 
 	if (appMode !== "interactive" && !session.model) {
-		console.error(chalk.red(formatNoModelsAvailableMessage()));
+		console.error(chalk.red(formatNoModelsAvailableMessage("cli")));
 		process.exit(1);
 	}
 

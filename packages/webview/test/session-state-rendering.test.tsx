@@ -7,7 +7,7 @@ import { ActivityView } from "../src/app/live/ActivityView.tsx";
 import { AgentsView } from "../src/app/live/AgentsView.tsx";
 import { SessionComposer } from "../src/app/live/SessionComposer.tsx";
 import { indexBacklog } from "../src/app/model/backlog.ts";
-import { controlView, deferredControl, setupControls } from "./control-fixtures.tsx";
+import { controlView, deferredControl, posted, setupControls } from "./control-fixtures.tsx";
 import { FakeSocket } from "./helpers.ts";
 
 beforeEach(setupControls);
@@ -91,6 +91,38 @@ it("says the run is waiting for the user while a dialog is open, and only then",
 	expect(screen.queryByText(/Waiting for you/)).toBeNull();
 	expect(screen.getByText("Thinking")).toBeInTheDocument();
 	expect(screen.getByText("Running")).toBeInTheDocument();
+});
+
+it("lets the user answer an answerable dialog from the page, and says so instead of pointing at the terminal", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	await view.session({
+		...running,
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: {
+			kind: "approval",
+			title: "Run rm -rf build?",
+			id: "d1",
+			options: ["Allow once", "Deny"],
+			allowsText: false,
+		},
+	});
+	expect(screen.getByText("Waiting for you: Run rm -rf build?")).toBeInTheDocument();
+	expect(screen.queryByText(/Waiting for you in the terminal/)).toBeNull();
+	await userEvent.click(screen.getByRole("button", { name: "Allow once" }));
+	await waitFor(() =>
+		expect(posted().at(-1)).toMatchObject({ action: "answer", dialogId: "d1", choice: "Allow once" }),
+	);
+	await view.session({
+		...running,
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: { kind: "question", title: "Branch name?", id: "d2", options: [], allowsText: true },
+	});
+	await userEvent.type(screen.getByRole("textbox", { name: "Your answer" }), "feature/remote");
+	await userEvent.click(screen.getByRole("button", { name: "Answer" }));
+	await waitFor(() =>
+		expect(posted().at(-1)).toMatchObject({ action: "answer", dialogId: "d2", text: "feature/remote" }),
+	);
 });
 
 it("keeps keyboard focus in the message box while a message is sent", async () => {

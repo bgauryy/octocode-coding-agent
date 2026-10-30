@@ -166,6 +166,7 @@ export class OctocodeBackend implements ExternalBackend {
 			return {
 				text: reply.text,
 				...(typeof reply.stopReason === "string" ? { stopReason: reply.stopReason } : {}),
+				remoteMessageId: reply.id,
 			};
 		} catch (error) {
 			const data = error instanceof ApiCallError && isRecord(error.data) ? error.data : {};
