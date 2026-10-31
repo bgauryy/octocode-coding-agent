@@ -103,6 +103,12 @@ export interface ToolCallEventResult {
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.
 	 */
 	terminate?: boolean;
+	/**
+	 * Run again right before the tool executes, with the same `event.input` the handler saw (a hook may have rewritten it).
+	 * A parallel batch approves every call before it runs any, and an approval can wait on a user, so state it relied on
+	 * may have changed. Return `{ block: true }` to refuse the call; a throw refuses it with the error message.
+	 */
+	revalidate?: (signal?: AbortSignal) => Promise<{ block?: boolean; reason?: string } | undefined>;
 }
 
 /** Result from user_bash event handler */

@@ -1,11 +1,11 @@
-import { StringEnum } from "@octocodeai/octocode-contacts/schema";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { bashSessionEnv, maxOutputTokensParameter } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { envFlag, SUBAGENT_ENV } from "../shared/env.ts";
+import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { formatDuration, shortPath } from "../shared/format.ts";
 import { toolHeader } from "../shared/render.ts";
 import { STATUS } from "../shared/status.ts";
@@ -35,10 +35,10 @@ import {
 import { recordShellMutation } from "./bash/mutation.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool } from "../shared/render/rows.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
-import { jobReport } from "./bash-jobs/report.ts";
+import { jobDetails, jobReport } from "./bash-jobs/report.ts";
 import { reapOrphanJobs } from "./bash-jobs/records.ts";
 import { type ShellSettings, shellSettings, shellScript } from "./bash-jobs/shell.ts";
 
@@ -103,7 +103,7 @@ export function registerBashTool(
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
 					display: true,
-					details: { id: job.id, log: job.log, ...(job.verification ? { verification: job.verification } : {}) },
+					details: jobDetails(job, wake),
 				},
 				{ triggerTurn: wake, deliverAs: "followUp" },
 			);
@@ -117,8 +117,10 @@ export function registerBashTool(
 		// Reported at session_shutdown already, while the session could still record it.
 		if (reportedAtShutdown.has(job)) return;
 		if (job.verification) job.verification = finishVerification(job.verification, exit, job);
-		// A stop the user asked for is recorded for the model without starting a turn.
-		report(job, exit, !closing && job.stopped !== "user");
+		// A user's stop, and any job of a subagent, start no turn: a child's own job must not wake it before or after its final
+		// answer (a queued follow-up would run one more model turn per job). A job that ends mid-run is read at the next step; one
+		// that ends after the answer is recorded, and the parent's report gets its line.
+		report(job, exit, !closing && job.stopped !== "user" && !envFlag(process.env, SUBAGENT_ENV));
 	};
 
 	api.on("session_start", async (event, ctx) => {
@@ -197,8 +199,8 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			description:
-				"Run shell commands in the working directory: builds, tests, git, formatters and CLIs. Foreground calls return combined output; large output is trimmed and the full log named. " +
-				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or when the user sends a message, unless background is false with a timeout. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
+				"Run shell commands in the working directory: builds, tests, git, formatters and CLIs. Foreground calls return combined output. " +
+				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message; background false with a timeout stops there instead. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
 			// Octocode's own snippet ("ls, grep, find") would contradict the Octocode research routing.
 			promptSnippet: "Run shell commands: builds, tests, git",
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
@@ -219,10 +221,10 @@ export function registerBashTool(
 			parameters: Type.Object({
 				type: Type.Optional(
 					StringEnum(["bash", "powershell"] as const, {
-						description: "Shell syntax: bash (default, configured shell) or powershell (Windows)",
+						description: "bash (default, configured shell) or powershell (Windows)",
 					}),
 				),
-				command: Type.String({ description: "Shell command to execute in the selected syntax" }),
+				command: Type.String({ description: "Command in the selected syntax" }),
 				timeout: Type.Optional(
 					Type.Number({
 						description: `Timeout in seconds; foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s, then it moves to the background. A background job has none unless given`,
@@ -231,7 +233,7 @@ export function registerBashTool(
 				maxOutputTokens: maxOutputTokensParameter,
 				background: Type.Optional(
 					Type.Boolean({
-						description: "Return at once; the exit arrives later as a message. For servers and long builds",
+						description: "Return at once; for servers and long builds",
 					}),
 				),
 				verify: Type.Optional(
@@ -279,7 +281,7 @@ export function registerBashTool(
 						},
 					};
 				}
-				const { timeout, clamped, movable, auto } = foregroundPlan(params, settings.backgroundAfterSeconds);
+				const { timeout, clamped, movable, auto, deliberate } = foregroundPlan(params, settings.backgroundAfterSeconds);
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;
 				let group: number | undefined;
@@ -309,7 +311,7 @@ export function registerBashTool(
 						(signalCode) => {
 							endedBy = signalCode;
 						},
-						{ pending: () => ctx.hasPendingMessages() },
+						{ watch: { pending: () => ctx.hasPendingMessages() }, stopAtDeadline: deliberate },
 					),
 				});
 				try {

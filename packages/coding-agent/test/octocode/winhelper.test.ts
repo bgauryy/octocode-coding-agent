@@ -8,8 +8,8 @@ import {
 	type HelperOptions,
 	WindowsHelper,
 	windowsTree,
-} from "../../src/octocode/shared/winhelper.ts";
-import { WINDOWS_HELPER_SCRIPT } from "../../src/octocode/shared/winhelper-script.ts";
+} from "../../src/utils/windows/winhelper.ts";
+import { WINDOWS_HELPER_SCRIPT } from "../../src/utils/windows/winhelper-script.ts";
 import { tmp } from "./helpers.ts";
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-win-helper.mjs");

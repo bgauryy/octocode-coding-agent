@@ -1,13 +1,13 @@
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import { type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Mail } from "../mail.ts";
 import type { Message, SendOptions } from "../model.ts";
 import { interruptRefusal, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
 import { spilledMessage } from "./spilled-message.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 /** What a resume carries besides the text: the stored message, so the resumed run reads it framed (`messageText`) with its id. */
 export interface ResumeRequest {

@@ -1,5 +1,5 @@
-import { execFile } from "node:child_process";
 import { DAY_MS } from "../shared/util.ts";
+import { git as runGit, GitError } from "../shared/git.ts";
 
 /**
  * A restore point taken before a destructive shell command: `git stash create` writes a commit of the tracked files'
@@ -19,33 +19,9 @@ export type Snapshot = { ref: string } | { none: string };
 /** Why no snapshot exists, as the card's undo line says it. */
 const SNAPSHOT_TIMED_OUT = "snapshot timed out";
 
-class GitFailure extends Error {
-	readonly timedOut: boolean;
-	constructor(timedOut: boolean, message: string) {
-		super(message);
-		this.timedOut = timedOut;
-	}
-}
-
-/** Runs git in `cwd` (read-only locking, no prompts); resolves with trimmed stdout. */
-function git(cwd: string, args: string[], timeout: number): Promise<string> {
-	return new Promise((resolve, reject) => {
-		execFile(
-			"git",
-			args,
-			{
-				cwd,
-				timeout,
-				encoding: "utf8",
-				maxBuffer: 16 * 1024 * 1024,
-				env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
-			},
-			(error, stdout) => {
-				if (error) reject(new GitFailure("killed" in error && error.killed === true, error.message));
-				else resolve(stdout.trim());
-			},
-		);
-	});
+/** Runs git in `cwd` (read-only locking, no prompts); resolves with trimmed stdout, rejects with a `GitError`. */
+async function git(cwd: string, args: string[], timeout: number): Promise<string> {
+	return (await runGit(cwd, args, { env: { GIT_OPTIONAL_LOCKS: "0" }, timeoutMs: timeout, raw: true })).trim();
 }
 
 let counter = 0;
@@ -61,7 +37,7 @@ export async function takeSnapshot(cwd: string, options: { now?: number; timeout
 		if ((await git(cwd, ["rev-parse", "--is-inside-work-tree"], left())) !== "true")
 			return { none: "not a git work tree" };
 		const head = await git(cwd, ["rev-parse", "--verify", "-q", "HEAD"], left()).catch((error: unknown) => {
-			if (error instanceof GitFailure && error.timedOut) throw error;
+			if (error instanceof GitError && error.timedOut) throw error;
 			return undefined;
 		});
 		if (!head) return { none: "no commit yet" };
@@ -71,8 +47,8 @@ export async function takeSnapshot(cwd: string, options: { now?: number; timeout
 		await git(cwd, ["update-ref", ref, commit], left());
 		return { ref };
 	} catch (error) {
-		if (error instanceof GitFailure && error.timedOut) return { none: SNAPSHOT_TIMED_OUT };
-		return error instanceof GitFailure && /not a git repository/i.test(error.message)
+		if (error instanceof GitError && error.timedOut) return { none: SNAPSHOT_TIMED_OUT };
+		return error instanceof GitError && /not a git repository/i.test(error.message)
 			? { none: "not a git work tree" }
 			: { none: "snapshot failed" };
 	}

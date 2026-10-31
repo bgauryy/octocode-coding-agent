@@ -32,19 +32,19 @@ type Transaction = <T>(work: () => T) => T;
 
 export class MessageRefs {
 	private readonly db: Db;
-	private readonly workspace: string;
+	private readonly team: string;
 	private readonly transaction: Transaction;
 	private readonly reachable: () => Set<string>;
-	constructor(db: Db, workspace: string, transaction: Transaction, reachable: () => Set<string>) {
+	constructor(db: Db, team: string, transaction: Transaction, reachable: () => Set<string>) {
 		this.db = db;
-		this.workspace = workspace;
+		this.team = team;
 		this.transaction = transaction;
 		this.reachable = reachable;
 	}
 
-	/** Message `id` of this workspace with its deliveries; "expired" when retention removed it; undefined when it never existed here. */
+	/** Message `id` of this team with its deliveries; "expired" when retention removed it; undefined when it never existed here. */
 	read(id: number): StoredRow | "expired" | undefined {
-		const row = deliveries.messageRow(this.db, this.workspace, id);
+		const row = deliveries.messageRow(this.db, this.team, id);
 		if (!row) {
 			// Ids only grow (AUTOINCREMENT): a missing id below the highest one handed out was pruned, or lives in another repository.
 			return Number.isInteger(id) && id > 0 && id <= deliveries.lastMessageId(this.db) ? "expired" : undefined;
@@ -78,7 +78,7 @@ export class MessageRefs {
 	): { added: string[]; departed: string[]; already: string[] } {
 		return this.transaction(() => {
 			const live = this.reachable();
-			const exists = deliveries.messageExists(this.db, this.workspace, id);
+			const exists = deliveries.messageExists(this.db, this.team, id);
 			const result = { added: [] as string[], departed: [] as string[], already: [] as string[] };
 			for (const recipient of to) {
 				if (!exists || !live.has(recipient)) result.departed.push(recipient);
@@ -111,7 +111,7 @@ export class MessageRefs {
 		now = Date.now(),
 	): { id: number; at: number } {
 		return this.transaction(() => {
-			const { id } = insertMessage(this.db, this.workspace, new Set([to]), from, [to], body, options, now);
+			const { id } = insertMessage(this.db, this.team, new Set([to]), from, [to], body, options, now);
 			deliveries.markDelivered(this.db, to, [id!], now);
 			return { id: id!, at: now };
 		});
@@ -135,7 +135,7 @@ export class MessageRefs {
 
 	/** Removes a message stored for a resume or relay that did not happen (with its deliveries). */
 	retract(id: number): void {
-		this.transaction(() => deliveries.deleteMessage(this.db, this.workspace, id));
+		this.transaction(() => deliveries.deleteMessage(this.db, this.team, id));
 	}
 
 	/**
@@ -153,12 +153,12 @@ export class MessageRefs {
 	): number | undefined {
 		return this.transaction(() => {
 			const { replyTo, ...rest } = options;
-			const { id } = insertMessage(this.db, this.workspace, this.reachable(), from, [parent], body, rest, now);
+			const { id } = insertMessage(this.db, this.team, this.reachable(), from, [parent], body, rest, now);
 			if (id === undefined) return undefined;
 			deliveries.markRelay(this.db, id, parent, target, WAKE.none);
 			if (replyTo !== undefined) {
 				deliveries.setReplyTo(this.db, id, replyTo);
-				if (deliveries.replyTarget(this.db, this.workspace, replyTo)?.from === target)
+				if (deliveries.replyTarget(this.db, this.team, replyTo)?.from === target)
 					deliveries.complete(this.db, replyTo, from, now);
 			}
 			return id;
@@ -168,7 +168,7 @@ export class MessageRefs {
 	/** The relay requests waiting for `parent`, oldest first (a bounded batch). */
 	relays(parent: string): RelayRequest[] {
 		return deliveries
-			.relayRequests(this.db, this.workspace, parent, INBOX_BATCH_SIZE)
+			.relayRequests(this.db, this.team, parent, INBOX_BATCH_SIZE)
 			.map((row) => ({ message: toMessage(row, String(row.relay_to)), target: String(row.relay_to) }));
 	}
 
@@ -183,7 +183,7 @@ export class MessageRefs {
 	 */
 	deliverRelay(id: number, parent: string, target: string, handed: boolean, now = Date.now()): void {
 		this.transaction(() => {
-			const replyRequired = deliveries.replyTarget(this.db, this.workspace, id)?.replyRequired ?? false;
+			const replyRequired = deliveries.replyTarget(this.db, this.team, id)?.replyRequired ?? false;
 			deliveries.insertDelivery(
 				this.db,
 				{ message: id, recipient: target, wake: replyRequired ? WAKE.wake : WAKE.none },
@@ -210,6 +210,6 @@ export class MessageRefs {
 	 * recipient yet, and the recipient has not left (a pending relay counts for the agent it is for).
 	 */
 	unansweredPeerAsks(sender: string, parent?: string): number {
-		return deliveries.unansweredAsks(this.db, this.workspace, sender, parent ?? "");
+		return deliveries.unansweredAsks(this.db, this.team, sender, parent ?? "");
 	}
 }

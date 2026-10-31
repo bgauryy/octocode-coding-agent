@@ -76,6 +76,16 @@ function jobHeader(job: BashJob, exit: JobExit, lines: number): string {
 	return `[${[status, `${exit.seconds}s`, size, `log: ${shortPath(job.log, job.cwd)}`].join(" · ")}]`;
 }
 
+/** The details of a job's report message; `quiet` when it starts no turn (read by `subagents/report.ts` `jobNotice`). */
+export function jobDetails(job: BashJob, wake: boolean) {
+	return {
+		id: job.id,
+		log: job.log,
+		...(job.verification ? { verification: job.verification } : {}),
+		...(wake ? {} : { quiet: true as const }),
+	};
+}
+
 /** The message a finished job sends: a status header, how it ended, and the tail of its output. */
 export function jobReport(job: BashJob, exit: JobExit): string {
 	const how =

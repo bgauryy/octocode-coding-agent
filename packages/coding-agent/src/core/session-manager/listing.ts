@@ -5,8 +5,8 @@ import { readdir, stat } from "fs/promises";
 import { basename, join } from "path";
 import { createInterface } from "readline";
 import { getSessionsDir } from "../../config.ts";
-import { isRecord } from "../../utils/guards.ts";
-import { normalizePath, resolvePath } from "../../utils/paths.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import {
 	getDefaultSessionDir,
 	getDefaultSessionDirPath,

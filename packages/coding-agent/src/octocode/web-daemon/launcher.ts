@@ -7,8 +7,8 @@ import {
 	DaemonStatusSchema,
 	type DaemonRecord,
 	type DaemonStatus,
-} from "@octocodeai/octocode-contacts/daemon";
-import { DAEMON_ROUTES } from "@octocodeai/octocode-contacts/protocol";
+} from "@octocodeai/octocode-contracts/daemon";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { getCliInvocation } from "../../config.ts";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import { privateDir } from "../shared/home.ts";

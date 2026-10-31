@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type SourcePermissionDestination = "session" | "localSettings" | "projectSettings" | "userSettings";
 type SourcePermissionBehavior = "allow" | "deny" | "ask";

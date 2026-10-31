@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export function usesCodexSpecificDecision(specific: Record<string, unknown>): boolean {
 	return ["permissionDecision", "permissionDecisionReason", "updatedInput"].some((key) => specific[key] != null);

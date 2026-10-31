@@ -1,19 +1,19 @@
 import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
-import { spawn } from "child_process";
-import { waitForChildProcess } from "../../../utils/child-process.ts";
+import { waitForChildProcess } from "../../../../../common/src/child-process.ts";
+import { signalTree } from "../../../utils/process-tree.ts";
 import {
 	getShellConfig,
 	getShellEnv,
-	killProcessTree,
+	MAX_TIMER_MS,
 	type ShellConfig,
+	spawnShell,
 	trackDetachedChildPid,
 	untrackDetachedChildPid,
 } from "../../../utils/shell.ts";
 
-const MAX_TIMEOUT_MS = 2_147_483_647;
-const MAX_TIMEOUT_SECONDS = MAX_TIMEOUT_MS / 1000;
+const MAX_TIMEOUT_SECONDS = MAX_TIMER_MS / 1000;
 
 function resolveTimeoutMs(timeout: number | undefined): number | undefined {
 	if (timeout === undefined) return undefined;
@@ -22,7 +22,7 @@ function resolveTimeoutMs(timeout: number | undefined): number | undefined {
 	}
 
 	const timeoutMs = timeout * 1000;
-	if (timeoutMs > MAX_TIMEOUT_MS) {
+	if (timeoutMs > MAX_TIMER_MS) {
 		throw new Error(`Invalid timeout: maximum is ${MAX_TIMEOUT_SECONDS} seconds`);
 	}
 	return timeoutMs;
@@ -68,23 +68,12 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute ${shellName} commands.`);
 			}
 
-			const commandFromStdin = shellConfig.commandTransport === "stdin";
-			const child = spawn(shellConfig.shell, commandFromStdin ? shellConfig.args : [...shellConfig.args, command], {
-				cwd,
-				detached: process.platform !== "win32",
-				env: env ?? getShellEnv(),
-				stdio: [commandFromStdin ? "pipe" : "ignore", "pipe", "pipe"],
-				windowsHide: true,
-			});
-			if (commandFromStdin) {
-				child.stdin?.on("error", () => {});
-				child.stdin?.end(command);
-			}
+			const child = await spawnShell(shellConfig, command, { cwd, env: env ?? getShellEnv() });
 			if (child.pid) trackDetachedChildPid(child.pid);
 			let timedOut = false;
 			let timeoutHandle: NodeJS.Timeout | undefined;
 			const onAbort = () => {
-				if (child.pid) killProcessTree(child.pid);
+				signalTree(child.pid, "SIGKILL");
 			};
 
 			try {
@@ -92,7 +81,7 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 				if (timeoutMs !== undefined) {
 					timeoutHandle = setTimeout(() => {
 						timedOut = true;
-						if (child.pid) killProcessTree(child.pid);
+						signalTree(child.pid, "SIGKILL");
 					}, timeoutMs);
 				}
 				// Stream stdout and stderr.

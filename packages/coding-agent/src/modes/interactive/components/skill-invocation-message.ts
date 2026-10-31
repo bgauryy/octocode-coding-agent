@@ -1,12 +1,16 @@
-import { type Container, Markdown, type MarkdownTheme, Text } from "@octocodeai/octocode-tui";
+import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
+import { skillInstructions } from "../../../octocode/skill/render.ts";
+import { shortPath } from "../../../octocode/shared/format.ts";
+import { plural } from "../../../octocode/shared/render/text.ts";
+import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
 
 /**
- * Renders a skill invocation block, collapsed to one line until clicked or expanded.
- * Only renders the skill block itself - user message is rendered separately.
+ * Renders a skill invocation block (`/skill:name`): `[skill] name · N lines`, the instruction file under it, and the
+ * instructions themselves once expanded. Only the skill block is drawn here; the user's own message is rendered separately.
  */
 export class SkillInvocationMessageComponent extends CollapsibleMessageComponent {
 	private readonly skillBlock: ParsedSkillBlock;
@@ -20,23 +24,26 @@ export class SkillInvocationMessageComponent extends CollapsibleMessageComponent
 	}
 
 	protected renderContent(content: Container, expanded: boolean): void {
-		if (expanded) {
-			content.addChild(new Text(theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m`), 0, 0));
-			content.addChild(
-				new Markdown(`**${this.skillBlock.name}**\n\n${this.skillBlock.content}`, 0, 0, this.markdownTheme, {
-					color: (text: string) => theme.fg("customMessageText", text),
-				}),
-			);
-		} else {
-			content.addChild(
-				new Text(
-					theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
-						theme.fg("customMessageText", this.skillBlock.name) +
-						theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`),
-					0,
-					0,
-				),
-			);
-		}
+		const { name, location } = this.skillBlock;
+		const instructions = skillInstructions(this.skillBlock.content);
+		const lines = instructions.split("\n").length;
+		const hint = expanded ? "" : theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+		content.addChild(
+			new Text(
+				theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
+					theme.fg("customMessageText", sanitizeTerminalText(name)) +
+					theme.fg("dim", ` \u00b7 ${plural(lines, "line")}`),
+				0,
+				0,
+			),
+		);
+		content.addChild(new Text(theme.fg("dim", sanitizeTerminalText(shortPath(location))) + hint, 0, 0));
+		if (!expanded) return;
+		content.addChild(new Spacer(1));
+		content.addChild(
+			new Markdown(sanitizeTerminalText(instructions), 0, 0, this.markdownTheme, {
+				color: (text: string) => theme.fg("customMessageText", text),
+			}),
+		);
 	}
 }

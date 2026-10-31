@@ -1,7 +1,8 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, join, win32 } from "node:path";
-import { spawn, spawnSync } from "child_process";
+import { type ChildProcess, spawn, spawnSync } from "child_process";
 import { getBinDir } from "../config.ts";
+import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
 
 export interface ShellConfig {
 	shell: string;
@@ -166,6 +167,57 @@ export function getPowerShellConfig(): ShellConfig {
 	return { shell, args: [...POWERSHELL_ARGS] };
 }
 
+/** Which shell runs a command: PowerShell on Windows when asked, else the configured or discovered bash. */
+export function resolveShell(settings: { type?: string; shellPath?: string } = {}): ShellConfig {
+	return settings.type === "powershell" ? getPowerShellConfig() : getShellConfig(settings.shellPath);
+}
+
+/** Node timers fire at once beyond 2^31-1 ms; every shell timeout is clamped to what they can hold. */
+export const MAX_TIMER_MS = 2_147_483_647;
+export const MAX_TIMER_SECONDS = Math.floor(MAX_TIMER_MS / 1000);
+
+/** A shell timeout in seconds, at most `MAX_TIMER_SECONDS`; a missing, non-finite or non-positive one means no timeout. */
+export function clampTimeoutSeconds(seconds: number | undefined): number | undefined {
+	return seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, MAX_TIMER_SECONDS) : undefined;
+}
+
+/**
+ * Whether a child should lead its own process group: POSIX trees are the group (signalled with `signalTree`);
+ * Windows has none and tracks the tree through a job instead (`prepareTree`/`adoptTree`).
+ */
+export function leadsProcessGroup(): boolean {
+	return process.platform !== "win32";
+}
+
+/**
+ * Starts `command` in `shell` with piped stdout and stderr, as the root of a process tree that `signalTree` can end:
+ * detached into its own group on POSIX, in a Windows job (ready before the shell starts) on Windows. The command goes
+ * over stdin when the shell takes it that way, else as the last argument. A spawn that fails reports through the
+ * child's `error` event and leaves `pid` undefined.
+ */
+export async function spawnShell(
+	shell: ShellConfig,
+	command: string,
+	{ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv },
+): Promise<ChildProcess> {
+	const viaStdin = shell.commandTransport === "stdin";
+	await prepareTree();
+	const child = spawn(shell.shell, viaStdin ? shell.args : [...shell.args, command], {
+		cwd,
+		detached: leadsProcessGroup(),
+		env,
+		stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
+		windowsHide: true,
+	});
+	if (viaStdin) {
+		// The shell may exit before reading its stdin; its exit code is reported, a broken pipe is not news.
+		child.stdin?.on("error", () => undefined);
+		child.stdin?.end(command);
+	}
+	adoptTree(child.pid);
+	return child;
+}
+
 export function getShellEnv(): NodeJS.ProcessEnv {
 	const binDir = getBinDir();
 	const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
@@ -207,43 +259,7 @@ export function untrackDetachedChildPid(pid: number): void {
 
 export function killTrackedDetachedChildren(): void {
 	for (const pid of trackedDetachedChildPids) {
-		killProcessTree(pid);
+		signalTree(pid, "SIGKILL");
 	}
 	trackedDetachedChildPids.clear();
-}
-
-/**
- * Kill a process and all its children (cross-platform)
- */
-export function killProcessTree(pid: number): void {
-	if (process.platform === "win32") {
-		// Use the trusted System32 executable so cleanup does not depend on PATH.
-		try {
-			const child = spawn(
-				join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
-				["/F", "/T", "/PID", String(pid)],
-				{
-					stdio: "ignore",
-					detached: true,
-					windowsHide: true,
-				},
-			);
-			// A failed spawn emits "error" asynchronously; consume it to avoid crashing Node.
-			child.once("error", () => {});
-		} catch {
-			// Ignore errors if taskkill fails.
-		}
-	} else {
-		// Use SIGKILL on Unix/Linux/Mac
-		try {
-			process.kill(-pid, "SIGKILL");
-		} catch {
-			// Fallback to killing just the child if process group kill fails
-			try {
-				process.kill(pid, "SIGKILL");
-			} catch {
-				// Process already dead
-			}
-		}
-	}
 }

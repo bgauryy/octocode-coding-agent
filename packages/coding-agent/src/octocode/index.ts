@@ -8,7 +8,7 @@ import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { BrowserTool } from "./browser/tool/browser-tool.ts";
 import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "./files/tool/guard.ts";
 import { plural } from "./shared/render/text.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { spilledMessage } from "./team/session/spilled-message.ts";
 import { registerWebCommands } from "./remote/register.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
@@ -49,8 +49,9 @@ import { readOnlyCommand } from "./permission/shell/read-only.ts";
 import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerSessions } from "./sessions/register.ts";
+import { registerWorktrees } from "./worktrees/register.ts";
 import { notify, Subcommands } from "./shared/commands.ts";
-import { envFlag, SUBAGENT_ENV } from "./shared/env.ts";
+import { envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { setCurrentSession } from "./shared/home.ts";
 import { interactive } from "./shared/interactive.ts";
 import { withDialog } from "./shared/locks.ts";
@@ -88,7 +89,7 @@ import { registerWebTool } from "./web/web.ts";
  *   (`compaction/register`) are registered before the headless hold at the end of this function, so a continued or
  *   retried run is decided before the hold waits for background work.
  */
-export default function octocode(api: ExtensionAPI): void {
+export default function octocode(api: ExtensionAPI): void | Promise<void> {
 	api = withNativePermissionOwners(api);
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
 	// First, so every feature's api.sendMessage goes through it and its agent_settled handler runs before theirs.
@@ -141,7 +142,7 @@ export default function octocode(api: ExtensionAPI): void {
 	const jobs = registerBashTool(api, commands);
 	let agents: AgentControl | undefined;
 	let external: ExternalAgents | undefined;
-	registerGraphTools(api);
+	const graphTools = registerGraphTools(api); // pending only after a new graph CLI build; the loader awaits it
 	const planning = registerPlanning(api, commands, async () => {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
@@ -220,6 +221,7 @@ export default function octocode(api: ExtensionAPI): void {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
 		registerEditor(api, permission);
 		registerTrustCommand(commands);
+		registerWorktrees(api, commands, team);
 		registerAskUser(api);
 		agents = registerAgentTool(
 			api,
@@ -391,9 +393,8 @@ export default function octocode(api: ExtensionAPI): void {
 		localReads,
 		planning,
 	});
-
 	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
-
 	// Register each native command once, after every feature has supplied its handler.
 	commands.register(api);
+	return graphTools;
 }

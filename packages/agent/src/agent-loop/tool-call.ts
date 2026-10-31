@@ -1,6 +1,7 @@
 import { type AssistantMessage, validateToolArguments } from "@octocodeai/octocode-ai";
 import type {
 	AgentContext,
+	BeforeToolCallResult,
 	AgentLoopConfig,
 	AgentTool,
 	AgentToolCall,
@@ -15,6 +16,7 @@ type PreparedToolCall = {
 	toolCall: AgentToolCall;
 	tool: AgentTool<any>;
 	args: unknown;
+	revalidate?: BeforeToolCallResult["revalidate"];
 };
 
 type ImmediateToolCallOutcome = {
@@ -66,6 +68,7 @@ export async function prepareToolCall(
 	try {
 		const preparedToolCall = prepareToolCallArguments(tool, toolCall);
 		let validatedArgs = validateToolArguments(tool, preparedToolCall);
+		let revalidate: PreparedToolCall["revalidate"];
 		if (config.beforeToolCall) {
 			const beforeResult = await config.beforeToolCall(
 				{
@@ -95,6 +98,7 @@ export async function prepareToolCall(
 				};
 			}
 			validatedArgs = validateToolArguments(tool, { ...preparedToolCall, arguments: validatedArgs });
+			revalidate = beforeResult?.revalidate;
 		}
 		if (signal?.aborted) {
 			return {
@@ -108,6 +112,7 @@ export async function prepareToolCall(
 			toolCall,
 			tool,
 			args: validatedArgs,
+			...(revalidate ? { revalidate } : {}),
 		};
 	} catch (error) {
 		return {
@@ -210,6 +215,17 @@ export async function executePreparedToolCall(
 	const elapsed = () => Math.round(performance.now() - startedAt);
 
 	try {
+		// Not awaited without a check: a tool that starts at once must still run before the next call's thunk begins.
+		const stale = prepared.revalidate ? await prepared.revalidate(signal) : undefined;
+		if (stale?.block || (prepared.revalidate && signal?.aborted)) {
+			return {
+				result: createErrorToolResult(
+					stale?.block ? stale.reason || "Tool execution was blocked" : "Operation aborted",
+				),
+				isError: true,
+				durationMs: elapsed(),
+			};
+		}
 		const execution = (async () =>
 			prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
 				if (!acceptingUpdates) return;

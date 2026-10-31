@@ -3,7 +3,7 @@ import { askReview } from "../../src/octocode/files/review.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { parseGrants } from "../../src/octocode/permission/mode.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
-import { PERMISSION_GRANTS_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_GRANTS_ENV } from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

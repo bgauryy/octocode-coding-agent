@@ -11,9 +11,9 @@ import {
 	type AttachRecord,
 	type AttachRequest,
 	type AttachResponse,
-} from "@octocodeai/octocode-contacts/daemon";
-import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contacts";
-import { errorMessage } from "../../utils/guards.ts";
+} from "@octocodeai/octocode-contracts/daemon";
+import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { processStartTime } from "../shared/process.ts";
 import { redactSecrets } from "../shared/sanitize.ts";
 import type { RevisedWorkspace } from "../workspace/revision.ts";

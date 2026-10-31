@@ -202,7 +202,7 @@ describe("interrupt", () => {
 		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd, hasUI: false, idle: false });
 		try {
-			octocode(fake.api);
+			await octocode(fake.api);
 			await fake.emit("session_start", { type: "session_start" }, ctx);
 			await fake.tools
 				.get("bash")

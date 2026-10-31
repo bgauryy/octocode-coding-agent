@@ -6,7 +6,7 @@ import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
 import { callReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
 import { runsLater } from "../file-access.ts";
-import { isNativeTool } from "../native-tools.ts";
+import { takesCallReason } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
@@ -35,7 +35,7 @@ const dirGrant = (file: string, verb: string) => {
 
 /** What a native call says it is for: its `reason` argument, as the request's `purpose` (ahead of the assistant's last sentence). */
 export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">): { purpose?: string } {
-	const reason = isNativeTool(event.toolName) ? callReason(event.input) : undefined;
+	const reason = takesCallReason(event.toolName) ? callReason(event.input) : undefined;
 	return reason ? { purpose: reason } : {};
 }
 

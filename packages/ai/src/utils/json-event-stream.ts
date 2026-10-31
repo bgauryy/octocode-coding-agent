@@ -2,7 +2,7 @@ import { APICallError } from "@ai-sdk/provider";
 import { createStatusCodeErrorResponseHandler, postJsonToApi } from "@ai-sdk/provider-utils";
 import type { ProviderRequestOptions } from "../types.ts";
 import { raceWithAbortSignal } from "./abort.ts";
-import { iterateSseMessages } from "./server-sent-events.ts";
+import { iterateSseMessages, throwOnSseErrorEvent } from "./server-sent-events.ts";
 
 /** Responses retain a whole-stream deadline; Completions end it after successful response headers. */
 export async function requestJsonEventStream(
@@ -63,7 +63,7 @@ export async function requestJsonEventStream(
 
 async function* iterateJsonEvents(body: ReadableStream<Uint8Array>, signal: AbortSignal): AsyncGenerator {
 	for await (const event of iterateSseMessages(body, signal)) {
-		if (event.event === "error") throw new Error(event.data);
+		throwOnSseErrorEvent(event);
 		if (event.data === "[DONE]") return;
 		yield JSON.parse(event.data) as unknown;
 	}

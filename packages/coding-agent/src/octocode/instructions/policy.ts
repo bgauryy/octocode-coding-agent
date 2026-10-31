@@ -1,6 +1,6 @@
 import { MCP_CONTRACT_SECTION_PREFIX } from "../../../../mcp/src/section.ts";
 import { OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
-import { cleanupDays } from "../shared/env.ts";
+import { cleanupDays } from "../../../../common/src/env.ts";
 
 /**
  * Octocode guidance, added to Octocode's structured system prompt as the `octocode`
@@ -19,6 +19,8 @@ interface PromptInputs {
 	profiles: Array<{ name: string; description: string }>;
 	/** Browser specialists to use when the main session has no browser tool. */
 	browserProfiles?: string[];
+	/** Whether this agent can browse itself: a browser tool or the browser MCP server is selected. */
+	canBrowse?: boolean;
 	/** False inside a subagent: no delegation or askUser, report back to the parent. */
 	canDelegate: boolean;
 	/** Whether the current request exposes the agent tool. */
@@ -40,6 +42,9 @@ interface PromptInputs {
 	/** Days an untouched scratch folder is kept (`OCTOCODE_CLEANUP_DAYS`; 0 keeps it); default from the environment. */
 	scratchDays?: number;
 }
+
+/** What counts as cleanup rather than deletion; the Safety section is the one place that says so. */
+const CLEANUP_BOUNDARY = "Removing files and code you created in this task is cleanup, not deletion.";
 
 /** What the prompt says about scratch retention, from the sweep's own setting (`handoff/scratch.ts`). */
 function scratchRetention(days: number): string {
@@ -82,6 +87,8 @@ const OCTOCODE_CONTRACT_SECTION = `${MCP_CONTRACT_SECTION_PREFIX}${OCTOCODE_SERV
 
 export function octocodePromptSections(input: PromptInputs): Record<string, string> {
 	const readOnly = input.readOnlyRole === true;
+	// Whose request the rules below answer to: a child works to its task, which its parent wrote for the user.
+	const requester = input.canDelegate ? "the user" : "your task";
 	const canSave = input.canSave ?? input.canWrite !== false;
 	const shell = input.canShell !== false;
 	const web = input.canWeb !== false;
@@ -103,6 +110,12 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 						? "- Use the `gh` CLI in bash when available for GitHub lookups."
 						: "- If the supplied evidence is insufficient and no lookup tool is available, report the missing evidence.",
 			];
+	// Browser routing depends on what this session holds, so it is policy, not a static `web` guideline; without a browser
+	// the delegation section names the specialist, and a child without one reports the need (its role says so).
+	if (input.canBrowse && web)
+		research.push(
+			"- When static text from `web` cannot answer the question, use the browser tools (`mcp__browser__*`, or `browser`).",
+		);
 	research.push(...graphWorkflows(input.graphTools ?? [], readOnly));
 	// The askUser tool description says when to ask; Safety owns the destructive-action rule.
 	const delegation = input.canDelegate
@@ -163,8 +176,12 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 	const changing = readOnly
 		? [`- Investigate and report; do not modify repository source. ${readOnlyRule}`]
 		: [
-				"- Make the smallest complete change that follows the repository's conventions and existing dependencies. Preserve user changes; include necessary code, tests and docs.",
-				"- Leave the code clean; remove your debug output, unused code and temporary files. Fix dead code, stale docs or duplicate helpers you meet inside the blast radius; propose wider cleanups instead of widening scope.",
+				// User request (2026-10-30): solve the cause at the system level, not one symptom with a hand-picked patch.
+				"- Think as the system's architect: fix a behavior in the module that owns it, so every path that shares the cause is fixed, reusing its types, configuration and mechanisms. Avoid hand-picked special cases, one-call-site patches and rigid rules fitted to the observed input; when only a local patch fits the scope, name the root fix. Make the smallest complete change that follows the repository's conventions and existing dependencies. Preserve user changes; include necessary code, tests and docs.",
+				// Safety defines which removals need approval. A child's assigned area bounds the blast radius it may clean up.
+				input.canDelegate
+					? "- Leave the code clean; remove your debug output, unused code and temporary files. Fix dead code, stale docs or duplicate helpers you meet inside the blast radius; propose wider cleanups."
+					: "- Leave the code clean; remove your debug output, unused code and temporary files. Fix dead code, stale docs or duplicate helpers you meet inside the blast radius within your assigned area; report anything outside it instead of changing it.",
 			];
 	const checks = readOnly
 		? []
@@ -178,28 +195,31 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			// The `skills` section says when to load a skill and the `skill` tool how; neither is repeated here.
 			// One rule for research scope: supplied facts are not re-researched; the code you change or rely on, and what the
 			// user asks to verify, is. The Research section below owns which tool does the checking.
-			`- Treat facts the user supplied and relevant skill instructions as given; do not re-research them. Research the code you change or rely on, and anything the user asks you to verify.${input.canDelegate ? " In a delegated task, say which facts are settled and what to verify." : ""}`,
+			`- Treat facts ${requester} supplied and relevant skill instructions as given; do not re-research them. Research the code you change or rely on, and anything ${requester} asks you to verify.${input.canDelegate ? " When you delegate, say in the task which facts are settled and what to verify." : ""}`,
 			// The loader preloads AGENTS.md/CLAUDE.md only from the working directory and its ancestors (`resource-loader/context-files.ts`).
-			"- Ancestor instructions are already loaded. Before working under a subdirectory, read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md; apply deeper instructions within their directory; a deeper file wins over a shallower one, and direct user instructions win over both.",
+			"- Ancestor instructions are already loaded. Before working under a subdirectory, read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md; a deeper file wins within its directory, and direct user instructions win over both.",
 			readOnly
 				? "- For code questions: read affected code and callers before concluding; run the deciding check when a read-only one exists."
-				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it); run the deciding check across it (focused test, typecheck or reproduction). After your last edit, and before you report the work as done, rerun the check that proves the final state (an edit or revert after a check needs a new check); if no check can run, say so and why.",
-			"- When writing or reviewing tests, prefer observable behavior and public contracts over implementation details. Mock external boundaries; keep internal flows real where feasible. Use focused unit tests when useful; preserve coverage.",
+				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it) and before -> after impact where it applies (UX, security, performance, memory, maintenance); run the deciding check across it (focused test, typecheck or reproduction). After your last edit, and before reporting, rerun the check that proves the final state (an edit or revert after a check needs a new check); if none can run, say why.",
+			// User request (2026-10-30): behavioral and end-to-end tests check contracts better than rigid unit tests. A read-only
+			// role writes no tests; the reviewer role carries the review form of this rule.
 			...(readOnly
 				? []
 				: [
-						"- When the user asks how, why or what, answer from evidence without editing; change files only when asked or when the request is a defect to fix.",
+						"- When writing or reviewing tests, prefer behavioral and end-to-end tests: drive the public entry point (CLI, session, tool call or API) and assert observable outcomes and contracts, not implementation details. Use unit tests test-first (TDD) to reproduce a bug or pin a pure function, not to freeze internals. Mock only external boundaries; keep internal flows real where feasible; preserve coverage.",
+						`- When ${requester} asks how, why or what, answer from evidence without editing; change files only when asked or when the request is a defect to fix.`,
 					]),
 			...changing,
 			...checks,
 			// Roles name this protocol ("run a hypothesis test"); it is defined only here.
-			`- When a failure is unexplained, run a hypothesis test: compare the likely cause with its strongest rival; test before retrying. ${readOnly ? "Name causes" : "Fix causes"}; report blockers without suppressing errors.`,
+			`- For a bug or failure, find the root cause before fixing: trace the symptom back to where it originates. When the cause is unclear, run a hypothesis test: compare the likely cause with its strongest rival; test before retrying. ${readOnly ? "Name causes, not only symptoms" : "Fix causes, not symptoms"}; report blockers without suppressing errors.`,
 			// User request (2026-10-29): a move the user could not follow gets its reason; obvious steps need none.
 			`- When a step's reason would not be obvious to ${input.canDelegate ? "the user" : "your parent"} (a deletion, a costly run, a change of plan), state it in one line${input.canDelegate ? "" : " in your report"}.`,
 			// User request (2026-10-29): long work drifts. The resume and compaction briefs (`sessions/brief.ts`) name the claimed items, their last notes and the latest request.
 			"- Reorient after a compaction, resume or long run, and before reporting, starting from the latest resume or compaction brief.",
 			`- Run independent calls together and dependent ones in sequence.${shell ? " For repeated mechanical work, write one short script instead of many calls." : ""}`,
-			`- ${readOnly ? "" : "Prefer reversible changes. "}Label a claim as an assumption or unknown only when you did not verify it.`,
+			// User request (2026-10-30): facts and evidence only; never assume or hallucinate. The research section owns which tool gathers it.
+			`- Base every claim and decision on evidence you read or ran, and cite it (path:line, command, URI or URL). Connect related evidence (callers, tests, history, docs) to reach conclusions. Never invent a name, path, API, version or result.${input.octocode ? " Gather the evidence with Octocode tools." : ""} ${readOnly ? "" : "Prefer reversible changes. "}Label a claim as an assumption or unknown only when you did not verify it.`,
 			input.canDelegate
 				? "- Work until the request is done and checked, or you are blocked."
 				: "- Work until the Definition of Done or a blocker.",
@@ -207,17 +227,18 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 		octocode_research: [
 			"# Context and research",
 			"- Before a handoff or compaction, write the goal, open decisions and exact recovery identifiers (paths, ids, cursors) into the handoff message or a scratch file the receiver can read.",
-			"- Fetch only the evidence the next decision needs; cached input still fills the context window. Keep large results behind paths or cursors and state truncation or coverage gaps.",
+			"- Fetch only the evidence the next decision needs. Keep large results behind paths or cursors and state truncation or coverage gaps.",
 			...research,
 		].join("\n"),
 		octocode_delegation: (input.canDelegate && input.canUseAgent === false ? [] : delegation).join("\n"),
 		octocode_safety: [
 			"# Safety",
+			// Defined once here: the cleanup rule in Work removes what this task made; everything else needs approval.
 			input.canDelegate
-				? "- Follow user authorization; ask before destructive or irreversible actions (deletion, hard reset, force-push). Commit or push only when the user asks."
+				? `- Follow user authorization. ${CLEANUP_BOUNDARY} Ask before deleting existing user or repository content or taking other destructive or irreversible actions (hard reset, force-push). Commit or push only when the user asks.`
 				: input.canUseAgent === false
-					? "- Stay within assigned scope and user authorization. If an action needs approval, leave it blocked in your report; leave commit and push to your parent."
-					: "- Stay within assigned scope and user authorization. Message your parent using `agent` type `message` for approval before destructive or irreversible actions; leave commit and push to it.",
+					? `- Stay within assigned scope and your task's authorization. ${CLEANUP_BOUNDARY} If deleting existing user or repository content or another destructive or irreversible action needs approval, leave it blocked in your report; leave commit and push to your parent.`
+					: `- Stay within assigned scope and your task's authorization. ${CLEANUP_BOUNDARY} Message your parent using \`agent\` type \`message\` for approval before deleting existing user or repository content or taking another destructive or irreversible action; leave commit and push to it.`,
 			// The shared tree's git state is the parent's; staging, stashing and committing in a shared tree are also refused (`permission/git-state.ts`).
 			...(!input.canDelegate && shell
 				? [
@@ -230,17 +251,24 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 		].join("\n"),
 		octocode_communication: [
 			"# Communication",
+			// The main session has no parent of its own; it meets another tree only through agents another session started.
 			...(input.canUseAgent === false
 				? []
-				: ["- Across parent trees, share evidence; scope changes and shared interfaces go through the owning parent."]),
+				: [
+						input.canDelegate
+							? "- Across parent trees (agents another session started), share evidence; send scope changes and shared interfaces to that tree's owning parent."
+							: "- Across parent trees, share evidence; scope changes and shared interfaces go through the owning parent.",
+					]),
 			// The agent tool's message guideline owns when to message; a subagent's tools and task already name its teammates; only the main session meets a second coordination system.
 			...(input.canDelegate && input.canUseAgent !== false
 				? ["- Reach configured agents in other hosts with `agent` type `external`; its permissions still apply."]
 				: []),
 			// Each protocol is defined once here; roles and the Subagent section name it. askUser owns the decision request.
-			"- Lead with the result and match detail to the task; use a format below only when it fits:",
+			input.canDelegate
+				? "- Lead with the result and match detail to the task; use a format below only when it fits:"
+				: "- Start your report with the status word your task names, then the result; match detail to the task and use a format below only when it fits:",
 			"  - Result or report: give the answer first, evidence (path:line, command result or URL) and limits. Distinguish checks run from checks not run.",
-			"  - Finding: give the location, trigger, impact, verified cause and repair; mark unknowns rather than filling an unsupported template.",
+			"  - Finding: give the location, trigger, impact, verified cause and repair, plus any severity or confirmation status your role asks for; mark unknowns rather than filling an unsupported template.",
 			"  - Blocker that needs someone else's action: SBAR. Situation, background, assessment, recommendation.",
 			// Only the main session answers the user; the interactive Markdown renderer draws these Mermaid kinds as Unicode
 			// diagrams when they fit the terminal width and shows the source otherwise (`modes/interactive/components/mermaid.ts`).
@@ -255,7 +283,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			...(readOnly || !input.canDelegate
 				? []
 				: [
-						"- When more than one file changed or a check failed, end with a short summary for the user: changed paths, checks run and the blast radius. Leave nothing open: finish or revert partial edits, stop jobs and agents you started; name any work left unfinished.",
+						"- When you finish a task, end with a short TL;DR for the user; when more than one file changed or a check failed, it names changed paths, checks run and the blast radius. Leave nothing open: finish or revert partial edits, stop jobs and agents you started; name any work left unfinished.",
 					]),
 		].join("\n"),
 	};

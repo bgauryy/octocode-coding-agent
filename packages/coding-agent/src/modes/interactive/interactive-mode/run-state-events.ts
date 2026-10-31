@@ -3,7 +3,6 @@
  * summary.
  */
 
-import { Spacer } from "@octocodeai/octocode-tui";
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage } from "../../../core/messages.ts";
@@ -12,7 +11,6 @@ import {
 	CompactionStatusIndicator,
 	RetryStatusIndicator,
 } from "../components/status-indicator.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -117,13 +115,8 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 					});
 				}
 			} else if (event.errorMessage) {
-				if (event.reason === "manual") {
-					host.showError(event.errorMessage);
-				} else {
-					host.chatContainer.addChild(new Spacer(1));
-					const errorMessage = event.errorMessage;
-					host.chatContainer.addChild(new ThemedText(() => theme.fg("error", errorMessage), 1, 0));
-				}
+				// A failed automatic compaction is drawn like a failed manual one: the same notice, not bare red text.
+				host.showError(event.errorMessage);
 			}
 			void host.flushCompactionQueue({ willRetry: event.willRetry });
 			host.ui.requestRender();

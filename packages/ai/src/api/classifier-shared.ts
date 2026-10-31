@@ -1,6 +1,7 @@
 import { createStatusCodeErrorResponseHandler, postToApi } from "@ai-sdk/provider-utils";
 import { calculateCost } from "../models/model-helpers.ts";
 import type { ClassifierApi, ClassifierModel, ClassifierOptions, ProviderHeaders, Usage } from "../types.ts";
+import { createUsage } from "../utils/assistant-message.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { raceWithAbortSignal } from "../utils/abort.ts";
@@ -123,14 +124,7 @@ export function parseClassifierUsage(value: unknown, model: ClassifierModel<Clas
 	if (!isRecord(value) || (value.input_tokens === undefined && value.output_tokens === undefined)) return undefined;
 	const input = tokenCount(value.input_tokens);
 	const output = tokenCount(value.output_tokens);
-	const usage: Usage = {
-		input,
-		output,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: input + output,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	const usage = createUsage({ input, output });
 	calculateCost(model, usage);
 	return usage;
 }

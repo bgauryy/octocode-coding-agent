@@ -12,12 +12,12 @@ vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
 	},
 }));
 import { SUMMARY_CHECKPOINT_FORMAT } from "../../src/core/compaction/summary-format.ts";
+import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import {
 	carryFileLists,
 	SUMMARIZER_RESULT_CHARS,
 	SUMMARY_FOCUS,
-	splitSummary,
 	summarizerView,
 	transcriptNote,
 	USER_MESSAGE_CHARS,

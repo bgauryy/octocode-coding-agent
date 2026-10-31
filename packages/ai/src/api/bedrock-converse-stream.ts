@@ -1,3 +1,4 @@
+import { createAbortError } from "../utils/abort.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
@@ -179,7 +180,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			}
 
 			if (options.signal?.aborted) {
-				throw new Error("Request was aborted");
+				throw createAbortError();
 			}
 
 			if (output.stopReason === "pending") {

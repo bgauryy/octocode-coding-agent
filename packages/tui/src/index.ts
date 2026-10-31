@@ -120,8 +120,11 @@ export {
 	hasTmuxSession,
 	type MultiplexerId,
 	resetMultiplexerCache,
+	type TmuxExecOptions,
 	tmuxClientTermFeatures,
 	tmuxClientTerminalNames,
+	tmuxExec,
+	tmuxGlobalOption,
 	tmuxPaneAllowsPassthrough,
 	wrapTmuxPassthrough,
 } from "./multiplexer.ts";
@@ -214,4 +217,5 @@ export { visibleWidth } from "./utils/width.ts";
 export { truncateToWidth } from "./utils/truncate.ts";
 export { getOsc8LinkAtColumn, sliceByColumn } from "./utils/columns.ts";
 export { stripTerminalSequences } from "./utils.ts";
+export { incompleteAnsiStart } from "./utils/ansi-codes.ts";
 export type { WheelScrollLines } from "./wheel-scroll.ts";

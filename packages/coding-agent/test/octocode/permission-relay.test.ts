@@ -16,7 +16,7 @@ import {
 	PERMISSION_ENV,
 	PERMISSION_NONCE_FILE_ENV,
 	PERMISSION_RELAY_ENV,
-} from "../../src/octocode/shared/env.ts";
+} from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";

@@ -5,7 +5,7 @@ import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATE_TITLE, BOARD_ORDER } from "./format.ts";
 import { refText } from "./row.ts";
 import { type Item, priorityName } from "./store.ts";
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 
 /** What the user picked on the board; the command runs it and reopens the board unless it handed work to the agent. */
 type BoardChoice =

@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import type { ReadonlySessionManager } from "../../core/session-manager.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
@@ -341,6 +341,6 @@ export function noticeText(report: Report): string {
 	// The pointer is the last such line, after anything the child wrote; only a scratch path is ever repeated.
 	const file = reportFilePath(report.content);
 	return `[Octocode notice] Background subagent ${id} ${result}. ${
-		file ? `Its report is saved at ${file}. ` : ""
-	}The full report arrives as its own message when this turn ends; continue your work.`;
+		file ? `Report saved at ${file}. ` : ""
+	}The full report follows when this turn ends.`;
 }

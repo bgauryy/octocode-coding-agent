@@ -9,7 +9,7 @@ import { sessionCleared, sessionClearedAt } from "../files/reads.ts";
 import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
 import { SUMMARY_CHECKPOINT_FORMAT, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clipText, contentText } from "../shared/util.ts";
 import { requestMessages } from "./thinking.ts";
 

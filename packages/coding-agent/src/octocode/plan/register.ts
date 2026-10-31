@@ -88,7 +88,8 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 		}
 	};
 	commands.add("plan", {
-		description: "plan [description|--off|--approve <revision>] — research under a native planning constraint",
+		description: "Research under a planning constraint",
+		argumentHint: "[description|--off|--approve <revision>]",
 		dialog: "interaction",
 		complete: (prefix) => wordCompletions(["--off", "--approve"], prefix),
 		handler: async (args, ctx) => {

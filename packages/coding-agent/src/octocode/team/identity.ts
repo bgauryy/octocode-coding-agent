@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText, storedText } from "../shared/sanitize.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AGENT_GOAL_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "./store/env.ts";
 
 /** Who an agent is on the team: its name (the id), its goal, and the row it joins with. */
@@ -136,6 +136,8 @@ export function newMember(
 	const parentId = env[PARENT_ID_ENV];
 	const stored = storedText(goal ?? env[AGENT_GOAL_ENV], LINE_MAX);
 	const started = processStartTime(process.pid);
+	// The pane a person can switch to; a subagent inherits its parent's variables but has no pane of its own.
+	const tmuxPane = !parentId && env.TMUX && /^%\d+$/u.test(env.TMUX_PANE ?? "") ? env.TMUX_PANE : undefined;
 	return {
 		id,
 		role: env[AGENT_ROLE_ENV] ?? "main",
@@ -145,6 +147,7 @@ export function newMember(
 		status: ctx.isIdle() ? "idle" : "working",
 		...(stored ? { goal: stored } : {}),
 		...(ctx.model ? { model: storedText(ctx.model.id, LINE_MAX) } : {}),
+		...(tmuxPane ? { tmuxPane } : {}),
 		joinedAt: now,
 		updatedAt: now,
 		toolCalls: 0,

@@ -18,6 +18,13 @@ export function getModelMatchCandidates(modelId: string, modelName?: string): st
 	});
 }
 
+/** Claude 5 model-name tokens (Bedrock ids and display names), matched as substrings of a normalized candidate. */
+const CLAUDE_5_TOKENS = ["fable-5", "opus-5", "sonnet-5", "haiku-5"] as const;
+
+function isClaude5Candidate(candidate: string): boolean {
+	return CLAUDE_5_TOKENS.some((token) => candidate.includes(token));
+}
+
 export function supportsAdaptiveThinking(modelId: string, modelName?: string): boolean {
 	const candidates = getModelMatchCandidates(modelId, modelName);
 	return candidates.some(
@@ -25,11 +32,8 @@ export function supportsAdaptiveThinking(modelId: string, modelName?: string): b
 			s.includes("opus-4-6") ||
 			s.includes("opus-4-7") ||
 			s.includes("opus-4-8") ||
-			s.includes("opus-5") ||
 			s.includes("sonnet-4-6") ||
-			s.includes("sonnet-5") ||
-			s.includes("haiku-5") ||
-			s.includes("fable-5"),
+			isClaude5Candidate(s),
 	);
 }
 
@@ -41,13 +45,8 @@ export function supportsAdaptiveThinking(modelId: string, modelName?: string): b
 export function isAnthropicClaudeModel(model: Model<"bedrock-converse-stream">): boolean {
 	const id = model.id.toLowerCase();
 	const name = model.name?.toLowerCase() ?? "";
-	return (
-		id.includes("anthropic.claude") ||
-		id.includes("anthropic/claude") ||
-		name.includes("anthropic.claude") ||
-		name.includes("anthropic/claude") ||
-		name.includes("claude")
-	);
+	// A name containing "claude" covers its `anthropic.claude` and `anthropic/claude` forms too.
+	return id.includes("anthropic.claude") || id.includes("anthropic/claude") || name.includes("claude");
 }
 
 /**
@@ -73,12 +72,7 @@ export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, e
 		return false;
 	}
 	// Claude 5 models (fable-5, opus-5, sonnet-5, haiku-5)
-	if (
-		candidates.some(
-			(s) => s.includes("fable-5") || s.includes("opus-5") || s.includes("sonnet-5") || s.includes("haiku-5"),
-		)
-	)
-		return true;
+	if (candidates.some(isClaude5Candidate)) return true;
 	// Claude 4.x models (opus-4, sonnet-4, haiku-4)
 	if (candidates.some((s) => s.includes("-4-"))) return true;
 	// Claude 3.7 Sonnet

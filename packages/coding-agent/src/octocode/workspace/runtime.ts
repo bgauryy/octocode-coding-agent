@@ -10,12 +10,12 @@ import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
 import type { Team } from "../team/session.ts";
 import { HEARTBEAT_MS } from "../team/session/activity.ts";
-import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
-import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
+import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { contentText, toolHint } from "../shared/util.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface Operations {
 	application?: (ctx: ExtensionContext) => ApplicationService | undefined;

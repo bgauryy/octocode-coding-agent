@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripAnsi } from "../src/utils/ansi.ts";
+import { splitIncompleteAnsiSuffix, stripAnsi } from "../src/utils/ansi.ts";
 
 function referenceAnsiRegex(): RegExp {
 	const ST = "(?:\\u0007|\\u001B\\u005C|\\u009C)";
@@ -17,67 +17,43 @@ function referenceStripAnsi(value: string): string {
 	return value.replace(referenceRegex, "");
 }
 
-function getCompatibilityInputs(): string[] {
-	const inputs = [
-		"plain",
-		"a\x1b[31mred\x1b[0mz",
-		"a\x1b]8;;https://example.com\x07link\x1b]8;;\x07z",
-		"a\x1b]unterminated",
-		"a\x1b]funterminated",
-		"a\x1bPabc\x1b\\z",
-		"a\x1b^abc\x07z",
-		"a\x1b_abc\x9cz",
-		"a\x90abc\x9cz",
-		"a\x9dabc\x9cz",
-		"a\x9b31mred",
-		"a\x1b(0x",
-		"a\x1b*0x",
-		"a\x1b+c",
-		"a\x1b/0x",
-		"a\x1bcok",
-		"a\x1b\\ok",
-	];
-	const chars = [
-		"a",
-		"f",
-		"0",
-		"1",
-		";",
-		":",
-		"[",
-		"]",
-		"(",
-		")",
-		"#",
-		"?",
-		"m",
-		"P",
-		"_",
-		"\\",
-		"\x07",
-		"\x1b",
-		"\x9b",
-		"\x9c",
-		"\x90",
-		"\x9d",
-	];
-
-	for (const char of chars) {
-		inputs.push(`x\x1b${char}y`);
-		inputs.push(`x\x9b${char}y`);
-		for (let index = 0; index < chars.length; index += 3) {
-			inputs.push(`x\x1b${char}${chars[index]}y`);
-		}
-	}
-
-	return inputs;
-}
+/** Well-formed sequences: the ECMA-48 grammar in the TUI scanner and chalk's strip-ansi agree on these. */
+const WELL_FORMED_INPUTS = [
+	"plain",
+	"a\x1b[31mred\x1b[0mz",
+	"a\x1b[38;5;240mgrey\x1b[39mz",
+	"a\x1b[38:2::1:2:3mcolon\x1b[0mz",
+	"a\x1b[2Kb\x1b[1;1Hc\x1b[2Jd",
+	"a\x1b[?25lb\x1b[?25hc",
+	"a\x1b[3Cb",
+	"a\x1b]8;;https://example.com\x07link\x1b]8;;\x07z",
+	"a\x1b]0;title\x1b\\z",
+	"a\x1bcok",
+	"a\x1b(0x",
+];
 
 describe("stripAnsi", () => {
-	it("matches chalk strip-ansi for generated compatibility inputs", () => {
-		for (const input of getCompatibilityInputs()) {
+	it("matches chalk strip-ansi for well-formed sequences", () => {
+		for (const input of WELL_FORMED_INPUTS) {
 			expect(stripAnsi(input)).toBe(referenceStripAnsi(input));
 		}
+	});
+
+	it("strips non-SGR CSI whole, including parameter and intermediate bytes", () => {
+		expect(stripAnsi("\x1b[?25lHello")).toBe("Hello");
+		expect(stripAnsi("\x1b[3Cabc")).toBe("abc");
+		expect(stripAnsi("a\x1b[0 qb\x1b[>4;2mc\x1b[6nd")).toBe("abcd");
+	});
+
+	it("keeps text after a malformed or unfinished sequence", () => {
+		expect(stripAnsi("a\x1b]unterminated")).toBe("a\x1b]unterminated");
+		expect(stripAnsi("a\x1b[31")).toBe("a\x1b[31");
+		expect(stripAnsi("a\x1b[3\x01mb")).toBe("a\x1b[3\x01mb");
+		expect(stripAnsi("a\x1b")).toBe("a\x1b");
+	});
+
+	it("strips DCS strings up to ST", () => {
+		expect(stripAnsi("a\x1bPabc\x1b\\z")).toBe("az");
 	});
 
 	it("throws the same TypeError as chalk strip-ansi for non-string values", () => {
@@ -106,5 +82,28 @@ describe("stripAnsi", () => {
 	it("strips common ANSI sequences used in tool output", () => {
 		const input = "a\x1b[31mred\x1b[0m\x1b]8;;https://example.com\x07link\x1b]8;;\x07z";
 		expect(stripAnsi(input)).toBe("aredlinkz");
+	});
+});
+
+describe("splitIncompleteAnsiSuffix", () => {
+	it("holds back an unfinished CSI, OSC or lone ESC at the end", () => {
+		expect(splitIncompleteAnsiSuffix("abc\x1b[3")).toEqual({ complete: "abc", pending: "\x1b[3" });
+		expect(splitIncompleteAnsiSuffix("abc\x1b[?25")).toEqual({ complete: "abc", pending: "\x1b[?25" });
+		expect(splitIncompleteAnsiSuffix("abc\x1b]8;;http")).toEqual({ complete: "abc", pending: "\x1b]8;;http" });
+		expect(splitIncompleteAnsiSuffix("abc\x1b")).toEqual({ complete: "abc", pending: "\x1b" });
+		expect(splitIncompleteAnsiSuffix("abc\x1b]0;t\x1b")).toEqual({ complete: "abc", pending: "\x1b]0;t\x1b" });
+	});
+
+	it("passes complete text through", () => {
+		for (const text of ["abc", "a\x1b[31mb", "a\x1b]8;;u\x07b", "a\x1b]0;t\x1b\\", "a\x1b[3Cb"]) {
+			expect(splitIncompleteAnsiSuffix(text)).toEqual({ complete: text, pending: "" });
+		}
+	});
+
+	it("reassembles a sequence split across chunks", () => {
+		const first = splitIncompleteAnsiSuffix("ab\x1b[?2");
+		const second = splitIncompleteAnsiSuffix(`${first.pending}5lcd`);
+		expect(stripAnsi(first.complete + second.complete)).toBe("abcd");
+		expect(second.pending).toBe("");
 	});
 });

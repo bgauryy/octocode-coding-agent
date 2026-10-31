@@ -1,12 +1,8 @@
 import fs from "node:fs";
 import type { ToolResultMessage } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { capOutputToFile, saveFullOutput } from "./spill.ts";
-
-/** UTF-16 characters kept whole per text part, allowing headroom around the Octocode server's 50,000-character page. */
-export const TEXT_MAX_CHARS = 60_000;
-/** Characters of tool results one assistant message may put in the context whole (Claude Code's per-message budget). */
-export const TURN_MAX_CHARS = 200_000;
+import { TEXT_MAX_CHARS, TURN_MAX_CHARS } from "./output-budget.ts";
+import { capResultText, saveFullOutput } from "./spill.ts";
 /** Space reserved for the recovery pointer when a turn exhausts its text budget. */
 const RECOVERY_CHARS = 1024;
 /** What a result after the budget ran out shows: its text is in the archive the first omitted result names. */
@@ -32,11 +28,7 @@ export class TurnBudget {
 	 * fit, with the path of the JSON-lines archive that this and every later text of the turn is appended to.
 	 */
 	text(text: string, tool: string): string {
-		const preview = this.archive
-			? ""
-			: text.length <= TEXT_MAX_CHARS
-				? text
-				: capOutputToFile(text, { label: tool, maxBytes: TEXT_MAX_CHARS, maxLines: TEXT_MAX_CHARS + 1 });
+		const preview = this.archive ? "" : capResultText(text, tool);
 		if (this.archive || preview.length > TURN_MAX_CHARS - this.used - RECOVERY_CHARS) {
 			const record = `${JSON.stringify({ tool, text })}\n`;
 			if (this.archive) {

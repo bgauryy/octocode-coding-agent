@@ -2,7 +2,7 @@ import { validateToolArguments } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { agentModes } from "../../src/octocode/agent-tool.ts";
-import { renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { Params, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
 import { isNativeTool, withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { callReason, withoutReason, withReason } from "../../src/octocode/shared/reason.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -135,5 +135,29 @@ describe("the file tool's renamed reason", () => {
 		});
 		expect(renameReasoning("not an object")).toBe("not an object");
 		expect(renameReasoning({ patch: "x" })).toEqual({ patch: "x" });
+	});
+
+	it("requires the call's goal beside the per-change reasons", () => {
+		const file = { name: "file", parameters: Params };
+		const change = { type: "delete", path: "a", reason: "drop a" };
+		expect(() => validate(file, { queries: [change] })).toThrow(/reason/);
+		expect(validate(file, { queries: [change], reason: "remove the old file" })).toMatchObject({
+			reason: "remove the old file",
+		});
+	});
+
+	it("lets a change leave its reason out and reuses the call's", () => {
+		const file = { name: "file", parameters: Params };
+		const prepared = renameReasoning({
+			reason: "clean up",
+			queries: [
+				{ type: "delete", path: "a" },
+				{ type: "delete", path: "b", reason: "own" },
+			],
+		});
+		expect(prepared.queries?.map((query) => query.reason)).toEqual(["clean up", "own"]);
+		expect(() => validate(file, prepared)).not.toThrow();
+		// Without a call reason there is nothing to reuse, and the call is refused as before.
+		expect(() => validate(file, renameReasoning({ queries: [{ type: "delete", path: "a" }] }))).toThrow(/reason/);
 	});
 });

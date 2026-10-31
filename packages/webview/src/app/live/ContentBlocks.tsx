@@ -1,10 +1,10 @@
-import { parseApplicationTool } from "@octocodeai/octocode-contacts";
+import { parseApplicationTool } from "@octocodeai/octocode-contracts";
 import type {
 	ApplicationAsset,
 	ApplicationContentBlock,
 	ApplicationTool,
 	ContentAnnotation,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { memo, useEffect, useState } from "react";
 import { safeMarkdownLink } from "../../markdown.ts";
 import { errorMessage } from "../model/format.ts";
@@ -307,6 +307,7 @@ export function ToolContent({
 					{tool?.durationMs === undefined ? "" : ` · ${Math.round(tool.durationMs)} ms`}
 				</span>
 			</header>
+			<ToolReason args={tool?.arguments ?? args} />
 			{(tool?.arguments ?? args) !== undefined && <JsonDetails label="Arguments" value={tool?.arguments ?? args} />}
 			{tool?.content ? (
 				<ContentBlocks
@@ -338,6 +339,18 @@ export function ToolContent({
 			))}
 		</section>
 	);
+}
+
+/**
+ * The call's `reason` (every native tool requires one; models add it to MCP calls) as one line under the tool's name,
+ * like the terminal's `↳` row. A one-word reason (`Edit`) says no more than the name.
+ */
+function ToolReason({ args }: { args: unknown }) {
+	const reason =
+		args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
+			? args.reason.replace(/\s+/g, " ").trim()
+			: "";
+	return reason.includes(" ") ? <p className="tool-reason">↳ {reason}</p> : null;
 }
 
 export function JsonDetails({ label, value }: { label: string; value: unknown }) {

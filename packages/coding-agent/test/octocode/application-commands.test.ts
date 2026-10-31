@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ApplicationCommand } from "@octocodeai/octocode-contacts";
+import type { ApplicationCommand } from "@octocodeai/octocode-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";

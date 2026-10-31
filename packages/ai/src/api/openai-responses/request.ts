@@ -3,7 +3,8 @@ import { providerHeadersToRecord } from "../../utils/headers.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import { openAIEnvironmentHeaders } from "../openai-environment-headers.ts";
 import { resolveTranscriptTools } from "../../utils/transcript.ts";
-import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
+import { copilotDynamicHeadersFor } from "../github-copilot-headers.ts";
+import { getProviderCapabilities } from "../../utils/provider-capabilities.ts";
 import { resolveOpenAIResponsesCacheFields } from "../openai-prompt-cache.ts";
 import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
 export { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
@@ -37,14 +38,7 @@ export function createRequestHeaders(
 			{ "User-Agent": getUserAgent() },
 			model.headers,
 		) ?? {};
-	if (model.provider === "github-copilot") {
-		const hasImages = hasCopilotVisionInput(context.messages);
-		const copilotHeaders = buildCopilotDynamicHeaders({
-			messages: context.messages,
-			hasImages,
-		});
-		Object.assign(headers, copilotHeaders);
-	}
+	Object.assign(headers, copilotDynamicHeadersFor(model.provider, context.messages));
 
 	if (sessionId) {
 		if (compat.sessionAffinityFormat === "openrouter") {
@@ -58,7 +52,7 @@ export function createRequestHeaders(
 	}
 
 	// xAI recommends this header for cache routing (the completions client sends it too).
-	if (sessionId && model.provider === "xai") headers["x-grok-conv-id"] = sessionId;
+	if (sessionId && getProviderCapabilities(model.provider).grokConversationHeader) headers["x-grok-conv-id"] = sessionId;
 
 	return providerHeadersToRecord(headers, optionsHeaders) ?? {};
 }
@@ -135,12 +129,12 @@ export function buildParams(
 				summary: options?.reasoningSummary || "auto",
 			};
 			params.include = ["reasoning.encrypted_content"];
-		} else if (model.provider !== "github-copilot" && model.thinkingLevelMap?.off !== null) {
+		} else if (getProviderCapabilities(model.provider).acceptsReasoningOff && model.thinkingLevelMap?.off !== null) {
 			params.reasoning = {
 				effort: (model.thinkingLevelMap?.off ?? "none") as NonNullable<typeof params.reasoning>["effort"],
 			};
 		}
-		if (model.provider === "xai") params.include = ["reasoning.encrypted_content"];
+		if (getProviderCapabilities(model.provider).alwaysIncludeEncryptedReasoning) params.include = ["reasoning.encrypted_content"];
 	}
 
 	// Last so model and request sampling parameters override named request fields.

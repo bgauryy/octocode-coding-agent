@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import type { ApplicationRuntimeState } from "./state.ts";
 import type { ApplicationTranscript } from "./transcript.ts";
 import type { ApplicationActivities } from "./service/activities.ts";

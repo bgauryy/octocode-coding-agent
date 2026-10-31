@@ -203,6 +203,7 @@ export function getSlashCommands(
 		.map((cmd) => ({
 			name: cmd.invocationName,
 			description: prefixAutocompleteDescription(host, cmd.description, cmd.sourceInfo),
+			...(cmd.argumentHint && { argumentHint: cmd.argumentHint }),
 			getArgumentCompletions: cmd.getArgumentCompletions,
 		}));
 

@@ -9,9 +9,9 @@ import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { setTimeout as sleep } from "timers/promises";
 import { getAgentDir } from "../../config.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { lockSyncWithRetry } from "../../utils/file-write-lock.ts";
-import { normalizePath } from "../../utils/paths.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
+import { normalizePath } from "../../../../common/src/paths.ts";
 
 export type AuthStorageData = Record<string, Credential>;
 

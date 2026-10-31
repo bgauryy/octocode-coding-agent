@@ -7,7 +7,7 @@ import {
 	type GithubAuthOptions,
 	runGithubAuth,
 } from "../../../../../mcp/src/presets/octocode/github-auth.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { refreshGithubFooter, updateGithubFooter } from "./github-footer.ts";

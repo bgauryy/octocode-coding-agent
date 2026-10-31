@@ -18,7 +18,7 @@ import { getSkillCommands } from "../skill-commands.ts";
 import { selectExplicitSkills } from "../skill-mentions.ts";
 import { explicitSkillIdentity } from "../skills.ts";
 import type { SessionInternals } from "./host.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 // ============================================================================
 // Skill Block Parsing

@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { STATES, type NoteKind } from "@octocodeai/octocode-contacts/snapshot";
+import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
 import { USER_AUTHOR } from "../agentdb/author.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { type Db, backlog, meta } from "../agentdb/api.ts";

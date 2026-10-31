@@ -1,5 +1,5 @@
 import type { Permission } from "../../permission/ask.ts";
-import type { HostLookup } from "../../web/guard.ts";
+import type { HostLookup } from "../../../../../common/src/web-guard.ts";
 import type { BrowserSession } from "../cdp/browser-session.ts";
 import { PagePolicy } from "../network.ts";
 import type { NetworkEvent } from "../policy.ts";

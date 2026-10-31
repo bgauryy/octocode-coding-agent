@@ -1,4 +1,4 @@
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { PRIORITY_TITLES, STATE_TITLES } from "../model/backlog.ts";
 import { ago, stamp } from "../model/format.ts";

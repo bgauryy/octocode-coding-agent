@@ -8,15 +8,16 @@ import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { moduleSpecifiers } from "./module-specifiers.mjs";
 
 export const PACKAGE_POLICY = {
-	acp: ["ai"],
+	acp: ["ai", "common", "contracts", "mcp", "tui"],
 	agent: ["ai"],
-	mcp: ["agent", "ai", "tui"],
-	ai: ["contacts", "telemetry"],
-	"coding-agent": ["agent", "ai", "contacts", "tui", "webview"],
-	contacts: [],
+	common: ["contracts"],
+	mcp: ["agent", "ai", "common", "contracts", "tui"],
+	ai: ["contracts", "telemetry"],
+	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "webview"],
+	contracts: [],
 	telemetry: [],
 	tui: [],
-	webview: ["contacts"],
+	webview: ["contracts"],
 };
 
 export function checkPackageBoundaries(
@@ -44,6 +45,7 @@ export function checkPackageBoundaries(
 				issues.push(`forbidden dependency: ${dir} -> ${target}`);
 		}
 	}
+	const layerEdges = new Set();
 	for (const source of sources) {
 		const manifest = packages[source.package];
 		for (const specifier of source.imports) {
@@ -62,9 +64,11 @@ export function checkPackageBoundaries(
 			}
 			// A layer may not reach the layer above it, except through files its baseline already lists.
 			for (const rule of layerRules) {
-				if (`${source.package}/${source.path}`.startsWith(rule.from) && reached.startsWith(rule.to))
+				if (`${source.package}/${source.path}`.startsWith(rule.from) && reached.startsWith(rule.to)) {
+					layerEdges.add(`${rule.name}: ${source.package}/${source.path}`);
 					if (!rule.baseline.includes(`${source.package}/${source.path}`))
 						issues.push(`${rule.name}: ${source.package}/${source.path} -> ${reached} (not in its baseline)`);
+				}
 			}
 			// A hosted workspace compiles into its host, but may only reach host files already in the baseline.
 			if (target && target === unit(source.package) && target !== source.package) {
@@ -73,6 +77,16 @@ export function checkPackageBoundaries(
 						`hosted workspace reaches host internals: ${source.package}/${source.path} -> ${reached} (not in HOST_IMPORT_BASELINE)`,
 					);
 			}
+			// Hosted workspaces compiled into one host may reach each other only along their policy edges.
+			if (
+				target &&
+				manifest.octocodeSource &&
+				target !== source.package &&
+				target !== unit(target) &&
+				unit(target) === unit(source.package) &&
+				!(policy[source.package] ?? []).includes(target)
+			)
+				issues.push(`forbidden import: ${source.package}/${source.path} -> ${target}`);
 			if (!target || unit(target) === unit(source.package)) continue;
 			edges.get(unit(source.package)).add(unit(target));
 			if (!(policy[source.package] ?? []).includes(target))
@@ -86,6 +100,15 @@ export function checkPackageBoundaries(
 				issues.push(`undeclared import: ${source.package}/${source.path} -> ${target}`);
 		}
 	}
+	// A baseline entry that no longer imports its layer is stale: the ratchet only moves down. A rule applies once the
+	// scan contains files of its layer.
+	for (const rule of layerRules)
+		for (const file of rule.baseline)
+			if (
+				sources.some((source) => `${source.package}/${source.path}`.startsWith(rule.from)) &&
+				!layerEdges.has(`${rule.name}: ${file}`)
+			)
+				issues.push(`${rule.name}: ${file} no longer imports ${rule.to} (remove it from its baseline)`);
 	const done = new Set();
 	function visit(dir, trail) {
 		if (trail.includes(dir)) {

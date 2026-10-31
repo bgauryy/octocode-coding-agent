@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { within } from "@testing-library/dom";
 import { JSDOM } from "jsdom";
 import { afterEach, expect, it, vi } from "vitest";

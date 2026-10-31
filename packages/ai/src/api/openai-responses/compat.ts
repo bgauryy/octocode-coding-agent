@@ -1,4 +1,5 @@
 import type { Model, OpenAIResponsesCompat } from "../../types.ts";
+import { isOpenRouterModel } from "../../utils/provider-host.ts";
 import type { OpenAIResponsesOptions } from "./types.ts";
 
 /**
@@ -15,7 +16,7 @@ export function isChatGPTSignIn(model: Model<"openai-responses">, apiKey: string
 }
 
 function detectSessionAffinityFormat(model: Pick<Model<"openai-responses">, "provider" | "baseUrl">) {
-	return model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai") ? "openrouter" : "openai";
+	return isOpenRouterModel(model) ? "openrouter" : "openai";
 }
 
 export function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {

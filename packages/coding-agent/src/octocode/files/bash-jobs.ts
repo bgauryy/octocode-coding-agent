@@ -1,15 +1,15 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import type { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { bashSessionEnv } from "../../core/tools/bash.ts";
-import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration, shortPath } from "../shared/format.ts";
 import { PRIVATE_FILE_MODE, privateDir, sessionOutputDir } from "../shared/home.ts";
-import { adoptTree, groupAlive, killTree, prepareTree, processStartTime, stopTree } from "../shared/process.ts";
+import { groupAlive, killTree, processStartTime, stopTree } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
 import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
@@ -23,8 +23,6 @@ import type { BashJob, JobExit, VerificationReceipt } from "./bash-jobs/types.ts
  * it, so a later Octocode can stop a job whose Octocode died without ending it (`reapOrphanJobs`).
  */
 
-/** The longest timer Node keeps (2^31-1 ms), in whole seconds. */
-export const MAX_TIMER_SECONDS = 2_147_483;
 /** A job log past this size moves to `<log>.1` (replacing the one before) and starts over, so a chatty server cannot fill the disk. */
 const MAX_JOB_LOG_BYTES = 16 * 1024 * 1024;
 /** After the job's process group is gone, how long its pipes may take to deliver the last output, in ms. */
@@ -66,30 +64,15 @@ export class BashJobs {
 	): Promise<BashJob> {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
 		// Node fires a timer longer than 2^31-1 ms at once, which would stop the job as soon as it started.
-		const timeout = asked && asked > 0 ? Math.min(asked, MAX_TIMER_SECONDS) : undefined;
-		const shell = settings.type === "powershell" ? getPowerShellConfig() : getShellConfig(settings.shellPath);
-		const viaStdin = shell.commandTransport === "stdin";
-		const script = shellScript(command, settings);
-		// On Windows the job that holds the tree exists before the shell does.
-		await prepareTree();
-		const child = spawn(shell.shell, viaStdin ? shell.args : [...shell.args, script], {
-			cwd,
-			env: nonInteractiveEnv(env),
-			detached: process.platform !== "win32",
-			stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
-			windowsHide: true,
-		});
+		const timeout = clampTimeoutSeconds(asked);
+		const shell = resolveShell(settings);
+		const child = await spawnShell(shell, shellScript(command, settings), { cwd, env: nonInteractiveEnv(env) });
 		if (child.pid === undefined) {
 			// Spawning failed (no shell, EAGAIN, EMFILE): the 'error' event that follows names the cause. Nothing ran.
 			const cause = await new Promise<unknown>((resolve) => child.once("error", resolve));
 			throw new Error(
 				`Could not start a background shell (${shell.shell}): ${errorMessage(cause)}. Nothing is running.`,
 			);
-		}
-		adoptTree(child.pid);
-		if (viaStdin) {
-			child.stdin?.on("error", () => undefined);
-			child.stdin?.end(script);
 		}
 		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification });
 	}

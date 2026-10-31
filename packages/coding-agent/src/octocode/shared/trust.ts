@@ -3,13 +3,14 @@ import path from "node:path";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { notify, type Subcommands, say, wordCompletions } from "./commands.ts";
-import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "./env.ts";
+import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "../../../../common/src/env.ts";
 import { projectHookFiles } from "./home.ts";
 import { describeProjectConfig, startsCommands } from "./trust/describe.ts";
 import { fingerprint, projectConfigFiles, projectMcpFiles, readForFingerprint, realPath } from "./trust/files.ts";
+import { createdFrom } from "./trust/origin.ts";
 import { isWorktreeOf, readStore, storeKey, storePath, withFileLock } from "./trust/store.ts";
 
 /**
@@ -101,6 +102,23 @@ function inheritsTrust(cwd: string, env: NodeJS.ProcessEnv = process.env): boole
 	);
 }
 
+/**
+ * `cwd` is a worktree Octocode created (`trust/origin.ts`) and holds exactly the gated files the user trusted in the main
+ * checkout it came from. The decision is read from the main checkout each time, never copied: `/trust off` there, or a
+ * changed file here, takes it away.
+ */
+function followsMain(cwd: string, files: string[], home: string | undefined, read: (file: string) => string): boolean {
+	const root = storeKey(cwd);
+	const main = createdFrom(root, home);
+	const stored = main && readStore(home)[storeKey(main)];
+	return Boolean(
+		main &&
+		stored &&
+		stored.trusted &&
+		stored.sha === fingerprint(files, (file) => path.join(main, path.relative(root, file)), read),
+	);
+}
+
 function computeTrust(
 	cwd: string,
 	files: string[],
@@ -127,6 +145,7 @@ function computeTrust(
 	if (!trusted && files.length > 0) return false;
 	const stored = trusted ? readStore(home)[storeKey(cwd)] : undefined;
 	if (stored?.sha === sha) return stored.trusted;
+	if (files.length > 0 && followsMain(cwd, files, home, read)) return true;
 	// Octocode's trust covers the files present now (even none); recording them makes a later change, such as a pulled
 	// hooks file, ask again. Hooks that start commands were never shown by Octocode: they need `/trust`.
 	if (!stored && trusted && decided && !startsCommands(cwd, files, read)) {
@@ -193,7 +212,8 @@ export function saveDecision(cwd: string, sha: string, trusted: boolean, home?: 
 /** `/trust [off]`: show what the project would run and trust (or distrust) exactly that, then reload. */
 export function registerTrustCommand(commands: Subcommands, home?: string): void {
 	commands.add("trust", {
-		description: "trust [off] — load (or stop loading) this project's hooks, MCP servers, agents and skills",
+		description: "Trust or distrust project config",
+		argumentHint: "[off]",
 		complete: (prefix) => wordCompletions(["off"], prefix),
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			const action = args.trim();

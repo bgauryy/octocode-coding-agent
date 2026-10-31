@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { saveContentCopy } from "../shared/spill.ts";
 

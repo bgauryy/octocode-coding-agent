@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createLocalBashOperations } from "../../src/core/tools/bash/local-operations.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -11,7 +12,7 @@ const tree = {
 	owns: vi.fn(() => false),
 	kill: vi.fn(async () => true),
 };
-vi.mock("../../src/octocode/shared/winhelper.ts", () => ({
+vi.mock("../../src/utils/windows/winhelper.ts", () => ({
 	windowsTree: {
 		start: () => tree.start(),
 		assign: (pid: number) => tree.assign(pid),
@@ -51,5 +52,20 @@ describe("bash on Windows puts each spawned shell in a job", () => {
 		expect(tree.start).toHaveBeenCalledTimes(1);
 		expect(tree.assign).toHaveBeenCalledTimes(1);
 		await jobs.stopAll("session end");
+	});
+});
+
+describe("core's local bash puts its shell in a job too", () => {
+	it("prepares the helper before, and assigns the pid after, the shell spawns", async () => {
+		const operations = createLocalBashOperations({ shellPath: "/bin/sh" });
+		Object.defineProperty(process, "platform", { value: "win32" });
+		const chunks: Buffer[] = [];
+		const { exitCode } = await operations.exec("echo hi", tmp(), { onData: (data) => chunks.push(data) });
+		expect(exitCode).toBe(0);
+		expect(Buffer.concat(chunks).toString()).toContain("hi");
+		expect(tree.start).toHaveBeenCalledTimes(1);
+		expect(tree.assign).toHaveBeenCalledTimes(1);
+		expect(tree.assign.mock.calls[0][0]).toBeGreaterThan(1);
+		expect(tree.start.mock.invocationCallOrder[0]).toBeLessThan(tree.assign.mock.invocationCallOrder[0]);
 	});
 });

@@ -1,4 +1,4 @@
-import { envChoice, PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "../shared/env.ts";
+import { envChoice, PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "../../../../common/src/env.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { plural } from "../shared/render/text.ts";
 

@@ -1,10 +1,10 @@
-import type { WorkLink } from "@octocodeai/octocode-contacts/backlogs";
+import type { WorkLink } from "@octocodeai/octocode-contracts/backlogs";
 import { backlog } from "../agentdb/api.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { BacklogStore, type Item } from "../backlog/store.ts";
 import { formatAgo } from "../shared/format.ts";
 import { contentText, HOUR_MS, MINUTE_MS } from "../shared/util.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { flatLine, type SessionExtra, shownLine } from "./store.ts";
 
 /** Away longer than this is worth a brief by itself. */

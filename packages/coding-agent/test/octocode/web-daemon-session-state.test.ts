@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { byAttention, SessionWatch } from "../../src/octocode/web-daemon/session-state.ts";
 import { fakeSession } from "./web-daemon-fixture.ts";
 
@@ -42,6 +42,23 @@ describe("session watch", () => {
 		session.push(event(5, { type: "session.awaiting", awaiting: { kind: "question", title: "Branch?" } }));
 		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Branch?" }));
 		expect(changes).toHaveBeenCalledTimes(5);
+		watch.close();
+	});
+
+	it("reports needsYou while no run is going, and keeps it through a run's start and end", async () => {
+		const session = fakeSession("s");
+		const watch = new SessionWatch(session.workspace.application!, "s", () => {});
+		await vi.waitFor(() => expect(session.connects).toHaveLength(1));
+		session.push(snapshot(false, { kind: "approval", title: "Subagent asks: run rm?" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Subagent asks: run rm?" }));
+		session.push(event(2, { type: "run.started", runId: "r" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Subagent asks: run rm?" }));
+		session.push(event(3, { type: "run.settled", runId: "r", outcome: "completed" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Subagent asks: run rm?" }));
+		session.push(event(4, { type: "session.awaiting" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		session.push(event(5, { type: "session.awaiting", awaiting: { kind: "question", title: "Branch?" } }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Branch?" }));
 		watch.close();
 	});
 

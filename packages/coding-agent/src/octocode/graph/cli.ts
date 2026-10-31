@@ -1,12 +1,17 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { statSync } from "node:fs";
+import { promisify } from "node:util";
 import { getNativeBinaryPath } from "../../config.ts";
-import { adoptTree, killTree, prepareTree } from "../shared/process.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { killTree } from "../shared/process.ts";
+import { adoptTree, prepareTree } from "../../utils/process-tree.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { defaultSchemaCacheFile, type GraphSchema, readSchemaCache, writeSchemaCache } from "./schema-cache.ts";
+import { leadsProcessGroup } from "../../utils/shell.ts";
 
 export const GRAPH_TOOLS = ["graphBuild", "graphQuery"] as const;
 export type GraphTool = (typeof GRAPH_TOOLS)[number];
+
+const execFileAsync = promisify(execFile);
 
 export const graphBinary = (): string => getNativeBinaryPath();
 
@@ -21,44 +26,74 @@ function environment(cwd: string, trusted: boolean): NodeJS.ProcessEnv {
 
 const schemas = new Map<string, GraphSchema>();
 let binaryStamp = "";
+/** The fetch in flight for `binaryStamp`, so concurrent callers share one CLI run per tool. */
+let loading: Promise<void> | undefined;
 
-function fetchSchema(binary: string, name: GraphTool, cwd: string): GraphSchema {
-	const output = execFileSync(binary, ["schema", name, "--view", "query"], {
+async function fetchSchema(binary: string, name: GraphTool, cwd: string, signal?: AbortSignal): Promise<GraphSchema> {
+	const { stdout } = await execFileAsync(binary, ["schema", name, "--view", "query"], {
 		cwd,
 		env: environment(cwd, false),
 		encoding: "utf8",
 		timeout: 10_000,
 		maxBuffer: 1024 * 1024,
+		signal,
 	});
-	const schema: unknown = JSON.parse(output);
+	const schema: unknown = JSON.parse(stdout);
 	if (!isRecord(schema) || !isRecord(schema.inputSchema) || typeof schema.description !== "string")
 		throw new Error(`Octocode CLI did not return a schema for ${name}; rebuild or update Octocode.`);
 	return { inputSchema: schema.inputSchema, description: schema.description };
 }
 
-/**
- * The CLI's contract for one graph tool. It is read from memory, else from the on-disk cache of this binary's stamp,
- * else from the CLI itself, which then stores every tool's schema so only the first start after a new build pays.
- */
-export function graphSchema(
-	binary: string,
-	name: GraphTool,
-	cwd: string,
-	cacheFile: string = defaultSchemaCacheFile(),
-): GraphSchema {
+/** Points the in-memory schemas at this binary build, loading the on-disk cache of its stamp when the build changed. */
+function adopt(binary: string, cacheFile: string): string {
 	const stat = statSync(binary);
 	const stamp = `${binary}:${stat.size}:${stat.mtimeMs}`;
 	if (binaryStamp !== stamp) {
 		schemas.clear();
+		loading = undefined;
 		binaryStamp = stamp;
 		for (const [tool, schema] of Object.entries(readSchemaCache(cacheFile, stamp) ?? {})) schemas.set(tool, schema);
 	}
+	return stamp;
+}
+
+/** The schema when memory or the on-disk cache of this binary's stamp has it; undefined when only the CLI can tell. */
+export function cachedGraphSchema(
+	binary: string,
+	name: GraphTool,
+	cacheFile: string = defaultSchemaCacheFile(),
+): GraphSchema | undefined {
+	adopt(binary, cacheFile);
+	return schemas.get(name);
+}
+
+/**
+ * The CLI's contract for one graph tool. It is read from memory, else from the on-disk cache of this binary's stamp,
+ * else from the CLI itself (asynchronously, so the event loop keeps running), which then stores every tool's schema so
+ * only the first start after a new build pays. A failed or aborted fetch stores nothing and the next call asks again.
+ */
+export async function graphSchema(
+	binary: string,
+	name: GraphTool,
+	cwd: string,
+	cacheFile: string = defaultSchemaCacheFile(),
+	signal?: AbortSignal,
+): Promise<GraphSchema> {
+	const stamp = adopt(binary, cacheFile);
 	const cached = schemas.get(name);
 	if (cached) return cached;
-	for (const tool of GRAPH_TOOLS) {
-		if (!schemas.has(tool)) schemas.set(tool, fetchSchema(binary, tool, cwd));
+	const pending = (loading ??= Promise.all(
+		GRAPH_TOOLS.filter((tool) => !schemas.has(tool)).map(async (tool) =>
+			schemas.set(tool, await fetchSchema(binary, tool, cwd, signal)),
+		),
+	).then(() => {
+		if (binaryStamp === stamp) writeSchemaCache(cacheFile, stamp, Object.fromEntries(schemas));
+	}));
+	try {
+		await pending;
+	} finally {
+		if (loading === pending) loading = undefined;
 	}
-	writeSchemaCache(cacheFile, stamp, Object.fromEntries(schemas));
 	return schemas.get(name) as GraphSchema;
 }
 
@@ -78,7 +113,7 @@ export async function runGraphCli(
 		const child = spawn(binary, ["--json", name, "--input", "-"], {
 			cwd,
 			env: environment(cwd, trusted),
-			detached: process.platform !== "win32",
+			detached: leadsProcessGroup(),
 			stdio: "pipe",
 			windowsHide: true,
 		});

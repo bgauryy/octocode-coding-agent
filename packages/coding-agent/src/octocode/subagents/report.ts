@@ -5,20 +5,40 @@ import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../shared/format.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import { capOutput, cutText } from "../shared/util.ts";
+import { JOB_TYPE } from "../shared/messages.ts";
+import { capOutput, contentText, cutText } from "../shared/util.ts";
 import {
 	type ResultContract,
 	type StructuredResultV1,
 	unavailableResult,
 	validateResultAnswer,
 } from "./result-schema.ts";
-import { errorMessage as describeError } from "../../utils/guards.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { errorMessage as describeError, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { snapshotReport, type ReportArtifact } from "../shared/report-artifact.ts";
 
 const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
 const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_LINES);
+
+/**
+ * The child's own background bash job report, read from its message (`shared/messages.ts` `JOB_TYPE`): its `Background
+ * bash …` line (else its first line), and `quiet` when it was recorded without starting a turn (`files/bash.ts`: every job
+ * of a subagent), with the log path the parent can read.
+ */
+export function jobNotice(message: { customType?: unknown; content?: unknown; details?: unknown }): {
+	job?: string;
+	quiet?: true;
+} {
+	if (message.customType !== JOB_TYPE) return {};
+	const lines = contentText(message.content).split("\n");
+	const line = visibleControls(lines.find((text) => text.startsWith("Background bash ")) ?? lines[0] ?? "");
+	if (!line) return {};
+	const details = isRecord(message.details) ? message.details : {};
+	if (details.quiet !== true) return { job: line };
+	const log = typeof details.log === "string" ? ` (log: ${visibleControls(shortPath(details.log))})` : "";
+	return { job: `${line}${log}`, quiet: true };
+}
 
 /** One label a report may put before its outcome word: `Report: partial`, `**Status:** done`, `Outcome: blocked`. */
 export const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
@@ -170,8 +190,15 @@ export class ReportTracker {
 		this.resultContract = resultContract;
 	}
 
-	/** A message reached the child; `job`: the notice line when it is the child's own background job ending. */
-	incoming(role: unknown, job?: string): void {
+	/**
+	 * A message reached the child; `job`: the notice line when it is the child's own background job ending. A `quiet` job
+	 * report starts no turn: it adds its line to the report already given instead of a follow-up answer.
+	 */
+	incoming(role: unknown, job?: string, quiet?: boolean): void {
+		if (quiet && job) {
+			if (this.sections > 0) this.note(`After this report: ${job}`);
+			return;
+		}
 		if (role === "user" || role === "custom") {
 			this.fresh = true;
 			this.job = role === "custom" && job && this.sections > 0 ? job : undefined;
@@ -230,6 +257,20 @@ export class ReportTracker {
 			this.sections++;
 		}
 		const section = `${this.sections > 1 ? SEPARATOR : ""}${followUp ? `Follow-up to the report above (${followUp}):\n` : ""}${text}`;
+		this.write(section, append);
+		this.signature = signature;
+		this.fresh = false;
+	}
+
+	/** A line added to the latest report without a model turn; a later answer still starts its own section. */
+	private note(line: string): void {
+		this.before = this.full;
+		this.sectionStart = this.full.bytes;
+		this.write(`\n\n${line}`, true);
+	}
+
+	/** Appends `section` to the report (or replaces the current section with it), on disk once the report is long. */
+	private write(section: string, append: boolean): void {
 		const whole = appendHead(this.before, section);
 		this.artifact = undefined;
 		const capped = headPreview(whole);
@@ -253,8 +294,6 @@ export class ReportTracker {
 		}
 		this.full = whole;
 		this.text = capped;
-		this.signature = signature;
-		this.fresh = false;
 	}
 
 	/**

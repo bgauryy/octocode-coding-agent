@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFile } from "../../utils/atomic-file.ts";
+import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
 
 /** The checkpoint store on disk: the append-only journal and fork inheritance (the sessions sweep handles retention). */

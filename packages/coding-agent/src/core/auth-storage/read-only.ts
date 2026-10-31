@@ -8,11 +8,11 @@ import {
 import { readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../../config.ts";
-import { normalizePath } from "../../utils/paths.ts";
-import { stripBom } from "../../utils/text.ts";
+import { normalizePath } from "../../../../common/src/paths.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import { isCommandConfigValue, resolveConfigValue } from "../resolve-config-value.ts";
 import type { AuthStorageData } from "./backends.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export class ReadOnlyAuthStorage implements CredentialStore {
 	private readonly authPath: string;

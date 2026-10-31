@@ -9,7 +9,7 @@ import { attachReport, heldItem } from "../../src/octocode/backlog/delegation.ts
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogError, BacklogStore, COMPLETION_GUIDANCE } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
@@ -114,9 +114,11 @@ describe("write rules live in the store", () => {
 		);
 		const t = setup();
 		expect(t.tool.promptGuidelines.join("\n")).toContain(COMPLETION_GUIDANCE);
-		expect(setup({ isSubagent: true, parentSession: "p" }).tool.promptGuidelines.join("\n")).toContain(
-			COMPLETION_GUIDANCE,
-		);
+		// A child's guideline is conditioned on holding an item and leaves the fields to the schema and the store error.
+		const childGuideline = setup({ isSubagent: true, parentSession: "p" }).tool.promptGuidelines.join("\n");
+		expect(childGuideline).toContain("If your task names a backlog item, note progress on it");
+		expect(childGuideline).not.toContain(COMPLETION_GUIDANCE);
+		expect(childGuideline).not.toContain("Note progress on your item");
 		const item = store.get("B1")!;
 		expect(doItPrompt(item, store)).toContain(COMPLETION_GUIDANCE);
 		expect(delegatePrompt(item, store)).toContain(COMPLETION_GUIDANCE);

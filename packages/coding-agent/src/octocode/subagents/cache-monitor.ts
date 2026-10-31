@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { finiteOrZero } from "../shared/util.ts";
 import { formatTokens } from "../shared/format.ts";
 

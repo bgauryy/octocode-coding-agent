@@ -1,6 +1,6 @@
 import type { AgentSession, PromptDisposition } from "../../../core/agent-session.ts";
 import { completeSessionDispatch, hasSessionDispatch } from "../../../core/agent-session/dispatch.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { RpcCommand } from "../rpc-types.ts";
 import { error, success } from "./responses.ts";
 import type { RpcOutput } from "./ui-context.ts";

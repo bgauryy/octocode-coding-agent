@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { sha256Hasher } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { sha256Hasher } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** A host-recorded report version. Without a path, use the current answer received in the transcript. */
 export interface ReportArtifact {

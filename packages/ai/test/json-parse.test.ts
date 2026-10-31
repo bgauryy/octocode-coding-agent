@@ -122,6 +122,54 @@ describe("parseStreamingJsonThrottled", () => {
 	});
 });
 
+// B288: long nested `agent` calls failed with "Unexpected non-whitespace character after JSON" one character before the end.
+describe("parseToolCallArguments text after the object", () => {
+	const nested = (task: string) => JSON.stringify({ type: "task", input: { goal: "g", task, background: true } });
+
+	it.each(["}", "}}", "} \n", "]", "}]}"])("accepts a complete object followed only by closers %j", (extra) => {
+		const raw = nested('say "}" and {braces}\nnext') + extra;
+		expect(() => JSON.parse(raw)).toThrow(/after JSON/);
+		const result = parseToolCallArguments(raw);
+		expect(result.argumentsError).toBeUndefined();
+		expect(result.arguments).toEqual(JSON.parse(nested('say "}" and {braces}\nnext')));
+	});
+
+	it("accepts extra closers after a long object whose text contains braces and quotes", () => {
+		const task = 'line {with} "quotes" and \\ backslash\n'.repeat(120);
+		const result = parseToolCallArguments(`${nested(task)}}`);
+		expect(result.argumentsError).toBeUndefined();
+		expect((result.arguments.input as { task: string }).task).toBe(task);
+	});
+
+	it("refuses a second object after the first, as when parallel calls merge", () => {
+		const raw = `${nested("one")}${nested("two")}`;
+		const result = parseToolCallArguments(raw);
+		expect(result.arguments).toEqual({});
+		expect(result.argumentsError).toContain("complete JSON object followed by unexpected text");
+		expect(result.argumentsError).toContain(JSON.stringify(nested("two").slice(0, 100)));
+	});
+
+	it.each(['}, "extra": 1}', " tail", "}x", "}\n```"])("refuses other text after the object %j", (extra) => {
+		const result = parseToolCallArguments(nested("one") + extra);
+		expect(result.arguments).toEqual({});
+		expect(result.argumentsError).toContain("followed by unexpected text");
+	});
+
+	it("refuses closers after text that is not a complete object", () => {
+		expect(parseToolCallArguments('{"a":{"b":1}').arguments).toEqual({});
+		expect(parseToolCallArguments('{"a":.5}}').argumentsError).toBeDefined();
+		expect(parseToolCallArguments("}").argumentsError).toBeDefined();
+	});
+
+	it("shows the end of long malformed arguments, where the stray text is", () => {
+		const raw = `${nested("x".repeat(5000))}} TRAILING-MARKER`;
+		const result = parseToolCallArguments(raw);
+		expect(result.argumentsError).toContain('"} TRAILING-MARKER"');
+		expect(result.argumentsError).toContain(`Last 200 characters:\n${raw.slice(-200)}`);
+		expect(result.argumentsError!.endsWith(raw.slice(-200))).toBe(true);
+	});
+});
+
 describe("parseToolCallArguments error echo", () => {
 	it("caps the echoed arguments and reports how much was omitted", () => {
 		const raw = `{"content":"${"x".repeat(40_000)}`;

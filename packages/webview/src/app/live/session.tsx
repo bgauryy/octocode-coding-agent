@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import {
 	REPORT_KINDS,
 	type BacklogMutation,
@@ -6,18 +6,19 @@ import {
 	type ReportSummary,
 	type ReportsIndex,
 	WORKSPACE_ROUTES,
-} from "@octocodeai/octocode-contacts/protocol";
-import type { BacklogAudit, Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+} from "@octocodeai/octocode-contracts/protocol";
+import type { BacklogAudit, Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type {
 	WorkspaceCommand,
 	WorkspaceEvent,
 	WorkspaceReceipt,
 	WorkspaceSnapshot,
-} from "@octocodeai/octocode-contacts/workspace";
+} from "@octocodeai/octocode-contracts/workspace";
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { createWorkspaceStore } from "../../state.ts";
+import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
 import { BrowserConnection } from "../../transport.ts";
@@ -46,7 +47,8 @@ interface SessionState {
 
 /** Authenticated calls to the local host; the host stays the authority for every change. */
 function createApi(access: string) {
-	const headers = { Authorization: `Bearer ${access}`, "Content-Type": "application/json" };
+	const authorization = bearer(access);
+	const headers = { ...authorization, "Content-Type": "application/json" };
 	return {
 		...createApplicationApi(access),
 		backlogs: async () =>
@@ -83,13 +85,13 @@ function createApi(access: string) {
 					...(params.before ? { before: String(params.before) } : {}),
 					...(params.backlogId ? { backlogId: params.backlogId } : {}),
 				})}`,
-				{ headers: { Authorization: headers.Authorization }, signal },
+				{ headers: authorization, signal },
 				"Could not load audit",
 			),
 		reports: async (signal?: AbortSignal): Promise<ReportsIndex> => {
 			const value = await requestJson(
 				scopedRoute(WORKSPACE_ROUTES.reports),
-				{ headers: { Authorization: headers.Authorization }, signal },
+				{ headers: authorization, signal },
 				"Could not load reports",
 			);
 			if (!isRecord(value) || !Array.isArray(value.reports) || !value.reports.every(isReportSummary))
@@ -105,7 +107,7 @@ function createApi(access: string) {
 			const value = await requestJson(
 				`${scopedRoute(WORKSPACE_ROUTES.reports)}/file?${new URLSearchParams({ id, kind, name: file })}`,
 				{
-					headers: { Authorization: headers.Authorization },
+					headers: authorization,
 					signal,
 				},
 				"Could not load the report",

@@ -31,13 +31,14 @@ import {
 	TRUST_ROOT_ENV,
 	AGENT_SCRATCH_ENV,
 	TEAM_WORKSPACE_ENV,
-} from "../../shared/env.ts";
+} from "../../../../../common/src/env.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "../../shared/home.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
 import type { AgentProfile } from "../profiles.ts";
 import type { ResultContract } from "../result-schema.ts";
+import { CHILD_OWNED_ENV } from "./child-env.ts";
 
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
 export interface Identity {
@@ -101,34 +102,7 @@ export function subagentProcessEnv(
 ): NodeJS.ProcessEnv {
 	const inherited = { ...base };
 	// User settings survive; run identity, trust delegation, permissions and browser mode belong to this child.
-	const owned = [
-		PROMPT_CACHE_KEY_ENV,
-		ROLE_PROMPT_FILE_ENV,
-		SKILL_SNAPSHOT_FILE_ENV,
-		MCP_SESSION_SERVERS_FILE_ENV,
-		SUBAGENT_HOOKS_ENV,
-		READ_ONLY_ENV,
-		LEAN_ENV,
-		SKILLS_IN_TASK_ENV,
-		TRUST_ROOT_ENV,
-		BROWSER_VISIBLE_ENV,
-		PERMISSION_ENV,
-		PERMISSION_GRANTS_ENV,
-		PERMISSION_NONCE_FILE_ENV,
-		PERMISSION_RELAY_ENV,
-		WORKTREE_ROOT_ENV,
-		PROMPT_ROOT_ENV,
-		AGENT_ID_ENV,
-		AGENT_ROLE_ENV,
-		PARENT_ID_ENV,
-		AGENT_GOAL_ENV,
-		AGENT_SCRATCH_ENV,
-		PARENT_SESSION_ENV,
-		PARENT_TRANSCRIPT_ENV,
-		PARENT_PID_ENV,
-		BACKLOG_ITEM_ENV,
-	];
-	for (const key of owned) delete inherited[key];
+	for (const key of [...CHILD_OWNED_ENV, PERMISSION_ENV]) delete inherited[key];
 	return {
 		...inherited,
 		...(identity?.promptCacheKey ? { [PROMPT_CACHE_KEY_ENV]: identity.promptCacheKey } : {}),

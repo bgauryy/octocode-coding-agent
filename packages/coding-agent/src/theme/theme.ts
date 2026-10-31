@@ -8,7 +8,7 @@ import { resolveVarRefs, type Theme } from "./theme-class.ts";
 import { setGlobalTheme } from "./theme-global.ts";
 import { getBuiltinThemes, loadTheme, loadThemeFromPath, loadThemeJson, registeredThemes } from "./theme-loader.ts";
 import type { ThemeColorValue } from "./theme-schema.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 // ============================================================================
 // Types & Schema

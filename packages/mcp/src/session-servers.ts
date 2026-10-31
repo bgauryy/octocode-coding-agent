@@ -7,8 +7,8 @@ import fs from "node:fs";
 import type { EventBus } from "../../coding-agent/src/core/event-bus.ts";
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
 import { type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
-import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "../../coding-agent/src/octocode/shared/env.ts";
-import { isRecord } from "../../coding-agent/src/utils/guards.ts";
+import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const REQUEST_ADDED_SERVERS = "mcp:added-servers:request";
 const FILE_VERSION = 1;

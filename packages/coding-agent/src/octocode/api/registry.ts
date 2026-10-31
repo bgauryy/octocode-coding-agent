@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { globalPaths } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 

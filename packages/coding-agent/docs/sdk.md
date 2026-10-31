@@ -60,7 +60,7 @@ For creating, opening, continuing, listing and forking sessions, use the exporte
 
 `session.dispose()` aborts active work, invalidates extension contexts, disconnects from the agent, and removes event listeners. Call it when the session is no longer needed.
 
-`AgentSessionRuntime` adds `newSession()`, `switchSession()`, `fork()`, and `importFromJsonl()`. Each operation replaces the active `AgentSession` and recreates services for the target working directory.
+`AgentSessionRuntime` adds `newSession()`, `switchSession()`, `fork()`, and `importFromJsonl()`. Each operation replaces the active `AgentSession` and recreates services for the target working directory. `newSession({ cwd })` (also `ctx.newSession` for extension commands) starts the new session in another existing folder, stored with that folder's sessions unless a custom session directory is set; `projectTrustContextFactory` lets the host ask for that folder's project trust.
 
 After a runtime replacement, subscriptions belong to the old `AgentSession` and must be rebound. [`AgentSessionRuntime`](../src/core/agent-session-runtime.ts) provides a rebind callback and an asynchronous `dispose()` that emits shutdown before disposing its session.
 

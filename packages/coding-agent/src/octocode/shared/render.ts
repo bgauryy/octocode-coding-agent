@@ -1,4 +1,10 @@
-import { type Component, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	stripTerminalSequences,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@octocodeai/octocode-tui";
 import type { Theme } from "../../theme/theme.ts";
 import { formatDuration, shortPath } from "./format.ts";
 import { sanitizeTerminalText } from "./sanitize.ts";
@@ -242,7 +248,7 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 			});
 	} else {
 		// Blank lines waste preview rows; they still count as hidden and show when expanded.
-		const filled = body.filter((line) => (raw ? line : line.replace(/\u001b\[[0-9;]*m/g, "")).trim() !== "");
+		const filled = body.filter((line) => (raw ? line : stripTerminalSequences(line)).trim() !== "");
 		const short =
 			max > 0 && preface.length === 0 && filled.length <= SHOW_ALL_LINES && (options.totalLines ?? 0) <= body.length;
 		const limit = short ? filled.length : max;

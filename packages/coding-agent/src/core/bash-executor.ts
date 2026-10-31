@@ -4,14 +4,18 @@
  * This module provides a unified bash execution implementation used by:
  * - AgentSession.executeBash() for interactive and RPC modes
  * - Direct calls from modes that need bash execution
+ *
+ * A result carries what the agent's `bash` tool returns: a header line and the output trimmed to the same budget.
  */
 
-import type { WriteStream } from "node:fs";
+import { shortPath } from "../octocode/shared/format.ts";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../utils/ansi.ts";
-import { createOutputFileStream } from "../utils/output-files.ts";
+import { moveOutputFile } from "../utils/output-files.ts";
 import { sanitizeBinaryOutput } from "../utils/shell.ts";
-import type { BashOperations } from "./tools/bash.ts";
-import { DEFAULT_MAX_BYTES, truncateTail } from "./tools/truncate.ts";
+import { type BashOperations } from "./tools/bash.ts";
+import { bashBudget } from "./tools/bash/budget.ts";
+import { type BashEnd, formatBashHeader } from "./tools/bash/header.ts";
+import { OutputAccumulator } from "./tools/output-accumulator.ts";
 
 // ============================================================================
 // Types
@@ -22,10 +26,14 @@ interface BashExecutorOptions {
 	onChunk?: (chunk: string) => void;
 	/** AbortSignal for cancellation */
 	signal?: AbortSignal;
+	/** Most bytes of the result that reach the model (the `bashOutputMaxBytes` setting). Default: 20 KB */
+	maxOutputBytes?: number;
+	/** Folder the full output moves to when the result is trimmed. Default: the OS temp folder it is written to */
+	outputDir?: string;
 }
 
 export interface BashResult {
-	/** Combined stdout + stderr output (sanitized, possibly truncated) */
+	/** Combined stdout + stderr output (sanitized; trimmed to the budget when `truncated`) */
 	output: string;
 	/** Process exit code (undefined if killed/cancelled) */
 	exitCode: number | undefined;
@@ -33,8 +41,17 @@ export interface BashResult {
 	cancelled: boolean;
 	/** Whether the output was truncated */
 	truncated: boolean;
-	/** Path to temp file containing full output (if output exceeded truncation threshold) */
+	/** Path to the file containing full output (if output exceeded the budget) */
 	fullOutputPath?: string;
+	/**
+	 * The result's first line for the model and the terminal, e.g. `[exit 0 · 4.2s · 312 lines · 18 KB]`; a trimmed
+	 * result adds what was kept and where the full output is. Absent from results an extension supplies.
+	 */
+	header?: string;
+	/** Lines and bytes of the whole output, and the run time in seconds. */
+	totalLines?: number;
+	totalBytes?: number;
+	wallTimeSeconds?: number;
 }
 
 // ============================================================================
@@ -51,65 +68,32 @@ export async function executeBashWithOperations(
 	operations: BashOperations,
 	options?: BashExecutorOptions,
 ): Promise<BashResult> {
-	const outputChunks: string[] = [];
-	let outputBytes = 0;
-	const maxOutputBytes = DEFAULT_MAX_BYTES * 2;
-
-	let tempFilePath: string | undefined;
-	let tempFileStream: WriteStream | undefined;
-	let closeTempFile: (() => Promise<void>) | undefined;
-	let totalBytes = 0;
-
-	const ensureTempFile = () => {
-		if (tempFilePath) {
-			return;
-		}
-		({
-			path: tempFilePath,
-			stream: tempFileStream,
-			close: closeTempFile,
-		} = createOutputFileStream("octocode-bash", ".log"));
-		for (const chunk of outputChunks) {
-			tempFileStream.write(chunk);
-		}
-	};
+	const output = new OutputAccumulator({
+		...bashBudget(options?.maxOutputBytes),
+		tempFilePrefix: "octocode-bash",
+		smartTrim: true,
+	});
+	const startedAt = performance.now();
 
 	const decoder = new TextDecoder();
 	// Unfinished escape sequence at the end of the previous chunk, completed by the next chunk.
 	let pendingAnsi = "";
 
 	const appendText = (rawText: string) => {
-		// Sanitize: strip ANSI, replace binary garbage, normalize newlines
-		const text = sanitizeBinaryOutput(stripAnsi(rawText)).replace(/\r/g, "");
+		// Strip ANSI and binary garbage; the accumulator keeps carriage returns to show a redrawn line's final state
+		const text = sanitizeBinaryOutput(stripAnsi(rawText));
 		if (!text) {
 			return;
 		}
+		output.append(Buffer.from(text));
 
-		// Start writing to temp file if exceeds threshold
-		if (totalBytes > DEFAULT_MAX_BYTES) {
-			ensureTempFile();
-		}
-
-		if (tempFileStream) {
-			tempFileStream.write(text);
-		}
-
-		// Keep rolling buffer
-		outputChunks.push(text);
-		outputBytes += text.length;
-		while (outputBytes > maxOutputBytes && outputChunks.length > 1) {
-			const removed = outputChunks.shift()!;
-			outputBytes -= removed.length;
-		}
-
-		// Stream to callback
-		if (options?.onChunk) {
-			options.onChunk(text);
+		const chunk = text.replace(/\r/g, "");
+		if (chunk) {
+			options?.onChunk?.(chunk);
 		}
 	};
 
 	const onData = (data: Buffer) => {
-		totalBytes += data.length;
 		const { complete, pending } = splitIncompleteAnsiSuffix(pendingAnsi + decoder.decode(data, { stream: true }));
 		pendingAnsi = pending;
 		appendText(complete);
@@ -128,7 +112,7 @@ export async function executeBashWithOperations(
 		// An aborted command still returns the output it produced so far
 		if (!options?.signal?.aborted) {
 			try {
-				await closeTempFile?.();
+				await output.closeTempFile();
 			} catch {
 				// Report the command failure rather than the cleanup failure
 			}
@@ -137,19 +121,36 @@ export async function executeBashWithOperations(
 	}
 
 	flushOutput();
-	const fullOutput = outputChunks.join("");
-	const truncationResult = truncateTail(fullOutput);
-	if (truncationResult.truncated) {
-		ensureTempFile();
-	}
-	await closeTempFile?.();
+	output.finish();
+	const snapshot = output.snapshot({ persistIfTruncated: true });
+	await output.closeTempFile();
 	const cancelled = options?.signal?.aborted ?? false;
+	const wallTimeSeconds = Math.round((performance.now() - startedAt) / 100) / 10;
+	const fullOutputPath =
+		snapshot.truncation.truncated && snapshot.fullOutputPath && options?.outputDir
+			? moveOutputFile(snapshot.fullOutputPath, options.outputDir)
+			: snapshot.fullOutputPath;
+	const end: BashEnd = cancelled
+		? { kind: "aborted", seconds: wallTimeSeconds }
+		: exitCode === null
+			? { kind: "terminated", seconds: wallTimeSeconds }
+			: { kind: "exit", code: exitCode, seconds: wallTimeSeconds };
 
 	return {
-		output: truncationResult.truncated ? truncationResult.content : fullOutput,
+		output: snapshot.content,
 		exitCode: cancelled ? undefined : (exitCode ?? undefined),
 		cancelled,
-		truncated: truncationResult.truncated,
-		fullOutputPath: tempFilePath,
+		truncated: snapshot.truncation.truncated,
+		fullOutputPath,
+		header: formatBashHeader(end, {
+			totalLines: snapshot.truncation.totalLines,
+			totalBytes: snapshot.truncation.totalBytes,
+			truncation: snapshot.truncation,
+			fullOutputPath: fullOutputPath && shortPath(fullOutputPath, cwd),
+			lastLineBytes: output.getLastLineBytes(),
+		}),
+		totalLines: snapshot.truncation.totalLines,
+		totalBytes: snapshot.truncation.totalBytes,
+		wallTimeSeconds,
 	};
 }

@@ -12,7 +12,7 @@ import { theme } from "../../../../theme/theme.ts";
 import { keyText } from "../keybinding-hints.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "../session-selector-search.ts";
 import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./session-tree.ts";
-import { canonicalizePath } from "../../../../utils/paths.ts";
+import { canonicalizePath } from "../../../../../../common/src/paths.ts";
 import { formatSessionDate, shortenPath } from "./utils.ts";
 
 /**

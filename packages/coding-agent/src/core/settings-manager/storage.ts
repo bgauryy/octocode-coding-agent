@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { CONFIG_DIR_NAME, getLegacyConfigDirs } from "../../config.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { lockSyncWithRetry } from "../../utils/file-write-lock.ts";
-import { resolvePath } from "../../utils/paths.ts";
-import { stripBom } from "../../utils/text.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
+import { resolvePath } from "../../../../common/src/paths.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import { deepMergeObjects, isMergeableObject } from "./merge.ts";
 
 export type SettingsScope = "global" | "project";
@@ -27,6 +27,13 @@ export interface SettingsError {
 	scope: SettingsScope;
 	path?: string;
 	error: Error;
+}
+
+/** A loaded file that works but holds something Octocode ignores; reported like an error, without failing the load. */
+export interface SettingsWarning {
+	scope: SettingsScope;
+	path?: string;
+	message: string;
 }
 
 export type SettingsPaths = Partial<Record<SettingsScope, string>>;

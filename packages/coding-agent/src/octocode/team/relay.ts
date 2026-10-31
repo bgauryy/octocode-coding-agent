@@ -1,4 +1,4 @@
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Message } from "./model.ts";
 import { sessionTree } from "./routing.ts";
 import type { Resumer } from "./session/send.ts";

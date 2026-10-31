@@ -14,7 +14,7 @@ import { ExtensionSelectorComponent } from "../components/extension-selector.ts"
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import { theme } from "../../../theme/theme.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the provider login dialogs. */

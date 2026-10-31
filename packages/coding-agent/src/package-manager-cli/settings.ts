@@ -14,6 +14,9 @@ export function reportSettingsErrors(settingsManager: SettingsManager, context: 
 			console.error(chalk.dim(error.stack));
 		}
 	}
+	for (const { scope, message } of settingsManager.drainWarnings()) {
+		console.error(chalk.yellow(`Warning (${context}, ${scope} settings): ${message}`));
+	}
 }
 
 export interface PackageCommandRuntimeOptions {

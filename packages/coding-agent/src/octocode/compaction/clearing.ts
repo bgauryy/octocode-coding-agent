@@ -13,7 +13,7 @@ import type { FileGuard } from "../files/tool/guard.ts";
 import { readOnlyCommand } from "../permission/shell/read-only.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { CHARS_PER_TOKEN, estimateTokens } from "../../core/compaction/tokens.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { shortPath } from "../shared/format.ts";
 import { readPaths } from "../shared/home.ts";
 import { isOctocodeTool } from "../../../../mcp/src/presets/octocode/names.ts";

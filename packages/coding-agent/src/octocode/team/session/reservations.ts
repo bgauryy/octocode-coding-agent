@@ -6,7 +6,7 @@ import type { PeerLease, PeerLeases } from "../peer-leases.ts";
 import { dbFailure, leaseAge, resolveLockPath } from "../routing.ts";
 import { type TeamStore } from "../store.ts";
 import { pathKey } from "../store/workspace.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 /** What path reservations use of the team (`Team`, `session.ts`). */
 export interface ReservationHost {

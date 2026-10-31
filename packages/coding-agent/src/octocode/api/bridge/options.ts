@@ -1,4 +1,4 @@
-import { envFlag } from "../../shared/env.ts";
+import { envFlag } from "../../../../../common/src/env.ts";
 
 /** Which transports the API serves on, from the environment or from `/api on`. */
 

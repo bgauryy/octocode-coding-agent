@@ -21,7 +21,10 @@ export function sdkHttpPolicy(options: {
 	maxMessageBytes?: number;
 	openGetStream?: boolean;
 }) {
-	const fetch = options.fetch ?? globalThis.fetch;
+	const baseFetch = options.fetch ?? globalThis.fetch;
+	// Callers invoke the fetch handed to them as a method (`context.fetch(url)`), and platform fetch rejects any
+	// receiver but globalThis (Cloudflare Workers, browsers). A closure keeps every call receiver-free.
+	const fetch: McpFetch = (input, init) => baseFetch(input, init);
 	const rejectedTokens = new WeakMap<Response, string | undefined>();
 	let lastToken: string | undefined;
 	let closing = false;

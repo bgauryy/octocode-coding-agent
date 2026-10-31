@@ -17,6 +17,8 @@ import type {
 	ProviderHeaders,
 	TextContent,
 } from "../types.ts";
+import { calculateCost } from "../models/model-helpers.ts";
+import { createUsage } from "../utils/assistant-message.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -179,20 +181,7 @@ function parseUsage(
 	const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens || 0;
 	const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
 	const output = rawUsage.completion_tokens || 0;
-	const usage = {
-		input,
-		output,
-		cacheRead: cacheReadTokens,
-		cacheWrite: cacheWriteTokens,
-		totalTokens: input + output + cacheReadTokens + cacheWriteTokens,
-		cost: {
-			input: (model.cost.input / 1000000) * input,
-			output: (model.cost.output / 1000000) * output,
-			cacheRead: (model.cost.cacheRead / 1000000) * cacheReadTokens,
-			cacheWrite: (model.cost.cacheWrite / 1000000) * cacheWriteTokens,
-			total: 0,
-		},
-	};
-	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+	const usage = createUsage({ input, output, cacheRead: cacheReadTokens, cacheWrite: cacheWriteTokens });
+	calculateCost(model, usage);
 	return usage;
 }

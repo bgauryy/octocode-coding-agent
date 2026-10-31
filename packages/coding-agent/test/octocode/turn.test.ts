@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
+import { READ_ONLY_ENV } from "../../../common/src/env.ts";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -146,6 +146,17 @@ describe("registerTurnSetup", () => {
 		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
 		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
 		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
+	});
+
+	it("routes rendered-page lookups to the browser tools only when the agent holds one and the web tool", async () => {
+		const fake = fakeHost();
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => loadProfiles(tmp(), tmp(), false, {}) });
+		const routing = "When static text from `web` cannot answer the question, use the browser tools";
+		expect(await run(fake, ["agent", "file", "web", "browser"])).toContain(routing);
+		expect(await run(fake, ["agent", "file", "web", "mcp__browser__run"])).toContain(routing);
+		// No browser: the delegation line names the specialist, and the web guideline no longer points at tools it lacks.
+		expect(await run(fake, ["agent", "file", "web"])).not.toContain(routing);
+		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
 	});
 
 	it("keeps browser role instructions stable across modes and reads them once per child", async () => {

@@ -24,6 +24,8 @@ describe("regression #5208: late bash output callbacks", () => {
 		const result = await bash.execute("test-call-late-output", { command: "late-output" });
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
-		expect(getTextOutput(result).trim()).toBe("before");
+		const [header, ...body] = getTextOutput(result).trim().split("\n");
+		expect(header).toMatch(/^\[exit 0 · .* · 1 line · 7 B\]$/);
+		expect(body.join("\n")).toBe("before");
 	});
 });

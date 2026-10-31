@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { openAdapter, type AdapterInput, type AdapterLink } from "./adapter.ts";
 import { exceptionInfo } from "./exception-info.ts";
 import { handshake, type HandshakeResult } from "./handshake.ts";

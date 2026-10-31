@@ -362,12 +362,17 @@ async function scenario() {
 	} else if (/(?:^|\n)budget loop \d+/.test(task)) {
 		// `budget loop N`: N tool-calling replies, 15 ms apart, then a final answer. A steer is logged with its text; an
 		// abort is logged and settles the run aborted, as Octocode does. The `pid` line lets a test check the process is gone.
+		// `budget loop N stop-at K`: the parent's budget must stop the run at reply K, so the child waits there for the abort
+		// (at most 10 s) instead of racing it with the next reply; the run then ends with exactly K replies however loaded the host is.
 		log(`pid ${process.pid}`);
 		log(`prompt ${JSON.stringify(task)}`);
 		const total = Number(task.match(/(?:^|\n)budget loop (\d+)/)[1]);
+		const stopAt = Number(task.match(/(?:^|\n)budget loop \d+ stop-at (\d+)/)?.[1] ?? 0);
 		let seen = 0;
 		for (let n = 1; n <= total; n++) {
 			emit(say(`step ${n}`, { stopReason: "toolUse" }));
+			if (n === stopAt)
+				await Promise.race([nextCommand("abort"), new Promise((resolve) => setTimeout(resolve, 10_000))]);
 			await new Promise((resolve) => setTimeout(resolve, 15));
 			for (; seen < commands.length; seen++) {
 				const command = commands[seen];

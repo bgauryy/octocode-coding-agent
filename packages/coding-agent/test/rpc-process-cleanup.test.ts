@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RpcClient } from "../src/modes/rpc/rpc-client.ts";
-import { processAlive, signalTree } from "../src/octocode/shared/process.ts";
+import { processAlive } from "../src/octocode/shared/process.ts";
+import { signalTree } from "../src/utils/process-tree.ts";
 
 const roots: string[] = [];
 const clients: RpcClient[] = [];

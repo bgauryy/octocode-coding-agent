@@ -1,8 +1,8 @@
 import type { SessionExtra } from "../agentdb/queries/sessions.ts";
 export type { SessionExtra };
-import { execFile } from "node:child_process";
 import type { AgentDb } from "../agentdb/db.ts";
 import { meta, sessions } from "../agentdb/api.ts";
+import { git } from "../shared/git.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 
@@ -28,12 +28,7 @@ export function shownLine(text: string, max: number): string {
 }
 
 /** Runs git off the event loop; rejects on failure or after 2 s. */
-const git = (cwd: string, args: string[]) =>
-	new Promise<string>((resolve, reject) => {
-		execFile("git", args, { cwd, encoding: "utf8", timeout: 2000, windowsHide: true }, (error, stdout) =>
-			error ? reject(error) : resolve(stdout),
-		);
-	});
+const sessionGit = (cwd: string, args: string[]) => git(cwd, args, { timeoutMs: 2000 });
 
 /**
  * The checked-out branch of `cwd` (`HEAD` short name; undefined on a detached HEAD) and the HEAD commit; both undefined
@@ -41,7 +36,7 @@ const git = (cwd: string, args: string[]) =>
  */
 export async function gitState(cwd: string): Promise<{ branch?: string; head?: string }> {
 	try {
-		const [head = "", branch = ""] = (await git(cwd, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"])).trim().split("\n");
+		const [head = "", branch = ""] = (await sessionGit(cwd, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"])).trim().split("\n");
 		return {
 			...(branch && branch !== "HEAD" ? { branch: shownLine(branch, 120) } : {}),
 			...(/^[0-9a-f]{7,64}$/.test(head) ? { head } : {}),
@@ -54,7 +49,7 @@ export async function gitState(cwd: string): Promise<{ branch?: string; head?: s
 /** Changed or untracked paths in the working tree of `cwd` (0 outside git or when git is slow). Never rejects. */
 export async function gitDirty(cwd: string): Promise<number> {
 	try {
-		return (await git(cwd, ["status", "--porcelain"])).split("\n").filter(Boolean).length;
+		return (await sessionGit(cwd, ["status", "--porcelain"])).split("\n").filter(Boolean).length;
 	} catch {
 		return 0;
 	}
@@ -63,7 +58,7 @@ export async function gitDirty(cwd: string): Promise<number> {
 /** Commits from `from` to `to`, or undefined when git cannot tell (e.g. `from` was rewritten away). Never rejects. */
 export async function gitCommitsBetween(cwd: string, from: string, to: string): Promise<number | undefined> {
 	try {
-		return Number((await git(cwd, ["rev-list", "--count", `${from}..${to}`])).trim());
+		return Number((await sessionGit(cwd, ["rev-list", "--count", `${from}..${to}`])).trim());
 	} catch {
 		return undefined;
 	}

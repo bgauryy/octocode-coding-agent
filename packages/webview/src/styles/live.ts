@@ -110,6 +110,7 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .content-tool > header { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; font-size: 12px; }
 .content-tool > header strong { font-family: var(--mono); }
 .content-tool > header span { color: var(--text-2); }
+.content-tool > .tool-reason { margin: 0; color: var(--text-3); font-size: 12px; font-style: italic; overflow-wrap: anywhere; }
 .resource-reference, .unsupported-block { font-size: 13px; }
 .composer-attachments { display: grid; gap: 8px; }
 .attachment-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }

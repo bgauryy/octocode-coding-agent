@@ -2,8 +2,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { ReportSummary, ReportsIndex } from "@octocodeai/octocode-contacts/protocol";
-import type { SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { ReportSummary, ReportsIndex } from "@octocodeai/octocode-contracts/protocol";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { ItemDetail } from "../src/app/features/ItemDetail.tsx";
 import { RfcView, ResearchView } from "../src/app/live/ReportsView.tsx";
 import { indexBacklog } from "../src/app/model/backlog.ts";

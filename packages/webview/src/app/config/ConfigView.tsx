@@ -1,4 +1,4 @@
-import type { ConfigSetting, ConfigSnapshot } from "@octocodeai/octocode-contacts/config";
+import type { ConfigSetting, ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage, plural } from "../model/format.ts";
 import { StateMark } from "../ui/StateMark.tsx";

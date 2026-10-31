@@ -1,5 +1,5 @@
-import type { ApplicationSnapshot, Member } from "@octocodeai/octocode-contacts";
-import type { WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { ApplicationSnapshot, Member } from "@octocodeai/octocode-contracts";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { act, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";

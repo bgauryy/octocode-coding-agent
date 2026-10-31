@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { resolvePath } from "../utils/paths.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
 import { CURRENT_SESSION_VERSION, type SessionHeader, type SessionManager } from "./session-manager.ts";
 
 type TrailingEntries = (parentId: string | null, timestamp: string) => readonly object[];

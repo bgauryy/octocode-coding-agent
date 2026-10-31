@@ -6,15 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import {
-	groupAlive,
-	groupStartTimes,
-	killTree,
-	processAlive,
-	processStartTime,
-	signalTree,
-	stopTree,
-} from "../../src/octocode/shared/process.ts";
+import { groupAlive, groupStartTimes, killTree, processAlive, processStartTime, stopTree } from "../../src/octocode/shared/process.ts";
+import { signalTree } from "../../src/utils/process-tree.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";

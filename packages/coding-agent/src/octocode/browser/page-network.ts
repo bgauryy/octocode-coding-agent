@@ -1,5 +1,5 @@
 import { optionalString, stringOrEmpty, withTimeout } from "../shared/util.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AttachedTarget, CdpPage } from "./cdp/connection.ts";
 import {
 	type BrowserSession,

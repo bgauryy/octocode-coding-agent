@@ -6,9 +6,22 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { closeSync, constants, createWriteStream, fstatSync, openSync, readSync, type WriteStream } from "node:fs";
+import {
+	chmodSync,
+	closeSync,
+	constants,
+	copyFileSync,
+	createWriteStream,
+	fstatSync,
+	openSync,
+	readSync,
+	renameSync,
+	rmSync,
+	statSync,
+	type WriteStream,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { finished } from "node:stream/promises";
 
 /** Output can carry private data, so only the user may read the files. */
@@ -41,6 +54,33 @@ export function readOutputFile(path: string, maxBytes: number): string | undefin
 		return buffer.toString("utf8", 0, length);
 	} finally {
 		closeSync(fd);
+	}
+}
+
+/**
+ * Moves a completed output file of this process into `dir`, so it can be read with `readOutputFile` at its new path;
+ * returns that path, or the old one when the file could not move.
+ */
+export function moveOutputFile(path: string, dir: string): string {
+	const target = join(dir, basename(path));
+	const identity = completedOutputs.get(path);
+	try {
+		try {
+			renameSync(path, target);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+			copyFileSync(path, target, constants.COPYFILE_EXCL);
+			rmSync(path, { force: true });
+		}
+		chmodSync(target, OUTPUT_FILE_MODE);
+		if (identity) {
+			const { dev, ino } = statSync(target);
+			completedOutputs.delete(path);
+			completedOutputs.set(target, { dev, ino });
+		}
+		return target;
+	} catch {
+		return path;
 	}
 }
 

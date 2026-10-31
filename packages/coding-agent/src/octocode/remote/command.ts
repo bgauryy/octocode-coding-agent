@@ -6,11 +6,11 @@ import {
 	type RemoteLink,
 	type RemotePublish,
 	type RemoteStatus,
-} from "@octocodeai/octocode-contacts/daemon";
-import { DAEMON_ROUTES } from "@octocodeai/octocode-contacts/protocol";
+} from "@octocodeai/octocode-contracts/daemon";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { RemoteSettings } from "../../core/settings-schema.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { daemonRequest, type LaunchedDaemon } from "../web-daemon/launcher.ts";
 import { WEB_DAEMON_ENV } from "../web-daemon/paths.ts";
@@ -60,7 +60,8 @@ async function publishLink(host: RemoteHost, ctx: ExtensionContext, access: Remo
 /**
  * `/remote` publishes a control link to this machine's web daemon (every session, the board, approvals); `/remote view`
  * a read-only one; `/remote status` and `/remote stop`. The transport comes from `remote.transport`: `ssh` prints the
- * port forward to run, `relay` dials `remote.relayUrl`. Links are shown once, with a QR code to scan.
+ * port forward to run, `relay` dials `remote.relayUrl`. Links are shown once, with a QR code to scan; `/remote status`
+ * lists them by fingerprint only.
  */
 export function remoteCommand(host: RemoteHost): Subcommand {
 	return {
@@ -70,7 +71,7 @@ export function remoteCommand(host: RemoteHost): Subcommand {
 				[
 					["view", "A read-only link"],
 					["status", "Published links and the relay"],
-					["stop", "Stop publishing; view links die"],
+					["stop", "Stop publishing; every link dies"],
 				],
 				prefix,
 			),
@@ -90,7 +91,7 @@ export function remoteCommand(host: RemoteHost): Subcommand {
 					if (word === "status") say(ctx, describeStatus(await answer(daemon, {}, isStatus)));
 					else {
 						await answer(daemon, { method: "DELETE" }, (value): value is unknown => value !== undefined);
-						say(ctx, "Stopped publishing. View links no longer work; control links work until the daemon exits.");
+						say(ctx, "Stopped publishing. Every link, view and control, no longer works.");
 					}
 					return;
 				}

@@ -4,15 +4,20 @@ import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
-/** What a summary message shows: its `[label]`, one line while collapsed, and a heading over the Markdown summary. */
-interface SummaryMessageText {
+/** What a summary message shows. Every string is untrusted text: it is sanitized where drawn. */
+export interface SummaryMessageText {
 	label: string;
-	collapsed: string;
-	heading: string;
+	/** The line after the `[label]`. */
+	title: string;
+	/** Dim lines under the title, collapsed and expanded: where the full record lives. */
+	meta?: string[];
+	/** Markdown shown only when expanded. */
 	summary: string;
+	/** Dim lines after the summary, only when expanded. */
+	appendix?: string[];
 }
 
-/** A labelled summary message (compaction, branch) collapsed to one line until clicked or expanded. */
+/** A labelled summary message (compaction, branch) collapsed to its title and record lines until clicked or expanded. */
 export class SummaryMessageComponent extends CollapsibleMessageComponent {
 	private readonly text: SummaryMessageText;
 	private readonly markdownTheme: MarkdownTheme;
@@ -25,30 +30,28 @@ export class SummaryMessageComponent extends CollapsibleMessageComponent {
 	}
 
 	protected renderContent(content: Container, expanded: boolean): void {
-		content.addChild(new Text(theme.fg("customMessageLabel", `\x1b[1m[${this.text.label}]\x1b[22m`), 0, 0));
-		content.addChild(new Spacer(1));
-		if (expanded) {
+		const { label, title, meta = [], summary, appendix = [] } = this.text;
+		const hint = expanded ? "" : theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+		const dim = (line: string) => theme.fg("dim", sanitizeTerminalText(line));
+		const head =
+			theme.fg("customMessageLabel", `\x1b[1m[${label}]\x1b[22m`) +
+			` ${theme.fg("customMessageText", sanitizeTerminalText(title))}`;
+		content.addChild(new Text(meta.length === 0 ? head + hint : head, 0, 0));
+		meta.forEach((line, index) => {
+			content.addChild(new Text(dim(line) + (index === meta.length - 1 ? hint : ""), 0, 0));
+		});
+		if (!expanded) return;
+		if (summary.trim() !== "") {
+			content.addChild(new Spacer(1));
 			content.addChild(
-				new Markdown(
-					sanitizeTerminalText(`**${this.text.heading}**\n\n${this.text.summary}`),
-					0,
-					0,
-					this.markdownTheme,
-					{
-						color: (text: string) => theme.fg("customMessageText", text),
-					},
-				),
+				new Markdown(sanitizeTerminalText(summary), 0, 0, this.markdownTheme, {
+					color: (text: string) => theme.fg("customMessageText", text),
+				}),
 			);
-		} else {
-			content.addChild(
-				new Text(
-					theme.fg("customMessageText", `${this.text.collapsed} (`) +
-						theme.fg("dim", keyText("app.tools.expand")) +
-						theme.fg("customMessageText", " to expand)"),
-					0,
-					0,
-				),
-			);
+		}
+		if (appendix.length > 0) {
+			content.addChild(new Spacer(1));
+			for (const line of appendix) content.addChild(new Text(dim(line), 0, 0));
 		}
 	}
 }

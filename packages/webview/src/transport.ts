@@ -6,7 +6,8 @@ import {
 	type Snapshot,
 	WORKSPACE_ROUTES,
 	type WorkspaceSnapshot,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
+import { bearer } from "./access.ts";
 import { ApplicationStream } from "./application-stream.ts";
 import { requestJson } from "./request.ts";
 import { scopedRoute } from "./scope.ts";
@@ -142,7 +143,7 @@ export class BrowserConnection {
 		if (!epoch) throw new Error("Session state is refreshing. Wait for the connection before sending.");
 		const result = await requestJson(scopedRoute(WORKSPACE_ROUTES.application), {
 			method: "POST",
-			headers: { Authorization: "Bearer " + this.token, "Content-Type": "application/json" },
+			headers: { ...bearer(this.token), "Content-Type": "application/json" },
 			body: JSON.stringify(command),
 		});
 		if (this.closed || this.stream.snapshot?.sessionId !== command.sessionId || this.stream.cursor?.epoch !== epoch)

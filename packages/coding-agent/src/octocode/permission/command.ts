@@ -1,7 +1,7 @@
 import type { registerPlanning } from "../plan/register.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { PERMISSION_ENV } from "../shared/env.ts";
+import { PERMISSION_ENV } from "../../../../common/src/env.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
 import { type Permission } from "./ask.ts";
@@ -87,7 +87,8 @@ export function registerPermissionCommand(
 	};
 
 	commands.add("permissions", {
-		description: `permissions [manual|workspace|full|grants [clear]|log] — what Octocode asks before it acts (${shortcutText("app.permission.cycle")} cycles in the editor)`,
+		description: "What Octocode asks before it acts",
+		argumentHint: "[manual|workspace|full|grants [clear]|log]",
 		complete: (prefix) =>
 			wordCompletions([...PERMISSION_MODES, "grants", "grants clear", "log", "plan", "plan off"], prefix),
 		handler: async (args, ctx) => {

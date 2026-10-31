@@ -40,14 +40,17 @@ describe("/remote", () => {
 		const control = ctx.ui.notes.at(-1)!;
 		expect(control.type).toBe("info");
 		expect(control.message).toContain(`ssh -N -L ${server.port}:127.0.0.1:${server.port}`);
-		expect(control.message).toContain(`http://127.0.0.1:${server.port}/#access=${token}`);
+		expect(control.message).toContain(`http://127.0.0.1:${server.port}/#access=${server.remoteToken}`);
+		expect(control.message).not.toContain(token);
 		expect(control.message).toContain("can send commands and answer approvals");
 		expect(control.message).toMatch(/[█▀▄]/);
 		await command.handler("view", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain(`#access=${server.viewToken}`);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("only shows your sessions");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("can read every session on this machine");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("nothing can be sent through it");
 		await command.handler("status", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/control link over ssh[\s\S]*view link over ssh/);
+		expect(ctx.ui.notes.at(-1)!.message).not.toContain("#access");
 		await command.handler("stop", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("Stopped publishing");
 		await command.handler("status", ctx);
@@ -160,7 +163,7 @@ describe("octocode remote", () => {
 		const listed = io();
 		expect(await runRemoteCli(["list"], env, listed)).toBe(0);
 		expect(listed.lines[0]).toBe("No sessions are attached to the web daemon.");
-		expect(listed.lines[1]).toMatch(/^view link over ssh/);
+		expect(listed.lines[1]).toMatch(/^view link over ssh, issued .*, id [0-9a-f]{8}$/);
 		const relay = io();
 		expect(await runRemoteCli(["link", "--relay", "ws://127.0.0.1:1", "--no-qr"], env, relay)).toBe(0);
 		expect(relay.lines[0]).toMatch(/http:\/\/127\.0\.0\.1:1\/#k=/);

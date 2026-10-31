@@ -7,7 +7,7 @@ import { type Identity, subagentProcessEnv } from "../../src/octocode/subagents/
 import { AUDIT_NOTIFY_PREFIX, CHILD_AUDIT_CAP } from "../../src/octocode/permission/audit.ts";
 import { permissionHeader } from "../../src/octocode/permission/header.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
-import { PERMISSION_NONCE_FILE_ENV, PERMISSION_RELAY_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_NONCE_FILE_ENV, PERMISSION_RELAY_ENV } from "../../../common/src/env.ts";
 import { sessionOutputDir } from "../../src/octocode/shared/home.ts";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";

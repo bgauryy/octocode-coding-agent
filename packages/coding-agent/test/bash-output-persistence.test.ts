@@ -13,7 +13,8 @@ it.each(["success", "cancel", "failure"] as const)("waits for full output persis
 	let release!: () => void, ending!: () => void;
 	const ended = new Promise<void>((resolve) => (ending = resolve));
 	let saved = "";
-	const expected = "line\n".repeat(3000);
+	// Distinct lines: a run of identical lines collapses to one and would fit the budget.
+	const expected = Array.from({ length: 3000 }, (_, i) => `line ${i}\n`).join("");
 	const stream = new Writable({
 		write(chunk, _encoding, callback) {
 			saved += chunk.toString();

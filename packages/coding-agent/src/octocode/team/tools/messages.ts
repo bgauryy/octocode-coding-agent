@@ -9,7 +9,7 @@ import type { MailDetails } from "../model.ts";
 import type { Team } from "../session.ts";
 import { clip, plural } from "../../shared/render/text.ts";
 import { timedTool, timingOf } from "../../shared/render/rows.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Columns of the sent text shown on the collapsed Send row. */
 const PREVIEW_CHARS = 60;

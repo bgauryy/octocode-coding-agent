@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
-import { PARENT_SESSION_ENV } from "./env.ts";
+import { PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { HISTORY_BYTES, matchHistory } from "./history-search.ts";
 import { sessionsRoot } from "./home.ts";
 import { RECORD_FILE, type RecordHeader, readRecordHeader } from "./archive/record.ts";

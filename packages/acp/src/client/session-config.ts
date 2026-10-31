@@ -4,7 +4,7 @@ import type {
 	SessionConfigSelectOption,
 } from "@agentclientprotocol/sdk";
 import type { ExternalModels } from "../../../coding-agent/src/octocode/external/protocol.ts";
-import { isRecord } from "../../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The models an ACP agent reports, and the config option that selects one when the agent offers it. */
 export interface AcpModels extends ExternalModels {

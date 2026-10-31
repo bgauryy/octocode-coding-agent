@@ -1,4 +1,4 @@
-import type { ApplicationAsset, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationAsset, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
@@ -244,7 +244,7 @@ function SessionComposerForSession() {
 			<output className="visually-hidden" aria-atomic="true">
 				{announcement}
 			</output>
-			{answerable && session.streaming && session.awaiting?.id && (
+			{answerable && session.awaiting?.id && (
 				<DialogAnswer key={session.awaiting.id} awaiting={session.awaiting} sessionId={session.sessionId} />
 			)}
 			{choices.length > 0 && (

@@ -30,6 +30,8 @@ export interface Args {
 	sessionId?: string;
 	fork?: string;
 	sessionDir?: string;
+	/** Name of the worktree to start in (`--worktree`). */
+	worktree?: string;
 	models?: string[];
 	tools?: string[];
 	excludeTools?: string[];

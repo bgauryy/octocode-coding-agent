@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { PARENT_SESSION_ENV } from "./env.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { formatTokens } from "./format.ts";
 import { PRIVATE_FILE_MODE, sessionFolder, sessionOutputDir } from "./home.ts";
 import { visibleControls } from "./sanitize.ts";

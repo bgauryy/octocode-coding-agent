@@ -6,10 +6,10 @@ import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "
 import { firstGap, type LineRange, lineCount } from "../files/coverage.ts";
 import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
 import { cutText, isStaleSessionError } from "../shared/util.ts";

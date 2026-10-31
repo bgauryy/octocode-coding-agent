@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Which lines of a file the model has seen. Octocode's `read` shows at most 2000 lines or 50 KB, so a big file is never seen

@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { Compile } from "typebox/compile";
 import { getAgentDir } from "../config.ts";
-import { stripBom } from "../utils/text.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import { KeybindingValueSchema } from "./key-id-schema.ts";
 
 export function useWindowsKeybindings(

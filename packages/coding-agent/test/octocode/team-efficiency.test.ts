@@ -11,7 +11,7 @@ import { TeamTicker, type TeamView } from "../../src/octocode/team/ticker.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { INBOX_BATCH_SIZE } from "../../src/octocode/team/store/limits.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 const member = (id: string): Member => ({
 	id,

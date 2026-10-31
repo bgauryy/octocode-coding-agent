@@ -5,6 +5,7 @@ import {
 	MOTION,
 	mixColors,
 	shimmerText,
+	stripTerminalSequences,
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
@@ -138,7 +139,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	 * loader's frame timer drives the redraws; a static indicator, or a theme without concrete colors, draws it plain.
 	 */
 	private paintDetail(detail: string): string {
-		const plain = detail.replace(/\x1b\[[0-9;]*m/g, "");
+		const plain = stripTerminalSequences(detail);
 		if (!this.isAnimated() || plain !== detail || plain.length > SHIMMER_MAX_CHARS) return theme.fg("text", detail);
 		try {
 			const colors = theme.colors;

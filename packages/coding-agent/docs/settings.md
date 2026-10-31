@@ -6,6 +6,8 @@
 
 For editor validation and completion, point `$schema` at `schemas/settings.schema.json` in the installed Octocode package.
 
+Loading is permissive: a root key this page does not list is kept in the file but has no effect, and startup reports it once per load as a warning that names the key and the file. The warning also says what replaced a removed key: `compaction` (compaction limits are built in; `contextBudget` and `/context` set the working window), and `codemode` and `autoEnableCodemode` (codemode was removed). Unknown keys inside a listed object are not checked.
+
 Nested fields are listed as `parent.child`. Defaults shown are the values Octocode uses when a field is absent; an empty Default cell means no fixed value.
 
 ## Models and thinking
@@ -66,7 +68,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `shellPath` | string |  | Custom shell path, for example for Cygwin on Windows, with support for leading ~ expansion. |
 | `shellCommandPrefix` | string |  | Prefix prepended to every bash command, for example to enable shell aliases. |
 | `bashBackgroundAfterSeconds` | number | `90` | Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it. |
-| `bashOutputMaxBytes` | number | `24576` | Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (600 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens. |
+| `bashOutputMaxBytes` | number | `20000` | Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens. Output of the user's own `!` commands follows the same limit. |
 | `npmCommand` | `string[]` |  | Command used for npm package lookup and installation, in argv form such as ["mise", "exec", "node@20", "--", "npm"]. |
 
 ## Trust, telemetry and identity

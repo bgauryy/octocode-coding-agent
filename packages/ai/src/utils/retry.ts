@@ -1,11 +1,11 @@
 import type { AssistantMessage } from "../types.ts";
-import { sleepUnlessAborted } from "./abort.ts";
+import { createAbortError, sleepUnlessAborted } from "./abort.ts";
 
 function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
 }
 
-const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
+const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// OpenCode Go/free-tier limits returned as 429 JSON error types by OpenCode's
 	// Zen API. These are subscription/account limits, not transient throttles.
 	"GoUsageLimitError",
@@ -27,6 +27,14 @@ const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// after hours rather than seconds.
 	"subscription_sharing_usage_limit_exceeded",
 ]);
+
+/**
+ * Whether provider error text names an account, subscription or billing limit that resets after hours rather than
+ * seconds. Every retry path (the session retry and each provider adapter) treats such an error as final.
+ */
+export function isTerminalProviderLimitError(errorText: string): boolean {
+	return TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN.test(errorText);
+}
 
 const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	// Generic provider load, HTTP status, and server-side transient failures.
@@ -133,12 +141,49 @@ export interface RetryPolicy {
 	maxAgentDelayMs?: number;
 }
 
-export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
+/** Longest retry delay any layer waits: the agent backoff cap and the longest `Retry-After` a provider request accepts. */
+export const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
 export function retryDelayMs(policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs">, attempt: number): number {
 	const delay = policy.baseDelayMs * 2 ** Math.max(0, attempt - 1);
 	const safeDelay = Number.isSafeInteger(delay) ? delay : Number.MAX_SAFE_INTEGER;
-	return Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS);
+	return Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS);
+}
+
+function parseNonNegativeNumber(value: string | null | undefined): number | undefined {
+	if (value === null || value === undefined || value.trim() === "") return undefined;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
+}
+
+/**
+ * The delay a provider asked for, in milliseconds, or `undefined` when the headers carry none: `retry-after-ms`, else
+ * `retry-after` as decimal seconds or an HTTP date. Values are clamped to at least zero (a past date means retry now).
+ * Anything else, including a suffixed value such as "5s" or an empty header, is ignored so the caller backs off on its own.
+ */
+export function parseRetryAfterMs(headers: Headers | undefined): number | undefined {
+	const fromMs = parseNonNegativeNumber(headers?.get("retry-after-ms"));
+	if (fromMs !== undefined) return fromMs;
+
+	const retryAfter = headers?.get("retry-after")?.trim();
+	if (!retryAfter) return undefined;
+	const seconds = parseNonNegativeNumber(retryAfter);
+	if (seconds !== undefined) return seconds * 1000;
+	const date = Date.parse(retryAfter);
+	return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+}
+
+/** A provider asked for a retry delay above the limit; the request fails instead of waiting. */
+export class RetryDelayExceededError extends Error {}
+
+/** Returns `delayMs`, or throws {@link RetryDelayExceededError} when it exceeds `maxRetryDelayMs` (default 60 s; zero or less disables the limit). */
+export function validateRetryDelayMs(delayMs: number, maxRetryDelayMs?: number, detail?: string): number {
+	const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
+	if (maxDelayMs > 0 && delayMs > maxDelayMs) {
+		const message = `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s).`;
+		throw new RetryDelayExceededError(detail ? `${message} ${detail}` : message);
+	}
+	return delayMs;
 }
 
 /** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */
@@ -154,12 +199,6 @@ export interface RetryCallbacks {
 	onRetryAttemptStart?: () => void | Promise<void>;
 	/** Emitted once when the loop ends: success if a later call completed normally. */
 	onRetryFinished?: (success: boolean, attempt: number, finalError?: string) => void | Promise<void>;
-}
-
-class RetrySleepAbortError extends Error {
-	constructor() {
-		super("Aborted");
-	}
 }
 
 /**
@@ -219,10 +258,10 @@ export async function retryAssistantCall(
 		// Normalize aborts during retry backoff to the same AssistantMessage shape as
 		// provider stream aborts, so callers do not need to care when cancellation happened.
 		try {
-			await sleepUnlessAborted(delayMs, signal, () => new RetrySleepAbortError());
+			await sleepUnlessAborted(delayMs, signal, createAbortError);
 		} catch (error) {
 			await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
-			if (error instanceof RetrySleepAbortError) {
+			if (error instanceof Error && error.name === "AbortError") {
 				const { errorMessage: _errorMessage, ...rest } = response;
 				return { ...rest, stopReason: "aborted" };
 			}
@@ -244,6 +283,6 @@ export async function retryAssistantCall(
 export function isRetryableAssistantError(message: AssistantMessage): boolean {
 	if (message.stopReason !== "error" || !message.errorMessage) return false;
 	const errorMessage = message.errorMessage;
-	if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
+	if (isTerminalProviderLimitError(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

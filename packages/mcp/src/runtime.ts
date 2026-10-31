@@ -36,7 +36,7 @@ import {
 import { firstLine } from "./server.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
 import type { McpRuntimeOptions } from "./runtime/types.ts";
-import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpToolCaller } from "./tools.ts";
 
 export { createDefaultTransport, type McpTransportFactory } from "./runtime/transport.ts";

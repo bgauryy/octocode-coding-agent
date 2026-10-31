@@ -4,7 +4,7 @@ import { formatCost, formatTokens } from "../shared/format.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { plural } from "../shared/render/text.ts";
 import { entryMessage, finiteOrZero } from "../shared/util.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 type StatsOutcome = (typeof REPORT_STATUSES)[number] | "unknown";
 

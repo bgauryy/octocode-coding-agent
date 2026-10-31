@@ -1,6 +1,6 @@
 import { shortPath } from "../../shared/format.ts";
 import { cutText } from "../../shared/util.ts";
-import { isHttpUrl } from "../../web/guard.ts";
+import { isHttpUrl } from "../../../../../common/src/web-guard.ts";
 import { ConsoleLog } from "../console-log.ts";
 import type { OwnChrome } from "../launch.ts";
 import type { PageNetworkPolicy } from "../policy.ts";

@@ -4,7 +4,7 @@ import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
 import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
 
 /** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */

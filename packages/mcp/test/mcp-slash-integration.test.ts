@@ -120,7 +120,10 @@ describe("unified MCP slash management", () => {
 		const { harness, state, command, select, notifications } = await setup([entry(), entry("other")]);
 		const restart = vi.spyOn(state.findServer("octocode")!.connection!, "reconnect");
 		await harness.session.prompt("/mcp reconnect");
-		expect(select).toHaveBeenCalledWith("MCP server", ["octocode", "other"], undefined);
+		// The host's dialog tracker always passes a signal so a remote answer can close the picker.
+		expect(select).toHaveBeenCalledWith("MCP server", ["octocode", "other"], {
+			signal: expect.any(AbortSignal),
+		});
 		expect(restart).not.toHaveBeenCalled();
 		expect(notifications).toEqual([]);
 		await state.findServer("octocode")!.connection!.close();

@@ -9,7 +9,7 @@ import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
 import { CommandSelectorComponent } from "../components/command-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { handleSkillsCommand } from "./skills-command.ts";
 import { closeNames } from "../../../octocode/skill/catalog.ts";

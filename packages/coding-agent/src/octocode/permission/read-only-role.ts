@@ -1,5 +1,5 @@
 import path from "node:path";
-import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../shared/env.ts";
+import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../../../../common/src/env.ts";
 import { mutatedPaths } from "../shared/file-input.ts";
 import { resolveToolPath, workspacePaths } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";

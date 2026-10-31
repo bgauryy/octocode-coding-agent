@@ -1,6 +1,7 @@
-import type { ConfigSnapshot } from "@octocodeai/octocode-contacts/config";
-import { DAEMON_ROUTES } from "@octocodeai/octocode-contacts/protocol";
-import type { DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contacts/daemon";
+import type { ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import type { DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contracts/daemon";
+import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -9,7 +10,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Authenticated reads of the user-level daemon; every answer is shape-checked before the page uses it. */
 export function createDaemonApi(access: string) {
-	const headers = { Authorization: `Bearer ${access}` };
+	const headers = bearer(access);
 	return {
 		sessions: async (signal?: AbortSignal): Promise<DaemonSessions> => {
 			const value = await requestJson(DAEMON_ROUTES.sessions, { headers, signal }, "Could not load sessions");

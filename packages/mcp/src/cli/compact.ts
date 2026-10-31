@@ -6,7 +6,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { APP_NAME } from "../../../coding-agent/src/config.ts";
-import { errorMessage } from "../../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
 	catalogHash,
 	catalogHashes,

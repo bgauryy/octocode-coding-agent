@@ -18,6 +18,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createReadToolDefinition } from "../fixtures/read-tool.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
+import { nativeCall } from "./e2e-calls.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,6 +48,8 @@ interface Turn {
 	tools: string[];
 	toolContracts: ReturnType<typeof getCurrentTools>;
 	lastResults: Array<{ toolName: string; isError: boolean; text: string }>;
+	/** Every tool result in the request, oldest first (`lastResults` is only the trailing run). */
+	allResults: Array<{ toolName: string; isError: boolean; text: string }>;
 }
 
 function snapshot(context: TranscriptContext): Turn {
@@ -71,10 +74,24 @@ function snapshot(context: TranscriptContext): Turn {
 		tools: toolContracts.map((tool) => tool.name),
 		toolContracts,
 		lastResults: results,
+		allResults: context.messages.flatMap((message) => {
+			const result = message as { role: string; toolName?: string; isError?: boolean; content?: unknown };
+			if (result.role !== "toolResult") return [];
+			const text = Array.isArray(result.content)
+				? result.content.map((part: { text?: string }) => part.text ?? "").join("")
+				: "";
+			return [{ toolName: String(result.toolName), isError: result.isError === true, text }];
+		}),
 	};
 }
 
 type Reply = ReturnType<typeof fauxAssistantMessage>;
+
+/** An MCP tool result as the model reads it: wrapped as untrusted data, with the server's text inside. */
+const UNTRUSTED = (tool: string, body: string) =>
+	new RegExp(
+		`^Result of ${tool}:\\n<<<untrusted-(\\w+) \\(text from a web page or an MCP server[^\\n]*\\n${body}\\nuntrusted-\\1>>>$`,
+	);
 
 /** A real Octocode agent session running the Octocode extension against a scripted model. */
 async function startSession(
@@ -175,7 +192,8 @@ async function startSession(
 		else process.env.OCTOCODE_CODING_AGENT_DIR = originalAgentDir;
 		if (originalPermission === undefined) delete process.env.OCTOCODE_PERMISSION;
 		else process.env.OCTOCODE_PERMISSION = originalPermission;
-		fs.rmSync(root, { recursive: true, force: true });
+		// A child process or the MCP server may still be writing as the session closes: retry the removal.
+		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	};
 	return { cwd, session, faux, run, dispose };
 }
@@ -206,9 +224,10 @@ describe("with Octocode MCP (default)", () => {
 		console.log(
 			`default Octocode + Octocode prefix: ${fixedChars} chars (prompt ${turn.systemPrompt.length}, ${turn.tools.length} tools)`,
 		);
-		// 45_500 (measured 44,632): was 43,500. +950 for the user-requested `archive` tool (schema, snippet, guideline), and
-		// the Octocode core's longer MCP input-schema descriptions (staged tool contract) left no headroom (43,682).
-		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(45_500);
+		// 85_500 (measured 84,212): the prefix includes the `mcp_contract_octocode` section, which the old 45_500 ceiling
+		// (measured 44,632 before that section) no longer fit: 93,097 before the contract renderer left out validation-only
+		// constraints, hoisted repeated types and stated repeated field docs once per function.
+		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(85_500);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
 		expect(turn.tools).toContain("mcp__octocode__localFetch");
@@ -232,10 +251,10 @@ describe("with Octocode MCP (default)", () => {
 		])
 			expect(turn.tools).toContain(`mcp__octocode__${name}`);
 		expect(turn.tools).not.toContain("tool_search");
-		// The extension's client connects before the first request is built, so the guidance and the server's own
-		// instructions (which Octocode puts in no prompt for direct tools) are there from the start, unchanged on the next request.
+		// The extension's client connects before the first request is built, so the guidance and the server's contract
+		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
 		expect(turn.systemPrompt).toContain("Use Octocode MCP (`mcp__octocode__*`");
-		expect(turn.systemPrompt).toMatch(/# Octocode MCP server instructions\n\S/);
+		expect(turn.systemPrompt).toMatch(/<mcp_contract_octocode>\n\/\/ MCP server "octocode"[^\n]*\n\/\*\* \S/);
 		const next = (await s.run("continue", [say("ready")])).at(-1)!;
 		expect(next.tools).toContain("mcp__octocode__localSearch");
 		expect(next.systemPrompt).toBe(turn.systemPrompt);
@@ -267,9 +286,10 @@ describe("with Octocode MCP (default)", () => {
 	it("reads through localFetch, then edits, writes and deletes with batched file calls", async () => {
 		const appPath = path.join(s.cwd, "app.ts");
 		const turns = await s.run("fix the answer", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath, fullContent: true }] })),
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath }] })),
 			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Fix the answer and add notes",
 					queries: [
 						{
 							reason: "answer is off by one",
@@ -282,7 +302,12 @@ describe("with Octocode MCP (default)", () => {
 					],
 				}),
 			),
-			calls(fauxToolCall("file", { queries: [{ reason: "no longer needed", type: "delete", path: "NOTES.md" }] })),
+			calls(
+				nativeCall("file", {
+					reason: "Remove the notes",
+					queries: [{ reason: "no longer needed", type: "delete", path: "NOTES.md" }],
+				}),
+			),
 			say("done"),
 		]);
 		const [afterRead, afterBatch, afterDelete] = turns.slice(-3);
@@ -308,7 +333,8 @@ describe("with Octocode MCP (default)", () => {
 				fs.writeFileSync(appPath, "export const answer = 7;\n"); // someone else edits the file
 				return fauxAssistantMessage(
 					[
-						fauxToolCall("file", {
+						nativeCall("file", {
+							reason: "Bump the answer",
 							queries: [{ reason: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "42", newText: "43" }] }],
 						}),
 					],
@@ -326,9 +352,10 @@ describe("with Octocode MCP (default)", () => {
 		const seen = path.join(s.cwd, "seen.ts");
 		fs.writeFileSync(seen, "export const seen = 1;\n");
 		const turns = await s.run("read then edit", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: seen, fullContent: true }] })),
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: seen }] })),
 			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Bump the seen value",
 					queries: [
 						{
 							reason: "bump",
@@ -363,7 +390,7 @@ describe("with Octocode MCP (default)", () => {
 		const turns = await s.run("read both", [
 			calls(
 				fauxToolCall("mcp__octocode__localFetch", {
-					queries: files.map((file) => ({ path: file, ranges: ["1-600"] })),
+					queries: files.map((file) => ({ path: file, ranges: [{ startLine: 1, endLine: 600 }] })),
 				}),
 			),
 			say("done"),
@@ -371,9 +398,16 @@ describe("with Octocode MCP (default)", () => {
 		const text = turns.at(-1)!.lastResults[0].text;
 		expect(Buffer.byteLength(text)).toBeGreaterThan(20 * 1024);
 		expect(text).not.toMatch(/truncated|fullOutputPath|pi-mcp/i);
-		// Both rows arrive whole: each one's first returned line and its own continuation.
-		for (const name of ["one", "two"]) expect(text).toContain(`export const ${name}0 = `);
-		expect(text.match(/^next:$/gm)?.length).toBe(2);
+		// The server answers in JSON: both rows arrive whole, each with its first returned line and a cursor to continue.
+		const { results } = JSON.parse(text) as {
+			results: Array<{ data: { content: string; pagination: { hasMore: boolean }; next: unknown } }>;
+		};
+		expect(results).toHaveLength(2);
+		["one", "two"].forEach((name, row) => {
+			expect(results[row].data.content).toContain(`export const ${name}0 = `);
+			expect(results[row].data.pagination.hasMore).toBe(true);
+			expect(JSON.stringify(results[row].data.next)).toMatch(/"cursor":"[^"]+"/);
+		});
 	}, 60_000);
 });
 
@@ -390,9 +424,15 @@ describe("with the user's own octocode server in mcp.json", () => {
 		const first = turns.at(-2)!;
 		expect(first.tools).toContain("mcp__octocode__shout");
 		expect(first.tools).not.toContain("mcp__octocode__localSearch");
-		expect(first.systemPrompt).not.toContain("Use Octocode MCP");
+		// The prompt follows the tools by server name (`turn.ts`: `isOctocodeTool`), so the user's own `octocode` entry still
+		// gets the Octocode research line; only the server's own instruction text is absent, since this server sends none.
+		expect(first.systemPrompt).toContain("Use Octocode MCP");
 		expect(first.systemPrompt).not.toContain("# Octocode MCP server instructions");
-		expect(turns.at(-1)!.lastResults[0]).toEqual({ toolName: "mcp__octocode__shout", isError: false, text: "HI" });
+		expect(turns.at(-1)!.lastResults[0]).toEqual({
+			toolName: "mcp__octocode__shout",
+			isError: false,
+			text: expect.stringMatching(UNTRUSTED("mcp__octocode__shout", "HI")),
+		});
 	});
 });
 
@@ -413,7 +453,8 @@ describe("with another MCP server and Octocode disabled", () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
 		for (const name of ["read", "file", "bash", "web", "agent", "askUser", "backlog", "memory", "mcp__echo__shout"])
 			expect(turn.tools).toContain(name);
-		for (const name of ["mcp"]) expect(turn.tools).not.toContain(name);
+		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
+		expect(turn.tools).toContain("mcp");
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
 		// The mcp.json entry replaces the registration, so no request is told to prefer Octocode.
 		expect(turn.systemPrompt).not.toContain("Use Octocode MCP");
@@ -427,7 +468,11 @@ describe("with another MCP server and Octocode disabled", () => {
 			say("done"),
 		]);
 		const [ok, failed] = turns.at(-1)!.lastResults;
-		expect(ok).toEqual({ toolName: "mcp__echo__shout", isError: false, text: "HI" });
+		expect(ok).toEqual({
+			toolName: "mcp__echo__shout",
+			isError: false,
+			text: expect.stringMatching(UNTRUSTED("mcp__echo__shout", "HI")),
+		});
 		expect(failed.isError).toBe(true);
 		expect(failed.text).toContain("boom");
 	});
@@ -436,7 +481,8 @@ describe("with another MCP server and Octocode disabled", () => {
 		fs.writeFileSync(path.join(s.cwd, "existing.txt"), "original\n");
 		const turns = await s.run("write files", [
 			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Write the files",
 					queries: [
 						{ reason: "new", type: "write", path: "new.txt", content: "fresh" },
 						{ reason: "clobber", type: "write", path: "existing.txt", content: "x" },
@@ -445,7 +491,8 @@ describe("with another MCP server and Octocode disabled", () => {
 			),
 			calls(fauxToolCall("read", { path: "existing.txt" })),
 			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Replace the file",
 					queries: [{ reason: "replace", type: "write", path: "existing.txt", content: "replaced" }],
 				}),
 			),
@@ -465,7 +512,8 @@ describe("with another MCP server and Octocode disabled", () => {
 			calls(fauxToolCall("read", { path: "twice.txt" })),
 			calls(fauxToolCall("read", { path: "twice.txt" })),
 			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Replace the file",
 					queries: [{ reason: "replace", type: "write", path: "twice.txt", content: "replaced" }],
 				}),
 			),
@@ -478,24 +526,34 @@ describe("with another MCP server and Octocode disabled", () => {
 	});
 
 	it("clears old results at request time once the cache is cold inside a run, to saved files and without any context edit", async () => {
-		const reads = Array.from({ length: 22 }, (_, index) => {
+		// One assistant message's tool text is bounded to `TURN_MAX_CHARS` (`turn-budget.ts`), so the 22 reads come as two messages.
+		const read = (index: number) => {
 			const file = `big-${index}.txt`;
-			fs.writeFileSync(path.join(s.cwd, file), "line of text\n".repeat(1_000));
+			fs.writeFileSync(path.join(s.cwd, file), "line of text\n".repeat(540));
 			return fauxToolCall("read", { path: file });
-		});
+		};
 		const realNow = Date.now.bind(Date);
 		// The tools ran longer than the prompt-cache lifetime: the next request would rewrite the cache anyway.
 		const later = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 60 * 60_000 + 1);
-		const cold = () => fauxAssistantMessage(reads, { stopReason: "toolUse", timestamp: realNow() });
+		const cold = (from: number) => () =>
+			fauxAssistantMessage(
+				Array.from({ length: 11 }, (_, offset) => read(from + offset)),
+				{
+					stopReason: "toolUse",
+					timestamp: realNow(),
+				},
+			);
 		const results = await s
-			.run("read a lot", [cold, say("done")])
+			.run("read a lot", [cold(0), cold(11), say("done")])
 			.finally(() => later.mockRestore())
-			.then((turns) => turns.at(-1)!.lastResults);
+			// The session keeps earlier tests' results: this run's are the newest 22.
+			.then((turns) => turns.at(-1)!.allResults.slice(-22));
 		expect(results).toHaveLength(22);
 		const cleared = results.filter((result) => result.text.startsWith("[Old tool result cleared"));
 		// The newest five stay whole; every older one is a placeholder that names the file holding its whole text.
 		expect(cleared).toHaveLength(17);
-		expect(results.slice(-5).every((result) => result.text.length > 10_000)).toBe(true);
+		expect(results.slice(-5).every((result) => result.text.length > 7_000)).toBe(true);
+		expect(results.slice(-5).some((result) => result.text.startsWith("[Omitted"))).toBe(false);
 		for (const result of cleared) expect(result.text).toMatch(/Full output: \S+ \(sha256/);
 		const entries = s.session.sessionManager.getEntries();
 		expect(entries.filter((entry) => entry.type === "context_edit")).toHaveLength(0);
@@ -513,7 +571,7 @@ describe("with another MCP server and Octocode disabled", () => {
 				{ label: "B", description: "b" },
 			],
 		};
-		const turns = await s.run("ask", [calls(fauxToolCall("askUser", { questions: [question] })), say("done")]);
+		const turns = await s.run("ask", [calls(nativeCall("askUser", { questions: [question] })), say("done")]);
 		expect(turns.at(-1)!.lastResults[0].text).toMatch(/No interactive user/);
 		expect(turns.at(-1)!.lastResults[0].text).toContain("No answer or approval was supplied.");
 	});
@@ -559,7 +617,12 @@ describe("compaction", () => {
 		fs.writeFileSync(path.join(s.cwd, "notes.txt"), "hello\n");
 		await s.run("Please read notes.txt and create todo.txt", [
 			calls(fauxToolCall("read", { path: "notes.txt" })),
-			calls(fauxToolCall("file", { queries: [{ reason: "create", type: "write", path: "todo.txt", content: "x" }] })),
+			calls(
+				nativeCall("file", {
+					reason: "Create the todo",
+					queries: [{ reason: "create", type: "write", path: "todo.txt", content: "x" }],
+				}),
+			),
 			say(`Done. ${"detail ".repeat(14_000)}`),
 		]);
 		await s.run("Now keep going with the plan", [say(`More work. ${"detail ".repeat(14_000)}`)]);
@@ -572,7 +635,8 @@ describe("compaction", () => {
 		expect(log[0].text).toContain("Please read notes.txt and create todo.txt");
 		expect(log[0].text).toContain("Stop here and write a context checkpoint");
 		expect(log[0].text).not.toContain("<conversation>");
-		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## Follow-ups", "only record"])
+		// The handoff sections are `SUMMARY_CHECKPOINT_FORMAT` (`core/compaction/summary-format.ts`); "## TL;DR" replaced "## Follow-ups".
+		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## TL;DR", "only record"])
 			expect(log.some((call) => call.text.includes(section))).toBe(true);
 		const entry = compactionEntries().at(-1)!;
 		expect(entry.fromHook).toBe(true);
@@ -590,7 +654,8 @@ describe("compaction", () => {
 	it("reads the files worked on back into the context after compaction, so they can be changed without a fresh read", async () => {
 		const turns = await s.run("overwrite", [
 			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Replace the notes",
 					queries: [{ reason: "replace", type: "write", path: "notes.txt", content: "x" }],
 				}),
 			),
@@ -673,7 +738,7 @@ describe("request too large (HTTP 413)", () => {
 		const gateway = (context: TranscriptContext, reply: Reply) => {
 			seen.push(images(context));
 			return images(context) > 1
-				? fauxAssistantMessage([], { stopReason: "error", errorMessage: "413 status code (no body)" })
+				? fauxAssistantMessage([], { stopReason: "error", errorMessage: "gateway status code 413 (no body)" })
 				: reply;
 		};
 		s.faux.setResponses([
@@ -744,7 +809,7 @@ describe("a subagent session with visible browser and MCP enabled", () => {
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();
 		const appPath = path.join(s.cwd, "app.ts");
 		const turns = await s.run("read", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath, fullContent: true }] })),
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath }] })),
 			say("done"),
 		]);
 		const results = turns.at(-1)!.lastResults;

@@ -1,5 +1,5 @@
 import { normalizeToLF } from "../../../core/tools/edit-diff.ts";
-import { sha256 } from "../../../utils/atomic-file.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import type { FileGuard } from "./guard.ts";
 import type { FileQuery } from "./queries.ts";
 

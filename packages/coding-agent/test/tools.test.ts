@@ -342,18 +342,18 @@ describe("Coding Agent Tools", () => {
 			const output = getTextOutput(result);
 
 			expect(result.details?.truncation?.totalLines).toBe(4000);
-			expect(result.details?.truncation?.outputLines).toBe(600);
-			// The first 120 lines (20% of the 600 line budget) and the last 480 are shown; the 3400 between are elided.
-			expect(result.details?.truncation).toMatchObject({ headLines: 120, tailLines: 480, elidedLines: 3400 });
+			expect(result.details?.truncation?.outputLines).toBe(500);
+			// The first 100 lines (20% of the 500 line budget) and the last 400 are shown; the 3500 between are elided.
+			expect(result.details?.truncation).toMatchObject({ headLines: 100, tailLines: 400, elidedLines: 3500 });
 			expect(output).toContain("line-0001");
-			expect(output).toContain("line-0120");
-			expect(output).not.toContain("line-0121");
-			expect(output).not.toContain("line-3520");
-			expect(output).toContain("line-3521");
+			expect(output).toContain("line-0100");
+			expect(output).not.toContain("line-0101");
+			expect(output).not.toContain("line-3600");
+			expect(output).toContain("line-3601");
 			expect(output).toContain("line-4000");
-			expect(output).toContain("\n[... 3400 lines elided]\n");
+			expect(output).toContain("\n[... 3500 lines elided]\n");
 			expect(output.split("\n")[0]).toMatch(
-				/^\[exit 0 · [\d.]+s · 4,000 lines · \d+ KB · trimmed: first 120 \+ last 480 lines · full output: \S+\]$/,
+				/^\[exit 0 · [\d.]+s · 4,000 lines · \d+ KB · trimmed: first 100 \+ last 400 lines · full output: \S+\]$/,
 			);
 			expect(output).not.toContain("4001");
 		});
@@ -426,8 +426,8 @@ describe("Coding Agent Tools", () => {
 			expect(bodyOf(result).startsWith("error TS1005: first problem\n1\n")).toBe(true);
 			expect(output).toMatch(/\n\[\.\.\. \d+ lines elided\]\n/);
 			expect(output).toContain("\n5000\nFound 1 error.");
-			expect(output.split("\n")[0]).toMatch(/trimmed: first 120 \+ last 480 lines/);
-			expect(result.details?.truncation).toMatchObject({ headLines: 120, totalLines: 5002 });
+			expect(output.split("\n")[0]).toMatch(/trimmed: first 100 \+ last 400 lines/);
+			expect(result.details?.truncation).toMatchObject({ headLines: 100, totalLines: 5002 });
 		});
 
 		it("should persist full output when truncation happens by line count only", async () => {
@@ -439,7 +439,7 @@ describe("Coding Agent Tools", () => {
 			expect(result.details?.truncation?.truncated).toBe(true);
 			expect(result.details?.truncation?.truncatedBy).toBe("lines");
 			expect(fullOutputPath).toBeDefined();
-			expect(output.split("\n")[0]).toContain(`trimmed: first 120 + last 480 lines · full output: ${fullOutputPath}]`);
+			expect(output.split("\n")[0]).toContain(`trimmed: first 100 + last 400 lines · full output: ${fullOutputPath}]`);
 
 			for (let i = 0; i < 20 && (!fullOutputPath || !existsSync(fullOutputPath)); i++) {
 				await new Promise((resolve) => setTimeout(resolve, 10));

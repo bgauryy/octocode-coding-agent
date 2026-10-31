@@ -1,3 +1,4 @@
+import { createAbortError } from "../../utils/abort.ts";
 import type * as NodeZlib from "node:zlib";
 import { iterateSseMessages } from "../../utils/server-sent-events.ts";
 import { formatThrownValue } from "../../utils/diagnostics.ts";
@@ -42,6 +43,11 @@ export function compressRequestBodyZstd(bodyJson: string): Uint8Array<ArrayBuffe
 // SSE Parsing
 // ============================================================================
 
+/**
+ * Codex SSE frames carry `{"type": ...}` payloads, including `type: "error"` and `response.failed`, which
+ * `mapCodexEvents` raises as `CodexApiError` with the payload's `code`. A frame named `error` is therefore parsed like
+ * any other, not thrown as raw text (see `throwOnSseErrorEvent` for the readers that do).
+ */
 export async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerator<Record<string, unknown>> {
 	if (!response.body) return;
 	try {
@@ -55,7 +61,7 @@ export async function* parseSSE(response: Response, signal?: AbortSignal): Async
 			}
 		}
 	} catch (error) {
-		if (signal?.aborted) throw new Error("Request was aborted");
+		if (signal?.aborted) throw createAbortError();
 		throw error;
 	}
 }

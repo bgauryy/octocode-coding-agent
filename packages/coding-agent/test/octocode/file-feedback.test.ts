@@ -9,7 +9,7 @@ import { matchesResponsePath } from "../../src/octocode/files/feedback/path.ts";
 import type { MutationReceipt } from "../../src/octocode/files/render.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { sha256 } from "../../src/utils/atomic-file.ts";
+import { sha256 } from "../../../common/src/atomic-file.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

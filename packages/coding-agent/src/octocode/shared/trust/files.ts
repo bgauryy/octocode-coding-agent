@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { projectMcpConfigPaths } from "../../../../../mcp/src/paths.ts";
-import { sha256 } from "../../../utils/atomic-file.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { projectAgentDirs, projectHookFiles, projectSkillDirs } from "../home.ts";
 
 /** The project MCP definition files the MCP loader reads from `cwd`; each can start a stdio command. */

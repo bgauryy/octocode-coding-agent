@@ -1,8 +1,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { adoptTree, prepareTree, stopTree } from "../../../octocode/shared/process.ts";
+import { stopTree } from "../../../octocode/shared/process.ts";
+import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "../jsonl.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
 import type { RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./types.ts";
+import { leadsProcessGroup } from "../../../utils/shell.ts";
 
 /**
  * The agent process behind an RpcClient: spawns it, reads its JSONL output, dispatches events and
@@ -70,7 +72,7 @@ export class RpcConnection {
 			cwd: this.options.cwd,
 			env: { ...process.env, ...this.options.env },
 			stdio: ["pipe", "pipe", "pipe"],
-			detached: this.options.ownProcessTree === true && process.platform !== "win32",
+			detached: this.options.ownProcessTree === true && leadsProcessGroup(),
 		});
 		this.process = childProcess;
 		if (this.options.ownProcessTree) adoptTree(childProcess.pid);
@@ -287,6 +289,10 @@ export class RpcConnection {
 			if (typeof data !== "object" || data === null || typeof data.type !== "string") return;
 			if (data.type === "rpc_session_identity") {
 				if (typeof data.sessionId === "string" && data.sessionId) this.options.onSessionIdentity?.(data.sessionId);
+				return;
+			}
+			if (data.type === "extension_ui_dismiss") {
+				if (typeof data.id === "string") this.options.onExtensionUIDismiss?.(data.id);
 				return;
 			}
 			if (data.type === "extension_ui_request") {

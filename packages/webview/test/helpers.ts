@@ -1,4 +1,4 @@
-import type { SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 
 /** A backlog item with empty content; tests override the fields they read. */
 export function snapshotItem(ref: string, overrides: Partial<SnapshotItem> = {}): SnapshotItem {

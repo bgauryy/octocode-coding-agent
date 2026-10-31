@@ -2,7 +2,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { renderContextReport } from "../../../core/agent-session/context-report.ts";
 import { sideQuestionsFor } from "../../../core/agent-session/side-questions.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleContextSize } from "./context-controls.ts";
 import { appendReport } from "./report-block.ts";
 import { fence } from "../../../octocode/shared/archive/text.ts";

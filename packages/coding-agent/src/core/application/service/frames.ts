@@ -2,7 +2,7 @@ import {
 	APPLICATION_PROTOCOL_VERSION,
 	type ApplicationCursor,
 	type ApplicationFrame,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { redactData } from "../../../octocode/shared/sanitize.ts";
 
 export type ApplicationFramePayload =

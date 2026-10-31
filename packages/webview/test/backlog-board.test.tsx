@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import type { Snapshot } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot } from "@octocodeai/octocode-contracts/snapshot";
 import { act, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { App } from "../src/app/App.tsx";
 import { createBacklogStore } from "../src/app/extension.ts";
 import { BoardView } from "../src/app/features/BoardView.tsx";
 import { filterBoard, indexBacklog } from "../src/app/model/backlog.ts";
-import { readLaunch } from "../src/app/model/route.ts";
+import { readLaunch } from "../src/access.ts";
 import { snapshotItem } from "./helpers.ts";
 
 const snapshot: Snapshot = {

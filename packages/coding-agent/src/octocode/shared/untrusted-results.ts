@@ -1,6 +1,6 @@
 import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrusted } from "./fence.ts";
 
 /**

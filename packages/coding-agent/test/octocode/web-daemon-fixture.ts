@@ -6,8 +6,8 @@ import type {
 	ApplicationConnection,
 	ApplicationFrame,
 	ApplicationPort,
-} from "@octocodeai/octocode-contacts";
-import type { WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+} from "@octocodeai/octocode-contracts";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import type { RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
 
 /** An environment whose Octocode home and agent database are private to one test. */

@@ -1,5 +1,5 @@
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
-import { envInt } from "../../shared/env.ts";
+import { envInt } from "../../../../../common/src/env.ts";
 import { effectiveTimeout } from "./results.ts";
 
 /** When a foreground command moves to the background by itself: the threshold, and which calls it applies to. */
@@ -22,17 +22,18 @@ export function backgroundAfterSeconds(setting: number | undefined, env: NodeJS.
 /**
  * How long a foreground call waits. The threshold applies, and the command moves to the background, unless the call
  * deliberately waits (`background: false` together with a `timeout`), a `sleep` (which is stopped instead), or the
- * threshold is off or not shorter than the call's own deadline.
+ * threshold is off or not shorter than the call's own deadline. A deliberate wait is also stopped at its deadline
+ * (`deliberate`) instead of moving: `background: false` means the call wants its answer within that timeout.
  */
 export function foregroundPlan(
 	params: { command: string; timeout?: unknown; background?: boolean },
 	afterSetting: number | undefined,
 	env: NodeJS.ProcessEnv = process.env,
-): { timeout: number; clamped: boolean; movable: boolean; auto: boolean } {
+): { timeout: number; clamped: boolean; movable: boolean; auto: boolean; deliberate: boolean } {
 	const { seconds, clamped } = effectiveTimeout(params.timeout);
 	const movable = !SLEEP_COMMAND.test(params.command);
 	const after = backgroundAfterSeconds(afterSetting, env);
 	const deliberate = params.background === false && typeof params.timeout === "number" && params.timeout > 0;
 	const auto = movable && !deliberate && after > 0 && after < seconds;
-	return { timeout: auto ? after : seconds, clamped, movable, auto };
+	return { timeout: auto ? after : seconds, clamped, movable, auto, deliberate };
 }

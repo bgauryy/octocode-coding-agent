@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The wire protocol of the external API: JSON-RPC 2.0 (the framing MCP, ACP and Codex's app-server also use).

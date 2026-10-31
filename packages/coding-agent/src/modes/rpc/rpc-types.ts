@@ -35,6 +35,8 @@ export interface RpcSlashCommand {
 	name: string;
 	/** Human-readable description */
 	description?: string;
+	/** Usage of the arguments, such as `[all|<query>]` (extension commands) */
+	argumentHint?: string;
 	/** What kind of command this is */
 	source: "extension" | "prompt" | "skill";
 	/** Source metadata for the owning resource */
@@ -221,8 +223,19 @@ export type RpcExtensionUIRequest =
 			options: string[];
 			timeout?: number;
 			permission?: ExtensionUIPermissionRequest;
+			/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
+			approval?: boolean;
 	  }
-	| { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "confirm";
+			title: string;
+			message: string;
+			timeout?: number;
+			/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
+			approval?: boolean;
+	  }
 	| {
 			type: "extension_ui_request";
 			id: string;
@@ -258,6 +271,15 @@ export type RpcExtensionUIRequest =
 	  }
 	| { type: "extension_ui_request"; id: string; method: "setTitle"; title: string }
 	| { type: "extension_ui_request"; id: string; method: "set_editor_text"; text: string };
+
+/**
+ * Emitted when a dialog of an earlier `extension_ui_request` ended without the host's response (a remote client answered
+ * it, its run was aborted, or its timeout passed): the host closes dialog `id`. A late response to it is ignored.
+ */
+export interface RpcExtensionUIDismiss {
+	type: "extension_ui_dismiss";
+	id: string;
+}
 
 // ============================================================================
 // Extension UI Commands (stdin)

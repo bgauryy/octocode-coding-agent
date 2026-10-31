@@ -6,7 +6,7 @@ import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
 import type { ReferenceContext } from "../shared/references.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { AcpBackend, type AcpPermission } from "../../../../acp/src/client/client.ts";
 import { type InstalledAcpAgent, installedAcpAgents } from "./discover.ts";
 import { OctocodeBackend } from "./octocode.ts";

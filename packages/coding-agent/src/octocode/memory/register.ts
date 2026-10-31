@@ -2,7 +2,7 @@ import type { BeforeAgentStartEvent, ExtensionAPI, ExtensionContext } from "../.
 import { sharedAgentDb } from "../agentdb/db.ts";
 import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
-import { envFlag, MEMORY_AUTO_ENV } from "../shared/env.ts";
+import { envFlag, MEMORY_AUTO_ENV } from "../../../../common/src/env.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { projectTrustNow } from "../shared/trust.ts";
 import { contentText } from "../shared/util.ts";

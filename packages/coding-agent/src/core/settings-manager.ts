@@ -1,7 +1,7 @@
 import { mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { join } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
-import { resolvePath } from "../utils/paths.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
 import { ProjectTrustStore } from "./trust-manager.ts";
 import type { Settings } from "./settings-schema.ts";
 
@@ -33,6 +33,7 @@ import {
 	type SettingsManagerCreateOptions,
 	type SettingsPaths,
 	type SettingsStorage,
+	type SettingsWarning,
 	toSettingsError,
 } from "./settings-manager/storage.ts";
 
@@ -74,6 +75,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			globalSettingsLoadError: globalLoadError,
 			projectSettingsLoadError: projectLoadError,
 			errors: [...initialErrors],
+			warnings: [],
 			settingsPaths,
 		};
 		super(state, new SettingsPersistence(state));
@@ -127,7 +129,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			initialErrors.push(toSettingsError("project", projectLoad.error, settingsPaths.project));
 		}
 
-		return new SettingsManager(
+		const manager = new SettingsManager(
 			storage,
 			globalLoad.settings,
 			projectLoad.settings,
@@ -137,6 +139,9 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			projectTrusted,
 			settingsPaths,
 		);
+		manager.persistence.recordIgnoredKeys("global", globalLoad.settings);
+		manager.persistence.recordIgnoredKeys("project", projectLoad.settings);
+		return manager;
 	}
 
 	/** Create an in-memory SettingsManager (no file I/O) */
@@ -184,6 +189,8 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		state.projectSettingsLoadError = projectLoad.error;
 		if (projectLoad.error) {
 			this.persistence.recordError("project", projectLoad.error);
+		} else {
+			this.persistence.recordIgnoredKeys("project", projectLoad.settings);
 		}
 		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
 	}
@@ -195,6 +202,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		if (!globalLoad.error) {
 			state.globalSettings = globalLoad.settings;
 			state.globalSettingsLoadError = null;
+			this.persistence.recordIgnoredKeys("global", globalLoad.settings);
 		} else {
 			state.globalSettingsLoadError = globalLoad.error;
 			this.persistence.recordError("global", globalLoad.error);
@@ -207,6 +215,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		if (!projectLoad.error) {
 			state.projectSettings = projectLoad.settings;
 			state.projectSettingsLoadError = null;
+			this.persistence.recordIgnoredKeys("project", projectLoad.settings);
 		} else {
 			state.projectSettingsLoadError = projectLoad.error;
 			this.persistence.recordError("project", projectLoad.error);
@@ -230,6 +239,12 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 	drainErrors(): SettingsError[] {
 		const drained = [...this.state.errors];
 		this.state.errors = [];
+		return drained;
+	}
+
+	drainWarnings(): SettingsWarning[] {
+		const drained = [...this.state.warnings];
+		this.state.warnings = [];
 		return drained;
 	}
 }

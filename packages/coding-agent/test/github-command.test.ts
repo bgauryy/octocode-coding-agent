@@ -6,7 +6,7 @@ import { handleGithubCommand } from "../src/modes/interactive/interactive-mode/g
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
-vi.mock("../src/utils/open-browser.ts", () => ({ openBrowser: vi.fn() }));
+vi.mock("../../common/src/open-browser.ts", () => ({ openBrowser: vi.fn() }));
 
 const ESC = "\x1b";
 const signedIn: GithubStatus = {

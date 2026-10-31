@@ -2,7 +2,7 @@ import fs from "node:fs";
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { Value } from "typebox/value";
-import { AttachRecordSchema } from "@octocodeai/octocode-contacts/daemon";
+import { AttachRecordSchema } from "@octocodeai/octocode-contracts/daemon";
 import { AttachClient, STREAM_QUEUE_FRAMES } from "../../src/octocode/web-daemon/attach-client.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
 import { attachRecordPath } from "../../src/octocode/web-daemon/paths.ts";

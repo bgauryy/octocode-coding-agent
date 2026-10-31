@@ -94,7 +94,9 @@ describe("strict built-in tools", () => {
 					if (activeTools.includes("bash")) {
 						const bash = session.agent.state.tools.find((tool) => tool.name === "bash")!;
 						const result = await bash.execute("bash-test", { command: "echo still works" });
-						expect(result.content).toEqual([{ type: "text", text: "still works\n" }]);
+						expect(result.content).toEqual([
+							{ type: "text", text: expect.stringMatching(/^\[exit 0 · .* · 1 line · 12 B\]\nstill works\n?$/) },
+						]);
 					}
 				} finally {
 					session.dispose();

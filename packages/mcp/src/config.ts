@@ -36,10 +36,10 @@ import {
 	mcpNamespace,
 	validateMcpServerConfig,
 } from "./servers.ts";
-import { hasJsonComments, stripJsonComments } from "../../coding-agent/src/utils/json.ts";
-import { stripBom } from "../../coding-agent/src/utils/text.ts";
-import { atomicWriteFileSync } from "../../coding-agent/src/utils/atomic-file.ts";
-import { errorMessage, isRecord } from "../../coding-agent/src/utils/guards.ts";
+import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
+import { stripBom } from "../../common/src/text.ts";
+import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type { McpExposure, McpHttpServerConfig, McpOAuthConfig, McpServerConfig } from "./servers.ts";
 export { getMcpToolExposure } from "./servers.ts";

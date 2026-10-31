@@ -162,10 +162,19 @@ describe("askUser", () => {
 		expect(formatAnswers({ cancelled: false, answers: [{ question: "Which?", answer: "A", custom: false }] })).toBe(
 			'"Which?" → A',
 		);
-		expect(formatAnswers({ cancelled: true, answers: [] })).toMatch(/declined/);
+		// A cancelled call opens with its status, never with answer-shaped lines, and is not an error result.
+		expect(formatAnswers({ cancelled: true, answers: [] })).toMatch(
+			/^Cancelled \(declined\)\. The user declined to answer\./,
+		);
+		expect(formatAnswers({ cancelled: true, reason: "unavailable", answers: [] })).toMatch(
+			/^Cancelled \(unavailable\)\. No interactive user/,
+		);
+		expect(formatAnswers({ cancelled: true, reason: "aborted", answers: [] })).toMatch(
+			/^Cancelled \(interrupted\)\. The question was interrupted/,
+		);
 		const partial = formatAnswers({ cancelled: true, answers: [{ question: "Which?", answer: "A", custom: false }] });
-		expect(partial).toMatch(/^"Which\?" → A\n/);
-		expect(partial).toMatch(/declined to answer the remaining questions/);
+		expect(partial).toMatch(/^Cancelled \(declined\)\. The user declined to answer the remaining questions\./);
+		expect(partial).toMatch(/\nAnswered before that:\n"Which\?" → A\n/);
 		expect(formatAnswers({ cancelled: false, answers: [{ question: "Q?", answer: "mine", custom: true }] })).toBe(
 			'"Q?" → (typed) mine',
 		);
@@ -352,7 +361,8 @@ describe("askUser tool", () => {
 
 	it("answers for a missing user when there is no UI", async () => {
 		const result = await tool.execute("c", params, undefined, undefined, fakeCtx({ cwd: ".", hasUI: false }));
-		expect(result.content[0].text).toMatch(/No interactive user/);
+		expect(result.content[0].text).toMatch(/^Cancelled \(unavailable\)\. No interactive user/);
+		expect(result.isError).toBeFalsy();
 		expect(result.details).toMatchObject({ answers: [], cancelled: true });
 		expect(result.content[0].text).not.toContain("Proceed with the recommended option");
 		expect(result.content[0].text).toContain("approval");

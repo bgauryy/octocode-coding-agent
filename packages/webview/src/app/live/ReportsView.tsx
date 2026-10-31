@@ -1,4 +1,4 @@
-import type { ReportFile, ReportSummary } from "@octocodeai/octocode-contacts/protocol";
+import type { ReportFile, ReportSummary } from "@octocodeai/octocode-contracts/protocol";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import type { ViewProps } from "../extension.ts";

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { ApplicationService } from "../../src/core/application/index.ts";
 import type { AgentSession, AgentSessionEvent } from "../../src/core/agent-session.ts";
-import type { ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";

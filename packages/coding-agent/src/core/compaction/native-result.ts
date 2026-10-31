@@ -1,4 +1,4 @@
-import type { CompactionResult } from "./compaction.ts";
+import type { CompactionResult } from "./types.ts";
 
 export interface NativeCompactionResult {
 	cancel?: boolean;

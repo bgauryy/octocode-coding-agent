@@ -22,7 +22,7 @@ import { setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the session slash commands. */
 type SessionCommandsHost = Pick<

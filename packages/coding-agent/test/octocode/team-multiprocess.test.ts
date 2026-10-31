@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

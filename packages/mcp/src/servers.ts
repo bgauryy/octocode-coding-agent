@@ -1,4 +1,4 @@
-import { isRecord } from "../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 /**
  * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
  *

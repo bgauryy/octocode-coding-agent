@@ -1,7 +1,7 @@
 import type { ChildProcess, ChildProcessByStdio } from "node:child_process";
 import { readFileSync } from "node:fs";
 import type { Readable } from "node:stream";
-import { spawnProcess, spawnProcessSync } from "../../utils/child-process.ts";
+import { spawnProcess, spawnProcessSync } from "../../../../common/src/child-process.ts";
 import { isStdoutTakenOver } from "../output-guard.ts";
 import type { SpawnCapture } from "./types.ts";
 

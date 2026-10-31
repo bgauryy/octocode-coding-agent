@@ -3,7 +3,7 @@ import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { AGENT_NAMES } from "../../src/octocode/team/identity.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
 import { describeMembers, messageText, resolveTarget } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";

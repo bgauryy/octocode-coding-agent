@@ -1,14 +1,15 @@
 import { type TSchema, Type } from "typebox";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The `reason` argument every native tool call carries: the goal the call serves, in the model's words. The registry
  * wrapper adds it to each native tool's parameters (`withReason`) and removes it before the tool runs (`withoutReason`);
  * permission requests and tool rows read it from the call's input (`callReason`).
  */
-const REASON_DESCRIPTION = "This call's goal in one sentence";
+const REASON_DESCRIPTION = "This call's goal, one sentence";
 
-const reasonSchema = () => Type.String({ description: REASON_DESCRIPTION });
+/** The shared `reason` definition; a tool that declares `reason` itself (to read it in `execute`) uses this one. */
+export const reasonSchema = () => Type.String({ description: REASON_DESCRIPTION });
 
 /** The arguments' `reason`, trimmed, when it is non-empty text. */
 export function callReason(input: unknown): string | undefined {
@@ -54,7 +55,7 @@ export function withReason<T extends TSchema>(parameters: T): T {
 	};
 }
 
-/** The arguments without `reason`, for a tool that does not declare it. */
+/** The arguments without `reason`, for a tool that does not declare it. Top level only: nested per-query `reason` fields are the tool's own input, unlike the identity key in `loop-guard.ts`. */
 export function withoutReason<T>(params: T): T {
 	if (!isRecord(params) || !("reason" in params)) return params;
 	const { reason: _reason, ...rest } = params;

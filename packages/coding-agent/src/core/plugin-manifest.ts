@@ -1,8 +1,8 @@
 import { createHash, type Hash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { stripBom } from "../utils/text.ts";
-import { isRecord } from "../utils/guards.ts";
+import { stripBom } from "../../../common/src/text.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export interface PluginManifest {
 	protocol: "claude" | "codex";

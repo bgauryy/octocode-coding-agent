@@ -4,7 +4,7 @@ import * as importedModule1 from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { LEASE_IDLE_MS } from "../../src/octocode/team/held.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import { leaseAge, resolveTarget, sessionTree } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";

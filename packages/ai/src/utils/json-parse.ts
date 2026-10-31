@@ -105,27 +105,96 @@ export function describeReceivedArguments(received: string): string {
 	return `Received arguments (first ${MAX_ECHOED_ARGUMENTS_CHARS} of ${received.length} characters; ${omitted} more omitted):\n${received.slice(0, MAX_ECHOED_ARGUMENTS_CHARS)}`;
 }
 
+/** Length of the end of unparseable arguments echoed back, so the model sees how its text ended. */
+const ECHOED_TAIL_CHARS = 200;
+/** Longest stray text quoted in the "text after the object" error. */
+const MAX_QUOTED_TRAILING_CHARS = 100;
+
+/** Index just past the first complete top-level JSON object in `text`, or undefined when it does not start with one or never closes. */
+function endOfFirstObject(text: string): number | undefined {
+	const start = text.length - text.trimStart().length;
+	if (text[start] !== "{") return undefined;
+	let depth = 0;
+	let inString = false;
+	for (let index = start; index < text.length; index++) {
+		const char = text[index];
+		if (inString) {
+			if (char === "\\") index++;
+			else if (char === '"') inString = false;
+		} else if (char === '"') {
+			inString = true;
+		} else if (char === "{") {
+			depth++;
+		} else if (char === "}" && --depth === 0) {
+			return index + 1;
+		}
+	}
+	return undefined;
+}
+
+/** A complete JSON object and the non-blank text after it, or undefined when the text is not that. */
+function splitTrailingText(json: string): { object: string; trailing: string } | undefined {
+	const repaired = repairJson(json);
+	const end = endOfFirstObject(repaired);
+	if (end === undefined) return undefined;
+	const trailing = repaired.slice(end).trim();
+	return trailing ? { object: repaired.slice(0, end), trailing } : undefined;
+}
+
+/** Text after a complete object that only repeats closers: nothing is lost, so the object is what the model meant. */
+const CLOSERS_ONLY = /^[}\]\s]*$/;
+
+function describeParseFailure(error: unknown, json: string, trailing: string | undefined): string {
+	let message = error instanceof Error ? error.message : String(error);
+	if (trailing !== undefined) {
+		const cut = trailing.length > MAX_QUOTED_TRAILING_CHARS;
+		const quoted = JSON.stringify(trailing.slice(0, MAX_QUOTED_TRAILING_CHARS));
+		message = `Tool arguments are a complete JSON object followed by unexpected text: ${quoted}${cut ? " (cut)" : ""}. Send exactly one JSON object and nothing after it.`;
+	}
+	// The echo keeps only the start of long text, but a malformed ending is what a model must see to correct it.
+	let tail = "";
+	if (json.length > MAX_ECHOED_ARGUMENTS_CHARS + ECHOED_TAIL_CHARS) {
+		tail = `\n...\nLast ${ECHOED_TAIL_CHARS} characters:\n${json.slice(-ECHOED_TAIL_CHARS)}`;
+	} else if (json.length > MAX_ECHOED_ARGUMENTS_CHARS) {
+		tail = `\n...\nRemaining characters:\n${json.slice(MAX_ECHOED_ARGUMENTS_CHARS)}`;
+	}
+	return `${message}\n\n${describeReceivedArguments(json)}${tail}`;
+}
+
+function parseObject(json: string): ToolCall["arguments"] {
+	const parsed = parseJsonWithRepair<ToolCall["arguments"] | null>(json);
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error("Tool arguments must be a JSON object");
+	}
+	return parsed;
+}
+
 /**
  * Parses the model's complete arguments text of a finished tool call.
  *
  * Unlike {@link parseStreamingJson}, this never keeps a partially parsed prefix: once the call is
  * finished, text that is not a valid JSON object means the model sent malformed arguments. In that
  * case `arguments` is `{}` and `argumentsError` describes the problem, including the text the
- * model sent, so tool validation can report it back to the model.
+ * model sent (its start and, when long, its end), so tool validation can report it back to the model.
+ *
+ * One repair is accepted: a complete object followed only by extra closing braces or brackets, such
+ * as a nested call that closes its envelope twice. Any other text after the object is an error.
  */
 export function parseToolCallArguments(json: string | undefined): Pick<ToolCall, "arguments" | "argumentsError"> {
 	if (!json?.trim()) return { arguments: {} };
 	try {
-		const parsed = parseJsonWithRepair<ToolCall["arguments"] | null>(json);
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-			throw new Error("Tool arguments must be a JSON object");
-		}
-		return { arguments: parsed };
+		return { arguments: parseObject(json) };
 	} catch (error) {
-		return {
-			arguments: {},
-			argumentsError: `${error instanceof Error ? error.message : String(error)}\n\n${describeReceivedArguments(json)}`,
-		};
+		const split = splitTrailingText(json);
+		if (split && CLOSERS_ONLY.test(split.trailing)) {
+			try {
+				return { arguments: parseObject(split.object) };
+			} catch {
+				// The object itself is malformed, so the original error is the one to report.
+				return { arguments: {}, argumentsError: describeParseFailure(error, json, undefined) };
+			}
+		}
+		return { arguments: {}, argumentsError: describeParseFailure(error, json, split?.trailing) };
 	}
 }
 

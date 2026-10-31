@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PRIVATE_FILE_MODE } from "./home.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * A size-capped log one process writes (so rotation can neither lose nor reorder text): once the log would pass `max`

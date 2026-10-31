@@ -3,6 +3,7 @@ import { streamSimple as anthropicStreamSimple } from "../src/api/anthropic-mess
 import { streamSimple as bedrockStreamSimple } from "../src/api/bedrock-converse-stream.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../src/types.ts";
+import { CHARS_PER_TOKEN } from "../src/utils/estimate.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 /**
@@ -18,7 +19,7 @@ async function resultFor<TApi extends Api>(
 ): Promise<AssistantMessage> {
 	const context = normalizeContext({
 		systemPrompt: "Be brief.",
-		messages: [{ role: "user", content: "x".repeat(historyTokens * 4), timestamp: 0 }],
+		messages: [{ role: "user", content: "x".repeat(historyTokens * CHARS_PER_TOKEN), timestamp: 0 }],
 	});
 	return streamSimple(model, context, {
 		reasoning: "high",
@@ -35,8 +36,8 @@ describe("thinking budget reduction record", () => {
 	const anthropicOptions = { apiKey: "sk-ant-api-test" };
 
 	it("Anthropic records the halved budget near the context limit", async () => {
-		// 40k window, 4096 safety, ~26k history leaves ~9.9k: the 16384 request halves to 4096.
-		const result = await resultFor(anthropicStreamSimple, anthropicModel, 26_000, anthropicOptions);
+		// 40k window, 4096 safety, ~30k history leaves ~5.9k: the 16384 request halves until it fits, to 4096.
+		const result = await resultFor(anthropicStreamSimple, anthropicModel, 30_000, anthropicOptions);
 		expect(result.thinkingBudget).toEqual({ requested: 16384, sent: 4096 });
 	});
 
@@ -69,7 +70,7 @@ describe("thinking budget reduction record", () => {
 		const base = getBuiltinModel("amazon-bedrock", "anthropic.claude-haiku-4-5-20251001-v1:0");
 		const model = { ...base, contextWindow: 40_000, maxTokens: 32_000 };
 		const options = { env: { AWS_BEDROCK_SKIP_AUTH: "1" } };
-		expect((await resultFor(bedrockStreamSimple, model, 26_000, options)).thinkingBudget).toEqual({
+		expect((await resultFor(bedrockStreamSimple, model, 30_000, options)).thinkingBudget).toEqual({
 			requested: 16384,
 			sent: 4096,
 		});

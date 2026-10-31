@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { shellCompletion } from "../shared/shell-completion.ts";
 import { completeApi } from "./completion.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { API_COMMAND_FLAGS, integerFlag, parseArgs, pickInstance } from "./args.ts";
 import { ApiCallError, ApiClient } from "./client.ts";

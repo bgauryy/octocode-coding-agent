@@ -4,7 +4,7 @@ import { buildInventory, type InventoryItem, renderInventory } from "../../core/
 import { type SwitchScope, switchItem } from "../../core/extensibility/switch.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { registerHooksCommand } from "../hooks/register.ts";
 import type { HooksView } from "../hooks/register/types.ts";
 import { type Subcommand, type Subcommands, say } from "../shared/commands.ts";

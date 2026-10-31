@@ -1,5 +1,6 @@
-import { stripBom } from "../../utils/text.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
+import { describeIgnoredKey, ignoredSettingsKeys } from "./ignored-keys.ts";
 import { migrateSettings } from "./load.ts";
 import { mergeScopedSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
@@ -56,6 +57,14 @@ export class SettingsPersistence {
 
 	recordError(scope: SettingsScope, error: unknown): void {
 		this.state.errors.push(toSettingsError(scope, error, this.state.settingsPaths[scope]));
+	}
+
+	/** Queue a warning for each root key of freshly loaded `settings` that Octocode does not read. */
+	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
+		const path = this.state.settingsPaths[scope];
+		for (const key of ignoredSettingsKeys(settings)) {
+			this.state.warnings.push({ scope, ...(path ? { path } : {}), message: describeIgnoredKey(key) });
+		}
 	}
 
 	clearModifiedScope(scope: SettingsScope): void {

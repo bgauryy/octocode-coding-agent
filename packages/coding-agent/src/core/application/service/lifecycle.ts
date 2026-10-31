@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ApplicationEvent } from "@octocodeai/octocode-contacts";
+import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session.ts";
 import { queuePreview } from "./projection.ts";
 

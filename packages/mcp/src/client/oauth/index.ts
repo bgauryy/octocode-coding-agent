@@ -28,15 +28,7 @@ export {
 	startAuthorization,
 	type TokenRequestOptions,
 } from "./endpoints.ts";
-export {
-	adaptOAuthProvider,
-	authorizeMcp,
-	type OAuthClientMetadataDocument,
-	type OAuthClientProvider,
-	type OAuthFlowOptions,
-	type OAuthFlowResult,
-	stepUpScope,
-} from "./flow.ts";
+export { adaptOAuthProvider, authorizeMcp, type OAuthFlowResult, stepUpScope } from "./flow.ts";
 export {
 	McpOAuthProvider,
 	type McpOAuthProviderOptions,
@@ -51,7 +43,10 @@ export type {
 	OAuthClientInformationFull,
 	OAuthClientInformationMixed,
 	OAuthClientMetadata,
+	OAuthClientMetadataDocument,
+	OAuthClientProvider,
 	OAuthDiscoveryState,
+	OAuthFlowOptions,
 	OAuthProtectedResourceMetadata,
 	OAuthServerInfo,
 	OAuthTokens,

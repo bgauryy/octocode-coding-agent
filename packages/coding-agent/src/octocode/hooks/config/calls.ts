@@ -5,7 +5,7 @@ import type { HookHandler, HookConfig } from "../contracts.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { stringOrEmpty } from "../../shared/util.ts";
 import { matchesHook } from "../profiles.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Claude Code tool names for Octocode's tools, so `"matcher": "Bash"` or `"Edit|Write"` work unchanged. */
 const CLAUDE_NAMES: Record<string, string[]> = {

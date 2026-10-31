@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { streamSimple } from "../src/api/bedrock-converse-stream.ts";
 import type { Model } from "../src/types.ts";
+import { CHARS_PER_TOKEN } from "../src/utils/estimate.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 const model: Model<"bedrock-converse-stream"> = {
@@ -23,7 +24,7 @@ describe("Bedrock budget thinking near the context limit", () => {
 			messages: [
 				{
 					role: "user",
-					content: "x".repeat(promptTokens * 3.5),
+					content: "x".repeat(promptTokens * CHARS_PER_TOKEN),
 					timestamp: 0,
 				},
 			],

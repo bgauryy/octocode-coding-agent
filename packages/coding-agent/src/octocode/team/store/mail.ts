@@ -3,7 +3,7 @@ import { num } from "../../agentdb/rows.ts";
 import type { Ask } from "../asks.ts";
 import { type DeadLetter, type Message, type SendOptions, toAsk, toMessage, toTraffic, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
-import type { Traffic } from "@octocodeai/octocode-contacts/team";
+import type { Traffic } from "@octocodeai/octocode-contracts/team";
 
 /** The message rows behind `TeamStore` (`store.ts`); each is described on the `TeamStore` method that runs it. */
 
@@ -12,7 +12,7 @@ export type SignProof = (id: number, recipient: string) => string | undefined;
 
 export function insertMessage(
 	db: Db,
-	workspace: string,
+	team: string,
 	/** The recipients that can still read mail (`TeamStore.reachable`), read in the same transaction. */
 	live: Set<string>,
 	from: string,
@@ -28,11 +28,11 @@ export function insertMessage(
 	let asker: string | undefined;
 	let completesReply = false;
 	if (options.replyTo !== undefined) {
-		const question = deliveries.replyTarget(db, workspace, options.replyTo);
+		const question = deliveries.replyTarget(db, team, options.replyTo);
 		if (question?.replyRequired && deliveries.holdsOpen(db, options.replyTo, from)) asker = question.from;
 		completesReply = question !== undefined && recipients.includes(question.from);
 	}
-	const id = deliveries.insertMessage(db, workspace, from, body, options.replyRequired, options.replyTo, now);
+	const id = deliveries.insertMessage(db, team, from, body, options.replyRequired, options.replyTo, now);
 	for (const recipient of recipients) {
 		const wake = options.interrupt
 			? WAKE.interrupt
@@ -45,13 +45,13 @@ export function insertMessage(
 	return { id, departed };
 }
 
-export function asks(db: Db, workspace: string, child: string, parent: string, since: number): Ask[] {
-	return deliveries.asks(db, workspace, child, parent, since).map(toAsk);
+export function asks(db: Db, team: string, child: string, parent: string, since: number): Ask[] {
+	return deliveries.asks(db, team, child, parent, since).map(toAsk);
 }
 
-export function deadLetters(db: Db, workspace: string, sender: string, limit = INBOX_BATCH_SIZE): DeadLetter[] {
+export function deadLetters(db: Db, team: string, sender: string, limit = INBOX_BATCH_SIZE): DeadLetter[] {
 	const letters = new Map<number, DeadLetter>();
-	for (const row of deliveries.deadLetters(db, workspace, sender, limit)) {
+	for (const row of deliveries.deadLetters(db, team, sender, limit)) {
 		const id = num(row.id);
 		const relay =
 			typeof row.relay_to === "string"
@@ -74,8 +74,8 @@ export function pendingUrgent(db: Db, id: string, after: number, idle: boolean):
 	return row ? toMessage(row, id) : undefined;
 }
 
-export function recent(db: Db, workspace: string, limit = 30, now = Date.now(), windowMs = 10 * 60_000): Traffic[] {
+export function recent(db: Db, team: string, limit = 30, now = Date.now(), windowMs = 10 * 60_000): Traffic[] {
 	return deliveries
-		.recentTraffic(db, workspace, now - windowMs, limit)
+		.recentTraffic(db, team, now - windowMs, limit)
 		.map(({ message, deliveries: states }) => toTraffic(message, states));
 }

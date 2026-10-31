@@ -2,8 +2,8 @@ import { join } from "node:path";
 import type { ModelsStore, ModelsStoreEntry, ModelsStoreOperationOptions } from "@octocodeai/octocode-ai";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
-import { getFileRevision, normalizePath } from "../utils/paths.ts";
-import { stripBom } from "../utils/text.ts";
+import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import { type AuthStorageBackend, FileAuthStorageBackend } from "./auth-storage.ts";
 
 type StoredModels = Record<string, ModelsStoreEntry>;

@@ -4,7 +4,7 @@ import type { EnvironmentSettingsApi } from "./api/environment.ts";
 import type { ModelSettingsApi } from "./api/model.ts";
 import type { ResourceSettingsApi } from "./api/resources.ts";
 import type { RuntimeSettingsApi } from "./api/runtime.ts";
-import type { SettingsError } from "./storage.ts";
+import type { SettingsError, SettingsWarning } from "./storage.ts";
 
 /** Settings layers, project trust, reloads, session overrides and the write queue. */
 interface SettingsCoreApi {
@@ -20,6 +20,8 @@ interface SettingsCoreApi {
 	applyOverrides(overrides: Partial<Settings>): void;
 	flush(): Promise<void>;
 	drainErrors(): SettingsError[];
+	/** Settings the loaded files hold that Octocode ignores (unknown or removed root keys), reported once per load. */
+	drainWarnings(): SettingsWarning[];
 }
 
 /** The SettingsManager instance API, grouped by settings domain. */

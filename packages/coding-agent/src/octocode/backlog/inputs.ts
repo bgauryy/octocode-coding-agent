@@ -1,5 +1,5 @@
-import type { EntityInput } from "@octocodeai/octocode-contacts/backlogs";
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import type { EntityInput } from "@octocodeai/octocode-contracts/backlogs";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 
 export interface AddInput extends EntityInput {
 	note?: string;

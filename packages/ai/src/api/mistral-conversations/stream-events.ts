@@ -8,6 +8,7 @@ import type {
 	ThinkingContent,
 	ToolCall,
 } from "../../types.ts";
+import { sumUsageTokens } from "../../utils/assistant-message.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
@@ -83,9 +84,7 @@ export async function consumeChatStream(
 			output.usage.output = chunk.usage.completion_tokens || 0;
 			output.usage.cacheRead = cachedPromptTokens;
 			output.usage.cacheWrite = 0;
-			output.usage.totalTokens =
-				chunk.usage.total_tokens ||
-				output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+			output.usage.totalTokens = sumUsageTokens(output.usage, chunk.usage.total_tokens);
 			calculateCost(model, output.usage);
 		}
 

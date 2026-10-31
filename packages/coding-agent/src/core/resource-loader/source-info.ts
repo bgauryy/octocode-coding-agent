@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
-import { isUnderPath } from "../../utils/paths.ts";
+import { isUnderPath } from "../../../../common/src/paths.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import { createSourceInfo, getSyntheticPathSource, isSyntheticPath, type SourceInfo } from "../source-info.ts";
 

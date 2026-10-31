@@ -1,4 +1,4 @@
-import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { ComponentType, ReactNode } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { BacklogIndex } from "./model/backlog.ts";

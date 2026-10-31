@@ -1,6 +1,6 @@
 import type { PermissionRequest } from "../permission/request.ts";
 import { browserMcpTool, browserMcpUrls } from "../shared/browser-mcp.ts";
-import { classifyHost, type HostLookup, isHttpUrl } from "./guard.ts";
+import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
 
 const VERDICT_TTL_MS = 60 * 60_000;
 const VERDICTS_MAX = 500;

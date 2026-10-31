@@ -1,5 +1,5 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export interface FileInputReplacement {
 	index: number;

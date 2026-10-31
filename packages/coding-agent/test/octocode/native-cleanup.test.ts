@@ -5,7 +5,6 @@ import { pathToFileURL } from "node:url";
 import { getKeybindings, setKeybindings, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { resolveReadPathAsync } from "../../src/core/tools/path-utils.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { CHIPS, chipText, shortChip } from "../../src/octocode/permission/mode.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
@@ -91,7 +90,8 @@ describe("native cleanup regressions", () => {
 			for (const [input, filename] of cases) {
 				fs.writeFileSync(path.join(cwd, filename), "selected");
 				const tracked = readPaths("read", { path: input }, cwd)[0];
-				expect(tracked).toBe(await resolveReadPathAsync(input, cwd));
+				// APFS treats NFC and NFD names as one file, so compare the canonical form.
+				expect(tracked.normalize("NFD")).toBe(path.join(cwd, filename).normalize("NFD"));
 				expect(fs.readFileSync(tracked, "utf8")).toBe("selected");
 			}
 			const url = pathToFileURL(path.join(cwd, "file name.txt")).href;

@@ -6,8 +6,8 @@ import { BacklogError, type BacklogStore, type Item, priorityName } from "./stor
 /** An item idle for longer than this (and not done) is listed under Attention in the page. */
 const IDLE_MS = 7 * DAY_MS;
 
-import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
-import { STATES } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
+import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 
 function snapshotItem(store: BacklogStore, item: Item, self: string | undefined): SnapshotItem {
 	return {

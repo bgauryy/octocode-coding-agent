@@ -1,5 +1,6 @@
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { SessionNotification, StopReason, ToolCallContent } from "@agentclientprotocol/sdk";
+import { compactionSummaryDisplay } from "../../../coding-agent/src/core/messages.ts";
 import type { RpcEvent } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
 
 type Update = SessionNotification["update"];
@@ -39,6 +40,45 @@ export function customMessageUpdates(message: {
 	return updates;
 }
 
+const COMPACTION_TITLES = {
+	manual: "Compacting context",
+	threshold: "Compacting context (automatic)",
+	overflow: "Compacting context (the context overflowed)",
+} as const;
+
+let compactions = 0;
+
+function compactionCall(id: string, title: string, status: "in_progress" | "completed"): Update {
+	return { sessionUpdate: "tool_call", toolCallId: id, title, kind: "other", status };
+}
+
+function compactionResult(id: string, failed: boolean, text: string): Update {
+	return {
+		sessionUpdate: "tool_call_update",
+		toolCallId: id,
+		status: failed ? "failed" : "completed",
+		content: [{ type: "content", content: { type: "text", text } }],
+	};
+}
+
+/** A compaction already in the session's history: one finished tool call that carries the summary a person reads. */
+export function compactionReplay(id: string, summary: string, tokensBefore: number): Update[] {
+	return [
+		compactionCall(`compaction-${id}`, "Context compacted", "completed"),
+		compactionResult(`compaction-${id}`, false, compactionSummaryDisplay({ summary, tokensBefore })),
+	];
+}
+
+/** A compaction's ending as text for its tool call: the summary a person reads, or why none was made. */
+function compactionEnd(event: Extract<RpcEvent, { type: "compaction_end" }>): { failed: boolean; text: string } {
+	if (event.aborted) return { failed: true, text: "Compaction cancelled." };
+	if (event.result) {
+		const { summary, tokensBefore } = event.result;
+		return { failed: false, text: compactionSummaryDisplay({ summary, tokensBefore }) };
+	}
+	return { failed: true, text: event.errorMessage || "Compaction failed." };
+}
+
 /**
  * Only project visible textual content; details, raw output and binary payloads never cross this adapter. An oversized
  * result keeps its start and its end: a command's status line leads and its failure or summary comes last.
@@ -59,10 +99,24 @@ export function toolContent(result: unknown): ToolCallContent[] {
 	return text ? [{ type: "content", content: { type: "text", text } }] : [];
 }
 
+/**
+ * A tool call's title: its name and, when the arguments state one, the call's `reason` (every native tool requires it;
+ * models add it to MCP calls), on one line. A one-word reason (`Edit`) says no more than the name, as in the terminal.
+ */
+export function toolTitle(name: string, args?: unknown): string {
+	const reason =
+		args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
+			? args.reason.replace(/[\s\p{Cc}]+/gu, " ").trim()
+			: "";
+	return (reason.includes(" ") ? `${name}: ${reason}` : name).slice(0, 512);
+}
+
 /** Stateful projection for one prompt. The broker owns session IDs, delivery order and settled completion. */
 export class AcpEventProjector {
 	private readonly streamed = new Map<number, string>();
 	private readonly tools = new Set<string>();
+	/** The compaction in progress: ACP has no compaction update, so it shows as a tool call that ends completed or failed. */
+	private compaction: string | undefined;
 	private reason: StopReason = "end_turn";
 	private failure: string | undefined;
 	private commandFailure: string | undefined;
@@ -116,11 +170,21 @@ export class AcpEventProjector {
 			case "auto_retry_end":
 				if (!event.success && event.finalError) this.failure = event.finalError;
 				return [];
+			case "compaction_start":
+				return this.startCompaction(event.reason).updates;
+			case "compaction_end": {
+				// A compaction that could not start (no model, nothing to summarize) ends without a start.
+				const { id, updates } = this.startCompaction(event.reason);
+				this.compaction = undefined;
+				const { failed, text } = compactionEnd(event);
+				updates.push(compactionResult(id, failed, text));
+				return updates;
+			}
 			case "tool_execution_start":
-				return this.startTool(event.toolCallId, event.toolName);
+				return this.startTool(event.toolCallId, event.toolName, event.args);
 			case "tool_execution_update":
 				return [
-					...this.startTool(event.toolCallId, event.toolName),
+					...this.startTool(event.toolCallId, event.toolName, event.args),
 					{
 						sessionUpdate: "tool_call_update",
 						toolCallId: event.toolCallId,
@@ -143,9 +207,18 @@ export class AcpEventProjector {
 		}
 	}
 
-	private startTool(id: string, name: string): Update[] {
+	private startCompaction(reason: keyof typeof COMPACTION_TITLES): { id: string; updates: Update[] } {
+		if (this.compaction) return { id: this.compaction, updates: [] };
+		this.compaction = `compaction-${++compactions}`;
+		return {
+			id: this.compaction,
+			updates: [compactionCall(this.compaction, COMPACTION_TITLES[reason], "in_progress")],
+		};
+	}
+
+	private startTool(id: string, name: string, args?: unknown): Update[] {
 		if (this.tools.has(id)) return [];
 		this.tools.add(id);
-		return [{ sessionUpdate: "tool_call", toolCallId: id, title: name.slice(0, 512), status: "in_progress" }];
+		return [{ sessionUpdate: "tool_call", toolCallId: id, title: toolTitle(name, args), status: "in_progress" }];
 	}
 }

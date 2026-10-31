@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { lstatSync, readFileSync } from "node:fs";
-import { stripBom } from "../utils/text.ts";
-import { isRecord } from "../utils/guards.ts";
+import { stripBom } from "../../../common/src/text.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export interface ExtensionManifest {
 	extensions?: string[];

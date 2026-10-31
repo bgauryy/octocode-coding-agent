@@ -1,5 +1,5 @@
 import { clip, plural } from "../../../../coding-agent/src/octocode/shared/render/text.ts";
-import { isRecord } from "../../../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Longest error sentence shown in the row; the full payload shows when the row expands. */
 const ERROR_CHARS = 200;

@@ -1,16 +1,16 @@
 import type * as ChildProcess from "node:child_process";
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { win32 as path } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
-vi.mock("child_process", async (importOriginal) => {
+vi.mock("node:child_process", async (importOriginal) => {
 	const actual = await importOriginal<typeof ChildProcess>();
 	return { ...actual, spawn: spawnMock };
 });
 
-import { killProcessTree } from "../../../src/utils/shell.ts";
+import { signalTree } from "../../../src/utils/process-tree.ts";
 
 function withWindowsPlatform(test: () => void): void {
 	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
@@ -39,13 +39,13 @@ describe("issue #6596 taskkill spawn failures", () => {
 		spawnMock.mockReturnValue(child);
 
 		withWindowsPlatform(() => {
-			killProcessTree(1234);
+			signalTree(1234, "SIGKILL");
 		});
 
 		expect(spawnMock).toHaveBeenCalledWith(
-			join(expectedRoot, "System32", "taskkill.exe"),
-			["/F", "/T", "/PID", "1234"],
-			{ detached: true, stdio: "ignore", windowsHide: true },
+			path.join(expectedRoot, "System32", "taskkill.exe"),
+			["/pid", "1234", "/T", "/F"],
+			{ stdio: "ignore", windowsHide: true },
 		);
 		expect(() => child.emit("error", new Error("spawn taskkill ENOENT"))).not.toThrow();
 	});

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { renderContractSections } from "../../../mcp/src/section.ts";
 import { leanPromptSections } from "../../src/octocode/instructions/lean.ts";
-import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
+import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
 import { reportContract, reportContractSentences } from "../../src/octocode/instructions/report.ts";
 import { withIdentity } from "../../src/octocode/instructions/task.ts";
 
@@ -198,15 +198,29 @@ describe("prompt", () => {
 		expect(bare).not.toMatch(/read-only commands|MCP tools|a Markdown doc in your scratch folder/);
 		expect(reader).not.toContain("a file you will edit");
 		expect(reader).toContain("Use `localFetch` for files you know.");
-		for (const rule of ["Make the smallest complete change", "Never weaken or delete tests", "short summary"])
+		for (const rule of [
+			"Make the smallest complete change",
+			"Never weaken or delete tests",
+			"TL;DR",
+			"system's architect",
+		])
 			expect(reader).not.toContain(rule);
+		expect(reader).toContain("find the root cause before fixing");
+		expect(reader).toContain("Name causes, not only symptoms");
 		const writer = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
 		expect(writer).not.toContain("do not modify repository source");
 		expect(writer).toContain("Use `localFetch` for a file you will edit");
-		for (const rule of ["Make the smallest complete change", "Never weaken or delete tests"])
+		for (const rule of [
+			"Make the smallest complete change",
+			"Never weaken or delete tests",
+			"Think as the system's architect: fix a behavior in the module that owns it",
+			"Avoid hand-picked special cases, one-call-site patches and rigid rules",
+			"find the root cause before fixing",
+			"Fix causes, not symptoms",
+		])
 			expect(writer).toContain(rule);
 		// A child's report contract already asks for verification and open questions; only the user gets a summary.
-		expect(writer).not.toContain("short summary");
+		expect(writer).not.toContain("TL;DR");
 	});
 
 	it("states the report contract once, in the child's task, and nowhere in the policy, lean prompt or roles", () => {
@@ -252,7 +266,7 @@ describe("prompt", () => {
 			// A message is mid-task contact: approval and blockers go through `agent` with type `message`, never "report to the parent".
 			expect(child).not.toMatch(/[Rr]eport [^.]*to the parent/);
 			expect(child).toContain(
-				"Message your parent using `agent` type `message` for approval before destructive or irreversible actions",
+				"Message your parent using `agent` type `message` for approval before deleting existing user or repository content or taking another destructive or irreversible action",
 			);
 		}
 		// Each role keeps what its report adds beyond the contract.
@@ -296,7 +310,12 @@ describe("prompt", () => {
 		);
 		expect(child).toContain("checkpoint long tasks there");
 		for (const prompt of [child, root]) {
-			expect(prompt.match(/- Lead with the result/g)).toHaveLength(1);
+			// One opening rule per role: the main session leads with the result; a child starts with the status word its task names.
+			expect(
+				prompt.match(
+					/- (Lead with the result|Start your report with the status word your task names, then the result)/g,
+				),
+			).toHaveLength(1);
 			// Conditions, not templates: a reason when the step is not obvious, a label when a claim is not verified.
 			expect(prompt).not.toContain("Give each step a reason");
 			expect(prompt).not.toContain("label facts, assumptions and unknowns");
@@ -304,6 +323,8 @@ describe("prompt", () => {
 			expect(prompt.match(/Label a claim as an assumption or unknown only when you did not verify it/g)).toHaveLength(
 				1,
 			);
+			expect(prompt.match(/Base every claim and decision on evidence you read or ran/g)).toHaveLength(1);
+			expect(prompt).toContain("Never invent a name, path, API, version or result.");
 		}
 		expect(child).toContain("(a deletion, a costly run, a change of plan), state it in one line in your report.");
 		expect(root).toContain("(a deletion, a costly run, a change of plan), state it in one line.");
@@ -312,10 +333,10 @@ describe("prompt", () => {
 		expect(root).toContain("- Work until the request is done and checked, or you are blocked.");
 		// The summary is conditional and goes to the user; a child's report contract already asks for verification.
 		expect(root).toContain(
-			"- When more than one file changed or a check failed, end with a short summary for the user: changed paths, checks run and the blast radius.",
+			"- When you finish a task, end with a short TL;DR for the user; when more than one file changed or a check failed, it names changed paths, checks run and the blast radius.",
 		);
 		expect(root).not.toContain("After changing files or other multi-step work");
-		expect(child).not.toContain("short summary");
+		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
 		expect(root).toContain("Leave nothing open: finish or revert partial edits, stop jobs and agents you started");
 		expect(root).not.toMatch(/release locks|close claimed items/);
@@ -325,14 +346,21 @@ describe("prompt", () => {
 	});
 
 	it("states one research scope that agrees with the Research section, and the delegate clause only to a delegator", () => {
-		const scope =
-			"do not re-research them. Research the code you change or rely on, and anything the user asks you to verify.";
+		const scope = (requester: string) =>
+			`do not re-research them. Research the code you change or rely on, and anything ${requester} asks you to verify.`;
 		for (const octocode of [true, false]) {
 			const root = octocodePrompt({ octocode, profiles: [], canDelegate: true });
-			expect(root).toContain(`${scope} In a delegated task, say which facts are settled and what to verify.`);
+			// The delegate clause is the delegator's instruction to itself about writing a brief, not a task it receives.
+			expect(root).toContain(
+				`${scope("the user")} When you delegate, say in the task which facts are settled and what to verify.`,
+			);
+			expect(root).not.toContain("In a delegated task");
 			const child = octocodePrompt({ octocode, profiles: [], canDelegate: false });
-			expect(child).toContain(scope);
-			expect(child).not.toContain("In a delegated task, say which facts");
+			// A child's requester is its task (written by its parent), not the user.
+			expect(child).toContain("Treat facts your task supplied");
+			expect(child).toContain(scope("your task"));
+			expect(child).not.toContain("Treat facts the user supplied");
+			expect(child).not.toContain("When you delegate");
 			// The retired scope ("Research only when verification is requested") contradicted the research-first routing.
 			expect(root).not.toContain("Research only when");
 		}
@@ -452,14 +480,95 @@ describe("prompt", () => {
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
 		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true });
 		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnlyRole: true });
-		const inquiry = "When the user asks how, why or what, answer from evidence without editing";
-		for (const prompt of [root, writer]) expect(prompt.match(new RegExp(inquiry, "g"))).toHaveLength(1);
-		expect(reader).not.toContain(inquiry);
+		const inquiry = (requester: string) =>
+			`When ${requester} asks how, why or what, answer from evidence without editing`;
+		expect(root.match(new RegExp(inquiry("the user"), "g"))).toHaveLength(1);
+		expect(writer.match(new RegExp(inquiry("your task"), "g"))).toHaveLength(1);
+		expect(writer).not.toContain("When the user asks how");
+		expect(reader).not.toContain("asks how, why or what");
 		for (const prompt of [root, writer, reader])
-			expect(prompt).toContain("a deeper file wins over a shallower one, and direct user instructions win over both");
+			expect(prompt).toContain("a deeper file wins within its directory, and direct user instructions win over both");
 		expect(root).toContain("Scale delegation: none for a lookup or small change");
 		expect(root).toContain("Delegate output-heavy triage so only the answer enters your context");
 		expect(writer).not.toContain("Scale delegation");
+	});
+
+	it("defines cleanup once in Safety: removing what the task created needs no approval, deleting existing content does", () => {
+		const cleanup = "Removing files and code you created in this task is cleanup, not deletion.";
+		const variants = [
+			{ canDelegate: true, ask: "Ask before deleting existing user or repository content" },
+			{
+				canDelegate: false,
+				canUseAgent: true,
+				ask: "Message your parent using `agent` type `message` for approval before deleting existing user or repository content",
+			},
+			{ canDelegate: false, canUseAgent: false, ask: "If deleting existing user or repository content" },
+		];
+		for (const { ask, ...input } of variants) {
+			const sections = octocodePromptSections({ octocode: false, profiles: [], canWrite: true, ...input });
+			// The boundary sits in Safety only; the Work cleanup line stays a bare instruction that it governs.
+			expect(sections.octocode_safety).toContain(cleanup);
+			expect(sections.octocode_safety).toContain(ask);
+			expect(sections.octocode_safety).not.toMatch(/\(deletion, /);
+			expect(sections.octocode_work).toContain(
+				"Leave the code clean; remove your debug output, unused code and temporary files.",
+			);
+			expect(sections.octocode_work).not.toContain(cleanup);
+			expect(octocodePrompt({ octocode: false, profiles: [], canWrite: true, ...input }).split(cleanup)).toHaveLength(
+				2,
+			);
+		}
+	});
+
+	it("bounds a child's cleanup by its assigned area and sends the main session's wider cleanup to proposals", () => {
+		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true });
+		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		expect(writer).toContain(
+			"inside the blast radius within your assigned area; report anything outside it instead of changing it",
+		);
+		expect(writer).not.toContain("propose wider cleanups");
+		expect(root).toContain("inside the blast radius; propose wider cleanups.");
+		// The implementer's role keeps the area limit the policy now defers to.
+		expect(role("implementer")).toContain("Stay within the assigned area");
+	});
+
+	it("routes rendered-page lookups to the browser tools only where the agent holds them", () => {
+		const routing = "When static text from `web` cannot answer the question, use the browser tools";
+		const base = { octocode: false, profiles: [], canDelegate: true, canWeb: true };
+		expect(octocodePromptSections({ ...base, canBrowse: true }).octocode_research).toContain(routing);
+		for (const input of [
+			base,
+			{ ...base, canBrowse: false, browserProfiles: ["browser"] },
+			{ ...base, canBrowse: true, canWeb: false },
+		])
+			expect(octocodePromptSections(input).octocode_research).not.toContain(routing);
+		// Without a browser the delegation section names the specialist instead.
+		expect(octocodePrompt({ ...base, browserProfiles: ["browser"] })).toContain(
+			"Delegate browser interaction to `browser`",
+		);
+	});
+
+	it("shows the testing rule to writers and the reviewer, not to read-only roles that never write tests", () => {
+		const rule = "prefer behavioral and end-to-end tests";
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(rule);
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true })).toContain(rule);
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnlyRole: true })).not.toContain(
+			rule,
+		);
+		// Read-only roles that review tests carry the review form in their role.
+		expect(role("reviewer")).toContain("When reviewing tests, check that they drive the public entry point");
+		for (const name of ["researcher", "browser"]) expect(role(name)).not.toContain("reviewing tests");
+	});
+
+	it("keeps one owner for the finding shape and one report order", () => {
+		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnlyRole: true });
+		// The policy owns the shape and admits the severity a role asks for; the reviewer adds it to that shape.
+		expect(reader).toContain("verified cause and repair, plus any severity or confirmation status your role asks for");
+		expect(role("reviewer")).toContain("Add a severity");
+		expect(role("reviewer")).not.toContain("Give each finding a severity");
+		// A child opens with the status word the report contract names, as the parent parses it.
+		expect(reader).toContain("Start your report with the status word your task names, then the result");
+		expect(reader).not.toContain("Lead with the result");
 	});
 
 	it("does not declare the debugger to read-only roles, whose permission layer refuses it", () => {

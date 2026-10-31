@@ -68,6 +68,6 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 | ai             | [Provider APIs, authentication and model catalog](../../ai/README.md) |
 | tui            | [Terminal components and rendering](../../tui/README.md)              |
 | webview        | [Browser state, transport and rendering](../../webview/README.md)     |
-| contacts       | [Shared serializable contracts and schemas](../../contacts/README.md) |
+| contracts       | [Shared serializable contracts and schemas](../../contracts/README.md) |
 | MCP client API | [Private MCP workspace and public client API](../../mcp/README.md)    |
 | telemetry      | [Telemetry contracts and schemas](../../telemetry/README.md)          |

@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { APP_NAME } from "../../config.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { resolvePath } from "../../utils/paths.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { resolvePath } from "../../../../common/src/paths.ts";
 import {
 	assertValidSessionId,
 	createSessionHeader,

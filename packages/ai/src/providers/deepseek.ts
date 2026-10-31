@@ -1,5 +1,6 @@
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { createProvider, type Provider } from "../models.ts";
 import { DEEPSEEK_MODELS } from "./deepseek.models.ts";
 
@@ -8,7 +9,7 @@ export function deepseekProvider(): Provider<"openai-completions"> {
 		id: "deepseek",
 		name: "DeepSeek",
 		baseUrl: "https://api.deepseek.com",
-		auth: { apiKey: envApiKeyAuth("DeepSeek API key", ["DEEPSEEK_API_KEY"]) },
+		auth: { apiKey: envApiKeyAuth("DeepSeek API key", apiKeyEnvVars("deepseek")) },
 		models: Object.values(DEEPSEEK_MODELS),
 		api: openAICompletionsApi(),
 	});

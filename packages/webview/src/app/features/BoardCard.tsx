@@ -1,4 +1,4 @@
-import type { SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { memo } from "react";
 import type { ViewProps } from "../extension.ts";
 import { type BacklogIndex, PRIORITY_TITLES } from "../model/backlog.ts";

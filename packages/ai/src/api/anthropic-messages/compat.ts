@@ -1,6 +1,7 @@
 import type { BetaCacheControlEphemeral as CacheControlEphemeral } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
+import { isOpenRouterModel } from "../../utils/provider-host.ts";
 
 export function getCacheControl(
 	model: Model<"anthropic-messages">,
@@ -41,7 +42,7 @@ export function shouldUseServerSideFallbackBeta(model: Model<"anthropic-messages
 }
 
 export function getAnthropicCompat(model: Model<"anthropic-messages">) {
-	const isOpenRouter = model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai");
+	const isOpenRouter = isOpenRouterModel(model);
 	return {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,

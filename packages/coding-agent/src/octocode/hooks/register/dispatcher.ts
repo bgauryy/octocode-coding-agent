@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/in
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../shared/home/repo.ts";
-import { errorMessage, isRecord } from "../../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookIdentity } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookVerdict } from "../contracts.ts";
@@ -14,6 +14,7 @@ import { hookLabel } from "../config.ts";
 import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
+import { conflictingRewrites, firstRewrite, reducePermission } from "../verdicts.ts";
 import { capContext, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
@@ -260,18 +261,7 @@ export function createDispatcher(
 			return signal?.aborted ? {} : (winner ?? {});
 		}
 		const verdicts = await Promise.all(running);
-		if (event === "PermissionRequest") {
-			const deny =
-				verdicts.find((verdict) => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ??
-				verdicts.find((verdict) => verdict.permissionDecision === "deny");
-			if (deny)
-				return {
-					permissionDecision: "deny",
-					block: deny.block,
-					...(verdicts.some((verdict) => verdict.permissionInterrupt) ? { permissionInterrupt: true } : {}),
-				};
-			return verdicts.some((verdict) => verdict.permissionDecision === "allow") ? { permissionDecision: "allow" } : {};
-		}
+		if (event === "PermissionRequest") return reducePermission(verdicts);
 		if ((event === "Stop" || event === "SubagentStop") && verdicts.some((verdict) => verdict.stop))
 			return { stop: true };
 		const halted = verdicts.find((verdict) => verdict.haltTurn);
@@ -279,9 +269,8 @@ export function createDispatcher(
 			say(ctx, halted.block ?? halted.context ?? "Stopped by a prompt hook", "warning");
 			ctx.abort("internal");
 		}
-		const rewrites = verdicts.flatMap((verdict) => (verdict.updatedInput ? [verdict.updatedInput] : []));
-		if (rewrites.length > 1 && rewrites.some((value) => JSON.stringify(value) !== JSON.stringify(rewrites[0])))
-			return { block: "Conflicting hook input rewrites; call not executed" };
+		if (conflictingRewrites(verdicts)) return { block: "Conflicting hook input rewrites; call not executed" };
+		const rewrite = firstRewrite(verdicts);
 		const block = verdicts
 			.map((verdict) => verdict.block)
 			.filter(Boolean)
@@ -295,12 +284,7 @@ export function createDispatcher(
 			.filter(Boolean)
 			.join("\n\n");
 		return {
-			...(rewrites[0]
-				? {
-						updatedInput: rewrites[0],
-						updatedInputProtocol: verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol,
-					}
-				: {}),
+			...(rewrite ? { updatedInput: rewrite.updatedInput, updatedInputProtocol: rewrite.updatedInputProtocol } : {}),
 			...(verdicts.some((verdict) => verdict.continueReason)
 				? {
 						continueReason: capContext(

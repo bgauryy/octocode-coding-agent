@@ -5,7 +5,7 @@ import {
 	type ResizeImageWorkerResponse,
 	resizeImageInProcess,
 } from "./image-resize-core.ts";
-import { errorMessage } from "./guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface ResizeImageWorkerRequest {
 	inputBytes: Uint8Array;

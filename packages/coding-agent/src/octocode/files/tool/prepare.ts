@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tools/edit-diff.ts";
-import { splitBom } from "../../../utils/text.ts";
+import { splitBom } from "../../../../../common/src/text.ts";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
-import { sha256 } from "../../../utils/atomic-file.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { transformPatch, type ParsedPatch } from "../../shared/codex-patch/patch.ts";

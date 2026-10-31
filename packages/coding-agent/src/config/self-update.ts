@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync, realpathSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join, resolve, sep, win32 } from "path";
 import { fileURLToPath } from "url";
-import { spawnProcessSync } from "../utils/child-process.ts";
+import { spawnProcessSync } from "../../../common/src/child-process.ts";
 import { getPackageDir, isBunBinary, isBunRuntime } from "./package-detection.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

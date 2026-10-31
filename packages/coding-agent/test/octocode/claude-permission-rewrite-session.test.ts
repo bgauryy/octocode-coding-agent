@@ -170,6 +170,7 @@ it("file permission cannot reinterpret Bash command fields as a Write replacemen
 	});
 	try {
 		await f.run("file", {
+			reason: "Write the fixture file",
 			queries: [
 				{
 					type: "write",
@@ -382,8 +383,8 @@ it("Claude foreground deadline adopts a non-sleep replacement while its turn rem
 				behavior: "allow",
 				updatedInput: {
 					command: `${shellQuote(process.execPath)} -e ${shellQuote(code)}`,
+					// A timeout alone is adopted at its deadline; with `run_in_background: false` it would stop the command.
 					timeout: 100,
-					run_in_background: false,
 				},
 			}),
 		);

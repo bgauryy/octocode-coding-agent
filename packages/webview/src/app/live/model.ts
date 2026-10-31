@@ -1,5 +1,5 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
-import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import type { UiState } from "../model/ui-state.ts";
 import type { FeedEvent } from "./application-projection.ts";
 export { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
@@ -211,12 +211,12 @@ export type RunPhase =
 	| { kind: "retrying" }
 	| { kind: "waiting"; awaiting: NonNullable<ApplicationSnapshot["awaiting"]> };
 /**
- * What the session is doing now. A dialog that waits for the terminal user wins, then compaction or a retry (which
- * start after the run settled, so `streaming` is already false), then a running tool, a partial answer, and last the
- * model still thinking.
+ * What the session is doing now. A dialog that waits for the user wins (also while no run is active: a background
+ * subagent's approval), then compaction or a retry (which start after the run settled, so `streaming` is already
+ * false), then a running tool, a partial answer, and last the model still thinking.
  */
 export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
-	if (snapshot?.streaming && snapshot.awaiting) return { kind: "waiting", awaiting: snapshot.awaiting };
+	if (snapshot?.awaiting) return { kind: "waiting", awaiting: snapshot.awaiting };
 	if (snapshot?.status === "compacting" || snapshot?.status === "retrying") return { kind: snapshot.status };
 	if (!snapshot?.streaming) return { kind: "idle" };
 	const tool = snapshot.tools?.findLast((candidate) => candidate.status === "running");
@@ -230,7 +230,7 @@ export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 export function sessionBadge(
 	snapshot: Pick<ApplicationSnapshot, "streaming" | "status" | "awaiting"> | undefined,
 ): { state: UiState; label: string; warn: boolean } | undefined {
-	if (snapshot?.streaming && snapshot.awaiting) return { state: "waiting", label: "Waiting for you", warn: true };
+	if (snapshot?.awaiting) return { state: "waiting", label: "Waiting for you", warn: true };
 	if (snapshot?.status === "compacting") return { state: "running", label: "Compacting", warn: false };
 	if (snapshot?.status === "retrying") return { state: "running", label: "Retrying", warn: true };
 	return snapshot?.streaming ? { state: "running", label: "Running", warn: false } : undefined;

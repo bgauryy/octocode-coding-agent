@@ -1,12 +1,12 @@
 import type { Usage } from "@octocodeai/octocode-ai";
 import { NEEDS_APPROVAL } from "../permission/ask/text.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
-import { JOB_TYPE } from "../shared/messages.ts";
 import { redactSecrets, visibleControls } from "../shared/sanitize.ts";
 import { Thought, thoughtGist } from "../shared/thought.ts";
 import { addUsage, contentText, emptyUsage, finiteNumber, toolHint } from "../shared/util.ts";
 import { imagesOf } from "./screenshots.ts";
+import { jobNotice } from "./report.ts";
 
 export interface WatchdogLimits {
 	/**
@@ -167,7 +167,7 @@ export type ChildEffect =
 	 * A message that is not the child's own reply (its prompt, a team message) reached it. `job`: the first line of the
 	 * notice when it is the child's own background bash job ending (`shared/messages.ts` `JOB_TYPE`).
 	 */
-	| { kind: "incoming"; role: unknown; job?: string }
+	| { kind: "incoming"; role: unknown; job?: string; quiet?: true }
 	/** An assistant reply ended: the report tracker reads its text. */
 	| { kind: "answer"; text: string | undefined; stopReason: unknown; errorMessage: unknown }
 	/** The first model reply of the run started (streamed, whole, or implied by a tool call): the provider has written the prompt cache for the prefix. */
@@ -293,6 +293,7 @@ export function reduceEvent(
 ): ChildEffect[] {
 	const type = event.type;
 	if (type === "response") return promptResponse(event);
+	if (type === "extension_ui_dismiss") return [{ kind: "ui", event }];
 	if (type === "extension_ui_request") {
 		const ui: ChildEffect = { kind: "ui", event };
 		return noteNotice(state, event)
@@ -338,7 +339,7 @@ export function reduceEvent(
 	}
 	// A new turn or a streaming reply means the previous turn's tools are over, even one that never reported its end.
 	if (type === "turn_start" || type === "message_update") state.toolsRunning = 0;
-	// A turn after the answer (a background job's report woke it) is a model turn again, not settling.
+	// A turn after the answer (a message from the parent woke it) is a model turn again, not settling.
 	if (type === "turn_start") state.settling = false;
 	if (type === "message_update" && isRecord(event.assistantMessageEvent)) {
 		const update = event.assistantMessageEvent;
@@ -376,9 +377,7 @@ export function reduceEvent(
 				progress({});
 			}
 		}
-		const job =
-			message.customType === JOB_TYPE ? visibleControls(contentText(message.content).split("\n", 1)[0] ?? "") : "";
-		return [...effects, { kind: "incoming", role: message.role, ...(job ? { job } : {}) }];
+		return [...effects, { kind: "incoming", role: message.role, ...jobNotice(message) }];
 	}
 	addUsage(state.usage, message.usage);
 	state.requests += 1;

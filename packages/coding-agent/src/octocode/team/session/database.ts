@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import { AgentDbError } from "../../agentdb/schema.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";
 import type { Ask } from "../asks.ts";
 import { TeamStore } from "../store.ts";

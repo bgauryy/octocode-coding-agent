@@ -1,5 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
 import { clip } from "../shared/render/text.ts";

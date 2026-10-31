@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { parseSessionEntryLine } from "../../core/session-manager/storage.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyUsage } from "../shared/util.ts";
 import { budgetOutcome, hardLimit, maxRequests } from "./budget.ts";
 import type { AgentProfile } from "./profiles.ts";

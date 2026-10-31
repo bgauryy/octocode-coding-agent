@@ -1,4 +1,4 @@
-import type { ApplicationReceipt } from "@octocodeai/octocode-contacts";
+import type { ApplicationReceipt } from "@octocodeai/octocode-contracts";
 import { useStore } from "zustand";
 import { Badge, Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";

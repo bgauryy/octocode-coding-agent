@@ -1,5 +1,5 @@
 import type { UiState } from "../../theme/status.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { RenderContext } from "./render/types.ts";
 
 /**

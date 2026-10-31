@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { canonicalPath } from "../shared/home/repo.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { loadSqlite } from "../shared/util.ts";
 import { keysOverlap, type LeaseKind, leaseKey } from "./lease-key.ts";
 import type { Lease } from "./model.ts";

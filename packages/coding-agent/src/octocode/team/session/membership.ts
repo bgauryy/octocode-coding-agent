@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import { newMember } from "../identity.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { type TeamStore } from "../store.ts";
 import { AGENT_ID_ENV } from "../store/env.ts";
 import type { SessionTeamName } from "./rejoin.ts";

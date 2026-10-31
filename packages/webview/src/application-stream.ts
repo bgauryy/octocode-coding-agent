@@ -4,7 +4,7 @@ import {
 	type ApplicationReceipt,
 	type ApplicationSnapshot,
 	parseApplicationFrame,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 
 type FrameResult = "applied" | "ignored" | "resync" | "invalid";
 
@@ -85,7 +85,7 @@ export class ApplicationStream {
 				next = { ...next, runId: event.runId, streaming: true };
 				break;
 			case "run.settled":
-				next = { ...next, runId: undefined, streaming: false, awaiting: undefined };
+				next = { ...next, runId: undefined, streaming: false };
 				break;
 			case "queue.changed":
 				next = { ...next, steering: event.steering, followUp: event.followUp };

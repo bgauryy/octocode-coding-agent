@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { system32Executable } from "./winpath.ts";
+import { system32Executable } from "../../utils/windows/winpath.ts";
 
 interface OpenOptions {
 	platform?: NodeJS.Platform;

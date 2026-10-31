@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../utils/atomic-file.ts";
+import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
 import { workspacePaths } from "../../shared/home.ts";
 import type { Backlog } from "../context.ts";
 import { exportMarkdown } from "../format.ts";

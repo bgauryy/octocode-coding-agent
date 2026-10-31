@@ -6,13 +6,13 @@ For a built-in provider, start with `/login`, then choose a model with `/model`.
 
 ## Choose a connection
 
-| What you have                                            | Recommended setup                                             |
-| -------------------------------------------------------- | ------------------------------------------------------------- |
+| What you have                                            | Recommended setup                                         |
+| -------------------------------------------------------- | --------------------------------------------------------- |
 | A supported subscription                                 | Sign in through `/login`                                  |
 | A provider API key                                       | Store it through `/login` or set its environment variable |
-| A local GGUF model                                       | Connect Octocode to the llama.cpp router                      |
-| An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                       |
-| A provider with a custom protocol or authentication flow | Build or install a provider extension                         |
+| A local GGUF model                                       | Connect Octocode to the llama.cpp router                  |
+| An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                   |
+| A provider with a custom protocol or authentication flow | Build or install a provider extension                     |
 
 Use `/model` to inspect the models available to this installation. Octocode starts with its bundled catalog. Set `OCTOCODE_MODEL_CATALOG_URL` to a compatible catalog service to enable remote catalog overlays; the fork does not default to Pi's service. Cached catalog data remains available offline. `octocode update --models` refreshes from the configured service.
 
@@ -177,7 +177,7 @@ Classifier models do not chat. They answer typed questions about JSON state: pic
 | Provider                | Model IDs                                                          | Authentication                                   |
 | ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------ |
 | `typesafe`              | `jev-latest`                                                       | `TYPESAFE_API_KEY`                               |
-| `openrouter`            | `typesafe/jev-1.13`, `~typesafe/jev-latest`                        | `OPENROUTER_API_KEY` or `/login`             |
+| `openrouter`            | `typesafe/jev-1.13`, `~typesafe/jev-latest`                        | `OPENROUTER_API_KEY` or `/login`                 |
 | `cloudflare-workers-ai` | `typesafe/jev`, `@cf/cloudflare/clef`, `@cf/cloudflare/clef-flash` | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
 | `vercel-ai-gateway`     | `typesafe-ai/jev`                                                  | `AI_GATEWAY_API_KEY`                             |
 | `opencode`              | `jev-1.13`, `jev-1.13-free`                                        | `OPENCODE_API_KEY`                               |

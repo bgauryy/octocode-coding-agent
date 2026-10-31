@@ -2,7 +2,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@octocodeai/octocode-ai";
+import {
+	createFauxCore,
+	fauxAssistantMessage,
+	type fauxToolCall,
+	type TranscriptContext,
+} from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
@@ -10,6 +15,7 @@ import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
+import { nativeCall } from "./e2e-calls.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -19,8 +25,8 @@ import { tmp } from "./helpers.ts";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY =
 	process.env.OCTOCODE_E2E_ENTRY === "dist"
-		? path.join(HERE, "..", "dist", "index.js")
-		: path.join(HERE, "..", "src", "index.ts");
+		? path.join(HERE, "..", "..", "dist", "index.js")
+		: path.join(HERE, "..", "..", "src", "index.ts");
 const octocode = (await import(ENTRY)).default as ExtensionFactory;
 
 const savedEnv = { ...process.env };
@@ -158,8 +164,11 @@ describe("permission modes in a headless run", () => {
 		});
 		const [, after] = await run("change things", [
 			calls(
-				fauxToolCall("file", { queries: [{ reason: "add", type: "write", path: "new.txt", content: "x" }] }),
-				fauxToolCall("bash", { command: "echo ran > ran.txt" }),
+				nativeCall("file", {
+					reason: "Add a file",
+					queries: [{ reason: "add", type: "write", path: "new.txt", content: "x" }],
+				}),
+				nativeCall("bash", { command: "echo ran > ran.txt" }),
 			),
 			say("blocked"),
 		]);
@@ -180,8 +189,11 @@ describe("permission modes in a headless run", () => {
 		const { cwd, run, session } = await headless({ OCTOCODE_PERMISSION: "full" });
 		const [, after] = await run("go", [
 			calls(
-				fauxToolCall("bash", { command: DESTRUCTIVE }),
-				fauxToolCall("file", { queries: [{ reason: "add", type: "write", path: "new.txt", content: "x" }] }),
+				nativeCall("bash", { command: DESTRUCTIVE }),
+				nativeCall("file", {
+					reason: "Add a file",
+					queries: [{ reason: "add", type: "write", path: "new.txt", content: "x" }],
+				}),
 			),
 			say("done"),
 		]);
@@ -206,7 +218,7 @@ describe("permission modes in a headless run", () => {
 
 	it("refuses a catastrophic command in workspace with no one to ask, and runs none of it", async () => {
 		const { cwd, run } = await headless({ OCTOCODE_PERMISSION: "workspace" });
-		const [, after] = await run("go", [calls(fauxToolCall("bash", { command: DESTRUCTIVE })), say("blocked")]);
+		const [, after] = await run("go", [calls(nativeCall("bash", { command: DESTRUCTIVE })), say("blocked")]);
 		expect(after[0].isError).toBe(true);
 		expect(after[0].text.startsWith(NEEDS_APPROVAL)).toBe(true);
 		expect(after[0].text).toContain("OCTOCODE_PERMISSION=full");
@@ -215,7 +227,7 @@ describe("permission modes in a headless run", () => {
 
 	it("denies an ask in a headless main session and names the mode that would allow it", async () => {
 		const { run } = await headless({ OCTOCODE_PERMISSION: "manual" });
-		const [, after] = await run("run", [calls(fauxToolCall("bash", { command: "echo hi" })), say("blocked")]);
+		const [, after] = await run("run", [calls(nativeCall("bash", { command: "echo hi" })), say("blocked")]);
 		expect(after[0].isError).toBe(true);
 		expect(after[0].text.startsWith(NEEDS_APPROVAL)).toBe(true);
 		expect(after[0].text).toContain("OCTOCODE_PERMISSION=workspace");

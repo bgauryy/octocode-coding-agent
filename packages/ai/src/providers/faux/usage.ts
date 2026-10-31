@@ -8,6 +8,7 @@ import type {
 	ToolResultMessage,
 	TranscriptContext,
 } from "../../types.ts";
+import { createUsage } from "../../utils/assistant-message.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
 import { estimateTokens } from "./messages.ts";
 
@@ -124,13 +125,6 @@ export function withUsageEstimate(
 
 	return {
 		...message,
-		usage: {
-			input,
-			output: outputTokens,
-			cacheRead,
-			cacheWrite,
-			totalTokens: input + outputTokens + cacheRead + cacheWrite,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: createUsage({ input, output: outputTokens, cacheRead, cacheWrite }),
 	};
 }

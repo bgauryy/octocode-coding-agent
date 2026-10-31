@@ -1,5 +1,6 @@
 import { FinishReason, type GenerateContentResponseUsageMetadata } from "@google/genai";
 import type { StopReason, StreamOptions, Usage } from "../../types.ts";
+import { createUsage } from "../../utils/assistant-message.ts";
 import { retryProviderRequest } from "../../utils/provider-retry.ts";
 
 /**
@@ -76,13 +77,11 @@ export function normalizeGoogleUsage(metadata: GenerateContentResponseUsageMetad
 	const cacheRead = Math.min(prompt, reportedCache);
 	const reasoning = count(metadata.thoughtsTokenCount);
 	const output = count(metadata.candidatesTokenCount) + reasoning;
-	return {
+	return createUsage({
 		input: prompt - cacheRead,
 		output,
 		cacheRead,
-		cacheWrite: 0,
 		reasoning,
-		totalTokens: count(metadata.totalTokenCount) || prompt + output,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+		totalTokens: count(metadata.totalTokenCount),
+	});
 }

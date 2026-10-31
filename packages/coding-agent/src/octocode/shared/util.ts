@@ -1,9 +1,11 @@
 import { createRequire } from "node:module";
 import type * as Sqlite from "node:sqlite";
 import type { Usage } from "@octocodeai/octocode-ai";
+import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "../../core/tools/index.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { formatSize, truncateHead } from "../../core/tools/index.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "./output-budget.ts";
 import { redactSecrets } from "./sanitize.ts";
 
 /** node:sqlite prints an ExperimentalWarning on some Node versions; that would land in the terminal UI. */
@@ -35,7 +37,7 @@ export const trimmedCounts = (shownLines: number, totalLines: number, shownBytes
 	`${shownLines} of ${totalLines} lines (${formatSize(shownBytes)} of ${formatSize(totalBytes)})`;
 
 /** Keep tool output inside Octocode's per-result budget and say when it was cut. */
-export function capOutput(text: string, maxBytes = DEFAULT_MAX_BYTES, maxLines = DEFAULT_MAX_LINES): string {
+export function capOutput(text: string, maxBytes = RESULT_DEFAULT_BYTES, maxLines = RESULT_DEFAULT_LINES): string {
 	const cut = truncateHead(text, { maxBytes, maxLines });
 	if (!cut.truncated) return cut.content;
 	if (cut.content === "" && text !== "") {
@@ -230,9 +232,6 @@ export const MINUTE_MS = 60_000;
 export const HOUR_MS = 60 * MINUTE_MS;
 export const DAY_MS = 24 * HOUR_MS;
 
-/** A pid that may be signalled: 0, 1 and negative ones name a group, init or every process. */
-export const validPid = (pid: unknown): pid is number => typeof pid === "number" && Number.isInteger(pid) && pid > 1;
-
 /** Octocode's wording for an extension context used after its session was replaced or reloaded. */
 const STALE_SESSION = "stale after session replacement";
 
@@ -260,14 +259,7 @@ export function toolHint(args: unknown): string {
 export const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
 export function emptyUsage(): Usage {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	return createEmptyUsage();
 }
 
 /** `value` when it is a finite number, else 0. */

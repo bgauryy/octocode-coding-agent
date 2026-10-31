@@ -3,9 +3,14 @@ import {
 	type OAuthClientProvider as SdkOAuthClientProvider,
 	validateClientMetadataUrl,
 } from "@modelcontextprotocol/client";
-import { discoverOAuthServerInfo } from "./discovery.ts";
-import type { OAuthClientMetadataDocument, OAuthClientProvider, OAuthFlowOptions } from "./flow.ts";
-import type { OAuthDiscoveryState } from "./types.ts";
+import { discoverAuthorizationServerMetadata, discoverOAuthServerInfo } from "./discovery.ts";
+import { OAuthIssuerMismatchError } from "./errors.ts";
+import type {
+	OAuthClientMetadataDocument,
+	OAuthClientProvider,
+	OAuthDiscoveryState,
+	OAuthFlowOptions,
+} from "./types.ts";
 
 /** Adapt host configuration, cancellation and grant persistence to the SDK provider contract. */
 export async function createSdkOAuthProvider(
@@ -21,6 +26,18 @@ export async function createSdkOAuthProvider(
 			throw new AuthorizationServerMismatchError(recordedIssuer, issuer);
 		}
 		discovery = configured;
+	}
+	// RFC 9207: never send a code from another authorization server to this one. The SDK skips the `iss` check
+	// without metadata, so a server could dodge it by hiding its metadata; with no issuer to compare, any `iss` fails.
+	if (
+		options.authorizationCode &&
+		options.iss !== undefined &&
+		discovery?.authorizationServerUrl &&
+		!discovery.authorizationServerMetadata
+	) {
+		const metadata = await discoverAuthorizationServerMetadata(discovery.authorizationServerUrl, options);
+		if (!metadata) throw new OAuthIssuerMismatchError(undefined, options.iss);
+		discovery = { ...discovery, authorizationServerMetadata: metadata };
 	}
 	let document: OAuthClientMetadataDocument | undefined;
 	let grantedScope: string | undefined;

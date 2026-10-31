@@ -1,8 +1,8 @@
 import http from "node:http";
 import net from "node:net";
 import type { Duplex } from "node:stream";
-import { errorMessage } from "../../utils/guards.ts";
-import { bareHostname, classifyHost, defaultLookup, type HostLookup } from "../web/guard.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { bareHostname, classifyHost, defaultLookup, type HostLookup } from "../../../../common/src/web-guard.ts";
 import { hostKey, portOf } from "./network.ts";
 
 /**

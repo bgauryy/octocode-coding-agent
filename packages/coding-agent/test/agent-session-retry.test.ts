@@ -262,12 +262,12 @@ describe("AgentSession retry", () => {
 		created.session.subscribe((event) => {
 			if (event.type === "auto_retry_start") delays.push(event.delayMs);
 		});
-		// Pretend most of the window is gone so the next wait is clamped and the one after is refused.
+		// Leave 1 ms of the window: every delay is at least 1 ms (its random spread only adds), so the next wait is
+		// clamped to it whatever the draw, and the one after is refused.
 		(created.session as unknown as { _c: { retry: { _rateLimitWaitedMs: number } } })._c.retry._rateLimitWaitedMs =
-			RATE_LIMIT_WINDOW_MS - 5;
+			RATE_LIMIT_WINDOW_MS - 1;
 		await created.session.prompt("Test");
-		expect(delays).toHaveLength(1);
-		expect(delays[0]).toBeLessThanOrEqual(5);
+		expect(delays).toEqual([1]);
 		expect(created.getCallCount()).toBe(2);
 	});
 

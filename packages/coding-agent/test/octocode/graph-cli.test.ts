@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
-import { graphBinary, graphSchema, runGraphCli } from "../../src/octocode/graph/cli.ts";
+import { cachedGraphSchema, graphBinary, graphSchema, runGraphCli } from "../../src/octocode/graph/cli.ts";
 import { registerGraphTools } from "../../src/octocode/graph/register.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
@@ -12,12 +12,15 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 describe("native graph CLI tools", () => {
-	it("hoists CLI definitions once and rejects unknown envelope fields", () => {
+	it("hoists CLI definitions once and rejects unknown envelope fields", async () => {
 		const fake = fakeHost();
-		registerGraphTools(withNativePermissionOwners(fake.api));
+		await registerGraphTools(withNativePermissionOwners(fake.api));
 		for (const name of ["graphBuild", "graphQuery"]) {
 			const tool = fake.tools.get(name);
-			expect(tool.parameters.$defs).toBeDefined();
+			// Shared definitions live at the root, and every reference resolves there (a tool with none shares none).
+			const defs = tool.parameters.$defs ?? {};
+			for (const ref of JSON.stringify(tool.parameters).match(/#\/\$defs\/[^"]+/g) ?? [])
+				expect(defs).toHaveProperty([ref.slice("#/$defs/".length)]);
 			expect(tool.parameters.properties.request).not.toHaveProperty("$defs");
 			const request: JsonObject = { queries: [name === "graphBuild" ? { path: "." } : { operation: "stats" }] };
 			const validate = (args: JsonObject) =>
@@ -34,7 +37,7 @@ describe("native graph CLI tools", () => {
 			"export function first() { return 1; }\nexport function final() { return first(); }\n",
 		);
 		const fake = fakeHost();
-		registerGraphTools(withNativePermissionOwners(fake.api));
+		await registerGraphTools(withNativePermissionOwners(fake.api));
 		const build = fake.tools.get("graphBuild");
 		const query = fake.tools.get("graphQuery");
 		expect(build).toBeDefined();
@@ -84,7 +87,7 @@ describe("native graph CLI tools", () => {
 		const invalid = await runGraphCli(binary, "graphQuery", { queries: [{ operation: "unknown" }] }, cwd, false);
 		expect(invalid.isError).toBe(true);
 		const fake = fakeHost();
-		registerGraphTools(withNativePermissionOwners(fake.api));
+		await registerGraphTools(withNativePermissionOwners(fake.api));
 		const query = fake.tools.get("graphQuery");
 		const invalidRows: Record<string, string>[] = [
 			{ operation: "find" },
@@ -119,64 +122,100 @@ describe("native graph CLI tools", () => {
 	});
 	describe("schema cache", () => {
 		/** A stand-in CLI that prints a fixed schema and appends a line to `calls` for each invocation. */
-		function fakeCli(label: string) {
+		function fakeCli(label: string, wait = "") {
 			const dir = fs.realpathSync(tmp("graph-schema-"));
 			const calls = path.join(dir, "calls");
 			const binary = path.join(dir, `cli-${label}`);
 			fs.writeFileSync(
 				binary,
-				`#!/bin/sh\necho "$2" >> "${calls}"\necho '{"inputSchema":{"type":"object","properties":{"tool":{"const":"'$2'"}}},"description":"'$2' from ${label}"}'\n`,
+				`#!/bin/sh\necho "$2" >> "${calls}"\n${wait}echo '{"inputSchema":{"type":"object","properties":{"tool":{"const":"'$2'"}}},"description":"'$2' from ${label}"}'\n`,
 				{ mode: 0o755 },
 			);
 			const count = () => (fs.existsSync(calls) ? fs.readFileSync(calls, "utf8").trim().split("\n").length : 0);
 			return { dir, binary, count };
 		}
 
-		it("asks the CLI once per binary build and serves later processes from disk", () => {
+		it("asks the CLI once per binary build and serves later processes from disk", async () => {
 			const a = fakeCli("a");
 			const b = fakeCli("b");
 			const cacheA = path.join(a.dir, "cache", "graph-schemas.json");
 			const cacheB = path.join(b.dir, "cache", "graph-schemas.json");
 
-			const build = graphSchema(a.binary, "graphBuild", a.dir, cacheA);
+			const build = await graphSchema(a.binary, "graphBuild", a.dir, cacheA);
 			expect(build.description).toBe("graphBuild from a");
-			expect(graphSchema(a.binary, "graphQuery", a.dir, cacheA).description).toBe("graphQuery from a");
+			expect((await graphSchema(a.binary, "graphQuery", a.dir, cacheA)).description).toBe("graphQuery from a");
 			expect(a.count()).toBe(2);
 			expect(fs.existsSync(cacheA)).toBe(true);
 
 			// Another binary resets the in-memory copy, as a new process would start without it.
-			graphSchema(b.binary, "graphBuild", b.dir, cacheB);
-			expect(graphSchema(a.binary, "graphBuild", a.dir, cacheA)).toEqual(build);
-			expect(graphSchema(a.binary, "graphQuery", a.dir, cacheA).description).toBe("graphQuery from a");
+			await graphSchema(b.binary, "graphBuild", b.dir, cacheB);
+			expect(cachedGraphSchema(a.binary, "graphBuild", cacheA)).toEqual(build);
+			expect(await graphSchema(a.binary, "graphBuild", a.dir, cacheA)).toEqual(build);
+			expect((await graphSchema(a.binary, "graphQuery", a.dir, cacheA)).description).toBe("graphQuery from a");
 			expect(a.count()).toBe(2);
 		});
 
-		it("refetches when the binary changes, the file is stale or the file is damaged", () => {
+		it("reports no cached schema before the CLI has been asked", () => {
+			const a = fakeCli("f");
+			expect(cachedGraphSchema(a.binary, "graphBuild", path.join(a.dir, "none.json"))).toBeUndefined();
+			expect(a.count()).toBe(0);
+		});
+
+		it("fetches without blocking the event loop and shares one run between concurrent callers", async () => {
+			const a = fakeCli("g", "sleep 0.4\n");
+			const cache = path.join(a.dir, "cache.json");
+			let ticks = 0;
+			const timer = setInterval(() => ticks++, 20);
+			try {
+				const [build, query] = await Promise.all([
+					graphSchema(a.binary, "graphBuild", a.dir, cache),
+					graphSchema(a.binary, "graphQuery", a.dir, cache),
+				]);
+				expect(build.description).toBe("graphBuild from g");
+				expect(query.description).toBe("graphQuery from g");
+			} finally {
+				clearInterval(timer);
+			}
+			expect(ticks).toBeGreaterThanOrEqual(5);
+			expect(a.count()).toBe(2);
+		});
+
+		it("stops the CLI when aborted and stores nothing", async () => {
+			const a = fakeCli("h", "exec sleep 30\n");
+			const cache = path.join(a.dir, "cache.json");
+			const controller = new AbortController();
+			const pending = graphSchema(a.binary, "graphBuild", a.dir, cache, controller.signal);
+			setTimeout(() => controller.abort(), 50);
+			await expect(pending).rejects.toThrow();
+			expect(fs.existsSync(cache)).toBe(false);
+			await expect(graphSchema(a.binary, "graphBuild", a.dir, cache, AbortSignal.abort())).rejects.toThrow();
+		});
+
+		it("refetches when the binary changes, the file is stale or the file is damaged", async () => {
 			const a = fakeCli("c");
 			const cache = path.join(a.dir, "cache", "graph-schemas.json");
 			const other = fakeCli("d");
-			graphSchema(a.binary, "graphBuild", a.dir, cache);
+			await graphSchema(a.binary, "graphBuild", a.dir, cache);
 			expect(a.count()).toBe(2);
 
 			fs.appendFileSync(a.binary, "# rebuilt\n");
-			graphSchema(other.binary, "graphBuild", other.dir, path.join(other.dir, "cache.json"));
-			graphSchema(a.binary, "graphBuild", a.dir, cache);
+			await graphSchema(other.binary, "graphBuild", other.dir, path.join(other.dir, "cache.json"));
+			await graphSchema(a.binary, "graphBuild", a.dir, cache);
 			expect(a.count()).toBe(4);
 
-			graphSchema(other.binary, "graphBuild", other.dir, path.join(other.dir, "cache.json"));
+			await graphSchema(other.binary, "graphBuild", other.dir, path.join(other.dir, "cache.json"));
 			fs.writeFileSync(cache, "{not json");
-			graphSchema(a.binary, "graphBuild", a.dir, cache);
+			await graphSchema(a.binary, "graphBuild", a.dir, cache);
 			expect(a.count()).toBe(6);
 			expect(JSON.parse(fs.readFileSync(cache, "utf8")).schemas.graphQuery.description).toBe("graphQuery from c");
 		});
 
-		it("still returns the schema when the cache cannot be written", () => {
+		it("still returns the schema when the cache cannot be written", async () => {
 			const a = fakeCli("e");
 			const blocker = path.join(a.dir, "blocked");
 			fs.writeFileSync(blocker, "a file where a directory is needed");
-			expect(graphSchema(a.binary, "graphQuery", a.dir, path.join(blocker, "graph-schemas.json")).description).toBe(
-				"graphQuery from e",
-			);
+			const schema = await graphSchema(a.binary, "graphQuery", a.dir, path.join(blocker, "graph-schemas.json"));
+			expect(schema.description).toBe("graphQuery from e");
 		});
 	});
 });

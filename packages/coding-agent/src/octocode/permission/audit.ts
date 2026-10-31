@@ -1,5 +1,5 @@
-import { sameSecret } from "../shared/env.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { sameSecret } from "../../../../common/src/env.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { auditLine } from "./effect.ts";
 import {
 	ACTION_CLASSES,

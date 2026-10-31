@@ -6,7 +6,7 @@ import { fenceUntrusted } from "../shared/fence.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { referenceContext } from "../shared/references.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { describeExternal, describeExternalFailure, externalRows } from "./describe.ts";
 import { ExternalAgents, type ExternalPolicy } from "./manager.ts";
 import { externalModelView } from "./model-view.ts";
@@ -97,7 +97,8 @@ export function registerExternal(
 	const local = commands.get("agents");
 	commands.add("agents", {
 		dialog: "interaction",
-		description: "List local and external agents; message, stop or connect an agent",
+		description: "List, message, stop or connect agents",
+		argumentHint: "[tell|interrupt|kill|merge|stats|history|external]",
 		complete: (prefix) =>
 			prefix.startsWith("external ")
 				? (wordCompletions(["list", "connect", "prompt", "cancel", "disconnect"], prefix.slice(9))?.map((item) => ({

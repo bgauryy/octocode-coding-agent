@@ -8,7 +8,7 @@ import {
 	withVirtualModels,
 } from "../virtual-models.ts";
 import type { RegisteredVirtualModel } from "./types.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The provider layers the model runtime composes into its Models collection: built-in providers, native extension

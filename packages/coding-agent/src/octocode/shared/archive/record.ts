@@ -1,5 +1,5 @@
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../utils/atomic-file.ts";
+import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "../home.ts";
 import { escapeRegExp } from "../util.ts";
 import { fence, oneLine, readHeader } from "./text.ts";

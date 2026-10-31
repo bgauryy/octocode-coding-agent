@@ -14,7 +14,7 @@ import {
 import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../../../coding-agent/src/octocode/shared/process.ts";
 import { untilAborted } from "../../../coding-agent/src/octocode/shared/util.ts";
 import type { ExternalBackend, ExternalReply } from "../../../coding-agent/src/octocode/external/protocol.ts";
-import { errorMessage } from "../../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
 import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
 

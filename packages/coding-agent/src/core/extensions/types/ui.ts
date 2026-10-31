@@ -36,6 +36,16 @@ export interface ExtensionUIDialogOptions {
 	timeout?: number;
 	/** Select dialogs only: transports may expose these choices as a permission request. */
 	permission?: ExtensionUIPermissionRequest;
+	/**
+	 * Select and confirm dialogs only: the dialog decides whether to allow an action. Remote clients show it as an approval
+	 * (the awaiting `kind` is `approval`), not as a question. Every Octocode permission prompt sets it.
+	 */
+	approval?: boolean;
+	/**
+	 * The dialog blocks work that goes on without the user, such as a background subagent's approval. It is reported as
+	 * waiting even when no run is active; a picker the user opens themselves is not blocking and is not reported then.
+	 */
+	blocking?: boolean;
 }
 
 /** Placement for extension widgets. */

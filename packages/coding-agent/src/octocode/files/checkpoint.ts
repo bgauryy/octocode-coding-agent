@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
-import { atomicWriteFile, atomicWriteFileSync, sha256, sha256File, tempSibling } from "../../utils/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync, sha256, sha256File, tempSibling } from "../../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
 import { type CheckpointEntry, journalOf, readJournal, serialize } from "./checkpoint-store.ts";
 

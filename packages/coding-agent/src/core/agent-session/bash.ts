@@ -1,6 +1,7 @@
 /** User bash commands run by the session (`!` and `!!`), recorded in session history. */
 
 import { randomUUID } from "node:crypto";
+import { sessionOutputDir } from "../../octocode/shared/home.ts";
 import { readOutputFile } from "../../utils/output-files.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";
@@ -57,6 +58,8 @@ export class SessionBash {
 						});
 					},
 					signal: abortController.signal,
+					maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
+					outputDir: sessionOutputDir("bash"),
 				},
 			);
 
@@ -80,13 +83,14 @@ export class SessionBash {
 			cancelled: result.cancelled,
 			truncated: result.truncated,
 			fullOutputPath: result.fullOutputPath,
+			header: result.header,
 			timestamp: Date.now(),
 			excludeFromContext: options?.excludeFromContext,
 		};
 		if (result.truncated) {
 			try {
 				bashMessage.fullOutput = result.fullOutputPath
-					? readOutputFile(result.fullOutputPath, 32 * 1024 * 1024)
+					? readOutputFile(result.fullOutputPath, 32 * 1024 * 1024)?.replace(/\r/g, "")
 					: undefined;
 			} catch (error) {
 				bashMessage.fullOutputUnavailable =

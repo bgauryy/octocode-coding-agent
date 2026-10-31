@@ -1,6 +1,6 @@
 import { renderDaemonHtml } from "@octocodeai/octocode-webview";
 import { VERSION } from "../../config.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 
 export interface DaemonPage {
 	html: string;

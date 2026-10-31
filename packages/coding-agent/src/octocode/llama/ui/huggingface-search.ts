@@ -4,7 +4,7 @@ import { Container, type Focusable, fuzzyFilter, GLYPH, Input, Spacer, Text, typ
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import type { HuggingFaceModel } from "../huggingface.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 function compactCount(value: number): string {
 	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;

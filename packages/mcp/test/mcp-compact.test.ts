@@ -29,7 +29,7 @@ describe("schemaToTs: zod v4 toJSONSchema output", () => {
 	for (const target of ["draft-2020-12", "draft-7"] as const) {
 		it(`renders ${target} object, optional, default, nullable, enum, literal, record, tuple, union`, () => {
 			const schema = z.object({
-				name: z.string().min(1).describe("Display name."),
+				name: z.string().min(2).describe("Display name."),
 				count: z.number().int().positive().default(3),
 				note: z.string().nullable().optional(),
 				mode: z.enum(["a", "b"]),
@@ -42,7 +42,7 @@ describe("schemaToTs: zod v4 toJSONSchema output", () => {
 				]),
 			});
 			const text = render(z.toJSONSchema(schema, { target, io: "input" }));
-			expect(text).toContain("/** Display name. (minLength 1) */");
+			expect(text).toContain("/** Display name. (minLength 2) */");
 			expect(text).toMatch(/count\?: number;/);
 			expect(text).toContain("default 3");
 			expect(text).toMatch(/note\?: string \| null;/);
@@ -102,7 +102,10 @@ describe("schemaToTs: zod v3 zod-to-json-schema and draft-04 shapes", () => {
 	it("keeps unresolved refs visible and escapes comment terminators and quoted keys", () => {
 		const text = render({
 			type: "object",
-			properties: { "odd-key": { type: "string", pattern: "a*/b" }, r: { $ref: "https://example.com/remote.json" } },
+			properties: {
+				"odd-key": { type: "string", description: "a*/b" },
+				r: { $ref: "https://example.com/remote.json" },
+			},
 		});
 		expect(text).toContain('"odd-key"?: string;');
 		expect(text).toContain("a*\\/b");
@@ -254,19 +257,28 @@ describe("server-level compaction", () => {
 		).toContain("(minimum 1) */ n?: number;");
 	});
 
-	it("hides patterns that a format already states or that are too long to help", () => {
+	it("leaves out constraints that only validation needs and keeps those that guide a value", () => {
 		const text = render({
 			type: "object",
 			properties: {
 				when: { type: "string", format: "date-time", pattern: "^\\d{4}-\\d{2}$" },
-				long: { type: "string", pattern: `^${"(?:a|b)".repeat(10)}$` },
-				short: { type: "string", pattern: "^\\S+$" },
+				long: { type: "string", pattern: `^${"(?:a|b)".repeat(10)}$`, maxLength: 200 },
+				short: { type: "string", pattern: "^\\S+$", minLength: 1 },
+				list: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, maxItems: 5 },
+				bag: { type: "object", additionalProperties: { type: "string" }, minProperties: 1 },
+				code: { type: "string", minLength: 2 },
+				big: { type: "integer", minimum: 0, maximum: 1_000_000_000 },
 			},
 		});
 		expect(text).toContain("(format date-time) */ when?: string;");
 		expect(text).toContain("long?: string;");
-		expect(text).not.toContain("(?:a|b)");
-		expect(text).toContain("pattern ^\\S+$");
+		expect(text).toContain("short?: string;");
+		expect(text).toContain("/** (maxItems 5) */ list?: string[];");
+		expect(text).toContain("bag?: Record<string, string>;");
+		expect(text).toContain("/** (minLength 2) */ code?: string;");
+		expect(text).toContain("/** (minimum 0) */ big?: number;");
+		for (const hidden of ["pattern", "maxLength", "minLength 1", "minItems", "minProperties", "1000000000"])
+			expect(text).not.toContain(hidden);
 	});
 });
 

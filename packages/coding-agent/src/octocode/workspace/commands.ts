@@ -1,9 +1,9 @@
 import { commands } from "../agentdb/api.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { Value } from "typebox/value";
-import { WorkspaceCommandSchema } from "@octocodeai/octocode-contacts/protocol";
+import { WorkspaceCommandSchema } from "@octocodeai/octocode-contracts/protocol";
 import { storedSecret } from "../shared/sanitize.ts";
-import type { WorkspaceCommand, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceCommand, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 
 type Row = Omit<commands.CommandRow, "action" | "status"> & {
 	action: WorkspaceReceipt["action"];

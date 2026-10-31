@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AgentsView, trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import { collapsedRows, shownWorking } from "../../src/octocode/team/panel-compact.ts";
 import { describeMembers } from "../../src/octocode/team/routing.ts";

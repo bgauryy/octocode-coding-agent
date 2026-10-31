@@ -10,7 +10,7 @@ describe("verification receipts", () => {
 	it("keeps handoff running, then distinguishes signal from a successful exit", () => {
 		const receipt = beginVerification("check", "/repo", "signal-session");
 		expect(receipt.mutationEpoch).toBe(mutationEpoch);
-		expect(verificationLine(receipt)).toContain("running; no result yet");
+		expect(verificationLine(receipt)).toMatch(/^Verification: no result yet; mutation revision \d+$/);
 		const ended = finishVerification(receipt, { code: null, signal: "SIGTERM", seconds: 2 });
 		expect(ended).toMatchObject({ state: "failed", exitCode: null, signal: "SIGTERM", stale: false });
 		expect(verificationLine(ended)).toContain("ended by SIGTERM");

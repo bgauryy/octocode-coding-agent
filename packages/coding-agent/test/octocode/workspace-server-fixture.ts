@@ -4,7 +4,7 @@ import http from "node:http";
 import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import type { ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import type { AgentSession, AgentSessionEvent } from "../../src/core/agent-session.ts";

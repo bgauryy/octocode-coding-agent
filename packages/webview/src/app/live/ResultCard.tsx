@@ -1,4 +1,4 @@
-import { parseApplicationMessage, type ApplicationMessage } from "@octocodeai/octocode-contacts";
+import { parseApplicationMessage, type ApplicationMessage } from "@octocodeai/octocode-contracts";
 import { memo, useCallback } from "react";
 import { stamp } from "../model/format.ts";
 import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";

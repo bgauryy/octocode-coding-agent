@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "fs";
 import { join, resolve } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
-import { canonicalizePath, isUnderPath, resolvePath } from "../utils/paths.ts";
+import { canonicalizePath, isUnderPath, resolvePath } from "../../../common/src/paths.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 import {
 	type ExplicitSkill,

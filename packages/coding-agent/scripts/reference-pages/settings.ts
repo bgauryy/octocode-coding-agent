@@ -8,6 +8,7 @@ import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 export const settingsIntro = [
 	"`settings.json` holds global defaults in the agent directory (see [Configuration](configuration.md#agent-directory)) and project overrides in `.octocode/settings.json`. A trusted project's values override global ones: objects merge recursively and arrays replace. Edit the file directly and run `/reload`, or use `/settings`. See [CONFIGURATIONS.md](../../../CONFIGURATIONS.md) for every configuration location.",
 	"For editor validation and completion, point `$schema` at `schemas/settings.schema.json` in the installed Octocode package.",
+	"Loading is permissive: a root key this page does not list is kept in the file but has no effect, and startup reports it once per load as a warning that names the key and the file. The warning also says what replaced a removed key: `compaction` (compaction limits are built in; `contextBudget` and `/context` set the working window), and `codemode` and `autoEnableCodemode` (codemode was removed). Unknown keys inside a listed object are not checked.",
 	"Nested fields are listed as `parent.child`. Defaults shown are the values Octocode uses when a field is absent; an empty Default cell means no fixed value.",
 ].join("\n\n");
 

@@ -1,5 +1,5 @@
-import type { ApplicationAsset } from "@octocodeai/octocode-contacts";
-import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { ApplicationAsset } from "@octocodeai/octocode-contracts";
+import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { createStore } from "zustand/vanilla";
 
 export type ActivityFilter = "all" | "results" | "tools" | "agents" | "attention";

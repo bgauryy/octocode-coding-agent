@@ -5,8 +5,8 @@ import { ENV_SESSION_DIR } from "../../../coding-agent/src/config.ts";
 import { SessionManager, type SessionInfo } from "../../../coding-agent/src/core/session-manager.ts";
 import { createCustomMessage } from "../../../coding-agent/src/core/messages.ts";
 import { SettingsManager } from "../../../coding-agent/src/core/settings-manager.ts";
-import { normalizePath } from "../../../coding-agent/src/utils/paths.ts";
-import { customMessageUpdates, toolContent } from "./events.ts";
+import { normalizePath } from "../../../common/src/paths.ts";
+import { compactionReplay, customMessageUpdates, toolContent, toolTitle } from "./events.ts";
 
 function sessionDir(cwd: string, override?: string): string | undefined {
 	const fromEnvironment = process.env[ENV_SESSION_DIR];
@@ -43,6 +43,11 @@ export function prepareHistoryReplay(path: string, id: string, client: AgentCont
 	return async () => {
 		const tools = new Set<string>();
 		for (const entry of branch) {
+			if (entry.type === "compaction") {
+				for (const update of compactionReplay(entry.id, entry.summary, entry.tokensBefore))
+					await client.notify(methods.client.session.update, { sessionId: id, update });
+				continue;
+			}
 			const message =
 				entry.type === "message"
 					? entry.message
@@ -90,7 +95,7 @@ export function prepareHistoryReplay(path: string, id: string, client: AgentCont
 						update: {
 							sessionUpdate: "tool_call",
 							toolCallId: block.id,
-							title: block.name.slice(0, 512),
+							title: toolTitle(block.name, block.arguments),
 							status: "in_progress",
 						},
 					});

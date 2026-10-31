@@ -8,7 +8,7 @@ import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts"
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
-import { TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
+import { TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import * as importedModule4 from "../../src/octocode/files/tool.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
@@ -16,7 +16,7 @@ import * as importedModule3 from "../../src/octocode/shared/messages.ts";
 import { visibleControls } from "../../src/octocode/shared/sanitize.ts";
 import { toolHint } from "../../src/octocode/shared/util.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import * as importedModule5 from "../../src/octocode/team/routing.ts";
 import {

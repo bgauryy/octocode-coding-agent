@@ -6,7 +6,7 @@
 
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { isRecord } from "../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
 

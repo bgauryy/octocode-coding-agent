@@ -14,7 +14,7 @@ import type {
 import { ThemedText } from "../components/themed-text.ts";
 import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the extension UI context and shortcuts. */
 type ExtensionContextHost = Pick<

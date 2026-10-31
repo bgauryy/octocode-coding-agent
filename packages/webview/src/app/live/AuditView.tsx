@@ -1,4 +1,4 @@
-import type { BacklogAudit } from "@octocodeai/octocode-contacts/snapshot";
+import type { BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewProps } from "../extension.ts";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";

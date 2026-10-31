@@ -104,6 +104,10 @@ export class ChildRelay {
 
 	/** One `extension_ui_request` record from the child. */
 	handle(event: Record<string, unknown>): void {
+		if (event.type === "extension_ui_dismiss") {
+			if (typeof event.id === "string") this.#dismiss(event.id);
+			return;
+		}
 		const method = String(event.method);
 		if (method === "notify") {
 			this.#audit(event.message);
@@ -252,8 +256,12 @@ export class ChildRelay {
 		// A header the parent rejected is shown whole, but never with the child's secret in it.
 		const shown = (text: string): string => sanitizeTerminalText(redactNonce(text, this.#options.nonce));
 		const heading = `${this.#label()} asks:\n${shown(title)}`;
+		// A relayed dialog is a wait even while the parent is idle (a background child asks after the parent's turn ended). The
+		// child says whether it is an approval: its permission prompts stay approvals for the parent's clients.
 		const dialogOptions = {
 			signal: controller.signal,
+			blocking: true,
+			...(method !== "input" && event.approval === true ? { approval: true } : {}),
 			...(typeof event.timeout === "number" ? { timeout: event.timeout } : {}),
 		};
 		let response: Record<string, unknown> = { cancelled: true };
@@ -283,6 +291,15 @@ export class ChildRelay {
 		if (!this.#open.delete(id)) return;
 		if (this.#open.size === 0) this.#options.onWaiting?.(false);
 		this.#options.send({ type: "extension_ui_response", id, ...response });
+	}
+
+	/** The child closed dialog `id` itself (`extension_ui_dismiss`: its run was aborted or its timeout passed): close it in the parent's UI; the child needs no answer. */
+	#dismiss(id: string): void {
+		const controller = this.#open.get(id);
+		if (!controller) return;
+		this.#open.delete(id);
+		if (this.#open.size === 0) this.#options.onWaiting?.(false);
+		controller.abort();
 	}
 
 	/** Cancels every open dialog (the parent stopped the child, or it ended): closes them in the parent's UI and answers the child. */

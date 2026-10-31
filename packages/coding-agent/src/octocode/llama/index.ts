@@ -3,7 +3,7 @@ import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl 
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
 import { createLlamaProvider, LLAMA_PROVIDER_ID } from "./provider.ts";
 import { type LlamaUi, runWithProgress, showLlamaUi } from "./ui.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say } from "../shared/commands.ts";
 
 function modelIsLoaded(model: LlamaModelInfo): boolean {

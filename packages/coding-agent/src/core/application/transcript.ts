@@ -4,7 +4,7 @@ import type {
 	ApplicationHistory,
 	ApplicationMessage,
 	ApplicationTool,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../agent-session.ts";
 import { stoppedToolText } from "./interrupted-tools.ts";
 import { toolHint } from "../../octocode/shared/util.ts";

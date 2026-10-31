@@ -1,4 +1,4 @@
-import type { ApplicationFrame, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationFrame, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { describe, expect, it } from "vitest";
 import { ApplicationStream } from "../src/application-stream.ts";
 

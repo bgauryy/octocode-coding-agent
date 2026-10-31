@@ -1,7 +1,7 @@
 import type { AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 
-interface Room {
+export interface Room {
 	host?: WebSocket;
 	peers: Map<string, WebSocket>;
 	next: number;
@@ -11,12 +11,13 @@ interface Room {
  * A content-blind relay for tests: `/v1/rooms/<room>/host` is the daemon's side, `/v1/rooms/<room>/peer` a page's.
  * It forwards sealed strings and tells the host who joined and left; it reads nothing else.
  */
-export async function startRelayFixture(): Promise<{
+export async function startRelayFixture(options: { prefix?: string } = {}): Promise<{
 	url: string;
 	rooms: Map<string, Room>;
 	peer(room: string): Promise<WebSocket>;
 	close(): Promise<void>;
 }> {
+	const prefix = options.prefix ?? "";
 	const rooms = new Map<string, Room>();
 	const room = (name: string): Room => {
 		let found = rooms.get(name);
@@ -28,7 +29,10 @@ export async function startRelayFixture(): Promise<{
 	};
 	const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 	server.on("connection", (socket, request) => {
-		const match = /^\/v1\/rooms\/([0-9a-f]{32})\/(host|peer)$/.exec(request.url ?? "");
+		const url = request.url ?? "";
+		const match = url.startsWith(prefix)
+			? /^\/v1\/rooms\/([0-9a-f]{32})\/(host|peer)$/.exec(url.slice(prefix.length))
+			: null;
 		if (!match) return socket.close(1008);
 		const current = room(match[1]);
 		if (match[2] === "host") {
@@ -59,7 +63,7 @@ export async function startRelayFixture(): Promise<{
 		});
 	});
 	await new Promise<void>((resolve) => server.on("listening", resolve));
-	const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}${prefix}`;
 	return {
 		url,
 		rooms,

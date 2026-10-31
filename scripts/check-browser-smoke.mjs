@@ -79,7 +79,7 @@ function includesNodePackage(inputs, packageName) {
 }
 
 try {
-	await bundleForBrowser(["packages/contacts/src/index.ts", "packages/webview/src/index.ts"]);
+	await bundleForBrowser(["packages/contracts/src/index.ts", "packages/webview/src/index.ts"]);
 	await bundleForBrowser("scripts/browser-smoke-entry.ts", [generatedCatalogDataPlugin]);
 
 	const agentTreeshake = await bundleForBrowser("scripts/agent-treeshake-smoke-entry.ts", [generatedCatalogDataPlugin]);

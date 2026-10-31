@@ -65,6 +65,7 @@ export async function handleBashCommand(
 			result.cancelled,
 			result.truncated ? ({ truncated: true, content: result.output } as TruncationResult) : undefined,
 			result.fullOutputPath,
+			result.header,
 		);
 
 		// Record the result in session
@@ -107,6 +108,7 @@ export async function handleBashCommand(
 				result.cancelled,
 				result.truncated ? ({ truncated: true, content: result.output } as TruncationResult) : undefined,
 				result.fullOutputPath,
+				result.header,
 			);
 		}
 	} catch (error) {

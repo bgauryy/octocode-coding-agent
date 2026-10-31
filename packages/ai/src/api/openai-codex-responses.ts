@@ -30,11 +30,8 @@ import {
 } from "./openai-codex-responses/request.ts";
 import {
 	CodexHttpError,
-	getRetryAfterDelayMs,
 	isRetryableError,
 	normalizeTimeoutMs,
-	RetryDelayExceededError,
-	validateRetryDelayMs,
 } from "./openai-codex-responses/retry.ts";
 import { compressRequestBodyZstd, parseErrorResponse } from "./openai-codex-responses/sse.ts";
 import {
@@ -52,7 +49,8 @@ import {
 import { processWebSocketStream } from "./openai-codex-responses/websocket-stream.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import { buildBaseOptions } from "./simple-options.ts";
-import { sleepUnlessAborted } from "../utils/abort.ts";
+import { createAbortError, sleepUnlessAborted } from "../utils/abort.ts";
+import { parseRetryAfterMs, RetryDelayExceededError, validateRetryDelayMs } from "../utils/retry.ts";
 
 export type { OpenAICodexResponsesOptions } from "./openai-codex-responses/types.ts";
 export {
@@ -159,7 +157,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						);
 
 						if (options?.signal?.aborted) {
-							throw new Error("Request was aborted");
+							throw createAbortError();
 						}
 						assertSuccessfulOutput(output);
 						stream.push({
@@ -220,7 +218,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
 			for (let attempt = 0; attempt <= maxRetries; attempt++) {
 				if (options?.signal?.aborted) {
-					throw new Error("Request was aborted");
+					throw createAbortError();
 				}
 
 				try {
@@ -255,13 +253,13 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
 					const errorText = await response.text();
 					if (attempt < maxRetries && isRetryableError(response.status, errorText)) {
-						const retryAfterDelayMs = getRetryAfterDelayMs(response.headers);
+						const retryAfterDelayMs = parseRetryAfterMs(response.headers);
 						const delayMs =
 							retryAfterDelayMs === undefined
 								? BASE_DELAY_MS * 2 ** attempt
-								: validateRetryDelayMs(retryAfterDelayMs, options);
+								: validateRetryDelayMs(retryAfterDelayMs, options?.maxRetryDelayMs);
 
-						await sleepUnlessAborted(delayMs, options?.signal, () => new Error("Request was aborted"));
+						await sleepUnlessAborted(delayMs, options?.signal, createAbortError);
 						continue;
 					}
 
@@ -276,8 +274,8 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 					// Final HTTP errors and caller hook failures must not resubmit the request.
 					if (error instanceof CodexHttpError || error instanceof ProviderStreamEventCallbackError) throw error;
 					if (error instanceof Error) {
-						if (error.name === "AbortError" || error.message === "Request was aborted") {
-							throw new Error("Request was aborted");
+						if (error.name === "AbortError") {
+							throw createAbortError();
 						}
 					}
 					lastError = error instanceof Error ? error : new Error(String(error));
@@ -288,7 +286,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						!lastError.message.includes("usage limit")
 					) {
 						const delayMs = BASE_DELAY_MS * 2 ** attempt;
-						await sleepUnlessAborted(delayMs, options?.signal, () => new Error("Request was aborted"));
+						await sleepUnlessAborted(delayMs, options?.signal, createAbortError);
 						continue;
 					}
 					throw lastError;
@@ -310,7 +308,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 			await processStream(response, output, stream, model, grammarToolInputProperties, options);
 
 			if (options?.signal?.aborted) {
-				throw new Error("Request was aborted");
+				throw createAbortError();
 			}
 
 			assertSuccessfulOutput(output);

@@ -3,8 +3,15 @@
  * the new-version and package-update notifications.
  */
 
-import { getCapabilities, hasTmuxSession, hyperlink, Markdown, Spacer, Text } from "@octocodeai/octocode-tui";
-import { spawn } from "child_process";
+import {
+	getCapabilities,
+	hasTmuxSession,
+	hyperlink,
+	Markdown,
+	Spacer,
+	tmuxGlobalOption,
+	Text,
+} from "@octocodeai/octocode-tui";
 import { APP_NAME, getAgentDir, VERSION } from "../../../config.ts";
 import { DefaultPackageManager } from "../../../core/package-manager.ts";
 import { isInstallTelemetryEnabled } from "../../../core/telemetry.ts";
@@ -51,32 +58,7 @@ export async function checkForPackageUpdates(host: StartupChecksHost): Promise<s
 export async function checkTmuxKeyboardSetup(): Promise<string | undefined> {
 	if (!hasTmuxSession()) return undefined;
 
-	const runTmuxShow = (option: string): Promise<string | undefined> => {
-		return new Promise((resolve) => {
-			const proc = spawn("tmux", ["show", "-gv", option], {
-				stdio: ["ignore", "pipe", "ignore"],
-			});
-			let stdout = "";
-			const timer = setTimeout(() => {
-				proc.kill();
-				resolve(undefined);
-			}, 2000);
-
-			proc.stdout?.on("data", (data) => {
-				stdout += data.toString();
-			});
-			proc.on("error", () => {
-				clearTimeout(timer);
-				resolve(undefined);
-			});
-			proc.on("close", (code) => {
-				clearTimeout(timer);
-				resolve(code === 0 ? stdout.trim() : undefined);
-			});
-		});
-	};
-
-	const extendedKeys = await runTmuxShow("extended-keys");
+	const extendedKeys = await tmuxGlobalOption("extended-keys");
 
 	// If we couldn't query tmux (timeout, sandbox, etc.), don't warn
 	if (extendedKeys === undefined) return undefined;

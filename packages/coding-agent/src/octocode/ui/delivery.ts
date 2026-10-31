@@ -2,7 +2,7 @@ import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
 import { plural } from "../shared/render/text.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { STATUS } from "../shared/status.ts";
 
 type Send = ExtensionAPI["sendMessage"];

@@ -306,6 +306,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 				commands.push({
 					name: command.invocationName,
 					description: command.description,
+					...(command.argumentHint && { argumentHint: command.argumentHint }),
 					source: "extension",
 					sourceInfo: command.sourceInfo,
 				});

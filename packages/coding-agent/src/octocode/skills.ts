@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { loadSkillsFromDir } from "../core/skills.ts";
 import { claudeConfigDir, codexConfigDir } from "../utils/host-config.ts";
 import { registerSkillDescriptions } from "./context-optimization/skills.ts";
-import { EXTRA_SKILLS_ENV, envFlag, SUBAGENT_ENV } from "./shared/env.ts";
+import { EXTRA_SKILLS_ENV, envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { globalPaths, projectSkillDirs, workspacePaths } from "./shared/home.ts";
 import { projectTrust } from "./shared/trust.ts";
 

@@ -1,9 +1,11 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { MAX_COMPACTION_INSTRUCTIONS } from "../../core/compaction/manual-options.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
+import { timedTool } from "../shared/render/rows.ts";
 import { isStaleSessionError, textResult } from "../shared/util.ts";
+import { type CompactDetails, compactHeader, compactResult } from "./compact-render.ts";
 import { contextTokens, type ThrashBreaker, toolDefinitionChars } from "./pacing.ts";
 
 /**
@@ -121,27 +123,35 @@ export class CompactRequests {
 export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests, isSubagent: boolean): void {
 	if (isSubagent) return;
 	requests.toolRegistered = true;
-	api.registerTool({
-		name: COMPACT_TOOL,
-		label: "Compact",
-		description:
-			"Summarize older turns to free context, after this reply ends; the task then resumes from the summary. Use at a task " +
-			"boundary when the context is over half full, or when the user asks. End your reply after calling it.",
-		promptSnippet: "Compact the context after this reply",
-		parameters: Type.Object({
-			// No schema bound (tool schemas carry none, `schema-shape.test`): the length is applied in `execute`.
-			focus: Type.Optional(Type.String({ description: "What the summary must keep" })),
+	api.registerTool(
+		timedTool({
+			name: COMPACT_TOOL,
+			label: "Compact",
+			description:
+				"Summarize older turns to free context, after this reply ends; the task then resumes from the summary. Use at a task " +
+				"boundary when the context is over half full, or when the user asks. End your reply after calling it.",
+			promptSnippet: "Compact the context after this reply",
+			parameters: Type.Object({
+				// No schema bound (tool schemas carry none, `schema-shape.test`): the length is applied in `execute`.
+				focus: Type.Optional(Type.String({ description: "What the summary must keep" })),
+			}),
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				if (requests.pending)
+					return textResult("Compaction is already queued for the end of this reply. End your reply now.", {
+						queued: true,
+						already: true,
+					} satisfies CompactDetails);
+				const refusal = requests.refusal(api, ctx);
+				if (refusal) throw new Error(refusal);
+				const focus = params.focus?.trim() ? params.focus.trim().slice(0, MAX_COMPACTION_INSTRUCTIONS) : undefined;
+				requests.request(focus);
+				return textResult(
+					"Compaction queued: it runs when this reply ends, and the task resumes from the summary. End your reply now with a one-line status.",
+					{ queued: true } satisfies CompactDetails,
+				);
+			},
+			renderCall: (args, theme, context) => compactHeader(theme, context, args),
+			renderResult: (result, _options, theme, context) => compactResult(result, theme, context),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (requests.pending)
-				return textResult("Compaction is already queued for the end of this reply. End your reply now.");
-			const refusal = requests.refusal(api, ctx);
-			if (refusal) throw new Error(refusal);
-			const focus = params.focus?.trim() ? params.focus.trim().slice(0, MAX_COMPACTION_INSTRUCTIONS) : undefined;
-			requests.request(focus);
-			return textResult(
-				"Compaction queued: it runs when this reply ends, and the task resumes from the summary. End your reply now with a one-line status.",
-			);
-		},
-	});
+	);
 }

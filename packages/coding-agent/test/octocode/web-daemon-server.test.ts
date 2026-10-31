@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
-import { DaemonHealthSchema, DaemonStatusSchema } from "@octocodeai/octocode-contacts/daemon";
+import { DaemonHealthSchema, DaemonStatusSchema } from "@octocodeai/octocode-contracts/daemon";
 import { Value } from "typebox/value";
 import { sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";

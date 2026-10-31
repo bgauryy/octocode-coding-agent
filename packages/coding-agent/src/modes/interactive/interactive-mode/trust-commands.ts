@@ -1,6 +1,6 @@
 import { APP_NAME } from "../../../config.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../../core/trust-manager.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { TrustSelectorComponent } from "../components/trust-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 

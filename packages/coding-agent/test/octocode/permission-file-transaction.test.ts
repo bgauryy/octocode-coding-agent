@@ -20,7 +20,7 @@ function setup(queries: any[], replacements: any[]) {
 		isSubagent: false,
 	});
 	permission.start(ctx);
-	const params = { queries };
+	const params = { queries, reason: "Apply the fixture changes" };
 	ctx.invocation = captureToolInvocation("file-one", "file", params);
 	const resolver = vi.fn(async () => ({
 		decision: "allow" as const,
@@ -65,6 +65,7 @@ it("commits independent indexed replacements before any file effects", async () 
 	expect(fs.readFileSync(path.join(f.cwd, "y"), "utf8")).toBe("Y");
 	expect(f.ctx.invocation!.input).toEqual({
 		queries: [write("a"), write("b")],
+		reason: "Apply the fixture changes",
 	});
 	expect(f.resolver).toHaveBeenCalledTimes(1);
 });

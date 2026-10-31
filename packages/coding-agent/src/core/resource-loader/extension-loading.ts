@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { CONFIG_DIR_NAME, getLegacyConfigDirs } from "../../config.ts";
 import octocode from "../../octocode/index.ts";
-import { canonicalizePath, resolvePath } from "../../utils/paths.ts";
-import { stripBom } from "../../utils/text.ts";
+import { canonicalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import type { EventBus } from "../event-bus.ts";
 import { loadExtensionFromFactory, loadExtensionsCached } from "../extensions/loader.ts";
 import type {

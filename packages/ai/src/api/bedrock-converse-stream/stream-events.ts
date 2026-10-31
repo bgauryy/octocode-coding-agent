@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model, StopReason } from "../../types.ts";
+import { sumUsageTokens } from "../../utils/assistant-message.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { type Block, REDACTED_THINKING_PLACEHOLDER } from "./types.ts";
@@ -221,9 +222,7 @@ export function handleMetadata(
 			0,
 		);
 		// Bedrock's total includes cache reads and writes; the fallback counts them the same way.
-		output.usage.totalTokens =
-			event.usage.totalTokens ||
-			output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+		output.usage.totalTokens = sumUsageTokens(output.usage, event.usage.totalTokens);
 		calculateCost(model, output.usage);
 	}
 }

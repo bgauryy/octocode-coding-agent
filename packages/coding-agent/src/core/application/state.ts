@@ -8,7 +8,7 @@ import type {
 	ApplicationReceipt,
 	ApplicationTool,
 	ApplicationSnapshot,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 
 /** Host-owned interface data. Engine context and resource handles stay with their execution owners. */
 export interface ApplicationRuntimeState {
@@ -62,7 +62,7 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 			store.setState({ runId: event.runId, streaming: true });
 			break;
 		case "run.settled":
-			store.setState({ runId: undefined, streaming: false, awaiting: undefined });
+			store.setState({ runId: undefined, streaming: false });
 			break;
 		case "session.status":
 			store.setState({ status: event.status });

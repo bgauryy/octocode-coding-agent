@@ -19,6 +19,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { nativeCall } from "./e2e-calls.ts";
 import { tmp } from "./helpers.ts";
 
 /** Feature checks through the SDK defaults with a scripted model and isolated configuration. */
@@ -65,7 +66,7 @@ const calls =
 	() =>
 		fauxAssistantMessage(toolCalls, { stopReason: "toolUse" });
 const agentCall = (type: "task" | "coordinate" | "message", input: Parameters<typeof fauxToolCall>[1]) =>
-	fauxToolCall("agent", { type, input });
+	nativeCall("agent", { type, input });
 const say = (text: string) => () => fauxAssistantMessage(text);
 type Reply = () => ReturnType<typeof fauxAssistantMessage>;
 
@@ -215,9 +216,10 @@ describe("Native features through the SDK", () => {
 			"rewind",
 			"api",
 			"mcp",
+			// Bare `/octocode` opens the live workspace (`remote/register.ts`); only its namespaced form is retired.
+			"octocode",
 		])
 			expect(commands).toContain(name);
-		expect(commands).not.toContain("octocode");
 		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
 		expect(session.systemPrompt).toContain("demo-skill");
 		expect(turn.context).toMatch(/Delegation/);
@@ -231,17 +233,25 @@ describe("Native features through the SDK", () => {
 
 	it("runs direct native commands and handles retired namespace input without a model call", async () => {
 		await session.prompt("/status");
-		expect(note(/^Octocode \d/)).toMatch(/Octocode MCP: connected/);
+		// `/status` lists each MCP server's connection state (`status-command.ts`), not an `Octocode MCP:` summary line.
+		expect(note(/^Octocode \d/)).toMatch(/^MCPs \(\d+\)\n(?:.*\n)*? {2}octocode: connected;/m);
 		expect(note(/^Octocode \d/)).toMatch(/Subagents: .*researcher/);
-		expect(note(/^Octocode \d/)).toMatch(/Skills: [1-9]\d*/);
+		expect(note(/^Octocode \d/)).toMatch(/^Skills \([1-9]\d*\)$/m);
 		expect(note(/^Octocode \d/)).toMatch(/Hooks: (off|on)/);
 		await session.prompt("/hooks");
 		expect(note(/^Hooks: /)).toMatch(/Hook files[\s\S]*settings\.json/);
 		const beforeRequests = turns.length;
+		// `/octocode` is the workspace command now; a retired namespaced form still gets migration guidance, not the board.
 		await session.prompt("/octocode permissions manual");
-		expect(note(/^\/octocode permissions moved/)).toContain("/permissions manual");
+		expect(ui.notes.at(-1)).toMatchObject({
+			message: "/octocode permissions moved to /permissions manual. Run the new command to continue.",
+			type: "warning",
+		});
 		await session.prompt("/octocode help");
-		expect(note(/^Commands now have direct names/)).toContain("/agents");
+		expect(ui.notes.at(-1)).toMatchObject({
+			message: expect.stringMatching(/^Commands now have direct names: .*\/permissions/),
+			type: "warning",
+		});
 		expect(turns).toHaveLength(beforeRequests);
 		await session.prompt("/agents");
 		// A mode change reaches the model as one hidden message, never through the cached system prompt.
@@ -264,9 +274,9 @@ describe("Native features through the SDK", () => {
 		const destructive = "rm -rf ~/.ssh/disposable-delete-target";
 		const [, second] = await run("bash", [
 			calls(
-				fauxToolCall("bash", { command: destructive }),
-				fauxToolCall("bash", { command: "echo forbidden" }),
-				fauxToolCall("bash", { command: "echo fine" }),
+				nativeCall("bash", { command: destructive }),
+				nativeCall("bash", { command: "echo forbidden" }),
+				nativeCall("bash", { command: "echo fine" }),
 			),
 			say("done"),
 		]);
@@ -284,7 +294,7 @@ describe("Native features through the SDK", () => {
 		);
 		const start = turns.length;
 		await run("bash in the background", [
-			calls(fauxToolCall("bash", { command: "echo bg-output", background: true })),
+			calls(nativeCall("bash", { command: "echo bg-output", background: true })),
 			say("started"),
 			say("saw it"),
 		]);
@@ -297,10 +307,7 @@ describe("Native features through the SDK", () => {
 
 	it("asks before web fetches a loopback URL, and fetches nothing when denied", async () => {
 		ui.selects.push("Deny");
-		const [, second] = await run("web", [
-			calls(fauxToolCall("web", { url: "http://127.0.0.1:9/secret" })),
-			say("done"),
-		]);
+		const [, second] = await run("web", [calls(nativeCall("web", { url: "http://127.0.0.1:9/secret" })), say("done")]);
 		expect(second.results[0]).toMatchObject({ toolName: "web", isError: true });
 		expect(second.results[0].text).toMatch(
 			/The user denied opening a private or local address: http:\/\/127\.0\.0\.1:9\/secret/,
@@ -309,7 +316,7 @@ describe("Native features through the SDK", () => {
 
 	it("rejects ambiguous web requests through Octocode instead of choosing one operation", async () => {
 		const [, second] = await run("web", [
-			calls(fauxToolCall("web", { url: "https://example.com", query: "example" })),
+			calls(nativeCall("web", { url: "https://example.com", query: "example" })),
 			say("done"),
 		]);
 		expect(second.results[0]).toMatchObject({ toolName: "web", isError: true });
@@ -318,17 +325,22 @@ describe("Native features through the SDK", () => {
 
 	it("checkpoints file changes and /rewind restores them", async () => {
 		await run("edit", [
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: path.join(cwd, "app.ts") }] })),
 			calls(
-				fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: path.join(cwd, "app.ts"), fullContent: true }] }),
-			),
-			calls(
-				fauxToolCall("file", {
+				nativeCall("file", {
+					reason: "Bump the answer",
 					queries: [{ reason: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] }],
 				}),
 			),
 			say("done"),
 		]);
 		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 42;\n");
+		// Restoring overwrites files and cannot be undone, so `/rewind` asks first when a UI can answer (`checkpoint-command.ts`).
+		ui.confirms.push(false);
+		await session.prompt("/rewind");
+		expect(ui.notes.at(-1)?.message).toBe("Nothing was rewound.");
+		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 42;\n");
+		ui.confirms.push(true);
 		await session.prompt("/rewind");
 		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 41;\n");
 		expect(note(/app\.ts/)).toBeDefined();
@@ -344,7 +356,7 @@ describe("Native features through the SDK", () => {
 				{ label: "B", description: "b" },
 			],
 		};
-		const [, second] = await run("ask", [calls(fauxToolCall("askUser", { questions: [question] })), say("done")]);
+		const [, second] = await run("ask", [calls(nativeCall("askUser", { questions: [question] })), say("done")]);
 		expect(second.results[0].text).toMatch(/Which\?[\s\S]*B/);
 	});
 
@@ -357,7 +369,12 @@ describe("Native features through the SDK", () => {
 		const replies = [
 			calls(agentCall("coordinate", { action: "join", goal: "main" })),
 			calls(agentCall("coordinate", { action: "lock", paths: ["held.txt", "mine.txt"] })),
-			calls(fauxToolCall("file", { queries: [{ reason: "try", type: "write", path: "held.txt", content: "x" }] })),
+			calls(
+				nativeCall("file", {
+					reason: "Try the held file",
+					queries: [{ reason: "try", type: "write", path: "held.txt", content: "x" }],
+				}),
+			),
 			calls(agentCall("coordinate", { action: "list" })),
 			calls(agentCall("message", { to: peer.id!, message: "please release held.txt", replyRequired: false })),
 			say("done"),
@@ -392,10 +409,12 @@ describe("Native features through the SDK", () => {
 		]);
 		const [plain, isolated] = t.at(-1)!.results;
 		expect(plain.text).toMatch(/report \{/);
-		expect(plain.text).toMatch(/"subagent":"1"/);
-		expect(isolated.text).toMatch(/refs\/octocode\/pi\//);
+		// The inline report is bounded (the skill snapshot leads the child's facts), so read the child's full report.
+		const full = /Full report: (.+) \(read only the parts you need\)/.exec(plain.text)![1];
+		expect(fs.readFileSync(full, "utf8")).toMatch(/"subagent":"1"/);
+		expect(isolated.text).toMatch(/refs\/octocode\/[\w-]+/);
 		expect(fs.existsSync(path.join(cwd, "child.txt"))).toBe(false);
-		const id = /refs\/octocode\/pi\/([\w-]+)/.exec(isolated.text)![1];
+		const id = /refs\/octocode\/([\w-]+)/.exec(isolated.text)![1];
 		await session.prompt(`/agents merge ${id}`);
 		expect(fs.readFileSync(path.join(cwd, "child.txt"), "utf8")).toBe("from the child\n");
 	}, 60_000);
@@ -458,17 +477,17 @@ describe("Native features through the SDK", () => {
 	it("tracks backlog items and memories with the tools, refuses secrets, and recalls memories in later prompts", async () => {
 		const t = await run("track work", [
 			calls(
-				fauxToolCall("backlog", {
+				nativeCall("backlog", {
 					op: "add",
 					title: "Raise the answer to 43",
 					goal: "The answer constant is 43; tests pass.",
-					body: "app.ts holds it",
+					why: "app.ts holds it",
 					priority: "p1",
 				}),
 			),
-			calls(fauxToolCall("backlog", { op: "list", states: ["backlog"] })),
+			calls(nativeCall("backlog", { op: "list", states: ["backlog"] })),
 			calls(
-				fauxToolCall("backlog", {
+				nativeCall("backlog", {
 					op: "update",
 					id: "B1",
 					state: "ongoing",
@@ -476,9 +495,9 @@ describe("Native features through the SDK", () => {
 					goal: "The answer constant is 43; tests pass.",
 				}),
 			),
-			calls(fauxToolCall("backlog", { op: "update", id: "B1", state: "done" })),
+			calls(nativeCall("backlog", { op: "update", id: "B1", state: "done" })),
 			calls(
-				fauxToolCall("backlog", {
+				nativeCall("backlog", {
 					op: "update",
 					id: "B1",
 					state: "done",
@@ -491,15 +510,15 @@ describe("Native features through the SDK", () => {
 				}),
 			),
 			calls(
-				fauxToolCall("memory", {
+				nativeCall("memory", {
 					op: "set",
 					title: "The answer constant lives in app.ts",
 					body: "Exported as answer from app.ts at the repository root.",
 					keywords: "answer constant export",
 				}),
 			),
-			calls(fauxToolCall("memory", { op: "search", query: "answer constant" })),
-			calls(fauxToolCall("memory", { op: "set", title: "Deploy token", body: `use ghp_${"a".repeat(36)}` })),
+			calls(nativeCall("memory", { op: "search", query: "answer constant" })),
+			calls(nativeCall("memory", { op: "set", title: "Deploy token", body: `use ghp_${"a".repeat(36)}` })),
 			say("done"),
 		]);
 		const [added, listed, claimed, noNote, done, saved, found, secret] = t.slice(1).map((turn) => turn.results[0]);

@@ -14,7 +14,7 @@ This repository is a coding agent fork of [Pi](https://github.com/earendil-works
 - `packages/acp/src/`: inbound ACP broker and outbound client in a private workspace compiled into coding-agent. `server/` owns protocol/session translation and `client/` owns peer connections and capture; native execution, permissions, persistence and the local API stay in coding-agent.
 - `packages/mcp/src/`: the single MCP owner in a private workspace compiled into coding-agent: protocol client and transports in `client/`, configuration, registry, lifecycle and tool exposure at the root. `presets/octocode/` supplies the default research server and its presentation, and `presets/browser/` the default browser server backed by `@octocodeai/octocode-chrome-devtools`; presets have no separate connection or registry.
 - `packages/telemetry/`: telemetry contracts and schema utilities; hosts decide collection and export.
-- `packages/contacts/`: shared serializable contracts and schemas; no database, provider, DOM or permission implementation.
+- `packages/contracts/`: shared serializable contracts and schemas; no database, provider, DOM or permission implementation.
 - `packages/webview/`: browser state, transport and rendering; execution, authentication and authorization remain in the coding-agent host.
 - [CONFIGURATIONS.md](CONFIGURATIONS.md): user-facing configuration map. [Documentation index](packages/coding-agent/docs/index.md): package, user and SDK references. Each package README owns its public API guidance; `docs/` holds cross-package designs and reviews.
 
@@ -38,15 +38,15 @@ When changing native tools or commands, check registration and SDK consumers sep
 
 Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Follow the root README for installation and model-data hydration. Yarn (the version `packageManager` pins) runs every repository command and owns the only lockfile, `yarn.lock`; npm appears only where the product packs, publishes or installs packages as a consumer would.
 
-- `yarn run check` runs TypeScript, Oxlint, the Oxfmt format check, browser imports, workspace bundle freshness, package-boundary checks and the Pi-name ratchet without rewriting files.
+- `yarn run check` runs TypeScript, Oxlint, the Oxfmt format check, browser imports, workspace bundle freshness, package-boundary checks and the database boundary without rewriting files.
 - `yarn run check:db-boundary` fails when SQL appears outside `octocode/agentdb/`.
 - `yarn run check:unused` runs Knip (`knip.jsonc`) for unused files, dependencies, exports and types; runtime-resolved packages and path-invoked entries are listed there with their reason.
 - `yarn run lint` runs Oxlint (`.oxlintrc.json`, type-aware through tsgolint on TypeScript 7) over all packages and scripts; `yarn run lint:fix` applies its safe fixes, which still need `tsc` afterwards. `yarn run format` formats code with Oxfmt (`.oxfmtrc.json`, Prettier-compatible).
 - Source files stay within 400 lines. The `max-lines` override in `.oxlintrc.json` lists the files that were longer when the rule was adopted; split one and remove it from the list (`scripts/check-max-lines-baseline.mjs` fails while a listed file fits). Never add files to it.
-- `scripts/pi-names-baseline.json` records the Pi tokens each file still has; `yarn run check:pi-names` fails when a file gains or loses some. Use Octocode names in new code. After removing Pi names, or when adding an intentional Pi reference (compatibility, attribution, history), run `node scripts/check-pi-names.mjs --update`.
+- Use Octocode names in new code; keep Pi references only where they are intentional (compatibility, attribution, history).
 - Silence a rule only for a deliberate pattern, on the line, with the reason: `// oxlint-disable-next-line <rule> -- <reason>`.
 - `./test.sh` runs all tests with isolated user configuration and credentials. Install `fd` and `ripgrep` for filesystem-tool tests. Bun worker checks run when Bun is available; live provider tests require separate configured runs.
-- From `packages/coding-agent`, `yarn vitest run --config vitest.octocode.config.ts` runs the native feature suite; append test paths for a focused run. This config excludes live e2e and Chrome tests.
+- From `packages/coding-agent`, `yarn vitest run --config vitest.octocode.config.ts` runs the native feature suite; append test paths for a focused run. This config excludes the scripted e2e suites and the Chrome tests. `yarn workspace @octocodeai/octocodecode run test:e2e` (also part of that package's `test`, so `./test.sh` and CI) runs `test/octocode/e2e*.test.ts` with `vitest.e2e.config.ts`: a real session, extension and Octocode MCP server against a scripted model, with no network or credentials; it includes the default prompt-size ceiling.
 - `yarn run test:scripts` checks build, packaging and repository scripts.
 - `yarn run build:offline` builds using hydrated model data; `yarn start --help` checks the source CLI.
 
@@ -58,6 +58,6 @@ For documentation changes, verify commands, paths and API claims against their o
 
 ## Generated files and releases
 
-Generate coding-agent schemas with `yarn workspace @octocodeai/octocodecode run generate:schemas`, reference tables with `yarn workspace @octocodeai/octocodecode run generate:references`, and its installer lock with `yarn run install-lock:coding-agent`. Update generators rather than hand-editing their output. Hydrated model data is ignored by Git.
+Generate coding-agent schemas with `yarn workspace @octocodeai/octocodecode run generate:schemas`, reference tables with `yarn workspace @octocodeai/octocodecode run generate:references`, the Unicode case-fold table with `yarn workspace @octocodeai/octocodecode run generate:casefold`, and its installer lock with `yarn run install-lock:coding-agent`. Update generators rather than hand-editing their output. Hydrated model data is ignored by Git.
 
 The three local dependencies on the sibling `octocode` repository are currently intentional. Registry publication and portable installer builds require a separate dependency-release change. Keep local validation distinct from registry release validation.

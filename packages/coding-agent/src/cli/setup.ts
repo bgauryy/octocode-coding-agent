@@ -1,9 +1,12 @@
 import chalk, { chalkStderr } from "chalk";
 import { APP_NAME } from "../config.ts";
 import { configureHttpDispatcher } from "../core/http-dispatcher.ts";
+import { dropForeignChildEnv } from "../octocode/subagents/process/child-env.ts";
 
 export function setupCli(): void {
 	process.title = APP_NAME;
+	// An Octocode a subagent's command started is a top-level session, not that subagent.
+	dropForeignChildEnv();
 	process.env.OCTOCODE_CODING_AGENT = "true";
 	process.env.AI_AGENT = "octocode";
 	process.emitWarning = () => {};

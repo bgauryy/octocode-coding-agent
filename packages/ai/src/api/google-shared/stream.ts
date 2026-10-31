@@ -1,3 +1,4 @@
+import { createAbortError } from "../../utils/abort.ts";
 import { assertImageRequestPayload } from "../../utils/image-input.ts";
 import { retryAfterMsFromError } from "../../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../../utils/assistant-message.ts";
@@ -201,7 +202,7 @@ export function streamGoogle<T extends GoogleApiType>(
 			}
 
 			if (options?.signal?.aborted) {
-				throw new Error("Request was aborted");
+				throw createAbortError();
 			}
 
 			if (output.stopReason === "pending") {

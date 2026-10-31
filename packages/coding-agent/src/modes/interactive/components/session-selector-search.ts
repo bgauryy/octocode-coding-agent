@@ -1,6 +1,6 @@
 import { fuzzyMatch } from "@octocodeai/octocode-tui";
 import type { SessionInfo } from "../../../core/session-manager.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export type SortMode = "threaded" | "recent" | "relevance";
 

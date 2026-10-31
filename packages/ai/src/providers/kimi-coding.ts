@@ -1,5 +1,6 @@
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { envApiKeyAuth, lazyOAuth } from "../auth/helpers.ts";
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { loadKimiCodingOAuth } from "../auth/oauth/load.ts";
 import { createProvider, type Provider } from "../models.ts";
 import { KIMI_CODING_MODELS } from "./kimi-coding.models.ts";
@@ -10,7 +11,7 @@ export function kimiCodingProvider(): Provider<"openai-completions"> {
 		name: "Kimi For Coding",
 		baseUrl: "https://api.kimi.com/coding/v1",
 		auth: {
-			apiKey: envApiKeyAuth("Kimi API key", ["KIMI_API_KEY"]),
+			apiKey: envApiKeyAuth("Kimi API key", apiKeyEnvVars("kimi-coding")),
 			oauth: lazyOAuth({
 				name: "Kimi Code (subscription)",
 				isSubscription: true,

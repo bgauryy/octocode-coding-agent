@@ -1,4 +1,4 @@
-import type { BacklogAudit, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { BacklogAudit, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { type FormEvent, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { navigate } from "../hooks.ts";

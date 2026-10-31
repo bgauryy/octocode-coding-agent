@@ -1,7 +1,7 @@
 import http from "node:http";
 import { WebSocket } from "ws";
-import { APPLICATION_PROTOCOL_VERSION } from "@octocodeai/octocode-contacts";
-import type { TunnelRequest, TunnelResponsePayload } from "./protocol.ts";
+import { APPLICATION_PROTOCOL_VERSION } from "@octocodeai/octocode-contracts";
+import { validPath, type TunnelRequest, type TunnelResponsePayload } from "./protocol.ts";
 
 /** The daemon's own loopback server as one peer may use it: always with this peer's token, never the page's. */
 export interface Loopback {
@@ -49,41 +49,11 @@ export class PeerTunnel {
 
 	private request(message: Extract<TunnelRequest, { kind: "request" }>): void {
 		const answer = (status: number, body: string) => this.send({ kind: "response", id: message.id, status, body });
+		if (!validPath(message.path)) return answer(400, JSON.stringify({ error: "Invalid request path" }));
 		if (this.inFlight >= MAX_REQUESTS) return answer(429, JSON.stringify({ error: "Too many requests in flight" }));
 		const body = message.body === undefined ? undefined : Buffer.from(message.body, "utf8");
 		if (body && body.length > MAX_BODY_BYTES) return answer(413, JSON.stringify({ error: "Request too large" }));
 		this.inFlight++;
-		const request = http.request(
-			{
-				host: "127.0.0.1",
-				port: this.loopback.port,
-				path: message.path,
-				method: message.method,
-				headers: {
-					Host: `127.0.0.1:${this.loopback.port}`,
-					Origin: this.loopback.origin,
-					Authorization: `Bearer ${this.loopback.token}`,
-					...(body ? { "content-type": "application/json", "content-length": String(body.length) } : {}),
-				},
-				agent: new http.Agent({ keepAlive: false }),
-				timeout: REQUEST_TIMEOUT_MS,
-			},
-			(response) => {
-				const chunks: Buffer[] = [];
-				let bytes = 0;
-				response.on("data", (chunk: Buffer) => {
-					bytes += chunk.length;
-					if (bytes > MAX_RESPONSE_BYTES) {
-						response.destroy();
-						settle(502, JSON.stringify({ error: "Response too large for the relay" }));
-						return;
-					}
-					chunks.push(chunk);
-				});
-				response.on("error", () => settle(502, JSON.stringify({ error: "The daemon did not answer" })));
-				response.on("end", () => settle(response.statusCode ?? 0, Buffer.concat(chunks).toString("utf8")));
-			},
-		);
 		let settled = false;
 		const settle = (status: number, text: string) => {
 			if (settled) return;
@@ -91,20 +61,62 @@ export class PeerTunnel {
 			this.inFlight--;
 			if (!this.closed) answer(status, text);
 		};
-		request.on("timeout", () => request.destroy());
-		request.on("error", () => settle(502, JSON.stringify({ error: "The daemon did not answer" })));
-		if (body) request.write(body);
-		request.end();
+		try {
+			const request = http.request(
+				{
+					host: "127.0.0.1",
+					port: this.loopback.port,
+					path: message.path,
+					method: message.method,
+					headers: {
+						Host: `127.0.0.1:${this.loopback.port}`,
+						Origin: this.loopback.origin,
+						Authorization: `Bearer ${this.loopback.token}`,
+						...(body ? { "content-type": "application/json", "content-length": String(body.length) } : {}),
+					},
+					agent: new http.Agent({ keepAlive: false }),
+					timeout: REQUEST_TIMEOUT_MS,
+				},
+				(response) => {
+					const chunks: Buffer[] = [];
+					let bytes = 0;
+					response.on("data", (chunk: Buffer) => {
+						bytes += chunk.length;
+						if (bytes > MAX_RESPONSE_BYTES) {
+							response.destroy();
+							settle(502, JSON.stringify({ error: "Response too large for the relay" }));
+							return;
+						}
+						chunks.push(chunk);
+					});
+					response.on("error", () => settle(502, JSON.stringify({ error: "The daemon did not answer" })));
+					response.on("end", () => settle(response.statusCode ?? 0, Buffer.concat(chunks).toString("utf8")));
+				},
+			);
+			request.on("timeout", () => request.destroy());
+			request.on("error", () => settle(502, JSON.stringify({ error: "The daemon did not answer" })));
+			if (body) request.write(body);
+			request.end();
+		} catch {
+			// Node refused the request before sending it (an invalid target): the slot is released and the peer told.
+			settle(400, JSON.stringify({ error: "The request could not be sent" }));
+		}
 	}
 
 	private open(message: Extract<TunnelRequest, { kind: "stream.open" }>): void {
 		const id = message.stream;
+		if (!validPath(message.path)) return this.send({ kind: "stream.end", stream: id, code: 1008 });
 		if (this.streams.has(id) || this.streams.size >= MAX_STREAMS)
 			return this.send({ kind: "stream.end", stream: id, code: 1013 });
-		const socket = new WebSocket(`ws://127.0.0.1:${this.loopback.port}${message.path}`, {
-			headers: { Origin: this.loopback.origin },
-			maxPayload: STREAM_BUFFER_LIMIT * 4,
-		});
+		let socket: WebSocket;
+		try {
+			socket = new WebSocket(`ws://127.0.0.1:${this.loopback.port}${message.path}`, {
+				headers: { Origin: this.loopback.origin },
+				maxPayload: STREAM_BUFFER_LIMIT * 4,
+			});
+		} catch {
+			return this.send({ kind: "stream.end", stream: id, code: 1008 });
+		}
 		this.streams.set(id, socket);
 		socket.on("open", () =>
 			socket.send(

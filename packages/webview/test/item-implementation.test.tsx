@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
-import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
-import type { WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import type { ReactNode } from "react";

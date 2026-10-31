@@ -1,11 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { constants as osConstants } from "node:os";
 import type { BashOperations } from "../../core/tools/index.ts";
-import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";
-import { adoptTree, groupAlive, groupMembers, killTree, prepareTree, signalTree } from "../shared/process.ts";
+import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell.ts";
+import { groupAlive, groupMembers, killTree } from "../shared/process.ts";
+import { signalTree } from "../../utils/process-tree.ts";
 import { firstLine } from "../shared/util.ts";
-import { MAX_TIMER_SECONDS } from "./bash-jobs.ts";
 import type { BashJob } from "./bash-jobs/types.ts";
 import { nonInteractiveEnv, type ShellSettings } from "./bash-jobs/shell.ts";
 
@@ -71,7 +71,7 @@ export type HandoffReason = "deadline" | "message";
  */
 type Handoff = (child: ChildProcess, output: Buffer, startedAt: number, reason: HandoffReason) => BashJob;
 
-/** Moves a command to the background once `pending()` says a user message waits for the agent. */
+/** Moves a command to the background once `pending()` says a message that asks for the agent (the user's) is waiting. */
 export interface PendingWatch {
 	pending: () => boolean;
 	/** The command must have run this long first, so a quick one still returns its own result. */
@@ -152,44 +152,29 @@ function waitForExit(child: ChildProcess): { done: Promise<number | null | undef
  * The foreground shell operations for one call. `onGroup` receives the command's process group leader when the
  * command returned on its own. At the deadline a command still running goes to `handoff` when there is one (it
  * keeps running; exec then throws the usual `timeout:` error, and the caller knows the job from its own handoff); with
- * none, or when the handoff fails, or after an abort, the whole group is stopped. With `watch`, a command that has
- * run a moment also moves as soon as a user message is waiting, so the agent can answer it.
+ * none, `stopAtDeadline`, or when the handoff fails, or after an abort, the whole group is stopped. With `watch`, a
+ * command that has run a moment also moves as soon as a user message is waiting, so the agent can answer it.
  */
 export function foregroundOperations(
 	settings: ShellSettings,
 	onGroup: (pid: number) => void,
 	handoff?: Handoff,
 	onExit?: (signal: NodeJS.Signals | null) => void,
-	watch?: PendingWatch,
+	{ watch, stopAtDeadline = false }: { watch?: PendingWatch; stopAtDeadline?: boolean } = {},
 ): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout, env }) => {
 			if (signal?.aborted) throw new Error("aborted");
-			// Node timers stop at MAX_TIMER_SECONDS: a longer timeout is that long, and a non-positive one is no timeout.
-			if (timeout !== undefined)
-				timeout = Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, MAX_TIMER_SECONDS) : undefined;
+			// Node timers stop at MAX_TIMER_SECONDS (clamped here): a longer timeout is that long, and a non-positive one is no timeout.
+			timeout = clampTimeoutSeconds(timeout);
 			if (!fs.existsSync(cwd))
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);
-			const shell = settings.type === "powershell" ? getPowerShellConfig() : getShellConfig(settings.shellPath);
-			const viaStdin = shell.commandTransport === "stdin";
-			// On Windows the job that holds the tree exists before the shell does.
-			await prepareTree();
-			const child = spawn(shell.shell, viaStdin ? shell.args : [...shell.args, command], {
+			const child = await spawnShell(resolveShell(settings), command, {
 				cwd,
-				detached: process.platform !== "win32",
 				env: nonInteractiveEnv(env ?? process.env),
-				stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
-				windowsHide: true,
 			});
-			if (viaStdin) {
-				child.stdin?.on("error", () => undefined);
-				child.stdin?.end(command);
-			}
 			const pid = child.pid;
-			if (pid) {
-				track(pid);
-				adoptTree(pid);
-			}
+			if (pid) track(pid);
 			let timedOut = false;
 			// Seconds the command ran when a waiting message moved it (a deadline reports its own length).
 			let movedAfter: number | undefined;
@@ -221,7 +206,7 @@ export function foregroundOperations(
 					? undefined
 					: setTimeout(() => {
 							timedOut = true;
-							if (!moveToBackground("deadline")) stop();
+							if (stopAtDeadline || !moveToBackground("deadline")) stop();
 						}, timeout * 1000);
 			const watcher =
 				watch && handoff

@@ -1,5 +1,5 @@
 import { closeSync, constants, copyFileSync, existsSync, fstatSync, openSync, readSync, truncateSync } from "fs";
-import { resolvePath } from "../../utils/paths.ts";
+import { resolvePath } from "../../../../common/src/paths.ts";
 import { withSessionFileLock } from "./shared-file.ts";
 
 /** What `repairSessionFile` changed. */

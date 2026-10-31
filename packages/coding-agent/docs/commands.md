@@ -1,6 +1,6 @@
 # Commands
 
-The shipped command inventory contains **47 slash commands**: 35 core descriptors, ten additional native commands, and two bundled extension commands. Each command has exactly one name; there are no aliases. Availability depends on the host, enabled extensions and whether this is a main or child session. Loaded skills, prompt templates and third-party extensions add their own commands.
+The shipped command inventory contains **48 slash commands**: 35 core descriptors, eleven additional native commands, and two bundled extension commands. Each command has exactly one name; there are no aliases. Availability depends on the host, enabled extensions and whether this is a main or child session. Loaded skills, prompt templates and third-party extensions add their own commands.
 
 Run `/help [search]` for the current terminal inventory. `/skills` opens the skill manager with source and load state; `/skills <search>` finds loaded skill commands. Selecting a command inserts it into the editor. Type a command followed by a space to see argument completions. In the syntax below, `[value]` is optional and `<value>` is required; do not type the brackets.
 
@@ -54,7 +54,7 @@ See [session workflows](native-features.md#session-workflow-commands) for side-q
 
 ## Additional native commands
 
-These nine commands extend the native inventory.
+These eleven commands extend the native inventory.
 
 | Command                           | Arguments and purpose                                                                                               |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -68,6 +68,7 @@ These nine commands extend the native inventory.
 | `/rewind [turns]`                 | Restore checkpointed file changes from the last N turns on this branch; default 1; does not rewind the conversation |
 | `/octocode [backlogs]`            | Open the live workspace on Activity, or its task board with `backlogs`                                              |
 | `/remote [view\|status\|stop]`    | Publish a link to this machine's web daemon for another device; see [remote access](remote.md)                      |
+| `/worktree [operation]`           | List, create, open (in tmux), switch to or remove git worktrees for parallel sessions; see [worktrees](native-features.md#worktrees)     |
 
 See [native features](native-features.md), [hooks](hooks.md), [permissions](permissions.md), and the [backlog view](native-features.md#backlog-view) for feature-specific behavior.
 
@@ -96,10 +97,11 @@ These are arguments after the command, not additional slash commands.
 | `/backlog`         | `web`, `tui`, `add <title>`, `do <id>`, `export`, `html`, `<id>`, `<id> <backlog\|todo\|ongoing\|done>`, `<id> delete`; transitions still require their normal metadata and deletion requires interactive confirmation                                                                        |
 | `/mcp`             | No argument opens the terminal manager or reports status in other hosts; `list`, `config`, `tools [server] [tool]`, `enable <server> [--local]`, `disable <server> [--local]`, `exposure <server> <direct\|hidden> [--local]`, `login [server]`, `logout [server]`, `reconnect [server\|all]` |
 | `/fork`            | `pane [right\|down]` or `window` opens a fork in a new tmux pane or window; see [tmux launch](native-features.md#opening-a-fork-in-a-tmux-pane-or-window)                                                                                                                                     |
+| `/worktree`        | No argument or `list` lists worktrees with branch and unsaved work, and under each the live agents (pid, tmux window) and tmux panes working there; `new <name>` creates or reuses one and opens it in a tmux window (or prints the command); `open <name> [pane [right\|down]\|window]` opens an existing one in a tmux window or pane (or prints the command); `switch <name>` moves this session into one as a fresh session (the previous one stays saved); `remove <name> [--force]` removes one when no work would be lost                                                                |
 
 ## Skills, prompts and user extensions
 
-These commands depend on loaded resources and are separate from the 46 shipped names. `/skills`, `/help` and `/status` show what is available. Skills with `user-invocable: false` have no user command. Disabling autocomplete suggestions does not remove eligible explicit skill invocations.
+These commands depend on loaded resources and are separate from the 48 shipped names. `/skills`, `/help` and `/status` show what is available. Skills with `user-invocable: false` have no user command. Disabling autocomplete suggestions does not remove eligible explicit skill invocations.
 
 The currently installed research package supplies these 14 bundled skill commands. Resource selection and collision rules can change their availability or invocation names.
 
@@ -119,13 +121,13 @@ The currently installed research package supplies these 14 bundled skill command
 | [Prompt template](prompt-templates.md) | `/name [arguments]`; reserved or duplicate names receive `/prompt:name` or a numbered form.                                                                       |
 | [Extension](extensions.md)             | Its registered name; conflicts receive resolved names such as `/new:1`. `registerCommand` refuses an `aliases` option. Discovery reports the actual names.        |
 
-`/octocode <subcommand> ...` is a migration message, not a command of its own. It points to direct commands such as `/agents external ...` and `/mcp reconnect octocode`; it does not perform the requested operation. Optional example extensions are not built-in commands.
+`/octocode` with no argument or `backlogs` opens the web workspace; any other argument (`/octocode <subcommand> ...`) prints a migration message instead of running a command. It points to direct commands such as `/agents external ...` and `/mcp reconnect octocode`; it does not perform the requested operation. Optional example extensions are not built-in commands.
 
 ## Hosts and other input forms
 
 The terminal's `/help` combines core, native, extension, prompt and skill commands. The extension API's `octocode.getCommands()` and RPC `get_commands` expose registered extension/native commands plus prompts and skills under their resolved names; they do not manufacture terminal dialogs. SDK hosts can inspect registered handlers through `session.extensionRunner.getRegisteredCommands()`. Known terminal-only commands submitted through `prompt` return an unavailable-command error. In the terminal, a command-shaped `/name` that no command owns is not sent to the model: the editor keeps the text and a warning names the closest command, or suggests `/help name` when none is close. Native commands can also require a UI for particular operations. See [SDK workflow operations](sdk.md#session-workflow-operations) for structured compaction, planning and report APIs.
 
-In the terminal, `!<command>` runs a shell command and includes its result in context; `!!<command>` runs it with the result excluded from model context. Both retain the normal execution checks. These prefixes are not slash commands. Keyboard shortcuts are listed by `/keys` and in [keybindings](keybindings.md).
+In the terminal, `!<command>` runs a shell command and includes its result in context, trimmed like the `bash` tool's (a header line with exit status, time and size, then at most `bashOutputMaxBytes` of output; the full output is saved to a file the header names); `!!<command>` runs it with the result excluded from model context. Both retain the normal execution checks. These prefixes are not slash commands. Keyboard shortcuts are listed by `/keys` and in [keybindings](keybindings.md).
 
 ## Shell entry points
 
@@ -163,7 +165,7 @@ Most commands perform host actions without asking the model anything. Configurat
 | `/backlog do <id>`                                             | Sends the task's saved context and comments, requires a fresh read of all pages before acting, and requires verification before completion. Saved task text does not grant additional permissions. Other backlog operations use host controls.                                                                                                                                | [Task handoff, version checks and delivery](../test/octocode/workspace-handoff.test.ts), [backlog command operations](../test/octocode/backlog.test.ts)                                                                                          |
 | `/agents tell`, `/agents interrupt`, `/agents external prompt` | Forwards the user's message to the selected agent through existing permission and delivery controls. These operations do not supply a separate summarization or planning prompt. Other agent operations use host controls.                                                                                                                                                    | [Team controls](../test/octocode/team-tools.test.ts), [external agent manager](../test/octocode/external-manager.test.ts)                                                                                                                        |
 
-**The remaining commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/login`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
+**The remaining commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/login`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, `/worktree`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
 
 [Dispatch tests](../test/slash-command-dispatch.test.ts) check that each built-in has one name and that removed names do not dispatch. [Command-name tests](../test/command-names.test.ts) cover collisions between extensions, prompts and skills, and the refusal of extension `aliases`. The native SDK test checks every native command registration and both bundled extension command registrations. Loaded skill bodies and user prompt templates remain separate, source-specific instructions; their argument expansion and collision handling are tested, but this audit is not a quality evaluation of every third-party resource.
 

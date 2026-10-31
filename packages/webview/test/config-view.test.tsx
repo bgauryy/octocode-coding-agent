@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { CONFIG_PROTOCOL_VERSION, type ConfigSnapshot } from "@octocodeai/octocode-contacts/config";
+import { CONFIG_PROTOCOL_VERSION, type ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";

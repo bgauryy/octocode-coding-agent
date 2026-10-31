@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { normalizePath } from "../../../utils/paths.ts";
+import { normalizePath } from "../../../../../common/src/paths.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { DefaultProjectTrust, QuietStartup } from "../../settings-schema.ts";
 import type { EnvironmentSettingsApi } from "../api/environment.ts";

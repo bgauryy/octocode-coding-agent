@@ -1,4 +1,4 @@
-import type { ApplicationEvent } from "@octocodeai/octocode-contacts";
+import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import { afterEach, expect, it } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { ApplicationService } from "../src/core/application/service.ts";

@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { renderCasefoldTable } from "./fixtures/render-casefold.ts";
+import { renderCasefoldTable } from "../../scripts/generate-casefold.ts";
 
 const SOURCE = new URL("./fixtures/unicode16.json", import.meta.url);
-const TARGET = new URL("../../src/octocode/team/casefold-table.ts", import.meta.url);
+const TARGET = new URL("../../src/octocode/team/casefold-table.generated.ts", import.meta.url);
 
-import { CASE_FOLDING_UNICODE_VERSION } from "../../src/octocode/team/casefold-table.ts";
+import { CASE_FOLDING_UNICODE_VERSION } from "../../src/octocode/team/casefold-table.generated.ts";
 import { foldComponent, keysOverlap, type LeaseKind, leaseKey } from "../../src/octocode/team/lease-key.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
@@ -106,7 +106,7 @@ describe("agent coordination contract (shared vectors)", () => {
 		},
 	);
 
-	it("keeps the generated case-folding table equal to the package's frozen Unicode table", () => {
+	it("keeps the generated case-folding table equal to the frozen Unicode table", () => {
 		const table = JSON.parse(fs.readFileSync(SOURCE, "utf8")) as {
 			version: string;
 			casefold: Record<string, number[]>;
@@ -114,7 +114,7 @@ describe("agent coordination contract (shared vectors)", () => {
 		expect(CASE_FOLDING_UNICODE_VERSION).toBe(table.version);
 		expect(
 			fs.readFileSync(TARGET, "utf8"),
-			"src/team/casefold-table.ts is stale: run `yarn casefold:generate` in packages/octocode-pi-extension",
+			"src/octocode/team/casefold-table.generated.ts is stale: run `yarn workspace @octocodeai/octocodecode run generate:casefold`",
 		).toBe(renderCasefoldTable(table));
 	});
 });

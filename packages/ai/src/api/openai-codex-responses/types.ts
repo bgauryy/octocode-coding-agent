@@ -14,7 +14,6 @@ export const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 export const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
 export const DEFAULT_MAX_RETRIES = 0;
 export const BASE_DELAY_MS = 1000;
-export const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 export const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
 // The Codex backend accepts zstd-compressed request bodies on the SSE responses
 // endpoint (the same endpoint the official Codex client compresses against).

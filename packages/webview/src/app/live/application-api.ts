@@ -3,14 +3,15 @@ import {
 	type ApplicationAsset,
 	type ApplicationAssetPayload,
 	type ApplicationHistory,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 
+import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
 
 /** Assets stay behind the same capability as the session. Only decoded bytes reach object URLs. */
 export function createApplicationApi(access: string) {
-	const authorization = { Authorization: `Bearer ${access}` };
+	const authorization = bearer(access);
 	return {
 		async asset(sessionId: string, id: string, signal?: AbortSignal): Promise<Blob> {
 			const value = await requestJson(

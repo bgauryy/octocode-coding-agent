@@ -9,7 +9,7 @@ import { parseCodexSkillMetadata } from "../codex-skill-metadata.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "../source-info.ts";
 import type { LoadSkillsFromDirOptions, LoadSkillsResult, Skill, SkillFrontmatter } from "./identity.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;

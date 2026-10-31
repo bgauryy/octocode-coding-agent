@@ -1,18 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-	DEFAULT_MAX_BYTES,
-	DEFAULT_MAX_LINES,
-	formatSize,
-	truncateHead,
-	truncateTail,
-} from "../../core/tools/index.ts";
+import { formatSize, truncateHead, truncateTail } from "../../core/tools/index.ts";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
-import { shortHash } from "../../utils/atomic-file.ts";
+import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { shortPath } from "./format.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "./home.ts";
+import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES, TEXT_MAX_CHARS } from "./output-budget.ts";
 import { capOutput, cutText, trimmedCounts } from "./util.ts";
 import { type ImageLimits, imageLimits } from "./vision.ts";
+
+/**
+ * The limit `capResultText` applies, for callers that bound other text by it. Hosted workspaces (`packages/mcp`) take it
+ * from here, the trimming module they already use, rather than reaching another host file (`check-package-boundaries.mjs`).
+ */
+export { TEXT_MAX_CHARS };
 
 /** Bytes and lines kept back from the budget for the omission and pointer notes. */
 const NOTE_BYTES = 512;
@@ -102,8 +103,8 @@ export function spillOutput(
 		save?: (text: string, label: string) => string | undefined;
 	},
 ): SpilledOutput {
-	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
-	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
+	const maxBytes = options.maxBytes ?? RESULT_DEFAULT_BYTES;
+	const maxLines = options.maxLines ?? RESULT_DEFAULT_LINES;
 	const whole = truncateHead(text, { maxBytes, maxLines });
 	if (!whole.truncated) return { text, truncated: false };
 	const file = (options.save ?? saveFullOutput)(text, options.label);
@@ -132,6 +133,15 @@ export function spillOutput(
 		truncated: true,
 		file,
 	};
+}
+
+/**
+ * A text part of a result as the model gets it: whole up to `maxChars` (default `TEXT_MAX_CHARS`, the most any call can
+ * ask for), else saved and previewed by `spillOutput`. The check is on characters, so a page of multi-byte text within
+ * its requested size is not cut by bytes.
+ */
+export function capResultText(text: string, label: string, maxChars = TEXT_MAX_CHARS): string {
+	return text.length <= maxChars ? text : capOutputToFile(text, { label, maxBytes: maxChars, maxLines: maxChars + 1 });
 }
 
 /** `spillOutput` for callers that need only the text. */

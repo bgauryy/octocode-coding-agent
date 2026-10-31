@@ -7,8 +7,8 @@ import { assertValidSessionId, SessionManager } from "../core/session-manager.ts
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { sessionFileRunningPid } from "../octocode/agentdb/liveness.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
-import { resolvePath } from "../utils/paths.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { resolveAppMode } from "./startup.ts";
 
 /** Result from resolving a session argument */

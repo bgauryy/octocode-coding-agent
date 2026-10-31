@@ -1,10 +1,10 @@
+import { BYTES_PER_TOKEN, RESULT_DEFAULT_LINES } from "../../../octocode/shared/output-budget.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 
-/** What one foreground bash result may put into the model's context: 24 KB (about 6k tokens) and 600 lines by default. */
+/** What one foreground bash result may put into the model's context: the shared default (20 KB, 500 lines; see `output-budget.ts`). */
 export const BASH_MAX_BYTES = SETTINGS_DEFAULTS.bashOutputMaxBytes;
-export const BASH_MAX_LINES = 600;
+export const BASH_MAX_LINES = RESULT_DEFAULT_LINES;
 
-const BYTES_PER_TOKEN = 4;
 /** The smallest `maxOutputTokens` a call can ask for. */
 const MIN_OUTPUT_TOKENS = 100;
 const MIN_LINES = 20;
@@ -15,8 +15,8 @@ export interface BashBudget {
 }
 
 /**
- * The limits of one call. `maxBytes` is the `bashOutputMaxBytes` setting; the line limit scales with it (600 lines
- * per 24 KB). `maxOutputTokens` lowers the budget for the call at about 4 bytes per token, between
+ * The limits of one call. `maxBytes` is the `bashOutputMaxBytes` setting; the line limit scales with it (500 lines
+ * per 20 KB). `maxOutputTokens` lowers the budget for the call at about 4 bytes per token, between
  * `MIN_OUTPUT_TOKENS` and what the setting allows; a value that is not a number is ignored.
  */
 export function bashBudget(maxBytes = BASH_MAX_BYTES, maxOutputTokens?: number): BashBudget {

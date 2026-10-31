@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { stripBom } from "../../utils/text.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import { HOST_PROVIDED_PACKAGE_NAMES } from "../extensions/host-modules.ts";
 import type { Extension, ExtensionFactory, InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
 import type { PathMetadata } from "../package-manager.ts";

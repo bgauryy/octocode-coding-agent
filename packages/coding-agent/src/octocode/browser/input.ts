@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { BrowserSession } from "./cdp/browser-session.ts";
 import { abortError } from "./abort.ts";
 import { pressKey } from "./input/keyboard.ts";

@@ -1,4 +1,5 @@
 import type { Message } from "../types.ts";
+import { getProviderCapabilities } from "../utils/provider-capabilities.ts";
 
 // Copilot expects X-Initiator to indicate whether the request is user-initiated
 // or agent-initiated (e.g. follow-up after assistant/tool messages).
@@ -8,7 +9,7 @@ function inferCopilotInitiator(messages: Message[]): "user" | "agent" {
 }
 
 // Copilot requires Copilot-Vision-Request header when sending images
-export function hasCopilotVisionInput(messages: Message[]): boolean {
+function hasCopilotVisionInput(messages: Message[]): boolean {
 	return messages.some((msg) => {
 		if (msg.role === "user" && Array.isArray(msg.content)) {
 			return msg.content.some((c) => c.type === "image");
@@ -20,7 +21,13 @@ export function hasCopilotVisionInput(messages: Message[]): boolean {
 	});
 }
 
-export function buildCopilotDynamicHeaders(params: {
+/** The Copilot request headers for `provider` over `messages`, or `undefined` when the provider does not use them. */
+export function copilotDynamicHeadersFor(provider: string, messages: Message[]): Record<string, string> | undefined {
+	if (!getProviderCapabilities(provider).copilotDynamicHeaders) return undefined;
+	return buildCopilotDynamicHeaders({ messages, hasImages: hasCopilotVisionInput(messages) });
+}
+
+function buildCopilotDynamicHeaders(params: {
 	messages: Message[];
 	hasImages: boolean;
 }): Record<string, string> {

@@ -11,7 +11,7 @@ import type { Settings } from "../../core/settings-manager.ts";
 import os from "node:os";
 import path from "node:path";
 import { claudeSettingsSources, globalPaths, projectHookFiles } from "../shared/home.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
 import { applyHookToggles } from "./config/toggles.ts";
 

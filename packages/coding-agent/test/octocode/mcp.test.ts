@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sanitizeJson, toToolResult } from "../../../mcp/src/presets/octocode/tools.ts";
 import { expandKey } from "../../src/octocode/shared/render/text.ts";
-import { TEXT_MAX_CHARS } from "../../src/octocode/shared/turn-budget.ts";
+import { TEXT_MAX_CHARS } from "../../src/octocode/shared/output-budget.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { noisyPng, pixelSize } from "./helpers.ts";
 import { OCTOCODE_MCP_SPEC, octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";

@@ -16,17 +16,17 @@ import { nextSegment } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
 import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
-import { contentText, escapeRegExp } from "../shared/util.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { contentText } from "../shared/util.ts";
 import { archivePointer } from "./archive.ts";
 import {
 	SUMMARIZER_RESULT_CHARS,
 	summarizerView,
-	USER_HEADING,
 	USER_MESSAGE_CHARS,
 	USER_MESSAGES_CHARS,
 	userMessagesSection,
 } from "./checkpoint-text.ts";
+import { RECOVERY_HEADING, splitSummary } from "../../core/compaction/summary-view.ts";
 import { recordCompactionNote } from "./record.ts";
 import {
 	carriedSavedResults,
@@ -34,7 +34,6 @@ import {
 	savedResultPaths,
 	savedResultsBlock,
 	withoutModelSavedResults,
-	withoutSavedResults,
 } from "./saved-results.ts";
 import { sessionCachePreferences, sharedSummary } from "./shared-summary.ts";
 
@@ -71,8 +70,6 @@ export const USER_MESSAGES_SHARE = 0.1;
 /** The least room the user-message section gets: enough for the reference to their complete saved text. */
 const USER_REFERENCE_CHARS = 1_000;
 
-const RECOVERY_HEADING = "## Recovery";
-
 /**
  * Sent with every summary request as its "Additional focus": how to judge what to keep. The sections are the checkpoint
  * format the request already carries, and what code appends after the summary (the user's messages, file lists, saved
@@ -104,33 +101,6 @@ export function transcriptNote(
 		...(backlog ? ["Record follow-ups that must outlive this session with `backlog`."] : []),
 	];
 	return lines.length > 0 ? `\n\n${RECOVERY_HEADING}\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
-}
-
-/** A summary split into the model's part and what code appended: the kept user messages (oldest first) and how many older ones were left out. */
-interface SplitSummary {
-	body: string;
-	messages: string[];
-	omitted: number;
-}
-
-/** Code appends the file lists after the summary from the compaction's details (see `carryFileLists`), never the model. */
-const FILE_LIST_BLOCKS = /\n\n<(read-files|modified-files)>\n[\s\S]*?\n<\/\1>/g;
-
-/** Splits a summary this module wrote; any other summary is all body. The body never keeps code-appended file lists. */
-export function splitSummary(summary: string): SplitSummary {
-	const recovered = summary.replace(new RegExp(`\\n\\n${RECOVERY_HEADING}\\n(?:- [^\\n]*(?:\\n|$))+$`), "");
-	const modelPart = (text: string) => withoutSavedResults(text).replace(FILE_LIST_BLOCKS, "");
-	const at = recovered.lastIndexOf(`\n\n${USER_HEADING}\n`);
-	if (at < 0) return { body: modelPart(recovered), messages: [], omitted: 0 };
-	const section = recovered.slice(at);
-	const body = modelPart(recovered.slice(0, at));
-	const messages = [...section.matchAll(/<user-message>\n([\s\S]*?)\n<\/user-message>/g)].map((match) => match[1]);
-	const omitted = Number(
-		new RegExp(`^\\n\\n${escapeRegExp(USER_HEADING)}\\nEarlier user messages not kept here: (\\d+)`).exec(
-			section,
-		)?.[1] ?? 0,
-	);
-	return { body, messages, omitted };
 }
 
 /**

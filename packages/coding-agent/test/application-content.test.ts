@@ -1,7 +1,8 @@
 import { afterEach, expect, it } from "vitest";
-import type { ApplicationEvent, ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationEvent, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { getApplicationPort, type ApplicationService } from "../src/core/application/index.ts";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
+import { writtenSummary } from "./octocode/fixtures/compaction-summary.ts";
 
 const open: ApplicationService[] = [];
 afterEach(() => {
@@ -364,4 +365,15 @@ it("returns an unavailable block when historical image normalization exceeds cap
 		content: [{ type: "unsupported", providerType: "content-unavailable" }],
 	});
 	expect(JSON.stringify(normalized).length).toBeLessThan(1000);
+});
+
+it("shows a compaction summary as the terminal does, not as written for the model", async () => {
+	const summary = writtenSummary();
+	const f = fixture([{ role: "compactionSummary", summary, tokensBefore: 5000, timestamp: 1 }]);
+	const frame = await snapshot(f.service);
+	const text = JSON.stringify(frame);
+	expect(text).toContain("Compacted 5,000 tokens");
+	expect(text).toContain("Fix the login bug");
+	expect(text).not.toContain("user-message");
+	expect(text).not.toContain("## Recovery");
 });

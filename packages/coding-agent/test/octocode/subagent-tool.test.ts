@@ -17,7 +17,7 @@ import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { childStagger } from "../../src/octocode/subagents/stagger.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
-import { createWorktree } from "../../src/octocode/subagents/worktree.ts";
+import { createWorktree, worktreesDir } from "../../src/octocode/subagents/worktree.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -1053,6 +1053,57 @@ describe("isolated subagents and /agents merge", () => {
 		);
 		await s.emit("session_start", {}, s.ctx);
 	}, 60_000);
+
+	describe("leaves no worktree behind on a cancel path", () => {
+		/** What the repository's isolated-worktree folder holds: an owner record and a folder per live worktree. */
+		const leftovers = (dir: string): string[] => {
+			const folder = worktreesDir(dir);
+			return fs.existsSync(folder) ? fs.readdirSync(folder) : [];
+		};
+
+		it("removes the worktree of a foreground run the user stops mid-run", async () => {
+			const dir = repo();
+			const s = setup(dir);
+			const controller = new AbortController();
+			const updates: Array<{ details: { toolCalls: number } }> = [];
+			const running = s.run({ task: "slow isolated", isolate: true }, controller.signal, (update) =>
+				updates.push(update as never),
+			);
+			// The child is running its command, so the abort stops a live process rather than the launch.
+			await vi.waitFor(() => expect(updates.some((update) => update.details.toolCalls > 0)).toBe(true), {
+				timeout: 10_000,
+			});
+			expect(leftovers(dir).length).toBeGreaterThan(0);
+			controller.abort();
+			await expect(running).rejects.toThrow(/Subagent cancelled/);
+			expect(leftovers(dir)).toEqual([]);
+			expect(git(dir, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
+		}, 30_000);
+
+		it("removes the worktree when the turn is already aborted at launch", async () => {
+			const dir = repo();
+			const s = setup(dir);
+			const controller = new AbortController();
+			controller.abort();
+			await expect(s.run({ task: "slow isolated", isolate: true }, controller.signal)).rejects.toThrow();
+			expect(leftovers(dir)).toEqual([]);
+			expect(git(dir, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
+		}, 30_000);
+
+		it("removes the worktree of a background run that /agents kill stops", async () => {
+			const dir = repo();
+			const s = setup(dir);
+			const started = await s.run({ task: "slow isolated", isolate: true, background: true });
+			const id = started.details.id as string;
+			await vi.waitFor(() => expect(leftovers(dir).length).toBeGreaterThan(0), { timeout: 10_000 });
+			await s.commands.get("agents").handler(`kill ${id}`, s.ctx);
+			await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toContain("cancelled by the user"), {
+				timeout: 10_000,
+			});
+			expect(s.sent.at(-1)?.message.content).toContain(`Isolated run ${id} changed no files.`);
+			expect(leftovers(dir)).toEqual([]);
+		}, 30_000);
+	});
 });
 
 describe("isolated subagents share the leading prompt", () => {
@@ -1711,4 +1762,28 @@ describe("a child bound to a backlog item", () => {
 		expect(String(s.sent[0].message.content)).toMatch(/reported done[\s\S]*>>>\n[\s\S]*Noted on B1\./);
 		expect(notes().at(-1)!.text).toBe(`Report from ${id}: done. B1 is ongoing without a passed completion.`);
 	});
+
+	it("links an isolated child's saved ref on its item as unmerged, and /agents merge notes the merge", async () => {
+		const dir = repo();
+		const s = setup(dir);
+		const backlog = openBacklog(s.ctx, { isSubagent: false });
+		backlog.store.add({ ...READY, title: "work", state: "todo", createdBy: "user" });
+		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
+		const result = await s.run({ task: "edit a file", isolate: true, item: "B1" });
+		const id = result.details.id as string;
+		const ref = `refs/octocode/${id}`;
+		expect(result.content[0].text).toContain(`Linked ${ref} on B1.`);
+		const notes = () => backlog.store.notes(backlog.store.get("B1")!, -1).filter((note) => note.kind === "note");
+		expect(backlog.store.get("B1")!.links).toEqual([
+			{ relation: "output", target: { resource: "files", repositoryKey: backlog.store.repo, path: ref } },
+		]);
+		expect(notes().at(-1)!.text).toBe(
+			`The isolated change is saved on ${ref}, not merged yet. Merge it with \`/agents merge ${id}\`.`,
+		);
+
+		await s.commands.get("agents").handler(`merge ${id}`, s.ctx);
+		expect(s.ctx.ui.notes.at(-1)).toMatchObject({ type: "info" });
+		expect(s.ctx.ui.notes.at(-1)!.message).toContain("Noted on B1.");
+		expect(notes().at(-1)!.text).toMatch(new RegExp(`^The isolated change on ${ref} was merged into \\S+\\.$`));
+	}, 30_000);
 });

@@ -144,6 +144,7 @@ for (const protocol of ["claude", "codex"] as const) {
 		const f = await fixture(protocol);
 		try {
 			await f.run("file", {
+				reason: "Write the fixture file",
 				queries: [
 					{
 						type: "write",
@@ -254,6 +255,7 @@ it("Claude cannot use one file approval to authorize another effect in a native 
 		unapproved = path.join(f.root, "unapproved.txt");
 	try {
 		await f.run("file", {
+			reason: "Write the fixture file",
 			queries: [
 				{
 					type: "write",

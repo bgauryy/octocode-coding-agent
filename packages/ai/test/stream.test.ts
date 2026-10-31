@@ -10,7 +10,7 @@ import type { Api, Context, ImageContent, Model, StreamOptions, Tool, ToolResult
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
 
-import { StringEnum } from "@octocodeai/octocode-contacts/schema";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { hasAzureOpenAICredentials, resolveAzureDeploymentName } from "./azure-utils.ts";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
 import { getCopilotResponsesReasoningModel } from "./catalog-models.ts";

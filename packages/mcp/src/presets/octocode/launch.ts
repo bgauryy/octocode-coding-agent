@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPackageDir, isBunBinary } from "../../../../coding-agent/src/config.ts";
 import { sessionsRoot } from "../../../../coding-agent/src/octocode/shared/home.ts";
-import { findManifest } from "../../../../coding-agent/src/octocode/shared/package.ts";
+import { findManifest } from "../../../../common/src/package.ts";
 export interface Launch {
 	command: string;
 	args: string[];

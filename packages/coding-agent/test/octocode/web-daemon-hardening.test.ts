@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
-import { ATTACH_MAX_EVENT_BYTES } from "@octocodeai/octocode-contacts/daemon";
+import { ATTACH_MAX_EVENT_BYTES } from "@octocodeai/octocode-contracts/daemon";
 import { sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { configureHttpDispatcher } from "../../src/core/http-dispatcher.ts";

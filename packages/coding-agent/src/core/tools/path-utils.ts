@@ -1,6 +1,5 @@
 import { accessSync, constants } from "node:fs";
-import { access } from "node:fs/promises";
-import { normalizePath, resolvePath } from "../../utils/paths.ts";
+import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 
 /** Ordered filename variants shared by synchronous tracking and asynchronous reads. */
 function readPathCandidates(resolved: string): string[] {
@@ -25,15 +24,6 @@ function fileExists(filePath: string): boolean {
 	}
 }
 
-async function pathExists(filePath: string): Promise<boolean> {
-	try {
-		await access(filePath, constants.F_OK);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 export function expandPath(filePath: string): string {
 	return normalizePath(filePath, { normalizeUnicodeSpaces: true, stripAtPrefix: true });
 }
@@ -49,12 +39,4 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 export function resolveReadPath(filePath: string, cwd: string): string {
 	const resolved = resolveToCwd(filePath, cwd);
 	return readPathCandidates(resolved).find(fileExists) ?? resolved;
-}
-
-export async function resolveReadPathAsync(filePath: string, cwd: string): Promise<string> {
-	const resolved = resolveToCwd(filePath, cwd);
-	for (const candidate of readPathCandidates(resolved)) {
-		if (await pathExists(candidate)) return candidate;
-	}
-	return resolved;
 }

@@ -381,7 +381,7 @@ it("keeps both ends of a long tool output, with a marker where it was shortened"
 	expect(tool.hint).toBe("https://example.com");
 	service.dispose();
 });
-it("reports the dialog a run waits on in the snapshot and live frames, and clears it when the run settles", async () => {
+it("reports the dialog a session waits on in the snapshot and live frames, and keeps it when a run settles", async () => {
 	const f = fixture();
 	const service = getApplicationPort(f.session);
 	const live = service.connect();
@@ -398,7 +398,10 @@ it("reports the dialog a run waits on in the snapshot and live frames, and clear
 	expect(service.getSnapshot().awaiting).toBeUndefined();
 	expect("awaiting" in service.getSnapshot()).toBe(false);
 	service.publishDomain({ type: "session.awaiting", awaiting });
+	// A relayed subagent's dialog outlives the parent's run: the dialog's own close, not the run's end, clears it.
 	f.emit({ type: "agent_settled", aborted: true });
+	expect(service.getSnapshot().awaiting).toEqual(awaiting);
+	service.publishDomain({ type: "session.awaiting" });
 	expect(service.getSnapshot().awaiting).toBeUndefined();
 	service.dispose();
 });

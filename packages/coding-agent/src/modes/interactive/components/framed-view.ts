@@ -13,7 +13,7 @@ import type { ExtensionCommandContext } from "../../../core/extensions/types.ts"
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** An accent-bordered screen: the bold title, the body and an optional dim footer line. */
 export function frame(theme: Theme, title: string, body: Component[], footer?: string): Container {

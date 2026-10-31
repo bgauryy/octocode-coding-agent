@@ -1,4 +1,4 @@
-import type { Note, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { Note, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { ReactNode } from "react";
 import { useCopy } from "../hooks.ts";
 import { type BacklogIndex, blocks, cycleTime, originChain, PRIORITY_TITLES } from "../model/backlog.ts";

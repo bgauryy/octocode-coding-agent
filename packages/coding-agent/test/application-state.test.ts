@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { getApplicationPort, type ApplicationService } from "../src/core/application/index.ts";
 

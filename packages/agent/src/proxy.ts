@@ -11,10 +11,13 @@ import {
 	type SimpleStreamOptions,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
+import { createAbortError } from "@octocodeai/octocode-ai/utils/abort";
 import { createPendingAssistantMessage } from "@octocodeai/octocode-ai/utils/assistant-message";
-import { type ProxyAssistantMessageEvent, processProxyEvent } from "./proxy/events.ts";
+import { failProxyStream, type ProxyAssistantMessageEvent, processProxyEvent } from "./proxy/events.ts";
 
 export type { ProxyAssistantMessageEvent } from "./proxy/events.ts";
+
+const ABORT_MESSAGE = "Request aborted by user";
 
 type ProxySerializableStreamOptions = Pick<
 	SimpleStreamOptions,
@@ -94,7 +97,7 @@ export function streamProxy(
 
 		const abortHandler = () => {
 			if (reader) {
-				reader.cancel("Request aborted by user").catch(() => {});
+				reader.cancel(ABORT_MESSAGE).catch(() => {});
 			}
 		};
 
@@ -152,7 +155,7 @@ export function streamProxy(
 				if (done) break;
 
 				if (options.signal?.aborted) {
-					throw new Error("Request aborted by user");
+					throw createAbortError(ABORT_MESSAGE);
 				}
 
 				buffer += decoder.decode(value, { stream: true });
@@ -165,7 +168,7 @@ export function streamProxy(
 			}
 
 			if (options.signal?.aborted) {
-				throw new Error("Request aborted by user");
+				throw createAbortError(ABORT_MESSAGE);
 			}
 
 			// The final event may not be newline-terminated; flush the decoder and
@@ -179,26 +182,16 @@ export function streamProxy(
 				// A clean EOF without a done/error event means the server dropped the
 				// response mid-stream. Surface it as an error instead of leaving
 				// consumers waiting on a result that never arrives.
-				partial.stopReason = "error";
-				partial.errorMessage = "Connection closed by proxy server before the response completed";
-				stream.push({
-					type: "error",
-					reason: "error",
-					error: partial,
-				});
+				stream.push(
+					failProxyStream(partial, "error", "Connection closed by proxy server before the response completed"),
+				);
 			}
 
 			stream.end();
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			const reason = options.signal?.aborted ? "aborted" : "error";
-			partial.stopReason = reason;
-			partial.errorMessage = errorMessage;
-			stream.push({
-				type: "error",
-				reason,
-				error: partial,
-			});
+			stream.push(failProxyStream(partial, reason, errorMessage));
 			stream.end();
 		} finally {
 			if (options.signal) {

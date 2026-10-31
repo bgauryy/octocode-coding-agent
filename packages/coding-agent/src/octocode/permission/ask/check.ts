@@ -2,7 +2,7 @@ import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../../share
 import type { ToolInvocation } from "../../../core/extensions/types.ts";
 import { interactive } from "../../shared/interactive.ts";
 import { withDialog } from "../../shared/locks.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SourceDecision } from "../source-policy/rules.ts";
 import { shellTargetAccess } from "../file-access.ts";
 import { computeCard } from "../effect.ts";

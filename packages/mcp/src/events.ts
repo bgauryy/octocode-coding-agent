@@ -18,7 +18,7 @@ import {
 	renderContractSections,
 	renderStatusSection,
 } from "./section.ts";
-import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { hideTools, registerTools } from "./tool-registry.ts";

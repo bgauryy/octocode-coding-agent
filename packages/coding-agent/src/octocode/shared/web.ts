@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openFile } from "./open.ts";
 
 interface WebServer {

@@ -4,7 +4,7 @@ import {
 	type Note,
 	type BacklogComment,
 	type BacklogAudit,
-} from "@octocodeai/octocode-contacts/snapshot";
+} from "@octocodeai/octocode-contracts/snapshot";
 import { sessionRunningPid } from "../agentdb/liveness.ts";
 import { redactData, visibleControls } from "../shared/sanitize.ts";
 import { type Db, backlog } from "../agentdb/api.ts";

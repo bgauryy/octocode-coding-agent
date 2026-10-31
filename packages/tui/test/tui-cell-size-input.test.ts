@@ -79,4 +79,28 @@ describe("TUI cell size responses", () => {
 			tui.stop();
 		});
 	});
+
+	for (const [name, listener] of [
+		["consumes it", () => ({ consume: true })],
+		["rewrites it", (data: string) => ({ data: `>${data}` })],
+	] as const) {
+		it(`applies cell size responses before an input listener that ${name}`, () => {
+			withImageTerminal(() => {
+				setCellDimensions({ widthPx: 9, heightPx: 18 });
+
+				const terminal = new VirtualTerminal(80, 24);
+				const tui: TUI = new TuiMainScreen(terminal);
+				const recorder = new InputRecorder();
+
+				tui.setFocus(recorder);
+				tui.addInputListener(listener);
+				tui.start();
+
+				terminal.sendInput("\x1b[6;20;10t");
+				assert.deepStrictEqual(getCellDimensions(), { widthPx: 10, heightPx: 20 });
+				assert.deepStrictEqual(recorder.inputs, []);
+				tui.stop();
+			});
+		});
+	}
 });

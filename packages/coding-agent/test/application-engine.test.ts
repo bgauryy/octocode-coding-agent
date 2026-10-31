@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
 import { createAssistantMessageEventStream, type AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
-import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { expect, it } from "vitest";
 import { AgentSession, type AgentSessionEvent } from "../src/core/agent-session.ts";
 import { getApplicationPortForSession } from "../src/core/application/index.ts";

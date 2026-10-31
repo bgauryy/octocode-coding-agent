@@ -138,6 +138,8 @@ export interface ExtensionCommandContext extends ExtensionContext {
 	/** Start a new session, optionally with initialization. */
 	newSession(options?: {
 		parentSession?: string;
+		/** Start the session in this folder (it must exist) instead of the current one. */
+		cwd?: string;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 		withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
 	}): Promise<{ cancelled: boolean }>;

@@ -3,9 +3,9 @@ import type { FileInputReplacement } from "../shared/claude-file.ts";
 import type { ToolInvocation } from "../../core/extensions/types.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
-import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "../shared/env.ts";
+import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "../../../../common/src/env.ts";
 import { interactive } from "../shared/interactive.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { SourceDecision } from "./source-policy/rules.ts";
 import type { AuditEntry } from "./audit.ts";
 import {

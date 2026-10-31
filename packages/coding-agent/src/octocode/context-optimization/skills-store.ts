@@ -9,8 +9,8 @@
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { atomicWriteFileSync, sha256 } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { atomicWriteFileSync, sha256 } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The Agent Skills limit for a description; the prompt cuts a longer one. */
 export const SKILL_DESCRIPTION_MAX_CHARS = 1024;

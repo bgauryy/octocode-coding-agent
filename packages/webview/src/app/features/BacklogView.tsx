@@ -1,4 +1,4 @@
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { useMemo } from "react";
 import type { ViewProps } from "../extension.ts";
 import { filterBoard, STATE_TITLES } from "../model/backlog.ts";

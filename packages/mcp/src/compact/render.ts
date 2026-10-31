@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { assignMcpToolNames } from "../tool-names.ts";
+import { dedupeFieldDocs } from "./field-docs.ts";
 import { oneLine, schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides } from "./types.ts";
 
 /** Bump when the rendered text changes for the same catalog, so stored files regenerate. */
-export const COMPACT_GENERATOR_VERSION = 6;
+export const COMPACT_GENERATOR_VERSION = 7;
 
 /**
  * A field doc repeated by at least this many tools is written once, in the server's shared-fields block, when every
@@ -15,19 +16,23 @@ const SHARED_DOC_MIN_TOOLS = 3;
 /** Prefix of a field path in {@link DescriptionOverrides.fields} that addresses the tool's output schema. */
 export const OUTPUT_FIELD_PREFIX = "output.";
 
-/** An object type repeated by at least this many tools, and at least this long, becomes one server-level alias. */
+/**
+ * An object type repeated by at least this many tools, and at least this long, becomes one server-level alias; so
+ * does a longer one written out twice anywhere (union branches of one tool repeat a nested rule verbatim).
+ */
 const HOISTED_TYPE_MIN_TOOLS = 3;
 const HOISTED_TYPE_MIN_CHARS = 60;
+const HOISTED_REPEAT_MIN_CHARS = 200;
 
 const INDENT = "\t";
 const SHARED_HEAD = `${INDENT}/** Fields documented once; the doc applies wherever the field appears:`;
-const HOISTED_HEAD = `${INDENT}// Types used by several tools:`;
+const HOISTED_HEAD = `${INDENT}// Types used more than once:`;
 
 interface RenderContext {
 	sharedDocs?: ReadonlyMap<string, string>;
 	hoisted?: ReadonlyMap<string, string>;
 	onDoc?: (field: string, doc: string) => void;
-	onObject?: (field: string, type: string) => void;
+	onObject?: (field: string, type: string, source: object) => void;
 }
 
 /** A TypeScript identifier for the namespace: server names may contain `-` or `.`. */
@@ -232,20 +237,25 @@ function findHoistedTypes(
 	overrides: DescriptionOverrides | undefined,
 	sharedDocs: ReadonlyMap<string, string>,
 ): Map<string, string> {
-	const seen = new Map<string, { field: string; tools: Set<string> }>();
+	const seen = new Map<string, { field: string; tools: Set<string>; sources: Set<object> }>();
 	for (const tool of tools)
 		renderTool(tool, names.get(tool.name)!, overrides, {
 			sharedDocs,
-			onObject: (field, type) => {
+			onObject: (field, type, source) => {
 				if (type.length < HOISTED_TYPE_MIN_CHARS) return;
-				const entry = seen.get(type) ?? { field, tools: new Set<string>() };
+				const entry = seen.get(type) ?? { field, tools: new Set<string>(), sources: new Set<object>() };
 				entry.tools.add(tool.name);
+				entry.sources.add(source);
 				seen.set(type, entry);
 			},
 		});
 	const hoisted = new Map<string, string>();
 	const taken = new Set<string>();
-	const repeated = [...seen].filter(([, entry]) => entry.tools.size >= HOISTED_TYPE_MIN_TOOLS);
+	const repeated = [...seen].filter(
+		([type, entry]) =>
+			entry.tools.size >= HOISTED_TYPE_MIN_TOOLS ||
+			(entry.sources.size >= 2 && type.length >= HOISTED_REPEAT_MIN_CHARS),
+	);
 	for (const [type, { field }] of repeated.sort(([, a], [, b]) => a.field.localeCompare(b.field))) {
 		const base = `${field[0]?.toUpperCase() ?? "T"}${field.slice(1).replace(/\W/g, "_")}`;
 		let name = base;
@@ -276,13 +286,14 @@ export function renderServer(input: CompactServerInput, overrides?: DescriptionO
 	const explicit = [...names.values()].some((name) => name.explicit)
 		? ` A function after a "${CALL_AS.trim()} <name>" line is called by that name.`
 		: "";
-	let out = `// MCP server "${oneLine(input.server)}" · catalog ${catalogHash(input).slice(0, 12)} · call a tool as mcp__${input.server}__<function> with the input object.${explicit}\n`;
+	let out = `// MCP server "${oneLine(input.server)}" · catalog ${catalogHash(input).slice(0, 12)} · call a tool as mcp__${input.server}__<function> with the input object. A field's doc is written at its first use in a function.${explicit}\n`;
 	const instructions = oneLine(overrides?.server ?? input.instructions);
 	if (instructions) out += `/** ${instructions} */\n`;
 	out += `declare namespace ${namespaceName(input.server)} {\n`;
 	if (sharedDocs.size) out += sharedBlock(sharedDocs);
 	if (hoisted.size) out += hoistedBlock([...hoisted].map(([type, name]) => [name, type]));
-	for (const tool of tools) out += renderTool(tool, names.get(tool.name)!, overrides, { sharedDocs, hoisted });
+	for (const tool of tools)
+		out += dedupeFieldDocs(renderTool(tool, names.get(tool.name)!, overrides, { sharedDocs, hoisted }));
 	return `${out}}\n`;
 }
 

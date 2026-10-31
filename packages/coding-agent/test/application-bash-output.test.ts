@@ -11,7 +11,7 @@ it("retains complete trusted shell output through completion and a JSON session 
 	let service = getApplicationPort(harness.session);
 	let outputPath: string | undefined;
 	try {
-		const original = `BEGIN ORIGINAL\n${"middle output\n".repeat(15000)}END ORIGINAL\n`;
+		const original = `BEGIN ORIGINAL\n${Array.from({ length: 15000 }, (_, i) => `middle output ${i}\n`).join("")}END ORIGINAL\n`;
 		const result = await harness.session.executeBash("large output", undefined, {
 			operations: {
 				exec: async (_command, _cwd, { onData }) => {
@@ -24,7 +24,9 @@ it("retains complete trusted shell output through completion and a JSON session 
 		expect(result.truncated).toBe(true);
 		const stored = harness.session.messages.find((message) => message.role === "bashExecution")!;
 		expect(stored).toMatchObject({ fullOutput: original });
-		expect(JSON.stringify(convertToLlm([stored]))).not.toContain("BEGIN ORIGINAL");
+		const modelText = JSON.stringify(convertToLlm([stored]));
+		expect(modelText).not.toContain("middle output 7500");
+		expect(modelText).toContain("trimmed: first");
 		const output = service.history().messages.find((message) => message.role === "bashExecution")?.content?.[1];
 		if (output?.type !== "text" || !output.full) throw new Error("Expected complete output asset");
 		expect(service.readAsset(output.full.id)?.data).toBe(original);

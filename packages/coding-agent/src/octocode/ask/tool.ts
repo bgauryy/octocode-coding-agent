@@ -79,16 +79,18 @@ export function formatAnswers(result: AskResult): string {
 		return `"${entry.question}" → ${entry.picks?.length ? `${entry.picks.join(", ")} + (typed) ${entry.typed ?? ""}` : `(typed) ${entry.answer}`}`;
 	});
 	if (!result.cancelled) return answered.join("\n");
-	// Answers given before the user cancelled still count.
-	const declined =
+	// The status leads, so a cancelled call is not read as answers; it is not `isError`: a refusal is the user's choice, the
+	// call itself worked, and an error flag would invite a retry of the same question.
+	const status =
 		result.reason === "unavailable"
-			? "No interactive user is available. No answer or approval was supplied."
+			? "Cancelled (unavailable). No interactive user is available. No answer or approval was supplied."
 			: result.reason === "aborted"
-				? "The question was interrupted. No further answer or approval was supplied."
-				: `The user declined to answer${answered.length > 0 ? " the remaining questions" : ""}. Unanswered questions do not grant approval.`;
+				? "Cancelled (interrupted). The question was interrupted. No further answer or approval was supplied."
+				: `Cancelled (declined). The user declined to answer${answered.length > 0 ? " the remaining questions" : ""}. Unanswered questions do not grant approval.`;
 	const recovery =
 		"Continue work covered by existing authorization; state reversible assumptions. If an answer is required to proceed, report what remains blocked.";
-	return [...answered, declined, recovery].join("\n");
+	// Answers given before the user cancelled still count.
+	return [status, ...(answered.length > 0 ? ["Answered before that:", ...answered] : []), recovery].join("\n");
 }
 
 export function registerAskUser(api: ExtensionAPI): void {
@@ -104,7 +106,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 			parameters: Type.Object({
 				questions: Type.Array(
 					Type.Object({
-						question: Type.String({ description: "Self-contained question with the context needed to answer" }),
+						question: Type.String({ description: "Question with the context needed to answer" }),
 						header: Type.Optional(
 							Type.String({
 								description: "Tab label, about 12 characters shown; omit for a question number",

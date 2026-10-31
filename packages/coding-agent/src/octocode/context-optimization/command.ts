@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { generatedDir, readGenerated } from "../../../../mcp/src/compact/index.ts";
 import { APP_NAME } from "../../config.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { contextOptimizationDirs } from "../shared/home.ts";
 import {
 	applySkillOverrides,

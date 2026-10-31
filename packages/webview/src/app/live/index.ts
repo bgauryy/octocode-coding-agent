@@ -1,5 +1,5 @@
 import type { LiveExtension } from "../extension.ts";
-import { readLaunch } from "../model/route.ts";
+import { takeAccess } from "../../access.ts";
 import { AgentIcon, DocIcon, HistoryIcon, PulseIcon, ResearchIcon } from "../ui/icons.tsx";
 import { ActivityView } from "./ActivityView.tsx";
 import { AgentsView } from "./AgentsView.tsx";
@@ -11,23 +11,8 @@ import { Markdown } from "./Markdown.tsx";
 import { RfcView, ResearchView } from "./ReportsView.tsx";
 import { ConnectionStatus, LiveProvider } from "./session.tsx";
 
-const ACCESS_KEY = "backlog-access";
-
 export const live: LiveExtension | null = {
-	takeAccess() {
-		const launch = readLaunch(location.hash);
-		try {
-			if (launch) {
-				sessionStorage.setItem(ACCESS_KEY, launch.access);
-				history.replaceState(null, "", launch.hash);
-				return launch.access;
-			}
-			return sessionStorage.getItem(ACCESS_KEY) ?? "";
-		} catch {
-			if (launch) location.hash = launch.hash;
-			return launch?.access ?? "";
-		}
-	},
+	takeAccess,
 	views: [
 		{ name: "rfc", label: "RFC", Icon: DocIcon, Component: RfcView },
 		{ name: "research", label: "Research", Icon: ResearchIcon, Component: ResearchView },

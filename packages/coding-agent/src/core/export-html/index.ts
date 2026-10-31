@@ -4,7 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme.ts";
-import { normalizePath, resolvePath } from "../../utils/paths.ts";
+import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { compactionSummaryDisplay } from "../messages.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import type { SessionEntry } from "../session-manager.ts";
 import { SessionManager } from "../session-manager.ts";
@@ -139,6 +140,14 @@ interface SessionData {
 }
 
 /**
+ * A compaction entry carries the summary written for the model (tags, Recovery instructions). The page shows the
+ * summary as the terminal does, so the host sends it already read; `summary` stays as the record.
+ */
+function withSummaryDisplay(entry: SessionEntry): SessionEntry | (SessionEntry & { summaryDisplay: string }) {
+	return entry.type === "compaction" ? { ...entry, summaryDisplay: compactionSummaryDisplay(entry) } : entry;
+}
+
+/**
  * Core HTML generation logic shared by both export functions.
  */
 function generateHtml(sessionData: SessionData, themeName?: string): string {
@@ -158,7 +167,9 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 	const infoBg = themeExport.infoBg ?? derivedExportColors.infoBg;
 
 	// Base64 encode session data to avoid escaping issues
-	const sessionDataBase64 = Buffer.from(JSON.stringify(sessionData)).toString("base64");
+	const sessionDataBase64 = Buffer.from(
+		JSON.stringify({ ...sessionData, entries: sessionData.entries.map(withSummaryDisplay) }),
+	).toString("base64");
 
 	// Function replacers insert each value verbatim: a string replacement would read `$$`, `$&` and `$'` in the
 	// inlined scripts as patterns (template.js writes the cost as `$${totalCost...}`).

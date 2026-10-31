@@ -122,7 +122,7 @@ These variables change behavior for one process.
 | `OCTOCODE_TUI_DEBUG`           | `1` writes the state and lines of each differential render under `/tmp/tui`                                                                                                                                                   |
 | `OCTOCODE_TUI_DEBUG_REDRAW`    | `1` appends the reason for each full redraw to `octocode-tui-debug.log` in the agent directory                                                                                                                                |
 
-`OCTOCODE_TRUST_PROJECT_LSP_CONFIG`, `OCTOCODE_PARENT_*` and the child-identity variables `OCTOCODE_AGENT_ID`, `OCTOCODE_AGENT_ROLE`, `OCTOCODE_AGENT_GOAL` and `OCTOCODE_AGENT_SCRATCH` are set by Octocode for child processes and are not user configuration.
+`OCTOCODE_TRUST_PROJECT_LSP_CONFIG`, `OCTOCODE_PARENT_*` and the child-identity variables `OCTOCODE_AGENT_ID`, `OCTOCODE_AGENT_ROLE`, `OCTOCODE_AGENT_GOAL` and `OCTOCODE_AGENT_SCRATCH` are set by Octocode for child processes and are not user configuration. An Octocode that a subagent's command starts clears them at startup and runs as a top-level session ([nested sessions](native-features.md#subagent-request-budget)).
 
 ## Native feature configuration
 

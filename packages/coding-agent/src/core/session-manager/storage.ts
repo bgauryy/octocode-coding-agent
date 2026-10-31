@@ -14,8 +14,8 @@ import {
 import { join, resolve } from "path";
 import { StringDecoder } from "string_decoder";
 import { getAgentDir as getDefaultAgentDir } from "../../config.ts";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
-import { normalizePath, resolvePath } from "../../utils/paths.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import {
 	assertValidSessionId,
 	createSessionHeader,

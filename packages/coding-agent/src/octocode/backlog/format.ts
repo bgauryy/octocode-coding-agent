@@ -2,8 +2,8 @@ import { formatAgo, formatSpan } from "../shared/format.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { refText } from "./row.ts";
 import { type BacklogStore, type Item, priorityName } from "./store.ts";
-import { type Note, STATES, type State } from "@octocodeai/octocode-contacts/snapshot";
-import type { WorkLink } from "@octocodeai/octocode-contacts/backlogs";
+import { type Note, STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
+import type { WorkLink } from "@octocodeai/octocode-contracts/backlogs";
 
 export const STATE_TITLE: Record<State, string> = {
 	ongoing: "Ongoing",

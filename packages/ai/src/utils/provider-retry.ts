@@ -1,6 +1,6 @@
 import { APICallError } from "@ai-sdk/provider";
-import { sleepUnlessAborted } from "./abort.ts";
-const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
+import { createAbortError, sleepUnlessAborted } from "./abort.ts";
+import { parseRetryAfterMs, validateRetryDelayMs } from "./retry.ts";
 
 interface ProviderRetryOptions {
 	maxRetries?: number;
@@ -50,37 +50,6 @@ function isRetryableProviderError(error: ProviderError): boolean {
 	);
 }
 
-function validateServerRetryDelayMs(
-	delayMs: number,
-	maxRetryDelayMs: number | undefined,
-	providerErrorMessage: string,
-): number {
-	const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
-	if (maxDelayMs > 0 && delayMs > maxDelayMs) {
-		throw new Error(
-			`Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s). ${providerErrorMessage}`,
-		);
-	}
-	return delayMs;
-}
-
-/** The delay a provider asked for through `retry-after-ms` or `retry-after` (seconds or HTTP date), if any. */
-function serverRetryDelayMs(headers: Headers | undefined): number | undefined {
-	const retryAfterMs = headers?.get("retry-after-ms");
-	if (retryAfterMs) {
-		const value = Number.parseFloat(retryAfterMs);
-		if (Number.isFinite(value)) return value;
-	}
-
-	const retryAfter = headers?.get("retry-after");
-	if (retryAfter) {
-		const seconds = Number.parseFloat(retryAfter);
-		const delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
-		if (Number.isFinite(delayMs)) return delayMs;
-	}
-	return undefined;
-}
-
 /** Headers of an AWS SDK error: its raw HTTP response carries them as a plain record, not a `Headers`. */
 function awsResponseHeaders(error: Error): Headers | undefined {
 	const raw = (error as { $response?: { headers?: unknown } }).$response?.headers;
@@ -105,25 +74,19 @@ function googleRetryDelayMs(error: Error): number | undefined {
 export function retryAfterMsFromError(error: unknown): number | undefined {
 	let delayMs: number | undefined;
 	const providerError = getProviderError(error);
-	if (providerError) delayMs = serverRetryDelayMs(providerError.headers);
+	if (providerError) delayMs = parseRetryAfterMs(providerError.headers);
 	if (delayMs === undefined && error instanceof Error) {
-		delayMs = serverRetryDelayMs(awsResponseHeaders(error)) ?? googleRetryDelayMs(error);
+		delayMs = parseRetryAfterMs(awsResponseHeaders(error)) ?? googleRetryDelayMs(error);
 	}
 	return delayMs === undefined || !Number.isFinite(delayMs) || delayMs <= 0 ? undefined : Math.ceil(delayMs);
 }
 
 function getRetryDelayMs(error: ProviderError, retryIndex: number, maxRetryDelayMs: number | undefined): number {
-	const serverDelayMs = serverRetryDelayMs(error.headers);
-	if (serverDelayMs !== undefined) return validateServerRetryDelayMs(serverDelayMs, maxRetryDelayMs, error.message);
+	const serverDelayMs = parseRetryAfterMs(error.headers);
+	if (serverDelayMs !== undefined) return validateRetryDelayMs(serverDelayMs, maxRetryDelayMs, error.message);
 
 	const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
 	return exponentialDelay * (1 - Math.random() * 0.25);
-}
-
-function createAbortError(): Error {
-	const error = new Error("Request aborted");
-	error.name = "AbortError";
-	return error;
 }
 
 /**

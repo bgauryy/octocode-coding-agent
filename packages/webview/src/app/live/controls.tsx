@@ -1,5 +1,5 @@
-import type { SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
-import type { WorkspaceCommand } from "@octocodeai/octocode-contacts/workspace";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
+import type { WorkspaceCommand } from "@octocodeai/octocode-contracts/workspace";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "../model/format.ts";

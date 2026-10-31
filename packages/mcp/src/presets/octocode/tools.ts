@@ -5,11 +5,15 @@ import { createMcpToolDefinition, type McpToolDefinitionOptions } from "../../to
 import { OCTOCODE_SERVER, LOCAL_READ_TOOLS } from "./names.ts";
 import { resultBlock, resultText, toolHeader } from "../../../../coding-agent/src/octocode/shared/render.ts";
 import { visibleControls } from "../../../../coding-agent/src/octocode/shared/sanitize.ts";
-import { boundImagePart, capOutputToFile, saveFullOutput } from "../../../../coding-agent/src/octocode/shared/spill.ts";
-import { TEXT_MAX_CHARS } from "../../../../coding-agent/src/octocode/shared/turn-budget.ts";
+import {
+	TEXT_MAX_CHARS,
+	boundImagePart,
+	capResultText,
+	saveFullOutput,
+} from "../../../../coding-agent/src/octocode/shared/spill.ts";
 import { clip, queryTarget } from "../../../../coding-agent/src/octocode/shared/render/text.ts";
 import { timedTool, timingOf } from "../../../../coding-agent/src/octocode/shared/render/rows.ts";
-import { isRecord } from "../../../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ImageLimits, imageLimits } from "../../../../coding-agent/src/octocode/shared/vision.ts";
 import { skillNameOfRead } from "../../../../coding-agent/src/octocode/skill/catalog.ts";
 import { summarizeResult } from "./summary.ts";
@@ -68,14 +72,7 @@ export async function toToolResult(
 	const modelContent = toLlmContent(result);
 	for (const part of sanitizeJson(modelContent) as ReturnType<typeof toLlmContent>) {
 		if (part.type === "text") {
-			const text =
-				part.text.length <= TEXT_MAX_CHARS
-					? part.text
-					: capOutputToFile(part.text, {
-							label: `mcp ${tool}`,
-							maxBytes: TEXT_MAX_CHARS,
-							maxLines: TEXT_MAX_CHARS + 1,
-						});
+			const text = capResultText(part.text, `mcp ${tool}`);
 			outputTruncated ||= text !== part.text;
 			content.push({ ...part, text });
 		} else if (part.type === "image") {

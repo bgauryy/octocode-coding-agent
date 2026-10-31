@@ -6,7 +6,7 @@ import { McpSignInCancelledError, type McpSignInPrompt, signInMcpServer } from "
 import { saveConfig } from "./persistence.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import type { McpServerConnection } from "./runtime.ts";
-import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { describeState, isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { hideTools, registerTools } from "./tool-registry.ts";

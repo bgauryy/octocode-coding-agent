@@ -1,4 +1,4 @@
-import { StringEnum } from "@octocodeai/octocode-contacts/schema";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { timedTool } from "../shared/render/rows.ts";
@@ -44,7 +44,7 @@ function checkDebugInput(params: {
 }
 
 // Sent with every request: keep it to what decides a call. docs/debugging.md holds the detail.
-const DESCRIPTION = `Debug a program when logs and test output cannot explain a failure: line breakpoints, exception stops, stepping, pause, stack, scopes, nested variables, output and exit code; no attach, evaluation, conditional or log breakpoints. Adapters: "xcrun" ["lldb-dap"] or "lldb-dap" (C, C++, Rust, Swift; launch {program, args, cwd}); "python3" ["-m","debugpy.adapter"] (Python; launch {program} or {module, args}, console "internalConsole", subProcess false); "node" ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"] with tcp true (Node, TypeScript, vitest; launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exception filter "all" for ES modules). Launch runs the program and needs permission. launch, continue, next, stepIn, stepOut, pause and output wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, reason, frame, exception, exitCode and output. At a stop, pass the latest generation to scopes with frame.id, then variables; each resume replaces them. While running, call output again, pause or terminate; after ended, launch again.`;
+const DESCRIPTION = `Debug a program when logs and test output cannot explain a failure: line breakpoints, exception stops and stepping; no attach, evaluation or conditional breakpoints. launch runs the program (needs permission) through a DAP adapter: lldb-dap ("xcrun" ["lldb-dap"], or "lldb-dap"; launch {program, args, cwd}); "python3" ["-m","debugpy.adapter"] (launch {program} or {module, args}, console "internalConsole", subProcess false); js-debug for Node, TypeScript and vitest: "node" ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"] with tcp true (launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exceptions ["all"] for ES modules). Actions that run the program wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, reason, frame, exception, exitCode and output. At a stop, pass the latest generation to scopes with frame.id, then variables; a resume replaces them. While running, call output again, pause or terminate; after ended, launch again.`;
 
 /** Opt-in native debugger. The shared tool-call permission gate must authorize launch before execute. */
 export function registerDebugTool(api: ExtensionAPI): void {
@@ -66,9 +66,6 @@ export function registerDebugTool(api: ExtensionAPI): void {
 				defaultActive: true,
 				description: DESCRIPTION,
 				promptSnippet: "Debug a program: breakpoints, stepping, stack, variables",
-				promptGuidelines: [
-					"Use debug when a failing test or runtime behavior needs stopped-state inspection that logs and bash output cannot give.",
-				],
 				parameters: Type.Object({
 					action: StringEnum([
 						"launch",

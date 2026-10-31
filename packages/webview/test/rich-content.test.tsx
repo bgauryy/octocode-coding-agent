@@ -7,7 +7,7 @@ import type {
 	ApplicationMessage,
 	ApplicationSnapshot,
 	ApplicationTool,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -123,7 +123,7 @@ it("keeps text, tool output, and following text in block order with one visible 
 		toolName: "inspect",
 		text: "output",
 		status: "completed",
-		arguments: { path: "actual.ts" },
+		arguments: { path: "actual.ts", reason: "Inspect the\nactual file" },
 		structuredContent: { records: [7] },
 		content: [{ id: "out", type: "text", text: "Tool result" }],
 	};
@@ -147,6 +147,8 @@ it("keeps text, tool output, and following text in block order with one visible 
 	expect(text).toContain("actual.ts");
 	expect(text).not.toContain("old.ts");
 	expect(within(screen.getByRole("region", { name: "Tool inspect" })).getByText(/"records"/)).toHaveTextContent("7");
+	// The call's reason, on one line under the tool's name.
+	expect(container.querySelector(".content-tool > .tool-reason")?.textContent).toBe("↳ Inspect the actual file");
 });
 
 it("renders reasoning, citations, resource references and unsupported content without external media requests", () => {

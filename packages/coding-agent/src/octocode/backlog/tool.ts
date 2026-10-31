@@ -1,5 +1,5 @@
-import { EntityFields, type EntityInput } from "@octocodeai/octocode-contacts/backlogs";
-import { STATES, type State } from "@octocodeai/octocode-contacts/snapshot";
+import { EntityFields, type EntityInput } from "@octocodeai/octocode-contracts/backlogs";
+import { STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
@@ -70,11 +70,11 @@ function backlogPrompt(subagent: boolean): {
 			: "Propose, claim and close repository tasks",
 		promptGuidelines: subagent
 			? [
-					`Note progress on your item; close it after verifying its goal. ${COMPLETION_GUIDANCE} Propose, never do, follow-ups and unfixed failures (trigger, evidence, fix) with from and links.`,
+					"If your task names a backlog item, note progress on it and close it after verifying its goal. Propose, never do, follow-ups and unfixed failures (trigger, evidence, fix) with from and links.",
 				]
 			: [
-					"Add an item when the user asks to track something, work outlives this turn, or you leave a follow-up or failure for later (from; trigger, evidence, fix). Claim it before starting or delegating; note progress.",
-					`Give every item why, paths and links (docs, reports, URLs, items). Close only after verifying the goal; ${COMPLETION_GUIDANCE} Questions and one-step tasks need no item.`,
+					"Add an item when the user asks to track something, work outlives this turn, or you leave a follow-up or failure (from; trigger, evidence, fix). Claim it before starting or delegating; before reporting, update items you touched.",
+					`Give every item why, paths and links. Close only after verifying the goal; ${COMPLETION_GUIDANCE} Questions and one-step tasks need no item.`,
 				],
 	};
 }
@@ -109,7 +109,7 @@ export function registerBacklogTool(
 			evidence: Type.Optional(
 				Type.Array(Type.String(), { description: "observations with source (path:line, command)" }),
 			),
-			plan: Type.Optional(Type.String({ description: "approach and steps" })),
+			plan: Type.Optional(Type.String({ description: "approach and steps; changes: blast radius, before -> after" })),
 			state: Type.Optional(
 				subagent
 					? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })

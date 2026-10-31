@@ -1,5 +1,5 @@
-import type { BacklogRef, Completion, EntityInput, ItemType, WorkLink } from "@octocodeai/octocode-contacts/backlogs";
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import type { BacklogRef, Completion, EntityInput, ItemType, WorkLink } from "@octocodeai/octocode-contracts/backlogs";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { type Db, backlog } from "../agentdb/api.ts";
 import { refText, type toItem } from "./row.ts";
 import type { Item } from "./item.ts";

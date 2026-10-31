@@ -11,7 +11,7 @@ import {
 	type ReportFileSummary,
 	type ReportSummary,
 	type ReportsIndex,
-} from "@octocodeai/octocode-contacts/protocol";
+} from "@octocodeai/octocode-contracts/protocol";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { redactData } from "../shared/sanitize.ts";
 
@@ -109,7 +109,7 @@ function clampFiles(files: ReportFileSummary[]): ReportFileSummary[] {
 }
 
 function sanitizeSummary(summary: ReportSummary): ReportSummary {
-	if (summary.id.length > 128) throw new Error("Report id exceeds the contacts schema");
+	if (summary.id.length > 128) throw new Error("Report id exceeds the contracts schema");
 	const sanitized: ReportSummary = {
 		...summary,
 		title: summary.title.slice(0, 300),
@@ -120,7 +120,7 @@ function sanitizeSummary(summary: ReportSummary): ReportSummary {
 		files: clampFiles(summary.files),
 	};
 	if (!Value.Check(ReportsIndexSchema, { reports: [sanitized] })) {
-		throw new Error("Sanitized report summary still violates the contacts schema");
+		throw new Error("Sanitized report summary still violates the contracts schema");
 	}
 	return sanitized;
 }
@@ -194,7 +194,7 @@ export function handleReportsRequest(req: IncomingMessage, url: URL, repoRoot: s
 export function readReportsIndex(root: string): ReportsIndex {
 	const index: ReportsIndex = { reports: scanReports(root).map((report) => report.summary) };
 	if (!Value.Check(ReportsIndexSchema, index)) {
-		throw new Error("Generated reports index violates the contacts schema");
+		throw new Error("Generated reports index violates the contracts schema");
 	}
 	return index;
 }
@@ -216,7 +216,7 @@ export function readReportFile(root: string, id: string, kind: string, name: str
 		if (Buffer.byteLength(markdown) > MAX_REPORT_FILE_BYTES) return undefined;
 		const payload: ReportFile = { id, kind: report.summary.kind, file: name, markdown };
 		if (!Value.Check(ReportFileSchema, payload)) {
-			throw new Error("Generated report file payload violates the contacts schema");
+			throw new Error("Generated report file payload violates the contracts schema");
 		}
 		return payload;
 	} catch {

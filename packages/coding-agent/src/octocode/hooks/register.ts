@@ -4,14 +4,15 @@ import { registerBackgroundHooks } from "./background.ts";
 import { parsePatch } from "../shared/codex-patch/patch.ts";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
-import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../shared/env.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "./config/calls.ts";
 import { emptyHooks } from "./config/parse.ts";
 import type { HookVerdict } from "./contracts.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch } from "./patch.ts";
 import type { HookProtocol } from "./catalog.ts";
 import { createDispatcher } from "./register/dispatcher.ts";
+import { decidingDenial } from "./verdicts.ts";
 import {
 	registerInterruptHook,
 	registerPostCompactHook,
@@ -173,9 +174,7 @@ export function registerHooks(
 				}
 			} else {
 				const results = await Promise.all(calls.map((call) => run(call, protocol)));
-				const deny =
-					results.find((verdict) => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ??
-					results.find((verdict) => verdict.permissionDecision === "deny");
+				const deny = decidingDenial(results);
 				if (deny) verdicts.push(deny);
 				else if (results.length && results.every((verdict) => verdict.permissionDecision === "allow")) {
 					permissionUpdates.push(...results.flatMap((verdict) => verdict.updatedPermissions ?? []));
@@ -191,9 +190,7 @@ export function registerHooks(
 				}
 			}
 		}
-		const deny =
-			verdicts.find((verdict) => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ??
-			verdicts.find((verdict) => verdict.permissionDecision === "deny");
+		const deny = decidingDenial(verdicts);
 		if (deny)
 			return {
 				decision: "deny",

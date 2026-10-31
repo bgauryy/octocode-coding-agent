@@ -3,11 +3,12 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSessionRuntimeDiagnostic } from "../../../src/core/agent-session-services.ts";
 import * as startup from "../../../src/modes/interactive/interactive-mode/startup.ts";
 import { initTheme } from "../../../src/theme/theme.ts";
+import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createHarness } from "../harness.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
 
 function render(container: Container): string {
-	return container.children.flatMap((child) => child.render(120)).join("\n");
+	return stripAnsi(container.children.flatMap((child) => child.render(120)).join("\n"));
 }
 
 describe("issue #7829 invalid settings warning", () => {

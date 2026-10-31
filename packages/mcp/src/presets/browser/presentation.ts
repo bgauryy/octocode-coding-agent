@@ -2,7 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { CallToolResult, ContentBlock } from "../../client/index.ts";
 import { formatDimensionNote, resizeImage } from "../../../../coding-agent/src/utils/image-resize.ts";
-import { isRecord } from "../../../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { imageBudget } from "../../../../coding-agent/src/octocode/shared/spill.ts";
 import { type ImageLimits, sniffImageType } from "../../../../coding-agent/src/octocode/shared/vision.ts";
 

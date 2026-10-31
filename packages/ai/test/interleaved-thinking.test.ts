@@ -4,7 +4,7 @@ import { completeSimple } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import { getEnvApiKey } from "../src/env-api-keys.ts";
 import type { Api, Context, Model, StopReason, Tool, ToolCall, ToolResultMessage } from "../src/types.ts";
-import { StringEnum } from "@octocodeai/octocode-contacts/schema";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
 
 const calculatorSchema = Type.Object({

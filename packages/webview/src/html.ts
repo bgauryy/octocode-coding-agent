@@ -1,4 +1,4 @@
-import { STATES, type Snapshot } from "@octocodeai/octocode-contacts/snapshot";
+import { STATES, type Snapshot } from "@octocodeai/octocode-contracts/snapshot";
 import { OCTOCODE_FAVICON_DATA_URI } from "./favicon.generated.ts";
 import { OFFLINE_PAGE_JS, WORKSPACE_STATE_JS } from "./state.generated.ts";
 import { PAGE_CSS } from "./styles.ts";

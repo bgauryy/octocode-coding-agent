@@ -24,7 +24,11 @@ export const AGENT_APPLICATION_ID = 0x4f635067;
  * `why` and `plan`: free text) and its
  * notes (`kind`: the agent's text or the change log the store writes on every update), memories and the team tables
  * (`agents.cache_read`: prompt tokens read from cache; `agents.started`: the start time of the process `pid` names, so
- * heartbeats and liveness tell it from a later process that got the same pid; `deliveries.proof`: the signature that
+ * heartbeats and liveness tell it from a later process that got the same pid; `agents.workspace`, `messages.workspace`: the
+ * team, the git common dir shared by every worktree of a repository (older builds wrote the worktree root), while
+ * `leases.workspace` and `edits.workspace` stay the worktree root; `agents.checkout`: the worktree root the agent works
+ * in, null in older rows; `agents.tmux_pane`: the tmux pane id (`%12`) a main session runs in, null outside tmux;
+ * `deliveries.proof`: the signature that
  * lets a subagent verify a message the user typed, see `team/proof.ts`; `deliveries.forwarded_by`: the agent that
  * forwarded the stored message to this recipient; `deliveries.relay_to`: a child's message to an agent it cannot reach,
  * held for its parent process to resume that agent with it; `deliveries.note`: the forwarder's note, or why a relay
@@ -167,7 +171,7 @@ CREATE TABLE agents (
   status TEXT NOT NULL CHECK(status IN ('idle','working')), task TEXT, activity TEXT,
   joined_at INTEGER NOT NULL, seen_at INTEGER NOT NULL,
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT);
+  cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT, checkout TEXT, tmux_pane TEXT);
 CREATE INDEX agents_scope ON agents(workspace, joined_at);
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL,

@@ -3,8 +3,8 @@ import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { BranchIndex } from "../shared/branch-index.ts";
 import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
 import { OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contextMessages, plainText, sessionCleared } from "./reads.ts";
 
 /**

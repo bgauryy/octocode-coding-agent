@@ -25,7 +25,7 @@ import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.
 import { selectsToolPrefix } from "./tool-selection.ts";
 import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export interface ToolLoadoutOptions {
 	customTools?: ToolDefinition[];

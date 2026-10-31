@@ -7,6 +7,7 @@ describe("built-in slash command descriptions", () => {
 		(_name, description) => {
 			expect(description.trim()).not.toBe("");
 			expect(description.length).toBeLessThanOrEqual(50);
+			expect(description).not.toMatch(/ — | · /);
 		},
 	);
 });

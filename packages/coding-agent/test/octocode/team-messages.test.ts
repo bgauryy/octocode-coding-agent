@@ -8,7 +8,7 @@ import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 const message = (over: Partial<Message> = {}): Message => ({
 	id: 7,

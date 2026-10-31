@@ -1,8 +1,8 @@
 import { stringOrEmpty, untilAborted } from "../shared/util.ts";
 import { combineSignals, language, readCapped, USER_AGENT } from "./fetch.ts";
-import { isHttpUrl, type PublicFetchInit, publicFetch } from "./guard.ts";
+import { isHttpUrl, type PublicFetchInit, publicFetch } from "../../../../common/src/web-guard.ts";
 import { decodeEntities, htmlToText } from "./html.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface SearchHit {
 	title: string;

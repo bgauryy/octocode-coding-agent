@@ -2,12 +2,12 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../config.ts";
-import { canonicalizePath, resolvePath } from "../utils/paths.ts";
-import { stripBom } from "../utils/text.ts";
-import { atomicWriteFileSync } from "../utils/atomic-file.ts";
-import { lockSyncWithRetry } from "../utils/file-write-lock.ts";
+import { canonicalizePath, resolvePath } from "../../../common/src/paths.ts";
+import { stripBom } from "../../../common/src/text.ts";
+import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
+import { lockSyncWithRetry } from "../../../common/src/file-write-lock.ts";
 import { projectMcpConfigPaths } from "../../../mcp/src/paths.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export type ProjectTrustDecision = boolean | null;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { goalWords, overlapNote, selfAndAncestors, similarGoals } from "../../src/octocode/team/overlap.ts";
 
 const member = (id: string, goal: string | undefined, parentId?: string): Member => ({

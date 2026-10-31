@@ -1,6 +1,6 @@
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { OAuthSelectorComponent, type AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { showPiProviders } from "./provider-pi.ts";

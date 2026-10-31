@@ -1,4 +1,4 @@
-import { PERMISSION_ENV } from "../../shared/env.ts";
+import { PERMISSION_ENV } from "../../../../../common/src/env.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
 import { clipText } from "../../shared/util.ts";
 import { auditLines, cardLines, foldLines, NO_REASON, transcriptPurpose } from "../effect.ts";
@@ -77,6 +77,7 @@ export async function selectAnswer(
 ): Promise<Answer> {
 	const options = {
 		...(request.signal ? { signal: request.signal } : {}),
+		approval: true,
 		permission: {
 			toolCallId: request.invocation?.toolCallId ?? request.toolCallId,
 			toolName: request.invocation?.toolName,

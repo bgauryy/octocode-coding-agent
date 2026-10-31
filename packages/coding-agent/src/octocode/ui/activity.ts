@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import { setRunClock } from "../../modes/interactive/components/status-indicator.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { clipColumns, queryTarget } from "../shared/render/text.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { Thought } from "../shared/thought.ts";
 import { firstLine, toolHint } from "../shared/util.ts";

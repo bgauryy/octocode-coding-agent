@@ -1,7 +1,7 @@
 import path from "node:path";
 import { Value } from "typebox/value";
-import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode-contacts/daemon";
-import { ConfigSnapshotSchema } from "@octocodeai/octocode-contacts/config";
+import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode-contracts/daemon";
+import { ConfigSnapshotSchema } from "@octocodeai/octocode-contracts/config";
 import { getAgentDir } from "../../config.ts";
 import { privateDir } from "../shared/home.ts";
 import { processStartTime } from "../shared/process.ts";
@@ -33,7 +33,7 @@ function idleMs(env: NodeJS.ProcessEnv): number {
 /**
  * Starts the user-level daemon in this process: takes the run lock (a second daemon cannot start beside it), listens,
  * and only then writes the record. It exits after `OCTOCODE_WEB_DAEMON_IDLE_MINUTES` (default 10) with no browser tab
- * and no attached session, or when told to drain by a launcher of another build. Resolves undefined when another daemon
+ * no attached session and no device connected through a relay, or when told to drain by a launcher of another build. Resolves undefined when another daemon
  * already runs.
  */
 export async function startWebDaemon(
@@ -59,7 +59,7 @@ export async function startWebDaemon(
 	const idleTimer = setInterval(
 		() => {
 			if (!server || server.draining) return;
-			if (server.tabs.count > 0 || server.registry.attached > 0) lastActivity = Date.now();
+			if (server.tabs.count > 0 || server.registry.attached > 0 || server.remote.peers > 0) lastActivity = Date.now();
 			else if (Date.now() - lastActivity >= idleLimit) void shutdown();
 		},
 		Math.min(1000, Math.max(50, idleLimit / 4)),

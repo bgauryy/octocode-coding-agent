@@ -1,4 +1,4 @@
-import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { WebSocket } from "ws";
 import { redactData } from "../shared/sanitize.ts";
 

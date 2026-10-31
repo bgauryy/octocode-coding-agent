@@ -8,7 +8,7 @@ import { exposureOf } from "./exposure.ts";
 import { formatMcpTool, toolCatalog } from "./inspection.ts";
 
 export { toolCatalog } from "./inspection.ts";
-import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { setExposure } from "./persistence.ts";
 import {
 	attentionRank,

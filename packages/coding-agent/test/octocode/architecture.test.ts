@@ -70,6 +70,7 @@ const ALLOWED: Record<string, string[]> = {
 	"native-skills": [],
 	graph: ["shared"],
 	"terminal-launch": [],
+	worktrees: ["shared", "terminal-launch"],
 };
 
 describe("source layout", () => {
@@ -132,8 +133,8 @@ describe("source layout", () => {
 		const owners: Array<[RegExp, string]> = [
 			[/process\.kill\(/, "shared/process.ts"],
 			[/instanceof Error \? [^:]+: String\(/, "shared/util.ts"],
-			[/createHash\(['"]sha256['"]\)/, "../utils/atomic-file.ts"],
-			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "shared/env.ts"],
+			[/createHash\(['"]sha256['"]\)/, "../../common/src/atomic-file.ts"],
+			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "../../common/src/env.ts"],
 			[/signal\.reason instanceof Error \?/, "browser/abort.ts"],
 		];
 		const copies = files.flatMap((file) => {

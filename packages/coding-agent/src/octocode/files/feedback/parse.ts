@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
-import { sha256 } from "../../../utils/atomic-file.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { MutationReceipt } from "../render.ts";
 import { matchesResponsePath } from "./path.ts";
 import { knownUnsupported, noteUnsupported, saysUnsupported } from "./support.ts";

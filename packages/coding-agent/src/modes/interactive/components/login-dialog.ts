@@ -1,6 +1,6 @@
 import type { AuthInfoLink, OAuthDeviceCodeInfo } from "@octocodeai/octocode-ai";
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
-import { openBrowser } from "../../../utils/open-browser.ts";
+import { openBrowser } from "../../../../../common/src/open-browser.ts";
 import { theme } from "../../../theme/theme.ts";
 import { AuthUrlComponent } from "./auth-url.ts";
 import { DynamicBorder } from "./dynamic-border.ts";

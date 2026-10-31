@@ -1,6 +1,6 @@
 import { lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { stripBom } from "../utils/text.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import { repoKey } from "../octocode/shared/home/repo.ts";
 import { validateMcpServerConfig, mcpNamespace, type McpServerConfig } from "../../../mcp/src/servers.ts";
 import { pluginContext } from "./plugin-context.ts";
@@ -12,7 +12,7 @@ import {
 } from "./plugin-manifest.ts";
 import { configuredPlugins } from "./plugin-settings.ts";
 import type { Settings } from "./settings-manager.ts";
-import { isRecord } from "../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 type PluginEntry = NonNullable<Settings["plugins"]>[number];
 type Server = { name: string; config: McpServerConfig };

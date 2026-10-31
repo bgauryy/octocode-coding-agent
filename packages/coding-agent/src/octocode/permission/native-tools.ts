@@ -1,4 +1,5 @@
 import type { TSchema } from "typebox";
+import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/extensions/index.ts";
 import { withoutReason, withReason } from "../shared/reason.ts";
 
@@ -29,6 +30,12 @@ export const isNativeTool = (name: string): boolean => NATIVE_PERMISSION_OWNERS.
 
 export const getNativeToolNames = (): string[] => [...NATIVE_PERMISSION_OWNERS.keys()];
 
+/** Core tools registered outside the native extension that still take the native `reason`: the built-in MCP extension's `mcp`. */
+const CORE_REASON_TOOLS = new Set([MCP_MANAGE_TOOL_NAME]);
+
+/** Whether calls to `name` carry the required native `reason`: every native tool and the core tools above. */
+export const takesCallReason = (name: string): boolean => isNativeTool(name) || CORE_REASON_TOOLS.has(name);
+
 /**
  * A native tool as the model sees it: `reason` is a required argument (unless the tool declares its own). The tool's
  * `execute` never receives the one added here, so strict argument checks such as the `agent` envelope's still hold.
@@ -52,6 +59,17 @@ export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
 		}
 		api.registerTool(withReasonArgument(tool));
 	};
+	return withRegisterTool(api, registerTool);
+}
+
+/** The API of a built-in extension that registers a core tool (`mcp`): that tool takes the required `reason` too. */
+export function withCoreToolReason(api: ExtensionAPI): ExtensionAPI {
+	return withRegisterTool(api, (tool) =>
+		api.registerTool(CORE_REASON_TOOLS.has(tool.name) ? withReasonArgument(tool) : tool),
+	);
+}
+
+function withRegisterTool(api: ExtensionAPI, registerTool: ExtensionAPI["registerTool"]): ExtensionAPI {
 	return new Proxy(api, {
 		get(target, property, receiver) {
 			return property === "registerTool" ? registerTool : Reflect.get(target, property, receiver);

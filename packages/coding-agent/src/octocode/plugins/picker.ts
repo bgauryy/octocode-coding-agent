@@ -11,7 +11,7 @@ import {
 import { EMPTY_INVENTORY, HOST_TITLES, type InventoryItem } from "../../core/extensibility/inventory.ts";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { shortcutText } from "../shared/keys.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 

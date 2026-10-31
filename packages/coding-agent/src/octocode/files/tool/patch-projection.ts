@@ -6,9 +6,9 @@ import {
 	normalizeToLF,
 	restoreLineEndings,
 } from "../../../core/tools/edit-diff.ts";
-import { sha256 } from "../../../utils/atomic-file.ts";
-import { isRecord } from "../../../utils/guards.ts";
-import { splitBom } from "../../../utils/text.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { splitBom } from "../../../../../common/src/text.ts";
 import { parsePatch, transformPatch } from "../../shared/codex-patch/patch.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { resolveAnchoredEdits } from "./anchored.ts";

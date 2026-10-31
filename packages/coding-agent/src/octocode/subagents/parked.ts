@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { childSession, childSessionFile } from "./process/session.ts";
 import { PRIVATE_FILE_MODE, privateDir, sessionDir } from "../shared/home.ts";

@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import type { ConfigSnapshot } from "@octocodeai/octocode-contacts/config";
+import type { ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DaemonShell } from "../src/app/daemon/DaemonShell.tsx";

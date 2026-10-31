@@ -10,7 +10,7 @@ import { countsText, itemDetail, itemLine } from "../../src/octocode/backlog/for
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogError, BacklogStore, type Item, parseRef } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
@@ -960,7 +960,7 @@ describe("/backlog", () => {
 		await t.command.handler("#1 done", ctx);
 		expect(store.get("B1")?.state).toBe("done");
 		for (const syntax of ["add <title>", "do <id>", "export", "backlog|todo|ongoing|done|delete"])
-			expect(t.command.description).toContain(syntax);
+			expect(t.command.argumentHint).toContain(syntax);
 	});
 
 	it('shows the board, moves items with arrows, and "d" hands the selected item over', async () => {

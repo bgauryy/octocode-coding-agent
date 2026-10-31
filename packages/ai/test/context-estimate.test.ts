@@ -42,10 +42,10 @@ const model: Model<"openai-responses"> = {
 };
 
 describe("context token estimation", () => {
-	// Regression for #10497: large new inputs need more room than chars/4 allows.
-	it("reserves 3.5 characters per token for new text when limiting output", () => {
+	// Regression for #10497: large new inputs need more room than chars/4 allows. The shared ratio is 3 characters per token.
+	it("reserves 3 characters per token for new text when limiting output", () => {
 		const context = normalizeContext({
-			messages: [createAssistant(100, 2_000), { role: "user", content: "x".repeat(3_500), timestamp: 200 }],
+			messages: [createAssistant(100, 2_000), { role: "user", content: "x".repeat(3_000), timestamp: 200 }],
 		});
 
 		expect(estimateContextTokens(context)).toEqual({
@@ -68,12 +68,12 @@ describe("context token estimation", () => {
 		});
 
 		expect(estimateContextTokens(context)).toEqual({
-			tokens: 1_149,
+			tokens: 1_341,
 			usageTokens: 0,
-			trailingTokens: 1_149,
+			trailingTokens: 1_341,
 			lastUsageIndex: null,
 		});
-		expect(buildBaseOptions(model, context).maxTokens).toBe(4_755);
+		expect(buildBaseOptions(model, context).maxTokens).toBe(4_563);
 	});
 
 	it("uses assistant usage again after a response to the inserted context", () => {

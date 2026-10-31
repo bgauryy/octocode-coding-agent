@@ -1,5 +1,5 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { beforeAll, describe, expect, it } from "vitest";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
 import { initTheme, theme as liveTheme } from "../../src/theme/theme.ts";

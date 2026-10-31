@@ -1,6 +1,6 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import { parsePermissionUpdates } from "../shared/permission-updates.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { HookRun, HookVerdict } from "./contracts.ts";
 import type { HookProtocol } from "./catalog.ts";
 import { validateCodexOutput } from "./codex-output.ts";

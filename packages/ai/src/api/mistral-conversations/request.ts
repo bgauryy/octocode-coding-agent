@@ -3,6 +3,7 @@ import { resolveCacheRetention, resolvePromptCacheKey } from "../../utils/cache-
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
 import { getCurrentTools } from "../../utils/transcript.ts";
+import { NON_VISION_TOOL_IMAGE_PLACEHOLDER, NON_VISION_USER_IMAGE_PLACEHOLDER } from "../transform-messages.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "../constrained-sampling.ts";
 import type {
 	MistralChatMessage,
@@ -100,7 +101,7 @@ function toChatMessages(messages: Message[], supportsImages: boolean): MistralCh
 				continue;
 			}
 			if (hadImages && !supportsImages) {
-				result.push({ role: "user", content: "(image omitted: model does not support images)" });
+				result.push({ role: "user", content: NON_VISION_USER_IMAGE_PLACEHOLDER });
 			}
 			continue;
 		}
@@ -147,8 +148,8 @@ function toChatMessages(messages: Message[], supportsImages: boolean): MistralCh
 			.map((part) => (part.type === "text" ? sanitizeSurrogates(part.text) : ""))
 			.join("\n");
 		const hasImages = msg.content.some((part) => part.type === "image");
-		const toolText = buildToolResultText(textResult, hasImages, supportsImages, msg.isError);
-		toolContent.push({ type: "text", text: toolText });
+		const toolText = buildToolResultText(textResult, { hasImages, supportsImages });
+		toolContent.push({ type: "text", text: msg.isError ? `${TOOL_ERROR_PREFIX}${toolText}` : toolText });
 		for (const part of msg.content) {
 			if (!supportsImages) continue;
 			if (part.type !== "image") continue;
@@ -168,25 +169,19 @@ function toChatMessages(messages: Message[], supportsImages: boolean): MistralCh
 	return result;
 }
 
-function buildToolResultText(text: string, hasImages: boolean, supportsImages: boolean, isError: boolean): string {
+const TOOL_ERROR_PREFIX = "[tool error] ";
+
+/**
+ * The text of a tool message for `text` and its images. Images the model cannot see are replaced by the shared
+ * non-vision tool placeholder, appended to any text.
+ */
+function buildToolResultText(text: string, images: { hasImages: boolean; supportsImages: boolean }): string {
 	const trimmed = text.trim();
-	const errorPrefix = isError ? "[tool error] " : "";
+	const imagesHidden = images.hasImages && !images.supportsImages;
 
-	if (trimmed.length > 0) {
-		const imageSuffix = hasImages && !supportsImages ? "\n[tool image omitted: model does not support images]" : "";
-		return `${errorPrefix}${trimmed}${imageSuffix}`;
-	}
-
-	if (hasImages) {
-		if (supportsImages) {
-			return isError ? "[tool error] (see attached image)" : "(see attached image)";
-		}
-		return isError
-			? "[tool error] (image omitted: model does not support images)"
-			: "(image omitted: model does not support images)";
-	}
-
-	return isError ? "[tool error] (no tool output)" : "(no tool output)";
+	if (trimmed.length > 0) return imagesHidden ? `${trimmed}\n${NON_VISION_TOOL_IMAGE_PLACEHOLDER}` : trimmed;
+	if (imagesHidden) return NON_VISION_TOOL_IMAGE_PLACEHOLDER;
+	return images.hasImages ? "(see attached image)" : "(no tool output)";
 }
 
 function mapToolChoice(

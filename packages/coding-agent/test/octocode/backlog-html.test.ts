@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { embeddedJson, renderBacklogHtml } from "@octocodeai/octocode-webview";
-import { type Snapshot, STATES } from "@octocodeai/octocode-contacts/snapshot";
+import { type Snapshot, STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -426,7 +426,7 @@ describe("/backlog html", () => {
 		await t.command.handler("html now", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning", message: "Usage: /backlog html" });
 		expect(open).not.toHaveBeenCalled();
-		expect(t.command.description).toMatch(/\bhtml\b/);
+		expect(t.command.argumentHint).toMatch(/\bhtml\b/);
 		expect(t.commands.complete("backlog h")).toEqual([expect.objectContaining({ value: "backlog html" })]);
 	});
 

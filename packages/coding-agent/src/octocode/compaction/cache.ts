@@ -6,9 +6,9 @@ import type {
 	ExtensionContext,
 } from "../../core/extensions/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
-import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "../shared/env.ts";
+import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { interactive } from "../shared/interactive.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Prompt-cache lifetimes, in seconds, for a model that declares no `promptCache` (a custom-provider model in models.json)

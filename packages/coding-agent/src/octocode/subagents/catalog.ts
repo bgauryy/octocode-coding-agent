@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFile } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
-import { envFlag } from "../shared/env.ts";
+import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { envFlag } from "../../../../common/src/env.ts";
 import { globalPaths, privateDir } from "../shared/home.ts";
 import { DAY_MS, finiteNumber, HOUR_MS } from "../shared/util.ts";
 

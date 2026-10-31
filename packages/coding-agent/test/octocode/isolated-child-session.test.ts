@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { withIdentity } from "../../src/octocode/instructions/task.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_ENV } from "../../../common/src/env.ts";
 import { subagentProcessEnv, type Identity } from "../../src/octocode/subagents/process/env.ts";
 import { createWorktree, type Worktree } from "../../src/octocode/subagents/worktree.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
@@ -110,7 +110,12 @@ describe("isolated subagent session", () => {
 			(context) => {
 				record(context);
 				return fauxAssistantMessage(
-					[fauxToolCall("file", { queries: [{ type: "write", path: target, content: "x", reason: "test" }] })],
+					[
+						fauxToolCall("file", {
+							reason: "Write into the main checkout",
+							queries: [{ type: "write", path: target, content: "x", reason: "test" }],
+						}),
+					],
 					{ stopReason: "toolUse" },
 				);
 			},

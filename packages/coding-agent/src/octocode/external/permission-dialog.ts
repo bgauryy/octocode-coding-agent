@@ -23,6 +23,9 @@ export const externalPermissionDialog: ExternalPolicy["permission"] =
 			const reject = options.findIndex((option) => option.kind === "reject_once");
 			const selected = await ctx.ui.select(title, labels, {
 				signal,
+				// An external agent may ask while no run is active; a person is still what it waits for.
+				approval: true,
+				blocking: true,
 				// A transport may offer this pair without inventing an option the external agent did not advertise.
 				...(allow >= 0 && reject >= 0
 					? {

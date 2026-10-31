@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
 import type { Message } from "./model.ts";

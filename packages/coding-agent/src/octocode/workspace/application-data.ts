@@ -7,7 +7,7 @@ import {
 	WORKSPACE_ROUTES,
 	type ApplicationAssetPayload,
 	type ApplicationPort,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 
 const UploadSchema = Type.Object(

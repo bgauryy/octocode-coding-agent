@@ -1,16 +1,26 @@
 import path from "node:path";
 import { canonicalPath, repoKey } from "../../shared/home/repo.ts";
-import { TEAM_WORKSPACE_ENV } from "../../shared/env.ts";
+import { TEAM_WORKSPACE_ENV } from "../../../../../common/src/env.ts";
 import { leaseKey } from "../lease-key.ts";
 
 /**
- * The team workspace for `cwd`: one team per repository (`repoKey(cwd).root`, symlinks resolved), unless
- * `TEAM_WORKSPACE_ENV` names it (a subagent in an isolated worktree joins its parent's team).
+ * The checkout `cwd` works in: its worktree root (`repoKey(cwd).root`, symlinks resolved), unless `TEAM_WORKSPACE_ENV`
+ * names it (a subagent in an isolated worktree uses its parent's checkout). It scopes what names files: leases, the edit
+ * log, scratch folders and lock advice. Worktrees of one repository are different checkouts of one team (`teamScope`).
  */
 export function teamWorkspace(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
 	const override = env[TEAM_WORKSPACE_ENV];
 	if (override && path.isAbsolute(override)) return canonicalPath(override);
 	return repoKey(cwd).root;
+}
+
+/**
+ * The team of `cwd`: one per repository, named by the git common dir (`repoKey(...).key`), which every worktree of it
+ * shares. The checkout is resolved first, so an isolated subagent with `TEAM_WORKSPACE_ENV` is on its parent's team. It
+ * scopes agents, messages and deliveries, so agents in sibling worktrees see and message each other.
+ */
+export function teamScope(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
+	return repoKey(teamWorkspace(cwd, env)).key;
 }
 
 /**

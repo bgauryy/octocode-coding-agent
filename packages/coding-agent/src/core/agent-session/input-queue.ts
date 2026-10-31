@@ -270,11 +270,12 @@ export class SessionInputQueue {
 	}
 
 	/**
-	 * Whether a custom message is waiting for the agent's next step: steered into the running agent, or held until the
-	 * current turn's tool results are in. Follow-ups (background reports) wait for the run to end and do not count.
+	 * Whether a custom message that asks for the agent now is waiting: one steered into the running agent to start a turn
+	 * (the user's mail, a question). Context-only messages (`triggerTurn: false`: notices, FYIs) are read at the next step
+	 * without making a running tool yield; follow-ups (background reports) wait for the run to end.
 	 */
 	get hasWaitingCustomMessages(): boolean {
-		return this._steeredWaiting() || this._pendingCustomMessages.length > 0;
+		return this._steeredWaiting();
 	}
 
 	/** Forgets the steered messages the agent took; whether one is still queued. */

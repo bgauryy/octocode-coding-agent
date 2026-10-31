@@ -1,5 +1,5 @@
 import { GLYPH, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../theme/theme.ts";
 import { formatAgo } from "../shared/format.ts";
 import { safe } from "./panel-compact.ts";

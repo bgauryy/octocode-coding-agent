@@ -1,21 +1,27 @@
 import os from "node:os";
-import type { RemoteLink, RemotePublish, RemoteStatus } from "@octocodeai/octocode-contacts/daemon";
+import type { RemoteLink, RemotePublish, RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
 import { RelayClient } from "./relay-client.ts";
-import { encodeKey, newKey } from "./seal.ts";
+import { encodeKey, fingerprintOf, newKey } from "./seal.ts";
 import type { Loopback } from "./tunnel.ts";
 
-/** The daemon's tokens by access level; `view` may be replaced when publication stops. */
+/** The tokens published links carry, by access level; both are replaced when publication stops. The launch token is never here. */
 interface Tokens {
-	control: string;
+	remote: string;
 	view: string;
+}
+
+/** A published link with the fingerprint of its capability; only the link itself holds the capability. */
+interface Published {
+	link: RemoteLink;
+	fingerprint: string;
 }
 
 export interface PublisherOptions {
 	port: () => number;
 	origin: () => string;
 	tokens: () => Tokens;
-	/** Replaces the view token: every view link issued so far stops working. */
-	rotateView: () => void;
+	/** Replaces the remote control and view tokens: every link issued so far stops working. */
+	rotate: () => void;
 	build: string;
 	activity: () => void;
 	/** The SSH host name and user to print in the forward command. */
@@ -61,11 +67,12 @@ function defaultHost(): { user: string; hostname: string } {
  * What `/remote` publishes: links to this daemon for another device, each with its capability in the fragment. `ssh`
  * links are the loopback page itself behind a port forward the user runs; `relay` links are reached through a relay
  * the daemon dials, under a key the relay never sees. One relay room per access level; stopping closes the rooms,
- * forgets every link, and replaces the view token so stopped view links are dead.
+ * forgets every link, and replaces the remote control and view tokens so every stopped link is dead. A control link
+ * carries the remote token, never the launch token, which also opens the admin routes.
  */
 export class RemotePublisher {
 	private readonly options: PublisherOptions;
-	private readonly links: RemoteLink[] = [];
+	private readonly links: Published[] = [];
 	private readonly relays = new Map<"view" | "control", RelayClient>();
 
 	constructor(options: PublisherOptions) {
@@ -74,45 +81,49 @@ export class RemotePublisher {
 
 	publish(request: RemotePublish): RemoteLink {
 		const existing = this.links.find(
-			(link) =>
+			({ link }) =>
 				link.transport === request.transport &&
 				link.access === request.access &&
 				(request.transport === "ssh" || this.relays.get(request.access)?.url === validRelayUrl(request.relayUrl)),
 		);
-		if (existing) return existing;
-		const link = request.transport === "ssh" ? this.sshLink(request.access) : this.relayLink(request);
-		this.links.push(link);
+		if (existing) return existing.link;
+		const published = request.transport === "ssh" ? this.sshLink(request.access) : this.relayLink(request);
+		this.links.push(published);
 		if (this.links.length > MAX_LINKS) this.links.shift();
-		return link;
+		return published.link;
 	}
 
-	private sshLink(access: "view" | "control"): RemoteLink {
+	private sshLink(access: "view" | "control"): Published {
 		const port = this.options.port();
 		const tokens = this.options.tokens();
+		const token = access === "view" ? tokens.view : tokens.remote;
 		const { user, hostname } = (this.options.host ?? defaultHost)();
 		return {
-			transport: "ssh",
-			access,
-			url: `http://127.0.0.1:${port}/#access=${access === "view" ? tokens.view : tokens.control}`,
-			issuedAt: Date.now(),
-			forward: `ssh -N -L ${port}:127.0.0.1:${port} ${user ? `${user}@` : ""}${hostname}`,
+			fingerprint: fingerprintOf(token),
+			link: {
+				transport: "ssh",
+				access,
+				url: `http://127.0.0.1:${port}/#access=${token}`,
+				issuedAt: Date.now(),
+				forward: `ssh -N -L ${port}:127.0.0.1:${port} ${user ? `${user}@` : ""}${hostname}`,
+			},
 		};
 	}
 
-	private relayLink(request: RemotePublish): RemoteLink {
+	private relayLink(request: RemotePublish): Published {
 		const relayUrl = validRelayUrl(request.relayUrl);
 		if (!relayUrl) throw new Error("A relay link needs a ws:// or wss:// relay address (remote.relayUrl).");
 		const previous = this.relays.get(request.access);
 		if (previous && previous.url !== relayUrl) {
 			previous.stop();
 			this.relays.delete(request.access);
-			this.forget((link) => link.transport === "relay" && link.access === request.access);
+			this.forget(({ link }) => link.transport === "relay" && link.access === request.access);
 		}
 		const key = newKey();
 		const loopback = (): Loopback => ({
 			port: this.options.port(),
 			origin: this.options.origin(),
-			token: request.access === "view" ? this.options.tokens().view : this.options.tokens().control,
+			token: request.access === "view" ? this.options.tokens().view : this.options.tokens().remote,
 		});
 		const relay = new RelayClient({
 			url: relayUrl,
@@ -126,20 +137,32 @@ export class RemotePublisher {
 		relay.start();
 		const page = relayPageUrl(relayUrl);
 		page.hash = `k=${encodeKey(key)}`;
-		return { transport: "relay", access: request.access, url: page.href, issuedAt: Date.now() };
+		return {
+			fingerprint: fingerprintOf(key),
+			link: { transport: "relay", access: request.access, url: page.href, issuedAt: Date.now() },
+		};
 	}
 
-	private forget(matches: (link: RemoteLink) => boolean): void {
+	private forget(matches: (published: Published) => boolean): void {
 		for (let index = this.links.length - 1; index >= 0; index--)
 			if (matches(this.links[index])) this.links.splice(index, 1);
 	}
 
 	status(): RemoteStatus {
 		const relay = this.relays.get("control") ?? this.relays.get("view");
-		return { links: [...this.links], ...(relay ? { relay: relay.status() } : {}) };
+		const links = this.links.map(({ link, fingerprint }) => ({
+			transport: link.transport,
+			access: link.access,
+			issuedAt: link.issuedAt,
+			fingerprint,
+		}));
+		return { links, ...(relay ? { relay: relay.status() } : {}) };
 	}
 
-	/** Peers joined through relays right now, so an idle daemon with a phone attached stays up. */
+	/**
+	 * Peers joined through relays right now. The daemon's idle timer counts them as use (`main.ts`), so a phone that is
+	 * connected keeps its links alive; a published link nobody has joined does not, and dies with the idle daemon.
+	 */
 	get peers(): number {
 		let total = 0;
 		for (const relay of this.relays.values()) total += relay.status().peers;
@@ -149,8 +172,7 @@ export class RemotePublisher {
 	stop(): void {
 		for (const relay of this.relays.values()) relay.stop();
 		this.relays.clear();
-		const hadView = this.links.some((link) => link.access === "view");
 		this.links.length = 0;
-		if (hadView) this.options.rotateView();
+		this.options.rotate();
 	}
 }

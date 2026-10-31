@@ -1,15 +1,16 @@
 import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { USER_SENDER } from "../shared/messages.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_STOP } from "./process/outcome.ts";
 import { type Ask, UserQuestions } from "../team/asks.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describeMembers } from "../team/routing.ts";
 import type { Team } from "../team/session.ts";
 import { sessionChildren } from "../shared/session-children.ts";
 import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
+import { noteMerge } from "./ref-link.ts";
 import { mergeAgent, pendingRefs } from "./worktree.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
@@ -115,7 +116,8 @@ export function agentsCommand(
 		}
 		try {
 			const result = await mergeAgent(ctx.cwd, id);
-			say(ctx, result.text, result.ok ? "info" : "error");
+			const noted = result.ok && result.ref ? noteMerge(ctx, result.ref, result.into ?? "HEAD") : "";
+			say(ctx, `${result.text}${noted}`, result.ok ? "info" : "error");
 		} catch (error) {
 			say(ctx, errorMessage(error), "error");
 		}
@@ -152,8 +154,8 @@ export function agentsCommand(
 		return [...members.map((member) => member.id).filter((id) => id !== team.id), "all"];
 	};
 	return {
-		description:
-			"agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history] — list agents, message, redirect or stop one, show run statistics, or list this session's subagents",
+		description: "List, message or stop subagents",
+		argumentHint: "[tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history]",
 		complete: (prefix) => {
 			const space = prefix.indexOf(" ");
 			if (space === -1)

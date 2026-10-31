@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ConfigSnapshotSchema, type ConfigSnapshot } from "@octocodeai/octocode-contacts/config";
+import { ConfigSnapshotSchema, type ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeychainBackend } from "../../src/core/auth-storage/keychain.ts";

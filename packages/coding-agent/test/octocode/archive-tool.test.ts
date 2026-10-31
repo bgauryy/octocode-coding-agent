@@ -15,7 +15,7 @@ import {
 	setSessionLineage,
 	writeSegment,
 } from "../../src/octocode/shared/archive.ts";
-import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

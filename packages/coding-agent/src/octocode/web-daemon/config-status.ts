@@ -20,7 +20,7 @@ import {
 	type CredentialSourceStatus,
 	type ProviderCredentialStatus,
 	type SettingsFileError,
-} from "@octocodeai/octocode-contacts/config";
+} from "@octocodeai/octocode-contracts/config";
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/resolve-config-value.ts";

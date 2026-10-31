@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import type { StopReason, Usage } from "../../types.ts";
+import { createUsage } from "../../utils/assistant-message.ts";
 
 /** Maps terminal Responses usage onto the message usage, before cost is calculated. */
 export function parseResponsesUsage(usage: OpenAI.Responses.ResponseUsage): Usage {
@@ -12,19 +13,19 @@ export function parseResponsesUsage(usage: OpenAI.Responses.ResponseUsage): Usag
 		| undefined;
 	const cachedTokens = inputDetails?.cached_tokens || 0;
 	const cacheWriteTokens = inputDetails?.cache_write_tokens || 0;
-	return {
+	const result = createUsage({
 		// OpenAI includes cached and cache-write tokens in input_tokens, so subtract both.
 		input: Math.max(0, (usage.input_tokens || 0) - cachedTokens - cacheWriteTokens),
 		output: usage.output_tokens || 0,
 		cacheRead: cachedTokens,
 		cacheWrite: cacheWriteTokens,
-		...(inputDetails?.cache_write_tokens_details === undefined
-			? {}
-			: { cacheWrite12h: inputDetails.cache_write_tokens_details.ttl_12h_tokens ?? 0 }),
 		reasoning: usage.output_tokens_details?.reasoning_tokens || 0,
-		totalTokens: usage.total_tokens || 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+		totalTokens: usage.total_tokens,
+	});
+	if (inputDetails?.cache_write_tokens_details !== undefined) {
+		result.cacheWrite12h = inputDetails.cache_write_tokens_details.ttl_12h_tokens ?? 0;
+	}
+	return result;
 }
 
 export function mapStopReason(

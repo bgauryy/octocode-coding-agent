@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as importedModule1 from "../../src/octocode/shared/process.ts";
+import * as treeModule from "../../src/utils/process-tree.ts";
 
 const spawn = vi.fn();
 vi.mock("node:child_process", () => ({ spawn: (...args: unknown[]) => spawn(...args) }));
 const tree = { owns: vi.fn(), kill: vi.fn(), assign: vi.fn(), start: vi.fn() };
-vi.mock("../../src/octocode/shared/winhelper.ts", () => ({
+vi.mock("../../src/utils/windows/winhelper.ts", () => ({
 	windowsTree: {
 		owns: (pid: unknown) => tree.owns(pid),
 		kill: (pid: unknown) => tree.kill(pid),
@@ -12,7 +13,8 @@ vi.mock("../../src/octocode/shared/winhelper.ts", () => ({
 		start: () => tree.start(),
 	},
 }));
-const { adoptTree, killTree, prepareTree, signalTree, stopTree } = await Promise.resolve(importedModule1);
+const { killTree, stopTree } = await Promise.resolve(importedModule1);
+const { adoptTree, prepareTree, signalTree } = await Promise.resolve(treeModule);
 
 const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
 beforeEach(() => {

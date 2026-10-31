@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { body, type DapProtocol } from "./protocol.ts";
 
 /** The adapter's exception id and message for an exception stop; reads state, evaluates nothing. */

@@ -10,7 +10,7 @@ import type { registerSourcePolicy } from "./permission/source-policy-loader.ts"
 import { registerHookMcpGate } from "./hooks/mcp-gate.ts";
 import { userBashGate } from "./permission/user-bash.ts";
 import type { registerHooks } from "./hooks/register.ts";
-import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "./shared/env.ts";
+import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
 import { browserMcpRequest } from "./web/browser-mcp.ts";
@@ -124,7 +124,11 @@ export function registerToolGates(
 			}
 			const snapshots = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
 			if (snapshots.size) localReads.set(event.toolCallId, snapshots);
-			return undefined;
+			// A shell call's targets are only checked above; the `file` tool checks its own at write time. Between this
+			// point and the run, a batch's later approvals, a dialog or a peer's lock can change what the checks saw.
+			return event.toolName === "bash" || event.toolName === "powershell"
+				? { revalidate: () => audited(invariants)(event, ctx) }
+				: undefined;
 		} finally {
 			recordCheck(event.toolCallId, Date.now() - started);
 			activity.checking(event.toolCallId, false);

@@ -3,7 +3,7 @@ import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { gitStateGate } from "../../src/octocode/permission/git-state.ts";
 import { gitStateMutation } from "../../src/octocode/permission/shell/git-state.ts";
-import { PERMISSION_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -96,15 +96,18 @@ describe("the subagent git-state invariant", () => {
 				env,
 			} as unknown as ToolGatesOptions;
 			registerToolGates(f.api, options);
-			return { verdict: await f.fire("tool_call", call("git commit -am wip"), ctx), hooked };
+			return {
+				verdict: (await f.fire("tool_call", call("git commit -am wip"), ctx)) as { block?: boolean } | undefined,
+				hooked,
+			};
 		};
 		const child = await run({ [SUBAGENT_ENV]: "1" });
 		expect(child.verdict).toMatchObject({ block: true });
 		expect(child.hooked).toEqual([]);
 		const main = await run({});
-		expect(main.verdict).toBeUndefined();
+		expect(main.verdict?.block).toBeUndefined();
 		expect(main.hooked).toEqual(["bash"]);
 		const isolated = await run({ [SUBAGENT_ENV]: "1", [TEAM_WORKSPACE_ENV]: "/repo" });
-		expect(isolated.verdict).toBeUndefined();
+		expect(isolated.verdict?.block).toBeUndefined();
 	});
 });

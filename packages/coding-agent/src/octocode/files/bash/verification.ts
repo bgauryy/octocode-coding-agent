@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { currentMutationRevision, mutationEpoch } from "../feedback/revisions.ts";
 import type { BashJob, JobExit, VerificationReceipt } from "../bash-jobs/types.ts";
 import type { BashDetails } from "../render.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Public tool schema for the receipt's stable, JSON-only fields. */
 export const verificationSchema = Type.Object({
@@ -122,7 +122,7 @@ export function verificationLine(receipt: VerificationReceipt): string {
 	const laterEdit = currentMutationRevision(receipt.sessionId) !== receipt.revisionAtLaunch;
 	const outcome =
 		receipt.state === "running"
-			? "running; no result yet"
+			? "no result yet"
 			: receipt.state === "finished"
 				? "command exited 0"
 				: receipt.signal
@@ -133,7 +133,7 @@ export function verificationLine(receipt: VerificationReceipt): string {
 	const revision =
 		`mutation revision ${receipt.revisionAtLaunch}` +
 		(receipt.revisionAtCompletion !== undefined ? ` → ${receipt.revisionAtCompletion}` : "");
-	return `Verification: ${outcome}; ${revision}${differentProcess ? "; process changed; this check cannot validate the current state" : laterEdit || receipt.stale ? "; later agent edits invalidate this check for the current state" : ""}${receipt.output.tailIncomplete ? "; output tail incomplete; inspect full log" : ""}${receipt.output.complete ? "" : "; full output incomplete or unavailable"}`;
+	return `Verification: ${outcome}; ${revision}${differentProcess ? "; process changed; this check cannot validate the current state" : laterEdit || receipt.stale ? "; later agent edits invalidate this check for the current state" : ""}${receipt.output.tailIncomplete ? "; output tail incomplete; inspect full log" : ""}${receipt.output.complete || (receipt.state === "running" && !receipt.output.tailIncomplete) ? "" : "; full output incomplete or unavailable"}`;
 }
 
 /** Serialize an immutable snapshot for tool result contracts; later job completion creates a new receipt. */

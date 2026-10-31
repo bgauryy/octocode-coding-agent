@@ -1,4 +1,4 @@
-import type { ApplicationHistory, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationHistory, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { useRef, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "../model/format.ts";

@@ -1,5 +1,5 @@
 import { GLYPH, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { STATE_COLOR } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { formatCost, formatDuration, formatTokens, newPromptTokens, toolCallCount } from "../shared/format.ts";

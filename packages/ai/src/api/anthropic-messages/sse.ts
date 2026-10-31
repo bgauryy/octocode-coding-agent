@@ -1,7 +1,7 @@
 import type { BetaRawMessageStreamEvent as RawMessageStreamEvent } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { parseJsonWithRepair } from "../../utils/json-parse.ts";
 
-import { iterateSseMessages } from "../../utils/server-sent-events.ts";
+import { iterateSseMessages, throwOnSseErrorEvent } from "../../utils/server-sent-events.ts";
 
 const ANTHROPIC_MESSAGE_EVENTS: ReadonlySet<string> = new Set([
 	"message_start",
@@ -24,9 +24,7 @@ export async function* iterateAnthropicEvents(
 	let sawMessageEnd = false;
 
 	for await (const sse of iterateSseMessages(response.body, signal)) {
-		if (sse.event === "error") {
-			throw new Error(sse.data);
-		}
+		throwOnSseErrorEvent(sse);
 
 		if (!ANTHROPIC_MESSAGE_EVENTS.has(sse.event ?? "")) {
 			continue;

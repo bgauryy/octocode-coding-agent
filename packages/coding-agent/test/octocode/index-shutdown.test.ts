@@ -34,7 +34,7 @@ describe("the composed extension on session_shutdown", () => {
 		async (reason) => {
 			const fake = fakeHost();
 			Object.assign(fake.api, { getSessionName: () => undefined });
-			octocode(fake.api);
+			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const before = sharedAgentDb();
 			expect(usable(before)).toBe(true);

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { tildePath } from "../shared/home.ts";
 import { stringOrEmpty } from "../shared/util.ts";
 import { type ChildFiles, childFiles } from "../shared/session-children.ts";

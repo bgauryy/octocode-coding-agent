@@ -1,4 +1,4 @@
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { FINISHED_MS, type Finished } from "./panel-compact.ts";
 import type { PanelEntry } from "./panel-state.ts";
 

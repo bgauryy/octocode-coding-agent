@@ -1,6 +1,7 @@
 import type { InlineExtension } from "../extensions/types.ts";
 import { type BuiltinExtension, isBuiltinExtension } from "./extension-sets.ts";
 import llamaExtension from "../../octocode/llama/index.ts";
+import { withCoreToolReason } from "../../octocode/permission/native-tools.ts";
 import { defaultMcpExtension } from "../../../../mcp/src/default.ts";
 
 const builtInExtensions: BuiltinExtension[] = [
@@ -9,7 +10,8 @@ const builtInExtensions: BuiltinExtension[] = [
 	// instead of running alongside the built-in one.
 	{
 		name: "mcp",
-		factory: defaultMcpExtension,
+		// Its `mcp` tool is a core tool: it takes the native `reason` like every native tool.
+		factory: (api) => defaultMcpExtension(withCoreToolReason(api)),
 		replaceable: true,
 		builtin: true,
 	},

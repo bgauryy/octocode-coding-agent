@@ -37,7 +37,7 @@ import type { RenderContext } from "../shared/render/types.ts";
 import { ReportView } from "../shared/render/report.ts";
 import { displayReport } from "./report-display.ts";
 import { timingOf } from "../shared/render/rows.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 
 /** The model a run is on without its provider (`claude-haiku-5-5:low`), marked as the parent's when the profile's preference was unavailable. */

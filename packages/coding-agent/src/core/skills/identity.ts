@@ -1,5 +1,5 @@
 import { basename, dirname, resolve } from "path";
-import { canonicalizePath } from "../../utils/paths.ts";
+import { canonicalizePath } from "../../../../common/src/paths.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { isSyntheticPath, type SourceInfo } from "../source-info.ts";
 

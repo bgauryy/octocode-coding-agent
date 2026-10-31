@@ -33,7 +33,7 @@ JSON mode runs the same prompts and writes JSON Lines to stdout: first the sessi
 The groups below name the flags; `octocode --help` has the exact syntax.
 
 - **Model**: `--provider`, `--model` (accepts `provider/id` and a `:thinking` suffix), `--models` for the cycling list, `--thinking`, `--list-models`.
-- **Sessions**: `--continue`, `--resume`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`.
+- **Sessions**: `--continue`, `--resume`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
 - **Tools**: `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools`, `--no-mcp`. See [native features](native-features.md#tool-selection-and-migration).
 - **Resources**: `--extension`, `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`.
 - **Trust and network**: `--approve`, `--no-approve`, `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).

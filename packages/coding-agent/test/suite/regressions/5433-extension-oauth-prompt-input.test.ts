@@ -5,7 +5,7 @@ import { LoginDialogComponent } from "../../../src/modes/interactive/components/
 import { initTheme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 
-vi.mock("../../../src/utils/open-browser.ts", () => ({
+vi.mock("../../../../common/src/open-browser.ts", () => ({
 	openBrowser: vi.fn(),
 }));
 

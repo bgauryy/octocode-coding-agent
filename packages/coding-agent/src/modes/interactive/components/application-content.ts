@@ -5,7 +5,7 @@ import {
 	type ApplicationAssetPayload,
 	type ApplicationContentBlock,
 	type ApplicationMessage,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { Container, Image, Text, getCapabilities } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";

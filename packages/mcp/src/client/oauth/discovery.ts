@@ -28,8 +28,19 @@ import type {
 export { resourceUrlFromServerUrl };
 export const buildAuthorizationServerDiscoveryUrls = buildDiscoveryUrls;
 
+/** The SDK's field pattern returns the two quote characters of an empty quoted value (`scope=""`); that is no value. */
+const emptyQuoted = (value: string | undefined) => (value === '""' ? undefined : value);
+
 export function parseWwwAuthenticate(header: string | null): OAuthChallenge {
-	return extractWWWAuthenticateParams(new Response(null, { headers: header ? { "www-authenticate": header } : {} }));
+	const challenge = extractWWWAuthenticateParams(
+		new Response(null, { headers: header ? { "www-authenticate": header } : {} }),
+	);
+	return {
+		...challenge,
+		scope: emptyQuoted(challenge.scope),
+		error: emptyQuoted(challenge.error),
+		errorDescription: emptyQuoted(challenge.errorDescription),
+	};
 }
 
 export function discoverProtectedResourceMetadata(

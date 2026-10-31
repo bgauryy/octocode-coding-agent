@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { agents, backlog, commands, leases, meta, sessions } from "../../src/octocode/agentdb/api.ts";
 import { type AgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { tmp } from "./helpers.ts";
@@ -39,12 +39,29 @@ describe("meta", () => {
 
 describe("agents", () => {
 	it("keeps a taken id and refreshes a row only for the process it names", () => {
-		expect(agents.insert(agent.db, "w", member("a"))).toBe(true);
-		expect(agents.insert(agent.db, "w", member("a", { pid: 200 }))).toBe(false);
-		expect(agents.refresh(agent.db, member("a", { status: "working" }))).toBe(true);
-		expect(agents.refresh(agent.db, member("a", { pid: 200 }))).toBe(false);
-		expect(agents.refresh(agent.db, member("a", { started: "t1" }))).toBe(false);
+		expect(agents.insert(agent.db, "w", "/w", member("a"))).toBe(true);
+		expect(agents.insert(agent.db, "w", "/w", member("a", { pid: 200 }))).toBe(false);
+		expect(agents.refresh(agent.db, member("a", { status: "working" }), "/w")).toBe(true);
+		expect(agents.refresh(agent.db, member("a", { pid: 200 }), "/w")).toBe(false);
+		expect(agents.refresh(agent.db, member("a", { started: "t1" }), "/w")).toBe(false);
 		expect(agents.processOf(agent.db, "a")).toEqual({ pid: 100, started: "t0" });
+	});
+
+	it("records the checkout a member works in and lists the leases of every checkout of a team", () => {
+		expect(agents.insert(agent.db, "team", "/w1", member("x"))).toBe(true);
+		expect(agents.insert(agent.db, "team", "/w2", member("y"))).toBe(true);
+		expect(agents.insert(agent.db, "other", "/o", member("z"))).toBe(true);
+		agents.refresh(agent.db, member("y"), "/w2-moved");
+		expect(agents.inTeam(agent.db, "team").map((row) => [row.id, row.checkout])).toEqual([
+			["x", "/w1"],
+			["y", "/w2-moved"],
+		]);
+		const held = { path: "src/a.ts", pathKey: "src/a.ts", kind: "file", reason: "r" };
+		leases.insert(agent.db, "/w1", "x", held, 0, 100);
+		leases.insert(agent.db, "/w2", "y", held, 0, 100);
+		leases.insert(agent.db, "/o", "z", held, 0, 100);
+		expect(leases.liveInTeam(agent.db, "team", 10).map((row) => row.owner)).toEqual(["x", "y"]);
+		expect(leases.conflicting(agent.db, "/w1", "x", 10, "src/a.ts", [], "file")).toBeUndefined();
 	});
 });
 

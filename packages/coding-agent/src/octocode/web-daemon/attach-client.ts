@@ -10,7 +10,7 @@ import {
 	AttachResponseSchema,
 	type AttachEvent,
 	type AttachRecord,
-} from "@octocodeai/octocode-contacts/daemon";
+} from "@octocodeai/octocode-contracts/daemon";
 import type {
 	ApplicationCommand,
 	ApplicationConnection,
@@ -19,8 +19,8 @@ import type {
 	ApplicationHistory,
 	ApplicationPort,
 	ApplicationReceipt,
-} from "@octocodeai/octocode-contacts";
-import type { WorkspaceCommand, WorkspaceReceipt, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+} from "@octocodeai/octocode-contracts";
+import type { WorkspaceCommand, WorkspaceReceipt, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { LineReader } from "./lines.ts";
 
 const CONNECT_TIMEOUT_MS = 3000;

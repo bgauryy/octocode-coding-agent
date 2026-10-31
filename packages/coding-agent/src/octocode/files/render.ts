@@ -11,7 +11,7 @@ import { clip, expandKey, isInformativeReason, plural } from "../shared/render/t
 import type { RenderContext } from "../shared/render/types.ts";
 import { timingOf } from "../shared/render/rows.ts";
 import { stateMark } from "../../theme/status.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { VerificationReceipt } from "./bash-jobs/types.ts";
 
 /**
@@ -312,14 +312,14 @@ export function renderFileCall(args: FileArgs, theme: Theme, context: RenderCont
 			`${query?.type ?? "…"} ${query?.path ?? ""}${query?.movePath ? ` → ${query.movePath}` : ""}${querySize(query)}`,
 			200,
 		);
-	const why = (query: (typeof queries)[number] | undefined, indent = "") =>
-		context.expanded && isInformativeReason(query?.reason)
+	const why = (query: (typeof queries)[number] | undefined, indent = "", collapsed = false) =>
+		(collapsed || context.expanded) && isInformativeReason(query?.reason)
 			? [theme.fg("toolReason", `${indent}↳ ${clip(query.reason, 200)}`)]
 			: [];
-	// One change: File(edit src/a.ts · 2 edits), with the call's own reason line under it unless it has none. Several: File(3 changes) with a sub-line each.
+	// One change: File(edit src/a.ts · 2 edits) with the call's reason row under it, or the change's reason (collapsed too) when the call's says nothing. Several: File(3 changes) with a sub-line each.
 	if (queries.length <= 1)
 		return toolHeader(theme, context, "File", queries.length === 1 ? describe(queries[0]) : "", {
-			lines: isInformativeReason(args.reason) ? [] : why(queries[0]),
+			lines: isInformativeReason(args.reason) ? [] : why(queries[0], "", true),
 		});
 	const lines = queries.flatMap((query) => [
 		`${theme.fg("accent", clip(query?.type ?? "…", 20))} ${theme.fg("mdCode", clip(query?.path ?? "", 200))}${theme.fg("dim", querySize(query))}`,

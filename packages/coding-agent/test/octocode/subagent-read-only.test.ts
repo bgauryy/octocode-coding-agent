@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
+import { READ_ONLY_ENV } from "../../../common/src/env.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";

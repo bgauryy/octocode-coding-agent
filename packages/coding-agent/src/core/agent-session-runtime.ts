@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { resolvePath } from "../utils/paths.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
 import type { AgentSession } from "./agent-session.ts";
 import type { AgentSessionRuntimeDiagnostic, AgentSessionServices } from "./agent-session-services.ts";
 import {
@@ -20,7 +20,7 @@ import type {
 	SessionStartEvent,
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
-import { assertSessionCwdExists } from "./session-cwd.ts";
+import { assertSessionCwdExists, resolveSessionCwd } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
 
 export {
@@ -213,9 +213,12 @@ export class AgentSessionRuntime {
 	async newSession(options?: {
 		previousName?: string;
 		parentSession?: string;
+		cwd?: string;
+		projectTrustContextFactory?: (cwd: string) => ProjectTrustContext;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 		withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
 	}): Promise<{ cancelled: boolean }> {
+		const cwd = resolveSessionCwd(this.cwd, options?.cwd);
 		const previousName = options?.previousName?.replace(/[\r\n]+/g, " ").trim();
 		if (options?.previousName !== undefined && (!previousName || previousName.length > 200))
 			throw new SessionNameError();
@@ -224,18 +227,20 @@ export class AgentSessionRuntime {
 		if (beforeResult.cancelled) {
 			return beforeResult;
 		}
-
 		const previousSessionFile = this.session.sessionFile;
-		const sessionDir = this.session.sessionManager.getSessionDir();
-		const sessionManager = this.session.sessionManager.isPersisted()
-			? SessionManager.create(this.cwd, sessionDir)
-			: SessionManager.inMemory(this.cwd);
+		const sessionDir = previousManager.getSessionDir();
+		// Another folder's session lives with that folder's sessions, unless a custom session directory is set.
+		const home = cwd !== this.cwd && previousManager.usesDefaultSessionDir() ? undefined : sessionDir;
+		const sessionManager = previousManager.isPersisted()
+			? SessionManager.create(cwd, home)
+			: SessionManager.inMemory(cwd);
 		if (options?.parentSession) {
 			sessionManager.newSession({ parentSession: options.parentSession });
 		}
 
 		await this.teardownCurrent("new", sessionManager.getSessionFile());
-		await this.replaceSession(sessionManager, this.cwd, "new", previousSessionFile);
+		const trust = options?.projectTrustContextFactory?.(cwd);
+		await this.replaceSession(sessionManager, cwd, "new", previousSessionFile, trust);
 		if (options?.setup) {
 			await options.setup(this.session.sessionManager);
 			this.session.refreshContext();

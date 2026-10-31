@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { sameSecret } from "../shared/env.ts";
+import { sameSecret } from "../../../../common/src/env.ts";
 import type { Message } from "./model.ts";
 
 /**

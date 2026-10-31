@@ -29,7 +29,7 @@ import type { CachePreferenceLayer, CachePreferences } from "@octocodeai/octocod
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { billedBySubscription } from "./subscription.ts";
 
 export type { ProviderConfigInput } from "./provider-composer.ts";

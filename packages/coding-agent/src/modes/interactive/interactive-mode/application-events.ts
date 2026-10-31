@@ -1,4 +1,4 @@
-import type { ApplicationContentBlock, ApplicationEvent, ApplicationMessage } from "@octocodeai/octocode-contacts";
+import type { ApplicationContentBlock, ApplicationEvent, ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { ApplicationService } from "../../../core/application/index.ts";
 import { Spacer, Text } from "@octocodeai/octocode-tui";

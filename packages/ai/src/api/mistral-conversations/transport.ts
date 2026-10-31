@@ -6,7 +6,7 @@ import { retryProviderRequest } from "../../utils/provider-retry.ts";
 import { combineAbortSignals } from "../../utils/abort-signals.ts";
 import { formatProviderError, normalizeProviderError } from "../../utils/error-body.ts";
 import { headersToRecord } from "../../utils/headers.ts";
-import { iterateSseMessages } from "../../utils/server-sent-events.ts";
+import { iterateSseMessages, throwOnSseErrorEvent } from "../../utils/server-sent-events.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import { shouldUsePromptCaching } from "./request.ts";
 import type {
@@ -203,10 +203,10 @@ async function* readMistralEvents(
 	signal: AbortSignal | undefined,
 ): AsyncGenerator<MistralCompletionEvent> {
 	for await (const event of iterateSseMessages(body, signal)) {
+		throwOnSseErrorEvent(event);
 		const data = event.data.trim();
 		if (!data) continue;
 		if (data === "[DONE]") return;
-		if (event.event === "error") throw new Error(data);
 		const parsed: unknown = JSON.parse(data);
 		if (!isMistralRecord(parsed) || !Array.isArray(parsed.choices)) throw new Error("Invalid Mistral streaming event");
 		yield { data: parsed as MistralCompletionEvent["data"] };

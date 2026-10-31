@@ -1,4 +1,4 @@
-import { StringEnum } from "@octocodeai/octocode-contacts/schema";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
@@ -228,8 +228,8 @@ export function registerModels(
 	registerTool: ExtensionAPI["registerTool"],
 ): void {
 	commands.add("modelsettings", {
-		description:
-			"modelsettings [check] — the models you can use, their price and abilities, and which one each subagent purpose runs on; check tests each provider's credential first",
+		description: "Models, prices and subagent routing",
+		argumentHint: "[check]",
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			if (args.trim() === "check") {
 				const available = ctx.modelRegistry.getAvailable();

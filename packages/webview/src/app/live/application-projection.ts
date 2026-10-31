@@ -3,8 +3,8 @@ import type {
 	ApplicationMessage,
 	ApplicationSnapshot,
 	ApplicationTool,
-} from "@octocodeai/octocode-contacts";
-import type { WorkspaceEvent } from "@octocodeai/octocode-contacts/workspace";
+} from "@octocodeai/octocode-contracts";
+import type { WorkspaceEvent } from "@octocodeai/octocode-contracts/workspace";
 
 /** View metadata retains the shared payload; renderers never reconstruct content from a text preview. */
 export type FeedEvent = WorkspaceEvent & {

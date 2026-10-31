@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { act, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -123,6 +123,70 @@ it("lets the user answer an answerable dialog from the page, and says so instead
 	await waitFor(() =>
 		expect(posted().at(-1)).toMatchObject({ action: "answer", dialogId: "d2", text: "feature/remote" }),
 	);
+});
+
+it("shows the broker's refusal of an answer the host first accepted, and takes a completed answer quietly", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	const awaiting = {
+		kind: "approval" as const,
+		title: "Run rm -rf build?",
+		id: "d1",
+		options: ["Allow once", "Deny"],
+		allowsText: false,
+	};
+	await view.session({ ...running, capabilities: ["prompt", "steer", "followUp", "abort", "answer"], awaiting });
+	await userEvent.click(screen.getByRole("button", { name: "Allow once" }));
+	await waitFor(() => expect(posted().at(-1)).toMatchObject({ action: "answer", choice: "Allow once" }));
+	const commandId = posted().at(-1).id as string;
+	// The first receipt said "accepted"; the answer is still in flight, so its buttons stay disabled.
+	expect(screen.getByRole("button", { name: "Deny" })).toBeDisabled();
+	const receive = (sequence: number, status: string, message?: string) =>
+		act(() =>
+			FakeSocket.instances[0].receive("application", {
+				protocolVersion: 1,
+				cursor: { sessionId: "s", epoch: "epoch-s", sequence },
+				at: 0,
+				type: "event",
+				event: { type: "command.receipt", receipt: { id: commandId, status, ...(message ? { message } : {}) } },
+			}),
+		);
+	receive(1, "failed", "No such dialog is open; it may have been answered already.");
+	const refusal = "No such dialog is open; it may have been answered already.";
+	expect(await screen.findAllByText(refusal)).not.toHaveLength(0);
+	await waitFor(() => expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled());
+	await userEvent.click(screen.getByRole("button", { name: "Deny" }));
+	await waitFor(() => expect(posted().at(-1)).toMatchObject({ action: "answer", choice: "Deny" }));
+	expect(document.querySelector(".dialog-answer-status")).toBeNull();
+	const secondId = posted().at(-1).id as string;
+	act(() =>
+		FakeSocket.instances[0].receive("application", {
+			protocolVersion: 1,
+			cursor: { sessionId: "s", epoch: "epoch-s", sequence: 2 },
+			at: 0,
+			type: "event",
+			event: { type: "command.receipt", receipt: { id: secondId, status: "completed" } },
+		}),
+	);
+	await waitFor(() => expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled());
+	expect(document.querySelector(".dialog-answer-status")).toBeNull();
+});
+
+it("offers an answer while no run is active, for a dialog a background subagent holds open", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	await view.session({
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: {
+			kind: "approval",
+			title: "Subagent asks",
+			id: "d9",
+			options: ["Allow once", "Deny"],
+			allowsText: false,
+		},
+	});
+	expect(screen.getByText("Waiting for you: Subagent asks")).toBeInTheDocument();
+	expect(screen.getByRole("button", { name: "Allow once" })).toBeEnabled();
 });
 
 it("keeps keyboard focus in the message box while a message is sent", async () => {

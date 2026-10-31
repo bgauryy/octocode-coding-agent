@@ -3,7 +3,7 @@ import { addReply, emptyTotals, type UsageTotals } from "../../shared/util.ts";
 import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
 import { LINE_MAX } from "../identity.ts";
 import type { Mail } from "../mail.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TeamStore } from "../store.ts";
 
 /** Refresh the agent's row at least this often so peers can tell it is alive (and its leases stay valid). */

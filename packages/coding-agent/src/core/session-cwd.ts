@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { resolvePath } from "../../../common/src/paths.ts";
 
 export interface SessionCwdIssue {
 	sessionFile?: string;
@@ -49,6 +50,14 @@ export class MissingSessionCwdError extends Error {
 		this.name = "MissingSessionCwdError";
 		this.issue = issue;
 	}
+}
+
+/** The folder a new session runs in: `requested` (an existing directory, resolved) or else `current`. */
+export function resolveSessionCwd(current: string, requested: string | undefined): string {
+	if (requested === undefined) return current;
+	const cwd = resolvePath(requested);
+	if (!existsSync(cwd) || !statSync(cwd).isDirectory()) throw new Error(`Working directory is not a folder: ${cwd}`);
+	return cwd;
 }
 
 export function assertSessionCwdExists(sessionManager: SessionCwdSource, fallbackCwd: string): void {

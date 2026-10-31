@@ -2,7 +2,7 @@ import { constants, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { basename, join, parse, resolve } from "node:path";
 import { assertSessionCwdExists, MissingSessionCwdError } from "../session-cwd.ts";
 import { SessionManager } from "../session-manager.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** The file to import is not a usable session; nothing was copied and the current session is unchanged. */
 /** A session name the user typed is empty or too long: a usage problem, not a runtime failure. */

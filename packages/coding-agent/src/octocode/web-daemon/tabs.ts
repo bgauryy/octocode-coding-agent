@@ -5,14 +5,14 @@ import {
 	APPLICATION_PROTOCOL_VERSION,
 	type ApplicationConnection,
 	type ApplicationCursor,
-} from "@octocodeai/octocode-contacts";
-import type { WorkspaceServerEvent } from "@octocodeai/octocode-contacts/protocol";
+} from "@octocodeai/octocode-contracts";
+import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
 import { dbStamp } from "../agentdb/db.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
 import type { AttachClient } from "./attach-client.ts";
-import { tokenAccess } from "./http-util.ts";
+import { tokenAccess, type DaemonTokens, type TokenAccess } from "./http-util.ts";
 import type { RepoCatalog, RepoInfo } from "./repos.ts";
 
 /** Authenticated tabs. Sockets still waiting for their hello do not count against it. */
@@ -30,16 +30,12 @@ export interface TabScope {
 	session?: { id: string; client: AttachClient };
 }
 
-/** The daemon's two capabilities: `control` is the launch token; `view` reads everything and sends nothing. */
-export interface TabTokens {
-	control: string;
-	view: string;
-}
-
 interface Tab {
 	socket: WebSocket;
 	scope: TabScope;
 	access: "control" | "view";
+	/** The token that opened this tab, so rotating it can end the tab. */
+	credential?: TokenAccess;
 	connection?: ApplicationConnection;
 }
 
@@ -63,7 +59,7 @@ export class TabHub {
 	private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
 	private readonly tabs = new Set<Tab>();
 	private readonly pending = new Set<WebSocket>();
-	private readonly tokens: TabTokens;
+	private readonly tokens: DaemonTokens;
 	private readonly origin: () => string;
 	private readonly catalog: RepoCatalog;
 	private readonly env: NodeJS.ProcessEnv;
@@ -75,7 +71,7 @@ export class TabHub {
 	private checking = false;
 
 	constructor(options: {
-		tokens: TabTokens;
+		tokens: DaemonTokens;
 		origin: () => string;
 		catalog: RepoCatalog;
 		env: NodeJS.ProcessEnv;
@@ -93,6 +89,12 @@ export class TabHub {
 
 	get count(): number {
 		return this.tabs.size;
+	}
+
+	/** Ends every tab that was opened with one of these tokens, after the daemon replaced them. */
+	revoke(credentials: TokenAccess[]): void {
+		for (const tab of this.tabs)
+			if (tab.credential && credentials.includes(tab.credential)) tab.socket.close(1008, "This link was stopped");
 	}
 
 	/** Sessions whose last workspace snapshot is remembered; an entry lives only while a tab of that session is open. */
@@ -167,7 +169,8 @@ export class TabHub {
 			}
 			const access = tokenAccess(supplied, this.tokens);
 			if (!access) return socket.close(1008, "Reopen the workspace");
-			tab.access = access;
+			tab.access = access === "view" ? "view" : "control";
+			tab.credential = access;
 			if (this.tabs.size >= MAX_TABS) return socket.close(1013, "Too many open tabs");
 			clearTimeout(timeout);
 			authenticated = true;

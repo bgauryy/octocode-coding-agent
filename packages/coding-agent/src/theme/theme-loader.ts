@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getTerminalColorMode, type TerminalColorMode } from "@octocodeai/octocode-tui";
 import { getCustomThemesDir, getThemesDir } from "../config.ts";
-import { stripBom } from "../utils/text.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import { generateSystemThemeColors, SYSTEM_THEME_NAME } from "./system-theme.ts";
 import { resolveThemeColors, splitThemeColors, Theme, withThemeTokenFallbacks } from "./theme-class.ts";
 import type { ValidatedThemeJson } from "./theme-schema.ts";

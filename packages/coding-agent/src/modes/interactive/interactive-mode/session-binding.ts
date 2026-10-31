@@ -19,6 +19,7 @@ type SessionBindingHost = Pick<
 	| "bindCurrentSessionExtensions"
 	| "chatContainer"
 	| "clearStatusIndicator"
+	| "createProjectTrustContext"
 	| "compactionQueuedMessages"
 	| "createExtensionUIContext"
 	| "defaultEditor"
@@ -79,7 +80,10 @@ export async function bindCurrentSessionExtensions(host: SessionBindingHost): Pr
 			newSession: async (options) => {
 				host.clearStatusIndicator();
 				try {
-					return await host.runtimeHost.newSession(options);
+					return await host.runtimeHost.newSession({
+						...options,
+						projectTrustContextFactory: (cwd) => host.createProjectTrustContext(cwd),
+					});
 				} catch (error: unknown) {
 					return host.handleFatalRuntimeError("Failed to create session", error);
 				}

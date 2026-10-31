@@ -1,4 +1,4 @@
-import { EntityFields } from "@octocodeai/octocode-contacts/backlogs";
+import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { reportContractSentences } from "../../src/octocode/instructions/report.ts";
@@ -125,7 +125,8 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // overlap contract (agent lifecycle signals RFC). All three were requested features; their descriptions were shortened.
 // 22_000 (measured 21_808): +~650 user-requested editing and protocol policy: repository conventions, clean-code and
 // parallel/script rules, one worked example, a task-contract brief, and BLUF, 5W2H and SBAR defined once in
-// Communication (role files now name them instead of restating their slots).
+// Communication at the time (role files name them instead of restating their slots; the policy now defines only the
+// result, finding and SBAR formats, so BLUF and 5W2H no longer exist there).
 // 29_000 (measured 27_502 without entity fields): +5_333 for user-requested default browser/debug activation.
 // Their schemas now cost 3_409 and 1_924 characters respectively in every main-session request.
 // 31_000 (measured 30_600 without entity fields, with the real Octocode tool list): +1_631 over the 29_000 baseline.
@@ -163,7 +164,23 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 43_400 (2026-10-30, measured 43_370 without entity fields): the user-requested bash output budget replaces the
 // `| tail -n 50` rule with a longer one (each result starts with exit, time and size; trimmed output is saved; the
 // `maxOutputTokens` parameter), +248 net over the 43_122 measured above; the bash tool gained no other text.
-const MAIN_CEILING = 43_400;
+// 42_800 (2026-10-30, measured 42_688 without entity fields): B256 trims, lossless graph schema inlining (graphQuery
+// -466, graphBuild -346), shorter debug and browser text, and a per-change `file` reason that defaults to the call's.
+// 43_300 (2026-10-30, measured 43_133 without entity fields; user-requested): +445 for the root-cause rule (trace the
+// symptom to its origin, fix causes not symptoms) and the system-design rule (fix in the owning module, no hand-picked
+// special cases or one-call-site patches); still below the 43_400 before the B256 trims.
+// 43_500 (2026-10-30, measured 43_301 without entity fields; user-requested): +168 for the testing rule that prefers
+// behavioral and end-to-end tests of public contracts and keeps unit tests for test-first reproduction.
+// 43_800 (2026-10-30, measured 43_577 without entity fields; user-requested): +276 for the evidence rule (cite path:line,
+// command, URI or URL; connect evidence; never invent names, paths, APIs or results), merged into the existing
+// assumption-label line instead of repeated in each tool description.
+// 43_800 kept (2026-10-31, measured 43_698; B275): +121 for the conflict fixes (Safety now defines cleanup versus deletion
+// of existing content once; the cross-tree rule names the other tree's owner; the finding line admits a role's severity),
+// partly offset by dropping the testing rule from read-only roles (not in this main measurement).
+// 43_500 (2026-10-31, measured 43_352 without entity fields; Task J, B295): lossless text cuts (duplicated tool
+// mechanics, restated rationale, merged reviewer lines), -580 from 43_932. Lowered, not raised: the earlier
+// 43_800 ceiling was already exceeded by 132 when the cuts started.
+const MAIN_CEILING = 43_500;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -182,7 +199,17 @@ const MAIN_CEILING = 43_400;
 // 32_600 (2026-10-30, measured 32_519 without entity fields): the same declaration cuts (debug -357, agent -135,
 // web -135, memory and skill text), with no subagent `ollama` tool to offset them.
 // 32_800 (2026-10-30, measured 32_781 without entity fields): the same bash output budget text (+248).
-const SPECIALIST_CEILING = 32_800;
+// 32_200 (2026-10-30, measured 32_055 without entity fields): the same B256 trims.
+// 32_600 (2026-10-30, measured 32_500 without entity fields; user-requested): the same root-cause and system-design
+// rules (+445).
+// 32_800 (2026-10-30, measured 32_668 without entity fields; user-requested): the same testing rule (+168).
+// 33_100 (2026-10-30, measured 32_944 without entity fields; user-requested): the same evidence rule (+276).
+// 33_100 kept (2026-10-31, measured 33_080; B275): +136 for the same conflict fixes (Safety boundary, cleanup bounded by the
+// assigned area, the status-word-first report line), net of -66 from the child backlog guideline no longer repeating the
+// completion fields. Read-only roles drop the 390-character testing rule (the reviewer keeps a shorter review form in its role: 18_794 -> 18_508 measured).
+// 32_900 (2026-10-31, measured 32_778 without entity fields; Task J, B295): the same cuts, -478 from 33_256 (33_100 was
+// already exceeded by 156 when the cuts started).
+const SPECIALIST_CEILING = 32_900;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -229,7 +256,10 @@ describe("prompt size", () => {
 		);
 		expect(scoped.perTool.graphBuild).toBeUndefined();
 		expect(scoped.perTool.graphQuery).toBeUndefined();
-		expect(scoped.total).toBeLessThan(baseline.total - 12_000);
+		// Everything the graph declarations cost is avoided; their size changes with the CLI's contract, so it is not a constant.
+		expect(scoped.total).toBeLessThanOrEqual(
+			baseline.total - baseline.perTool.graphBuild - baseline.perTool.graphQuery,
+		);
 		for (const tool of ["file", "bash", "agent", "archive", "skill"]) expect(scoped.perTool[tool]).toBeGreaterThan(0);
 	});
 

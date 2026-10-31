@@ -1,5 +1,5 @@
 import type { McpServerPreset } from "../../preset.ts";
-import { envFlag, MCP_ENV } from "../../../../coding-agent/src/octocode/shared/env.ts";
+import { envFlag, MCP_ENV } from "../../../../common/src/env.ts";
 import { projectTrustNow } from "../../../../coding-agent/src/octocode/shared/trust.ts";
 import { octocodeCompactOverrides } from "./compact-overrides.ts";
 import { OCTOCODE_SERVER } from "./names.ts";

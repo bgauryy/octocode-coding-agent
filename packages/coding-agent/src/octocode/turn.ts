@@ -6,7 +6,7 @@ import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
-import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "./shared/env.ts";
+import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
 import { isOctocodeTool, OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { BROWSER_SERVER } from "../../../mcp/src/presets/browser/names.ts";
@@ -58,6 +58,7 @@ export function registerTurnSetup(
 				!options.isSubagent && selected.includes("agent") && !selected.includes("browser") && !browserMcp
 					? profiles.filter((profile) => profileSelectsTool(profile, "browser", [])).map(({ name }) => name)
 					: [],
+			canBrowse: selected.includes("browser") || browserMcp,
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
 			canWrite,

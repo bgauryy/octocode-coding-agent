@@ -4,7 +4,7 @@ import path from "node:path";
 import { ApiCallError, ApiClient } from "../api/client.ts";
 import { ERR, MESSAGE_KEY_MAX, PROTOCOL_VERSION } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ExternalBackend, type ExternalReply, PROMPT_TIMEOUT_MS, promptTimeoutValid } from "./protocol.ts";
 
 /** How long a status, initialize or abort call to the Octocode instance may take. */

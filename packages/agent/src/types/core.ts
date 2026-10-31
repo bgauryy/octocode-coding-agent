@@ -245,7 +245,10 @@ export type AgentEvent =
 	| { type: "turn_end"; message: AgentMessage; toolResults: ToolResultMessage[] }
 	// Message lifecycle - emitted for system, user, assistant, and toolResult messages
 	| { type: "message_start"; message: AgentMessage }
-	// Only emitted for assistant messages during streaming
+	// Only emitted for assistant messages during streaming. `message` is a live view: a shallow copy whose `content`
+	// array and blocks the provider keeps mutating, so a handler that runs after later deltas arrive sees them too.
+	// Read what you need while handling the event, or copy it, and take the delta from `assistantMessageEvent`;
+	// `message_end` carries the final message.
 	| { type: "message_update"; message: AgentMessage; assistantMessageEvent: AssistantMessageEvent }
 	| { type: "message_end"; message: AgentMessage }
 	// Tool execution lifecycle

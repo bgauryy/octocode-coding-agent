@@ -1,4 +1,4 @@
-import type { ApplicationEvent, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationEvent, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { cloneDisplay } from "../normalize.ts";
 import type { ApplicationStateStore } from "../state.ts";
 import type { AgentSession, AgentSessionEvent, AgentSessionEventListener } from "../../agent-session.ts";

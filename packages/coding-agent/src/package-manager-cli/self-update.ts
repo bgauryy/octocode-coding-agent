@@ -9,7 +9,7 @@ import {
 	type SelfUpdatePackageTarget,
 	VERSION,
 } from "../config.ts";
-import { spawnProcess } from "../utils/child-process.ts";
+import { spawnProcess } from "../../../common/src/child-process.ts";
 import { formatVersionCheckError, getLatestOctocodeRelease, isNewerPackageVersion } from "../utils/version-check.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,

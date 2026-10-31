@@ -1,5 +1,5 @@
 import { visibleControls } from "../../shared/sanitize.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say } from "../../shared/commands.ts";
 import type { Message } from "../model.ts";
 import { outside, resolveTarget } from "../routing.ts";

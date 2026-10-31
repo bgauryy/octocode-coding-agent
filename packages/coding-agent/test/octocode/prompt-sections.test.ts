@@ -79,9 +79,12 @@ describe("native prompt section updates", () => {
 			const options = normalizeBuildSystemPromptOptions({ cwd: "/workspace", selectedTools });
 			await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 			const prompt = buildSystemPrompt(options);
-			expect(prompt.match(/prefer observable behavior and public contracts/g)).toHaveLength(1);
-			expect(prompt).toContain("Mock external boundaries; keep internal flows real where feasible");
-			expect(prompt).toContain("Use focused unit tests when useful; preserve coverage");
+			expect(prompt.match(/prefer behavioral and end-to-end tests/g)).toHaveLength(1);
+			expect(prompt).toContain("assert observable outcomes and contracts, not implementation details");
+			expect(prompt).toContain("Use unit tests test-first (TDD) to reproduce a bug or pin a pure function");
+			expect(prompt).toContain(
+				"Mock only external boundaries; keep internal flows real where feasible; preserve coverage",
+			);
 			expect(prompt).toContain("Never weaken or delete tests");
 			// The agent tool's message guideline owns when to message; the policy does not restate it.
 			expect(prompt).not.toContain("promptly exchange");
@@ -97,10 +100,10 @@ describe("native prompt section updates", () => {
 		const root = octocodePrompt(input);
 		const writer = octocodePrompt({ ...input, canDelegate: false, canWrite: true });
 		const reader = octocodePrompt({ ...input, canDelegate: false, readOnlyRole: true });
-		for (const prompt of [root, writer]) {
+		for (const prompt of [root, writer])
 			expect(prompt).toContain("map the blast radius (callers, exports, config, tests and docs that depend on it)");
-			expect(prompt).toContain("propose wider cleanups instead of widening scope");
-		}
+		expect(root).toContain("propose wider cleanups.");
+		expect(writer).toContain("within your assigned area; report anything outside it instead of changing it");
 		expect(reader).not.toContain("blast radius");
 		// Mermaid kinds the terminal renderer draws; only the main session answers the user.
 		expect(root).toContain("add a small Mermaid block (`flowchart TD`, `sequenceDiagram` or `stateDiagram-v2`)");

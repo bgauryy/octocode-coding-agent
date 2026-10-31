@@ -3,7 +3,7 @@ import {
 	APPLICATION_PROTOCOL_VERSION,
 	type ApplicationConnection,
 	type ApplicationCursor,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { redactData } from "../shared/sanitize.ts";
 import { renderBacklogHtml } from "@octocodeai/octocode-webview";
 import {
@@ -11,8 +11,8 @@ import {
 	BacklogMutationSchema,
 	WORKSPACE_ROUTES,
 	type WorkspaceServerEvent,
-} from "@octocodeai/octocode-contacts/protocol";
-import { STATES } from "@octocodeai/octocode-contacts/snapshot";
+} from "@octocodeai/octocode-contracts/protocol";
+import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";

@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { EntityFields, type EntityInput } from "@octocodeai/octocode-contacts/backlogs";
+import { EntityFields, type EntityInput } from "@octocodeai/octocode-contracts/backlogs";
 import { parseRef } from "./item.ts";
 
 /** A link as the model may write it: `target` is a reference object or a shorthand string (`tool.ts` `linkInput`). */
@@ -57,7 +57,7 @@ export function entityFields(subagent: boolean) {
 		completion,
 		version: Type.Optional(
 			Type.Integer({
-				description: "Optional: the version get showed; a changed item refuses the edit. Omit, never guess.",
+				description: "The version get showed; a changed item refuses the edit. Omit, never guess.",
 			}),
 		),
 	};

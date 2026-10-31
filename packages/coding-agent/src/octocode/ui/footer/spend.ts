@@ -1,4 +1,4 @@
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { entryMessage, type Spend, spendOf } from "../../shared/util.ts";
 
 /**

@@ -15,7 +15,6 @@ import { createInMemoryTransportPair, type InMemoryTransport } from "../src/clie
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-storage.ts";
 import { validateMcpServerConfig } from "../src/servers.ts";
-import { truncateMiddle } from "../../coding-agent/src/core/tools/truncate.ts";
 import { getMcpToolExposure, loadMcpConfig, type McpServerEntry, updateMcpServerConfig } from "../src/config.ts";
 import { McpServerLog } from "../src/log.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
@@ -457,18 +456,6 @@ describe("MCP tools", () => {
 		// Text within the limit is not saved.
 		await convertMcpResult("docs", "small", { content: [{ type: "text", text: "ok" }] }, { saveOutput });
 		expect(saved).toHaveLength(1);
-	});
-
-	it("cuts multi-byte text only at character boundaries", () => {
-		const text = `${"é".repeat(20_000)}end`;
-		const result = truncateMiddle(text, 1001);
-		expect(result.truncated).toBe(true);
-		expect(result.content).not.toContain("\uFFFD");
-		expect(result.content.endsWith("end")).toBe(true);
-		const [head, tail] = result.content.split(/…\d+ chars truncated…/);
-		expect(Buffer.byteLength(head)).toBeLessThanOrEqual(500);
-		expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(501);
-		expect(Array.from(head).length + Array.from(tail).length + result.removedChars).toBe(Array.from(text).length);
 	});
 });
 

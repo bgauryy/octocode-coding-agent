@@ -1,6 +1,6 @@
 import { dbStamp } from "../agentdb/db.ts";
 import { onSecond } from "../shared/clock.ts";
-import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 
 /** A tick this long after the previous one means the machine slept (or this process stalled): peers could not heartbeat either. */
 const SUSPEND_GAP_MS = 15_000;

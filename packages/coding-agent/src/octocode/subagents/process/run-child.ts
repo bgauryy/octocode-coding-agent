@@ -5,7 +5,8 @@ import { getCliInvocation } from "../../../config.ts";
 import { writeRolePrompt } from "../../instructions/role.ts";
 import { formatDuration, shortPath } from "../../shared/format.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
-import { adoptTree, prepareTree, stopTree } from "../../shared/process.ts";
+import { stopTree } from "../../shared/process.ts";
+import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
 import { settleWithin } from "../../shared/util.ts";
 import {
@@ -42,6 +43,7 @@ import { leftBehind } from "./left-behind.ts";
 import { startGate } from "../rate-gate.ts";
 import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
+import { leadsProcessGroup } from "../../../utils/shell.ts";
 
 /** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
 const INTERRUPT_FOLLOW_UP_MS = 1_500;
@@ -96,7 +98,7 @@ export async function runChild(
 					resources.mcpServersFile,
 				),
 				stdio: ["pipe", "pipe", "pipe"],
-				detached: process.platform !== "win32",
+				detached: leadsProcessGroup(),
 			});
 			adoptTree(child.pid);
 			const state = newChildState();
@@ -234,7 +236,7 @@ export async function runChild(
 						onSettled?.();
 						return closeInput();
 					case "incoming":
-						return report.incoming(effect.role, effect.job);
+						return report.incoming(effect.role, effect.job, effect.quiet);
 					case "answer":
 						return report.answer(effect.text, effect.stopReason, effect.errorMessage);
 					case "request":

@@ -4,7 +4,7 @@ import { type AuthStatus, configuredRequestAuthStatus } from "../provider-compos
 import type { RuntimeCredentials } from "../runtime-credentials.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import type { ModelRuntimeSnapshot } from "./types.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The model runtime's availability snapshot: which models are usable, which providers have auth, and the latest

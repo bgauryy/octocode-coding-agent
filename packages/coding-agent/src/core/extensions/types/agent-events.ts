@@ -183,7 +183,8 @@ export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom";
 /**
  * Fired when Octocode starts waiting on a blocking user-facing extension UI prompt. `id` names the dialog for a
  * remote answer (`AgentSession.answerDialog`); `options` are a select's choices (a confirm's are Yes and No);
- * `allowsText` says an input dialog takes free text; `nested` marks a dialog opened over another still open one.
+ * `allowsText` says an input dialog takes free text; `approval` and `blocking` repeat the dialog options of those names;
+ * `nested` marks a dialog opened over another still open one.
  */
 export interface UIPromptStartEvent {
 	type: "ui_prompt_start";
@@ -193,6 +194,8 @@ export interface UIPromptStartEvent {
 	id?: string;
 	options?: string[];
 	allowsText?: boolean;
+	approval?: boolean;
+	blocking?: boolean;
 	nested?: boolean;
 }
 

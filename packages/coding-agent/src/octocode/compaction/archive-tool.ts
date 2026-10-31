@@ -15,7 +15,7 @@ import {
 import { canonicalPath } from "../shared/home/repo.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { contentText, textResult } from "../shared/util.ts";
 

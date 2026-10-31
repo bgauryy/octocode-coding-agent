@@ -117,7 +117,6 @@
 			"files": [
 				"packages/coding-agent/src/core/agent-session.ts",
 				"packages/coding-agent/src/core/export-html/template.js",
-				"packages/coding-agent/src/octocode/team/casefold-table.ts",
 				"packages/tui/src/terminal.ts",
 				"packages/tui/src/tui.ts",
 				"scripts/generate-coding-agent-install-lock.mjs",

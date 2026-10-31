@@ -4,7 +4,7 @@ import { Inbox } from "../../src/octocode/team/inbox.ts";
 import type { Message } from "../../src/octocode/team/model.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 const member = (id: string): Member => ({
 	id,

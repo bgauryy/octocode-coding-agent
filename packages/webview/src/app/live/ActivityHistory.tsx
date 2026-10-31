@@ -1,4 +1,4 @@
-import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { useRef, useState } from "react";
 import { errorMessage } from "../model/format.ts";
 import { Button } from "../ui/primitives.tsx";

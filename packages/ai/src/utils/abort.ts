@@ -1,8 +1,12 @@
-function abortReason(signal: AbortSignal): unknown {
-	if (signal.reason !== undefined) return signal.reason;
-	const error = new Error("The operation was aborted");
+/** The one error for a request or wait that its caller aborted; consumers match on `name === "AbortError"` or this message. */
+export function createAbortError(message = "Request was aborted"): Error {
+	const error = new Error(message);
 	error.name = "AbortError";
 	return error;
+}
+
+function abortReason(signal: AbortSignal): unknown {
+	return signal.reason !== undefined ? signal.reason : createAbortError();
 }
 
 /** Create an operation-local signal for public APIs whose signal is optional. */

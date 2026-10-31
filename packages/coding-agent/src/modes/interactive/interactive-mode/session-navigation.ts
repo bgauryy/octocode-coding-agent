@@ -16,7 +16,7 @@ import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts"
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../components/user-message-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Redraws the chat after a /tree navigation and puts the navigated entry's text in the editor when it is empty. */
 export function showTreeNavigationResult(

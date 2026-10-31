@@ -1,4 +1,4 @@
-import { type Keybinding, visibleWidth } from "@octocodeai/octocode-tui";
+import { type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
 import { shortcutText } from "../keys.ts";
 import { sanitizeTerminalText } from "../sanitize.ts";
 import { clipText, firstLine } from "../util.ts";
@@ -29,27 +29,32 @@ export function plural(count: number, one: string, many = `${one}s`): string {
 	return `${count} ${count === 1 ? one : many}`;
 }
 
+/** A multi-line message (an error that lists what was wrong) as one line, for a summary that `clip` would cut at its first line. */
+export function oneLine(text: string): string {
+	return text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.join(" ");
+}
+
 /** One sanitized line of at most `max` characters, ending in `…` when cut. */
 export function clip(text: string, max: number): string {
 	return clipText(firstLine(sanitizeTerminalText(text).replace(/\t/g, " ")).trim(), max);
 }
 
-const graphemes = new Intl.Segmenter();
+/** The SGR reset `truncateToWidth` wraps around its ellipsis; a sanitized line holds no other escape sequence. */
+const TRUNCATION_RESET = /\x1b\[0m/g;
 
-/** One sanitized line of at most `max` terminal columns (a wide character counts 2), ending in `…` when cut: `clip` for lines that must not wrap. */
+/**
+ * One sanitized line of at most `max` terminal columns (a wide character counts 2), ending in `…` when cut: `clip` for
+ * lines that must not wrap. The cut is the TUI's `truncateToWidth`, without its resets: a caller styles the line, and a
+ * reset in it would end that style before the ellipsis.
+ */
 export function clipColumns(text: string, max: number): string {
 	if (max <= 0) return "";
 	const line = clip(text, Number.MAX_SAFE_INTEGER);
-	if (visibleWidth(line) <= max) return line;
-	let kept = "";
-	let width = 0;
-	for (const { segment } of graphemes.segment(line)) {
-		const columns = visibleWidth(segment);
-		if (width + columns > max - 1) break;
-		kept += segment;
-		width += columns;
-	}
-	return `${kept}…`;
+	return truncateToWidth(line, max, "…").replace(TRUNCATION_RESET, "");
 }
 
 /** `text` as display rows: terminal controls stripped, tabs widened, blank rows at both ends dropped. */

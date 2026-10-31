@@ -14,8 +14,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
-import { getFileRevision, normalizePath } from "../utils/paths.ts";
-import { stripBom } from "../utils/text.ts";
+import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import {
 	type AuthStorageBackend,
 	type AuthStorageData,

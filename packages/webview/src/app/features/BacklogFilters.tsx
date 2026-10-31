@@ -1,6 +1,7 @@
+import { ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { useMemo, useRef } from "react";
 import type { ViewProps } from "../extension.ts";
-import { distinct, ITEM_TYPES, PRIORITY_OPTIONS } from "../model/backlog.ts";
+import { distinct, PRIORITY_OPTIONS } from "../model/backlog.ts";
 import { FilterSelect, SearchField, Select } from "../ui/fields.tsx";
 import { Button } from "../ui/primitives.tsx";
 import { compact, ResultCount, Toolbar } from "./shared.tsx";

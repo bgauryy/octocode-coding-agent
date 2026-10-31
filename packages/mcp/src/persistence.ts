@@ -1,7 +1,7 @@
 /** Saves `/mcp` configuration changes and applies exposure changes to the registered tools. */
 
 import { applyMcpServerPatch, type McpExposure, type McpServerConfigPatch } from "./config.ts";
-import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { registerTools } from "./tool-registry.ts";

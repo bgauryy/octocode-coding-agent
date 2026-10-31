@@ -2,7 +2,6 @@ import assert from "node:assert";
 import { describe, it, mock } from "node:test";
 import { setKittyProtocolActive } from "../src/keys/state.ts";
 import {
-	normalizeAppleTerminalInput,
 	normalizeNativeShiftEnterInput,
 	ProcessTerminal,
 	resolveEscapeTimeoutMs,
@@ -55,25 +54,6 @@ describe("normalizeNativeShiftEnterInput", () => {
 	it("leaves non-Return input unchanged", () => {
 		assert.equal(normalizeNativeShiftEnterInput("\x1b[13;2u", true, true), "\x1b[13;2u");
 		assert.equal(normalizeNativeShiftEnterInput("a", true, true), "a");
-	});
-});
-
-describe("normalizeAppleTerminalInput", () => {
-	it("rewrites Apple Terminal Return to CSI-u Shift+Enter when Shift is pressed", () => {
-		assert.equal(normalizeAppleTerminalInput("\r", true, true), "\x1b[13;2u");
-	});
-
-	it("leaves Apple Terminal Return unchanged when Shift is not pressed", () => {
-		assert.equal(normalizeAppleTerminalInput("\r", true, false), "\r");
-	});
-
-	it("leaves non-Apple Terminal Return unchanged when Shift is pressed", () => {
-		assert.equal(normalizeAppleTerminalInput("\r", false, true), "\r");
-	});
-
-	it("leaves non-Return input unchanged", () => {
-		assert.equal(normalizeAppleTerminalInput("\x1b[13;2u", true, true), "\x1b[13;2u");
-		assert.equal(normalizeAppleTerminalInput("a", true, true), "a");
 	});
 });
 

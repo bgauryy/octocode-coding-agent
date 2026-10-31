@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
 import { formatSkillsForPrompt } from "../../core/skills.ts";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import type { Run } from "./claim.ts";
 import { type AgentProfile, profileTools } from "./profiles.ts";

@@ -18,7 +18,7 @@ import { compact, COMPACT_USAGE } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
 import { list } from "./cli/list.ts";
 import { login } from "./cli/login.ts";
-import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { createConnection, HELP_HINT, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
 import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts";
 import { loadMcpConfig, type McpExposure, updateMcpServerConfig } from "./config.ts";

@@ -277,21 +277,35 @@ export async function dispatchToolCall(
 			},
 		});
 	let result: ToolCallEventResult | undefined;
+	// The last result wins as before, but every execute-time check stays: a later handler must not drop a gate's recheck.
+	const checks: NonNullable<ToolCallEventResult["revalidate"]>[] = [];
 
 	for (const { handlers } of snapshotEventHandlers(host.extensions, "tool_call")) {
 		for (const handler of handlers) {
-			const handlerResult = await handler(event, ctx);
+			const handlerResult = (await handler(event, ctx)) as ToolCallEventResult | undefined;
 
 			if (handlerResult) {
 				result = handlerResult;
 				if (result.block) {
 					return result;
 				}
+				if (handlerResult.revalidate) checks.push(handlerResult.revalidate);
 			}
 		}
 	}
 
-	return result;
+	if (!result || checks.length === 0) return result;
+	if (checks.length === 1) return { ...result, revalidate: checks[0] };
+	return {
+		...result,
+		revalidate: async (checkSignal) => {
+			for (const check of checks) {
+				const verdict = await check(checkSignal);
+				if (verdict?.block) return verdict;
+			}
+			return undefined;
+		},
+	};
 }
 
 export async function dispatchUserBash(

@@ -17,7 +17,7 @@ export const rpcProtocol = [
 		'- A `prompt` that starts with a built-in slash command (`/context`, `/btw`, `/diff`, `/compact`, `/settings` and the other built-in commands; RPC has dedicated commands for some, such as `compact`) fails with `error: "/<name> is available in the interactive terminal only."`; `get_commands` lists only extension commands, prompt templates and skills.',
 	].join("\n"),
 	"Session events stream as they occur, without a request: `agent_start`, `turn_start`, `message_start`, `message_update`, `message_end`, `tool_execution_start`, `tool_execution_update`, `tool_execution_end`, `turn_end`, `agent_end` and `agent_settled`, plus `queue_update`, `compaction_start`, `compaction_end`, `auto_retry_start`, `auto_retry_end` and other session records. Streaming `message_update` events carry only the delta and the cumulative `usage`; the finished message arrives in `message_end`. The types are `AgentSessionEvent` in `src/core/agent-session/types.ts` and `toJsonEvent` in `src/modes/json-event.ts`.",
-	"Extensions that need input emit `extension_ui_request` records (`select`, `confirm`, `input`, `editor`, `notify`, `setStatus`, `setWidget`, `setTitle`, `set_editor_text`). Answer `select`, `confirm`, `input` and `editor` with an `extension_ui_response` line carrying the request `id` and a `value`, `confirmed` or `cancelled: true`. Extension failures arrive as `extension_error`. A `setStatus` record carries `statusKey`, plain `statusText` (absent to clear) and, when the extension gave one, `statusTone` (`accent`, `muted`, `dim`, `success`, `warning` or `error`) for the client to colour in its own palette.",
+	"Extensions that need input emit `extension_ui_request` records (`select`, `confirm`, `input`, `editor`, `notify`, `setStatus`, `setWidget`, `setTitle`, `set_editor_text`). Answer `select`, `confirm`, `input` and `editor` with an `extension_ui_response` line carrying the request `id` and a `value`, `confirmed` or `cancelled: true`. A `select` or `confirm` request carries `approval: true` when the dialog decides whether to allow an action (every permission prompt); show it as an approval. A dialog can end without your response: another client answered it, its run was aborted, or its timeout passed. Octocode then emits an `extension_ui_dismiss` record carrying that request's `id`; close that dialog, because a response sent for it afterwards is ignored. The Octocode `RpcClient` passes the id to its `onExtensionUIDismiss` option. Extension failures arrive as `extension_error`. A `setStatus` record carries `statusKey`, plain `statusText` (absent to clear) and, when the extension gave one, `statusTone` (`accent`, `muted`, `dim`, `success`, `warning` or `error`) for the client to colour in its own palette.",
 	"The process exits when stdin closes, on `SIGTERM` or `SIGHUP` (`SIGTERM` only on Windows), or after an extension requests shutdown, once the current command or run settles. Pending extension requests are cancelled first.",
 ].join("\n\n");
 
@@ -46,7 +46,7 @@ export const rpcCommandDescriptions: Readonly<Record<string, string>> = {
 	compact: "Run compaction now; `customInstructions` is limited in length by the schema.",
 	set_auto_retry: "Enable or disable automatic retry of transient failures for this session.",
 	abort_retry: "Cancel a pending automatic retry wait.",
-	bash: "Run a shell command as the user would with `!`; `excludeFromContext` keeps its output out of the model context.",
+	bash: "Run a shell command as the user would with `!`; `excludeFromContext` keeps its output out of the model context. The response data carries what the model gets: `header` (`[exit 0 · 4.2s · 312 lines · 18 KB]`, with what was trimmed and the full-output path when the output exceeded the `bashOutputMaxBytes` budget), the trimmed `output`, `totalLines`, `totalBytes` and `wallTimeSeconds`.",
 	abort_bash: "Stop a command started with `bash`.",
 	get_session_stats: "Token, cost and message statistics for the session.",
 	persist_session: "Write the session file now; fails when persistence is disabled.",
@@ -60,5 +60,6 @@ export const rpcCommandDescriptions: Readonly<Record<string, string>> = {
 	get_last_assistant_text: "Text of the last assistant message, or `null`.",
 	set_session_name: "Set the display name; empty names are refused.",
 	get_messages: "The message history.",
-	get_commands: "Extension commands, prompt templates and skill commands that a `prompt` can invoke.",
+	get_commands:
+		"Extension commands (with `argumentHint` when set), prompt templates and skill commands that a `prompt` can invoke.",
 };

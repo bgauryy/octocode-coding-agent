@@ -7,6 +7,28 @@ export function live(db: DatabaseSync, workspace: string, now: number): Row[] {
 }
 
 /**
+ * The unexpired leases held by the agents of `team`, whatever checkout they lock in, oldest first. Each path is relative
+ * to its owner's checkout (`agents.checkout`), so these are for showing, never for conflict checks (`conflicting`).
+ */
+export function liveInTeam(db: DatabaseSync, team: string, now: number): Row[] {
+	return db
+		.prepare(
+			"SELECT l.* FROM leases l JOIN agents a ON a.id = l.owner WHERE a.workspace = ? AND l.expires_at > ? ORDER BY l.id",
+		)
+		.all(team, now);
+}
+
+/** The checkouts other than `workspace` where agents of `team` hold an unexpired lease. */
+export function checkoutsInTeam(db: DatabaseSync, team: string, workspace: string, now: number): string[] {
+	return db
+		.prepare(
+			"SELECT DISTINCT l.workspace FROM leases l JOIN agents a ON a.id = l.owner WHERE a.workspace = ? AND l.workspace <> ? AND l.expires_at > ?",
+		)
+		.all(team, workspace, now)
+		.map((row) => String(row.workspace));
+}
+
+/**
  * The first live lease of another owner than `self` that blocks `key`: the same key, a tree above it (`ancestors` are
  * the keys of the directories above), or (for a tree request) anything below it. Component boundaries, not string prefixes.
  */
@@ -92,13 +114,11 @@ export function extendOwner(db: DatabaseSync, owner: string, expiresAt: number):
 	db.prepare("UPDATE leases SET expires_at = ? WHERE owner = ?").run(expiresAt, owner);
 }
 
-/** Leases of `workspace` not yet expired at `since` expire no earlier than `expiresAt`. */
-export function extendLiveSince(db: DatabaseSync, workspace: string, since: number, expiresAt: number): void {
-	db.prepare("UPDATE leases SET expires_at = MAX(expires_at, ?) WHERE workspace = ? AND expires_at > ?").run(
-		expiresAt,
-		workspace,
-		since,
-	);
+/** Leases held by agents of `team` (in any of its checkouts) not yet expired at `since` expire no earlier than `expiresAt`. */
+export function extendTeamLiveSince(db: DatabaseSync, team: string, since: number, expiresAt: number): void {
+	db.prepare(
+		"UPDATE leases SET expires_at = MAX(expires_at, ?) WHERE expires_at > ? AND owner IN (SELECT id FROM agents WHERE workspace = ?)",
+	).run(expiresAt, since, team);
 }
 
 /** Deletes every lease that expired before `now`. */

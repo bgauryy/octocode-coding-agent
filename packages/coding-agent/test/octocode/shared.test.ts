@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { atomicWriteFile, atomicWriteFileSync } from "../../src/utils/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, repoKey, workspaceRoot } from "../../src/octocode/shared/home/repo.ts";
 import { statusCommand } from "../../src/octocode/status-command.ts";
 import { Subcommands, say, wordCompletions, legacyNativeCommandGuidance } from "../../src/octocode/shared/commands.ts";
@@ -13,11 +13,11 @@ import {
 	PERMISSION_NONCE_FILE_ENV,
 	sameSecret,
 	takeNonce,
-} from "../../src/octocode/shared/env.ts";
+} from "../../../common/src/env.ts";
 import { formatCost, formatTokens, formatTokenUsage } from "../../src/octocode/shared/format.ts";
 import { workspaceScratchDir } from "../../src/octocode/shared/home.ts";
 import { getPackageDir } from "../../src/config.ts";
-import { findManifest } from "../../src/octocode/shared/package.ts";
+import { findManifest } from "../../../common/src/package.ts";
 import { killTree, processAlive, stopTree } from "../../src/octocode/shared/process.ts";
 import { sweepStaleOutputs } from "../../src/octocode/shared/sweep.ts";
 import {
@@ -459,6 +459,31 @@ describe("native commands", () => {
 		const ctx = fakeCtx({ cwd: ".", hasUI: true });
 		expect(await fake.fire("input", { text: "/octocode" }, ctx)).toEqual({ action: "continue" });
 		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });
+	});
+	it("answers a retired namespaced form through the registered /octocode command, which runs before input hooks", async () => {
+		const board = vi.fn(async (_args: string) => {});
+		const commands = new Subcommands();
+		commands.add("octocode", {
+			description: "Workspace",
+			complete: (prefix) => wordCompletions(["backlogs"], prefix),
+			handler: board,
+		});
+		commands.add("permissions", { description: "Permissions", handler: vi.fn(async () => {}) });
+		const fake = fakeHost();
+		commands.register(fake.api);
+		const ctx = fakeCtx({ cwd: ".", hasUI: true });
+		const octocode = fake.commands.get("octocode")!;
+		await octocode.handler("permissions manual", ctx);
+		expect(ctx.ui.notes.at(-1)?.message).toBe(
+			"/octocode permissions moved to /permissions manual. Run the new command to continue.",
+		);
+		await octocode.handler("help", ctx);
+		expect(ctx.ui.notes.at(-1)?.message).toBe("Commands now have direct names: /mcp, /octocode and /permissions.");
+		expect(board).not.toHaveBeenCalled();
+		// The command's own arguments and the bare form still open the board.
+		await octocode.handler("backlogs", ctx);
+		await octocode.handler("", ctx);
+		expect(board.mock.calls.map(([args]) => args)).toEqual(["backlogs", ""]);
 	});
 	it("maps retired namespace inputs to precise migration guidance", () => {
 		expect(legacyNativeCommandGuidance("permissions workspace", ["permissions"])).toContain("/permissions workspace");

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, expect, it } from "vitest";
-import { ReportFileSchema, ReportsIndexSchema } from "@octocodeai/octocode-contacts/protocol";
+import { ReportFileSchema, ReportsIndexSchema } from "@octocodeai/octocode-contracts/protocol";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { readReportFile, readReportsIndex } from "../../src/octocode/workspace/reports.ts";
@@ -161,7 +161,7 @@ it("truncates generated payloads to schema bounds", () => {
 	expect(index.reports[0].files).toHaveLength(32);
 });
 
-it("skips identifiers that cannot be represented losslessly in the contacts schema", () => {
+it("skips identifiers that cannot be represented losslessly in the contracts schema", () => {
 	const root = reportWorkspace();
 	const longFile = `${"f".repeat(129)}.md`;
 	fs.writeFileSync(path.join(root, ".octocode", "octocode-rfc-generator", "demo", longFile), "# Too long");

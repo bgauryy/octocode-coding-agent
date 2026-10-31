@@ -1,5 +1,5 @@
 import { dbStamp, type AgentDb } from "../agentdb/db.ts";
-import { type Note, type BacklogComment, type BacklogAudit, type State } from "@octocodeai/octocode-contacts/snapshot";
+import { type Note, type BacklogComment, type BacklogAudit, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
 import type { AddInput, ListQuery, UpdateInput } from "./inputs.ts";
 import {

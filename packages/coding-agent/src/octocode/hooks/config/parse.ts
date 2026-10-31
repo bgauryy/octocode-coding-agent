@@ -9,7 +9,7 @@ import {
 } from "../catalog.ts";
 import { HOOK_MAX_TIMEOUT_S, type HookSource, type HookHandler, type HookConfig } from "../contracts.ts";
 import { parseHttpHook } from "../http.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeSessionEndOverride, hookMatcher } from "../profiles.ts";
 
 export const emptyHooks = (): HookConfig =>

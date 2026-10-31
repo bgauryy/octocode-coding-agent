@@ -16,7 +16,7 @@ See [interface architecture](INTERFACE_ARCHITECTURE.md) for current application 
 
 Versions were checked against the npm registry. highlight.js also identifies 11.12.0 in its [official releases](https://highlightjs.org/news). Dependencies are pinned; regenerate the browser bundle after changes and run the package build, tests, browser-import check, and generated-bundle check.
 
-For this app, retain the existing DOM renderer with Zustand. [Radix](https://www.radix-ui.com/primitives/docs/overview/accessibility) supplies accessibility behaviors for a React interface, and [Lit](https://lit.dev/docs/components/overview/) supports reusable web components. Neither justifies a framework migration solely for styling. The renderer now compiles from typed `page.ts`, with typed transport and stream projection behind the contacts boundary. Avoid adding a second server-state cache alongside the authoritative WebSocket snapshots without a concrete query/invalidation need.
+For this app, retain the existing DOM renderer with Zustand. [Radix](https://www.radix-ui.com/primitives/docs/overview/accessibility) supplies accessibility behaviors for a React interface, and [Lit](https://lit.dev/docs/components/overview/) supports reusable web components. Neither justifies a framework migration solely for styling. The renderer now compiles from typed `page.ts`, with typed transport and stream projection behind the contracts boundary. Avoid adding a second server-state cache alongside the authoritative WebSocket snapshots without a concrete query/invalidation need.
 
 ## Visual design
 
@@ -97,7 +97,7 @@ Not verified: screen-reader announcements with VoiceOver or NVDA, touch interact
 ### Addendum (2026-10-23): terminal view, run indicators and loaders
 
 - **Terminal view.** The Terminal button, palette command and `T` shortcut open a read-only transcript of tool calls. The protocol replaces a tool's streamed arguments with its output when the call completes, so the projection keeps the first-seen arguments to show `bash npm run check` rather than `bash`.
-- **Run indicators.** These are derived from run state: thinking, writing a response, or running a named tool, with elapsed time and a "Thought for" duration on a run's first answer. Real reasoning text would need a contacts protocol change and was not attempted.
+- **Run indicators.** These are derived from run state: thinking, writing a response, or running a named tool, with elapsed time and a "Thought for" duration on a run's first answer. Real reasoning text would need a contracts protocol change and was not attempted.
 - **Loaders.** The live board previously showed its empty-board message before the first snapshot arrived; it now shows a skeleton until then.
 - **Verification.** The webview has 74 tests, including page-flow tests for the terminal and for the board loading state, and the 41 host tests pass. Real Chrome against the mock host showed the transcript with arguments, status and output, the thinking and writing indicators, "Thought for 2s", and the loading skeleton.
 
@@ -107,7 +107,7 @@ Not verified: screen-reader announcements with VoiceOver or NVDA, touch interact
 
 **Fixed.**
 
-- **No argument labels.** `tool.started` carried no arguments, so a finished call showed only its name. `hint` was added to contacts tool events and `ApplicationTool`. The host sends the existing redacting `toolHint(args)` (application service, and the workspace `tool.start` details), the stream keeps it, and the end-to-end test asserts the secret never reaches a frame.
+- **No argument labels.** `tool.started` carried no arguments, so a finished call showed only its name. `hint` was added to contracts tool events and `ApplicationTool`. The host sends the existing redacting `toolHint(args)` (application service, and the workspace `tool.start` details), the stream keeps it, and the end-to-end test asserts the secret never reaches a frame.
 - **Progress mistaken for arguments.** The earlier argument inference read the first streamed progress as arguments; it was removed.
 - **Workspace calls ran forever.** That path publishes start and result as two events with no shared id, so every call showed as running indefinitely. Results now settle the oldest open start of the same tool.
 - **Agent progress floods.** It reports on every step; only the latest report per agent is kept.
@@ -134,7 +134,7 @@ Not verified: screen-reader announcements with VoiceOver or NVDA, touch interact
 | Check                                                                | Result    |
 | -------------------------------------------------------------------- | --------- |
 | Webview tests                                                        | 83 passed |
-| Contacts tests                                                       | 4 passed  |
+| Contracts tests                                                       | 4 passed  |
 | Application port, nested tool calls and the new end-to-end tool test | 17 passed |
 | Workspace, API and backlog host tests                                | 72 passed |
 | Repository script tests                                              | 25 passed |

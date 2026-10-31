@@ -1,4 +1,4 @@
-import type { ApplicationHistory, ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contacts";
+import type { ApplicationHistory, ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
 import { cloneDisplay } from "./normalize.ts";
 
 /** One page of messages before `before` (newest last), with the tools that belong to them. */

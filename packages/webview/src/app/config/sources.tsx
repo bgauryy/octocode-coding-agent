@@ -2,7 +2,7 @@ import type {
 	ConfigSnapshot,
 	CredentialSourceStatus,
 	ProviderCredentialStatus,
-} from "@octocodeai/octocode-contacts/config";
+} from "@octocodeai/octocode-contracts/config";
 import { stamp } from "../model/format.ts";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, type BadgeTone } from "../ui/primitives.tsx";

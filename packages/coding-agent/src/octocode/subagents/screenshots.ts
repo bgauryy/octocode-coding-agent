@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { globalPaths, PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * A subagent's screenshots (the `browser` tool) live only in its own conversation. The parent saves the

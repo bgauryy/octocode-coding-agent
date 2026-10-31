@@ -4,7 +4,7 @@ import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { actionWhy, decide } from "../../permission/mode.ts";
 import { isWithin, workspaceRoot } from "../../shared/home/repo.ts";
-import { classifyHost, type HostClass, type HostLookup, isHttpUrl } from "../../web/guard.ts";
+import { classifyHost, type HostClass, type HostLookup, isHttpUrl } from "../../../../../common/src/web-guard.ts";
 import { blockedHost, httpOnlyRefusal, keyOf, parseUrl, portOf } from "../network.ts";
 
 export type Confirmer = Pick<ExtensionContext, "hasUI" | "ui"> & { signal?: AbortSignal | undefined };

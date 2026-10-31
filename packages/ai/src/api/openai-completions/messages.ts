@@ -1,3 +1,4 @@
+import { sanitizeToolCallId } from "../tool-call-id.ts";
 import type OpenAI from "openai";
 import type {
 	ChatCompletionAssistantMessageParam,
@@ -33,6 +34,9 @@ import {
 } from "./reasoning-details.ts";
 import { convertTools } from "./tools.ts";
 import type { ConvertCompletionsMessagesOptions, ResolvedOpenAICompletionsCompat } from "./types.ts";
+
+/** OpenAI Chat Completions rejects tool-call ids longer than this. */
+const OPENAI_TOOL_CALL_ID_MAX_LENGTH = 40;
 
 function isTextContentBlock(block: { type: string }): block is TextContent {
 	return block.type === "text";
@@ -78,21 +82,21 @@ export function convertMessages(
 		// Preserve item-level uniqueness when replaying into Chat Completions, which
 		// requires distinct tool call ids.
 		if (id.includes("|")) {
-			// Sanitize to allowed chars and truncate to 40 chars (OpenAI limit)
+			// Sanitize each half to allowed chars, then fit the combination into the id limit (OpenAI's 40 by default)
+			const maxLength = compat.toolCallIdMaxLength ?? OPENAI_TOOL_CALL_ID_MAX_LENGTH;
 			const separatorIndex = id.indexOf("|");
-			const callId = id.slice(0, separatorIndex).replace(/[^a-zA-Z0-9_-]/g, "_");
-			const itemId = id.slice(separatorIndex + 1).replace(/[^a-zA-Z0-9_-]/g, "_");
+			const callId = sanitizeToolCallId(id.slice(0, separatorIndex), Number.POSITIVE_INFINITY);
+			const itemId = sanitizeToolCallId(id.slice(separatorIndex + 1), Number.POSITIVE_INFINITY);
 			const combinedId = itemId.length > 0 ? `${callId}_${itemId}` : callId;
-			if (combinedId.length <= 40) {
+			if (combinedId.length <= maxLength) {
 				return combinedId;
 			}
 			const hash = shortHash(id).slice(0, 8);
-			const prefix = callId.slice(0, Math.max(1, 40 - hash.length - 1));
+			const prefix = callId.slice(0, Math.max(1, maxLength - hash.length - 1));
 			return `${prefix}_${hash}`;
 		}
 
-		if (model.provider === "openai") return id.length > 40 ? id.slice(0, 40) : id;
-		return id;
+		return compat.toolCallIdMaxLength === undefined ? id : id.slice(0, compat.toolCallIdMaxLength);
 	};
 
 	const transformedMessages = transformMessages(normalizedContext.messages, model, (id) => normalizeToolCallId(id));

@@ -1,6 +1,6 @@
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import { fence, inlineCode, oneLine } from "../../shared/archive/text.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contentText, stringOrEmpty } from "../../shared/util.ts";
 
 /** The first line of the first user message, the label of last resort. */

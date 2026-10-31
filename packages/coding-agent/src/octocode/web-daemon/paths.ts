@@ -1,5 +1,5 @@
 import path from "node:path";
-import { envFlag } from "../shared/env.ts";
+import { envFlag } from "../../../../common/src/env.ts";
 import { octocodeHome, sessionDirName } from "../shared/home.ts";
 
 /** `1` makes every session accept the user-level web daemon and `/octocode` use it; unset or `0` keeps the per-session server. */

@@ -1,4 +1,4 @@
-import { stripBom } from "../../utils/text.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
 import { isMergeableObject } from "./merge.ts";
 import type { SettingsScope, SettingsStorage } from "./storage.ts";

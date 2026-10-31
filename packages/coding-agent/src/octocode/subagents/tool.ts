@@ -5,7 +5,6 @@ import type { Permission } from "../permission/ask.ts";
 import { existingLibrary } from "../shared/archive.ts";
 import { type Subcommand, notify } from "../shared/commands.ts";
 import { timedTool } from "../shared/render/rows.ts";
-import { errorMessage } from "../../utils/guards.ts";
 import { modelLookup, settleWithin, textResult } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
 import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
@@ -28,7 +27,8 @@ import { staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
-import { describePrune, pendingRefs, pruneWorktrees, recordWorktreePid } from "./worktree.ts";
+import { pruneNotice } from "./prune-notice.ts";
+import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import { agentToolSpec } from "./agent-tool.ts";
 import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask } from "./children.ts";
 import { Isolation } from "./isolation.ts";
@@ -218,11 +218,7 @@ export function registerAgentTool(
 			void sweepScratch(root);
 			return undefined;
 		});
-		void pruneWorktrees(ctx.cwd)
-			.then(describePrune, (error: unknown) => ({
-				text: `Could not prune orphaned subagent worktrees: ${errorMessage(error)}`,
-				level: "warning" as const,
-			}))
+		void pruneNotice(ctx)
 			.then((note) => {
 				if (note && ctx.hasUI) notify(ctx.ui, note.text, note.level);
 			})
@@ -282,13 +278,13 @@ export function registerAgentTool(
 					if (!claimed) runs.slots.give();
 				}
 				const run = claimed;
-				const isolation = new Isolation(run.identity.id);
+				const isolation = new Isolation(run.identity.id, linked?.ref);
 				let finalized: Promise<string> | undefined;
 				// With the report's outcome (the success paths), the item the child worked on gets the report noted on it.
 				const finish = (outcome?: SubagentOutcome) =>
 					(finalized ??= isolation
 						.finish()
-						.then((note) => `${note}${linked?.attach(outcome, run.identity.id) ?? ""}`)
+						.then((note) => `${note}${linked?.attach(outcome, run.identity.id, isolation.ref) ?? ""}`)
 						.finally(run.release));
 				let handedOff = false;
 				// From the claim on, every failure goes through `finish`: the slot and the name are given back.

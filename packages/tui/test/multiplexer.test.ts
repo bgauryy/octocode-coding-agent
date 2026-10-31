@@ -8,6 +8,8 @@ import {
 	resetMultiplexerCache,
 	tmuxClientTermFeatures,
 	tmuxClientTerminalNames,
+	tmuxExec,
+	tmuxGlobalOption,
 	tmuxPaneAllowsPassthrough,
 	wrapTmuxPassthrough,
 } from "../src/multiplexer.ts";
@@ -129,6 +131,34 @@ describe("tmux queries through a fake tmux", () => {
 		tmuxPaneAllowsPassthrough(TMUX_ENV);
 		tmuxPaneAllowsPassthrough({ ...TMUX_ENV, TMUX_PANE: "%4" });
 		assert.equal(fake?.calls().length, 2);
+	});
+});
+
+describe("shared asynchronous tmux spawn", () => {
+	it("reads a global option through `show -gv`, trimmed", async () => {
+		withFake({ extendedKeys: "always" });
+		assert.equal(await tmuxGlobalOption("extended-keys", TMUX_ENV), "always");
+		assert.deepEqual(fake?.calls(), ["show -gv extended-keys"]);
+	});
+
+	it("answers undefined, never a rejection, when tmux fails or is absent", async () => {
+		withFake({ fail: ["extendedKeys"] });
+		assert.equal(await tmuxGlobalOption("extended-keys", TMUX_ENV), undefined);
+		const original = process.env.PATH;
+		process.env.PATH = "/nonexistent";
+		try {
+			assert.equal(await tmuxGlobalOption("extended-keys", TMUX_ENV), undefined);
+		} finally {
+			process.env.PATH = original;
+		}
+	});
+
+	it("rejects with `tmux failed:` and honours the abort signal", async () => {
+		withFake({ fail: ["extendedKeys"] });
+		await assert.rejects(tmuxExec(["show", "-gv", "x"]), /^Error: tmux failed: /);
+		const controller = new AbortController();
+		controller.abort(new Error("stop"));
+		await assert.rejects(tmuxExec(["show", "-gv", "x"], { signal: controller.signal }), /stop/);
 	});
 });
 

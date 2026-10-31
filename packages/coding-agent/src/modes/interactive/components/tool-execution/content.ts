@@ -1,5 +1,5 @@
 import { Box, Container, Text } from "@octocodeai/octocode-tui";
-import type { ApplicationContentBlock } from "@octocodeai/octocode-contacts";
+import type { ApplicationContentBlock } from "@octocodeai/octocode-contracts";
 import { ApplicationAssets } from "../../../../core/application/assets.ts";
 import { normalizeApplicationContent } from "../../../../core/application/normalize.ts";
 import { formatToolCallWithArgs } from "../../../../core/tools/render-utils.ts";

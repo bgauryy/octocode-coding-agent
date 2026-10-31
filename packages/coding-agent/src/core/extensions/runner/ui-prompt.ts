@@ -30,6 +30,10 @@ interface Pending {
 	title?: string;
 	options?: string[];
 	allowsText: boolean;
+	/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
+	approval?: boolean;
+	/** The dialog blocks work that goes on without the user (`ExtensionUIDialogOptions.blocking`). */
+	blocking?: boolean;
 	/** Settles the dialog with the remote answer's value; undefined when the dialog cannot be answered remotely. */
 	settle?: (value: unknown) => void;
 	/** Maps a client's answer to the dialog's value, or `REFUSED`. */
@@ -52,21 +56,21 @@ export class UIPromptTracker {
 			...ui,
 			select: (title, options, opts) =>
 				this.tracked(
-					{ kind: "select", title, options: [...options], allowsText: false },
+					{ kind: "select", title, options: [...options], allowsText: false, ...dialogFlags(opts, true) },
 					(signal) => ui.select(title, options, { ...opts, signal }),
 					opts,
 					(answer) => (answer.choice !== undefined && options.includes(answer.choice) ? answer.choice : REFUSED),
 				),
 			confirm: (title, message, opts) =>
 				this.tracked(
-					{ kind: "confirm", title, options: [...CONFIRM_OPTIONS], allowsText: false },
+					{ kind: "confirm", title, options: [...CONFIRM_OPTIONS], allowsText: false, ...dialogFlags(opts, true) },
 					(signal) => ui.confirm(title, message, { ...opts, signal }),
 					opts,
 					(answer) => (answer.choice === "Yes" ? true : answer.choice === "No" ? false : REFUSED),
 				),
 			input: (title, placeholder, opts) =>
 				this.tracked(
-					{ kind: "input", title, allowsText: true },
+					{ kind: "input", title, allowsText: true, ...dialogFlags(opts, false) },
 					(signal) => ui.input(title, placeholder, { ...opts, signal }),
 					opts,
 					(answer) => (typeof answer.text === "string" ? answer.text : REFUSED),
@@ -116,6 +120,8 @@ export class UIPromptTracker {
 			...(dialog.title ? { title: dialog.title } : {}),
 			...(dialog.options ? { options: dialog.options } : {}),
 			...(dialog.allowsText ? { allowsText: true } : {}),
+			...(dialog.approval ? { approval: true } : {}),
+			...(dialog.blocking ? { blocking: true } : {}),
 			...(nested ? { nested: true } : {}),
 		});
 		let settled = false;
@@ -178,6 +184,20 @@ export class UIPromptTracker {
 			void this.emit(event);
 		});
 	}
+}
+
+/**
+ * What a dialog's options say about its role. `approval` counts for a choice or a confirmation only: the note a user
+ * types after refusing is a question, even when its caller passes the permission dialog's options along.
+ */
+function dialogFlags(
+	opts: ExtensionUIDialogOptions | undefined,
+	choice: boolean,
+): Pick<Pending, "approval" | "blocking"> {
+	return {
+		...(choice && opts?.approval ? { approval: true } : {}),
+		...(opts?.blocking ? { blocking: true } : {}),
+	};
 }
 
 /** The marker a parser returns for an answer the dialog cannot take. */

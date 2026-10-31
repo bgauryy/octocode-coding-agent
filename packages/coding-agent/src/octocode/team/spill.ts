@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { saveNamedContent } from "../shared/spill.ts";
 
 /**

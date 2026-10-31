@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveToolPath } from "./home.ts";
 import { canonicalPath } from "./home/repo.ts";
-import { sha256, sha256File } from "../../utils/atomic-file.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { sha256, sha256File } from "../../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 export { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 

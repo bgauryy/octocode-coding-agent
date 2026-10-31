@@ -1,5 +1,5 @@
 import { parse } from "yaml";
-import { stripBom } from "./text.ts";
+import { stripBom } from "../../../common/src/text.ts";
 
 type ParsedFrontmatter<T extends Record<string, unknown>> = {
 	frontmatter: T;

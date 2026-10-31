@@ -30,7 +30,7 @@ import {
 	writeRecord,
 } from "./registry.ts";
 import { ApiServer, type Connection } from "./server.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Session entry (`api.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";

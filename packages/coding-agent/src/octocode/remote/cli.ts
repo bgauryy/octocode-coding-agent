@@ -4,16 +4,17 @@ import {
 	RemoteLinkSchema,
 	RemoteStatusSchema,
 	type RemotePublish,
-} from "@octocodeai/octocode-contacts/daemon";
-import { DAEMON_ROUTES } from "@octocodeai/octocode-contacts/protocol";
-import { errorMessage } from "../../utils/guards.ts";
+} from "@octocodeai/octocode-contracts/daemon";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { daemonRequest, findWebDaemon, type LaunchedDaemon } from "../web-daemon/launcher.ts";
 import { describeLink, describeStatus } from "./links.ts";
 
 const USAGE = `Usage: octocode remote <command>
   list [--json]                       Sessions the web daemon reaches, blocked ones first, and the published links
+                                      (by fingerprint; a link is printed in full only when it is published)
   link [view] [--relay <ws(s) url>]   Publish a control (or view) link; --relay dials that relay instead of SSH
-  stop                                Stop publishing; view links stop working
+  stop                                Stop publishing; every link stops working
 Needs a running web daemon (a session started with OCTOCODE_WEB_DAEMON=1).`;
 
 async function read(daemon: LaunchedDaemon, route: string, options?: { method: "POST" | "DELETE"; body?: unknown }) {

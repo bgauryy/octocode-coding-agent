@@ -6,7 +6,7 @@ import type { AgentDb } from "../agentdb/db.ts";
 import { runningPid } from "../agentdb/liveness.ts";
 import { meta } from "../agentdb/api.ts";
 import { liveJobFiles } from "../files/bash-jobs/records.ts";
-import { cleanupDays } from "../shared/env.ts";
+import { cleanupDays } from "../../../../common/src/env.ts";
 import { PID_SESSION_PREFIX, sessionDirName, sessionsRoot } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 import { sweepStaleOutputs } from "../shared/sweep.ts";

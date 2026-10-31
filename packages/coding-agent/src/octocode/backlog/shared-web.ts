@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { processStartTime, sameProcess } from "../shared/process.ts";
 import type { BacklogWeb, OpenBacklogWeb } from "./context.ts";

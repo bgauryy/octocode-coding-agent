@@ -3,6 +3,7 @@ import { googleGenerativeAIApi } from "../api/google-generative-ai.lazy.ts";
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { createProvider, type Provider } from "../models.ts";
 import { OPENCODE_GO_MODELS } from "./opencode-go.models.ts";
 import { withOpenCodeSessionHeader } from "./opencode-headers.ts";
@@ -13,7 +14,7 @@ export function opencodeGoProvider(): Provider<OpenCodeGoApi> {
 	return createProvider<OpenCodeGoApi>({
 		id: "opencode-go",
 		name: "OpenCode Go",
-		auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
+		auth: { apiKey: envApiKeyAuth("OpenCode API key", apiKeyEnvVars("opencode-go")) },
 		models: Object.values(OPENCODE_GO_MODELS),
 		api: {
 			"anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),

@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import type { GitSource } from "../../utils/git.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
-import { stripBom } from "../../utils/text.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import { ensureGitIgnore, getGitDependencyInstallArgs, runNpmCommand } from "./npm.ts";
 import { assertProjectTrustedForScope, getTemporaryDir, resolveManagedPath } from "./sources.ts";
 import { NETWORK_TIMEOUT_MS, type PackageManagerHost, type SourceScope } from "./types.ts";

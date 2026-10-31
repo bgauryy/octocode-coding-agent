@@ -1,4 +1,4 @@
-import type { WorkLink } from "@octocodeai/octocode-contacts/backlogs";
+import type { WorkLink } from "@octocodeai/octocode-contracts/backlogs";
 
 /**
  * Evidence that is only a reference (an http(s) URL, or a repository path such as `src/a.ts`, `docs/` or

@@ -1,7 +1,7 @@
 import type { BashFileTarget } from "../bash-types.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import type { SourcePermissionMode } from "../../shared/permission-updates.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 type Behavior = "deny" | "ask" | "allow";
 export interface PolicySource {

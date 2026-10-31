@@ -1,11 +1,11 @@
-import type { RemoteLink, RemoteStatus } from "@octocodeai/octocode-contacts/daemon";
+import type { RemoteLink, RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
 import { qrText } from "./qr.ts";
 
 /** What a link lets its holder do, said once wherever the link is shown. */
 function accessNote(link: Pick<RemoteLink, "access">): string {
 	return link.access === "control"
 		? "Anyone with this link can send commands and answer approvals in your sessions."
-		: "This link only shows your sessions; nothing can be sent through it.";
+		: "Anyone with this link can read every session on this machine (transcripts included), the board, reports and provider configuration; nothing can be sent through it.";
 }
 
 /** The lines to print for a freshly published link: how to reach it, the link, what it allows, and a QR code. */
@@ -28,7 +28,7 @@ export function describeStatus(status: RemoteStatus): string {
 	if (status.links.length === 0 && !status.relay) return "Nothing is published. Run /remote or /remote view.";
 	const lines = status.links.map(
 		(link) =>
-			`${link.access} link over ${link.transport}, issued ${new Date(link.issuedAt).toLocaleTimeString()}: ${link.url}`,
+			`${link.access} link over ${link.transport}, issued ${new Date(link.issuedAt).toLocaleTimeString()}, id ${link.fingerprint}`,
 	);
 	if (status.relay)
 		lines.push(

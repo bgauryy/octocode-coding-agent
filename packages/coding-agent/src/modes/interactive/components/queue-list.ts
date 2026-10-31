@@ -10,6 +10,7 @@ import {
 	getKeybindings,
 	type KeyId,
 	matchesKey,
+	stripTerminalSequences,
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
@@ -29,9 +30,8 @@ const MODE_LABEL = { steer: "Next turn", followUp: "After run" } as const;
 const MAX_VISIBLE = 8;
 
 /** One line of a queued message: control characters and line breaks become spaces. */
-export function queuePreview(text: string): string {
-	return text
-		.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+function queuePreview(text: string): string {
+	return stripTerminalSequences(text)
 		.replace(/[\r\n\t\u2028\u2029]+/g, " ")
 		.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
 		.trim();

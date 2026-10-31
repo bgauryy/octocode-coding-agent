@@ -14,7 +14,7 @@ import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { ANTHROPIC_SUBSCRIPTION_AUTH_WARNING, isAnthropicSubscriptionAuthKey } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the model and thinking controls. */
 type ModelControlsHost = Pick<

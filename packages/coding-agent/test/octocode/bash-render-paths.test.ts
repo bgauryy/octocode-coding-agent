@@ -12,7 +12,7 @@ import { tmp } from "./helpers.ts";
 const ui = { requestRender: () => {} } as unknown as TUI;
 const text = (component: { render(width: number): string[] }, width = 100) =>
 	component.render(width).map(stripAnsi).join("\n");
-const HEADER = /\[exit 1 · [^\]]*3,000 lines[^\]]*trimmed: first 120 \+ last 478 lines \+ 1 matched[^\]]*\]/s;
+const HEADER = /\[exit 1 · [^\]]*3,000 lines[^\]]*trimmed: first 100 \+ last 398 lines \+ 1 matched[^\]]*\]/s;
 
 /** What the bash tool returns for a command that prints `output` and exits with `code`. */
 async function run(output: string, code: number | null, end?: "timeout" | "abort") {
@@ -72,7 +72,7 @@ describe("bash result rows", () => {
 				// A narrow terminal wraps the header; the words stay in order and appear once.
 				const flat = view.replace(/\s+/g, " ");
 				expect(flat.match(/\[exit 1/g), `expanded=${expanded} width=${width}`).toHaveLength(1);
-				expect(flat).toContain("trimmed: first 120 + last 478 lines + 1 matched");
+				expect(flat).toContain("trimmed: first 100 + last 398 lines + 1 matched");
 				expect(flat).toContain("line 2999 some padding text here");
 			}
 		}

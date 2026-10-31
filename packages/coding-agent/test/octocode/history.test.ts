@@ -8,7 +8,7 @@ import {
 	setSessionLineage,
 	writeSegment,
 } from "../../src/octocode/shared/archive.ts";
-import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import {
 	historyFiles,
 	historyScope,

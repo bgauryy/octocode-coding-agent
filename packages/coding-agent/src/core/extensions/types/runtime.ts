@@ -215,6 +215,7 @@ export interface ExtensionContextActions {
 
 export type NewSessionHandler = (options?: {
 	parentSession?: string;
+	cwd?: string;
 	setup?: (sessionManager: SessionManager) => Promise<void>;
 	withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
 }) => Promise<{ cancelled: boolean }>;

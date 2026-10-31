@@ -71,12 +71,13 @@ describe.each([
 });
 
 describe.each([
-	{ kind: "FYI", replyRequired: false },
-	{ kind: "waking request", replyRequired: true },
-])("a long tool call while a peer's $kind waits", ({ replyRequired }) => {
+	{ kind: "FYI", replyRequired: false, yields: false },
+	{ kind: "waking request", replyRequired: true, yields: true },
+])("a long tool call while a peer's $kind waits", ({ replyRequired, yields }) => {
 	// Foreground bash moves to the background when `ctx.hasPendingMessages()` turns true (files/bash/results.ts); any other
-	// long tool that wants to yield for a message uses the same signal.
-	it("reports a message waiting as soon as the tick hands it over", async () => {
+	// long tool that wants to yield for a message uses the same signal. Only mail that asks for an answer (or is the
+	// user's) counts: an FYI is context, read at the next step without cutting a running command short.
+	it("reports a waiting message only when it asks for the agent", async () => {
 		const waiting: boolean[] = [];
 		const live = await liveSession({
 			tools: [
@@ -84,7 +85,7 @@ describe.each([
 					name: "long",
 					run: async (_signal, ctx) => {
 						waiting.push(ctx.hasPendingMessages());
-						const deadline = Date.now() + 5_000;
+						const deadline = Date.now() + (yields ? 5_000 : TICK_BUDGET_MS);
 						while (!ctx.hasPendingMessages() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
 						waiting.push(ctx.hasPendingMessages());
 						return "long done";
@@ -108,8 +109,8 @@ describe.each([
 		const sentAt = Date.now();
 		await live.peer.send(live.id, "MAIL: look at this", { replyRequired });
 		await running;
-		expect(waiting).toEqual([false, true]);
-		expect(Date.now() - sentAt).toBeLessThan(TICK_BUDGET_MS);
+		expect(waiting).toEqual([false, yields]);
+		if (yields) expect(Date.now() - sentAt).toBeLessThan(TICK_BUDGET_MS);
 		expect(live.requests[1].mail).toHaveLength(1);
 	}, 20_000);
 });
@@ -150,6 +151,48 @@ describe.runIf(process.platform !== "win32")("foreground bash while a peer's mai
 		expect(live.requests[1].mail).toHaveLength(1);
 		for (const id of jobs.jobs.keys()) jobs.stop(id, "user");
 	}, 30_000);
+});
+
+describe("a context-only notice during a long tool", () => {
+	it("is read at the next step and does not make a running tool yield", async () => {
+		const long = gate();
+		const seen: boolean[] = [];
+		const live = await liveSession({
+			tools: [
+				{
+					name: "long",
+					run: async (_signal, ctx) => {
+						long.entered();
+						await long.released;
+						seen.push(ctx.hasPendingMessages());
+						return "long done";
+					},
+				},
+			],
+		});
+		closerFor(live);
+		live.faux.setResponses([
+			(context) => {
+				live.record(context);
+				return fauxAssistantMessage([fauxToolCall("long", {})], { stopReason: "toolUse" });
+			},
+			(context) => {
+				live.record(context);
+				return fauxAssistantMessage("finished");
+			},
+		]);
+		const running = live.session.prompt("work");
+		await long.started;
+		// The subagent "done" notice (subagents/handoff.ts) and team notices are sent this way.
+		live.api.sendMessage(
+			{ customType: "notice-test", content: "MAIL: a child finished", display: false, details: {} },
+			{ triggerTurn: false, deliverAs: "steer" },
+		);
+		long.release();
+		await running;
+		expect(seen).toEqual([false]);
+		expect(live.requests.map((request) => request.mail.length)).toEqual([0, 1]);
+	}, 20_000);
 });
 
 describe("a background report (follow-up) during a long tool", () => {

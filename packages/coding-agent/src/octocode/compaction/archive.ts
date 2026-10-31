@@ -13,7 +13,7 @@ import {
 } from "../shared/archive.ts";
 import { isStaleSessionError, stringList } from "../shared/util.ts";
 import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The archive of compacted history (`shared/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized

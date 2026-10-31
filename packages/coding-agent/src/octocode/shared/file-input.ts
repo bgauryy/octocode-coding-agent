@@ -1,4 +1,4 @@
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { expandPath } from "../../core/tools/path-utils.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
 interface PatchChange {

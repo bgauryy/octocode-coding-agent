@@ -1,4 +1,4 @@
-import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { describe, expect, it } from "vitest";
 import {
 	attention,
@@ -12,7 +12,8 @@ import {
 } from "../src/app/model/backlog.ts";
 import { editorDefaults, toMutation } from "../src/app/model/editor.ts";
 import { ago, span, stamp } from "../src/app/model/format.ts";
-import { hashFor, parseHash, readLaunch, resolveRoute } from "../src/app/model/route.ts";
+import { readLaunch } from "../src/access.ts";
+import { hashFor, parseHash, resolveRoute } from "../src/app/model/route.ts";
 import { snapshotItem } from "./helpers.ts";
 
 const DAY = 86_400_000;

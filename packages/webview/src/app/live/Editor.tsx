@@ -1,7 +1,8 @@
+import { ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { EditorProps } from "../extension.ts";
-import { ITEM_TYPES, PRIORITY_OPTIONS, STATE_TITLES } from "../model/backlog.ts";
+import { PRIORITY_OPTIONS, STATE_TITLES } from "../model/backlog.ts";
 import {
 	type EditorValues,
 	editorDefaults,

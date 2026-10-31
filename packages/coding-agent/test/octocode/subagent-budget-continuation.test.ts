@@ -54,7 +54,9 @@ describe("the task budget through native continuation routes", () => {
 			try {
 				await reopened.emit("session_start", {}, reopened.ctx);
 				expect(reopened.team.join().id).not.toBe(parent);
-				expect(await reopened.team.send(id, "budget loop 40", { replyRequired: false })).toHaveProperty("resumed");
+				expect(await reopened.team.send(id, "budget loop 40 stop-at 1", { replyRequired: false })).toHaveProperty(
+					"resumed",
+				);
 				await reopened.control.settle();
 				expect(reopened.sent.at(-1)?.message.content).toContain("5 requests; limit 3");
 				expect(reopened.sent.at(-1)?.message.details).toMatchObject({ id, requests: 1 });
@@ -97,7 +99,7 @@ describe("the task budget through native continuation routes", () => {
 			Object.assign(fork.ctx.sessionManager, { getEntries: () => entries, getSessionId: () => "forked-budget-parent" });
 			try {
 				await fork.emit("session_start", { reason: "fork" }, fork.ctx);
-				const resumed = await fork.run({ goal: "continue accounting", task: "budget loop 40", resume: id });
+				const resumed = await fork.run({ goal: "continue accounting", task: "budget loop 40 stop-at 2", resume: id });
 				expect(resumed.content[0].text).toContain("5 requests; limit 3");
 				expect(resumed.details).toMatchObject({ id, requests: 2 });
 			} finally {

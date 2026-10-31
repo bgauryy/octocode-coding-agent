@@ -3,16 +3,18 @@ import path from "node:path";
 import { Type } from "typebox";
 import { expandClaudeArguments, expandClaudeVariables } from "../../core/claude-arguments.ts";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { errorMessage } from "../../utils/guards.ts";
-import { envFlag, SKILLS_IN_TASK_ENV } from "../shared/env.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { envFlag, SKILLS_IN_TASK_ENV } from "../../../../common/src/env.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { resultBlock, resultText } from "../shared/render.ts";
-import { plural } from "../shared/render/text.ts";
+import { parseSkillBlock } from "../../core/agent-session/prompt-expansion.ts";
+import { shortPath } from "../shared/format.ts";
+import { oneLine, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { textResult } from "../shared/util.ts";
 import { type CatalogSkill, SkillCatalog, closeNames, setActiveSkillCatalog } from "./catalog.ts";
-import { skillHeader } from "./render.ts";
+import { skillHeader, skillInstructions, skillOrigin } from "./render.ts";
 
 /** A skill's instructions are read whole up to this size; a larger file is cut and says so. */
 const MAX_SKILL_BYTES = 256 * 1024;
@@ -24,6 +26,8 @@ interface SkillDetails {
 	location: string;
 	baseDir: string;
 	lines: number;
+	/** Where the skill came from (`skillOrigin`), shown on the row. */
+	origin?: string;
 	truncated?: boolean;
 }
 
@@ -133,6 +137,7 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 						location: entry.file,
 						baseDir,
 						lines,
+						origin: skillOrigin(skill),
 						...(loaded.truncated ? { truncated: true } : {}),
 					} satisfies SkillDetails,
 				);
@@ -143,13 +148,18 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 			},
 			renderResult(result, _options, theme, context) {
 				const text = resultText(result);
-				if (context.isError) return resultBlock(theme, context, { summary: text.split("\n")[0], body: "" });
+				// A validation failure lists what was wrong on the lines after its first: keep them all.
+				if (context.isError) return resultBlock(theme, context, { summary: oneLine(text), body: "" });
 				const details = result.details as Partial<SkillDetails> | undefined;
-				const lines = details?.lines ?? text.split("\n").length;
+				// The row shows the instructions: the `<skill>` wrapper and its path preamble are for the model.
+				const instructions = skillInstructions(parseSkillBlock(text)?.content ?? text);
+				const lines = details?.lines ?? instructions.split("\n").length;
+				// The collapsed row stays short enough for its expand hint; the file is the first line of the expanded body.
+				const file = details?.location ? `${shortPath(details.location)}\n\n` : "";
 				return resultBlock(theme, context, {
-					summary: `Loaded ${plural(lines, "line")}`,
+					summary: [`Loaded ${plural(lines, "line")}`, details?.origin].filter(Boolean).join(" \u00b7 "),
 					summaryColor: "customMessageText",
-					body: text,
+					body: `${file}${instructions}`,
 					max: 0,
 					...timingOf(result.details),
 				});

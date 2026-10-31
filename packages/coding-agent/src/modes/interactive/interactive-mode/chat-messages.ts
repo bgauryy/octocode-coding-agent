@@ -76,6 +76,7 @@ export function addMessageToChat(
 				message.cancelled,
 				message.truncated ? ({ truncated: true } as TruncationResult) : undefined,
 				message.fullOutputPath,
+				message.header,
 			);
 			host.chatContainer.addChild(component);
 			break;

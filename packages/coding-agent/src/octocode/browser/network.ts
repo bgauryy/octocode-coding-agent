@@ -1,5 +1,5 @@
 import net from "node:net";
-import { bareHostname, classifyHost, type HostClass, type HostLookup, isBlockedIp, isHttpUrl } from "../web/guard.ts";
+import { bareHostname, classifyHost, type HostClass, type HostLookup, isBlockedIp, isHttpUrl } from "../../../../common/src/web-guard.ts";
 import type { NetworkEvent, PageNetworkPolicy, RequestSource } from "./policy.ts";
 
 /**

@@ -102,6 +102,7 @@ it("runs native tools and releases team resources across a real session reload",
 				),
 				fauxAssistantMessage(
 					fauxToolCall("file", {
+						reason: "Create the run file",
 						queries: [
 							{
 								type: "write",
@@ -119,6 +120,7 @@ it("runs native tools and releases team resources across a real session reload",
 				),
 				fauxAssistantMessage(
 					fauxToolCall("file", {
+						reason: "Edit the run file",
 						queries: [
 							{
 								type: "edit",
@@ -152,11 +154,14 @@ it("runs native tools and releases team resources across a real session reload",
 			expect(store.list()).toHaveLength(1);
 			expect(store.leases()).toHaveLength(1);
 			if (run === 0) {
+				const joined = store.list().map((member) => member.id);
 				await harness.session.reload();
 				// Reload resets the compatibility registry, including the harness's synthetic provider.
 				registerApiProvider(fauxApi);
 				expect(events).toEqual(["start:startup", "stop:reload", "start:reload"]);
-				expect(store.list()).toEqual([]);
+				// The shutdown released the old member and its reservation (asserted in the handler above); the restarted
+				// session rejoins under the name it recorded (`teamNameToResume`), so peers keep addressing it.
+				expect(store.list().map((member) => member.id)).toEqual(joined);
 				expect(store.leases()).toEqual([]);
 			}
 		}

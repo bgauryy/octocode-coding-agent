@@ -4,7 +4,7 @@ import { shortPath } from "../shared/format.ts";
 import { sessionOutputDir } from "../shared/home.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The browser session's console log: every console line (whole, not cut to the window's line length; controls shown as visible escapes) is appended to

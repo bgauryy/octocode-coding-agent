@@ -1,4 +1,4 @@
-import type { ApplicationEvent, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationEvent, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import type { AgentSession } from "../../agent-session.ts";
 import type { ApplicationStateStore } from "../state.ts";
 

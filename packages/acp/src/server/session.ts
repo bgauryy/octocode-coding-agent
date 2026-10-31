@@ -165,12 +165,30 @@ export class AcpSession {
 						turn.reject(RequestError.invalidRequest(undefined, "Session is busy; nothing was sent."));
 						return;
 					}
+					// RpcClient sets `execution` (possibly undefined) only on a `success: false` response, so a live worker
+					// refused this prompt (e.g. an interactive-only command): fail that prompt, keep the session.
+					if (!this.isClosed() && error instanceof Error && "execution" in error)
+						return this.reject(turn, error.message);
+					// Anything else (lost response, timeout) leaves execution uncertain: stop the worker without a replay.
 					void this.close().catch((error) => console.error("ACP session cleanup failed", error));
 					this.fail("Agent rejected or failed the prompt; it was not replayed.");
 				}
 			},
 		);
 		return turn.done;
+	}
+
+	/** Fails one turn after its queued updates flush; the session and worker stay usable. */
+	private reject(turn: Turn, message: string): void {
+		if (turn.ending) return;
+		turn.ending = true;
+		turn.controller.abort();
+		const finish = () => {
+			if (this.active === turn) this.active = undefined;
+			if (this.observed === turn) this.observed = undefined;
+			turn.reject(RequestError.internalError(undefined, message));
+		};
+		void this.output.then(finish, finish);
 	}
 
 	private event(event: RpcEvent): void {

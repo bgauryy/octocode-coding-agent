@@ -635,6 +635,43 @@ describe("AgentSessionRuntime characterization", () => {
 		expect(realpathSync(runtime.cwd)).toBe(realpathSync(secondDir));
 	});
 
+	it("starts a new session in another folder and keeps the old one saved", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const otherDir = join(tempDir, "worktree");
+		mkdirSync(otherDir);
+		await runtime.session.prompt("before");
+		const oldFile = runtime.session.sessionFile!;
+		const trustedFor: string[] = [];
+
+		const result = await runtime.newSession({
+			cwd: otherDir,
+			projectTrustContextFactory: (cwd) => {
+				trustedFor.push(cwd);
+				return undefined as never;
+			},
+		});
+
+		expect(result).toEqual({ cancelled: false });
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(otherDir));
+		expect(runtime.session.sessionManager.getCwd()).toBe(otherDir);
+		expect(trustedFor).toEqual([otherDir]);
+		expect(runtime.session.sessionFile).not.toBe(oldFile);
+		expect(existsSync(oldFile)).toBe(true);
+		// The new session is saved with the worktree's own sessions, not with the old folder's.
+		expect(runtime.session.sessionManager.getSessionDir()).not.toBe(SessionManager.open(oldFile).getSessionDir());
+		await runtime.session.prompt("after");
+		const header = JSON.parse(readFileSync(runtime.session.sessionFile!, "utf8").split("\n")[0]);
+		expect(header.cwd).toBe(otherDir);
+	});
+
+	it("refuses a new-session folder that does not exist and changes nothing", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const before = runtime.session.sessionFile;
+		await expect(runtime.newSession({ cwd: join(tempDir, "missing") })).rejects.toThrow(/not a folder/u);
+		expect(runtime.session.sessionFile).toBe(before);
+		expect(runtime.cwd).toBe(tempDir);
+	});
+
 	it("restores model and thinking state from the destination session", async () => {
 		const { runtime, faux, tempDir } = await createRuntimeForTest(() => {}, {
 			bootstrapModel: false,

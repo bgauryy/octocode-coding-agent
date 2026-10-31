@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { describe, expect, it } from "vitest";
 import {
 	ApplicationProjection,

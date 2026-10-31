@@ -1,3 +1,4 @@
+import { createAbortError } from "../../utils/abort.ts";
 import type { ProviderEnv } from "../../types.ts";
 import { formatThrownValue } from "../../utils/diagnostics.ts";
 import { headersToRecord } from "../../utils/headers.ts";
@@ -148,7 +149,7 @@ export async function connectWebSocket(
 			fail(extractWebSocketCloseError(event));
 		};
 		const onAbort = () => {
-			fail(new Error("Request was aborted"), "aborted");
+			fail(createAbortError(), "aborted");
 		};
 
 		socket.addEventListener("open", onOpen);
@@ -288,7 +289,7 @@ export async function* parseWebSocket(
 	};
 
 	const onAbort = () => {
-		failed = new Error("Request was aborted");
+		failed = createAbortError();
 		done = true;
 		wake();
 	};
@@ -301,7 +302,7 @@ export async function* parseWebSocket(
 	try {
 		while (true) {
 			if (signal?.aborted) {
-				throw new Error("Request was aborted");
+				throw createAbortError();
 			}
 			if (queue.length > 0) {
 				yield queue.shift()!;

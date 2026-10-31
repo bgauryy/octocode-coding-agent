@@ -8,7 +8,7 @@ question: Should internal and external agent communication use one protocol?
 
 ## Answer
 
-Use **one versioned family of internal contracts**, sharing vocabulary where semantics overlap and retaining each owner's lifecycle. Extend existing `contacts` contracts and native owners, following the [entity boundaries](ENTITIES.md). Keep ACP for coding clients, MCP for tools, DAP for debugging, and add A2A for remote agent interoperability. This is a proposed migration; no A2A endpoint or unified task protocol is implemented by this RFC.
+Use **one versioned family of internal contracts**, sharing vocabulary where semantics overlap and retaining each owner's lifecycle. Extend existing `contracts` contracts and native owners, following the [entity boundaries](ENTITIES.md). Keep ACP for coding clients, MCP for tools, DAP for debugging, and add A2A for remote agent interoperability. This is a proposed migration; no A2A endpoint or unified task protocol is implemented by this RFC.
 
 ## Scope
 
@@ -20,7 +20,7 @@ Current implementation note (2026-10-29): `packages/acp/package.json` now pins `
 
 | Boundary today           | Contract and delivery                                                                                                                                                                                                                                                                                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Terminal and web         | [Application port](../packages/contacts/src/application.ts): commands, receipts, versioned frames and replay cursors. Local invocation retains richer native capabilities. [Host dispatch](../packages/coding-agent/src/core/application/service.ts) owns execution.                                                   |
+| Terminal and web         | [Application port](../packages/contracts/src/application.ts): commands, receipts, versioned frames and replay cursors. Local invocation retains richer native capabilities. [Host dispatch](../packages/coding-agent/src/core/application/service.ts) owns execution.                                                   |
 | Internal peers           | [Team mail](../packages/coding-agent/src/octocode/team/inbox.ts) persists one message with per-recipient delivery records in SQLite. Delivery means inclusion in model context, not task completion.                                                                                                                   |
 | Parent and worker        | [Child RPC](../packages/coding-agent/src/octocode/subagents/process/run-child.ts), nonce-bound [permission relay](../packages/coding-agent/src/octocode/subagents/relay.ts), and persisted [report recovery](../packages/coding-agent/src/octocode/subagents/handoff.ts). This is a distinct process-control contract. |
 | Other Octocode processes | [Native API](../packages/coding-agent/src/octocode/api/protocol.ts): JSON-RPC over Unix sockets or HTTP/SSE; separate message keys and event sequence numbers.                                                                                                                                                         |

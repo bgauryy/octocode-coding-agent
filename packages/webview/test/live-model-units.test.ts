@@ -1,5 +1,5 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
-import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { describe, expect, it } from "vitest";
 import {
 	activityCard,
@@ -183,8 +183,8 @@ describe("feed shaping", () => {
 		expect(runPhase({ ...idle, status: "idle" })).toEqual({ kind: "idle" });
 		const awaiting = { kind: "approval", title: "Run bash?" } as const;
 		expect(runPhase({ ...application, awaiting })).toEqual({ kind: "waiting", awaiting });
-		// A stale dialog marker on an idle session is not a wait.
-		expect(runPhase({ ...idle, awaiting })).toEqual({ kind: "idle" });
+		// The host reports only dialogs that are open, so an idle session with one (a background subagent's) is waiting.
+		expect(runPhase({ ...idle, awaiting })).toEqual({ kind: "waiting", awaiting });
 	});
 
 	it("sessionBadge maps the phase to the shared run state, and is absent while idle", () => {

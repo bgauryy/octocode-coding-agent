@@ -2,7 +2,7 @@ import { type ContentBlock, RequestError } from "@agentclientprotocol/sdk";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { describe, expect, it } from "vitest";
-import { AcpEventProjector, toolContent } from "../../src/server/events.ts";
+import { AcpEventProjector, toolContent, toolTitle } from "../../src/server/events.ts";
 import { convertPrompt } from "../../src/server/input.ts";
 import type { JsonAgentSessionEvent } from "../../../coding-agent/src/modes/json-event.ts";
 
@@ -235,6 +235,19 @@ describe("ACP event projection", () => {
 			{ sessionUpdate: "tool_call", toolCallId: "call-2", title: "read", status: "in_progress" },
 			{ sessionUpdate: "tool_call_update", toolCallId: "call-2", status: "completed", content: [] },
 		]);
+	});
+
+	it("titles a tool call with its reason on one line, as the terminal's reason row does", () => {
+		const projector = new AcpEventProjector();
+		const args = { command: "npm test", reason: "Run the focused\ntests\u0007 now" };
+		expect(projector.update({ type: "tool_execution_start", toolCallId: "c", toolName: "bash", args })).toEqual([
+			{ sessionUpdate: "tool_call", toolCallId: "c", title: "bash: Run the focused tests now", status: "in_progress" },
+		]);
+		// A one-word reason says no more than the name; a missing or non-text one is left out.
+		expect(toolTitle("file", { reason: "Edit" })).toBe("file");
+		expect(toolTitle("file", { reason: 3 })).toBe("file");
+		expect(toolTitle("file")).toBe("file");
+		expect(toolTitle("web", { reason: "x ".repeat(600) })).toHaveLength(512);
 	});
 });
 

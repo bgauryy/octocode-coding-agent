@@ -225,6 +225,7 @@ export {
 	type RpcCommand,
 	type RpcEvent,
 	type RpcEventListener,
+	type RpcExtensionUIDismiss,
 	type RpcExtensionUIRequest,
 	type RpcExtensionUIResponse,
 	type RpcResponse,

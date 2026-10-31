@@ -62,7 +62,7 @@ export function agentToolSpec() {
 			),
 			background: Type.Optional(
 				Type.Boolean({
-					description: "Return at once for independent work; report delivered automatically.",
+					description: "Return at once for independent work.",
 				}),
 			),
 			collaborate: Type.Optional(
@@ -74,7 +74,7 @@ export function agentToolSpec() {
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
-						"Private worktree; changes export to refs/octocode/<id>. Report names the ref; user applies it with /agents merge <id>.",
+						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. Report names the ref; the user lands it with /agents merge <id> (slash commands are not yours to run).",
 				}),
 			),
 			workingCopy: Type.Optional(

@@ -4,7 +4,7 @@ import {
 	powerShellCandidates,
 	system32Executable,
 	systemRoot,
-} from "../../src/octocode/shared/winpath.ts";
+} from "../../src/utils/windows/winpath.ts";
 
 const CWD = "C:\\repo\\project";
 

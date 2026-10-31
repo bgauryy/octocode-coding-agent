@@ -1,4 +1,5 @@
-import { DEFAULT_MAX_AGENT_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
+import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
+import { RESULT_DEFAULT_BYTES } from "../octocode/shared/output-budget.ts";
 
 /** Runtime defaults shared by settings accessors and the published JSON Schema. */
 export const SETTINGS_DEFAULTS = {
@@ -20,7 +21,7 @@ export const SETTINGS_DEFAULTS = {
 		enabled: true,
 		maxRetries: 3,
 		baseDelayMs: 2000,
-		maxAgentDelayMs: DEFAULT_MAX_AGENT_RETRY_DELAY_MS,
+		maxAgentDelayMs: DEFAULT_MAX_RETRY_DELAY_MS,
 		provider: {
 			maxRetryDelayMs: 60000,
 		},
@@ -29,7 +30,7 @@ export const SETTINGS_DEFAULTS = {
 	showCacheMissNotices: false,
 	quietStartup: false,
 	bashBackgroundAfterSeconds: 90,
-	bashOutputMaxBytes: 24 * 1024,
+	bashOutputMaxBytes: RESULT_DEFAULT_BYTES,
 	mcpPresentation: "compact",
 	defaultProjectTrust: "ask",
 	collapseChangelog: false,

@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import type { ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { getApplicationPort, type ApplicationService } from "../src/core/application/index.ts";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { ApplicationActivities } from "../src/core/application/service/activities.ts";

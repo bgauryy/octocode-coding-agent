@@ -31,7 +31,10 @@ export function say(ctx: Pick<ExtensionContext, "hasUI" | "ui">, text: string, l
 
 /** A native command registered once under its canonical name. */
 export interface Subcommand {
+	/** One sentence of at most 50 characters; usage goes in `argumentHint`. */
 	description: string;
+	/** Usage after the command name, such as `[all|<query>]`. */
+	argumentHint?: string;
 	dialog?: "handler" | "interaction";
 	handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 	complete?(prefix: string): AutocompleteItem[] | null;
@@ -70,7 +73,7 @@ export class Subcommands {
 	}
 	help(): string {
 		return this.list()
-			.map(([name, command]) => `/${name} — ${command.description}`)
+			.map(([name, command]) => `/${[name, command.argumentHint].filter(Boolean).join(" ")} — ${command.description}`)
 			.join("\n");
 	}
 	complete(prefix: string): AutocompleteItem[] | null {
@@ -90,28 +93,41 @@ export class Subcommands {
 		for (const [name, command] of this.list()) {
 			api.registerCommand(name, {
 				description: command.description,
+				...(command.argumentHint && { argumentHint: command.argumentHint }),
 				getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
-				handler: (args, ctx) =>
-					command.dialog === "interaction"
+				handler: async (args, ctx) => {
+					if (name === "octocode" && this.retiredForm(command, args)) {
+						say(ctx, this.guidance(args), "warning");
+						return;
+					}
+					return command.dialog === "interaction"
 						? command.handler(args.trim(), ctx)
-						: withDialog(() => command.handler(args.trim(), ctx)),
+						: withDialog(() => command.handler(args.trim(), ctx));
+				},
 			});
 		}
+		// Reached when commands are not dispatched first (prompt templates off) or `/octocode` is not registered.
 		api.on("input", async (event, ctx) => {
 			const match = /^\/octocode(?:\s+(.*))?$/s.exec(event.text.trim());
 			if (!match) return { action: "continue" };
 			// Bare /octocode is now the live board; only the retired namespaced form needs migration guidance.
 			if (!match[1]?.trim() && this.has("octocode")) return { action: "continue" };
-			say(
-				ctx,
-				legacyNativeCommandGuidance(
-					match[1] ?? "",
-					this.list().map(([name]) => name),
-				),
-				"warning",
-			);
+			say(ctx, this.guidance(match[1] ?? ""), "warning");
 			return { action: "handled" };
 		});
+	}
+	/** What to run instead of `/octocode <args>`, naming the registered direct commands. */
+	private guidance(args: string): string {
+		return legacyNativeCommandGuidance(
+			args,
+			this.list().map(([name]) => name),
+		);
+	}
+	/** `/octocode <args>` is the retired namespaced form unless its first word is one the `/octocode` command offers itself. */
+	private retiredForm(command: Subcommand, args: string): boolean {
+		const word = args.trim().split(/\s+/, 1)[0] ?? "";
+		if (!word) return false;
+		return !(command.complete?.("") ?? []).some((item) => item.value === word);
 	}
 }
 

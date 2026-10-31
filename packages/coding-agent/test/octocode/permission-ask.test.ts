@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
-import { PERMISSION_ENV, PERMISSION_GRANTS_ENV, PERMISSION_NONCE_FILE_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_ENV, PERMISSION_GRANTS_ENV, PERMISSION_NONCE_FILE_ENV } from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";

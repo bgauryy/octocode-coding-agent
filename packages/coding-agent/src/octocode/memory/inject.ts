@@ -2,7 +2,7 @@ import { USER_AUTHOR } from "../agentdb/author.ts";
 import { clipText } from "../shared/util.ts";
 import { MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
 import { type Memory, type MemoryStore, memoryGetCall, memoryTags, type ScopeFilter } from "./store.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const MEMORY_MESSAGE_TYPE = "octocode-memory";
 export const MEMORY_HEADER =

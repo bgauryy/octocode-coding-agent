@@ -1,4 +1,5 @@
 import type { AssistantMessage } from "../types.ts";
+import { getProviderCapabilities } from "./provider-capabilities.ts";
 
 /**
  * Regex patterns to detect context overflow errors from different providers.
@@ -148,7 +149,7 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 			if (OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!))) {
 				return true;
 			}
-			if (message.provider === "cerebras" && CEREBRAS_BODYLESS_OVERFLOW_PATTERN.test(message.errorMessage)) {
+			if (getProviderCapabilities(message.provider).bodylessContextOverflow && CEREBRAS_BODYLESS_OVERFLOW_PATTERN.test(message.errorMessage)) {
 				return true;
 			}
 		}

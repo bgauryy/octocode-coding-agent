@@ -6,7 +6,7 @@ import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate, powershellDestructive } from "../../src/octocode/permission/gate.ts";
 import { archiveFolder } from "../../src/octocode/shared/archive.ts";
-import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";

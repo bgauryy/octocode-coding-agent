@@ -1,7 +1,10 @@
 import { execFileSync, spawn } from "node:child_process";
-import { validPid } from "./util.ts";
-import { windowsTree } from "./winhelper.ts";
-import { system32Executable } from "./winpath.ts";
+import { validPid } from "../../utils/process-id.ts";
+import { killWindowsTree, signalTree, taskkillTree } from "../../utils/process-tree.ts";
+
+// The tree primitives live in utils/ so core's shell can use them too; the hosted ACP workspace reaches them through
+// this file, the one process module its host import baseline lists.
+export { adoptTree, prepareTree, signalTree } from "../../utils/process-tree.ts";
 
 /** How long a stopped process tree gets after SIGTERM before SIGKILL. */
 export const KILL_GRACE_MS = 500;
@@ -168,66 +171,6 @@ export function groupStartTimes(pgid: number): Array<{ pid: number; started: str
 	return members;
 }
 
-/** `taskkill /T /F` on `pid`: walks the tree below a live root, and fails (exit 128) once the root has exited. Never throws. */
-function taskkill(pid: number): void {
-	try {
-		spawn(system32Executable("taskkill.exe"), ["/pid", String(pid), "/T", "/F"], {
-			stdio: "ignore",
-			windowsHide: true,
-		}).on("error", () => undefined);
-	} catch {
-		// taskkill is missing; nothing more to do.
-	}
-}
-
-/**
- * Ends the Windows tree rooted at `pid`: its job when the helper holds one (every member goes, also the descendants of
- * a root that exited), else, or when the job could not be killed, `taskkill`. Resolves once the job is ended.
- */
-async function killWindowsTree(pid: number): Promise<void> {
-	if (windowsTree.owns(pid) && (await windowsTree.kill(pid))) return;
-	taskkill(pid);
-}
-
-/**
- * Starts what tracking a process tree needs, before the process spawns: on Windows, the helper that owns its job (its
- * startup takes a while, and a child started before the assignment is not in the job). A no-op elsewhere.
- */
-export async function prepareTree(): Promise<void> {
-	if (process.platform === "win32") await windowsTree.start();
-}
-
-/**
- * Right after spawning the root of a tree: on Windows, puts it in a job, so `signalTree`, `stopTree` and `killTree`
- * reach its whole tree and the tree ends with Octocode. Asynchronous and best effort; a no-op elsewhere (the process group
- * is the tree there: spawn with `detached: true`).
- */
-export function adoptTree(pid: number | undefined): void {
-	if (process.platform === "win32") void windowsTree.assign(pid);
-}
-
-/**
- * Sends `signal` to the process tree rooted at `pid`: its process group on POSIX (spawn it with `detached: true` so it
- * leads one; otherwise only the process itself is signalled), and on Windows, which has no signals, its job (see
- * `adoptTree`) or else `taskkill /T /F`. Never throws.
- */
-export function signalTree(pid: number | undefined, signal: NodeJS.Signals): void {
-	if (!validPid(pid)) return;
-	if (process.platform === "win32") {
-		void killWindowsTree(pid);
-		return;
-	}
-	try {
-		process.kill(-pid, signal);
-	} catch {
-		try {
-			process.kill(pid, signal);
-		} catch {
-			// Already gone.
-		}
-	}
-}
-
 /**
  * Whether any process of the group led by `pid` is alive (POSIX; spawn it with `detached: true`). A shell that exits
  * can leave children (`server &`, `nohup`) in its group. Windows has no groups: the process itself.
@@ -318,7 +261,7 @@ export async function stopTree(pid: number | undefined, graceMs = KILL_GRACE_MS)
 		await killWindowsTree(pid);
 		await settle(graceMs);
 		if (treeAlive(pid, descendants)) {
-			taskkill(pid);
+			taskkillTree(pid);
 			await settle(graceMs);
 		}
 		return;

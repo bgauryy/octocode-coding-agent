@@ -148,6 +148,7 @@ async function fixture(
 }
 
 const original = {
+	reason: "Write the fixture files",
 	queries: [
 		{
 			type: "write",
@@ -349,6 +350,7 @@ it("retains a native delete's pre-call patch for a post-only Codex observer", as
 			fauxAssistantMessage(
 				[
 					fauxToolCall("file", {
+						reason: "Delete the fixture file",
 						queries: [
 							{
 								type: "delete",
@@ -390,6 +392,7 @@ it("preserves native query batches' continue-after-failure behavior independentl
 			fauxAssistantMessage(
 				[
 					fauxToolCall("file", {
+						reason: "Verify the continuation",
 						queries: [
 							...structuredClone(original.queries),
 							{

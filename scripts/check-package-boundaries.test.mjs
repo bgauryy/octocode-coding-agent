@@ -9,16 +9,16 @@ import { HOST_IMPORT_BASELINE } from "./host-import-baseline.mjs";
 import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { sourceWorkspaceGroups } from "./source-workspaces.mjs";
 const packages = {
-	contacts: { name: "@app/contacts" },
-	webview: { name: "@app/webview", dependencies: { "@app/contacts": "1" } },
+	contracts: { name: "@app/contracts" },
+	webview: { name: "@app/webview", dependencies: { "@app/contracts": "1" } },
 	agent: { name: "@app/agent" },
 };
-const policy = { contacts: [], webview: ["contacts"], agent: [] };
+const policy = { contracts: [], webview: ["contracts"], agent: [] };
 test("accepts declared inward imports and type imports", () => {
 	assert.deepEqual(
 		checkPackageBoundaries(
 			packages,
-			[{ package: "webview", path: "src/view.ts", imports: ["@app/contacts/events"] }],
+			[{ package: "webview", path: "src/view.ts", imports: ["@app/contracts/events"] }],
 			policy,
 		),
 		[],
@@ -27,7 +27,7 @@ test("accepts declared inward imports and type imports", () => {
 test("rejects outward and undeclared imports even when type-only", () => {
 	const issues = checkPackageBoundaries(
 		packages,
-		[{ package: "contacts", path: "src/types.ts", imports: ["@app/webview"] }],
+		[{ package: "contracts", path: "src/types.ts", imports: ["@app/webview"] }],
 		policy,
 	);
 	assert.ok(issues.some((x) => x.includes("forbidden")));
@@ -183,20 +183,20 @@ test("a private implementation ships its dependencies through the host without b
 test("the filesystem gate detects deferred crossing imports without treating examples as dependencies", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-boundaries-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
-	for (const name of ["contacts", "webview"]) {
+	for (const name of ["contracts", "webview"]) {
 		const directory = join(root, "packages", name);
 		mkdirSync(join(directory, "src"), { recursive: true });
 		writeFileSync(join(directory, "package.json"), JSON.stringify({ name: `@app/${name}` }));
 	}
-	const file = join(root, "packages/contacts/src/example.ts");
+	const file = join(root, "packages/contracts/src/example.ts");
 	writeFileSync(file, 'const help = "import \'@app/webview\'";\n// import "@app/webview";');
 	assert.deepEqual(scanPackageBoundaries(root), []);
 	writeFileSync(file, 'const require = (value: string) => value;\nrequire("@app/webview");');
 	assert.deepEqual(scanPackageBoundaries(root), []);
 	writeFileSync(file, 'export const load = () => import /* deferred */ ("@app/webview");');
 	assert.deepEqual(scanPackageBoundaries(root), [
-		"forbidden import: contacts/src/example.ts -> webview",
-		"undeclared import: contacts/src/example.ts -> webview",
+		"forbidden import: contracts/src/example.ts -> webview",
+		"undeclared import: contracts/src/example.ts -> webview",
 	]);
 });
 
@@ -215,14 +215,53 @@ test("a layer cannot import the layer above it unless its baseline lists the fil
 		[],
 	);
 	assert.deepEqual(
-		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/core/new.ts")], { host: [] }, {}, rules),
+		checkPackageBoundaries(
+			{ host: { name: "@app/host" } },
+			[source("src/core/old.ts"), source("src/core/new.ts")],
+			{ host: [] },
+			{},
+			rules,
+		),
 		["core-must-not-import-modes: host/src/core/new.ts -> host/src/modes/view.ts (not in its baseline)"],
 	);
 	assert.deepEqual(
-		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/other/new.ts")], { host: [] }, {}, rules),
+		checkPackageBoundaries(
+			{ host: { name: "@app/host" } },
+			[source("src/core/old.ts"), source("src/other/new.ts")],
+			{ host: [] },
+			{},
+			rules,
+		),
 		[],
 		"a file outside the layer is not constrained",
 	);
+});
+
+test("a baseline entry that no longer imports its layer fails until it is removed", () => {
+	const rules = [
+		{
+			name: "core-must-not-import-octocode",
+			from: "host/src/core/",
+			to: "host/src/octocode/",
+			baseline: ["host/src/core/fixed.ts", "host/src/core/gone.ts"],
+		},
+	];
+	const sources = [
+		{ package: "host", path: "src/core/fixed.ts", imports: ["./local.ts"] },
+		{ package: "host", path: "src/core/other.ts", imports: ["../octocode/index.ts"] },
+	];
+	assert.deepEqual(checkPackageBoundaries({ host: { name: "@app/host" } }, sources, { host: [] }, {}, rules), [
+		"core-must-not-import-octocode: host/src/core/other.ts -> host/src/octocode/index.ts (not in its baseline)",
+		"core-must-not-import-octocode: host/src/core/fixed.ts no longer imports host/src/octocode/ (remove it from its baseline)",
+		"core-must-not-import-octocode: host/src/core/gone.ts no longer imports host/src/octocode/ (remove it from its baseline)",
+	]);
+});
+
+test("core stays a layer below the octocode feature layer", () => {
+	const rule = LAYER_RULES.find((entry) => entry.name === "core-must-not-import-octocode");
+	assert.ok(rule, "the core -> octocode layer rule must stay registered");
+	assert.equal(rule.from, "coding-agent/src/core/");
+	assert.equal(rule.to, "coding-agent/src/octocode/");
 });
 
 test("the committed layer baselines list only existing, sorted files inside their layer", () => {

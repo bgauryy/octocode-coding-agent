@@ -3,7 +3,7 @@ import path from "node:path";
 import { recordedLocalReads } from "../../shared/local-reads.ts";
 import { OCTOCODE_DIR, readPaths, workspaceScratchDir } from "../../shared/home.ts";
 import { processStartTime, sameProcess } from "../../shared/process.ts";
-import { cleanupDays } from "../../shared/env.ts";
+import { cleanupDays } from "../../../../../common/src/env.ts";
 import { DAY_MS } from "../../shared/util.ts";
 import { canonicalPath } from "../../shared/home/repo.ts";
 import { teamWorkspace } from "../../team/store/workspace.ts";

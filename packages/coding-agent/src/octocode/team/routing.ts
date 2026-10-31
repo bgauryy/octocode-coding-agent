@@ -1,3 +1,4 @@
+import path from "node:path";
 import { mutatedPaths } from "../shared/file-input.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE_NOTE } from "../shared/fence.ts";
 import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/format.ts";
@@ -9,8 +10,8 @@ import { type Ask, asksLabel } from "./asks.ts";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
 import type { DeadLetter, Lease, Message } from "./model.ts";
-import { errorMessage } from "../../utils/guards.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 /** Pure text and routing helpers for the team: recipients, what `coordinate list` prints, which paths a call edits. */
 
@@ -202,6 +203,7 @@ export function describeMembers(
 	asks?: ReadonlyMap<string, readonly Ask[]>,
 ): string {
 	if (members.length === 0) return "No agents have joined in this repository.";
+	const here = members.find((member) => member.id === selfId)?.checkout;
 	// Goals, activity and paths come from other processes' rows: untrusted text the model reads.
 	return visibleControls(
 		members
@@ -211,16 +213,23 @@ export function describeMembers(
 				const model = member.model ? ` · ${member.model}` : "";
 				const doing = member.status === "working" ? (member.activity ?? "working") : "idle";
 				const asked = asksLabel(asks?.get(member.id));
+				// Another worktree of the repository: its folder name says where, and its locks are paths in that checkout.
+				const elsewhere = here && member.checkout && member.checkout !== here;
+				const worktree = elsewhere ? ` · worktree ${path.basename(member.checkout!)}` : "";
 				return [
-					`${member.id}${you} · ${member.role} · ${member.status}${model}${parent}`,
+					`${member.id}${you} · ${member.role} · ${member.status}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
-					`  joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}`,
+					`  pid ${member.pid}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}`,
 					`  ${firstLine(doing)}`,
 					...(member.pending
 						? [`  ${member.pending} message${member.pending === 1 ? "" : "s"} awaiting its reply`]
 						: []),
 					...(asked ? [`  ${asked} to its parent`] : []),
-					...(member.locks?.length ? [`  holds ${member.locks.join(", ")}`] : []),
+					...(member.locks?.length
+						? [
+								`  holds ${member.locks.join(", ")}${elsewhere ? ` (in worktree ${path.basename(member.checkout!)})` : ""}`,
+							]
+						: []),
 				].join("\n");
 			})
 			.join("\n"),

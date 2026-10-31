@@ -11,7 +11,7 @@ import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
 import { type SessionExtra, type SessionIndex, shownLine } from "./store.ts";
 import { isWithin } from "../shared/home/repo.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Most sessions listed. */
 const LIST_LIMIT = 30;
@@ -134,7 +134,8 @@ export function registerSessionsCommand(
 	options: SessionsCommandOptions,
 ): void {
 	commands.add("resume", {
-		description: "resume [all|<query>] — recent sessions of this directory: resume, details, rename, forget",
+		description: "Resume a recent session of this directory",
+		argumentHint: "[all|<query>]",
 		complete: (prefix) => wordCompletions(["all"], prefix),
 		handler: async (args, ctx) => {
 			// Without the agent database the list still works; it only lacks cost, branch, files and liveness.

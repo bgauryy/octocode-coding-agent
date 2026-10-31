@@ -3,8 +3,8 @@
  * and the new pane's id comes back from `-P -F`, so callers learn where it started.
  */
 
-import { execFile } from "node:child_process";
-import { hasTmuxSession } from "@octocodeai/octocode-tui";
+import { hasTmuxSession, tmuxExec } from "@octocodeai/octocode-tui";
+import { ENV_AGENT_DIR, ENV_SESSION_DIR } from "../../config.ts";
 
 export type TmuxLaunchRequest = {
 	placement: "pane" | "window";
@@ -36,20 +36,50 @@ export type TmuxLaunchDependencies = {
 
 const TMUX_TIMEOUT_MS = 5000;
 
+/** Configuration locations a new pane must share with this process; tmux starts it in the server's environment. */
+const FORWARDED_ENV = [ENV_AGENT_DIR, ENV_SESSION_DIR, "OCTOCODE_HOME"] as const;
+
+/** The variables of `env` that point a new pane at this process's configuration and sessions. */
+export function forwardedLaunchEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+	const forwarded: Record<string, string> = {};
+	for (const name of FORWARDED_ENV) {
+		const value = env[name];
+		if (value) forwarded[name] = value;
+	}
+	return forwarded;
+}
+
 const runTmux: TmuxRunner = (args, { cwd, env, signal }) =>
-	new Promise((resolve, reject) => {
-		execFile(
-			"tmux",
-			[...args],
-			{ cwd, env, signal, timeout: TMUX_TIMEOUT_MS, encoding: "utf8" },
-			(error, stdout, stderr) => {
-				if (!error) return resolve(stdout);
-				if (signal?.aborted) return reject(signal.reason ?? error);
-				const detail = stderr.trim() || error.message;
-				reject(new Error(`tmux failed: ${detail}`));
-			},
-		);
+	tmuxExec(args, { cwd, env, ...(signal ? { signal } : {}), timeoutMs: TMUX_TIMEOUT_MS });
+
+/** One pane of the tmux server: where it is (`work:2.0`), its process and its current directory. */
+export type TmuxPane = { id: string; label: string; pid: number; command: string; cwd: string };
+
+const PANE_FORMAT = [
+	"#{pane_id}",
+	"#{session_name}:#{window_index}.#{pane_index}",
+	"#{pane_pid}",
+	"#{pane_current_command}",
+	"#{pane_current_path}",
+].join("\t");
+
+/** Every pane of the tmux server `env` reaches; none when tmux is not installed, not running or fails. */
+export async function listTmuxPanes(dependencies: TmuxLaunchDependencies = {}): Promise<TmuxPane[]> {
+	const run = dependencies.runner ?? runTmux;
+	let out: string;
+	try {
+		out = await run(["list-panes", "-a", "-F", PANE_FORMAT], {
+			cwd: process.cwd(),
+			env: dependencies.env ?? process.env,
+		});
+	} catch {
+		return [];
+	}
+	return out.split("\n").flatMap((line) => {
+		const [id = "", label = "", pid = "", command = "", cwd = ""] = line.split("\t");
+		return /^%\d+$/u.test(id) && label && cwd ? [{ id, label, pid: Number(pid) || 0, command, cwd }] : [];
 	});
+}
 
 /** tmux reads an argument ending in `;` as a command separator; a backslash before it keeps it literal. */
 function escapeTrailingSemicolon(value: string): string {
@@ -83,6 +113,17 @@ export function buildTmuxLaunchArgs(request: TmuxLaunchRequest, target: string |
 	return args.map(escapeTrailingSemicolon);
 }
 
+/**
+ * Where a new window opens. tmux takes the current session from `TMUX_PANE`, which it sets in every pane, so nothing is
+ * passed then (`new-window -t` rejects a pane id). Without `TMUX_PANE` tmux would pick its most recently used session,
+ * so the session named by the last field of `TMUX` (`socket,pid,session`) is the target instead.
+ */
+function windowTarget(env: NodeJS.ProcessEnv): string | undefined {
+	if (env.TMUX_PANE) return undefined;
+	const session = /,(\d+)$/u.exec(env.TMUX ?? "")?.[1];
+	return session === undefined ? undefined : `$${session}:`;
+}
+
 /** Starts `request.command` in a new tmux pane or window and returns its id (`%N` for a pane, `@N` for a window). */
 export async function launchInTmux(
 	request: TmuxLaunchRequest,
@@ -90,7 +131,7 @@ export async function launchInTmux(
 ): Promise<TmuxLaunchResult> {
 	const env = dependencies.env ?? process.env;
 	if (!hasTmuxSession(env)) throw new Error("Not running inside tmux (TMUX is not set).");
-	const target = request.placement === "pane" ? env.TMUX_PANE : undefined;
+	const target = request.placement === "pane" ? env.TMUX_PANE : windowTarget(env);
 	if (request.placement === "pane" && !target) throw new Error("tmux pane launch needs TMUX_PANE.");
 	const args = buildTmuxLaunchArgs(request, target);
 	const run = dependencies.runner ?? runTmux;

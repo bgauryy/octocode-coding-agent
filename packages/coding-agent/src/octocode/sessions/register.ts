@@ -9,7 +9,7 @@ import { notify } from "../shared/commands.ts";
 import { currentSessionId } from "../shared/home.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { expandKey, plural } from "../shared/render/text.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { CLAIM_MARKER, pendingReportsDir } from "../subagents/handoff/pending.ts";
 import {

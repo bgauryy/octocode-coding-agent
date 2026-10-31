@@ -12,7 +12,7 @@ describe("CLI value completion", () => {
 		const { default: octocode } = await import("../src/octocode/index.ts");
 		const { fakeHost } = await import("./octocode/fake-host.ts");
 		const fake = fakeHost();
-		octocode(fake.api);
+		await octocode(fake.api);
 		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp"]));
 		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual(["file,browser"]);
 	});

@@ -3,7 +3,7 @@ import {
 	type ApplicationCommand,
 	type ApplicationEvent,
 	type ApplicationReceipt,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import { redactSecrets } from "../../../octocode/shared/sanitize.ts";
 import type { ApplicationReceiptStore } from "./types.ts";
 import type { ImageContent } from "@octocodeai/octocode-ai";

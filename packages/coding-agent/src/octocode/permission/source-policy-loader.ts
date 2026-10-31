@@ -4,7 +4,7 @@ import { nativeHost } from "../shared/host-api.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
 import { projectTrustForContents, preparePermissionTrustUpdate } from "../shared/trust.ts";
 import { say } from "../shared/commands.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { parseSourcePolicy, type SourcePolicy } from "./source-policy/rules.ts";
 import { initializeBashSyntax } from "./bash-syntax.ts";
 import { evaluateSourcePolicy, unprojectedSourcePolicy, sourceToolDenied } from "./source-policy.ts";

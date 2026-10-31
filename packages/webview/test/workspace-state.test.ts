@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { createWorkspaceStore, selectEvents } from "@octocodeai/octocode-webview/state";
 import { describe, expect, it } from "vitest";
 

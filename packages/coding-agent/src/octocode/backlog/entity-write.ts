@@ -1,6 +1,6 @@
 import { Value } from "typebox/value";
-import { EntityFieldsSchema, type EntityInput, type BacklogRef } from "@octocodeai/octocode-contacts/backlogs";
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import { EntityFieldsSchema, type EntityInput, type BacklogRef } from "@octocodeai/octocode-contracts/backlogs";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { type Db, backlog } from "../agentdb/api.ts";
 import { entityInput } from "./entities.ts";
 import { type Actor, type Item, BacklogError, refuseSecrets } from "./item.ts";

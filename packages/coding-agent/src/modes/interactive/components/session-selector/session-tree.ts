@@ -1,5 +1,5 @@
 import type { SessionInfo } from "../../../../core/session-manager.ts";
-import { canonicalizePath } from "../../../../utils/paths.ts";
+import { canonicalizePath } from "../../../../../../common/src/paths.ts";
 
 /** A session tree node for hierarchical display */
 interface SessionTreeNode {

@@ -1,11 +1,12 @@
 import type { Api, Model } from "../types.ts";
+import { getProviderCapabilities } from "./provider-capabilities.ts";
 
 /** Claude 5.5's effort limits also apply when OpenCode or Copilot forwards the Messages API. */
 export function withClaudeThinkingCapabilities<T extends Model<Api>>(model: T): T {
 	if (
 		model.api !== "anthropic-messages" ||
 		!model.reasoning ||
-		!["anthropic", "opencode", "opencode-go", "github-copilot"].includes(model.provider)
+		!getProviderCapabilities(model.provider).claudeEffortLimits
 	) {
 		return model;
 	}

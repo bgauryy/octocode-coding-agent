@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { once } from "node:events";
-import type { ApplicationCommand, ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationCommand, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { ApplicationStream } from "../../../webview/src/application-stream.ts";

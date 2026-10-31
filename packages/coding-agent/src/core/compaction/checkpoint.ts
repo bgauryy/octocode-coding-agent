@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { buildSessionProjection, type CompactionEntry, type SessionEntry } from "../session-manager.ts";
-import type { CompactionResult } from "./compaction.ts";
+import type { CompactionResult } from "./types.ts";
 import { clipWithMarker } from "./inline.ts";
 import { CHARS_PER_TOKEN, charsToTokens, estimateProjectedContextTokens } from "./tokens.ts";
 

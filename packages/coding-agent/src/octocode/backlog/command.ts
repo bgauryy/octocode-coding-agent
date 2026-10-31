@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extension
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { openFile } from "../shared/open.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { doItPrompt } from "./actions.ts";
 import { showBoard } from "./board.ts";
 import { type Backlog, openBacklog } from "./context.ts";
@@ -11,7 +11,7 @@ import { exportBacklog, exportBacklogHtml } from "./command/export-files.ts";
 import { type CommandDeps, createItemActions, detail } from "./command/item-actions.ts";
 import { refText } from "./row.ts";
 import { type Item, parseRef } from "./store.ts";
-import { STATES } from "@octocodeai/octocode-contacts/snapshot";
+import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 
 /** The `/backlog` subcommand. */
 export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand {
@@ -154,9 +154,10 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	};
 	const itemActions = [...STATES, "delete"];
 	const syntax = Object.entries(verbs).map(([name, verb]) => `${name}${verb.args ? ` ${verb.args}` : ""}`);
-	const usage = `backlog [${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
+	const usage = `[${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
 	return {
-		description: `Deprecated task board; use /octocode · ${usage}`,
+		description: "Deprecated task board; use /octocode",
+		argumentHint: usage,
 		complete: (prefix) => {
 			const words = prefix.split(/\s+/);
 			let items: Item[] = [];
@@ -208,9 +209,9 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 				}
 				const command = Object.hasOwn(verbs, word) ? verbs[word] : undefined;
 				if (command) return await command.run(ctx, backlog, tail);
-				if (rest.length > 1) return say(ctx, `Usage: /${usage}`, "warning");
+				if (rest.length > 1) return say(ctx, `Usage: /backlog ${usage}`, "warning");
 				const item = backlog.store.get(word);
-				if (!item) return say(ctx, `Unknown backlog item or subcommand "${word}". Usage: /${usage}`, "warning");
+				if (!item) return say(ctx, `Unknown backlog item or subcommand "${word}". Usage: /backlog ${usage}`, "warning");
 				const verb = rest[0];
 				if (verb === undefined) {
 					if (ctx.hasUI) {
@@ -229,7 +230,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 					if (!ctx.hasUI) return say(ctx, "Deleting needs a confirmation: run it in the interactive UI.", "warning");
 					return await remove(ctx, backlog, item, sanitizeTerminalText(item.title));
 				}
-				return say(ctx, `Unknown action "${verb}". Usage: /${usage}`, "warning");
+				return say(ctx, `Unknown action "${verb}". Usage: /backlog ${usage}`, "warning");
 			} catch (error) {
 				say(ctx, errorMessage(error), "error");
 			}

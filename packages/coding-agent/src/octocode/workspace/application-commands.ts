@@ -2,7 +2,7 @@ import {
 	applicationCommandFingerprint,
 	type ApplicationCommand,
 	type ApplicationReceipt,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import type { ApplicationReceiptStore } from "../../core/application/index.ts";
 import { commands } from "../agentdb/api.ts";
 import type { AgentDb } from "../agentdb/db.ts";

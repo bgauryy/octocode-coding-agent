@@ -118,7 +118,7 @@ In parallel mode, tool completion events follow tool completion order, but persi
 
 The mode can be set globally via `toolExecution` in the agent config, or per-tool via `executionMode` on `AgentTool`. If any tool call in a batch targets a tool with `executionMode: "sequential"`, the entire batch executes sequentially regardless of the global setting.
 
-The `beforeToolCall` hook runs after `tool_execution_start` and validated argument parsing. It can block execution and attach `terminate: true` to the blocked result. The `afterToolCall` hook runs after tool execution finishes and before `tool_execution_end` and final tool result message events are emitted.
+The `beforeToolCall` hook runs after `tool_execution_start` and validated argument parsing. It can block execution and attach `terminate: true` to the blocked result. In a parallel batch every call is prepared before any runs, so an approval can go stale while later calls wait; return `revalidate` (an async function returning `{ block, reason }` or nothing) to check again right before that call executes. The `afterToolCall` hook runs after tool execution finishes and before `tool_execution_end` and final tool result message events are emitted.
 
 A call to a tool the request did not declare never reaches the hooks; it gets the error `Tool <name> not found`. Set `unknownToolMessage(name)` (an `Agent` field, constructor option or loop config) to return a different error text, for example how to load the tool; return `undefined` to keep the default.
 

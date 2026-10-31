@@ -12,7 +12,7 @@ import { validateFileInput } from "../../src/octocode/shared/file-input.ts";
 import { BASH_READER, FileGuard, LOCAL_FETCH_READER, returnedContent } from "../../src/octocode/files/tool/guard.ts";
 import { formatOutcomes } from "../../src/octocode/files/tool/queries.ts";
 import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
-import { sha256 } from "../../src/utils/atomic-file.ts";
+import { sha256 } from "../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { capChars } from "../../src/octocode/shared/util.ts";
@@ -30,6 +30,34 @@ describe("file input shape", () => {
 			validateFileInput({ queries: [{ type: "write", path: "a.txt", content: "x", reason: "r" }] }),
 		).not.toThrow();
 		expect(() => validateFileInput({ patch: "*** Begin Patch\n*** End Patch" })).not.toThrow();
+	});
+});
+
+describe("file tool one-of input", () => {
+	// The schema stays one flat object: a root union is flattened or refused by some providers, and a validator's
+	// "must match exactly one" names no fix. The description states the rule and `execute` names the fix.
+	it("states the either-or in its description and refuses both and neither with the taught shape", async () => {
+		let tool: { description: string; execute: (...args: unknown[]) => Promise<unknown> } | undefined;
+		registerFileTool(
+			{
+				registerTool: (t: typeof tool) => {
+					tool = t;
+					return tool;
+				},
+				on: () => undefined,
+			} as never,
+			new FileGuard(),
+			fakePermission(),
+		);
+		expect(tool!.description).toMatch(/queries .* or a Codex-style patch string, not both/);
+		const cwd = tmp();
+		const taught = /file takes either queries .* or patch .*not both/;
+		const run = (input: Record<string, unknown>) =>
+			tool!.execute("c", { reason: "r", ...input }, undefined, undefined, { cwd, hasUI: false });
+		const change = { type: "write", path: "a.txt", content: "x" };
+		await expect(run({})).rejects.toThrow(taught);
+		await expect(run({ queries: [change], patch: "*** Begin Patch\n*** End Patch" })).rejects.toThrow(taught);
+		expect(fs.existsSync(path.join(cwd, "a.txt"))).toBe(false);
 	});
 });
 
@@ -1435,8 +1463,8 @@ describe("file change rendering", () => {
 			})
 			.render(120)
 			.join("\n");
-		expect(single).toBe("✓ File(edit src/a.ts · 2 edits) · 1.2s");
-		// Expanded, a single change shows one reason line, under the title like the call's own: the per-change one only when the call has none.
+		// A single change shows one reason line, collapsed or expanded, under the title like the call's own: the per-change one only when the call has none.
+		expect(single).toBe("✓ File(edit src/a.ts · 2 edits) · 1.2s\n  ↳ Fix the off-by-one in the loop");
 		const expandedSingle = (callArgs: object) =>
 			tool!
 				.renderCall(callArgs, theme, { lastComponent: undefined, expanded: true, isPartial: false })

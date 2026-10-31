@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contacts/protocol";
+import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { handleReportsRequest } from "../workspace/reports.ts";
 import type { Reply } from "./http-util.ts";

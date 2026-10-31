@@ -1,5 +1,6 @@
 import { typesafeSystemOneApi } from "../api/typesafe-system-one.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { createProvider, type Provider } from "../models.ts";
 import { TYPESAFE_CLASSIFIER_MODELS } from "./typesafe.models.ts";
 
@@ -8,7 +9,7 @@ export function typesafeProvider(): Provider {
 		id: "typesafe",
 		name: "TypeSafe",
 		auth: {
-			apiKey: envApiKeyAuth("TypeSafe API key", ["TYPESAFE_API_KEY"]),
+			apiKey: envApiKeyAuth("TypeSafe API key", apiKeyEnvVars("typesafe")),
 		},
 		models: Object.values(TYPESAFE_CLASSIFIER_MODELS),
 		classifiers: {

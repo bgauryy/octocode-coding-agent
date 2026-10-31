@@ -47,14 +47,3 @@ export function resolveRoute(route: Route, views: readonly string[]): Destinatio
 	if (views.includes(route.name)) return { kind: "view", view: route.name, params: route.params };
 	return { kind: "view", view: "board", params: {} };
 }
-
-/** `/backlog` launches with `#access=…&view=…`; the token moves to session storage and the hash becomes a plain view. */
-export function readLaunch(hash: string): { access: string; hash: string } | null {
-	if (!hash.startsWith("#access=")) return null;
-	const launch = new URLSearchParams(hash.slice(1));
-	const view = launch.get("view");
-	return {
-		access: launch.get("access") ?? "",
-		hash: view === "activity" || view === "backlog" ? `#${view}` : "#board",
-	};
-}

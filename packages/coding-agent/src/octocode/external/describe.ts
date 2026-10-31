@@ -2,7 +2,7 @@ import { GLYPH } from "@octocodeai/octocode-tui";
 import { clip } from "../shared/render/text.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const asRecords = (value: unknown): Array<Record<string, unknown>> =>
 	Array.isArray(value) ? value.filter(isRecord) : [];

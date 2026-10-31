@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
 import type { SessionEntry } from "../../../core/session-manager.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_ID_ENV } from "../store/env.ts";
 
 /** The session entry (`api.appendEntry`, never sent to the model) that records the team name a top-level session joined as. */

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import type { ReactNode } from "react";
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";

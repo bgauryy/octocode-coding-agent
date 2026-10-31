@@ -1,6 +1,6 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import { existsSync } from "fs";
-import { normalizePath, resolvePath } from "../utils/paths.ts";
+import { normalizePath, resolvePath } from "../../../common/src/paths.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { SessionManagerApi } from "./session-manager/api.ts";
 import * as appends from "./session-manager/appends.ts";

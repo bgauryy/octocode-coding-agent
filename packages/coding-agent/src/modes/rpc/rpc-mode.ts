@@ -28,7 +28,7 @@ import type { RpcSessionIdentity } from "./session-identity.ts";
 import { ACP_WORKER_ENV, createSessionControls } from "./rpc-mode/session-controls.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Run in RPC mode.

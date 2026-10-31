@@ -1,4 +1,4 @@
-import type { Member, Traffic } from "@octocodeai/octocode-contacts";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts";
 import { memo, useState } from "react";
 import { useStore } from "zustand";
 import { stamp } from "../model/format.ts";

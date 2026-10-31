@@ -1,7 +1,7 @@
 import { lstatSync, statSync } from "node:fs";
 import path from "node:path";
 import { type PluginManifest, resolvePluginPath } from "./plugin-manifest.ts";
-import { isRecord } from "../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 type PluginComponent = { kind: "path"; path: string } | { kind: "inline"; value: Record<string, unknown> };
 type PluginCommand =

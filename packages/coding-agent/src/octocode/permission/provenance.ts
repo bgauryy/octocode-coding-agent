@@ -6,7 +6,7 @@ import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 import { secretProblem } from "../shared/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { runsLater } from "./file-access.ts";
 import { KeyTable } from "./key-table.ts";
 import { commandNames, SHELL_TOOLS } from "./shell.ts";

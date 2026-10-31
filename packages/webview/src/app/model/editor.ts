@@ -1,6 +1,6 @@
-import type { BacklogMutation } from "@octocodeai/octocode-contacts/protocol";
-import type { SnapshotItem, State } from "@octocodeai/octocode-contacts/snapshot";
-import { ITEM_TYPES, PRIORITIES } from "./backlog.ts";
+import { ITEM_TYPES, PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
+import type { BacklogMutation } from "@octocodeai/octocode-contracts/protocol";
+import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
 import { choice } from "./format.ts";
 
 export const FILE_ROLES = ["changed", "reviewed", "produced"] as const;

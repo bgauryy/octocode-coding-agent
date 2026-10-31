@@ -1,6 +1,7 @@
+import { PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
 import type { ReactNode } from "react";
 import type { ViewDefinition } from "../extension.ts";
-import { type BacklogIndex, backlogStats, PRIORITIES, STATE_TITLES } from "../model/backlog.ts";
+import { type BacklogIndex, backlogStats, STATE_TITLES } from "../model/backlog.ts";
 import { span, stamp } from "../model/format.ts";
 import { hashFor, type Params } from "../model/route.ts";
 import { SearchIcon } from "../ui/icons.tsx";

@@ -1,4 +1,4 @@
-import type { DaemonRepo, DaemonSession } from "@octocodeai/octocode-contacts/daemon";
+import type { DaemonRepo, DaemonSession } from "@octocodeai/octocode-contracts/daemon";
 import { useEffect, useMemo, useState } from "react";
 import { ConfigView } from "../config/ConfigView.tsx";
 import { useHashRoute } from "../hooks.ts";

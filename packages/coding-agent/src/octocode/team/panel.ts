@@ -5,7 +5,7 @@ import { formatCost, formatTokens } from "../shared/format.ts";
 import { plural } from "../shared/render/text.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import { STATUS } from "../shared/status.ts";
-import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import { collapsedRows, FINISHED_MS, type Finished, panelBudget, safe } from "./panel-compact.ts";
 import { FinishedTracker } from "./panel-finished.ts";
 import { PanelMotion } from "./panel-motion.ts";

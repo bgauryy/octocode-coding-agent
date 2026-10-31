@@ -1,4 +1,4 @@
-import { isRecord } from "../../../../coding-agent/src/utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Tools whose `options` record is read by the engine as environment-style settings (`SHOT_ANNOTATE`, `MONITOR_MS`). */
 const OPTION_TOOLS: ReadonlySet<string> = new Set(["screenshot", "snapshot", "check"]);

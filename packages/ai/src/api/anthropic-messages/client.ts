@@ -8,6 +8,7 @@ import {
 } from "../../env-api-keys.ts";
 import { hasProviderHeader } from "../../utils/headers.ts";
 import type { Model, ProviderEnv, ProviderHeaders } from "../../types.ts";
+import { getProviderCapabilities } from "../../utils/provider-capabilities.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { claudeCodeVersion } from "./claude-code.ts";
@@ -108,7 +109,7 @@ export function createClient(
 	federation?: AnthropicFederationConfig,
 ): { client: Anthropic; isOAuthToken: boolean } {
 	// Copilot: Bearer auth.
-	if (model.provider === "github-copilot") {
+	if (getProviderCapabilities(model.provider).anthropicBearerAuth) {
 		const client = new HeaderAuthAnthropic({
 			apiKey: null,
 			authToken: apiKey ?? null,

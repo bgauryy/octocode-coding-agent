@@ -1,13 +1,14 @@
 import { type Static, Type } from "typebox";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { reasonSchema } from "../../shared/reason.ts";
 import { elisionMarkers, escapeRegExp } from "../../shared/util.ts";
 import type { QueryOutcome } from "../render.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 
 const QuerySchema = Type.Object({
-	reason: Type.String({ description: "Why this change is needed" }),
+	reason: Type.Optional(Type.String({ description: "Only if it differs from the call's reason" })),
 	// A plain string enum (what octocode-ai's StringEnum emits) keeps the schema portable across providers.
 	type: Type.Unsafe<"edit" | "write" | "delete">({
 		type: "string",
@@ -50,9 +51,11 @@ export const Params = Type.Object({
 			description: "Codex apply_patch text; use instead of queries",
 		}),
 	),
-	reason: Type.Optional(Type.String({ description: "Why this patch is needed" })),
+	// Declared here (so `execute` keeps it for a patch's changes) and required like every native tool's: the row shows it.
+	reason: reasonSchema(),
 });
-export type FileQuery = Static<typeof QuerySchema>;
+/** A change as the tool runs it: `renameReasoning` has filled in the reason the model left out. */
+export type FileQuery = Omit<Static<typeof QuerySchema>, "reason"> & { reason: string };
 
 /** `reason` replaced `reasoning`; a call recorded with the old name (a resumed session) still validates. */
 const aliased = <T extends Record<string, unknown>>(value: T): T => {
@@ -61,13 +64,19 @@ const aliased = <T extends Record<string, unknown>>(value: T): T => {
 	return { ...rest, reason: rest.reason ?? reasoning } as unknown as T;
 };
 
-/** The call's arguments with `reasoning` (top level and per query) read as `reason`. */
+/** The call's arguments with `reasoning` (top level and per query) read as `reason`; a change without one takes the call's. */
 export function renameReasoning(args: unknown): Static<typeof Params> {
 	if (!isRecord(args)) return args as Static<typeof Params>;
 	const renamed = aliased(args);
-	if (!Array.isArray(renamed.queries)) return renamed;
-	const queries = renamed.queries.map((query) => (isRecord(query) ? aliased(query) : query));
-	return { ...renamed, queries };
+	if (!Array.isArray(renamed.queries)) return renamed as Static<typeof Params>;
+	const queries = renamed.queries.map((query) => {
+		if (!isRecord(query)) return query;
+		const named = aliased(query);
+		return named.reason === undefined && typeof renamed.reason === "string"
+			? { ...named, reason: renamed.reason }
+			: named;
+	});
+	return { ...renamed, queries } as Static<typeof Params>;
 }
 
 export interface PreparedChange {

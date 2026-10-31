@@ -9,6 +9,7 @@ import {
 	type SimpleStreamOptions,
 	type Usage,
 } from "@octocodeai/octocode-ai";
+import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { charsToTokens } from "../compaction/tokens.ts";
 import type { SessionEntry } from "../session-manager.ts";
@@ -129,14 +130,6 @@ export function price(
 	model: Model<Api>,
 	tokens: Partial<Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite" | "cacheWrite1h">>,
 ): number {
-	const usage: Usage = {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		...tokens,
-	};
+	const usage: Usage = { ...createEmptyUsage(), ...tokens };
 	return calculateCost(model, usage).total;
 }

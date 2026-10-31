@@ -47,8 +47,44 @@ export type ProxyAssistantMessageEvent =
 /** A tool call still streaming: its raw JSON accumulates beside the parsed arguments until `toolcall_end`. */
 type StreamingToolCall = ToolCall & { partialJson?: string };
 
+type ContentOf<Kind extends AssistantContent["type"]> = Extract<AssistantContent, { type: Kind }>;
+
+/** The partial's content at `index` when it has the kind this event extends; anything else is a protocol violation. */
+function expectContent<Kind extends AssistantContent["type"]>(
+	partial: AssistantMessage,
+	index: number,
+	kind: Kind,
+	eventType: string,
+): ContentOf<Kind> {
+	const content = partial.content[index];
+	if (content?.type !== kind) throw new Error(`Received ${eventType} for non-${kind} content`);
+	return content as ContentOf<Kind>;
+}
+
+/** Record how the response ended; the proxy sends the final usage and thinking level with both `done` and `error`. */
+function settlePartial(
+	partial: AssistantMessage,
+	end: { reason: StopReason; usage: AssistantMessage["usage"]; providerThinkingLevel?: string },
+): void {
+	partial.stopReason = end.reason;
+	partial.usage = end.usage;
+	if (end.providerThinkingLevel !== undefined) partial.providerThinkingLevel = end.providerThinkingLevel;
+}
+
+/** End the partial as failed without a server event (dropped connection, abort, transport error) and return the error event. */
+export function failProxyStream(
+	partial: AssistantMessage,
+	reason: Extract<StopReason, "aborted" | "error">,
+	errorMessage: string,
+): AssistantMessageEvent {
+	partial.stopReason = reason;
+	partial.errorMessage = errorMessage;
+	return { type: "error", reason, error: partial };
+}
+
 /**
  * Process a proxy event and update the partial message.
+ * An event that extends content of the wrong kind throws, so the stream ends as an error.
  */
 export function processProxyEvent(
 	proxyEvent: ProxyAssistantMessageEvent,
@@ -66,33 +102,17 @@ export function processProxyEvent(
 			return { type: "text_start", contentIndex: proxyEvent.contentIndex, partial };
 
 		case "text_delta": {
-			const content = partial.content[proxyEvent.contentIndex];
-			if (content?.type === "text") {
-				content.text += proxyEvent.delta;
-				return {
-					type: "text_delta",
-					contentIndex: proxyEvent.contentIndex,
-					delta: proxyEvent.delta,
-					partial,
-				};
-			}
-			throw new Error("Received text_delta for non-text content");
+			const content = expectContent(partial, proxyEvent.contentIndex, "text", "text_delta");
+			content.text += proxyEvent.delta;
+			return { type: "text_delta", contentIndex: proxyEvent.contentIndex, delta: proxyEvent.delta, partial };
 		}
 
 		case "text_end": {
-			const content = partial.content[proxyEvent.contentIndex];
-			if (content?.type === "text") {
-				content.textSignature = proxyEvent.contentSignature;
-				if (proxyEvent.text !== undefined) content.text = proxyEvent.text;
-				if (proxyEvent.annotations !== undefined) content.annotations = proxyEvent.annotations;
-				return {
-					type: "text_end",
-					contentIndex: proxyEvent.contentIndex,
-					content: content.text,
-					partial,
-				};
-			}
-			throw new Error("Received text_end for non-text content");
+			const content = expectContent(partial, proxyEvent.contentIndex, "text", "text_end");
+			content.textSignature = proxyEvent.contentSignature;
+			if (proxyEvent.text !== undefined) content.text = proxyEvent.text;
+			if (proxyEvent.annotations !== undefined) content.annotations = proxyEvent.annotations;
+			return { type: "text_end", contentIndex: proxyEvent.contentIndex, content: content.text, partial };
 		}
 
 		case "thinking_start":
@@ -100,31 +120,15 @@ export function processProxyEvent(
 			return { type: "thinking_start", contentIndex: proxyEvent.contentIndex, partial };
 
 		case "thinking_delta": {
-			const content = partial.content[proxyEvent.contentIndex];
-			if (content?.type === "thinking") {
-				content.thinking += proxyEvent.delta;
-				return {
-					type: "thinking_delta",
-					contentIndex: proxyEvent.contentIndex,
-					delta: proxyEvent.delta,
-					partial,
-				};
-			}
-			throw new Error("Received thinking_delta for non-thinking content");
+			const content = expectContent(partial, proxyEvent.contentIndex, "thinking", "thinking_delta");
+			content.thinking += proxyEvent.delta;
+			return { type: "thinking_delta", contentIndex: proxyEvent.contentIndex, delta: proxyEvent.delta, partial };
 		}
 
 		case "thinking_end": {
-			const content = partial.content[proxyEvent.contentIndex];
-			if (content?.type === "thinking") {
-				content.thinkingSignature = proxyEvent.contentSignature;
-				return {
-					type: "thinking_end",
-					contentIndex: proxyEvent.contentIndex,
-					content: content.thinking,
-					partial,
-				};
-			}
-			throw new Error("Received thinking_end for non-thinking content");
+			const content = expectContent(partial, proxyEvent.contentIndex, "thinking", "thinking_end");
+			content.thinkingSignature = proxyEvent.contentSignature;
+			return { type: "thinking_end", contentIndex: proxyEvent.contentIndex, content: content.thinking, partial };
 		}
 
 		case "toolcall_start": {
@@ -140,53 +144,29 @@ export function processProxyEvent(
 		}
 
 		case "toolcall_delta": {
-			const content = partial.content[proxyEvent.contentIndex];
-			if (content?.type === "toolCall") {
-				const call: StreamingToolCall = content;
-				call.partialJson = (call.partialJson ?? "") + proxyEvent.delta;
-				content.arguments = parseStreamingJsonThrottled(content.arguments, call.partialJson);
-				partial.content[proxyEvent.contentIndex] = { ...content }; // Trigger reactivity
-				return {
-					type: "toolcall_delta",
-					contentIndex: proxyEvent.contentIndex,
-					delta: proxyEvent.delta,
-					partial,
-				};
-			}
-			throw new Error("Received toolcall_delta for non-toolCall content");
+			const content = expectContent(partial, proxyEvent.contentIndex, "toolCall", "toolcall_delta");
+			const call: StreamingToolCall = content;
+			call.partialJson = (call.partialJson ?? "") + proxyEvent.delta;
+			content.arguments = parseStreamingJsonThrottled(content.arguments, call.partialJson);
+			partial.content[proxyEvent.contentIndex] = { ...content }; // Trigger reactivity
+			return { type: "toolcall_delta", contentIndex: proxyEvent.contentIndex, delta: proxyEvent.delta, partial };
 		}
 
 		case "toolcall_end": {
-			const content = partial.content[proxyEvent.contentIndex];
-			if (content?.type === "toolCall") {
-				Object.assign(content, proxyEvent.toolCall);
-				const call: StreamingToolCall = content;
-				delete call.partialJson;
-				return {
-					type: "toolcall_end",
-					contentIndex: proxyEvent.contentIndex,
-					toolCall: content,
-					partial,
-				};
-			}
-			return undefined;
+			const content = expectContent(partial, proxyEvent.contentIndex, "toolCall", "toolcall_end");
+			Object.assign(content, proxyEvent.toolCall);
+			const call: StreamingToolCall = content;
+			delete call.partialJson;
+			return { type: "toolcall_end", contentIndex: proxyEvent.contentIndex, toolCall: content, partial };
 		}
 
 		case "done":
-			partial.stopReason = proxyEvent.reason;
-			partial.usage = proxyEvent.usage;
-			if (proxyEvent.providerThinkingLevel !== undefined) {
-				partial.providerThinkingLevel = proxyEvent.providerThinkingLevel;
-			}
+			settlePartial(partial, proxyEvent);
 			return { type: "done", reason: proxyEvent.reason, message: partial };
 
 		case "error":
-			partial.stopReason = proxyEvent.reason;
+			settlePartial(partial, proxyEvent);
 			partial.errorMessage = proxyEvent.errorMessage;
-			partial.usage = proxyEvent.usage;
-			if (proxyEvent.providerThinkingLevel !== undefined) {
-				partial.providerThinkingLevel = proxyEvent.providerThinkingLevel;
-			}
 			return { type: "error", reason: proxyEvent.reason, error: partial };
 
 		default: {

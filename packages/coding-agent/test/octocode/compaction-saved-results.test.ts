@@ -9,9 +9,9 @@ import {
 	savedResultPaths,
 	savedResultsBlock,
 	withoutModelSavedResults,
-	withoutSavedResults,
 } from "../../src/octocode/compaction/saved-results.ts";
-import { splitSummary, userMessagesSection, writeSummary } from "../../src/octocode/compaction/summary.ts";
+import { splitSummary, withoutSavedResults } from "../../src/core/compaction/summary-view.ts";
+import { userMessagesSection, writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
 import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";

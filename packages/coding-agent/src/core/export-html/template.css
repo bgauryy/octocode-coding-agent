@@ -634,7 +634,6 @@
     .compaction-content {
       display: none;
       color: var(--customMessageText);
-      white-space: pre-wrap;
       margin-top: var(--line-height);
     }
 

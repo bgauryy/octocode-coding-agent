@@ -4,7 +4,8 @@ import {
 	type ApplicationMessage,
 	type ApplicationTool,
 	type ContentAnnotation,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
+import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
 import { keepEnds, OUTPUT_CHARS } from "./service/projection.ts";
 
@@ -145,8 +146,16 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 						: []),
 				]
 			: undefined;
+	// A compaction summary is written for the model: the web view shows what the terminal does.
+	const compactionContent =
+		source.role === "compactionSummary" && typeof source.summary === "string"
+			? compactionSummaryDisplay({
+					summary: source.summary,
+					tokensBefore: typeof source.tokensBefore === "number" ? source.tokensBefore : 0,
+				})
+			: undefined;
 	const content = normalizeApplicationContent(
-		bashContent ?? source.content ?? source.summary ?? source.output,
+		bashContent ?? compactionContent ?? source.content ?? source.summary ?? source.output,
 		id,
 		assets,
 		source.stopReason === "pending",

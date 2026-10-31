@@ -6,7 +6,7 @@ import { applyEditsToNormalizedContent, normalizeToLF } from "../../src/core/too
 import { resolveAnchoredEdits } from "../../src/octocode/files/tool/anchored.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
-import { sha256 } from "../../src/utils/atomic-file.ts";
+import { sha256 } from "../../../common/src/atomic-file.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 
 describe("optional anchored edit adapter", () => {

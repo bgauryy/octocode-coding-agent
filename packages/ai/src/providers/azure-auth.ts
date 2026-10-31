@@ -1,9 +1,10 @@
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import type { ApiKeyAuth } from "../auth/types.ts";
 
 /** Azure v1 supports resource keys and Microsoft Entra bearer tokens. */
 export function azureAuth(): ApiKeyAuth {
-	const keys = envApiKeyAuth("Azure OpenAI API key", ["AZURE_OPENAI_API_KEY"]);
+	const keys = envApiKeyAuth("Azure OpenAI API key", apiKeyEnvVars("azure"));
 	return {
 		name: "Azure API key or Microsoft Entra token",
 		login: async (interaction) => {

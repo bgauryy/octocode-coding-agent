@@ -1,4 +1,4 @@
-export type { ContentAnnotation } from "@octocodeai/octocode-contacts";
+export type { ContentAnnotation } from "@octocodeai/octocode-contracts";
 
 /** Generated binary content other than an image. Consumers choose a supported presentation. */
 export interface MediaContent {

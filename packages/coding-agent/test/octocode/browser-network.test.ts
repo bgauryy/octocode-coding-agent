@@ -10,7 +10,7 @@ import * as importedModule2 from "../../src/octocode/browser/session.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import type { AuditEntry } from "../../src/octocode/permission/audit.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
-import type { HostLookup } from "../../src/octocode/web/guard.ts";
+import type { HostLookup } from "../../../common/src/web-guard.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { type CdpHandler, type CdpStub, startCdpStub } from "./fixtures/cdp-stub.ts";
 import { AUDIT_KEYS_MAX, BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";

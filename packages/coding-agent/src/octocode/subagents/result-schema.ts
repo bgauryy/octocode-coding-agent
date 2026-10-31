@@ -1,4 +1,4 @@
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { Value } from "typebox/value";
 import type { TSchema } from "typebox";
 

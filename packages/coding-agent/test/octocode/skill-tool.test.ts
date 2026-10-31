@@ -188,6 +188,30 @@ describe("skill tool", () => {
 			);
 		});
 
+		it("names where the skill came from and shows only its instructions when expanded", async () => {
+			const { call, tool } = setup(fixtures().snapshot);
+			const result = await call("alpha");
+			const collapsed = rendered(tool.renderResult(result, { expanded: false }, theme, context()));
+			expect(collapsed).toMatch(/Loaded 4 lines \u00b7 temporary \u00b7 /);
+			const expanded = rendered(tool.renderResult(result, { expanded: true }, theme, context({ expanded: true })));
+			expect(expanded).toContain("BODY_alpha");
+			expect(expanded).toMatch(/alpha\/SKILL\.md/);
+			expect(expanded).not.toContain("<skill");
+			expect(expanded).not.toContain("References are relative");
+		});
+
+		it("keeps every line of a validation failure, not just its heading", () => {
+			const { tool } = setup(fixtures().snapshot);
+			const error = {
+				content: [
+					{ type: "text", text: 'Validation failed for tool "skill":\n  - reason: must have required property' },
+				],
+				details: undefined,
+			};
+			const row = rendered(tool.renderResult(error, { expanded: false }, theme, context({ isError: true })));
+			expect(row).toContain("must have required property");
+		});
+
 		it("draws a refusal as the error line", () => {
 			const { tool } = setup(fixtures().snapshot);
 			const error = {

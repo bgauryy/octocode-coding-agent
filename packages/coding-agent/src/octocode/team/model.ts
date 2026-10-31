@@ -1,4 +1,4 @@
-import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../agentdb/rows.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
@@ -71,6 +71,8 @@ export function toMember(row: Row): Member {
 	const parentId = optionalString(row.parent_id);
 	const model = optionalString(row.model);
 	const started = optionalString(row.started);
+	const checkout = optionalString(row.checkout);
+	const tmuxPane = optionalString(row.tmux_pane);
 	return {
 		id: String(row.id),
 		role: String(row.role),
@@ -81,6 +83,8 @@ export function toMember(row: Row): Member {
 		...(goal ? { goal } : {}),
 		...(activity ? { activity } : {}),
 		...(model ? { model } : {}),
+		...(checkout ? { checkout } : {}),
+		...(tmuxPane ? { tmuxPane } : {}),
 		joinedAt: num(row.joined_at),
 		updatedAt: num(row.seen_at),
 		toolCalls: num(row.tool_calls),

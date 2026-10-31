@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { atomicWriteFile, sha256 } from "../../utils/atomic-file.ts";
+import { atomicWriteFile, sha256 } from "../../../../common/src/atomic-file.ts";
+import { gitSync } from "../shared/git.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { PolicySource } from "./source-policy/rules.ts";
 import {
 	applyRuleUpdates,
@@ -22,13 +22,9 @@ export function localPermissionAllowances(file: string): boolean {
 			if (parent === directory) return true;
 			directory = parent;
 		}
-		const tracked = execFileSync("git", ["ls-files", "-z", "--", path.relative(directory, file)], {
-			cwd: directory,
-			encoding: "utf8",
-			timeout: 2000,
+		const tracked = gitSync(directory, ["ls-files", "-z", "--", path.relative(directory, file)], {
+			timeoutMs: 2000,
 			maxBuffer: 1024 * 1024,
-			stdio: ["ignore", "pipe", "ignore"],
-			windowsHide: true,
 		});
 		return tracked.length === 0;
 	} catch {

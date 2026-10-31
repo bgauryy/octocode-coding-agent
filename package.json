@@ -9,12 +9,12 @@
 	"scripts": {
 		"start": "node --import ./packages/coding-agent/scripts/source-resolver.ts ./packages/coding-agent/src/cli.ts",
 		"clean": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo run clean",
-		"build": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-ai run build && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
-		"build:offline": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-ai run build:offline && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
+		"build": "yarn workspace @octocodeai/octocode-contracts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-ai run build && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
+		"build:offline": "yarn workspace @octocodeai/octocode-contracts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-ai run build:offline && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
 		"build:native:darwin": "yarn workspace @octocodeai/octocode-tui run build:native:darwin",
 		"build:native:linux": "yarn workspace @octocodeai/octocode-tui run build:native:linux",
 		"build:native:win32": "yarn workspace @octocodeai/octocode-tui run build:native:win32",
-		"check": "tsc --noEmit && yarn run lint && yarn run format:check && yarn run check:browser-smoke && yarn run check:workspace && yarn run check:favicon && yarn run check:boundaries && yarn run check:db-boundary && yarn run check:pi-names",
+		"check": "tsc --noEmit && yarn run lint && yarn run format:check && yarn run check:browser-smoke && yarn run check:workspace && yarn run check:favicon && yarn run check:boundaries && yarn run check:db-boundary",
 		"lint": "oxlint packages scripts && node scripts/check-max-lines-baseline.mjs",
 		"lint:fix": "oxlint packages scripts --fix",
 		"audit": "yarn npm audit --recursive --environment production --severity moderate",
@@ -51,9 +51,8 @@
 		"check:workspace": "node scripts/build-workspace-state.mjs --check",
 		"generate:favicon": "node scripts/generate-favicon.mjs",
 		"check:favicon": "node scripts/generate-favicon.mjs --check",
-		"check:boundaries": "node scripts/check-package-boundaries.mjs",
+		"check:boundaries": "node scripts/check-package-boundaries.mjs && node scripts/sdk-reachability.mjs",
 		"check:db-boundary": "node scripts/check-db-boundary.mjs",
-		"check:pi-names": "node scripts/check-pi-names.mjs",
 		"check:unused": "knip --no-progress"
 	},
 	"devDependencies": {

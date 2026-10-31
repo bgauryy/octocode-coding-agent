@@ -1,6 +1,6 @@
 # Octocode webview
 
-Browser presentation for the local Octocode workspace: task board, planning backlog, table, tree and attention views, an item sheet, a command palette, agent views, activity, audit, Markdown and code rendering, and Zustand state. This package consumes `@octocodeai/octocode-contacts`; it does not access databases, launch agents, or grant permissions.
+Browser presentation for the local Octocode workspace: task board, planning backlog, table, tree and attention views, an item sheet, a command palette, agent views, activity, audit, Markdown and code rendering, and Zustand state. This package consumes `@octocodeai/octocode-contracts`; it does not access databases, launch agents, or grant permissions.
 
 The coding-agent host owns model, skill and MCP settings. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and [interface architecture](../../docs/INTERFACE_ARCHITECTURE.md) for the terminal/browser boundary.
 
@@ -9,7 +9,7 @@ The coding-agent host serves the generated page through its authenticated local 
 From the repository root:
 
 - `yarn run generate:workspace` rebuilds the checked-in browser bundle after browser source changes.
-- `yarn workspace @octocodeai/octocode-contacts run build` builds shared declarations first.
+- `yarn workspace @octocodeai/octocode-contracts run build` builds shared declarations first.
 - `yarn workspace @octocodeai/octocode-webview run build` builds this package.
 - `yarn workspace @octocodeai/octocode-webview run test` runs model, component, page-flow and security tests.
 - The repository's Oxlint configuration covers this package with React, React hooks and accessibility rules (`yarn run lint` from the root); Oxfmt formats it with the rest of the code (`yarn run format`). `typecheck` checks the package with DOM and JSX settings.
@@ -47,17 +47,17 @@ When disconnected, the page identifies cached session data beside agent controls
 
 ## Configuration page
 
-`ConfigView` (`src/app/config/ConfigView.tsx`) is the read-only Settings view that the user-level daemon shell mounts as `<ConfigView load={…} />`. `load` resolves a `ConfigSnapshot` (`@octocodeai/octocode-contacts/config`), which the coding-agent host builds in `web-daemon/config-status.ts` and serves at `GET /api/config`. The view holds no secret input and no write control; phase 1 cannot change credentials, settings or trust.
+`ConfigView` (`src/app/config/ConfigView.tsx`) is the read-only Settings view that the user-level daemon shell mounts as `<ConfigView load={…} />`. `load` resolves a `ConfigSnapshot` (`@octocodeai/octocode-contracts/config`), which the coding-agent host builds in `web-daemon/config-status.ts` and serves at `GET /api/config`. The view holds no secret input and no write control; phase 1 cannot change credentials, settings or trust.
 
 - **Provider credentials** list each known provider as configured or not, with every source that exists: "OS keychain", "Plaintext in auth.json" (with a note that moving it to the keychain comes later), "Custom command" (the command is never shown), "Environment variable NAME" (the name only) and "Signed in" with the access-token expiry. The snapshot lists sources that are present; it does not say which one a request uses, because the precedence of `auth.json` over environment variables is not verified. The page says so.
 - **Settings** show the allow-listed `defaultProvider` and `defaultModel` with their effective value and source (Global, Workspace or Default), and point to `/settings` in the terminal. An invalid settings file shows an alert with fixed text and no values from that file.
 - **Workspace** shows the repository name and whether it is trusted. Workspace settings are ignored until the folder is trusted in the terminal.
 - States: a labelled skeleton while loading, an alert with **Try again** when `load` rejects, an empty state when the snapshot lists no providers, and **Refresh**, which keeps the last snapshot on screen while it reloads. Each panel is a labelled region with a heading, rows are lists, and every status is a word beside its `StateMark` shape, never colour alone. Styles use the shared tokens (`src/app/config/styles.ts`).
 
-Tests: `test/config-view.test.tsx` covers the states and labels; `packages/contacts/test/config.test.ts` covers the schemas, which reject any extra field and limit `envVar` to a variable name.
+Tests: `test/config-view.test.tsx` covers the states and labels; `packages/contracts/test/config.test.ts` covers the schemas, which reject any extra field and limit `envVar` to a variable name.
 
 ## Visual design and safety
 
 Visual tokens and layout rules live in `src/styles.ts`. They share the Octocode palette with the terminal themes (`coding-agent/src/theme/octocode-*.json`): purple accent and GitHub-like neutrals, in one light and one dark palette. Colors identify status, always paired with an icon shape; tags and metadata stay neutral. Run states use the terminal's six shapes through `StateMark` (`src/app/ui/StateMark.tsx`): ○ pending, a turning arc running, ◇ waiting for you, ✓ done, ✗ failed, ◼ stopped (a not-run tool, or a reply that was interrupted). Running is always the accent colour; waiting and stopped use the warning colour, as in the terminal. `●` is presence only ("Live"), never a run state. Text reaches 4.5:1 and state icons 3:1 in both palettes, which `test/palette-contrast.test.ts` computes from the tokens; the light values of `--success`, `--warning`, `--text-3` and `--state-backlog` equal `green`, `gold`, `dim` and `faint` in `octocode-light.json`, so change them together. Reduced motion and forced colors are respected: state shapes use system colours, the run orb and skeletons get explicit outlines, and focused fields keep a visible outline.
 
-Static backlog exports remain self-contained and offline. Live pages communicate through the routes and command schemas owned by contacts. Rich text is parsed, sanitized to an allowlist, and converted to React elements through a second allowlist; nothing renders through `innerHTML` or `dangerouslySetInnerHTML`, and code blocks cannot execute commands. React DOM contains sink code paths this page never uses, so `test/security.test.ts` keeps every HTML sink out of this package's source and runs the offline export on hostile data with each sink and network API trapped.
+Static backlog exports remain self-contained and offline. Live pages communicate through the routes and command schemas owned by contracts. Rich text is parsed, sanitized to an allowlist, and converted to React elements through a second allowlist; nothing renders through `innerHTML` or `dangerouslySetInnerHTML`, and code blocks cannot execute commands. React DOM contains sink code paths this page never uses, so `test/security.test.ts` keeps every HTML sink out of this package's source and runs the offline export on hostile data with each sink and network API trapped.

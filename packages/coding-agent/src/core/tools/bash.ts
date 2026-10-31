@@ -6,7 +6,7 @@ import { type BashOperations, createLocalBashOperations } from "./bash/local-ope
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
-import { bashBudget } from "./bash/budget.ts";
+import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "./bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./bash/header.ts";
 import { BashExecutionError, type BashToolDetails } from "./bash/outcome.ts";
 
@@ -106,7 +106,7 @@ export interface BashToolOptions {
 	exposeSessionEnvironment?: boolean;
 	/** Hook to adjust command, cwd, or env before execution */
 	spawnHook?: BashSpawnHook;
-	/** Most bytes of a result that reach the model (the `bashOutputMaxBytes` setting). Default: 24 KB */
+	/** Most bytes of a result that reach the model (the `bashOutputMaxBytes` setting). Default: 20 KB */
 	maxOutputBytes?: number;
 }
 
@@ -138,7 +138,7 @@ function createShellToolDefinition(
 	return {
 		name: config.name,
 		label: config.label,
-		description: `Execute a ${config.shellName} command in the current working directory. Returns stdout and stderr. Every result starts with a line giving the exit code, time and output size. Output over the budget (24KB or 600 lines by default; maxOutputTokens lowers it) keeps the first 20% and last 80%, plus up to 20 error lines from the middle with their line numbers, and is saved in full to a file named in that line. A line redrawn with carriage returns (a progress bar) shows only its final state, and a run of identical lines shows once with a count. Optionally provide a timeout in seconds.`,
+		description: `Execute a ${config.shellName} command in the current working directory. Returns stdout and stderr. Every result starts with a line giving the exit code, time and output size. Output over the budget (${BASH_MAX_BYTES / 1000}KB or ${BASH_MAX_LINES} lines by default; maxOutputTokens lowers it) keeps the first 20% and last 80%, plus up to 20 error lines from the middle with their line numbers, and is saved in full to a file named in that line. A line redrawn with carriage returns (a progress bar) shows only its final state, and a run of identical lines shows once with a count. Optionally provide a timeout in seconds.`,
 		promptSnippet: config.promptSnippet,
 		promptGuidelines: exposeSessionEnvironment && config.promptGuidelines ? [...config.promptGuidelines] : undefined,
 		parameters: bashSchema,

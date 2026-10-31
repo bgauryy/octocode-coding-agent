@@ -3,7 +3,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
-import { ReportTracker } from "../../src/octocode/subagents/report.ts";
+import { jobNotice, ReportTracker } from "../../src/octocode/subagents/report.ts";
+import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
@@ -44,6 +45,34 @@ describe("one task, one report", () => {
 			outcomeSource: "first",
 			text: `done: all checks pass\n\n---\n\nFollow-up to the report above (${NOTICE}):\nThe build finished cleanly.`,
 		});
+	});
+
+	it("adds a line for a job that ended after the final answer without a turn, and keeps the outcome", () => {
+		const report = new ReportTracker();
+		report.incoming("user");
+		report.answer("done: all checks pass", "stop");
+		const notice = jobNotice({
+			customType: JOB_TYPE,
+			content: `[exit 0 · 14s · 1 line · 3 B · log: /tmp/b.log]\n${NOTICE}\nok`,
+			details: { id: "bash-1", log: "/tmp/b.log", quiet: true },
+		});
+		expect(notice).toEqual({ job: `${NOTICE} (log: /tmp/b.log)`, quiet: true });
+		report.incoming("custom", notice.job, notice.quiet);
+		expect(report.result()).toMatchObject({
+			outcome: "done",
+			text: `done: all checks pass\n\nAfter this report: ${NOTICE} (log: /tmp/b.log)`,
+		});
+		// A job report that starts a turn is still read from its `Background bash` line.
+		expect(jobNotice({ customType: JOB_TYPE, content: `[exit 0]\n${NOTICE}`, details: {} })).toEqual({ job: NOTICE });
+		expect(jobNotice({ customType: "other", content: NOTICE })).toEqual({});
+	});
+
+	it("ignores a quiet job report that arrives before the first answer: the child read it, the report is unchanged", () => {
+		const report = new ReportTracker();
+		report.incoming("user");
+		report.incoming("custom", `${NOTICE} (log: /tmp/b.log)`, true);
+		report.answer("done: all checks pass", "stop");
+		expect(report.result()).toMatchObject({ outcome: "done", text: "done: all checks pass" });
 	});
 
 	it("lets a follow-up that names an outcome change it, and judges a new task from the parent on its own", () => {

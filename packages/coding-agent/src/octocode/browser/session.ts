@@ -1,4 +1,4 @@
-import { BROWSER_VISIBLE_ENV, envFlag } from "../shared/env.ts";
+import { BROWSER_VISIBLE_ENV, envFlag } from "../../../../common/src/env.ts";
 import { optionalString, stringOrEmpty } from "../shared/util.ts";
 import { throwIfAborted, unlessAborted } from "./abort.ts";
 import { openTab, pageTargets } from "./cdp.ts";

@@ -73,7 +73,7 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 | [ai](packages/ai/README.md)                     | Provider APIs and model catalog                                      |
 | [tui](packages/tui/README.md)                   | Terminal UI                                                          |
 | [webview](packages/webview/README.md)           | Browser workspace, board, Markdown/code rendering and UI state       |
-| [contacts](packages/contacts/README.md)         | Shared entity contracts, schemas and workspace protocols             |
+| [contracts](packages/contracts/README.md)         | Shared entity contracts, schemas and workspace protocols             |
 | [telemetry](packages/telemetry/README.md)       | Telemetry contracts and adapters                                     |
 
 ## Development

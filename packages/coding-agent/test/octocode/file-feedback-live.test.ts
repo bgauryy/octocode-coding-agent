@@ -90,11 +90,15 @@ it("reports parser regressions and LSP issues after native file edits through li
 		return text;
 	};
 	const edit = (oldText: string, newText: string) =>
-		call("file", { queries: [{ type: "edit", path: source, reason: "fixture", edits: [{ oldText, newText }] }] });
+		call("file", {
+			reason: "Edit the fixture source",
+			queries: [{ type: "edit", path: source, reason: "fixture", edits: [{ oldText, newText }] }],
+		});
 	try {
 		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 		await call("file", {
+			reason: "Write the fixture source",
 			queries: [{ type: "write", path: source, reason: "fixture", content: "export const value: number = 1;\n" }],
 		});
 		expect(session.getActiveToolNames()).toEqual(

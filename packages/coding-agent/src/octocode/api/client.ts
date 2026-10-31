@@ -2,7 +2,7 @@ import http from "node:http";
 import net from "node:net";
 import { constants } from "node:os";
 import { isLoopbackHostname } from "../shared/net.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ApiEvent, CLIENT_MARGIN_MS, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
 import type { InstanceRecord } from "./registry.ts";
 

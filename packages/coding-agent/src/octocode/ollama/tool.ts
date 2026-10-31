@@ -1,7 +1,7 @@
-import { StringEnum } from "@octocodeai/octocode-contacts/schema";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { resultBlock, resultText, toolHeader } from "../shared/render.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { textResult } from "../shared/util.ts";

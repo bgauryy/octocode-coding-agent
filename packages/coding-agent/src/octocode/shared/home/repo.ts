@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { gitSync } from "../git.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +12,26 @@ interface RepoKey {
 	name: string;
 }
 
-const repoCache = new Map<string, RepoKey>();
+/**
+ * A repository answer with what it was computed from: the nearest `.git` marker above the folder and the home folder.
+ * Both are cheap to read again, so the entry stays valid until one changes (`git init`, a nested repository, a deleted
+ * checkout, another home), with no git process per call.
+ */
+interface CachedRepo {
+	result: RepoKey;
+	marker: string | undefined;
+	home: string;
+}
+
+const repoCache = new Map<string, CachedRepo>();
+
+/** The nearest directory at or above `cwd` that holds a `.git` entry, or undefined without one. */
+function gitMarkerDir(cwd: string): string | undefined {
+	for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+		if (fs.existsSync(path.join(dir, ".git"))) return dir;
+		if (path.dirname(dir) === dir) return undefined;
+	}
+}
 
 /**
  * `file` with symlinks resolved, so one file reached through two paths has one name: the realpath of its deepest
@@ -111,20 +130,19 @@ function spansHome(root: string): boolean {
 /**
  * Which repository `cwd` belongs to, symlinks resolved, so one checkout reached through two paths is one repository.
  * A root that is the home folder, above it or `/` counts as no repository: `cwd` itself is then the root, as with no
- * `.git` at all, so a write elsewhere under home (`~/.zshrc`, `~/.ssh`) is outside the workspace. Cached per cwd; never
- * throws.
+ * `.git` at all, so a write elsewhere under home (`~/.zshrc`, `~/.ssh`) is outside the workspace. Cached per cwd while
+ * its nearest `.git` marker and the home folder stay as they were, so a later `git init` or a removed checkout is seen;
+ * never throws.
  */
 export function repoKey(cwd: string): RepoKey {
+	const marker = gitMarkerDir(cwd);
+	const home = os.homedir();
 	const cached = repoCache.get(cwd);
-	if (cached) return cached;
+	if (cached && cached.marker === marker && cached.home === home) return cached.result;
 	let found: { key: string; root: string };
 	try {
-		const out = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"], {
-			cwd,
-			encoding: "utf8",
-			timeout: 2000,
-			stdio: ["ignore", "pipe", "ignore"],
-			windowsHide: true,
+		const out = gitSync(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"], {
+			timeoutMs: 2000,
 		});
 		const [common, top] = out.split(/\r?\n/).map((line) => line.trim());
 		if (!common || !top) throw new Error("not a work tree");
@@ -136,7 +154,7 @@ export function repoKey(cwd: string): RepoKey {
 	}
 	const { key, root } = spansHome(found.root) ? { key: canonicalPath(cwd), root: canonicalPath(cwd) } : found;
 	const result: RepoKey = { key, root, name: path.basename(root) };
-	repoCache.set(cwd, result);
+	repoCache.set(cwd, { result, marker, home });
 	return result;
 }
 

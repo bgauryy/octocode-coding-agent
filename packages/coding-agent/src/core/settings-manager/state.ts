@@ -1,6 +1,6 @@
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { Settings } from "../settings-schema.ts";
-import type { SettingsError, SettingsPaths, SettingsStorage } from "./storage.ts";
+import type { SettingsError, SettingsPaths, SettingsStorage, SettingsWarning } from "./storage.ts";
 
 /** Mutable state of one SettingsManager, shared by its persistence and its accessors. */
 export interface SettingsState {
@@ -14,5 +14,6 @@ export interface SettingsState {
 	globalSettingsLoadError: Error | null; // Track if global settings file had parse errors
 	projectSettingsLoadError: Error | null; // Track if project settings file had parse errors
 	errors: SettingsError[];
+	warnings: SettingsWarning[];
 	settingsPaths: SettingsPaths;
 }

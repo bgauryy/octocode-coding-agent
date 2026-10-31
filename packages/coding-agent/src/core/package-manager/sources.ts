@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { valid, validRange } from "semver";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { parseGitUrl } from "../../utils/git.ts";
-import { isLocalPath, resolvePath } from "../../utils/paths.ts";
+import { isLocalPath, resolvePath } from "../../../../common/src/paths.ts";
 import type { PackageSource } from "../settings-manager.ts";
 import { getExtensionTempFolder } from "./discovery.ts";
 import { getHomeDir, type PackageManagerHost, type ParsedSource, type SourceScope } from "./types.ts";

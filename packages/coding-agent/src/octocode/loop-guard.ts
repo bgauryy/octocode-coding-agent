@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../core/extensions/index.ts";
-import { sha256 } from "../utils/atomic-file.ts";
-import { isRecord } from "../utils/guards.ts";
+import { sha256 } from "../../../common/src/atomic-file.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
 import { plainText } from "./files/reads.ts";
 
@@ -55,6 +55,7 @@ function loopCallKey(toolName: string, input: unknown): string | undefined {
 	return key ? `${toolName}\0${key}` : undefined;
 }
 
+/** Deep on purpose, unlike `withoutReason` (top level only, so a tool still receives its nested per-query `reason`): identity ignores rewording anywhere. */
 function withoutReasons(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(withoutReasons);
 	if (!isRecord(value)) return value;

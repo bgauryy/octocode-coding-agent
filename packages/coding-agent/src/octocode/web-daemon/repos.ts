@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { DaemonRepo } from "@octocodeai/octocode-contacts/daemon";
+import type { DaemonRepo } from "@octocodeai/octocode-contracts/daemon";
 import { backlog } from "../agentdb/api.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
 import { BacklogStore } from "../backlog/store.ts";

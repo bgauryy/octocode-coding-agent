@@ -11,13 +11,9 @@ import {
 } from "../../src/octocode/compaction/archive.ts";
 import { registerArchiveCommand } from "../../src/octocode/compaction/archive-command.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
+import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import {
-	SUMMARY_METHOD_DETAILS,
-	splitSummary,
-	summaryMethodOf,
-	writeSummary,
-} from "../../src/octocode/compaction/summary.ts";
+import { SUMMARY_METHOD_DETAILS, summaryMethodOf, writeSummary } from "../../src/octocode/compaction/summary.ts";
 import {
 	archiveFolder,
 	archiveSearch,
@@ -671,5 +667,9 @@ describe("/archive", () => {
 		const commands = new Subcommands();
 		registerArchiveCommand(commands);
 		expect(commands.help()).toMatch(/archive \[<n>\]/);
+		expect(commands.get("archive")).toMatchObject({
+			description: "Browse compacted session history",
+			argumentHint: "[<n>]",
+		});
 	});
 });

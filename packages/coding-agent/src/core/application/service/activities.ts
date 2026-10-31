@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ApplicationActivity, ApplicationHistory } from "@octocodeai/octocode-contacts";
+import type { ApplicationActivity, ApplicationHistory } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session.ts";
 import type { SessionEntry } from "../../session-manager.ts";
 import type { ApplicationAssets } from "../assets.ts";

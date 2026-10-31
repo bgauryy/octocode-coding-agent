@@ -8,11 +8,11 @@ import type {
 import { contextReads, seenFiles, sessionCleared, sessionClearedAt, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { writeSessionRecord } from "../shared/archive/record.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
 import { sessionLineage, setSessionLineage } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
-import { CACHE_RETENTION_ENV } from "../shared/env.ts";
+import { CACHE_RETENTION_ENV } from "../../../../common/src/env.ts";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "../shared/turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
@@ -39,7 +39,8 @@ import {
 	recentFiles,
 	settleRestoredFiles,
 } from "./restore.ts";
-import { carryFileLists, splitSummary, summaryMethodOf, windowBudget, writeSummary } from "./summary.ts";
+import { splitSummary } from "../../core/compaction/summary-view.ts";
+import { carryFileLists, summaryMethodOf, windowBudget, writeSummary } from "./summary.ts";
 import { requestMessages } from "./thinking.ts";
 
 /**

@@ -1,5 +1,5 @@
 import type { SessionEntry } from "../../core/session-manager.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const PLAN_ENTRY = "octocode-plan";
 export interface PlanState {

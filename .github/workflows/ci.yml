@@ -56,6 +56,12 @@ jobs:
           sudo apt-get install -y fd-find ripgrep
           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
+      # The tmux tests start real tmux servers; the runner image may not ship tmux.
+      - name: Install tmux
+        run: |
+          command -v tmux >/dev/null || { sudo apt-get update && sudo apt-get install -y tmux; }
+          tmux -V
+
       - name: Install
         working-directory: octocodecode
         run: yarn install --immutable
@@ -72,3 +78,8 @@ jobs:
       - name: Test
         working-directory: octocodecode
         run: ./test.sh
+
+      # The tmux suites need a real tmux (installed above); this step names them in the CI log on their own.
+      - name: Test tmux
+        working-directory: octocodecode
+        run: yarn run test:tmux

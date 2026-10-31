@@ -1,27 +1,28 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "../../core/tools/index.ts";
+import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";
 import { shortPath } from "../shared/format.ts";
+import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../shared/output-budget.ts";
 import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import { boundImagePart, capOutputToFile, saveFullOutput, saveImageFile } from "../shared/spill.ts";
+import { boundImagePart, capResultText, saveFullOutput, saveImageFile } from "../shared/spill.ts";
 import { capChars, cutText, textResult } from "../shared/util.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "../shared/vision.ts";
 import { type FetchedImage, pageFetcher } from "./fetch.ts";
-import { classifyHost } from "./guard.ts";
+import { classifyHost } from "../../../../common/src/web-guard.ts";
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
 import { search } from "./search.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
-/** Default and largest page text a fetch returns; `maxChars` picks a size in between. */
-const DEFAULT_FETCH_CHARS = 20_000;
-const MAX_FETCH_CHARS = 50_000;
+/** Default and largest page text a fetch returns (the shared result default and request maximum); `maxChars` picks a size in between. */
+const DEFAULT_FETCH_CHARS = RESULT_DEFAULT_BYTES;
+const MAX_FETCH_CHARS = REQUEST_MAX_CHARS;
 
 /** What the result row summarizes: the page size, or the search provider and hit count. */
 type WebDetails =
@@ -71,12 +72,15 @@ async function imageResult(image: FetchedImage, model: ExtensionContext["model"]
 
 /**
  * The inline part of a page whose whole text is already saved: its first `max` characters, fewer when they would pass
- * Octocode's output budget (a multi-byte page is far more bytes than characters), then the note and its `hint`. Sized here so
+ * the request maximum in bytes (a multi-byte page is far more bytes than characters), then the note and its `hint`. Sized here so
  * the result fits and the output cap never saves this preview to a second file next to the page's own.
  */
 function savedPreview(text: string, max: number, hint: string): string {
 	const head = cutText(text, max, { chars: true });
-	const budget = { maxBytes: DEFAULT_MAX_BYTES - Buffer.byteLength(hint) - 256, maxLines: DEFAULT_MAX_LINES - 4 };
+	const budget = {
+		maxBytes: MAX_FETCH_CHARS + 1_200 - Buffer.byteLength(hint) - 256,
+		maxLines: Number.MAX_SAFE_INTEGER,
+	};
 	const fitted = truncateHead(head, budget);
 	const kept = fitted.truncated ? fitted.content || cutText(head, budget.maxBytes) : head;
 	return capChars(text, kept.length, hint);
@@ -131,12 +135,13 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 			name: "web",
 			label: "Web",
 			description:
-				"Search the public web with query, or read one http(s) URL with url; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it. Successful page fetches are cached for 15 minutes (images are not). Large results name a saved file.",
+				"Search the public web with query, or read one http(s) URL with url; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it. Successful page fetches are cached for 15 minutes (images are not).",
 			promptSnippet: "Read a public URL or search the web",
-			// The research policy routes GitHub and package lookups; these lines own only how to use a result.
+			// The research policy routes GitHub and package lookups and, when this agent can browse, rendered pages; these lines
+			// own only how to use a result (guidelines are static, so they cannot depend on the selected tools).
 			promptGuidelines: [
 				"Read the source behind a search snippet before relying on its claim.",
-				"Cite source URLs. When static text cannot answer the question, use the browser tools (`mcp__browser__*`, or `browser` when active). Read saved output by relevant ranges rather than fetching it again.",
+				"Cite source URLs. Read saved output by relevant ranges rather than fetching it again.",
 			],
 			parameters: Type.Object({
 				url: Type.Optional(Type.String({ description: "Public http(s) page to read; omit query" })),
@@ -187,7 +192,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 						const text = visibleControls(fetched);
 						const lines = text.split("\n").length;
 						const size = { kind: "fetch" as const, bytes: Buffer.byteLength(text), lines };
-						if (text.length <= max) return textResult<WebDetails>(capOutputToFile(text, { label: "web" }), size);
+						if (text.length <= max) return textResult<WebDetails>(capResultText(text, "web"), size);
 						// A longer page is saved whole (read the rest from the file, no refetch); the inline part folds link lists
 						// (sidebars, tables of contents) so content comes first.
 						const file = saveFullOutput(text, "web");
@@ -200,7 +205,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 						}
 						// Nothing holds the rest, so nothing is folded and the note says exactly what stays out of reach.
 						return textResult<WebDetails>(
-							capOutputToFile(capChars(text, max, unsavedHint(text.length, max)), { label: "web" }),
+							capResultText(capChars(text, max, unsavedHint(text.length, max)), "web"),
 							size,
 						);
 					}

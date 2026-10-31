@@ -9,8 +9,8 @@ import { resolve } from "path";
 import { resolveReadPath } from "../core/tools/path-utils.ts";
 import { processImage } from "../utils/image-process.ts";
 import { detectSupportedImageMimeTypeFromFile } from "../utils/mime.ts";
-import { stripBom } from "../utils/text.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { stripBom } from "../../../common/src/text.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface ProcessedFiles {
 	text: string;

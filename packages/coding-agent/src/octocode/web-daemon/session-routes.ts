@@ -1,8 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import { Value } from "typebox/value";
-import { ApplicationCommandSchema, WORKSPACE_ROUTES } from "@octocodeai/octocode-contacts";
-import { WorkspaceCommandSchema } from "@octocodeai/octocode-contacts/protocol";
-import { errorMessage } from "../../utils/guards.ts";
+import { ApplicationCommandSchema, WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts";
+import { WorkspaceCommandSchema } from "@octocodeai/octocode-contracts/protocol";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { handleApplicationDataRequest } from "../workspace/application-data.ts";
 import type { AttachClient } from "./attach-client.ts";

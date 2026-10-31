@@ -27,6 +27,8 @@ export class BashExecutionComponent extends Container {
 	private loader: Loader;
 	private truncationResult?: TruncationResult;
 	private fullOutputPath?: string;
+	/** The result's first line (`[exit 0 · 4.2s · 312 lines · 18 KB]`), shown like the bash tool row's. */
+	private header?: string;
 	private expanded = false;
 	private contentContainer: Container;
 	/** `dim` marks `!!` commands, whose output is excluded from the model context. */
@@ -104,6 +106,7 @@ export class BashExecutionComponent extends Container {
 		cancelled: boolean,
 		truncationResult?: TruncationResult,
 		fullOutputPath?: string,
+		header?: string,
 	): void {
 		this.exitCode = exitCode;
 		this.status = cancelled
@@ -113,6 +116,7 @@ export class BashExecutionComponent extends Container {
 				: "complete";
 		this.truncationResult = truncationResult;
 		this.fullOutputPath = fullOutputPath;
+		this.header = header;
 
 		// Stop loader
 		this.loader.stop();
@@ -141,6 +145,9 @@ export class BashExecutionComponent extends Container {
 		// Command header
 		const header = new Text(theme.fg(this.colorKey, theme.bold(`$ ${this.command}`)), this.outputPad, 0);
 		this.contentContainer.addChild(header);
+		if (this.header && this.status !== "running") {
+			this.contentContainer.addChild(new Text(theme.fg("muted", this.header), this.outputPad, 0));
+		}
 
 		// Output
 		if (availableLines.length > 0) {
@@ -190,15 +197,16 @@ export class BashExecutionComponent extends Container {
 				}
 			}
 
-			if (this.status === "cancelled") {
+			// With a header, it already says how the command ended and where the full output is.
+			if (!this.header && this.status === "cancelled") {
 				statusParts.push(theme.fg("warning", "(cancelled)"));
-			} else if (this.status === "error") {
+			} else if (!this.header && this.status === "error") {
 				statusParts.push(theme.fg("error", `(exit ${this.exitCode})`));
 			}
 
 			// Add truncation warning (context truncation, not preview truncation)
 			const wasTruncated = this.truncationResult?.truncated || contextTruncation.truncated;
-			if (wasTruncated && this.fullOutputPath) {
+			if (!this.header && wasTruncated && this.fullOutputPath) {
 				statusParts.push(theme.fg("warning", `Output truncated. Full output: ${this.fullOutputPath}`));
 			}
 

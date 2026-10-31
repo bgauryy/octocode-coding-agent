@@ -7,15 +7,23 @@ import type {
 } from "../../../core/extensions/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
-import type { RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
+import type {
+	RpcExtensionUIDismiss,
+	RpcExtensionUIRequest,
+	RpcExtensionUIResponse,
+	RpcResponse,
+} from "../rpc-types.ts";
 
 /** Writes one protocol object to stdout. */
-export type RpcOutput = (obj: RpcResponse | RpcExtensionUIRequest | object) => void;
+export type RpcOutput = (obj: RpcResponse | RpcExtensionUIRequest | RpcExtensionUIDismiss | object) => void;
 
 /** Pending extension UI requests waiting for response */
 export type PendingExtensionRequests = Map<string, { resolve: (value: any) => void; reject: (error: Error) => void }>;
 
-/** Helper for dialog methods with signal/timeout support */
+/**
+ * Helper for dialog methods with signal/timeout support. A dialog settled by anything but the host's response (its signal
+ * aborted, its timeout passed) tells the host to close it with `extension_ui_dismiss`.
+ */
 function createDialogPromise<T>(
 	output: RpcOutput,
 	pendingExtensionRequests: PendingExtensionRequests,
@@ -32,21 +40,19 @@ function createDialogPromise<T>(
 
 		const cleanup = () => {
 			if (timeoutId) clearTimeout(timeoutId);
-			opts?.signal?.removeEventListener("abort", onAbort);
+			opts?.signal?.removeEventListener("abort", dismiss);
 			pendingExtensionRequests.delete(id);
 		};
 
-		const onAbort = () => {
+		const dismiss = () => {
 			cleanup();
+			output({ type: "extension_ui_dismiss", id } satisfies RpcExtensionUIDismiss);
 			resolve(defaultValue);
 		};
-		opts?.signal?.addEventListener("abort", onAbort, { once: true });
+		opts?.signal?.addEventListener("abort", dismiss, { once: true });
 
 		if (opts?.timeout) {
-			timeoutId = setTimeout(() => {
-				cleanup();
-				resolve(defaultValue);
-			}, opts.timeout);
+			timeoutId = setTimeout(dismiss, opts.timeout);
 		}
 
 		pendingExtensionRequests.set(id, {
@@ -79,6 +85,7 @@ export const createExtensionUIContext = (
 				options,
 				timeout: opts?.timeout,
 				...(opts?.permission ? { permission: opts.permission } : {}),
+				...(opts?.approval ? { approval: true } : {}),
 			},
 			(r) => ("cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined),
 		),
@@ -89,7 +96,7 @@ export const createExtensionUIContext = (
 			pendingExtensionRequests,
 			opts,
 			false,
-			{ method: "confirm", title, message, timeout: opts?.timeout },
+			{ method: "confirm", title, message, timeout: opts?.timeout, ...(opts?.approval ? { approval: true } : {}) },
 			(r) => ("cancelled" in r && r.cancelled ? false : "confirmed" in r ? r.confirmed : false),
 		),
 

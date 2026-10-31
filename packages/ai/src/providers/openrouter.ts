@@ -3,6 +3,7 @@ import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openrouterImagesApi } from "../api/openrouter-images.lazy.ts";
 import { typesafeSystemOneApi } from "../api/typesafe-system-one.lazy.ts";
 import { envApiKeyAuth, lazyOAuth } from "../auth/helpers.ts";
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { loadOpenRouterOAuth } from "../auth/oauth/load.ts";
 import { createProvider, type Provider, type RefreshModelsContext } from "../models.ts";
 import type { AnyModel } from "../types.ts";
@@ -65,7 +66,7 @@ export function openrouterProvider(): Provider<"anthropic-messages" | "openai-co
 		name: "OpenRouter",
 		baseUrl: OPENROUTER_BASE_URL,
 		auth: {
-			apiKey: envApiKeyAuth("OpenRouter API key", ["OPENROUTER_API_KEY"]),
+			apiKey: envApiKeyAuth("OpenRouter API key", apiKeyEnvVars("openrouter")),
 			oauth: lazyOAuth({
 				name: "OpenRouter OAuth",
 				loginLabel: "Sign in with OpenRouter",

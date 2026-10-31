@@ -9,7 +9,7 @@ import {
 	type Model,
 	type RetryCallbacks,
 } from "@octocodeai/octocode-ai/compat";
-import { sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
+import { createAbortError, sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
 import type { SessionInternals } from "./host.ts";
 import type { AgentSessionEvent } from "./types.ts";
 
@@ -223,7 +223,7 @@ export class SessionRetry {
 		// Wait out the backoff or the provider's retry-after (abortable)
 		this._abortController = new AbortController();
 		try {
-			await sleepUnlessAborted(delayMs, this._abortController.signal, () => new Error("Aborted"));
+			await sleepUnlessAborted(delayMs, this._abortController.signal, createAbortError);
 		} catch {
 			// Aborted during sleep - emit end event so UI can clean up
 			this.finishCancelled();

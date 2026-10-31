@@ -13,6 +13,7 @@ import { FLAG_SPECS } from "./args/flags.ts";
 
 /** Top-level flags, from the same table the parser and `--help` read. */
 export const CLI_FLAGS = [...FLAG_SPECS.flatMap((spec) => [spec.name, ...(spec.short ? [spec.short] : [])]), "--"];
+/** Subcommands and their actions. A first argument named here is a command, not a prompt. */
 const commands: Record<string, readonly string[]> = {
 	models: ["discover"],
 	auth: ["check", "print-api-key", "print-bearer-token"],
@@ -28,6 +29,9 @@ const commands: Record<string, readonly string[]> = {
 	native: [],
 	completion: ["bash", "zsh", "fish"],
 };
+/** True when `args` run a subcommand (`install`, `mcp`, …) rather than a session. */
+export const isSubcommand = (args: readonly string[]): boolean =>
+	args[0] !== undefined && Object.hasOwn(commands, args[0]);
 // Subcommand options (`mcp`, `auth`, …) complete alongside the top-level table.
 const values: Record<string, readonly string[]> = {
 	...Object.fromEntries(FLAG_SPECS.filter((spec) => spec.values).map((spec) => [spec.name, spec.values!])),

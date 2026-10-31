@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
 import type { ModelRef } from "./model.ts";
 

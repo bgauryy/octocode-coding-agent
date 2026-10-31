@@ -4,7 +4,7 @@ import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { partText } from "../shared/util.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
 import { type LineRange, mergeRanges, type ReadView, readView } from "./coverage.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Which files the model's context shows, read from session messages: the base of the file guard's memory across a

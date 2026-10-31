@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { useEffect } from "react";

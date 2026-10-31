@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../shared/format.ts";
 import { sessionsRoot, tildePath } from "../shared/home.ts";
@@ -33,20 +33,8 @@ export const SAVED_RESULTS_INLINE_CHARS = 3_000;
 
 const OPEN = "<saved-results>";
 const CLOSE = "</saved-results>";
-const OPEN_PREFIX = "<saved-results";
-/** The block `savedResultsBlock` writes, from its blank line to its closing tag, with the count when it is a pointer. */
-const CODE_BLOCK = /^\n\n<saved-results(?: count="\d+")?>\n[\s\S]*?\n<\/saved-results>$/;
 /** A block as the model might write one anywhere in its text, with the blank lines before it. */
 const ANY_BLOCK = /\n*<saved-results(?: count="\d+")?>\n[\s\S]*?\n<\/saved-results>/g;
-
-/**
- * `body` without the block this module wrote, so a model updating an earlier summary never copies it. Code appends the
- * block last, so only the last block, and only when it ends `body`, is removed; text the model wrote stays.
- */
-export function withoutSavedResults(body: string): string {
-	const at = body.lastIndexOf(`\n\n${OPEN_PREFIX}`);
-	return at >= 0 && CODE_BLOCK.test(body.slice(at)) ? body.slice(0, at) : body;
-}
 
 /**
  * The model's summary without any `<saved-results>` block it wrote itself: code owns that block (it appends the one

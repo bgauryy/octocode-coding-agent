@@ -4,6 +4,7 @@ import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { typesafeSystemOneApi } from "../api/typesafe-system-one.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
+import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { createProvider, type Provider } from "../models.ts";
 import { OPENCODE_CLASSIFIER_MODELS, OPENCODE_MODELS } from "./opencode.models.ts";
 import { withOpenCodeSessionHeader } from "./opencode-headers.ts";
@@ -14,7 +15,7 @@ export function opencodeProvider(): Provider<OpenCodeApi> {
 	return createProvider<OpenCodeApi>({
 		id: "opencode",
 		name: "OpenCode Zen",
-		auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
+		auth: { apiKey: envApiKeyAuth("OpenCode API key", apiKeyEnvVars("opencode")) },
 		models: [...Object.values(OPENCODE_MODELS), ...Object.values(OPENCODE_CLASSIFIER_MODELS)],
 		api: {
 			"anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),

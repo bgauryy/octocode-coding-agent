@@ -1,4 +1,4 @@
-import type { ReportSummary, ReportsIndex } from "@octocodeai/octocode-contacts/protocol";
+import type { ReportSummary, ReportsIndex } from "@octocodeai/octocode-contracts/protocol";
 import { hashFor } from "./route.ts";
 
 const REPORT_TABS = ["rfc", "research"] as const;

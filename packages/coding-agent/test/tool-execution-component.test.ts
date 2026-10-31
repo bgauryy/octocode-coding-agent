@@ -259,7 +259,7 @@ describe("ToolExecutionComponent parity", () => {
 		// The header line carries the exit code, size, what was trimmed and the file; nothing repeats it below the output.
 		expect(rendered.match(/full output:/g)?.length ?? 0).toBe(1);
 		expect(rendered).toMatch(
-			/\[exit 0 · [\d.]+s · 4,000 lines · \d+ KB · trimmed: first 120 \+ last 480 lines · full output: /,
+			/\[exit 0 · [\d.]+s · 4,000 lines · \d+ KB · trimmed: first 100 \+ last 400 lines · full output: /,
 		);
 		expect(rendered).toContain("line-4000");
 		expect(rendered).not.toContain("Truncated:");

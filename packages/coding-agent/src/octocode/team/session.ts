@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { envFlag, ownNonce, SUBAGENT_ENV } from "../shared/env.ts";
+import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { peerDbPath, peerRegistryDir } from "../shared/home.ts";
 import { interactive } from "../shared/interactive.ts";
 import { terminateSelf } from "../shared/process.ts";
@@ -25,7 +25,7 @@ import { Vouches } from "./session/vouches.ts";
 import { type TeamStore } from "./store.ts";
 import { TeamTicker, type TeamView } from "./ticker.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
 export class Team {

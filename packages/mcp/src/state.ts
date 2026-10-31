@@ -4,7 +4,7 @@ import { getAgentDir } from "../../coding-agent/src/config.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
 import { mcpNamespace } from "./servers.ts";
 import type { ModelRegistry } from "../../coding-agent/src/core/model-registry.ts";
-import { openBrowser } from "../../coding-agent/src/utils/open-browser.ts";
+import { openBrowser } from "../../common/src/open-browser.ts";
 import {
 	getMcpToolExposure,
 	type LoadedMcpConfig,

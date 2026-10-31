@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parseConfigDocument } from "../../utils/config-document.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 
 /** A plugin another host installed: `/plugins` lists it, and switching it on adds it to Octocode's `plugins`. */

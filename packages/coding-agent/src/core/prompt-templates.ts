@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { parseFrontmatter } from "../utils/frontmatter.ts";
-import { isUnderPath, resolvePath } from "../utils/paths.ts";
+import { isUnderPath, resolvePath } from "../../../common/src/paths.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 import { type CommandReservation, reservedCommandNames } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";

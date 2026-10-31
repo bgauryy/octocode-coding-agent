@@ -9,7 +9,7 @@ import { stripAnsi } from "../src/utils/ansi.ts";
 const { copyToClipboard } = vi.hoisted(() => ({ copyToClipboard: vi.fn(async (_text: string) => {}) }));
 
 vi.mock("../src/utils/clipboard.ts", () => ({ copyToClipboard }));
-vi.mock("../src/utils/open-browser.ts", () => ({ openBrowser: vi.fn() }));
+vi.mock("../../common/src/open-browser.ts", () => ({ openBrowser: vi.fn() }));
 
 const URL = `https://auth.example.invalid/authorize?${"x".repeat(300)}`;
 const CTRL_X = "\x18";

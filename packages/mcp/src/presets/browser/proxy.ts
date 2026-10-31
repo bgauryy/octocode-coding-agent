@@ -12,7 +12,7 @@ import {
 import { hostKey, portOf } from "../../../../coding-agent/src/octocode/browser/network.ts";
 import { browserMcpUrls } from "../../../../coding-agent/src/octocode/shared/browser-mcp.ts";
 import { browserMcpAsked } from "../../../../coding-agent/src/octocode/web/browser-mcp.ts";
-import { classifyHost, type HostLookup, isHttpUrl } from "../../../../coding-agent/src/octocode/web/guard.ts";
+import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
 import { BROWSER_SERVER } from "./names.ts";
 
 /**

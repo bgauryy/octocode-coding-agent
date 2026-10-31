@@ -180,6 +180,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 								const outcomes = await Promise.all(
 									["nested-a.txt", "nested-b.txt"].map((name) =>
 										ctx.executeTool("file", {
+											reason: "Write the nested fixture file",
 											queries: [
 												{
 													type: "write",

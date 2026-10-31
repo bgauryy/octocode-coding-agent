@@ -1,4 +1,4 @@
-import type { ApplicationCommand, ApplicationReceipt } from "@octocodeai/octocode-contacts";
+import type { ApplicationCommand, ApplicationReceipt } from "@octocodeai/octocode-contracts";
 
 export interface ApplicationReceiptStore {
 	begin(command: ApplicationCommand): {

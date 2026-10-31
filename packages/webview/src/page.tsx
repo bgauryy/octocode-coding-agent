@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import type { Snapshot } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot } from "@octocodeai/octocode-contracts/snapshot";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App.tsx";

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fencedParts } from "./fence.ts";
 import { AGENT_RESULT_TYPE } from "./messages.ts";
 import { entryMessage } from "./util.ts";

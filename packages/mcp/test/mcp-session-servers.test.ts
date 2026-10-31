@@ -11,7 +11,7 @@ import {
 	registerMcpAddedServers,
 	serializeMcpSessionServers,
 } from "../src/session-servers.ts";
-import { MCP_SESSION_SERVERS_FILE_ENV } from "../../coding-agent/src/octocode/shared/env.ts";
+import { MCP_SESSION_SERVERS_FILE_ENV } from "../../common/src/env.ts";
 import { subagentProcessEnv } from "../../coding-agent/src/octocode/subagents/process/env.ts";
 
 const stdio = { command: "node", args: ["server.js"], env: { TOKEN: "t" } };

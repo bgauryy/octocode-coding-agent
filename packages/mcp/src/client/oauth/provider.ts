@@ -1,8 +1,9 @@
-import type { OAuthClientMetadataDocument, OAuthClientProvider } from "./flow.ts";
 import type {
 	AuthorizationServerMetadata,
 	OAuthClientInformationMixed,
 	OAuthClientMetadata,
+	OAuthClientMetadataDocument,
+	OAuthClientProvider,
 	OAuthDiscoveryState,
 	OAuthTokens,
 } from "./types.ts";

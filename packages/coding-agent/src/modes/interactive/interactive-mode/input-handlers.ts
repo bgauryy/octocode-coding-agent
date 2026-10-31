@@ -13,7 +13,7 @@ import { editInExternalEditor } from "../external-editor.ts";
 import { bindEditorHandlers } from "./extension-chrome.ts";
 import { quoteIfNeeded } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the editor key handlers. */
 type InputHandlersHost = Pick<

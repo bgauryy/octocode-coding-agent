@@ -11,7 +11,7 @@ import { ThemedText } from "../components/themed-text.ts";
 import { stopThemeWatcher, theme } from "../../../theme/theme.ts";
 import { isDeadTerminalError, formatCrashExtensionHint, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by crash reporting. */
 type CrashReportingHost = Pick<

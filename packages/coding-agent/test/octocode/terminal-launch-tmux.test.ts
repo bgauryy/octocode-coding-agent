@@ -84,6 +84,19 @@ describe("launchInTmux", () => {
 		).resolves.toEqual({ placement: "window", id: "@2" });
 	});
 
+	it("opens a window without a target when TMUX_PANE names the session, and in the TMUX session otherwise", async () => {
+		const withPane = runner("@2\n");
+		await launchInTmux({ placement: "window", command: ["a", "b"], cwd: "/w" }, { runner: withPane, env });
+		expect(withPane.mock.calls[0]?.[0]).not.toContain("-t");
+		const withoutPane = runner("@3\n");
+		await launchInTmux(
+			{ placement: "window", command: ["a", "b"], cwd: "/w" },
+			{ runner: withoutPane, env: { TMUX: "/tmp/tmux-1/default,1,7" } },
+		);
+		const args = withoutPane.mock.calls[0]?.[0] ?? [];
+		expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "$7:"]);
+	});
+
 	it("refuses outside tmux or without a pane, and without calling tmux", async () => {
 		const run = runner("%1");
 		await expect(
@@ -152,6 +165,20 @@ describe.skipIf(!hasTmux)("launchInTmux with a real tmux server", () => {
 		);
 		expect(win.id).toMatch(/^@\d+$/u);
 		expect(tmux("list-windows", "-t", "t", "-F", "#{window_id}").split("\n")).toContain(win.id);
+	});
+
+	it("opens a window in the client's own session, not the most recently used one, without TMUX_PANE", async () => {
+		tmux("new-session", "-d", "-s", "first", "sleep", "60");
+		const id = tmux("display-message", "-p", "-t", "first", "#{session_id}").slice(1);
+		tmux("new-session", "-d", "-s", "latest", "sleep", "60");
+		const socketPath = tmux("display-message", "-p", "#{socket_path}");
+		const serverPid = tmux("display-message", "-p", "#{pid}");
+		const clientEnv: NodeJS.ProcessEnv = { ...process.env, TMUX: `${socketPath},${serverPid},${id}` };
+		delete clientEnv.TMUX_PANE;
+
+		const win = await launchInTmux({ placement: "window", command: ["sleep", "63"], cwd: dir }, { env: clientEnv });
+		expect(tmux("list-windows", "-t", "first", "-F", "#{window_id}").split("\n")).toContain(win.id);
+		expect(tmux("list-windows", "-t", "latest", "-F", "#{window_id}").split("\n")).not.toContain(win.id);
 	});
 
 	it("aborts a launch whose signal is already cancelled", async () => {

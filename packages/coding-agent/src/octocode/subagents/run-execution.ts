@@ -1,5 +1,5 @@
 import type { ReportStatus } from "../instructions/report.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatCost, formatDuration, shortPath, toolCallCount } from "../shared/format.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { reportRef } from "../shared/references.ts";

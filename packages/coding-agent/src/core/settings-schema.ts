@@ -102,7 +102,7 @@ export const SettingsSchema = Type.Object(
 		bashOutputMaxBytes: Type.Optional(
 			Type.Number({
 				description:
-					"Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (600 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens.",
+					"Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens. Output of the user's own `!` commands follows the same limit.",
 				minimum: 1024,
 				default: SETTINGS_DEFAULTS.bashOutputMaxBytes,
 			}),

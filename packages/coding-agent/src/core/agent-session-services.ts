@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai";
 import { getAgentDir } from "../config.ts";
-import { resolvePath } from "../utils/paths.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
 import type { SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { ModelRuntime } from "./model-runtime.ts";
 import {
@@ -15,7 +15,7 @@ import { createAgentSession } from "./sdk.ts";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/types.ts";
 import type { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { checkAuthFileSafety } from "./auth-storage/file-safety.ts";
 
 /**

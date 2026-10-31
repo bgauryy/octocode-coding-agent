@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MCP_BROWSER_ENV } from "../../src/octocode/shared/env.ts";
+import { MCP_BROWSER_ENV } from "../../../common/src/env.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles, profileTools } from "../../src/octocode/subagents/profiles.ts";

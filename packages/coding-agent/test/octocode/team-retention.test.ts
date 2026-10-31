@@ -2,7 +2,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Inbox } from "../../src/octocode/team/inbox.ts";
 import { deadLetterText } from "../../src/octocode/team/routing.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { TeamTicker } from "../../src/octocode/team/ticker.ts";

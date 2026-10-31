@@ -1,4 +1,4 @@
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../theme/theme.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../theme/status.ts";
 

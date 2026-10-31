@@ -7,7 +7,7 @@ import {
 	DaemonRecordSchema,
 	type AttachRecord,
 	type DaemonRecord,
-} from "@octocodeai/octocode-contacts/daemon";
+} from "@octocodeai/octocode-contracts/daemon";
 import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { sameProcess } from "../shared/process.ts";

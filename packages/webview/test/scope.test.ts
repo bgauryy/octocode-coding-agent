@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contacts";
+import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts";
 import { pageScope, scopedRoute } from "../src/scope.ts";
 
 it("keeps host routes unchanged when the page has no daemon scope", () => {

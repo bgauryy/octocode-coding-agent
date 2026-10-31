@@ -1,4 +1,4 @@
-import type { SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { useStore } from "zustand";
 import { AgentIcon } from "../ui/icons.tsx";
 import { CommandButton, ConnectionNotice } from "./controls.tsx";

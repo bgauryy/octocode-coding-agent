@@ -33,7 +33,7 @@ export default function (octocode: ExtensionAPI) {
 }
 ```
 
-Start Octocode and run `/hello`. During development, load a file directly:
+Start Octocode and run `/hello`. Keep `description` to one sentence of at most 50 characters, because command lists show it on one line, and put usage in `argumentHint` (for example `"[name]"`). The `/` list shows the hint beside the command, and `getCommands()` and RPC `get_commands` return it for extension commands. During development, load a file directly:
 
 ```bash
 octocode --extension ./hello.ts
@@ -47,7 +47,7 @@ Each command has exactly one name. `registerCommand` has no `aliases` option and
 
 Command resolution keeps collisions distinct. Use the invocation names returned by `octocode.getCommands()` when constructing a command; duplicate extension names, and extension names that match a built-in terminal command, receive numeric suffixes such as `/model:1`.
 
-`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, `description`, `source`, and `sourceInfo`. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
+`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, `description`, `source` and `sourceInfo`, plus `argumentHint` when an extension command declares one. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
 
 ## Active tool invocation
 
@@ -245,7 +245,7 @@ Notification handlers should not perform slow work on a streaming event. Transfo
 
 `ctx.getTurnId()` returns the active logical turn identity. Tool iterations, steering, retries and Stop continuations share it. A selected follow-up batch gets a new identity before continuation preparation; merely queueing a message does not change it. The identity remains available during `agent_settled` and is cleared afterward. Outside a run it is undefined, including idle manual compaction.
 
-`message_end` can replace a finalized message while preserving its role. `tool_call` can mutate input or block execution. `tool_result` handlers compose, with each handler seeing prior changes.
+`message_end` can replace a finalized message while preserving its role. `tool_call` can mutate input or block execution, and can return `revalidate`, an async check that runs right before the tool executes (a parallel batch approves every call before running any, so an approval can go stale); it returns `{ block: true, reason }` to refuse the call, and a throw refuses it too. Every handler's check is kept and run in load order, even when a later handler returns its own result. Octocode's own gate returns one for `bash` and `powershell` calls so a peer's path reservation made after approval still blocks them. `tool_result` handlers compose, with each handler seeing prior changes.
 
 <a id="provider_stream_event"></a>
 
@@ -392,6 +392,7 @@ For auxiliary model requests, capture `const recordUsage = octocode.createUsageR
 
 `ctx.ui` provides dialogs, notifications, status text, widgets, titles, editor access, and custom components.
 Use `ctx.ui.custom()` only when the interaction needs its own rendering and input.
+`ctx.ui.select()`, `confirm()` and `input()` take `signal` and `timeout`, plus two flags that tell remote clients what the dialog is. Pass `approval: true` to a `select` or `confirm` that decides whether to allow an action, so the web page shows an approval, not a question, and RPC hosts receive `approval: true` on the `extension_ui_request` (the web page counts every `confirm` as an approval; RPC hosts see the flag only when it is passed; Octocode's permission prompts set it). Pass `blocking: true` when the dialog holds up work that goes on without the user, such as a background agent's approval: it is then reported as waiting, on the web page and in `octocode remote list` (which shows the dialog's title), even when no run is active, and stays reported after the run settles, whereas a picker opened while idle is not reported. RPC hosts do not receive `blocking`. The `ui_prompt_start` event carries both flags, and its `id` is repeated by `ui_prompt_end`.
 See [Terminal UI](tui.md) for component, focus, overlay, theme, and performance guidance.
 
 Extensions load in interactive, RPC, JSON, and print modes.

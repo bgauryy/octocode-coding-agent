@@ -1,4 +1,5 @@
 import type { AgentSessionEvent } from "../../agent-session.ts";
+import { compactionSummaryDisplay } from "../../messages.ts";
 import type { SessionEntry } from "../../session-manager.ts";
 import { record } from "../normalize.ts";
 
@@ -54,6 +55,21 @@ function summary(value: unknown): Record<string, unknown> {
 		...pick(value, ["summary", "firstKeptEntryId", "fromId", "tokensBefore", "estimatedTokensAfter", "fromHook"]),
 		usage: usage(record(value).usage),
 		...(record(value).details !== undefined ? { privateDetailsStored: true } : {}),
+	};
+}
+/** A compaction's data with its summary as a person reads it, not as written for the model. */
+function compaction(value: unknown): Record<string, unknown> {
+	const { summary: text, tokensBefore } = record(value);
+	return {
+		...summary(value),
+		...(typeof text === "string"
+			? {
+					summary: compactionSummaryDisplay({
+						summary: text,
+						tokensBefore: typeof tokensBefore === "number" ? tokensBefore : 0,
+					}),
+				}
+			: {}),
 	};
 }
 /** Session entries mix public metadata with private state. Only the declared display fields cross this boundary. */
@@ -115,7 +131,7 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 			};
 		}
 		case "compaction":
-			return { kind: entry.type, text: "Context compacted", data: summary(entry) };
+			return { kind: entry.type, text: "Context compacted", data: compaction(entry) };
 		case "branch_summary":
 			return { kind: entry.type, text: "Branch summarized", data: summary(entry) };
 	}
@@ -159,7 +175,7 @@ export function nativeActivity(event: AgentSessionEvent): ActivityData | undefin
 				...(!event.aborted && event.errorMessage ? { failed: true } : {}),
 				data: {
 					...pick(event, ["reason", "aborted", "willRetry", "errorMessage"]),
-					...(event.result ? { result: summary(event.result) } : {}),
+					...(event.result ? { result: compaction(event.result) } : {}),
 				},
 			};
 		case "auto_retry_start":

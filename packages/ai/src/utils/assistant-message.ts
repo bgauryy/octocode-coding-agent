@@ -1,4 +1,4 @@
-import type { Api, AssistantMessage, Model } from "../types.ts";
+import type { Api, AssistantMessage, Model, Usage } from "../types.ts";
 
 /** Zeroed usage for an assistant message that has not received any token counts yet. */
 export function createEmptyUsage(): AssistantMessage["usage"] {
@@ -10,6 +10,43 @@ export function createEmptyUsage(): AssistantMessage["usage"] {
 		totalTokens: 0,
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
+}
+
+/** Token counts a provider reported for one response; absent counts are zero. */
+interface UsageCounts {
+	input: number;
+	output: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+	/** Subset of `output` the provider reports as reasoning tokens; omitted when the provider has no such breakdown. */
+	reasoning?: number;
+	/** Total the provider reported. Preferred over the component sum when it is non-zero. */
+	totalTokens?: number;
+}
+
+/**
+ * Total tokens of a usage: the provider's own total when it reported one, otherwise input, output and cache reads and
+ * writes (reasoning is already part of output).
+ */
+export function sumUsageTokens(
+	usage: Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite">,
+	providerTotal?: number,
+): number {
+	return providerTotal || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
+
+/** Usage with zero cost for reported counts; price it with `calculateCost`. */
+export function createUsage(counts: UsageCounts): Usage {
+	const usage: Usage = {
+		...createEmptyUsage(),
+		input: counts.input,
+		output: counts.output,
+		cacheRead: counts.cacheRead ?? 0,
+		cacheWrite: counts.cacheWrite ?? 0,
+	};
+	if (counts.reasoning !== undefined) usage.reasoning = counts.reasoning;
+	usage.totalTokens = sumUsageTokens(usage, counts.totalTokens);
+	return usage;
 }
 
 /**

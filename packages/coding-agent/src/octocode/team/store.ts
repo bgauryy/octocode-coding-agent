@@ -27,19 +27,22 @@ import { asks, deadLetters, insertMessage, pending, pendingUrgent, recent, type 
 import {
 	conflictingLease,
 	liveLeases,
+	teamLeases,
 	refuseOverlap,
 	releaseLeases,
 	resumeLeases,
 	writeLeases,
 } from "./store/leasing.ts";
 import { MessageRefs } from "./store/refs.ts";
-import { pathKey, teamWorkspace } from "./store/workspace.ts";
-import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
+import { pathKey, teamScope, teamWorkspace } from "./store/workspace.ts";
+import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 
 /**
  * The team tables of the agent database: who works in this repository, what they say to each other, and which files
- * they have reserved. One SQLite file shared by every Octocode process on the machine (WAL, so readers never block),
- * rows scoped by workspace = git root. Entities, after the octocode-agents-communication skill:
+ * they have reserved. One SQLite file shared by every Octocode process on the machine (WAL, so readers never block).
+ * Two scopes: the team (the repository: its git common dir, shared by every worktree) holds agents, messages and
+ * deliveries, so agents in sibling worktrees see and message each other; the checkout (the worktree root) holds leases and
+ * the edit log, because those name files. Entities, after the octocode-agents-communication skill:
  *   agents      one live agent; its owner rewrites the row as it works (status, tool, tokens, heartbeat)
  *   messages    immutable; may require a reply and may answer another message (replyTo)
  *   deliveries  one row per recipient: delivered when the model saw it, completed when answered, dead when the recipient left unread
@@ -59,23 +62,28 @@ export class TeamStore {
 	private quickDepth = 0;
 
 	private readonly agent: AgentDb;
+	/** The checkout (worktree root): scopes leases, edits and the paths they name. Not the team's scope. */
 	readonly workspace: string;
+	/** The team (the repository's git common dir): scopes agents, messages and deliveries, whatever worktree they work in. */
+	readonly team: string;
 	private readonly ownsConnection: boolean;
 	private constructor(
 		agent: AgentDb,
 		workspace: string,
+		team: string,
 		/** Whether `close` closes the connection: true for `open`, false for the process connection `shared` borrows. */
 		ownsConnection: boolean,
 	) {
 		this.agent = agent;
 		this.workspace = workspace;
+		this.team = team;
 		this.ownsConnection = ownsConnection;
 
 		this.db = agent.db;
 		this.edits = new EditLog(agent.db, workspace);
 		this.refs = new MessageRefs(
 			agent.db,
-			workspace,
+			team,
 			(work) => this.transaction(work),
 			() => this.reachable(),
 		);
@@ -85,7 +93,7 @@ export class TeamStore {
 	static open(cwd: string, file = agentDbPath(), env: NodeJS.ProcessEnv = process.env): TeamStore {
 		const agent = openAgentDb(file, env);
 		try {
-			const store = new TeamStore(agent, teamWorkspace(cwd, env), true);
+			const store = new TeamStore(agent, teamWorkspace(cwd, env), teamScope(cwd, env), true);
 			store.housekeep();
 			return store;
 		} catch (error) {
@@ -96,7 +104,7 @@ export class TeamStore {
 
 	/** The team over the process's one agent database connection (`sharedAgentDb`), which sessions, memory and backlog use too. */
 	static shared(cwd: string, env: NodeJS.ProcessEnv = process.env): TeamStore {
-		const store = new TeamStore(sharedAgentDb(env), teamWorkspace(cwd, env), false);
+		const store = new TeamStore(sharedAgentDb(env), teamWorkspace(cwd, env), teamScope(cwd, env), false);
 		store.housekeep();
 		return store;
 	}
@@ -155,7 +163,7 @@ export class TeamStore {
 	 */
 	save(member: Member): boolean {
 		this.prune(member.updatedAt);
-		return agents.refresh(this.db, member) || agents.insert(this.db, this.workspace, member);
+		return agents.refresh(this.db, member, this.workspace) || agents.insert(this.db, this.team, this.workspace, member);
 	}
 
 	/**
@@ -164,7 +172,7 @@ export class TeamStore {
 	 * retired first (its unread mail becomes dead letters) and the name is taken over.
 	 */
 	join(member: Member): boolean {
-		return this.transaction(() => claimMember(this.db, this.workspace, member));
+		return this.transaction(() => claimMember(this.db, this.team, this.workspace, member));
 	}
 
 	/**
@@ -200,27 +208,28 @@ export class TeamStore {
 	 */
 	resume(since: number, now = Date.now()): void {
 		this.transaction(() => {
-			resumeMembers(this.db, this.workspace, since, now);
-			resumeLeases(this.db, this.workspace, since, now);
+			resumeMembers(this.db, this.team, since, now);
+			resumeLeases(this.db, this.team, since, now);
 		});
 	}
 
-	/** Every agent name in the shared database, whatever its workspace (ids are unique across all of them), live or not yet dropped. */
+	/** Every agent name in the shared database, whatever its team (ids are unique across all of them), live or not yet dropped. */
 	names(): string[] {
 		return agents.ids(this.db);
 	}
 
 	/**
-	 * Visible agents of this workspace, oldest first, with unanswered-message counts and held paths. A stale one (silent
-	 * for `STALE_MS`) or one whose process is gone is left out; nothing is removed here, `sweep` and `remove` do that.
+	 * Visible agents of this team (every worktree of the repository), oldest first, with unanswered-message counts and held
+	 * paths (relative to the member's own `checkout`). A stale one (silent for `STALE_MS`) or one whose process is gone is
+	 * left out; nothing is removed here, `sweep` and `remove` do that.
 	 */
 	list(now = Date.now()): Member[] {
-		return listMembers(this.db, this.workspace, now, () => this.leases(now));
+		return listMembers(this.db, this.team, now, () => teamLeases(this.db, this.team, now));
 	}
 
-	/** Ids of this workspace's agents that can still read mail: every one whose process runs, stale (stalled) ones included. */
+	/** Ids of this team's agents that can still read mail: every one whose process runs, stale (stalled) ones included. */
 	private reachable(): Set<string> {
-		return reachableMembers(this.db, this.workspace);
+		return reachableMembers(this.db, this.team);
 	}
 
 	// ── messages ──────────────────────────────────────────────────────────────
@@ -241,14 +250,12 @@ export class TeamStore {
 		now = Date.now(),
 	): { id: number | undefined; departed: string[] } {
 		// Read in the same IMMEDIATE transaction as the insert: no recipient can leave in between.
-		return this.transaction(() =>
-			insertMessage(this.db, this.workspace, this.reachable(), from, to, body, options, now),
-		);
+		return this.transaction(() => insertMessage(this.db, this.team, this.reachable(), from, to, body, options, now));
 	}
 
-	/** The sender of message `id` in this workspace and whether it asked for a reply; undefined when there is no such message. */
+	/** The sender of message `id` in this team and whether it asked for a reply; undefined when there is no such message. */
 	replyTarget(id: number): { from: string; replyRequired: boolean } | undefined {
-		return deliveries.replyTarget(this.db, this.workspace, id);
+		return deliveries.replyTarget(this.db, this.team, id);
 	}
 
 	/**
@@ -256,12 +263,12 @@ export class TeamStore {
 	 * parent's first reply to it (a message with `replyTo` that id). Read from the existing tables: nothing is stored for it.
 	 */
 	asks(child: string, parent: string, since: number): Ask[] {
-		return asks(this.db, this.workspace, child, parent, since);
+		return asks(this.db, this.team, child, parent, since);
 	}
 
 	/** Messages `sender` sent whose recipients left before reading them, not yet reported to it (oldest first). */
 	deadLetters(sender: string, limit = INBOX_BATCH_SIZE): DeadLetter[] {
-		return deadLetters(this.db, this.workspace, sender, limit);
+		return deadLetters(this.db, this.team, sender, limit);
 	}
 
 	/** Records that the sender was told these dead letters went unread. */
@@ -297,22 +304,28 @@ export class TeamStore {
 	}
 
 	/**
-	 * The latest messages in this workspace, newest first, with their delivery state. The workspace is shared by every
-	 * session in the repository, so the default fetches enough rows for a panel to filter its own and still show a few.
+	 * The latest messages in this team, newest first, with their delivery state. The team is shared by every
+	 * session in the repository, whatever its worktree, so the default fetches enough rows for a panel to filter its own and still show a few.
 	 */
 	recent(limit = 30, now = Date.now(), windowMs = 10 * 60_000): Traffic[] {
-		return recent(this.db, this.workspace, limit, now, windowMs);
+		return recent(this.db, this.team, limit, now, windowMs);
 	}
 
 	// ── leases ────────────────────────────────────────────────────────────────
 
+	/** The live leases in this checkout (paths relative to it): the ones that can conflict with this checkout's files. */
 	leases(now = Date.now()): Lease[] {
 		return liveLeases(this.db, this.workspace, now);
 	}
 
-	/** A live lease held by someone other than `self` that covers `file` (or, for a tree request, lies under it). */
+	/**
+	 * A live lease held by someone other than `self` that covers `file` (or, for a tree request, lies under it): in this
+	 * checkout, or in a nested one of the team (a worktree under `.octocode/worktrees/` is the same files as in main).
+	 */
 	conflict(file: string, self: string, kind: "file" | "tree" = "file", now = Date.now()): Lease | undefined {
-		return conflictingLease(this.db, this.workspace, file, self, kind, now, (owner, at) => this.retireOwner(owner, at));
+		return conflictingLease(this.db, this.team, this.workspace, file, self, kind, now, (owner, at) =>
+			this.retireOwner(owner, at),
+		);
 	}
 
 	/** Retires a lease owner that is gone (it has no row, or its process died or was replaced); whether it was. */
@@ -359,7 +372,7 @@ export class TeamStore {
 		this.prune(now);
 	}
 
-	/** `kind:key` of every live lease the owner holds in this workspace. */
+	/** `kind:key` of every live lease the owner holds in this checkout. */
 	owned(owner: string, now = Date.now()): Set<string> {
 		return new Set(
 			this.leases(now)

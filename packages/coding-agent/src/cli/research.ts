@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { getResearchCliInvocation } from "../config.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export function runResearchCommand(args: string[]): boolean {
 	const [kind, ...rest] = args;

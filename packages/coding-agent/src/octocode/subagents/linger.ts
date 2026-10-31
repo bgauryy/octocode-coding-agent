@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_SENDER } from "../shared/messages.ts";
 import { messageText } from "../team/routing.ts";
 import type { ResumeRequest } from "../team/session/send.ts";

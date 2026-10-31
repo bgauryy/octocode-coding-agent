@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { atomicWriteFile, sha256, sha256File } from "../../src/utils/atomic-file.ts";
+import { atomicWriteFile, sha256, sha256File } from "../../../common/src/atomic-file.ts";
 import { fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

@@ -4,7 +4,7 @@ import { notify, type Subcommands, say, wordCompletions } from "../shared/comman
 import { sessionDir } from "../shared/home.ts";
 import { withDialog } from "../shared/locks.ts";
 import { plural } from "../shared/render/text.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Checkpoints, RewindResult } from "./checkpoint.ts";
 import { inheritCheckpoints, sessionIdOf } from "./checkpoint-store.ts";
 

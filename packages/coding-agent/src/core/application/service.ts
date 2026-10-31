@@ -19,7 +19,7 @@ import {
 	type ApplicationOperation,
 	type ApplicationOperationArgs,
 	type ApplicationOperationResult,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 import type { AgentSession, AgentSessionEvent, AgentSessionEventListener } from "../agent-session.ts";
 import { commandImages, dispatchCommand, invokeCommand } from "./service/commands.ts";
 import { ApplicationTranscript } from "./transcript.ts";

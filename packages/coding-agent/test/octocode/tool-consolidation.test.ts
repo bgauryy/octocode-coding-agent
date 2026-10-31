@@ -309,7 +309,7 @@ describe("unified agent", () => {
 
 	it("lists the commands this session registered in /status, not a fixed set", async () => {
 		const fake = fakeHost();
-		octocode(fake.api);
+		await octocode(fake.api);
 		const ctx = fakeCtx({ cwd: tmp() });
 		await fake.commands.get("status").handler("", ctx);
 		const line = ctx.ui.notes
@@ -321,11 +321,11 @@ describe("unified agent", () => {
 		for (const name of [...native, "mcp"]) expect(line).toContain(`/${name}`);
 	});
 
-	it("keeps only communication modes in a child session", () => {
+	it("keeps only communication modes in a child session", async () => {
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		try {
 			const fake = fakeHost();
-			octocode(fake.api);
+			await octocode(fake.api);
 			expect(
 				fake.tools
 					.get("agent")

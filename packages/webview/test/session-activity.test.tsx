@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { Blob as NodeBlob } from "node:buffer";
 import type { ReactNode } from "react";
-import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { act, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

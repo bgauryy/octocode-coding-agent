@@ -1,4 +1,4 @@
-import type { ApplicationMessage } from "@octocodeai/octocode-contacts";
+import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import { Spacer } from "@octocodeai/octocode-tui";
 import { parseSkillBlock } from "../../../core/agent-session.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";

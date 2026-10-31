@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { appendReadDigests, completedLocalReads, type snapshotLocalReads } from "../shared/local-reads.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Credit source reads before the file guard sees them, and expose whole-source anchors to the model. */
 export function registerReadReceipts(api: ExtensionAPI) {

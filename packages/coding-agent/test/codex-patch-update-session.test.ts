@@ -136,6 +136,7 @@ async function run(
 		return fauxAssistantMessage(
 			[
 				fauxToolCall("file", {
+					reason: "Apply the fixture mutation",
 					queries: [
 						{
 							type: "write",
@@ -548,6 +549,7 @@ it("does not upgrade partial read coverage after a successful patch Update", asy
 			fauxAssistantMessage(
 				[
 					fauxToolCall("file", {
+						reason: "Overwrite the source",
 						queries: [
 							{
 								type: "write",
@@ -584,6 +586,7 @@ it("keeps stale status after applying a valid patch anchor over external changes
 			fauxAssistantMessage(
 				[
 					fauxToolCall("file", {
+						reason: "Delete the source",
 						queries: [
 							{
 								type: "delete",

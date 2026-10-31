@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
-import type { ApplicationMessage } from "@octocodeai/octocode-contacts";
+import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import {
 	animationClock,
 	Container,

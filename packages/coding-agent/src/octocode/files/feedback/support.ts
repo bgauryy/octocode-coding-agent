@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * What the research server answered about file types it cannot serve: once it reports that a file's grammar is

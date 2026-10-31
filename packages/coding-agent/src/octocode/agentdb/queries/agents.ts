@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../rows.ts";
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
@@ -19,11 +19,11 @@ const processRow = (row: Row): MemberProcess => ({
 	...(typeof row.started === "string" ? { started: row.started } : {}),
 });
 
-/** The heartbeat's `UPDATE`: matches the row only while it still names this process; whether it did. */
-export function refresh(db: DatabaseSync, member: Member): boolean {
+/** The heartbeat's `UPDATE`: matches the row only while it still names this process (and records its `checkout`); whether it did. */
+export function refresh(db: DatabaseSync, member: Member, checkout: string): boolean {
 	const { changes } = db
 		.prepare(
-			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
+			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, checkout = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
          WHERE id = ? AND pid = ? AND started IS ?`,
 		)
 		.run(
@@ -31,6 +31,7 @@ export function refresh(db: DatabaseSync, member: Member): boolean {
 			member.goal ?? null,
 			member.activity ?? null,
 			member.model ?? null,
+			checkout,
 			member.updatedAt,
 			member.toolCalls,
 			member.input,
@@ -45,17 +46,22 @@ export function refresh(db: DatabaseSync, member: Member): boolean {
 	return changes > 0;
 }
 
-/** Adds the row unless the id is taken (`ON CONFLICT DO NOTHING`, so a name held by another process is never overwritten); whether it was added. */
-export function insert(db: DatabaseSync, workspace: string, member: Member): boolean {
+/**
+ * Adds the row of `team` (the git common dir) working in `checkout` (its worktree root) unless the id is taken
+ * (`ON CONFLICT DO NOTHING`, so a name held by another process is never overwritten); whether it was added.
+ */
+export function insert(db: DatabaseSync, team: string, checkout: string, member: Member): boolean {
 	const row = db
 		.prepare(
-			`INSERT INTO agents (id, workspace, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO agents (id, workspace, checkout, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO NOTHING RETURNING id`,
 		)
 		.get(
 			member.id,
-			workspace,
+			team,
+			checkout,
+			member.tmuxPane ?? null,
 			member.role,
 			member.parentId ?? null,
 			member.pid,
@@ -87,11 +93,9 @@ export function processOf(db: DatabaseSync, id: string): ProcessIdentity | undef
 	return row ? { pid: num(row.pid), ...(typeof row.started === "string" ? { started: row.started } : {}) } : undefined;
 }
 
-/** The process of every agent of `workspace`. */
-export function processes(db: DatabaseSync, workspace: string): MemberProcess[] {
-	return (db.prepare("SELECT id, pid, started FROM agents WHERE workspace = ?").all(workspace) as Row[]).map(
-		processRow,
-	);
+/** The process of every agent of `team`. */
+export function processes(db: DatabaseSync, team: string): MemberProcess[] {
+	return (db.prepare("SELECT id, pid, started FROM agents WHERE workspace = ?").all(team) as Row[]).map(processRow);
 }
 
 /** The process of every agent in the database, whatever its workspace. */
@@ -104,24 +108,20 @@ export function ids(db: DatabaseSync): string[] {
 	return (db.prepare("SELECT id FROM agents").all() as Row[]).map((row) => String(row.id));
 }
 
-/** The agent rows of `workspace`, oldest first, each with `pending`: the questions delivered to it and not yet answered. */
-export function inWorkspace(db: DatabaseSync, workspace: string): Row[] {
+/** The agent rows of `team`, oldest first, each with `pending`: the questions delivered to it and not yet answered. */
+export function inTeam(db: DatabaseSync, team: string): Row[] {
 	return db
 		.prepare(
 			`SELECT a.*, (SELECT count(*) FROM deliveries d JOIN messages m ON m.id = d.message
                       WHERE d.recipient = a.id AND d.delivered_at IS NOT NULL AND d.completed_at IS NULL AND m.reply_required = 1) AS pending
          FROM agents a WHERE a.workspace = ? ORDER BY a.joined_at, a.id`,
 		)
-		.all(workspace);
+		.all(team);
 }
 
-/** Agents of `workspace` that heartbeat at or after `floor` get `seen_at` raised to at least `now`. */
-export function touchSeenSince(db: DatabaseSync, workspace: string, floor: number, now: number): void {
-	db.prepare("UPDATE agents SET seen_at = MAX(seen_at, ?) WHERE workspace = ? AND seen_at >= ?").run(
-		now,
-		workspace,
-		floor,
-	);
+/** Agents of `team` that heartbeat at or after `floor` get `seen_at` raised to at least `now`. */
+export function touchSeenSince(db: DatabaseSync, team: string, floor: number, now: number): void {
+	db.prepare("UPDATE agents SET seen_at = MAX(seen_at, ?) WHERE workspace = ? AND seen_at >= ?").run(now, team, floor);
 }
 
 /** How long this connection waits for a lock held by another process before it fails with "database is locked". */

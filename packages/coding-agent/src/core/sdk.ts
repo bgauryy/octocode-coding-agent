@@ -4,7 +4,7 @@ import { Agent, setDefaultStreamFn, type ThinkingLevel } from "@octocodeai/octoc
 import type { ModelsSimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel, type Model, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getAgentDir } from "../config.ts";
-import { resolvePath } from "../utils/paths.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { CacheWarmer } from "./cache-warmer.ts";

@@ -107,11 +107,13 @@ function copyLink(link: SpanLink): RecordedTelemetryLink | undefined {
 	return context ? { context: { ...context }, attributes: copyAttributes(link.attributes) } : undefined;
 }
 
+/** An error status carrying only the error's name and message, or none when the failure is not described. */
+function errorStatus(error: { name: string; message: string } | undefined): SpanStatus {
+	return error ? { status: "error", error: { name: error.name, message: error.message } } : { status: "error" };
+}
+
 export function copyStatus(status: SpanStatus): SpanStatus {
-	if (status.status === "ok") return { status: "ok" };
-	return status.error
-		? { status: "error", error: { name: status.error.name, message: status.error.message } }
-		: { status: "error" };
+	return status.status === "ok" ? { status: "ok" } : errorStatus(status.error);
 }
 
 function createSpan(
@@ -216,11 +218,7 @@ export async function startInMemorySpan<T>(
 	try {
 		return await callback(span);
 	} catch (error) {
-		if (!recordedSpan.explicitStatus)
-			recordedSpan.status =
-				error instanceof Error
-					? { status: "error", error: { name: error.name, message: error.message } }
-					: { status: "error" };
+		if (!recordedSpan.explicitStatus) recordedSpan.status = errorStatus(error instanceof Error ? error : undefined);
 		throw error;
 	} finally {
 		recordedSpan.settled = true;

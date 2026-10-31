@@ -7,6 +7,7 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, Message, TextContent } from "@octocodeai/octocode-ai";
+import { compactionSummaryText } from "./compaction/summary-view.ts";
 
 const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
 
@@ -34,6 +35,8 @@ export interface BashExecutionMessage {
 	cancelled: boolean;
 	truncated: boolean;
 	fullOutputPath?: string;
+	/** The first line of the result (exit, time, size, what was trimmed); absent from older sessions and extension results. */
+	header?: string;
 	/** Full display output captured from this process's trusted executor spill; never added to model context. */
 	fullOutput?: string;
 	/** Explicit recovery information when complete display output could not be retained. */
@@ -85,6 +88,10 @@ declare module "@octocodeai/octocode-agent-core" {
  */
 function bashExecutionToText(msg: BashExecutionMessage): string {
 	let text = `Ran \`${msg.command}\`\n`;
+	if (msg.header) {
+		// Same shape as the bash tool's result: the header says how it ended, how large the output was and where the whole is.
+		return msg.output ? `${text}${msg.header}\n\`\`\`\n${msg.output.replace(/\n$/, "")}\n\`\`\`` : text + msg.header;
+	}
 	if (msg.output) {
 		text += `\`\`\`\n${msg.output}\n\`\`\``;
 	} else {
@@ -121,6 +128,11 @@ export function createCompactionSummaryMessage(
 		tokensBefore,
 		timestamp: new Date(timestamp).getTime(),
 	};
+}
+
+/** A compaction message as a person reads it (Markdown for the web view, ACP and the HTML export), not as the model receives it. */
+export function compactionSummaryDisplay(message: Pick<CompactionSummaryMessage, "summary" | "tokensBefore">): string {
+	return compactionSummaryText(message.summary, message.tokensBefore);
 }
 
 /** Convert CustomMessageEntry to AgentMessage format */

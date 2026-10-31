@@ -3,7 +3,7 @@ import { TextDecoder } from "node:util";
 import { formatSize } from "../../core/tools/index.ts";
 import { untilAborted } from "../shared/util.ts";
 import { type InlineImageType, sniffImageType } from "../shared/vision.ts";
-import { CrossHostRedirect, discardBody, NetworkError, type PublicFetchInit, publicFetch } from "./guard.ts";
+import { CrossHostRedirect, discardBody, NetworkError, type PublicFetchInit, publicFetch } from "../../../../common/src/web-guard.ts";
 import { describeHtml, RENDER_ADVICE } from "./html.ts";
 
 export const USER_AGENT =

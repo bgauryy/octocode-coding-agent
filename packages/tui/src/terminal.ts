@@ -19,7 +19,10 @@ const NATIVE_SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
 const DESIRED_KITTY_KEYBOARD_PROTOCOL_FLAGS = 7;
 const KEYBOARD_PROTOCOL_RESPONSE_FRAGMENT_TIMEOUT_MS = 150;
 const KITTY_KEYBOARD_PROTOCOL_QUERY = `\x1b[>${DESIRED_KITTY_KEYBOARD_PROTOCOL_FLAGS}u\x1b[?u`;
-const DEVICE_ATTRIBUTES_QUERY = "\x1b[c";
+/** Primary device attributes (DA1) request; every terminal answers it, in order with earlier queries. */
+export const DEVICE_ATTRIBUTES_QUERY = "\x1b[c";
+/** Matches a DA1 reply such as `ESC [ ? 62 ; 22 c`. */
+export const DEVICE_ATTRIBUTES_RESPONSE_PATTERN = /^\x1b\[\?[\d;]*c$/;
 
 type KeyboardProtocolNegotiationSequence = { type: "kitty-flags"; flags: number } | { type: "device-attributes" };
 
@@ -28,7 +31,7 @@ function parseKeyboardProtocolNegotiationSequence(sequence: string): KeyboardPro
 	if (kittyFlags) {
 		return { type: "kitty-flags", flags: Number.parseInt(kittyFlags[1], 10) };
 	}
-	if (/^\x1b\[\?[\d;]*c$/.test(sequence)) {
+	if (DEVICE_ATTRIBUTES_RESPONSE_PATTERN.test(sequence)) {
 		return { type: "device-attributes" };
 	}
 	return undefined;
@@ -63,10 +66,6 @@ export function normalizeNativeShiftEnterInput(
 ): string {
 	if (shouldDetectNativeShiftEnter && data === "\r" && isShiftPressed) return NATIVE_SHIFT_ENTER_SEQUENCE;
 	return data;
-}
-
-export function normalizeAppleTerminalInput(data: string, isAppleTerminal: boolean, isShiftPressed: boolean): string {
-	return normalizeNativeShiftEnterInput(data, isAppleTerminal, isShiftPressed);
 }
 
 /**
@@ -141,20 +140,25 @@ export interface OutputTelemetry {
 const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
 const DEFAULT_SSH_ESCAPE_TIMEOUT_MS = 100;
 
+/** A positive number in the environment variable, else the SSH default over SSH, else the local default. */
+function resolveTimeoutMs(
+	env: NodeJS.ProcessEnv,
+	variable: string,
+	localDefaultMs: number,
+	sshDefaultMs: number,
+): number {
+	const configured = Number(env[variable]);
+	if (Number.isFinite(configured) && configured > 0) return configured;
+	return env.SSH_CONNECTION || env.SSH_TTY ? sshDefaultMs : localDefaultMs;
+}
+
 /**
  * Resolve how long to wait for the rest of an escape sequence before
  * dispatching a lone ESC as the Escape key. Legacy Alt+key input is ESC plus
  * another byte, so high-latency transports need a longer reassembly window.
  */
 export function resolveEscapeTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-	const configured = Number(env.OCTOCODE_TUI_ESC_TIMEOUT);
-	if (Number.isFinite(configured) && configured > 0) {
-		return configured;
-	}
-	if (env.SSH_CONNECTION || env.SSH_TTY) {
-		return DEFAULT_SSH_ESCAPE_TIMEOUT_MS;
-	}
-	return DEFAULT_ESCAPE_TIMEOUT_MS;
+	return resolveTimeoutMs(env, "OCTOCODE_TUI_ESC_TIMEOUT", DEFAULT_ESCAPE_TIMEOUT_MS, DEFAULT_SSH_ESCAPE_TIMEOUT_MS);
 }
 
 /** Over SSH a paste can stall longer between chunks, so its end marker is awaited longer. */
@@ -162,9 +166,7 @@ const DEFAULT_SSH_PASTE_TIMEOUT_MS = 3000;
 
 /** How long a bracketed paste may go without input before it is emitted without its end marker. */
 export function resolvePasteTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-	const configured = Number(env.OCTOCODE_TUI_PASTE_TIMEOUT);
-	if (Number.isFinite(configured) && configured > 0) return configured;
-	return env.SSH_CONNECTION || env.SSH_TTY ? DEFAULT_SSH_PASTE_TIMEOUT_MS : PASTE_IDLE_TIMEOUT_MS;
+	return resolveTimeoutMs(env, "OCTOCODE_TUI_PASTE_TIMEOUT", PASTE_IDLE_TIMEOUT_MS, DEFAULT_SSH_PASTE_TIMEOUT_MS);
 }
 
 /**
@@ -476,6 +478,19 @@ export class ProcessTerminal implements Terminal {
 		this._modifyOtherKeysActive = true;
 	}
 
+	/** Drop pending protocol negotiation and turn off the Kitty keyboard protocol and modifyOtherKeys; safe to repeat. */
+	private disableKeyboardProtocols(): void {
+		const shouldDisableKittyProtocol = this.keyboardProtocolPushed || this._kittyProtocolActive;
+		this.clearKeyboardProtocolNegotiationBuffer();
+		if (shouldDisableKittyProtocol) {
+			process.stdout.write("\x1b[<u");
+			this.keyboardProtocolPushed = false;
+			this._kittyProtocolActive = false;
+			setKittyProtocolActive(false);
+		}
+		this.disableModifyOtherKeys();
+	}
+
 	private disableModifyOtherKeys(): void {
 		if (!this._modifyOtherKeysActive) return;
 		process.stdout.write("\x1b[>4;0m");
@@ -499,17 +514,9 @@ export class ProcessTerminal implements Terminal {
 
 	async drainInput(maxMs = 1000, idleMs = 50): Promise<void> {
 		this.graphicsProbe.stop();
-		const shouldDisableKittyProtocol = this.keyboardProtocolPushed || this._kittyProtocolActive;
-		this.clearKeyboardProtocolNegotiationBuffer();
-		if (shouldDisableKittyProtocol) {
-			// Disable Kitty keyboard protocol first so any late key releases
-			// do not generate new Kitty escape sequences.
-			process.stdout.write("\x1b[<u");
-			this.keyboardProtocolPushed = false;
-			this._kittyProtocolActive = false;
-			setKittyProtocolActive(false);
-		}
-		this.disableModifyOtherKeys();
+		// Disable the keyboard protocols first so any late key releases
+		// do not generate new Kitty escape sequences.
+		this.disableKeyboardProtocols();
 
 		const previousHandler = this.inputHandler;
 		this.inputHandler = undefined;
@@ -552,17 +559,8 @@ export class ProcessTerminal implements Terminal {
 		// Disable bracketed paste mode
 		process.stdout.write("\x1b[?2004l");
 
-		const shouldDisableKittyProtocol = this.keyboardProtocolPushed || this._kittyProtocolActive;
-		this.clearKeyboardProtocolNegotiationBuffer();
-
-		// Disable Kitty keyboard protocol if not already done by drainInput()
-		if (shouldDisableKittyProtocol) {
-			process.stdout.write("\x1b[<u");
-			this.keyboardProtocolPushed = false;
-			this._kittyProtocolActive = false;
-			setKittyProtocolActive(false);
-		}
-		this.disableModifyOtherKeys();
+		// Disable the keyboard protocols if drainInput() has not already done so.
+		this.disableKeyboardProtocols();
 
 		// Clean up StdinBuffer
 		if (this.stdinBuffer) {

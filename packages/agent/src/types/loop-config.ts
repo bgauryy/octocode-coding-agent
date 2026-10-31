@@ -32,6 +32,12 @@ export interface BeforeToolCallResult {
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.
 	 */
 	terminate?: boolean;
+	/**
+	 * Checked again right before the tool executes. A parallel batch approves every call before it runs any, and an
+	 * approval can wait on a user, so state the approval relied on may have changed. `{ block: true }` ends the call as
+	 * a blocked call; a throw blocks it with the error message.
+	 */
+	revalidate?: (signal?: AbortSignal) => Promise<{ block?: boolean; reason?: string } | undefined>;
 }
 
 /**

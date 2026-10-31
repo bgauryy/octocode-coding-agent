@@ -6,7 +6,7 @@ import { ApplicationAssets } from "../../src/core/application/assets.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import type { ApplicationPort, WorkspaceConnection } from "@octocodeai/octocode-contacts";
+import type { ApplicationPort, WorkspaceConnection } from "@octocodeai/octocode-contracts";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {

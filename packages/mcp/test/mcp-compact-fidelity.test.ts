@@ -74,12 +74,12 @@ describe("schemaToTs keeps what the schema says", () => {
 					minItems: 2,
 					maxItems: 2,
 				},
-				ids: { type: "array", items: { type: "string", description: "One id.", minLength: 1 } },
+				ids: { type: "array", items: { type: "string", description: "One id.", minLength: 2 } },
 			},
 		});
 		expect(text).toContain("/** A URL. */ string | /** A file. */ {");
 		expect(text).toContain("pair?: [/** Key. */ string, number];");
-		expect(text).toContain("ids?: string[] /* each: One id.; minLength 1 */;");
+		expect(text).toContain("ids?: string[] /* each: One id.; minLength 2 */;");
 	});
 });
 

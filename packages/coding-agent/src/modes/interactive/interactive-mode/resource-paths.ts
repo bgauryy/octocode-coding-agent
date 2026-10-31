@@ -7,7 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { parseGitUrl } from "../../../utils/git.ts";
-import { getCwdRelativePath } from "../../../utils/paths.ts";
+import { getCwdRelativePath } from "../../../../../common/src/paths.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { SourcedPath } from "./types.ts";
 

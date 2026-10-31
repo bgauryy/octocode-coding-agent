@@ -1,5 +1,5 @@
 import { projectClaudeBash } from "../shared/claude-bash.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type HookProtocol, profileSupport } from "./catalog.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 /** Whether `protocol` accepts `event` (see the catalog). */

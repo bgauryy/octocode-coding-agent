@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { stripBom } from "../utils/text.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import { discoverPluginComponents } from "./plugin-components.ts";
 import { resolveConfiguredPlugin, startPluginFingerprint, type PluginManifest } from "./plugin-manifest.ts";
 import type { Settings } from "./settings-manager.ts";

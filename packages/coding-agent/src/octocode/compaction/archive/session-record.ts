@@ -2,8 +2,8 @@ import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import type { RecordMessage, SessionRecord } from "../../shared/archive/record.ts";
 import { repoKey } from "../../shared/home/repo.ts";
-import { isRecord } from "../../../utils/guards.ts";
-import { PARENT_SESSION_ENV } from "../../shared/env.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { PARENT_SESSION_ENV } from "../../../../../common/src/env.ts";
 
 /** The most forks a lineage follows back: a chain of session files that points in a circle stops here too. */
 const LINEAGE_DEPTH = 32;

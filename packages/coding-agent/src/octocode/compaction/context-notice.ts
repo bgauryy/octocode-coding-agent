@@ -3,7 +3,7 @@ import type { MessageRef } from "../files/reads.ts";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { autoCompactAt } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Context usage notices: when the context crosses half, three quarters and nine tenths of the room before automatic

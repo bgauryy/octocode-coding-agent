@@ -1,6 +1,6 @@
-import { sha256 } from "../../utils/atomic-file.ts";
+import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { readChildReport, type SessionChild, sessionChildren } from "./session-children.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "./fence.ts";
 import { formatClock } from "./format.ts";
 import { tildePath } from "./home.ts";

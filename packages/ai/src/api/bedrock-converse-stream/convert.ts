@@ -1,3 +1,4 @@
+import { sanitizeToolCallId } from "../tool-call-id.ts";
 import {
 	type Tool as BedrockTool,
 	type CachePointBlock,
@@ -54,8 +55,7 @@ export function buildSystemPrompt(
 }
 
 function normalizeToolCallId(id: string): string {
-	const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-	return sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
+	return sanitizeToolCallId(id);
 }
 
 function createNonBlankTextBlock(text: string): ContentBlock.TextMember | undefined {

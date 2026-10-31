@@ -10,7 +10,7 @@ import { firstLine } from "../../shared/util.ts";
 import type { BashDetails } from "../render.ts";
 import { verificationJson, verificationLine } from "./verification.ts";
 import { BashExecutionError } from "../../../core/tools/bash/outcome.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { RERUN_HINT } from "../render.ts";
 
 /** Deadlines of foreground commands and the text `bash` returns about moved and orphaned jobs. */

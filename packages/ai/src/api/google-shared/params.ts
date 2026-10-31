@@ -1,3 +1,4 @@
+import { createAbortError } from "../../utils/abort.ts";
 import type { GenerateContentConfig, GenerateContentParameters, ThinkingConfig } from "@google/genai";
 import { clampThinkingLevel } from "../../models/model-helpers.ts";
 import type { Model, SimpleStreamOptions, StreamOptions, ThinkingBudgets, TranscriptContext } from "../../types.ts";
@@ -77,7 +78,7 @@ export function buildGoogleParams<T extends GoogleApiType>(
 
 	if (options.signal) {
 		if (options.signal.aborted) {
-			throw new Error("Request aborted");
+			throw createAbortError();
 		}
 		config.abortSignal = options.signal;
 	}
@@ -104,6 +105,22 @@ const GOOGLE_BUDGETS_2_5_FLASH: Record<ResolvedGoogleThinkingLevel, number> = {
 	high: 24576,
 };
 
+/** Default thinking budgets per Gemini 2.5 family; other models use the dynamic budget (-1). */
+const GOOGLE_BUDGETS_BY_FAMILY = {
+	pro: GOOGLE_BUDGETS_2_5_PRO,
+	"flash-lite": GOOGLE_BUDGETS_2_5_FLASH_LITE,
+	flash: GOOGLE_BUDGETS_2_5_FLASH,
+} as const satisfies Record<string, Record<ResolvedGoogleThinkingLevel, number>>;
+
+/**
+ * The Gemini 2.5 family named by a model id (`gemini-2.5-flash-lite-preview-06-17`, `publishers/google/models/gemini-2.5-pro`).
+ * `flash-lite` is matched as one token, so it never reads as `flash` whatever the table order.
+ */
+export function getGemini25Family(modelId: string): keyof typeof GOOGLE_BUDGETS_BY_FAMILY | undefined {
+	const family = /2\.5-(pro|flash(?:-lite)?)(?![a-z])/.exec(modelId)?.[1];
+	return family as keyof typeof GOOGLE_BUDGETS_BY_FAMILY | undefined;
+}
+
 function getGoogleBudget<T extends GoogleApiType>(
 	model: Model<T>,
 	level: ResolvedGoogleThinkingLevel,
@@ -112,10 +129,8 @@ function getGoogleBudget<T extends GoogleApiType>(
 	if (customBudgets?.[level] !== undefined) {
 		return customBudgets[level];
 	}
-	if (model.id.includes("2.5-pro")) return GOOGLE_BUDGETS_2_5_PRO[level];
-	if (model.id.includes("2.5-flash-lite")) return GOOGLE_BUDGETS_2_5_FLASH_LITE[level];
-	if (model.id.includes("2.5-flash")) return GOOGLE_BUDGETS_2_5_FLASH[level];
-	return -1;
+	const family = getGemini25Family(model.id);
+	return family ? GOOGLE_BUDGETS_BY_FAMILY[family][level] : -1;
 }
 
 /** Map `SimpleStreamOptions.reasoning` to the adapter-level `thinking` option. */

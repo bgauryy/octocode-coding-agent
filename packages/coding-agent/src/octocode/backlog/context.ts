@@ -1,6 +1,6 @@
 import type { ExtensionContext, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../shared/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { type Actor, BacklogStore } from "./store.ts";
 

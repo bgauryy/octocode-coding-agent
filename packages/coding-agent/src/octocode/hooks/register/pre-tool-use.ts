@@ -6,11 +6,12 @@ import { validateToolArguments } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
 import { rewriteFileQuery } from "../../shared/claude-file.ts";
 import { say } from "../../shared/commands.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "../config/calls.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../catalog.ts";
 import { capContext } from "../runner.ts";
+import { firstRewrite } from "../verdicts.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from "./types.ts";
 
 /**
@@ -114,9 +115,9 @@ export const preToolUseGate =
 		);
 		const block = verdicts.find((verdict) => verdict.block)?.block;
 		if (block) return { block: true, reason: `Blocked by a PreToolUse hook: ${block}` };
-		const rewrites = verdicts.flatMap((verdict) => (verdict.updatedInput ? [verdict.updatedInput] : []));
+		const rewrite = firstRewrite(verdicts);
 		let rewritten = false;
-		if (rewrites.length) {
+		if (rewrite?.updatedInput) {
 			if (
 				event.origin === "user" ||
 				["read", "edit", "write"].includes(event.toolName) ||
@@ -129,17 +130,11 @@ export const preToolUseGate =
 			const definition = api.getAllTools().find((tool) => tool.name === event.toolName);
 			if (!definition) return { block: true, reason: "Cannot validate rewritten input for an unknown tool" };
 			try {
-				let replacement: Record<string, unknown> = rewrites[0];
-				if (
-					event.toolName === "bash" &&
-					verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol === "codex"
-				)
-					replacement = rewriteCodexCommand(event.input, rewrites[0]);
-				if (
-					event.toolName === "bash" &&
-					verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol === "claude"
-				)
-					replacement = rewriteClaudeBash(event.input, rewrites[0]);
+				let replacement: Record<string, unknown> = rewrite.updatedInput;
+				if (event.toolName === "bash" && rewrite.updatedInputProtocol === "codex")
+					replacement = rewriteCodexCommand(event.input, rewrite.updatedInput);
+				if (event.toolName === "bash" && rewrite.updatedInputProtocol === "claude")
+					replacement = rewriteClaudeBash(event.input, rewrite.updatedInput);
 				if (event.toolName === "file") {
 					const codexRewrite = verdicts.find(
 						(verdict) => verdict.updatedInputProtocol === "codex" && verdict.updatedInput,

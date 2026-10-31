@@ -20,14 +20,25 @@ export interface SchemaToTsOptions {
 	onDoc?: (field: string, doc: string) => void;
 	/** Called with each field's dotted path (as `fieldDocs` addresses it) and whether that occurrence is required. */
 	onField?: (path: string, required: boolean) => void;
-	/** Called with each object-typed field's name and its type rendered at top level, to find types repeated by tools. */
-	onObject?: (field: string, type: string) => void;
+	/**
+	 * Called with each object-typed field's name, its type rendered at top level and its schema node, to find types
+	 * repeated by tools or within one.
+	 */
+	onObject?: (field: string, type: string, source: object) => void;
 	/** Type text (rendered at top level) → server-level alias name to print instead of the type. */
 	hoisted?: ReadonlyMap<string, string>;
 }
 
-/** Longest `pattern` worth showing; longer ones (and patterns beside a `format`) are enforced by validation only. */
-const MAX_PATTERN_CHARS = 48;
+/**
+ * Constraints left out of the text: validation enforces them and its error names the one a call breaks. A `pattern` or
+ * `maxLength` rarely helps a model compose a valid value; a minimum of 1 for a string, list or object only says "not
+ * empty"; the bound zod emits for `.int()` or an API's largest id limits nothing a caller would send.
+ */
+function isValidationOnly(key: string, value: unknown): boolean {
+	if (key === "pattern" || key === "maxLength") return true;
+	if (key === "minLength" || key === "minItems" || key === "minProperties") return value === 1;
+	return (key === "maximum" || key === "minimum") && Math.abs(Number(value)) >= 1e9;
+}
 
 const isNode = (value: unknown): value is Node => typeof value === "object" && value !== null && !Array.isArray(value);
 const identifier = (key: string) => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key));
@@ -79,13 +90,7 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		for (const key of NOTE_KEYS) {
 			const value = node[key];
 			if (value === undefined || value === false) continue;
-			if (
-				key === "pattern" &&
-				(node.format !== undefined || (typeof value === "string" && value.length > MAX_PATTERN_CHARS))
-			)
-				continue;
-			// zod and others emit the JavaScript safe-integer bound for `.int()`; it limits nothing a caller would send.
-			if ((key === "maximum" || key === "minimum") && Math.abs(Number(value)) >= Number.MAX_SAFE_INTEGER) continue;
+			if (isValidationOnly(key, value)) continue;
 			if (key === "default") out.push(`default ${JSON.stringify(value)}`);
 			else if (value === true) out.push(key);
 			else out.push(`${key} ${typeof value === "string" ? value : JSON.stringify(value)}`);
@@ -354,7 +359,7 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		if (!isNode(node) || !isNode(node.properties) || node.anyOf || node.oneOf || node.allOf)
 			return render(property, indent, path);
 		const topLevel = render(property, "", path);
-		options.onObject?.(key, topLevel);
+		options.onObject?.(key, topLevel, property as object);
 		return options.hoisted?.get(topLevel) ?? render(property, indent, path);
 	}
 

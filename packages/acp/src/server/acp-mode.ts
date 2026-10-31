@@ -4,7 +4,7 @@ import { ndJsonStream } from "@agentclientprotocol/sdk";
 import type { Args } from "../../../coding-agent/src/cli/args.ts";
 import { ENV_SESSION_DIR, getCliInvocation } from "../../../coding-agent/src/config.ts";
 import { flushRawStdout, takeOverStdout, writeRawStdoutAsync } from "../../../coding-agent/src/core/output-guard.ts";
-import { normalizePath } from "../../../coding-agent/src/utils/paths.ts";
+import { normalizePath } from "../../../common/src/paths.ts";
 import { RpcClient } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
 import { ACP_WORKER_ENV } from "../../../coding-agent/src/modes/rpc/rpc-mode/session-controls.ts";
 import { AcpBroker, type AcpWorker } from "./broker.ts";

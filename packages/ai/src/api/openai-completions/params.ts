@@ -14,6 +14,7 @@ import {
 	resolvePromptCacheKey,
 } from "../../utils/cache-policy.ts";
 import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
+import { matchesHost } from "../../utils/provider-host.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import {
 	getDeclaredTools,
@@ -34,6 +35,7 @@ import { getCompat } from "./compat.ts";
 import { convertMessages } from "./messages.ts";
 import { convertTools } from "./tools.ts";
 import type {
+	CompletionsRequestParams,
 	OpenAICompletionsOptions,
 	ResolvedChatTemplateKwargValue,
 	ResolvedOpenAICompletionsCompat,
@@ -49,7 +51,7 @@ import type {
  * declares `supportsLongCacheRetention: true`. Other endpoints may reject the unknown field.
  */
 function acceptsPromptCacheRetention(model: Model<"openai-completions">): boolean {
-	return model.baseUrl.includes("api.openai.com") || model.compat?.supportsLongCacheRetention === true;
+	return matchesHost(model.baseUrl, "api.openai.com") || model.compat?.supportsLongCacheRetention === true;
 }
 
 function hasToolHistory(messages: Message[]): boolean {
@@ -92,12 +94,12 @@ export function buildParams(
 	const cacheControl = getCompatCacheControl(compat, historyRetention);
 	const instructionCacheControl = getCompatCacheControl(compat, instructionRetention);
 
-	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
+	const params: CompletionsRequestParams = {
 		model: model.id,
 		messages,
 		stream: true,
 		prompt_cache_key:
-			(model.baseUrl.includes("api.openai.com") && cacheRetention !== "none") ||
+			(matchesHost(model.baseUrl, "api.openai.com") && cacheRetention !== "none") ||
 			(cacheRetention === "long" && compat.supportsLongCacheRetention)
 				? clampOpenAIPromptCacheKey(resolvePromptCacheKey(options))
 				: undefined,
@@ -118,7 +120,7 @@ export function buildParams(
 	if (options?.maxTokens) {
 		if (compat.maxTokensField === "max_tokens") {
 			// Deprecated by OpenAI, but some OpenAI-compatible providers only accept max_tokens.
-			(params as { max_tokens?: number }).max_tokens = options.maxTokens;
+			params.max_tokens = options.maxTokens;
 		} else {
 			params.max_completion_tokens = options.maxTokens;
 		}
@@ -131,7 +133,7 @@ export function buildParams(
 	if (transcriptTools.requestTools.length > 0) {
 		params.tools = convertTools(transcriptTools.requestTools, compat);
 		if (compat.zaiToolStream) {
-			(params as any).tool_stream = true;
+			params.tool_stream = true;
 		}
 	} else if (hasToolHistory(context.messages)) {
 		// Anthropic (via LiteLLM/proxy) requires tools param when conversation has tool_calls/tool_results
@@ -151,7 +153,7 @@ export function buildParams(
 	}
 
 	if (compat.vllmPriority !== undefined) {
-		(params as any).priority = compat.vllmPriority;
+		params.priority = compat.vllmPriority;
 	}
 
 	const thinkingTokenBudgetField = resolveThinkingTokenBudgetField(compat);
@@ -169,100 +171,86 @@ export function buildParams(
 	}
 
 	if (compat.thinkingFormat === "zai" && model.reasoning) {
-		const zaiParams = params as Omit<typeof params, "reasoning_effort"> & {
-			thinking?: { type: "enabled" | "disabled"; clear_thinking?: boolean };
-			reasoning_effort?: string;
-		};
-		zaiParams.thinking = options?.reasoningEffort ? { type: "enabled", clear_thinking: false } : { type: "disabled" };
+		params.thinking = options?.reasoningEffort ? { type: "enabled", clear_thinking: false } : { type: "disabled" };
 		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
 			const mappedEffort = model.thinkingLevelMap?.[options.reasoningEffort];
 			const effort = mappedEffort === undefined ? options.reasoningEffort : mappedEffort;
 			if (typeof effort === "string") {
-				zaiParams.reasoning_effort = effort;
+				params.reasoning_effort = effort;
 			}
 		}
 	} else if (compat.thinkingFormat === "qwen" && model.reasoning) {
-		(params as any).enable_thinking = !!options?.reasoningEffort;
+		params.enable_thinking = !!options?.reasoningEffort;
 		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
 			const effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 			if (typeof effort === "string") {
-				(params as any).reasoning_effort = effort;
+				params.reasoning_effort = effort;
 			}
 		}
 	} else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
-		(params as any).chat_template_kwargs = {
+		params.chat_template_kwargs = {
 			enable_thinking: !!options?.reasoningEffort,
 			preserve_thinking: true,
 		};
 	} else if (compat.thinkingFormat === "chat-template" && model.reasoning) {
 		const chatTemplateKwargs = buildChatTemplateValues(model, options, compat.chatTemplateKwargs, thinkingBudget);
 		if (chatTemplateKwargs) {
-			(params as any).chat_template_kwargs = chatTemplateKwargs;
+			params.chat_template_kwargs = chatTemplateKwargs;
 		}
 	} else if (compat.thinkingFormat === "baseten" && model.reasoning) {
-		const basetenParams = params as Omit<typeof params, "reasoning_effort"> & {
-			chat_template_args?: Record<string, ResolvedChatTemplateKwargValue>;
-			reasoning_effort?: string;
-		};
 		const chatTemplateArgs = buildChatTemplateValues(model, options, compat.chatTemplateArgs, thinkingBudget);
 		if (chatTemplateArgs) {
-			basetenParams.chat_template_args = chatTemplateArgs;
+			params.chat_template_args = chatTemplateArgs;
 		}
 		if (compat.supportsReasoningEffort) {
 			const requestedEffort = options?.reasoningEffort;
 			const mappedEffort = requestedEffort ? model.thinkingLevelMap?.[requestedEffort] : model.thinkingLevelMap?.off;
 			const effort = mappedEffort === undefined ? requestedEffort : mappedEffort;
 			if (typeof effort === "string") {
-				basetenParams.reasoning_effort = effort;
+				params.reasoning_effort = effort;
 			}
 		}
 	} else if (compat.thinkingFormat === "deepseek" && model.reasoning) {
 		if (options?.reasoningEffort) {
-			(params as any).thinking = { type: "enabled" };
+			params.thinking = { type: "enabled" };
 		} else if (model.thinkingLevelMap?.off !== null) {
-			(params as any).thinking = { type: "disabled" };
+			params.thinking = { type: "disabled" };
 		}
 		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
-			(params as any).reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+			params.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		}
 	} else if (compat.thinkingFormat === "openrouter" && model.reasoning) {
 		// OpenRouter normalizes reasoning across providers via a nested reasoning object.
-		const openRouterParams = params as typeof params & { reasoning?: { effort?: string } };
 		if (options?.reasoningEffort) {
-			openRouterParams.reasoning = {
+			params.reasoning = {
 				effort: model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort,
 			};
 		} else if (model.thinkingLevelMap?.off !== null) {
-			openRouterParams.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
+			params.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
 		}
 	} else if (compat.thinkingFormat === "ant-ling" && model.reasoning && options?.reasoningEffort) {
 		const effort = model.thinkingLevelMap?.[options.reasoningEffort];
 		if (typeof effort === "string") {
-			(params as typeof params & { reasoning?: { effort: string } }).reasoning = { effort };
+			params.reasoning = { effort };
 		}
 	} else if (compat.thinkingFormat === "together" && model.reasoning) {
-		const togetherParams = params as Omit<typeof params, "reasoning_effort"> & {
-			reasoning?: { enabled: boolean };
-			reasoning_effort?: string;
-		};
-		togetherParams.reasoning = { enabled: !!options?.reasoningEffort };
+		params.reasoning = { enabled: !!options?.reasoningEffort };
 		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
-			togetherParams.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+			params.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		}
 	} else if (compat.thinkingFormat === "string-thinking" && model.reasoning) {
-		const stringThinkingParams = params as typeof params & { thinking?: string };
 		if (options?.reasoningEffort) {
-			stringThinkingParams.thinking = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+			params.thinking = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		} else if (model.thinkingLevelMap?.off !== null) {
-			stringThinkingParams.thinking = model.thinkingLevelMap?.off ?? "none";
+			params.thinking = model.thinkingLevelMap?.off ?? "none";
 		}
 	} else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
 		// OpenAI-style reasoning_effort
-		(params as any).reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+		params.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 	} else if (!options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
 		const offValue = model.thinkingLevelMap?.off;
 		if (typeof offValue === "string") {
-			(params as any).reasoning_effort = offValue;
+			params.reasoning_effort = offValue;
 		}
 	}
 
@@ -274,9 +262,10 @@ export function buildParams(
 		Object.assign(params, { [thinkingTokenBudgetField]: thinkingBudget });
 	}
 
-	// OpenRouter provider routing preferences
+	// OpenRouter provider routing preferences: OpenRouter's request body names this field `provider`
+	// (https://openrouter.ai/docs/guides/routing/provider-selection).
 	if (model.compat?.openRouterRouting) {
-		(params as any).provider = model.compat.openRouterRouting;
+		params.provider = model.compat.openRouterRouting;
 	}
 
 	// Vercel AI Gateway provider routing preferences
@@ -286,7 +275,7 @@ export function buildParams(
 			const gatewayOptions: Record<string, string[]> = {};
 			if (routing.only) gatewayOptions.only = routing.only;
 			if (routing.order) gatewayOptions.order = routing.order;
-			(params as any).providerOptions = { gateway: gatewayOptions };
+			params.providerOptions = { gateway: gatewayOptions };
 		}
 	}
 
@@ -296,7 +285,9 @@ export function buildParams(
 		Object.assign(params, samplingParams);
 	}
 
-	return params;
+	// The SDK serializes every field it is given, so the vendor fields above reach the wire; its static type only
+	// lacks them (and types `reasoning_effort` as OpenAI's own levels).
+	return params as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
 }
 
 function resolveThinkingTokenBudgetField(

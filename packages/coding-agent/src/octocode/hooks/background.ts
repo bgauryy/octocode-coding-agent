@@ -6,7 +6,7 @@ import type { HookCommand, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 import { limitCodexContext } from "./context-limit.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 function codexContext(event: HookEvent, stdout: string, warn: (message: string) => void): string | undefined {
 	const value = parseJson(stdout);

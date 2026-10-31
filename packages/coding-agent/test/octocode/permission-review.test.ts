@@ -10,7 +10,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 import { LIBRARY_FILE } from "../../src/octocode/shared/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
 import { octocodeHome, sessionFolder } from "../../src/octocode/shared/home.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";

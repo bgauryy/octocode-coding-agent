@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import lockfile from "proper-lockfile";
-import { withFileWriteLock } from "../../src/utils/file-write-lock.ts";
+import { withFileWriteLock } from "../../../common/src/file-write-lock.ts";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixture } from "./permission-session-fixture.ts";
 

@@ -3,13 +3,15 @@ import os from "node:os";
 import type { ToolResultMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
+import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 import {
-	budgetToolResult,
-	registerTurnBudget,
+	REQUEST_MAX_CHARS,
+	RESULT_DEFAULT_BYTES,
 	TEXT_MAX_CHARS,
 	TURN_MAX_CHARS,
-	TurnBudget,
-} from "../../src/octocode/shared/turn-budget.ts";
+} from "../../src/octocode/shared/output-budget.ts";
+import { capResultText } from "../../src/octocode/shared/spill.ts";
+import { budgetToolResult, registerTurnBudget, TurnBudget } from "../../src/octocode/shared/turn-budget.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -48,10 +50,28 @@ const records = (file: string) =>
 		.split("\n")
 		.map((line) => JSON.parse(line) as { tool: string; text: string });
 
+describe("output budget policy", () => {
+	it("keeps one default for bash and the other tools, and a requested page whole", () => {
+		expect(SETTINGS_DEFAULTS.bashOutputMaxBytes).toBe(RESULT_DEFAULT_BYTES);
+		expect(TEXT_MAX_CHARS).toBeGreaterThan(REQUEST_MAX_CHARS);
+		expect(TURN_MAX_CHARS).toBeGreaterThanOrEqual(2 * REQUEST_MAX_CHARS);
+	});
+
+	it("capResultText keeps a text part whole up to the limit and saves a longer one", () => {
+		const fits = "é".repeat(TEXT_MAX_CHARS);
+		expect(capResultText(fits, "x")).toBe(fits);
+		const long = page(TEXT_MAX_CHARS * 2, "1");
+		const shown = capResultText(long, "x");
+		expect(shown.length).toBeLessThan(long.length);
+		expect(shown).toContain("Full output:");
+		expect(capResultText(long, "x", long.length)).toBe(long);
+	});
+});
+
 describe("TurnBudget", () => {
 	it("bounds all text across results and preserves the overflow in one recoverable archive", () => {
 		const budget = new TurnBudget();
-		const pages = Array.from({ length: 30 }, (_, i) => page(TEXT_MAX_CHARS - 100, String(i)));
+		const pages = Array.from({ length: 30 }, (_, i) => page(30_000, String(i)));
 		const shown = pages.map((text) => budget.text(text, "localFetch"));
 		expect(shown.slice(0, 3)).toEqual(pages.slice(0, 3));
 		const archive = archiveOf(shown[3]);
@@ -65,12 +85,12 @@ describe("TurnBudget", () => {
 
 	it("starts a new turn with the whole budget, and counts only what the model gets", () => {
 		const budget = new TurnBudget();
-		for (let i = 0; i < 5; i++) budget.text(page(TEXT_MAX_CHARS - 100, String(i)), "localFetch");
-		expect(budget.limit()).toBeLessThan(8_000);
+		for (let i = 0; i < 3; i++) budget.text(page(30_000, String(i)), "localFetch");
+		expect(budget.limit()).toBeLessThan(10_000);
 		budget.reset();
 		expect(budget.limit()).toBe(TEXT_MAX_CHARS);
 		const small = new TurnBudget();
-		for (let i = 0; i < 100; i++) small.text("x".repeat(1_000), "t");
+		for (let i = 0; i < 30; i++) small.text("x".repeat(1_000), "t");
 		expect(small.limit()).toBe(TEXT_MAX_CHARS);
 	});
 
@@ -122,10 +142,10 @@ describe("tool results of one assistant message", () => {
 		return { turn, end, fake };
 	};
 
-	it("keeps five 50 KB bash results within one budget: the first three whole, the rest saved to a file", async () => {
+	it("keeps five 30 KB results within one budget: the first three whole, the rest saved to a file", async () => {
 		const { turn, end } = setup();
 		await turn();
-		const outputs = Array.from({ length: 5 }, (_, i) => `${String(i).repeat(49_999)}\n`);
+		const outputs = Array.from({ length: 5 }, (_, i) => `${String(i).repeat(29_999)}\n`);
 		const shown: ToolResultMessage[] = [];
 		for (const [i, text] of outputs.entries()) shown.push(await end(result("bash", text, `call-${i}`)));
 		expect(shown.slice(0, 3).map(textOf)).toEqual(outputs.slice(0, 3));
@@ -146,7 +166,7 @@ describe("tool results of one assistant message", () => {
 			await turn();
 			const shown: string[] = [];
 			for (const tool of ["bash", "mcp__octocode__localSearch", "file", "web_fetch", "bash"]) {
-				shown.push(textOf(await end(result(tool, "z".repeat(50_000)))).slice(0, 12));
+				shown.push(textOf(await end(result(tool, "z".repeat(25_000)))).slice(0, 12));
 			}
 			runs.push(shown);
 		}
@@ -156,7 +176,7 @@ describe("tool results of one assistant message", () => {
 
 	it("starts every assistant message with the whole budget", async () => {
 		const { turn, end } = setup();
-		const text = "y".repeat(50_000);
+		const text = "y".repeat(30_000);
 		for (let message = 0; message < 3; message++) {
 			await turn();
 			for (let i = 0; i < 3; i++) expect(textOf(await end(result("bash", text)))).toBe(text);

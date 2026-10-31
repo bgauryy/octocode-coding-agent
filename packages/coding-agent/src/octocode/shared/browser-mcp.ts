@@ -1,6 +1,6 @@
 import { BROWSER_SERVER } from "../../../../mcp/src/presets/browser/names.ts";
 import { mcpNamespace } from "../../../../mcp/src/servers.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const PREFIX = `${mcpNamespace(BROWSER_SERVER)}__`;
 

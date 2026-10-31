@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { classifyScript } from "../../src/octocode/shared/winclassify.ts";
-import type { ParseScript, ScriptCommand, ScriptElement } from "../../src/octocode/shared/winclassify/types.ts";
+import { classifyScript } from "../../src/utils/windows/winclassify.ts";
+import type { ParseScript, ScriptCommand, ScriptElement } from "../../src/utils/windows/winclassify/types.ts";
 
 /**
  * A stand-in for the helper's parser that reads the simple shapes the cases use: `;` and `|` separate commands, a quoted

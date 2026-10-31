@@ -12,7 +12,7 @@ const DELIVERED_COLUMNS =
 /** Stores a message; its id. */
 export function insertMessage(
 	db: DatabaseSync,
-	workspace: string,
+	team: string,
 	from: string,
 	body: string,
 	replyRequired: boolean,
@@ -23,34 +23,34 @@ export function insertMessage(
 		.prepare(
 			"INSERT INTO messages (workspace, sender, body, reply_required, reply_to, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		)
-		.run(workspace, from, body, replyRequired ? 1 : 0, replyTo ?? null, now);
+		.run(team, from, body, replyRequired ? 1 : 0, replyTo ?? null, now);
 	return Number(lastInsertRowid);
 }
 
-/** The sender of message `id` in `workspace` and whether it asked for a reply; undefined when there is no such message. */
+/** The sender of message `id` in `team` and whether it asked for a reply; undefined when there is no such message. */
 export function replyTarget(
 	db: DatabaseSync,
-	workspace: string,
+	team: string,
 	id: number,
 ): { from: string; replyRequired: boolean } | undefined {
-	const row = db
-		.prepare("SELECT sender, reply_required FROM messages WHERE id = ? AND workspace = ?")
-		.get(id, workspace) as Row | undefined;
+	const row = db.prepare("SELECT sender, reply_required FROM messages WHERE id = ? AND workspace = ?").get(id, team) as
+		| Row
+		| undefined;
 	return row ? { from: String(row.sender), replyRequired: row.reply_required === 1 } : undefined;
 }
 
-/** Whether message `id` exists in `workspace`. */
-export function messageExists(db: DatabaseSync, workspace: string, id: number): boolean {
-	return db.prepare("SELECT 1 FROM messages WHERE id = ? AND workspace = ?").get(id, workspace) !== undefined;
+/** Whether message `id` exists in `team`. */
+export function messageExists(db: DatabaseSync, team: string, id: number): boolean {
+	return db.prepare("SELECT 1 FROM messages WHERE id = ? AND workspace = ?").get(id, team) !== undefined;
 }
 
-/** Message `id` of `workspace`; undefined when it has no row. */
-export function messageRow(db: DatabaseSync, workspace: string, id: number): Row | undefined {
+/** Message `id` of `team`; undefined when it has no row. */
+export function messageRow(db: DatabaseSync, team: string, id: number): Row | undefined {
 	return db
 		.prepare(
 			"SELECT id, sender, body, created_at, reply_required, reply_to FROM messages WHERE id = ? AND workspace = ?",
 		)
-		.get(id, workspace);
+		.get(id, team);
 }
 
 /** The highest message id handed out (ids only grow: AUTOINCREMENT), or 0 before the first. */
@@ -63,9 +63,9 @@ export function setReplyTo(db: DatabaseSync, id: number, replyTo: number): void 
 	db.prepare("UPDATE messages SET reply_to = ? WHERE id = ?").run(replyTo, id);
 }
 
-/** Deletes message `id` of `workspace` with its deliveries. */
-export function deleteMessage(db: DatabaseSync, workspace: string, id: number): void {
-	db.prepare("DELETE FROM messages WHERE id = ? AND workspace = ?").run(id, workspace);
+/** Deletes message `id` of `team` with its deliveries. */
+export function deleteMessage(db: DatabaseSync, team: string, id: number): void {
+	db.prepare("DELETE FROM messages WHERE id = ? AND workspace = ?").run(id, team);
 }
 
 /** Deletes messages created before `before` whose deliveries are all settled. */
@@ -78,16 +78,16 @@ export function pruneMessages(db: DatabaseSync, before: number): void {
 	).run(before);
 }
 
-/** The messages of `workspace` created after `since`, newest first, each with its deliveries' state. */
+/** The messages of `team` created after `since`, newest first, each with its deliveries' state. */
 export function recentTraffic(
 	db: DatabaseSync,
-	workspace: string,
+	team: string,
 	since: number,
 	limit: number,
 ): Array<{ message: Row; deliveries: Row[] }> {
 	const rows = db
 		.prepare("SELECT * FROM messages WHERE workspace = ? AND created_at > ? ORDER BY id DESC LIMIT ?")
-		.all(workspace, since, limit) as Row[];
+		.all(team, since, limit) as Row[];
 	const deliveries = db.prepare(
 		"SELECT recipient, delivered_at, completed_at, dead_at FROM deliveries WHERE message = ? ORDER BY recipient",
 	);
@@ -98,7 +98,7 @@ export function recentTraffic(
  * The questions `child` sent `parent` since `since`, oldest first, each with the parent's first reply. A relay row is
  * addressed to the parent but asks the agent in `relay_to`, so it is a peer ask (`unansweredAsks`), not one of these.
  */
-export function asks(db: DatabaseSync, workspace: string, child: string, parent: string, since: number): Row[] {
+export function asks(db: DatabaseSync, team: string, child: string, parent: string, since: number): Row[] {
 	return db
 		.prepare(
 			`SELECT m.id, m.body, m.created_at, r.id AS reply_id, r.created_at AS reply_at, r.sender AS reply_by
@@ -109,14 +109,14 @@ export function asks(db: DatabaseSync, workspace: string, child: string, parent:
            WHERE reply.reply_to = m.id AND reply.sender = d.recipient)
          WHERE m.workspace = ? AND m.sender = ? AND m.reply_required = 1 AND m.created_at >= ? ORDER BY m.id`,
 		)
-		.all(parent, workspace, child, since);
+		.all(parent, team, child, since);
 }
 
 /**
  * How many `replyRequired` questions `sender` sent to agents other than `except` are still unanswered: no reply from that
  * recipient yet, and the recipient has not left (a pending relay counts for the agent it is for).
  */
-export function unansweredAsks(db: DatabaseSync, workspace: string, sender: string, except: string): number {
+export function unansweredAsks(db: DatabaseSync, team: string, sender: string, except: string): number {
 	return num(
 		(
 			db
@@ -126,7 +126,7 @@ export function unansweredAsks(db: DatabaseSync, workspace: string, sender: stri
                AND COALESCE(d.relay_to, d.recipient) != ?
                AND NOT EXISTS (SELECT 1 FROM messages r WHERE r.reply_to = m.id AND r.sender = COALESCE(d.relay_to, d.recipient))`,
 				)
-				.get(workspace, sender, except) as Row
+				.get(team, sender, except) as Row
 		).n,
 	);
 }
@@ -212,13 +212,13 @@ export function deadLetterOf(db: DatabaseSync, id: string, now: number): void {
 }
 
 /** Dead deliveries of `sender`'s messages not yet reported to it, oldest first. */
-export function deadLetters(db: DatabaseSync, workspace: string, sender: string, limit: number): Row[] {
+export function deadLetters(db: DatabaseSync, team: string, sender: string, limit: number): Row[] {
 	return db
 		.prepare(
 			`SELECT m.id, m.body, d.recipient, d.delivered_at, d.relay_to, d.note FROM deliveries d JOIN messages m ON m.id = d.message
          WHERE m.workspace = ? AND m.sender = ? AND d.dead_at IS NOT NULL AND d.notified_at IS NULL ORDER BY m.id, d.recipient LIMIT ?`,
 		)
-		.all(workspace, sender, limit);
+		.all(team, sender, limit);
 }
 
 /** Records that the senders were told of the dead deliveries of these (message, recipient) pairs. */
@@ -293,7 +293,7 @@ export function markRelay(db: DatabaseSync, message: number, parent: string, tar
 }
 
 /** The relay requests waiting for `parent`, oldest first; `relay_to` names the agent each is for. */
-export function relayRequests(db: DatabaseSync, workspace: string, parent: string, limit: number): Row[] {
+export function relayRequests(db: DatabaseSync, team: string, parent: string, limit: number): Row[] {
 	return db
 		.prepare(
 			`SELECT ${DELIVERED_COLUMNS}, d.relay_to
@@ -301,7 +301,7 @@ export function relayRequests(db: DatabaseSync, workspace: string, parent: strin
          WHERE d.recipient = ? AND m.workspace = ? AND d.relay_to IS NOT NULL AND d.delivered_at IS NULL AND d.dead_at IS NULL
          ORDER BY m.id LIMIT ?`,
 		)
-		.all(parent, workspace, limit);
+		.all(parent, team, limit);
 }
 
 /** Takes the relay request `message` for `parent`; false when it was already taken (or is gone). */

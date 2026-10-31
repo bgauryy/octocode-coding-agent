@@ -38,7 +38,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
-		octocode(fake.api);
+		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		await fake.fire(
@@ -71,7 +71,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
-		octocode(fake.api);
+		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const event = {
@@ -111,14 +111,17 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
-		octocode(fake.api);
+		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const event = {
 			type: "tool_call",
 			toolCallId: "rewritten-file",
 			toolName: "file",
-			input: { queries: [{ type: "write", path: "original.txt", content: "old", reason: "create" }] },
+			input: {
+				reason: "Create the original file",
+				queries: [{ type: "write", path: "original.txt", content: "old", reason: "create" }],
+			},
 		};
 		await fake.emit("tool_call", event, ctx);
 		expect(event.input.queries[0].path).toBe(destination);

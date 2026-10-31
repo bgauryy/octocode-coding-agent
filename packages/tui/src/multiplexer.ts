@@ -2,8 +2,9 @@ import { execFile, spawnSync } from "node:child_process";
 
 export type MultiplexerId = "tmux" | "screen" | "zellij";
 
-const CLIENT_LOOKUP_TIMEOUT_MS = 2000;
+const SLOW_QUERY_TIMEOUT_MS = 2000;
 const QUERY_TIMEOUT_MS = 500;
+const ASYNC_TIMEOUT_MS = 5000;
 
 /** Session markers first (TMUX, STY, ZELLIJ), then the TERM prefix (tmux*, screen*). */
 export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): MultiplexerId | null {
@@ -61,6 +62,42 @@ function runTmux(args: string[], timeout: number, env: NodeJS.ProcessEnv): strin
 	}
 }
 
+export type TmuxExecOptions = {
+	cwd?: string;
+	env?: NodeJS.ProcessEnv;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+};
+
+/**
+ * Runs tmux and resolves its stdout without blocking. Rejects with `tmux failed: <stderr>` (the abort reason when
+ * `signal` fired). This is the one asynchronous spawn; launches and queries share it.
+ */
+export function tmuxExec(args: readonly string[], options: TmuxExecOptions = {}): Promise<string> {
+	const { cwd, env, signal, timeoutMs = ASYNC_TIMEOUT_MS } = options;
+	return new Promise((resolve, reject) => {
+		execFile(
+			"tmux",
+			[...args],
+			{ ...(cwd === undefined ? {} : { cwd }), ...(env ? { env } : {}), signal, timeout: timeoutMs, encoding: "utf8" },
+			(error, stdout, stderr) => {
+				if (!error) return resolve(stdout);
+				if (signal?.aborted) return reject(signal.reason ?? error);
+				reject(new Error(`tmux failed: ${stderr.trim() || error.message}`));
+			},
+		);
+	});
+}
+
+/** `tmuxExec` for queries: sanitised env, short timeout, undefined instead of a rejection. */
+function tmuxQueryAsync(
+	args: readonly string[],
+	env: NodeJS.ProcessEnv,
+	timeoutMs = QUERY_TIMEOUT_MS,
+): Promise<string | undefined> {
+	return tmuxExec(args, { env: childEnv(env), timeoutMs }).catch(() => undefined);
+}
+
 function pick(env: NodeJS.ProcessEnv, keys: string[]): NodeJS.ProcessEnv {
 	const picked: NodeJS.ProcessEnv = {};
 	for (const key of keys) if (env[key] !== undefined) picked[key] = env[key];
@@ -106,7 +143,7 @@ export function tmuxClientTerminalNames(env: NodeJS.ProcessEnv = process.env): r
 		() => {
 			const out = runTmux(
 				["display-message", "-p", "#{client_termtype}\t#{client_termname}"],
-				CLIENT_LOOKUP_TIMEOUT_MS,
+				SLOW_QUERY_TIMEOUT_MS,
 				env,
 			);
 			if (out === undefined) return [];
@@ -123,16 +160,14 @@ export function tmuxClientTerminalNames(env: NodeJS.ProcessEnv = process.env): r
  */
 export function tmuxPaneClients(env: NodeJS.ProcessEnv = process.env): Promise<readonly string[] | undefined> {
 	const target = env.TMUX_PANE ? ["-t", env.TMUX_PANE] : [];
-	return new Promise((resolve) => {
-		try {
-			const args = ["list-clients", ...target, "-F", "#{client_pid} #{client_created}"];
-			execFile("tmux", args, { encoding: "utf8", timeout: QUERY_TIMEOUT_MS, env: childEnv(env) }, (error, stdout) =>
-				resolve(error ? undefined : stdout.split("\n").filter((line) => line.trim() !== "")),
-			);
-		} catch {
-			resolve(undefined);
-		}
-	});
+	return tmuxQueryAsync(["list-clients", ...target, "-F", "#{client_pid} #{client_created}"], env).then((out) =>
+		out?.split("\n").filter((line) => line.trim() !== ""),
+	);
+}
+
+/** The value of a global tmux option (`show -gv`), trimmed; undefined when tmux cannot answer. Never throws. */
+export function tmuxGlobalOption(name: string, env: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
+	return tmuxQueryAsync(["show", "-gv", name], env, SLOW_QUERY_TIMEOUT_MS).then((out) => out?.trim());
 }
 
 /** The attached client's `client_termfeatures`, split on commas. `[]` on error. */

@@ -5,7 +5,7 @@ import { globalMcpConfigPath } from "../paths.ts";
 import { validateMcpServerConfig } from "../servers.ts";
 import { ProjectTrustStore } from "../../../coding-agent/src/core/trust-manager.ts";
 import { addMcpServerConfig, loadMcpConfig, removeMcpServerConfig } from "../config.ts";
-import { errorMessage } from "../../../coding-agent/src/utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { HELP_HINT, type McpCommandOptions, parseOptions } from "./shared.ts";
 
 /** Parse `KEY=VALUE` pairs of a repeatable option into a record. */

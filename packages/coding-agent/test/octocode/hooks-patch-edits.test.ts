@@ -7,7 +7,7 @@ import { projectEditHunk } from "../../src/octocode/files/tool/patch-projection.
 import { projectCodexPatch } from "../../src/octocode/hooks/patch.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { parsePatch, transformPatch } from "../../src/octocode/shared/codex-patch/patch.ts";
-import { sha256 } from "../../src/utils/atomic-file.ts";
+import { sha256 } from "../../../common/src/atomic-file.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

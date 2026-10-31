@@ -1,8 +1,8 @@
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { formatSize } from "../../core/tools/index.ts";
+import { gitQuiet } from "../shared/git.ts";
 import { plural } from "../shared/render/text.ts";
 import { catastrophicCommand, expandHome } from "./shell/destructive.ts";
 import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
@@ -169,23 +169,13 @@ function measureRemoval(
 }
 
 /** How many files under `targets` git does not track (nor a snapshot hold); undefined when git cannot say in time. */
-function untracked(targets: readonly string[], cwd: string, timeout: number): Promise<number | undefined> {
-	return new Promise((resolve) => {
-		execFile(
-			"git",
-			["ls-files", "--others", "-z", "--", ...targets.map((target) => expand(target, cwd))],
-			{
-				cwd,
-				timeout: Math.max(1, timeout),
-				encoding: "utf8",
-				maxBuffer: 16 * 1024 * 1024,
-				env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-			},
-			(error, stdout) => {
-				resolve(error ? undefined : stdout.split("\0").filter(Boolean).length);
-			},
-		);
+async function untracked(targets: readonly string[], cwd: string, timeout: number): Promise<number | undefined> {
+	const listed = await gitQuiet(cwd, ["ls-files", "--others", "-z", "--", ...targets.map((target) => expand(target, cwd))], {
+		env: { GIT_OPTIONAL_LOCKS: "0" },
+		timeoutMs: Math.max(1, timeout),
+		raw: true,
 	});
+	return listed === undefined ? undefined : listed.split("\0").filter(Boolean).length;
 }
 
 /** The effect and risk of a destructive shell command: what it removes, and what a snapshot does not hold. */

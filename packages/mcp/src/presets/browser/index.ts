@@ -1,4 +1,4 @@
-import { envFlag, MCP_BROWSER_ENV } from "../../../../coding-agent/src/octocode/shared/env.ts";
+import { envFlag, MCP_BROWSER_ENV } from "../../../../common/src/env.ts";
 import type { McpServerPreset } from "../../preset.ts";
 import { browserLaunch } from "./launch.ts";
 import { BROWSER_BIN, BROWSER_SERVER } from "./names.ts";

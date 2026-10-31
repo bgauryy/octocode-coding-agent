@@ -5,7 +5,12 @@
 import { performance } from "node:perf_hooks";
 import { matchesKey } from "./keys/match.ts";
 import { isKeyRelease } from "./keys/sequences.ts";
-import type { OutputTelemetry, Terminal } from "./terminal.ts";
+import {
+	DEVICE_ATTRIBUTES_QUERY,
+	DEVICE_ATTRIBUTES_RESPONSE_PATTERN,
+	type OutputTelemetry,
+	type Terminal,
+} from "./terminal.ts";
 import {
 	parseOscColorResponse,
 	parseTerminalColorSchemeReport,
@@ -182,8 +187,7 @@ const TERMINAL_COLOR_REPLY_COUNT = 2 + TERMINAL_PALETTE_SIZE;
 const TERMINAL_COLOR_QUERY = `\x1b]10;?\x07\x1b]11;?\x07${Array.from(
 	{ length: TERMINAL_PALETTE_SIZE },
 	(_, index) => `\x1b]4;${index};?\x07`,
-).join("")}\x1b[c`;
-const DEVICE_ATTRIBUTES_RESPONSE_PATTERN = /^\x1b\[\?[\d;]*c$/;
+).join("")}${DEVICE_ATTRIBUTES_QUERY}`;
 
 /**
  * Interface for components that can receive focus and display a hardware cursor.
@@ -247,16 +251,29 @@ export interface OverlayMargin {
 /** Value that can be absolute (number) or percentage (string like "50%") */
 export type SizeValue = number | `${number}%`;
 
-/** Parse a SizeValue into absolute value given a reference size */
+/** The number in a percentage string like "50%" (50), or undefined when the string is not one. */
+function parsePercent(value: string): number | undefined {
+	const match = value.match(/^(\d+(?:\.\d+)?)%$/);
+	return match ? parseFloat(match[1]) : undefined;
+}
+
+/** Parse a SizeValue into absolute value given a reference size; undefined when absent or not a percentage. */
 function parseSizeValue(value: SizeValue | undefined, referenceSize: number): number | undefined {
 	if (value === undefined) return undefined;
 	if (typeof value === "number") return value;
-	// Parse percentage string like "50%"
-	const match = value.match(/^(\d+(?:\.\d+)?)%$/);
-	if (match) {
-		return Math.floor((referenceSize * parseFloat(match[1])) / 100);
-	}
-	return undefined;
+	const percent = parsePercent(value);
+	return percent === undefined ? undefined : Math.floor((referenceSize * percent) / 100);
+}
+
+/**
+ * Resolve an overlay row or column: an absolute number, or a percentage of the free space
+ * (0% = start, 100% = end, so the overlay stays within bounds) offset by the start margin.
+ * Undefined for a string that is not a percentage; the caller then centers the overlay.
+ */
+function parseOverlayPosition(value: SizeValue, freeSpace: number, startMargin: number): number | undefined {
+	if (typeof value === "number") return value;
+	const percent = parsePercent(value);
+	return percent === undefined ? undefined : startMargin + Math.floor(freeSpace * (percent / 100));
 }
 
 /**
@@ -657,8 +674,14 @@ export abstract class TuiBase extends Container implements TUI {
 			throw new RangeError("Invalid render pacing thresholds");
 		this.renderPacing = next;
 		this.outputPressureHeld = false;
-		this.terminal.setDecorativeOutputPressureThreshold?.(next.outputGate ? next.highWaterBytes : undefined);
-		this.terminal.setOutputTelemetryEnabled?.(next.metrics);
+		this.syncTerminalPacing(true);
+	}
+
+	/** Mirror the pacing options into the terminal while the TUI runs; stopped, the terminal gets no gate and no telemetry. */
+	private syncTerminalPacing(running: boolean): void {
+		const { outputGate, highWaterBytes, metrics } = this.renderPacing;
+		this.terminal.setDecorativeOutputPressureThreshold?.(running && outputGate ? highWaterBytes : undefined);
+		this.terminal.setOutputTelemetryEnabled?.(running && metrics);
 	}
 
 	getRenderPacingStats(): Readonly<RenderPacingStats> {
@@ -802,8 +825,7 @@ export abstract class TuiBase extends Container implements TUI {
 			nextFocus &&
 			!this.overlayStack.some((entry) => entry.component === nextFocus && this.isOverlayVisible(entry))
 		) {
-			if (this.isComponentMounted(nextFocus)) this.mountedFocusOwners.add(nextFocus);
-			else if (this.mountedFocusOwners.has(nextFocus)) nextFocus = null;
+			if (this.isDetachedFocusOwner(nextFocus)) nextFocus = null;
 		}
 
 		if (isFocusable(this.focusedComponent)) {
@@ -1106,10 +1128,7 @@ export abstract class TuiBase extends Container implements TUI {
 		this.immediateRenderScheduled = false;
 		this.stopped = false;
 		this.outputPressureHeld = false;
-		this.terminal.setDecorativeOutputPressureThreshold?.(
-			this.renderPacing.outputGate ? this.renderPacing.highWaterBytes : undefined,
-		);
-		this.terminal.setOutputTelemetryEnabled?.(this.renderPacing.metrics);
+		this.syncTerminalPacing(true);
 		this.beforeTerminalStart();
 		this.terminal.start(
 			(data) => this.handleTerminalInput(data),
@@ -1124,9 +1143,7 @@ export abstract class TuiBase extends Container implements TUI {
 		);
 		this.afterTerminalStart();
 		this.terminal.hideCursor();
-		if (this.terminalColorSchemeNotificationsEnabled) {
-			this.terminal.write("\x1b[?2031h");
-		}
+		if (this.terminalColorSchemeNotificationsEnabled) this.writeColorSchemeMode(true);
 		this.queryCellSize();
 		this.requestRender();
 	}
@@ -1154,9 +1171,12 @@ export abstract class TuiBase extends Container implements TUI {
 			return;
 		}
 		this.terminalColorSchemeNotificationsEnabled = enabled;
-		if (!this.stopped) {
-			this.terminal.write(enabled ? "\x1b[?2031h" : "\x1b[?2031l");
-		}
+		if (!this.stopped) this.writeColorSchemeMode(enabled);
+	}
+
+	/** Turn terminal color scheme change reports (DEC mode 2031) on or off. */
+	private writeColorSchemeMode(enabled: boolean): void {
+		this.terminal.write(enabled ? "\x1b[?2031h" : "\x1b[?2031l");
 	}
 
 	private queryCellSize(): void {
@@ -1176,11 +1196,8 @@ export abstract class TuiBase extends Container implements TUI {
 		this.immediateRenderScheduled = false;
 		this.outputPressureHeld = false;
 		this.cancelRenderTimer();
-		this.terminal.setDecorativeOutputPressureThreshold?.(undefined);
-		this.terminal.setOutputTelemetryEnabled?.(false);
-		if (this.terminalColorSchemeNotificationsEnabled) {
-			this.terminal.write("\x1b[?2031l");
-		}
+		this.syncTerminalPacing(false);
+		if (this.terminalColorSchemeNotificationsEnabled) this.writeColorSchemeMode(false);
 		this.beforeTerminalStop(options);
 		this.terminal.showCursor();
 		this.terminal.stop();
@@ -1190,10 +1207,15 @@ export abstract class TuiBase extends Container implements TUI {
 	renderNow(force = false): void {
 		this.rememberMountedFocus();
 		if (force) this.resetRenderState();
-		this.renderRequested = false;
 		this.cancelRenderTimer();
-		this.lastRenderAt = performance.now();
 		if (this.renderPacing.metrics) this.renderPacingStats.immediateFrames++;
+		this.emitFrame();
+	}
+
+	/** Paint now and mark the pending render request as served. */
+	private emitFrame(): void {
+		this.renderRequested = false;
+		this.lastRenderAt = performance.now();
 		this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
 	}
 
@@ -1213,9 +1235,53 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	private rememberMountedFocus(): void {
-		if (this.focusedComponent && this.isComponentMounted(this.focusedComponent)) {
-			this.mountedFocusOwners.add(this.focusedComponent);
+		if (this.focusedComponent) this.isDetachedFocusOwner(this.focusedComponent);
+	}
+
+	/**
+	 * Whether the component was mounted when focus last saw it and no longer is. A mounted component
+	 * is remembered as a focus owner; a component that never was mounted (a detached widget the
+	 * caller focused on purpose) keeps its focus.
+	 */
+	private isDetachedFocusOwner(component: Component): boolean {
+		if (this.isComponentMounted(component)) {
+			this.mountedFocusOwners.add(component);
+			return false;
 		}
+		return this.mountedFocusOwners.has(component);
+	}
+
+	/**
+	 * Repair focus before input is delivered, in order: leave a focused overlay that stopped being
+	 * visible, return to an overlay whose focus was taken or is owed back, and drop a mounted
+	 * component that left the tree.
+	 */
+	private reconcileFocus(): void {
+		// Overlay visibility can change with a terminal resize or a visible() callback.
+		const focusedOverlay = this.overlayStack.find((o) => o.component === this.focusedComponent);
+		if (focusedOverlay && !this.isOverlayVisible(focusedOverlay)) {
+			const topVisible = this.getTopmostVisibleOverlay();
+			if (topVisible) {
+				this.setFocus(topVisible.component);
+			} else {
+				this.setFocusInternal({ component: focusedOverlay.preFocus, overlayFocusRestore: "preserve" });
+			}
+		}
+
+		const focusIsOverlay = this.overlayStack.some((o) => o.component === this.focusedComponent);
+		if (focusIsOverlay) return;
+		const restoreState = this.getVisibleOverlayFocusRestore();
+		if (restoreState.status === "eligible") {
+			this.setFocus(restoreState.overlay.component);
+		} else if (restoreState.status === "blocked" && restoreState.blockedBy !== this.focusedComponent) {
+			if (restoreState.resume.status === "restore-overlay") {
+				this.setFocus(restoreState.overlay.component);
+			} else {
+				this.clearOverlayFocusRestore();
+				this.setFocus(restoreState.resume.target);
+			}
+		}
+		if (this.focusedComponent && this.isDetachedFocusOwner(this.focusedComponent)) this.setFocus(null);
 	}
 
 	private requestImmediateRender(): void {
@@ -1231,10 +1297,8 @@ export abstract class TuiBase extends Container implements TUI {
 			// A previously queued scheduleRender() can create a timer before this
 			// callback runs. User input must preempt that throttled frame.
 			this.cancelRenderTimer();
-			this.renderRequested = false;
-			this.lastRenderAt = performance.now();
 			if (this.renderPacing.metrics) this.renderPacingStats.forcedFrames++;
-			this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
+			this.emitFrame();
 		});
 	}
 
@@ -1279,9 +1343,7 @@ export abstract class TuiBase extends Container implements TUI {
 				this.renderTimer = retry;
 				return;
 			}
-			this.renderRequested = false;
-			this.lastRenderAt = performance.now();
-			this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
+			this.emitFrame();
 			if (this.renderRequested) {
 				this.scheduleRender();
 			}
@@ -1294,6 +1356,10 @@ export abstract class TuiBase extends Container implements TUI {
 			return;
 		}
 		if (this.consumeTerminalColorSchemeReport(data)) {
+			return;
+		}
+		// Terminal replies are protocol, not user input: input listeners never see or alter them.
+		if (this.consumeCellSizeResponse(data)) {
 			return;
 		}
 		// tmux sends a focus-in when a client attaches; it does not consume the event.
@@ -1323,48 +1389,13 @@ export abstract class TuiBase extends Container implements TUI {
 			data = current;
 		}
 
-		// Consume terminal cell size responses without blocking unrelated input.
-		if (this.consumeCellSizeResponse(data)) {
-			return;
-		}
-
 		// Global debug key handler (Shift+Ctrl+D)
 		if (matchesKey(data, "shift+ctrl+d") && this.onDebug) {
 			this.onDebug();
 			return;
 		}
 
-		// If focused component is an overlay, verify it's still visible
-		// (visibility can change due to terminal resize or visible() callback)
-		const focusedOverlay = this.overlayStack.find((o) => o.component === this.focusedComponent);
-		if (focusedOverlay && !this.isOverlayVisible(focusedOverlay)) {
-			// Focused overlay is no longer visible, redirect to topmost visible overlay
-			const topVisible = this.getTopmostVisibleOverlay();
-			if (topVisible) {
-				this.setFocus(topVisible.component);
-			} else {
-				this.setFocusInternal({ component: focusedOverlay.preFocus, overlayFocusRestore: "preserve" });
-			}
-		}
-
-		const focusIsOverlay = this.overlayStack.some((o) => o.component === this.focusedComponent);
-		if (!focusIsOverlay) {
-			const restoreState = this.getVisibleOverlayFocusRestore();
-			if (restoreState.status === "eligible") {
-				this.setFocus(restoreState.overlay.component);
-			} else if (restoreState.status === "blocked" && restoreState.blockedBy !== this.focusedComponent) {
-				if (restoreState.resume.status === "restore-overlay") {
-					this.setFocus(restoreState.overlay.component);
-				} else {
-					this.clearOverlayFocusRestore();
-					this.setFocus(restoreState.resume.target);
-				}
-			}
-		}
-		if (this.focusedComponent && !focusIsOverlay) {
-			if (this.isComponentMounted(this.focusedComponent)) this.mountedFocusOwners.add(this.focusedComponent);
-			else if (this.mountedFocusOwners.has(this.focusedComponent)) this.setFocus(null);
-		}
+		this.reconcileFocus();
 
 		// Pass input to focused component (including Ctrl+C)
 		// The focused component can decide how to handle Ctrl+C
@@ -1505,52 +1536,18 @@ export abstract class TuiBase extends Container implements TUI {
 		const effectiveHeight = maxHeight !== undefined ? Math.min(overlayHeight, maxHeight) : overlayHeight;
 
 		// === Resolve position ===
-		let row: number;
-		let col: number;
-
-		if (opt.row !== undefined) {
-			if (typeof opt.row === "string") {
-				// Percentage: 0% = top, 100% = bottom (overlay stays within bounds)
-				const match = opt.row.match(/^(\d+(?:\.\d+)?)%$/);
-				if (match) {
-					const maxRow = Math.max(0, availHeight - effectiveHeight);
-					const percent = parseFloat(match[1]) / 100;
-					row = marginTop + Math.floor(maxRow * percent);
-				} else {
-					// Invalid format, fall back to center
-					row = this.resolveAnchorRow("center", effectiveHeight, availHeight, marginTop);
-				}
-			} else {
-				// Absolute row position
-				row = opt.row;
-			}
-		} else {
-			// Anchor-based (default: center)
-			const anchor = opt.anchor ?? "center";
-			row = this.resolveAnchorRow(anchor, effectiveHeight, availHeight, marginTop);
-		}
-
-		if (opt.col !== undefined) {
-			if (typeof opt.col === "string") {
-				// Percentage: 0% = left, 100% = right (overlay stays within bounds)
-				const match = opt.col.match(/^(\d+(?:\.\d+)?)%$/);
-				if (match) {
-					const maxCol = Math.max(0, availWidth - width);
-					const percent = parseFloat(match[1]) / 100;
-					col = marginLeft + Math.floor(maxCol * percent);
-				} else {
-					// Invalid format, fall back to center
-					col = this.resolveAnchorCol("center", width, availWidth, marginLeft);
-				}
-			} else {
-				// Absolute column position
-				col = opt.col;
-			}
-		} else {
-			// Anchor-based (default: center)
-			const anchor = opt.anchor ?? "center";
-			col = this.resolveAnchorCol(anchor, width, availWidth, marginLeft);
-		}
+		// An explicit row or column wins over the anchor; an invalid one centers (default anchor: center).
+		const anchor = opt.anchor ?? "center";
+		const rowAnchor = opt.row === undefined ? anchor : "center";
+		const colAnchor = opt.col === undefined ? anchor : "center";
+		let row =
+			(opt.row === undefined
+				? undefined
+				: parseOverlayPosition(opt.row, Math.max(0, availHeight - effectiveHeight), marginTop)) ??
+			this.resolveAnchorRow(rowAnchor, effectiveHeight, availHeight, marginTop);
+		let col =
+			(opt.col === undefined ? undefined : parseOverlayPosition(opt.col, Math.max(0, availWidth - width), marginLeft)) ??
+			this.resolveAnchorCol(colAnchor, width, availWidth, marginLeft);
 
 		// Apply offsets
 		if (opt.offsetY !== undefined) row += opt.offsetY;

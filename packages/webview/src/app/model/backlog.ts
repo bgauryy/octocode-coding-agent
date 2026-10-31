@@ -1,8 +1,7 @@
-import type { Snapshot, SnapshotItem, State } from "@octocodeai/octocode-contacts/snapshot";
+import { PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
+import type { Snapshot, SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
 import { median } from "./format.ts";
 
-export const PRIORITIES = ["p0", "p1", "p2", "p3"] as const;
-export const ITEM_TYPES = ["task", "epic", "bug", "research"] as const;
 export const STATE_TITLES: Record<State, string> = {
 	backlog: "Backlog",
 	todo: "To do",

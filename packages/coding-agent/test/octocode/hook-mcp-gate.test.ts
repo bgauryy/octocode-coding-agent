@@ -4,7 +4,7 @@ import type { ToolAnnotations, ToolCallEvent } from "../../src/core/extensions/i
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { boundMcpHookCaller } from "../../src/octocode/hooks/mcp-gate.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_ENV } from "../../../common/src/env.ts";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

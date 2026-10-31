@@ -3,7 +3,7 @@ import { abortError } from "../abort.ts";
 import { browserWebSocketUrl } from "../launch.ts";
 import { checkDevtoolsUrl } from "./devtools-url.ts";
 import type { CdpListener, PageTarget, Pending, Reply, TargetInfo } from "./protocol.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** A target the browser attached the session to by itself (see `Target.setAutoAttach`): a popup, a frame in another process, a worker. */
 export interface AttachedTarget {

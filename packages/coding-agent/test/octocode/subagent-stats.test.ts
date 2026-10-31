@@ -206,7 +206,7 @@ describe("agent stats", () => {
 describe("/agents stats command", () => {
 	it("is listed, completes, and reads the session entries", async () => {
 		const command = agentsCommand({} as Team, new Map());
-		expect(command.description).toContain("stats");
+		expect(command.argumentHint).toContain("stats");
 		expect(command.complete?.("st")?.map((item) => item.label)).toEqual(["stats"]);
 		expect(command.complete?.("")?.map((item) => item.label)).toContain("stats");
 		expect(command.complete?.("stats ")).toBeNull();

@@ -3,7 +3,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as importedModule2 from "../../src/octocode/shared/process.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import * as importedModule3 from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
 

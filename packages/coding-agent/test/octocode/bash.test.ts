@@ -519,8 +519,8 @@ describe("bash tool", () => {
 		expect(processAlive(first.pid)).toBe(false);
 		await commands.get("jobs")!.handler("kill nope", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/No background bash job "nope"/);
-		expect(sent[0].message.details).toEqual({ id: "bash-1", log: first.log });
-		// The user stopped it: the model learns of it without a turn being started for it.
+		expect(sent[0].message.details).toEqual({ id: "bash-1", log: first.log, quiet: true });
+		// The user stopped it: the model learns of it without a turn being started for it (`quiet`).
 		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 		await fire("session_shutdown", {}, ctx);
 		await second.done;
@@ -619,6 +619,49 @@ describe("bash tool", () => {
 		).toBe(true);
 		expect(reports.some((text) => /stopped \(run end\)/.test(text))).toBe(true);
 		expect(jobs.jobs.size).toBe(0);
+		// Outside a subagent the timed job's exit still starts the turn that reads it.
+		expect(sent.find((entry) => String(entry.message.content).includes("timed-done"))!.options.triggerTurn).toBe(true);
+	});
+
+	it("records a subagent's job that ends after its final answer (while settling) without starting a turn", async () => {
+		process.env.OCTOCODE_SUBAGENT = "1";
+		try {
+			const { tool, jobs, sent, cwd } = setup();
+			const headless = fakeCtx({ cwd, hasUI: false });
+			await tool.execute(
+				"t1",
+				{ command: "sleep 0.3; echo late", background: true, timeout: 20 },
+				undefined,
+				undefined,
+				headless,
+			);
+			await jobs.settle();
+			await vi.waitFor(() => expect(sent).toHaveLength(1), { timeout: 5_000 });
+			expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+			expect(sent[0].message.details).toMatchObject({ id: "bash-1", quiet: true });
+		} finally {
+			delete process.env.OCTOCODE_SUBAGENT;
+		}
+	});
+
+	it("records a subagent's job that ends while the child is still working without starting a turn either", async () => {
+		process.env.OCTOCODE_SUBAGENT = "1";
+		try {
+			const { tool, sent, cwd } = setup();
+			await tool.execute(
+				"t1",
+				{ command: "sleep 0.2; echo mid", background: true },
+				undefined,
+				undefined,
+				fakeCtx({ cwd, hasUI: false }),
+			);
+			// No settle(): the run has not given its final answer, so a woken turn would be a queued follow-up after it.
+			await until(() => sent.length === 1);
+			expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+			expect(sent[0].message.details).toMatchObject({ id: "bash-1", quiet: true });
+		} finally {
+			delete process.env.OCTOCODE_SUBAGENT;
+		}
 	});
 
 	it("starts more than eight jobs at once: there is no running limit", async () => {

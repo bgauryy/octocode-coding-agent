@@ -4,8 +4,8 @@ import { homedir } from "os";
 import { dirname, join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
-import { normalizePath } from "./utils/paths.ts";
-import { stripBom } from "./utils/text.ts";
+import { normalizePath } from "../../common/src/paths.ts";
+import { stripBom } from "../../common/src/text.ts";
 
 export { findNodePackageDir, getPackageDir, isBundledNode, isBunBinary } from "./config/package-detection.ts";
 export {

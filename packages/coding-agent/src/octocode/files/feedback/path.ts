@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalPath } from "../../shared/home/repo.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Research envelopes compact row paths relative to an explicit `root` or `base`; without one, a relative path is

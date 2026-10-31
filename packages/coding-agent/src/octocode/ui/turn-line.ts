@@ -1,7 +1,7 @@
 import { GLYPH, Text } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { setToolInterruptShown } from "../../core/application/interrupted-tools.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration } from "../shared/format.ts";
 
 /** The session entry (`api.appendEntry`, never sent to the model) that carries one turn's summary line. */

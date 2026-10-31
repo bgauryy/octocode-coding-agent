@@ -15,6 +15,7 @@ export {
 export { runRpcMode } from "./rpc/rpc-mode.ts";
 export type {
 	RpcCommand,
+	RpcExtensionUIDismiss,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
 	RpcResponse,

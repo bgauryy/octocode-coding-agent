@@ -2,6 +2,7 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { getToolListError, type TuiMode } from "../../core/settings-manager.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 import type { Args, Mode } from "../args.ts";
+import { WORKTREE_FLAG } from "./worktree-flag.ts";
 
 /**
  * Every top-level CLI flag, declared once: the parser, `--help` and shell completion all read this table, so a flag
@@ -144,6 +145,7 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		help: ["Directory for session storage and lookup"],
 		apply: (a, v) => void (a.sessionDir = v),
 	},
+	WORKTREE_FLAG,
 	{
 		name: "--no-session",
 		kind: "boolean",

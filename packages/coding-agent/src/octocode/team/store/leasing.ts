@@ -3,6 +3,7 @@ import { type Db, leases } from "../../agentdb/api.ts";
 import { ancestorKeys, overlappingRequests } from "../lease-key.ts";
 import { type Lease, type LeaseRequest, toLease } from "../model.ts";
 import { LEASE_MS } from "./limits.ts";
+import { type NestedCheck, nestedChecks } from "./nested.ts";
 import { canonicalIn, pathKey } from "./workspace.ts";
 
 /** The lease rows behind `TeamStore` (`store.ts`); each is described on the `TeamStore` method that runs it. */
@@ -11,9 +12,19 @@ export function liveLeases(db: Db, workspace: string, now: number): Lease[] {
 	return leases.live(db, workspace, now).map(toLease);
 }
 
-/** `retireOwner` retires a lease owner that is gone and says whether it did (`TeamStore.retireOwner`). */
+/** The live leases of every agent of `team`, each path relative to its owner's checkout (`TeamStore.teamLeases`). */
+export function teamLeases(db: Db, team: string, now: number): Lease[] {
+	return leases.liveInTeam(db, team, now).map(toLease);
+}
+
+/**
+ * The live lease of another owner that blocks `file` in `workspace`: one in this checkout, or one in a checkout of `team`
+ * nested with it that names the same file (`nestedChecks`). `retireOwner` retires a lease owner that is gone and says
+ * whether it did (`TeamStore.retireOwner`).
+ */
 export function conflictingLease(
 	db: Db,
+	team: string,
 	workspace: string,
 	file: string,
 	self: string,
@@ -22,15 +33,19 @@ export function conflictingLease(
 	retireOwner: (owner: string, now: number) => boolean,
 ): Lease | undefined {
 	const key = pathKey(workspace, file);
-	const ancestors = ancestorKeys(key);
-	for (;;) {
-		const row = leases.conflicting(db, workspace, self, now, key, ancestors, kind);
-		if (!row) return undefined;
-		const lease = toLease(row);
-		// A crashed owner (killed, never left) frees its files now rather than when the lease runs out; a stalled one
-		// (alive, silent) keeps them until they lapse, since its process may resume.
-		if (!retireOwner(lease.owner, now)) return lease;
+	const checks: NestedCheck[] = [{ workspace, key, kind }, ...nestedChecks(db, team, workspace, key, kind, now)];
+	for (const check of checks) {
+		const ancestors = ancestorKeys(check.key);
+		for (;;) {
+			const row = leases.conflicting(db, check.workspace, self, now, check.key, ancestors, check.kind);
+			if (!row) break;
+			const lease = toLease(row);
+			// A crashed owner (killed, never left) frees its files now rather than when the lease runs out; a stalled one
+			// (alive, silent) keeps them until they lapse, since its process may resume.
+			if (!retireOwner(lease.owner, now)) return lease;
+		}
 	}
+	return undefined;
 }
 
 /** Throws when the requests overlap each other (see `TeamStore.lock`). */
@@ -70,7 +85,7 @@ export function releaseLeases(db: Db, workspace: string, owner: string, paths?: 
 	return paths.reduce((count, file) => count + leases.releaseKey(db, workspace, owner, pathKey(workspace, file)), 0);
 }
 
-/** Leases not yet expired at `since` get a fresh start from `now` (`TeamStore.resume`). */
-export function resumeLeases(db: Db, workspace: string, since: number, now: number): void {
-	leases.extendLiveSince(db, workspace, since, now + LEASE_MS);
+/** Leases of the team's agents not yet expired at `since` get a fresh start from `now` (`TeamStore.resume`). */
+export function resumeLeases(db: Db, team: string, since: number, now: number): void {
+	leases.extendTeamLiveSince(db, team, since, now + LEASE_MS);
 }

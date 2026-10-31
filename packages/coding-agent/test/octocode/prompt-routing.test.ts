@@ -248,7 +248,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			expect(octocode).toContain("A permission refusal is not a reason to retry through another tool.");
 			expect(octocode).toContain("exact recovery identifiers");
 			expect(octocode).toContain("state truncation or coverage gaps");
-			expect(octocode).toContain("cached input still fills the context window");
+			expect(octocode).toContain("Fetch only the evidence the next decision needs");
 			expect(octocode).not.toContain("Use bash for builds");
 			expect(octocode).not.toContain("`agent`");
 			if (isSubagent) {

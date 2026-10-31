@@ -8,7 +8,7 @@ import {
 	type ApplicationAsset,
 	type ApplicationAssetInput,
 	type ApplicationAssetPayload,
-} from "@octocodeai/octocode-contacts";
+} from "@octocodeai/octocode-contracts";
 
 const ASSET_BYTES = 32 * 1024 * 1024;
 const SESSION_BYTES = 256 * 1024 * 1024;

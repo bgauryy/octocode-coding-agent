@@ -7,7 +7,8 @@ import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
  */
 export function registerArchiveCommand(commands: Subcommands): void {
 	commands.add("archive", {
-		description: "Browse compacted session history · archive [<n>]",
+		description: "Browse compacted session history",
+		argumentHint: "[<n>]",
 		complete: (prefix) =>
 			wordCompletions(
 				readSegments().map((segment) => [String(segment.n), segmentLine(segment)]),

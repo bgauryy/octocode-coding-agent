@@ -5,7 +5,7 @@ import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { browserMcpUrls } from "../../src/octocode/shared/browser-mcp.ts";
-import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_ENV } from "../../../common/src/env.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

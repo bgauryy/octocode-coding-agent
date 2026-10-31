@@ -71,6 +71,9 @@ export function buildBedrockClientConfig(
 	const optionsProfile = options.profile || options.env?.AWS_PROFILE;
 	const config: BedrockRuntimeClientConfig = {
 		profile: optionsProfile || getProviderEnvValue("AWS_PROFILE", options.env),
+		// Same contract as every other provider: no hidden SDK retries (the AWS default is three attempts, whose backoff
+		// ignores the abort signal) beyond `maxRetries`; the session retry owns the rest, so attempts do not multiply.
+		maxAttempts: Math.max(0, Math.floor(options.maxRetries ?? 0)) + 1,
 	};
 	const configuredRegion = getConfiguredBedrockRegion(options);
 	const hasAmbientConfiguredProfile = Boolean(getProviderEnvValue("AWS_PROFILE"));

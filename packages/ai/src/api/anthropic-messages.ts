@@ -1,3 +1,4 @@
+import { createAbortError } from "../utils/abort.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -11,7 +12,7 @@ import { headersToRecord } from "../utils/headers.ts";
 import { retryAfterMsFromError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { getCurrentTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 
-import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
+import { copilotDynamicHeadersFor } from "./github-copilot-headers.ts";
 import {
 	adjustMaxTokensForThinking,
 	buildBaseOptions,
@@ -55,14 +56,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				const federation = getAnthropicFederation(model, apiKey, options?.headers, options?.env);
 				if (!federation) assertRequestAuth(model.provider, apiKey, options?.headers);
 
-				let copilotDynamicHeaders: Record<string, string> | undefined;
-				if (model.provider === "github-copilot") {
-					const hasImages = hasCopilotVisionInput(normalizedContext.messages);
-					copilotDynamicHeaders = buildCopilotDynamicHeaders({
-						messages: normalizedContext.messages,
-						hasImages,
-					});
-				}
+				const copilotDynamicHeaders = copilotDynamicHeadersFor(model.provider, normalizedContext.messages);
 
 				const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
 				const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
@@ -152,7 +146,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			const { inputTransformations } = state;
 
 			if (options?.signal?.aborted) {
-				throw new Error("Request was aborted");
+				throw createAbortError();
 			}
 
 			if (output.stopReason === "pending") {

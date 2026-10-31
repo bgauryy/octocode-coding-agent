@@ -1,5 +1,6 @@
 import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model, StopReason } from "../../types.ts";
+import { createUsage } from "../../utils/assistant-message.ts";
 
 export function parseChunkUsage(
 	rawUsage: {
@@ -31,15 +32,13 @@ export function parseChunkUsage(
 	const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
 	// OpenAI completion_tokens already includes reasoning_tokens.
 	const outputTokens = rawUsage.completion_tokens || 0;
-	const usage: AssistantMessage["usage"] = {
+	const usage = createUsage({
 		input,
 		output: outputTokens,
 		cacheRead: cacheReadTokens,
 		cacheWrite: cacheWriteTokens,
 		reasoning: rawUsage.completion_tokens_details?.reasoning_tokens || 0,
-		totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	});
 	calculateCost(model, usage);
 	return usage;
 }

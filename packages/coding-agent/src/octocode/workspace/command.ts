@@ -1,6 +1,6 @@
 import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export function webCommand(
 	/** Opens the page and resolves to its address. */

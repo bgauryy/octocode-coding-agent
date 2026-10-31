@@ -8,8 +8,8 @@ import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
 import { type Fetched, language, type PageFetcher, pageFetcher, unreadReason } from "../../src/octocode/web/fetch.ts";
-import type * as importedModule1 from "../../src/octocode/web/guard.ts";
-import type { PublicFetchInit } from "../../src/octocode/web/guard.ts";
+import type * as importedModule1 from "../../../common/src/web-guard.ts";
+import type { PublicFetchInit } from "../../../common/src/web-guard.ts";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
 import { search } from "../../src/octocode/web/search.ts";
 import { registerWebTool, webSummary } from "../../src/octocode/web/web.ts";
@@ -30,7 +30,7 @@ type WebTool = {
 const guard = vi.hoisted(() => ({
 	stub: undefined as undefined | ((url: string, init: PublicFetchInit) => Promise<Response>),
 }));
-vi.mock("../../src/octocode/web/guard.ts", async (importOriginal) => {
+vi.mock("../../../common/src/web-guard.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof importedModule1>();
 	return {
 		...actual,
@@ -832,6 +832,23 @@ describe("web images", () => {
 		);
 		expect(description).toMatch(/PNG, JPEG, GIF or WebP URL returns the image itself/);
 		expect(description).toContain("images are not");
+	});
+
+	it("leaves browser routing to the policy, which knows whether the session holds a browser", () => {
+		let guidelines: string[] = [];
+		registerWebTool(
+			{
+				registerTool: (definition: { promptGuidelines: string[] }) => {
+					guidelines = definition.promptGuidelines;
+					return definition;
+				},
+				getActiveTools: () => [],
+			} as unknown as ExtensionAPI,
+			fakePermission("full"),
+		);
+		// Guidelines are static, so a browser rule here would reach sessions without one.
+		expect(guidelines.join(" ")).not.toMatch(/browser/i);
+		expect(guidelines.join(" ")).toContain("Cite source URLs.");
 	});
 });
 

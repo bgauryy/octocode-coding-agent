@@ -1,5 +1,5 @@
 import { readSkillResourceSnapshot } from "./core/skill-resource-snapshot.ts";
-import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "./octocode/shared/env.ts";
+import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
 import { runCompletionCommand } from "./cli/completion.ts";
 /**
  * Main entry point for the coding agent CLI.
@@ -30,6 +30,7 @@ import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/tru
 import { loadMcpCommand } from "../../mcp/src/cli.lazy.ts";
 import { runAuthCommand } from "./main/auth-command.ts";
 import { runModelDiscoveryCommand } from "./main/model-discovery.ts";
+import { startupCwd } from "./cli/worktree-startup.ts";
 import { createCliRuntimeFactory } from "./main/runtime-factory.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./main/session-manager.ts";
 import {
@@ -49,7 +50,7 @@ import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./theme/them
 import { validateThemeJson } from "./theme/theme-schema.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { isTruthyEnvFlag } from "./utils/env-flag.ts";
-import { normalizePath } from "./utils/paths.ts";
+import { normalizePath } from "../../common/src/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
 export { createSessionManager } from "./main/session-manager.ts";
@@ -98,8 +99,7 @@ export async function main(args: string[], options?: MainOptions) {
 		cleanupWindowsSelfUpdateQuarantine(getPackageDir());
 	}
 	cleanupManagedInstall();
-
-	const cwd = process.cwd();
+	const cwd = await startupCwd(args);
 	const agentDir = getAgentDir();
 	const bootstrapSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);

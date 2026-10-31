@@ -154,7 +154,7 @@ describe("the run-hold for background work in an RPC child", () => {
 		Object.assign(process.env, { OCTOCODE_MCP: "0", OCTOCODE_HOME: tmp(), ...env });
 		const fake = fakeHost();
 		try {
-			octocode(fake.api);
+			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI, mode: hasUI ? "rpc" : "json" });
 			const controller = new AbortController();
 			Object.assign(ctx, { signal: controller.signal });

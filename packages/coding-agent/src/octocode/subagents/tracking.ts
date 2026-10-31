@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { existingLibrary } from "../shared/archive.ts";
 import { shortPath } from "../shared/format.ts";
 import { addReply, emptyTotals, finiteNumber, type ModelLookup, unpricedModel } from "../shared/util.ts";

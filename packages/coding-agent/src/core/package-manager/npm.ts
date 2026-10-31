@@ -3,8 +3,8 @@ import { basename, dirname, join } from "node:path";
 import { gt, maxSatisfying, rcompare, satisfies } from "semver";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
-import { markPathIgnoredByCloudSync } from "../../utils/paths.ts";
-import { stripBom } from "../../utils/text.ts";
+import { markPathIgnoredByCloudSync } from "../../../../common/src/paths.ts";
+import { stripBom } from "../../../../common/src/text.ts";
 import { assertProjectTrustedForScope, getTemporaryDir } from "./sources.ts";
 import { NETWORK_TIMEOUT_MS, type NpmSource, type PackageManagerHost, type SourceScope } from "./types.ts";
 

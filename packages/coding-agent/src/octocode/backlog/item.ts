@@ -1,10 +1,16 @@
-import { type ItemType, type BacklogRef, type Completion, type WorkLink } from "@octocodeai/octocode-contacts/backlogs";
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
+import {
+	type ItemType,
+	type BacklogRef,
+	type Completion,
+	PRIORITIES,
+	type WorkLink,
+} from "@octocodeai/octocode-contracts/backlogs";
+import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { USER_AUTHOR } from "../agentdb/author.ts";
 import { storedSecret, storedText } from "../shared/sanitize.ts";
 import { cutText } from "../shared/util.ts";
 
-export const PRIORITIES = ["p0", "p1", "p2", "p3"] as const;
+export { PRIORITIES };
 type Priority = (typeof PRIORITIES)[number];
 
 export interface Item {

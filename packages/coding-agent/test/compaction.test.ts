@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
-import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
+import { calculateContextTokens, ESTIMATED_IMAGE_TOKENS } from "@octocodeai/octocode-ai/utils/estimate";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import {
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
 	estimateContextTokens,
+	estimateTokens,
 	findCutPoint,
 	getLastAssistantUsage,
 	prepareCompaction,
@@ -268,6 +269,32 @@ describe("estimateContextTokens", () => {
 		expect(estimate.lastUsageIndex).toBe(1);
 		expect(estimate.trailingTokens).toBeGreaterThan(0);
 		expect(estimate.tokens).toBe(150 + estimate.trailingTokens);
+	});
+
+	it("ignores usage that predates a later-timestamped message such as a compaction summary", () => {
+		const summary: AgentMessage = {
+			role: "compactionSummary",
+			summary: "s".repeat(300),
+			tokensBefore: 90_000,
+			timestamp: 2_000,
+		};
+		const kept: AssistantMessage = { ...createAssistantMessage("kept", createMockUsage(90_000, 10)), timestamp: 1_000 };
+
+		const estimate = estimateContextTokens([summary, kept]);
+
+		expect(estimate.lastUsageIndex).toBeNull();
+		expect(estimate.tokens).toBe(estimateTokens(summary) + estimateTokens(kept));
+		expect(estimate.tokens).toBeLessThan(1_000);
+	});
+
+	it("sizes standard roles with the shared ratio and its image estimate", () => {
+		expect(estimateTokens(createUserMessage("x".repeat(300)))).toBe(100);
+		const image: AgentMessage = {
+			role: "user",
+			content: [{ type: "image", data: "", mimeType: "image/png" }],
+			timestamp: 1,
+		};
+		expect(estimateTokens(image)).toBe(ESTIMATED_IMAGE_TOKENS);
 	});
 });
 

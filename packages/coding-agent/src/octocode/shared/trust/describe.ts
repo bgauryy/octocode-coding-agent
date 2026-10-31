@@ -3,7 +3,7 @@ import { parseConfigDocument } from "../../../utils/config-document.ts";
 import { parseFrontmatter } from "../../../utils/frontmatter.ts";
 import { projectHookFiles } from "../home.ts";
 import { sanitizeTerminalText } from "../sanitize.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { projectConfigFiles, projectMcpFiles, readText, realPath } from "./files.ts";
 
 /** Files listed without commands (agents, skills) past this many are summarized; command lines are never cut. */

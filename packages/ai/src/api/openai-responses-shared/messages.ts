@@ -1,3 +1,4 @@
+import { DEFAULT_TOOL_CALL_ID_MAX_LENGTH, sanitizeToolCallId } from "../tool-call-id.ts";
 import type {
 	ResponseConfigurationUpdateItemParam,
 	ResponseInput,
@@ -90,11 +91,8 @@ export function convertResponsesMessages<TApi extends Api>(
 	const normalizedContext = resolveTranscript(context, options?.supportsMidConvoSystemMessages);
 	const messages: ResponseInput = [];
 
-	const normalizeIdPart = (part: string): string => {
-		const sanitized = part.replace(/[^a-zA-Z0-9_-]/g, "_");
-		const normalized = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
-		return normalized.replace(/_+$/, "");
-	};
+	const normalizeIdPart = (part: string): string =>
+		sanitizeToolCallId(part, DEFAULT_TOOL_CALL_ID_MAX_LENGTH, { trimTrailingUnderscores: true });
 
 	const buildForeignResponsesItemId = (itemId: string): string => {
 		const normalized = `fc_${shortHash(itemId)}`;

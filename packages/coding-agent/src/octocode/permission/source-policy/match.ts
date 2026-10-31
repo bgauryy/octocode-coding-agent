@@ -6,7 +6,7 @@ import type { ToolInvocation } from "../../../core/extensions/types.ts";
 import { fileChanges } from "../../shared/file-input.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { canonicalPath } from "../../shared/home/repo.ts";
-import { isRecord } from "../../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { names, primaryParameter, type Rule, toolMatches, wildcard } from "./rules.ts";

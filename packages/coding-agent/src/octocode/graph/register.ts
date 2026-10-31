@@ -1,8 +1,10 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
-import { errorMessage } from "../../utils/guards.ts";
-import { graphBinary, graphSchema, GRAPH_TOOLS, runGraphCli } from "./cli.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { cachedGraphSchema, graphBinary, graphSchema, GRAPH_TOOLS, runGraphCli } from "./cli.ts";
+import type { GraphSchema } from "./schema-cache.ts";
+import { trimSchemaDefinitions } from "./schema-trim.ts";
 
 /** Size and range keywords: the CLI enforces them on every request, so the declared schema keeps only shape. */
 const BOUNDS = new Set([
@@ -38,21 +40,33 @@ function shapeOnly<T>(schema: T): T {
  * The CLI owns descriptions, validation, grammar support and execution. Both tools are declared directly; their
  * contracts (about 12k characters) sit in the cached tool declarations.
  */
-export function registerGraphTools(api: ExtensionAPI): void {
-	let binary: string;
-	let schemas: ReturnType<typeof graphSchema>[];
-	try {
-		binary = graphBinary();
-		schemas = GRAPH_TOOLS.map((name) => graphSchema(binary, name, process.cwd()));
-	} catch (error) {
+export function registerGraphTools(api: ExtensionAPI): void | Promise<void> {
+	const unavailable = (error: unknown) => {
 		api.on("session_start", async (_event, ctx) => {
 			ctx.ui.notify(`Graph tools unavailable: ${errorMessage(error)}`, "warning");
 		});
+	};
+	let binary: string;
+	let cached: (GraphSchema | undefined)[];
+	try {
+		binary = graphBinary();
+		cached = GRAPH_TOOLS.map((name) => cachedGraphSchema(binary, name));
+	} catch (error) {
+		unavailable(error);
 		return;
 	}
+	// A cached contract registers at once; only the first start after a new build asks the CLI, off the event loop.
+	if (cached.every((schema) => schema !== undefined)) return declare(api, binary, cached);
+	return Promise.all(GRAPH_TOOLS.map((name) => graphSchema(binary, name, process.cwd()))).then(
+		(schemas) => declare(api, binary, schemas),
+		unavailable,
+	);
+}
+
+function declare(api: ExtensionAPI, binary: string, schemas: GraphSchema[]): void {
 	for (const [index, name] of GRAPH_TOOLS.entries()) {
 		const schema = schemas[index];
-		const { $defs, ...requestSchema } = shapeOnly(schema.inputSchema);
+		const { $defs, ...requestSchema } = trimSchemaDefinitions(shapeOnly(schema.inputSchema));
 		api.registerTool({
 			name,
 			label: name === "graphBuild" ? "Build graph" : "Query graph",
@@ -62,7 +76,7 @@ export function registerGraphTools(api: ExtensionAPI): void {
 					request: Type.Unsafe<Record<string, unknown>>({
 						...requestSchema,
 						description:
-							"Octocode CLI input. Use queries for a new question. Copy responsePagination.next.input or next.*.input here to finish evidence; related[].input starts its suggested question.",
+							"queries: a new question. To finish evidence, paste responsePagination.next.input (or next.*.input); related[].input starts its suggested question.",
 					}),
 				},
 				{ $defs, additionalProperties: false },

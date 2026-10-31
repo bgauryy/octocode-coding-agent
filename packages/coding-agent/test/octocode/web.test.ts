@@ -4,7 +4,7 @@ import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as importedModule3 from "../../src/octocode/web/fetch.ts";
 import { decodeBody, isBinaryType, type PageFetcher, pageFetcher, readCapped } from "../../src/octocode/web/fetch.ts";
-import { classifyHost, type HostLookup, isBlockedIp, publicFetch } from "../../src/octocode/web/guard.ts";
+import { classifyHost, type HostLookup, isBlockedIp, publicFetch } from "../../../common/src/web-guard.ts";
 import * as importedModule1 from "../../src/octocode/web/html.ts";
 import { collapseLinkRuns, describeHtml, htmlToText, mainContent } from "../../src/octocode/web/html.ts";
 import * as importedModule2 from "../../src/octocode/web/search.ts";

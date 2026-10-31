@@ -21,6 +21,7 @@ import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
 import { generateSummaryWithUsage, generateTurnPrefixSummary } from "./summarization.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
+import type { CompactionResult } from "./types.ts";
 import {
 	computeFileLists,
 	createFileOps,
@@ -84,18 +85,6 @@ function getMessagesFromProjectedEntryForCompaction(entry: ProjectedSessionEntry
 	if (entry.sourceEntry.type === "compaction") return [];
 	// System messages are prompt state, not conversation; the compaction entry carries their replay.
 	return entry.messages.filter((message) => message.role !== "system");
-}
-
-/** Result from compact() - SessionManager adds uuid/parentUuid when saving */
-export interface CompactionResult<T = unknown> {
-	summary: string;
-	firstKeptEntryId: string;
-	tokensBefore: number;
-	estimatedTokensAfter?: number;
-	/** Usage from the LLM call(s) that generated this summary, if available */
-	usage?: Usage;
-	/** Extension-specific data (e.g., ArtifactIndex, version markers for structured compaction) */
-	details?: T;
 }
 
 // ============================================================================

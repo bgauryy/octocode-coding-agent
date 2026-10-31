@@ -14,11 +14,11 @@ import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
 import { getLegacyConfigDirs, getModelsPath } from "../config.ts";
-import { stripJsonComments } from "../utils/json.ts";
-import { normalizePath } from "../utils/paths.ts";
-import { stripBom } from "../utils/text.ts";
+import { stripJsonComments } from "../../../common/src/json.ts";
+import { normalizePath } from "../../../common/src/paths.ts";
+import { stripBom } from "../../../common/src/text.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
-import { errorMessage } from "../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
 const SamplingParamsByThinkingLevelSchema = Type.Object(

@@ -12,7 +12,7 @@ import { loadProfiles, profileSelectsTool } from "../src/octocode/subagents/prof
 import { registerTurnSetup } from "../src/octocode/turn.ts";
 import { HOOK_EVALUATION_SYSTEM_PROMPT } from "../src/octocode/hooks/prompt.ts";
 import { defineOctocodeTool, octocodeToolName } from "../../mcp/src/presets/octocode/tools.ts";
-import { renderServersSection } from "../../mcp/src/section.ts";
+import { renderContractSections } from "../../mcp/src/section.ts";
 import type { Tool } from "../../mcp/src/client/index.ts";
 import { fakeHost } from "../test/octocode/fake-host.ts";
 
@@ -46,7 +46,7 @@ try {
 		if (profile?.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
 		if (profile?.prompt) process.env[ROLE_PROMPT_FILE_ENV] = writeRolePrompt(profile.prompt, temporary);
 		const native = fakeHost();
-		octocode(native.api);
+		await octocode(native.api);
 		for (const tool of catalog?.catalog.tools ?? []) {
 			const definition = defineOctocodeTool({
 				tool,
@@ -81,8 +81,9 @@ try {
 		});
 		await turn.emit("before_agent_start", { systemPromptOptions: options }, {});
 		if (catalog)
-			options.sections.mcp_servers =
-				renderServersSection([
+			Object.assign(
+				options.sections,
+				renderContractSections([
 					{
 						entry: {
 							name: "octocode",
@@ -90,13 +91,12 @@ try {
 							source: "prompt fixture",
 							scope: "default",
 						},
-						connection: { state: "connected", instructions: catalog.initialize.instructions },
-						tools: {
-							declared: tools.filter((tool) => tool.name.startsWith("mcp__")).map((tool) => ({ name: tool.name })),
-							deferred: [],
-						},
+						state: "connected",
+						instructions: catalog.initialize.instructions,
+						declared: tools.some((tool) => tool.name.startsWith("mcp__")),
 					},
-				]) ?? "";
+				]),
+			);
 		const prompt = buildSystemPrompt(options);
 		fs.writeFileSync(path.join(output, `${name}.system.md`), `${prompt}\n`);
 		fs.writeFileSync(

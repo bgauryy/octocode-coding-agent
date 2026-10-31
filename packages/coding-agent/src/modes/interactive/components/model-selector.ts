@@ -25,7 +25,7 @@ import {
 	sortModelItems,
 	groupModelItems,
 } from "./model-selector/model-items.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { modelDetails } from "./model-selector/details.ts";
 
 /**

@@ -2,7 +2,7 @@ import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai"
 import { Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/extensions/index.ts";
-import { errorMessage, isRecord } from "../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const MODES = {
 	agent: "task",

@@ -196,6 +196,7 @@ describe("installed MCP and skills through the native SDK", () => {
 						return fauxAssistantMessage(
 							[
 								fauxToolCall("file", {
+									reason: "Update the retrieved fixture",
 									queries: [
 										{
 											type: "write",

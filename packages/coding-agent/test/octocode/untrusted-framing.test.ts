@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as importedModule1 from "vitest";
 import { afterEach, describe, expect, it } from "vitest";
-import { PERMISSION_NONCE_FILE_ENV } from "../../src/octocode/shared/env.ts";
+import { PERMISSION_NONCE_FILE_ENV } from "../../../common/src/env.ts";
 import { fencedBody, fencedParts, fenceUntrusted, headerText } from "../../src/octocode/shared/fence.ts";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";

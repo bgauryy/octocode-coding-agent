@@ -5,10 +5,10 @@ import type { Static } from "typebox";
 import type { ExtensionAPI, ExtensionToolContext } from "../../core/extensions/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { systemLines } from "../permission/effect.ts";
-import { changedOnDisk } from "../../utils/atomic-file.ts";
+import { changedOnDisk } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { timedTool } from "../shared/render/rows.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import type { Checkpoints } from "./checkpoint.ts";
 import { readView } from "./coverage.ts";
@@ -68,11 +68,11 @@ export function registerFileTool(
 				name: "file",
 				label: "File",
 				description:
-					"Create, edit or delete files; it does not read them. Pass queries (one object per change: type, path, reason, plus edits or content) or a Codex-style patch string, not both; put all of one file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
+					"Create, edit or delete files; it does not read them. Pass queries (one object per change: type, path, plus edits or content) or a Codex-style patch string, not both; put all of one file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
 					"Read an existing file in this session before changing it (unread files are refused); edits need exact text that matches once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval. Inspect every outcome.",
 				promptSnippet: "Create, edit or delete files (guarded)",
 				promptGuidelines: [
-					"Use file, not shell redirection or sed -i, for authored changes: it refuses stale edits and checkpoints each change for /rewind. Batch related files in one call. After a formatter or generator rewrites files, inspect its changes.",
+					"Use file, not shell redirection or sed -i, for authored changes: it checkpoints each change for /rewind. Batch related files in one call. After a formatter or generator rewrites files, inspect its changes.",
 				],
 				parameters: Params,
 				prepareArguments: renameReasoning,
@@ -91,7 +91,8 @@ export function registerFileTool(
 						throw new Error("Remote patch environment routing is not available in this local file tool");
 					let queries: FileQuery[] = canonical
 						? patchChanges(params.patch!, params.reason ?? "Apply patch")
-						: params.queries!;
+						: // `renameReasoning` gave every query a reason (its own, else the call's).
+							(params.queries as FileQuery[]);
 					if (!queries.length) {
 						if (canonical)
 							return {
@@ -183,7 +184,7 @@ export function registerFileTool(
 								for (const key of Object.keys(params)) delete (params as Record<string, unknown>)[key];
 								replacementOwner.committed?.(id, candidate, ctx.cwd);
 								Object.assign(params, candidate);
-								queries = params.queries!;
+								queries = params.queries as FileQuery[];
 								effectivePrepared = final.prepared;
 								replacementCommitted = true;
 							},

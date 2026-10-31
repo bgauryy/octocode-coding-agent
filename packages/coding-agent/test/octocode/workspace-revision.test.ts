@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { describe, expect, it, vi } from "vitest";
 import { workspaceChanges, type RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
 

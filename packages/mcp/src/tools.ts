@@ -1,7 +1,7 @@
 /**
  * Adapts MCP tools to Octocode tool definitions.
  *
- * Results map onto Octocode's model-facing content (text and images). Text over 20KB keeps its start and
+ * Results map onto Octocode's model-facing content (text and images). Text over the shared 20 KB result default (`spillOutput`) keeps its start and
  * end with the middle cut out, like Codex does, and the full text is saved to a temp file the model
  * can read. Programmatic callers receive the supported `CallToolResult` without `_meta`
  * (supported `content` blocks, `structuredContent`, `isError`), never truncated: it is
@@ -16,8 +16,6 @@ import type { TSchema } from "typebox";
 import { spillOutput } from "../../coding-agent/src/octocode/shared/spill.ts";
 import { visibleContent } from "./sanitize.ts";
 
-/** Model-facing text of an MCP result beyond this is cut in the middle. */
-const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
 export interface McpToolDetails {
 	server: string;
 	tool: string;
@@ -168,7 +166,7 @@ export function createMcpResultSchema(structuredContentSchema: Record<string, un
 }
 
 /**
- * Keep model-facing text within {@link MCP_OUTPUT_MAX_BYTES}. Longer text is saved whole and becomes one text block with its
+ * Keep model-facing text within the shared result default (`spillOutput`'s `maxBytes`). Longer text is saved whole and becomes one text block with its
  * start and end and the file's path (`spillOutput`, shared with the Octocode server's results, which has its own budget);
  * images follow it.
  */
@@ -179,7 +177,6 @@ function limitMcpContent(
 ): { content: (TextContent | ImageContent)[]; fullOutputPath?: string } {
 	const spilled = spillOutput(textOf(content), {
 		label: `mcp ${label}`,
-		maxBytes: MCP_OUTPUT_MAX_BYTES,
 		// The budget is bytes; MCP text has no line limit.
 		maxLines: Number.MAX_SAFE_INTEGER,
 		...(saveOutput ? { save: (text: string) => saveOutput(text, ".txt") } : {}),

@@ -26,7 +26,7 @@ import type { SessionInputQueue } from "./input-queue.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
 import type { ExtensionBindings } from "./types.ts";
-import { errorMessage } from "../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export interface ExtensionBindingsHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
 	readonly tools: SessionToolLoadout;
@@ -156,6 +156,7 @@ export class SessionExtensionBindings {
 			const extensionCommands: SlashCommandInfo[] = runner.getRegisteredCommands().map((command) => ({
 				name: command.invocationName,
 				description: command.description,
+				...(command.argumentHint && { argumentHint: command.argumentHint }),
 				source: "extension",
 				sourceInfo: command.sourceInfo,
 			}));

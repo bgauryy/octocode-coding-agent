@@ -1,4 +1,4 @@
-import type { WorkspaceConnection } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceConnection } from "@octocodeai/octocode-contracts/workspace";
 
 /** A workspace connection that can say cheaply whether its snapshot may have changed. */
 export interface RevisedWorkspace extends WorkspaceConnection {

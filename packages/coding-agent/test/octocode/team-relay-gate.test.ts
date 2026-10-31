@@ -6,7 +6,7 @@ import type { ReferenceHost } from "../../src/octocode/team/session/references.t
 import { type Resumer, sendMessage } from "../../src/octocode/team/session/send.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
-import type { Member } from "@octocodeai/octocode-contacts/team";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 const member = (id: string, parentId?: string): Member => ({
 	id,

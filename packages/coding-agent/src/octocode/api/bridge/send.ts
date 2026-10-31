@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
-import { sha256 } from "../../../utils/atomic-file.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { redactSecrets, visibleControls } from "../../shared/sanitize.ts";

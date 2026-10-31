@@ -1,4 +1,5 @@
 import type { Model } from "../../types.ts";
+import { isOpenRouterModel } from "../../utils/provider-host.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 /**
@@ -47,7 +48,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		provider === "kimi-coding" ||
 		baseUrl.includes("api.moonshot.") ||
 		baseUrl.includes("api.kimi.com");
-	const isOpenRouter = provider === "openrouter" || baseUrl.includes("openrouter.ai");
+	const isOpenRouter = isOpenRouterModel(model);
 	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
 	const isCloudflareAiGateway = provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
 	const isNvidia = provider === "nvidia" || baseUrl.includes("integrate.api.nvidia.com");
@@ -130,6 +131,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		sessionAffinityFormat: isOpenRouter ? "openrouter" : "openai",
 		// OpenCode Go streams `reasoning` but expects it back as `reasoning_content`.
 		reasoningReplayField: provider === "opencode-go" ? "reasoning_content" : undefined,
+		toolCallIdMaxLength: provider === "openai" ? 40 : undefined,
 		supportsLongCacheRetention: !(
 			isOpenRouterAlibabaExplicitCache ||
 			isTogether ||
@@ -184,5 +186,6 @@ export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICom
 		// "standard" is an explicit opt-out: it is truthy, so it overrides any auto-detected "moonshot".
 		toolSchemaFlavor: model.compat.toolSchemaFlavor ?? detected.toolSchemaFlavor,
 		reasoningReplayField: detected.reasoningReplayField,
+		toolCallIdMaxLength: detected.toolCallIdMaxLength,
 	};
 }

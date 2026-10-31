@@ -1,9 +1,10 @@
 import { CheckpointPersistenceError } from "../../core/compaction/checkpoint.ts";
 import { clipWithMarker } from "../../core/compaction/inline.ts";
+import { USER_HEADING } from "../../core/compaction/summary-view.ts";
 import { saveFullOutput } from "../shared/spill.ts";
 import { contentText } from "../shared/util.ts";
 import { fullTextIn } from "./archive.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Text the summary cannot hold whole: a long tool result for the summarizer, the user's own messages in the summary.
@@ -13,8 +14,6 @@ import { isRecord } from "../../utils/guards.ts";
 
 /** Saves a text and returns where, or undefined when it could not be saved. */
 type SaveText = (text: string) => string | undefined;
-
-export const USER_HEADING = "## User Messages (verbatim, oldest first)";
 
 /** The user's own messages kept after the summary, newest first, up to about 15k to 20k tokens in all, at 4 to 3 characters per token (their words are the one record the summary cannot rebuild)... */
 export const USER_MESSAGES_CHARS = 60_000;

@@ -15,7 +15,7 @@ import { EDIT_RETENTION_MINUTES, unjoinedAgent } from "./edits.ts";
 import { lockAdvice } from "./lock-advice.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
-import { isRecord } from "../../utils/guards.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "./store/workspace.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "./identity.ts";
 import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
@@ -115,9 +115,9 @@ function registerCoordinateTool(
 			name: "coordinate",
 			label: "Coordinate",
 			description:
-				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them.",
+				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/tmp/` scratch are per worktree.",
 			promptGuidelines: [
-				"Before overlapping edits, use `agent` type `coordinate`: `input.action` list, lock your paths, then unlock when done. Resolve conflicts with the owner.",
+				"Other agents may be editing this repository. Before overlapping edits, use `agent` type `coordinate`: `input.action` list, lock your paths, then unlock when done. When a check fails in a file you did not change, `changes` shows who did. Resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {

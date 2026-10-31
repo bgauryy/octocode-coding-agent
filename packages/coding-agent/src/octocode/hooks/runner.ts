@@ -15,7 +15,8 @@ import { capOutputToFile } from "../shared/spill.ts";
 import { firstLine, parseJson } from "../shared/util.ts";
 import type { HookEvent, HookProtocol } from "./catalog.ts";
 import { unsupportedOutput } from "./profiles.ts";
-import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { leadsProcessGroup } from "../../utils/shell.ts";
 
 /** How long output pipes may stay open after the hook process exited (a background child can hold them) before its result stands. */
 const EXIT_DRAIN_MS = 150;
@@ -65,7 +66,7 @@ export function runHook(
 			child = spawn(executable ? expand(command) : command, executable ? hook.args!.map(expand) : [], {
 				cwd,
 				shell: !executable,
-				detached: process.platform !== "win32",
+				detached: leadsProcessGroup(),
 				env: environment,
 				stdio: ["pipe", "pipe", "pipe"],
 				windowsHide: true,

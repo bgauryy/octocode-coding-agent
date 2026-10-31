@@ -2,7 +2,8 @@ import type { Model, ProviderEnv, ProviderHeaders } from "../../types.ts";
 import { providerHeadersToRecord } from "../../utils/headers.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
-import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
+import { getProviderCapabilities } from "../../utils/provider-capabilities.ts";
+import { copilotDynamicHeadersFor } from "../github-copilot-headers.ts";
 import { openAIEnvironmentHeaders } from "../openai-environment-headers.ts";
 import { getCompat } from "./compat.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
@@ -18,14 +19,7 @@ export function createClient(
 	env?: ProviderEnv,
 ) {
 	const headers: ProviderHeaders = { "User-Agent": getUserAgent(), ...model.headers };
-	if (model.provider === "github-copilot") {
-		const hasImages = hasCopilotVisionInput(context.messages);
-		const copilotHeaders = buildCopilotDynamicHeaders({
-			messages: context.messages,
-			hasImages,
-		});
-		Object.assign(headers, copilotHeaders);
-	}
+	Object.assign(headers, copilotDynamicHeadersFor(model.provider, context.messages));
 
 	if (sessionId && compat.sendSessionAffinityHeaders) {
 		if (compat.sessionAffinityFormat === "openrouter") {
@@ -39,7 +33,7 @@ export function createClient(
 		}
 	}
 
-	if (sessionId && model.provider === "xai") {
+	if (sessionId && getProviderCapabilities(model.provider).grokConversationHeader) {
 		headers["x-grok-conv-id"] = sessionId;
 	}
 

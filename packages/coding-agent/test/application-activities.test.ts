@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import type { ApplicationEvent, ApplicationFrame } from "@octocodeai/octocode-contacts";
+import type { ApplicationEvent, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 import { getApplicationPort, type ApplicationService } from "../src/core/application/index.ts";
@@ -164,6 +164,8 @@ it("retains semantic entry fields while withholding private continuations, syste
 	expect(JSON.stringify(state.activities)).not.toContain("PRIVATE_");
 	expect(state.activities?.[4].data).toEqual({ targetId: "target", operation: "replace" });
 	expect(state.activities?.[5].data).toMatchObject({ firstKeptEntryId: "first", tokensBefore: 100, usage });
+	expect(state.activities?.[5].data).toMatchObject({ summary: expect.stringContaining("Compacted 100 tokens") });
+	expect(JSON.stringify(state.activities?.[5].data)).toContain("Visible summary");
 	expect(state.activities?.[6].data).toMatchObject({ fromId: "from", fromHook: true });
 });
 

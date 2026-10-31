@@ -1,3 +1,4 @@
+import { createAbortError } from "../../utils/abort.ts";
 import type { AssistantMessage } from "../../types.ts";
 
 type CompletedStopReason = Exclude<AssistantMessage["stopReason"], "pending" | "aborted" | "error">;
@@ -12,7 +13,7 @@ export function assertResponsesStreamCompleted(
 	label: string,
 ): asserts output is AssistantMessage & { stopReason: CompletedStopReason } {
 	if (signal?.aborted) {
-		throw new Error("Request was aborted");
+		throw createAbortError();
 	}
 	if (output.stopReason === "pending") {
 		throw new Error(`${label} stream ended without a stop reason`);

@@ -16,7 +16,7 @@ import { type SessionScope, SessionSelectorHeader } from "./session-selector/hea
 import { SessionList } from "./session-selector/session-list.ts";
 import { deleteSessionFile } from "./session-selector/utils.ts";
 import type { NameFilter, SortMode } from "./session-selector-search.ts";
-import { errorMessage } from "../../../utils/guards.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
 

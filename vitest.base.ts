@@ -22,12 +22,12 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
-				find: /^@octocodeai\/octocode-contacts$/,
-				replacement: fileURLToPath(new URL("./packages/contacts/src/index.ts", import.meta.url)),
+				find: /^@octocodeai\/octocode-contracts$/,
+				replacement: fileURLToPath(new URL("./packages/contracts/src/index.ts", import.meta.url)),
 			},
 			{
-				find: /^@octocodeai\/octocode-contacts\/(.+)$/,
-				replacement: fileURLToPath(new URL("./packages/contacts/src/", import.meta.url)) + "$1.ts",
+				find: /^@octocodeai\/octocode-contracts\/(.+)$/,
+				replacement: fileURLToPath(new URL("./packages/contracts/src/", import.meta.url)) + "$1.ts",
 			},
 			{
 				find: /^@octocodeai\/octocode-webview$/,

@@ -11,7 +11,7 @@ import {
 	sameProcess,
 	stopTree,
 } from "../../shared/process.ts";
-import { validPid } from "../../shared/util.ts";
+import { validPid } from "../../../utils/process-id.ts";
 
 /** Owner records next to job logs, and stopping the jobs of an Octocode that died without ending them. */
 

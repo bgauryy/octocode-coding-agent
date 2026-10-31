@@ -51,7 +51,9 @@ describe("the background threshold", () => {
 		expect(plan({ command: "yarn test", timeout: 3000, background: false })).toMatchObject({
 			timeout: 3000,
 			auto: false,
+			deliberate: true,
 		});
+		expect(plan({ command: "yarn test", timeout: 30 })).toMatchObject({ deliberate: false });
 		expect(plan({ command: "yarn test", background: false })).toMatchObject({ timeout: 90, auto: true });
 		expect(plan({ command: "yarn test", timeout: 30 })).toMatchObject({ timeout: 30, auto: false });
 		expect(plan({ command: "sleep 200" })).toMatchObject({ timeout: 900, auto: false, movable: false });
@@ -88,6 +90,16 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		);
 		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 2 lines · 11 B\]\nf\nfinished\n$/);
 		expect(jobs.jobs.size).toBe(0);
+	});
+
+	it("stops a deliberate wait at its own timeout instead of moving it to the background", async () => {
+		const { tool, jobs, sent, ctx } = setup({ backgroundAfterSeconds: 1 });
+		const message = await tool
+			.execute("t1", { command: "echo f; sleep 30", background: false, timeout: 1 }, undefined, undefined, ctx)
+			.catch((error: Error) => error.message);
+		expect(message).toMatch(/^\[timed out after 1s · [\s\S]*f[\s\S]*a longer timeout, or with background: true/);
+		expect(jobs.jobs.size).toBe(0);
+		expect(sent).toHaveLength(0);
 	});
 
 	it("follows OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS over the setting, in both directions", async () => {

@@ -1,5 +1,5 @@
 import { createStore } from "zustand/vanilla";
-import type { WorkspaceEvent } from "@octocodeai/octocode-contacts/workspace";
+import type { WorkspaceEvent } from "@octocodeai/octocode-contracts/workspace";
 
 interface WorkspaceRuntimeState {
 	sessionId: string | undefined;

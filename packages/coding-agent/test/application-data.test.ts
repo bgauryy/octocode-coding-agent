@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import type { IncomingMessage } from "node:http";
 import { afterEach, expect, it } from "vitest";
-import type { ApplicationPort } from "@octocodeai/octocode-contacts";
+import type { ApplicationPort } from "@octocodeai/octocode-contracts";
 import { ApplicationAssets } from "../src/core/application/assets.ts";
 import { handleApplicationDataRequest } from "../src/octocode/workspace/application-data.ts";
 
