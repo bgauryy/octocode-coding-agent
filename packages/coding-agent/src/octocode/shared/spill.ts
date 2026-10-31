@@ -7,7 +7,7 @@ import { shortPath } from "./format.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "./home.ts";
 import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES, TEXT_MAX_CHARS } from "./output-budget.ts";
 import { capOutput, cutText, trimmedCounts } from "./util.ts";
-import { type ImageLimits, imageLimits } from "./vision.ts";
+import { type ImageLimits, imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 
 /**
  * The limit `capResultText` applies, for callers that bound other text by it. Hosted workspaces (`packages/mcp`) take it

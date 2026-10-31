@@ -1,5 +1,5 @@
 import { PERMISSION_ENV } from "../../../../../common/src/env.ts";
-import { visibleControls } from "../../shared/sanitize.ts";
+import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { clipText } from "../../shared/util.ts";
 import { auditLines, cardLines, foldLines, NO_REASON, transcriptPurpose } from "../effect.ts";
 import { permissionHeader } from "../header.ts";

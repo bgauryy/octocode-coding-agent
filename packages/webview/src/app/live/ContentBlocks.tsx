@@ -7,7 +7,7 @@ import type {
 } from "@octocodeai/octocode-contracts";
 import { memo, useEffect, useState } from "react";
 import { safeMarkdownLink } from "../../markdown.ts";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { toolState } from "../model/ui-state.ts";
 import { Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";

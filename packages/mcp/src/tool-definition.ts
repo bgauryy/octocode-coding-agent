@@ -1,4 +1,5 @@
-import { Container, Spacer, Text } from "@octocodeai/octocode-tui";
+import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
+import { visibleControls } from "../../common/src/sanitize.ts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
 import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
@@ -10,8 +11,6 @@ import type {
 } from "../../coding-agent/src/core/extensions/types.ts";
 import { formatToolCallWithArgs, getTextOutput, replaceTabs } from "../../coding-agent/src/core/tools/render-utils.ts";
 import { keyHint } from "../../coding-agent/src/modes/interactive/components/keybinding-hints.ts";
-import { VisualLinePreview } from "../../coding-agent/src/modes/interactive/components/visual-truncate.ts";
-import { visibleControls } from "../../coding-agent/src/octocode/shared/sanitize.ts";
 import type { McpExposure } from "./config.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import {

@@ -1,10 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { stripBom } from "../../../../common/src/text.ts";
 import { HOST_PROVIDED_PACKAGE_NAMES } from "../extensions/host-modules.ts";
 import type { Extension, ExtensionFactory, InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
+import { readJsonFile } from "../../../../common/src/json.ts";
 
 export function collectExtensionPackageWarnings(
 	extensionPaths: string[],
@@ -19,7 +19,7 @@ export function collectExtensionPackageWarnings(
 	for (const packageRoot of packageRoots) {
 		const packageJsonPath = join(packageRoot, "package.json");
 		if (!existsSync(packageJsonPath)) continue;
-		const manifest = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8"))) as { dependencies?: unknown };
+		const manifest = readJsonFile(packageJsonPath) as { dependencies?: unknown };
 		if (
 			typeof manifest.dependencies !== "object" ||
 			manifest.dependencies === null ||

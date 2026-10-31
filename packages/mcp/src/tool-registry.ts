@@ -1,7 +1,7 @@
 /** Registers server tools and hides them when their server goes away. */
 
 import { isDeepStrictEqual } from "node:util";
-import { mcpNamespace } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isDefaultActive, isSelected } from "./exposure.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { isEnabled } from "./server.ts";

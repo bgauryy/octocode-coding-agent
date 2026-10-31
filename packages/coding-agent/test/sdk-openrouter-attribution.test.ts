@@ -165,12 +165,14 @@ describe("createAgentSession provider attribution headers", () => {
 		expect(headers?.["X-OpenRouter-Categories"]).toBe("cli-agent");
 	});
 
-	it("preserves legacy OpenRouter base URL substring attribution matching", async () => {
-		const headers = await captureHeaders(createModel("custom-openrouter", "not-a-url-openrouter.ai"));
+	it("matches OpenRouter by exact hostname, not by a substring of the base URL", async () => {
+		for (const baseUrl of ["not-a-url-openrouter.ai", "https://proxy.example/openrouter.ai/v1"]) {
+			const headers = await captureHeaders(createModel("custom-openrouter", baseUrl));
 
-		expect(headers?.["HTTP-Referer"]).toBe("https://github.com/bgauryy/octocodecode");
-		expect(headers?.["X-OpenRouter-Title"]).toBe("octocode");
-		expect(headers?.["X-OpenRouter-Categories"]).toBe("cli-agent");
+			expect(headers?.["HTTP-Referer"]).toBeUndefined();
+			expect(headers?.["X-OpenRouter-Title"]).toBeUndefined();
+			expect(headers?.["X-OpenRouter-Categories"]).toBeUndefined();
+		}
 	});
 
 	it("lets provider and request headers override the defaults", async () => {

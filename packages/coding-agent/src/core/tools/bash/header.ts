@@ -1,3 +1,4 @@
+import { formatBytes } from "../../../utils/bytes.ts";
 import type { TruncationResult } from "../truncate.ts";
 
 /** How a command ended, as the first part of the header. */
@@ -6,13 +7,6 @@ export type BashEnd =
 	| { kind: "timeout"; seconds: number }
 	| { kind: "aborted" | "terminated"; seconds: number };
 
-/** `312 B`, `18 KB`, `2.1 MB`. */
-export function formatOutputSize(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** A whole number with thousands separators. */
 export const formatCount = (n: number) => n.toLocaleString("en-US");
 
@@ -20,8 +14,8 @@ export const formatCount = (n: number) => n.toLocaleString("en-US");
 function trimmed(truncation: TruncationResult, lastLineBytes: number): string | undefined {
 	if (!truncation.truncated) return undefined;
 	if (truncation.lastLinePartial) {
-		const part = formatOutputSize(truncation.outputBytes - (truncation.headBytes ?? 0));
-		return `trimmed: last ${part} of line ${formatCount(truncation.totalLines)} (line is ${formatOutputSize(lastLineBytes)})`;
+		const part = formatBytes(truncation.outputBytes - (truncation.headBytes ?? 0), "spaced");
+		return `trimmed: last ${part} of line ${formatCount(truncation.totalLines)} (line is ${formatBytes(lastLineBytes, "spaced")})`;
 	}
 	if (truncation.headLines === undefined) {
 		return `trimmed: last ${formatCount(truncation.outputLines)} ${truncation.outputLines === 1 ? "line" : "lines"}`;
@@ -54,7 +48,7 @@ export function formatBashHeader(
 	parts.push(
 		output.totalLines === 0
 			? "no output"
-			: `${formatCount(output.totalLines)} ${output.totalLines === 1 ? "line" : "lines"} · ${formatOutputSize(output.totalBytes)}`,
+			: `${formatCount(output.totalLines)} ${output.totalLines === 1 ? "line" : "lines"} · ${formatBytes(output.totalBytes, "spaced")}`,
 	);
 	const cut = trimmed(output.truncation, output.lastLineBytes);
 	if (cut) {

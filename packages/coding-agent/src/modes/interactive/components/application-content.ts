@@ -7,7 +7,7 @@ import {
 	type ApplicationMessage,
 } from "@octocodeai/octocode-contracts";
 import { Container, Image, Text, getCapabilities } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../../../theme/theme.ts";
 

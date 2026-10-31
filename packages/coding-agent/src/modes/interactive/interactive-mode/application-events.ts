@@ -2,7 +2,7 @@ import type { ApplicationContentBlock, ApplicationEvent, ApplicationMessage } fr
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { ApplicationService } from "../../../core/application/index.ts";
 import { Spacer, Text } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { theme } from "../../../theme/theme.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { FullContentReader, toolContent } from "../components/application-content.ts";

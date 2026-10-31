@@ -35,6 +35,7 @@ import {
 	mergeEvents,
 	settleToolStarts,
 } from "./model.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface SessionState {
 	historyRevision: number;
@@ -138,9 +139,6 @@ function isReportSummary(value: unknown): value is ReportSummary {
 	);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
 type LiveApi = ReturnType<typeof createApi>;
 
 interface LiveSession {

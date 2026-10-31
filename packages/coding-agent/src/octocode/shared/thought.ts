@@ -1,4 +1,4 @@
-import { redactSecrets } from "./sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 
 /** The thinking text kept while it streams: enough to hold its latest sentences. */
 const THOUGHT_TAIL = 2_000;

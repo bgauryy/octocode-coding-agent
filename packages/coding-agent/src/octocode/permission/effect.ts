@@ -5,7 +5,7 @@ import { formatSize } from "../../core/tools/index.ts";
 import { gitQuiet } from "../shared/git.ts";
 import { plural } from "../shared/render/text.ts";
 import { catastrophicCommand, expandHome } from "./shell/destructive.ts";
-import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { clipText } from "../shared/util.ts";
 import { type ActionClass, actionWhy, decide, type PermissionMode } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
@@ -170,11 +170,15 @@ function measureRemoval(
 
 /** How many files under `targets` git does not track (nor a snapshot hold); undefined when git cannot say in time. */
 async function untracked(targets: readonly string[], cwd: string, timeout: number): Promise<number | undefined> {
-	const listed = await gitQuiet(cwd, ["ls-files", "--others", "-z", "--", ...targets.map((target) => expand(target, cwd))], {
-		env: { GIT_OPTIONAL_LOCKS: "0" },
-		timeoutMs: Math.max(1, timeout),
-		raw: true,
-	});
+	const listed = await gitQuiet(
+		cwd,
+		["ls-files", "--others", "-z", "--", ...targets.map((target) => expand(target, cwd))],
+		{
+			env: { GIT_OPTIONAL_LOCKS: "0" },
+			timeoutMs: Math.max(1, timeout),
+			raw: true,
+		},
+	);
 	return listed === undefined ? undefined : listed.split("\0").filter(Boolean).length;
 }
 

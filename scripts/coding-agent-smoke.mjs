@@ -9,7 +9,7 @@ export const codingAgentName = "@octocodeai/octocodecode";
 export function smokeTestCodingAgent(directory, runtime = process.execPath, { strictRuntime = false } = {}) {
 	const packageDir = join(directory, "node_modules", codingAgentName);
 	const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-	for (const name of ["mcp", "acp"]) {
+	for (const name of ["mcp", "acp", "common"]) {
 		const dependency = `@octocodeai/octocode-${name}`;
 		if (manifest.dependencies?.[dependency] || manifest.optionalDependencies?.[dependency])
 			throw new Error(`Installed Octocode must not depend on the private ${name.toUpperCase()} workspace`);

@@ -6,7 +6,8 @@ import type {
 	ClassifierResult,
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { isRecord, parseClassifierUsage, postClassifierRequest, requiredNumber } from "./classifier-shared.ts";
+import { parseClassifierUsage, postClassifierRequest, requiredNumber } from "./classifier-shared.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * OpenAI's Decisions API: `POST /v1/decisions` with `{ model, input, questions }`.

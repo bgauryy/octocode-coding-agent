@@ -3,7 +3,7 @@ import { browserMcpUrls } from "../shared/browser-mcp.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
-import { secretProblem } from "../shared/sanitize.ts";
+import { secretProblem } from "../../../../common/src/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

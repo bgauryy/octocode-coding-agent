@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEventBus } from "../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { PendingMcpTools } from "../src/core/agent-session/pending-mcp-tools.ts";
 import { type McpServerStatus, setMcpSessionStatus } from "../../mcp/src/status.ts";
 

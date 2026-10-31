@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const MODEL_DATA_SCHEMA_VERSION = 6;
 export const MODEL_DATA_MANIFEST_FILE = ".manifest.json";
@@ -49,9 +50,6 @@ export function assertExactModelIds(label: string, expected: Iterable<string>, a
 	throw new Error(`${label} model IDs do not match (${describeSetDifference(expectedIds, actualIds)})`);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isModalityList(value: unknown): value is ("text" | "image")[] {
 	return Array.isArray(value) && value.length > 0 && value.every((entry) => entry === "text" || entry === "image");

@@ -9,7 +9,7 @@ import * as path from "node:path";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { createEventBus } from "../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import {
 	createExtensionRuntime,
 	discoverAndLoadExtensions,

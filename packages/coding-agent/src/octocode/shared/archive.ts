@@ -4,7 +4,7 @@ import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { formatTokens } from "./format.ts";
 import { PRIVATE_FILE_MODE, sessionFolder, sessionOutputDir } from "./home.ts";
-import { visibleControls } from "./sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { escapeRegExp, stringList } from "./util.ts";
 import { RECORD_FILE } from "./archive/record.ts";
 import { MESSAGES_HEADING, oneLine, readHeader } from "./archive/text.ts";

@@ -9,7 +9,7 @@ import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, wa
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { reportProblems } from "./report.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
-import { mcpNamespace } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isSelected } from "./exposure.ts";
 import {
 	MCP_CONTRACT_SECTION_PREFIX,

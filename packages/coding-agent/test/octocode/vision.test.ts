@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imageLimits, sniffImageType } from "../../src/octocode/shared/vision.ts";
+import { imageLimits, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 import { noisyPng } from "./helpers.ts";
 
 describe("imageLimits", () => {

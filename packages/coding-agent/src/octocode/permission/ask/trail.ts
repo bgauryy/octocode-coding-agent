@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
-import { redactSecrets } from "../../shared/sanitize.ts";
+import { redactSecrets } from "../../../../../common/src/sanitize.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "../audit.ts";
 import { auditLine, auditLines } from "../effect.ts";
 import {

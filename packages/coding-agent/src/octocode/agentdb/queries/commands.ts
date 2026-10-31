@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { allRows } from "../rows.ts";
 
 /** A `workspace_commands` row: the delivery receipt of one request. */
 export interface CommandRow {
@@ -13,11 +14,13 @@ export interface CommandRow {
 
 /** The latest 100 web-workspace receipts of a session, newest first. */
 export function recentWorkspace(db: DatabaseSync, repo: string, session: string): CommandRow[] {
-	return db
-		.prepare(
+	return allRows<CommandRow>(
+		db.prepare(
 			"SELECT * FROM workspace_commands WHERE repo_key = ? AND session_id = ? AND action IN ('work', 'delegate', 'message', 'stop') ORDER BY at DESC LIMIT 100",
-		)
-		.all(repo, session) as unknown as CommandRow[];
+		),
+		repo,
+		session,
+	);
 }
 
 export function byId(db: DatabaseSync, repo: string, session: string, id: string): CommandRow | undefined {

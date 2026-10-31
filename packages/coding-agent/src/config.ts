@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
 import { normalizePath } from "../../common/src/paths.ts";
-import { stripBom } from "../../common/src/text.ts";
+import { readJsonFile } from "../../common/src/json.ts";
 
 export { findNodePackageDir, getPackageDir, isBundledNode, isBunBinary } from "./config/package-detection.ts";
 export {
@@ -147,7 +147,7 @@ export function detectInstallChange(packageJsonPath = startupPackageJsonPath): I
 	if (isBunBinary || !packageJsonPath) return undefined;
 	let installed: PackageJson;
 	try {
-		installed = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8"))) as PackageJson;
+		installed = readJsonFile(packageJsonPath) as PackageJson;
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "removed" } : undefined;
 	}
@@ -174,7 +174,7 @@ let pkg: PackageJson = {};
 let startupPackageJsonPath: string | undefined;
 try {
 	const packageJsonPath = getPackageJsonPath();
-	pkg = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8"))) as PackageJson;
+	pkg = readJsonFile(packageJsonPath) as PackageJson;
 	startupPackageJsonPath = packageJsonPath;
 } catch (e: unknown) {
 	const err = e as NodeJS.ErrnoException;

@@ -15,7 +15,7 @@ import {
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { processStartTime } from "../shared/process.ts";
-import { redactSecrets } from "../shared/sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import type { RevisedWorkspace } from "../workspace/revision.ts";
 import { LineReader } from "./lines.ts";
 import { attachRecordPath, webDaemonPaths } from "./paths.ts";

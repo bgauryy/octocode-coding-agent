@@ -1,9 +1,16 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { TextDecoder } from "node:util";
+import { APPLICATION_IMAGE_MIME_TYPES } from "@octocodeai/octocode-contracts";
 import { formatSize } from "../../core/tools/index.ts";
 import { untilAborted } from "../shared/util.ts";
-import { type InlineImageType, sniffImageType } from "../shared/vision.ts";
-import { CrossHostRedirect, discardBody, NetworkError, type PublicFetchInit, publicFetch } from "../../../../common/src/web-guard.ts";
+import { type InlineImageType, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
+import {
+	CrossHostRedirect,
+	discardBody,
+	NetworkError,
+	type PublicFetchInit,
+	publicFetch,
+} from "../../../../common/src/web-guard.ts";
 import { describeHtml, RENDER_ADVICE } from "./html.ts";
 
 export const USER_AGENT =
@@ -57,8 +64,11 @@ export function language(locale = systemLocale()): string {
 
 const REDIRECT_NOTE = "The target is server-supplied and not verified; fetch it with web if you trust it.";
 const UNREAD_NOTE = "; web cannot read it. Download it with bash (curl -o) if you need the file.";
-/** Content types an image is read from; SVG is not one: it is XML text, shown as its source and never rendered. */
-const INLINE_IMAGE_HEADERS = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]);
+/**
+ * Content types an image is read from; SVG is not one: it is XML text, shown as its source and never rendered. The
+ * application's image types, plus `image/jpg`, which is not a registered type but is what some servers send for a JPEG.
+ */
+const INLINE_IMAGE_HEADERS = new Set<string>([...APPLICATION_IMAGE_MIME_TYPES, "image/jpg"]);
 const mediaType = (contentType: string) => contentType.split(";")[0].trim().toLowerCase();
 
 /** Why a fetch result is a notice rather than page text (a cross-host redirect, a binary type), or undefined for a page. */

@@ -3,9 +3,10 @@
  * server state from the session's MCP status snapshot, which the MCP host publishes on the event bus.
  */
 
-import { isMcpToolName, mcpNamespace } from "../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { mcpNamespace } from "../../../../common/src/mcp-names.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "../../../../mcp/src/status.ts";
-import type { EventBus } from "../event-bus.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 
 /** The status of the server that owns the MCP tool: the one with the longest matching namespace. */
 function serverOf(toolName: string, servers: readonly McpServerStatus[]): McpServerStatus | undefined {

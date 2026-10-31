@@ -17,6 +17,7 @@ import {
 } from "../messages.ts";
 import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
 import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
+import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
 import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
 import { estimateTokens } from "./tokens.ts";
 import {
@@ -79,7 +80,7 @@ export interface GenerateBranchSummaryOptions {
 	customInstructions?: string;
 	/** If true, customInstructions replaces the default prompt instead of being appended */
 	replaceInstructions?: boolean;
-	/** Tokens reserved when selecting branch history (default 16384) */
+	/** Tokens reserved when selecting branch history (default `DEFAULT_RESERVE_TOKENS`) */
 	reserveTokens?: number;
 	/** Optional session stream function. Used to preserve SDK request behavior without mutating agent state. */
 	streamFn?: StreamFn;
@@ -277,7 +278,7 @@ export async function generateBranchSummary(
 		signal,
 		customInstructions,
 		replaceInstructions,
-		reserveTokens = 16384,
+		reserveTokens = DEFAULT_RESERVE_TOKENS,
 		streamFn,
 		retry,
 		callbacks,

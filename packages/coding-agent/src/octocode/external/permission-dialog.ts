@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { interactive } from "../shared/interactive.ts";
 import { withDialog } from "../shared/locks.ts";
-import { redactSecrets, visibleControls } from "../shared/sanitize.ts";
+import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import type { ExternalPolicy } from "./manager.ts";
 
 /**

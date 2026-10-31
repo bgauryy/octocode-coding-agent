@@ -30,6 +30,10 @@ export default defineConfig({
 				replacement: fileURLToPath(new URL("./packages/contracts/src/", import.meta.url)) + "$1.ts",
 			},
 			{
+				find: /^@octocodeai\/octocode-common\/(.+)$/,
+				replacement: fileURLToPath(new URL("./packages/common/src/", import.meta.url)) + "$1.ts",
+			},
+			{
 				find: /^@octocodeai\/octocode-webview$/,
 				replacement: fileURLToPath(new URL("./packages/webview/src/index.ts", import.meta.url)),
 			},

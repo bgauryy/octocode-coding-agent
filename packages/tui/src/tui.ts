@@ -1546,7 +1546,9 @@ export abstract class TuiBase extends Container implements TUI {
 				: parseOverlayPosition(opt.row, Math.max(0, availHeight - effectiveHeight), marginTop)) ??
 			this.resolveAnchorRow(rowAnchor, effectiveHeight, availHeight, marginTop);
 		let col =
-			(opt.col === undefined ? undefined : parseOverlayPosition(opt.col, Math.max(0, availWidth - width), marginLeft)) ??
+			(opt.col === undefined
+				? undefined
+				: parseOverlayPosition(opt.col, Math.max(0, availWidth - width), marginLeft)) ??
 			this.resolveAnchorCol(colAnchor, width, availWidth, marginLeft);
 
 		// Apply offsets

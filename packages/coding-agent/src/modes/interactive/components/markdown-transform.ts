@@ -1,5 +1,5 @@
 import type { MarkdownTransformContext, MarkdownTransformer } from "../../../core/extensions/types.ts";
-import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 
 export function createMarkdownTransform(
 	messageType: MarkdownTransformContext["messageType"],

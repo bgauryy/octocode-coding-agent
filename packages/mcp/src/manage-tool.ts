@@ -1,7 +1,8 @@
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
-import { MCP_MANAGE_TOOL_NAME, type McpServerConfig, mcpNamespace, validateMcpServerConfig } from "./servers.ts";
-import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../coding-agent/src/core/resolve-config-value.ts";
+import { MCP_MANAGE_TOOL_NAME, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { getConfigValueEnvVarNames, isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 
 const INTENTS = ["list", "status", "tools", "connect", "restart", "stop", "add", "remove"] as const;

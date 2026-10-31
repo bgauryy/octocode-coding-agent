@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { parseJson } from "../shared/util.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { HookEvent } from "./catalog.ts";
 import type { HookCommand, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";

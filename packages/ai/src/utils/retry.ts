@@ -180,8 +180,8 @@ export class RetryDelayExceededError extends Error {}
 export function validateRetryDelayMs(delayMs: number, maxRetryDelayMs?: number, detail?: string): number {
 	const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
 	if (maxDelayMs > 0 && delayMs > maxDelayMs) {
-		const message = `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s).`;
-		throw new RetryDelayExceededError(detail ? `${message} ${detail}` : message);
+		const message = `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s)`;
+		throw new RetryDelayExceededError(detail ? `${message}. ${detail}` : message);
 	}
 	return delayMs;
 }

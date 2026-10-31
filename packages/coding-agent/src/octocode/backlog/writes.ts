@@ -3,7 +3,7 @@ import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
 import { USER_AUTHOR } from "../agentdb/author.ts";
 import type { AgentDb } from "../agentdb/db.ts";
 import { type Db, backlog, meta } from "../agentdb/api.ts";
-import { storedText } from "../shared/sanitize.ts";
+import { storedText } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import {
 	type Actor,

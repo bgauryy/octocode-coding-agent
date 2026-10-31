@@ -7,7 +7,7 @@ import {
 } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { USER_AUTHOR } from "../agentdb/author.ts";
-import { storedSecret, storedText } from "../shared/sanitize.ts";
+import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { cutText } from "../shared/util.ts";
 
 export { PRIORITIES };

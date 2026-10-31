@@ -27,4 +27,4 @@ export { ToolExecutionComponent, type ToolExecutionOptions } from "./tool-execut
 export { TreeSelectorComponent } from "./tree-selector.ts";
 export { UserMessageComponent } from "./user-message.ts";
 export { UserMessageSelectorComponent } from "./user-message-selector.ts";
-export { truncateToVisualLines, type VisualTruncateResult } from "./visual-truncate.ts";
+export { truncateToVisualLines, type VisualTruncateResult } from "@octocodeai/octocode-tui";

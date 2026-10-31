@@ -165,15 +165,22 @@ export function uncaughtCrash(host: CrashReportingHost, error: Error): never {
 		process.exit(1);
 	}
 	host.isShuttingDown = true;
+	// Each step is best effort: the process is exiting on a crash, and a failure in one must not skip the next or hide the crash report below.
 	try {
 		host.unregisterSignalHandlers();
-	} catch {}
+	} catch {
+		// Handlers that cannot be removed no longer matter: the process exits below.
+	}
 	try {
 		killTrackedDetachedChildren();
-	} catch {}
+	} catch {
+		// A child that cannot be killed is left to the OS; the crash report matters more.
+	}
 	try {
 		host.ui.stop();
-	} catch {}
+	} catch {
+		// A terminal that cannot be restored cleanly is already dead or about to be; the report prints either way.
+	}
 	console.error(`${APP_NAME} exiting due to uncaughtException:`);
 	console.error(error);
 	const extensionHint = host.getCrashExtensionHint(error);

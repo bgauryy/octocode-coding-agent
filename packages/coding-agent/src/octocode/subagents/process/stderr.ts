@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { tailNote } from "../../shared/format.ts";
 import { PRIVATE_FILE_MODE } from "../../shared/home.ts";
-import { visibleControls } from "../../shared/sanitize.ts";
+import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { cutText } from "../../shared/util.ts";
 import { type ChildNotices, type ChildState, noticeText } from "../events.ts";
 

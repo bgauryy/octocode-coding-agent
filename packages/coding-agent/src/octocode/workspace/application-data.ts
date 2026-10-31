@@ -8,7 +8,7 @@ import {
 	type ApplicationAssetPayload,
 	type ApplicationPort,
 } from "@octocodeai/octocode-contracts";
-import { redactData, redactSecrets } from "../shared/sanitize.ts";
+import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 
 const UploadSchema = Type.Object(
 	{

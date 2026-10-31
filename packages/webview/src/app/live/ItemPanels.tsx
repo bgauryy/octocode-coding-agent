@@ -2,7 +2,8 @@ import type { BacklogAudit, SnapshotItem } from "@octocodeai/octocode-contracts/
 import { type FormEvent, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { navigate } from "../hooks.ts";
-import { errorMessage, stamp } from "../model/format.ts";
+import { stamp } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hashFor } from "../model/route.ts";
 import { Field } from "../ui/fields.tsx";
 import { CheckIcon, CommentIcon, EditIcon, PlusIcon } from "../ui/icons.tsx";

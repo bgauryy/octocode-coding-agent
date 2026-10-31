@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Tool } from "./client/index.ts";
-import { globalMcpConfigPath, globalMcpConfigPaths, projectMcpConfigPath, projectMcpConfigPaths } from "./paths.ts";
+import { globalMcpConfigPath, globalMcpConfigPaths } from "./paths.ts";
+import { projectMcpConfigPaths, projectMcpConfigPath } from "../../coding-agent/src/octocode/shared/home.ts";
 import { type McpExposure } from "./servers.ts";
 import { isEnabled } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { allRows } from "../rows.ts";
 
 /**
  * What Octocode adds to one Octocode session (`sessions` row): the git branch and HEAD it last saw, its cost and tokens, the
@@ -28,7 +29,7 @@ export function byId(db: DatabaseSync, id: string): SessionExtra | undefined {
 }
 
 export function all(db: DatabaseSync): SessionExtra[] {
-	return db.prepare("SELECT * FROM sessions").all() as unknown as SessionExtra[];
+	return allRows<SessionExtra>(db.prepare("SELECT * FROM sessions"));
 }
 
 /** The pid and process start time recorded for session `id`, or undefined when it has no row. */

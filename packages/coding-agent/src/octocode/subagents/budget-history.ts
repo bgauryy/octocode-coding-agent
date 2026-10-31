@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-import { parseSessionEntryLine } from "../../core/session-manager/storage.ts";
+import { parseSessionEntryLine } from "../../core/session-manager/entries.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyUsage } from "../shared/util.ts";
 import { budgetOutcome, hardLimit, maxRequests } from "./budget.ts";

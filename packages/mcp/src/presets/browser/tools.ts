@@ -6,7 +6,7 @@ import {
 } from "../../tool-definition.ts";
 import { toToolResult } from "../octocode/tools.ts";
 import { timedTool } from "../../../../coding-agent/src/octocode/shared/render/rows.ts";
-import { imageLimits } from "../../../../coding-agent/src/octocode/shared/vision.ts";
+import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { presentBrowserResult } from "./presentation.ts";
 import { normalizeBrowserArguments } from "./presentation-options.ts";
 import { guardBrowserCall } from "./proxy.ts";

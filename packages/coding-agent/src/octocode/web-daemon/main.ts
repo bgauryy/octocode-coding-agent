@@ -6,7 +6,7 @@ import { getAgentDir } from "../../config.ts";
 import { privateDir } from "../shared/home.ts";
 import { processStartTime } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
-import { redactSecrets } from "../shared/sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
 import { buildConfigSnapshot } from "./config-status.ts";

@@ -7,7 +7,7 @@ import { formatDuration, shortPath } from "../../shared/format.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { stopTree } from "../../shared/process.ts";
 import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
-import { visibleControls } from "../../shared/sanitize.ts";
+import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { settleWithin } from "../../shared/util.ts";
 import {
 	type ChildEffect,

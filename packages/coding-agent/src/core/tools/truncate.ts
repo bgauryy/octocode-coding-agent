@@ -1,3 +1,5 @@
+import { formatBytes } from "../../utils/bytes.ts";
+
 /**
  * Shared truncation utilities for tool outputs.
  *
@@ -103,13 +105,7 @@ function splitLinesForCounting(content: string): string[] {
  * Format bytes as human-readable size.
  */
 export function formatSize(bytes: number): string {
-	if (bytes < 1024) {
-		return `${bytes}B`;
-	} else if (bytes < 1024 * 1024) {
-		return `${(bytes / 1024).toFixed(1)}KB`;
-	} else {
-		return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-	}
+	return formatBytes(bytes, "compact");
 }
 
 /** The limits and content size, or the whole content as the result when it fits both limits. */

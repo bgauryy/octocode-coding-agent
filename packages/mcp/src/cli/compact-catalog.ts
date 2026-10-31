@@ -3,10 +3,11 @@
 import { readFileSync } from "node:fs";
 import { getMcpToolExposure, type McpServerEntry } from "../config.ts";
 import type { CompactServerInput, CompactToolInput } from "../compact/index.ts";
-import { mcpNamespace } from "../servers.ts";
+import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 import { assignMcpToolNames } from "../tool-names.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
 import { createConnection, type McpCommandOptions } from "./shared.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The server name the generated file uses in `mcp__<name>__<tool>`; it is part of the catalog hash. */
 const callName = (server: string): string => mcpNamespace(server).slice("mcp__".length);
@@ -25,8 +26,6 @@ function serverInput(server: string, instructions: string | undefined, tools: Co
 	};
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 function toolInput(value: unknown): CompactToolInput {
 	if (!isRecord(value) || typeof value.name !== "string" || !value.name) throw new Error("every tool needs a name");

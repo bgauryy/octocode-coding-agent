@@ -1,11 +1,5 @@
 import type { SessionNotification } from "@agentclientprotocol/sdk";
-import {
-	redactData,
-	redactSecretFragments,
-	redactSecrets,
-	secretContinuesAfterLine,
-	unfinishedPrivateKey,
-} from "../../../coding-agent/src/octocode/shared/sanitize.ts";
+import { redactData, redactSecretFragments, redactSecrets, secretContinuesAfterLine, unfinishedPrivateKey } from "../../../common/src/sanitize.ts";
 import { cutText } from "../../../coding-agent/src/octocode/shared/util.ts";
 
 export const ACP_TEXT_BYTES = 64 * 1024;

@@ -1,4 +1,4 @@
-import { createEventBus } from "../../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Skill } from "../../src/core/skills.ts";

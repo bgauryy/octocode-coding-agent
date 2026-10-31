@@ -28,14 +28,10 @@
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { globalMcpConfigPath, globalMcpConfigPaths, projectMcpConfigPath, projectMcpConfigPaths } from "./paths.ts";
-import {
-	DEFAULT_MCP_EXPOSURE,
-	type McpExposure,
-	type McpServerConfig,
-	mcpNamespace,
-	validateMcpServerConfig,
-} from "./servers.ts";
+import { globalMcpConfigPath, globalMcpConfigPaths } from "./paths.ts";
+import { projectMcpConfigPaths, projectMcpConfigPath } from "../../coding-agent/src/octocode/shared/home.ts";
+import { DEFAULT_MCP_EXPOSURE, type McpExposure, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
 import { stripBom } from "../../common/src/text.ts";
 import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";

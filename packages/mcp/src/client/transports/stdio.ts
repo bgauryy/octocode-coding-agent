@@ -64,7 +64,9 @@ function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
 	}
 	try {
 		child.kill(signal);
-	} catch {}
+	} catch {
+		// The child already exited, so there is nothing left to signal.
+	}
 }
 
 function installExitHook(): void {
@@ -74,7 +76,9 @@ function installExitHook(): void {
 		for (const pid of liveProcessGroups) {
 			try {
 				process.kill(-pid, "SIGTERM");
-			} catch {}
+			} catch {
+				// The group already exited; the remaining groups still need their signal while the process exits.
+			}
 		}
 	});
 }

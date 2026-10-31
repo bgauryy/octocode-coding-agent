@@ -8,7 +8,7 @@ import chalk from "chalk";
 import { resolve } from "path";
 import { resolveReadPath } from "../core/tools/path-utils.ts";
 import { processImage } from "../utils/image-process.ts";
-import { detectSupportedImageMimeTypeFromFile } from "../utils/mime.ts";
+import { detectSupportedImageMimeTypeFromFile } from "@octocodeai/octocode-ai/utils/mime";
 import { stripBom } from "../../../common/src/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 

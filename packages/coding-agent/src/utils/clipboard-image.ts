@@ -5,8 +5,9 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import { runClipboardCommand } from "./clipboard-command.ts";
-import { detectSupportedImageMimeType } from "./mime.ts";
+import { detectSupportedImageMimeType } from "@octocodeai/octocode-ai/utils/mime";
 import { loadPhoton } from "./photon.ts";
+import { APPLICATION_IMAGE_MIME_TYPES } from "@octocodeai/octocode-contracts";
 import { isWSL } from "./wsl.ts";
 
 type ClipboardImage = {
@@ -14,7 +15,7 @@ type ClipboardImage = {
 	mimeType: string;
 };
 
-const SUPPORTED_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+const SUPPORTED_IMAGE_MIME_TYPES = APPLICATION_IMAGE_MIME_TYPES;
 
 const DEFAULT_LIST_TIMEOUT_MS = 1000;
 const DEFAULT_POWERSHELL_TIMEOUT_MS = 5000;

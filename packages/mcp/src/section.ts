@@ -1,4 +1,4 @@
-import { mcpNamespace } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import type { McpServerEntry } from "./config.ts";
 
 /** Prefix of the base prompt section that holds one server's contract (`mcp_contract_<server>`). */

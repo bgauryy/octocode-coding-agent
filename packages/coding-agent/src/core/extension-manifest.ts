@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { lstatSync, readFileSync } from "node:fs";
-import { stripBom } from "../../../common/src/text.ts";
+import { lstatSync } from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 export interface ExtensionManifest {
 	extensions?: string[];
@@ -14,7 +14,7 @@ const RESOURCE_FIELDS = ["extensions", "skills", "prompts", "themes"] as const;
 
 export function readExtensionManifest(packageJsonPath: string): ExtensionManifest | null {
 	try {
-		const pkg: unknown = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8")));
+		const pkg: unknown = readJsonFile(packageJsonPath);
 		if (!isRecord(pkg)) {
 			return null;
 		}

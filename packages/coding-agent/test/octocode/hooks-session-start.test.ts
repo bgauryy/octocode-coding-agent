@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { createEventBus } from "../../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

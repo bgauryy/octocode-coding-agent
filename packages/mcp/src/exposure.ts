@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
-import { DEFAULT_MCP_EXPOSURE, type McpExposure, mcpNamespace } from "./servers.ts";
+import { DEFAULT_MCP_EXPOSURE, type McpExposure } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import type { McpServerEntry } from "./config.ts";
 
 export function exposureOf(entry: McpServerEntry): McpExposure {

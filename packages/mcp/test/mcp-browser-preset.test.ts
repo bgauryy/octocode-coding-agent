@@ -6,7 +6,7 @@ import { presetEntries } from "../src/preset.ts";
 import { octocodePreset } from "../src/presets/octocode/index.ts";
 import { browserPreset } from "../src/presets/browser/index.ts";
 import { browserLaunch, browserMcpEntry } from "../src/presets/browser/launch.ts";
-import { BROWSER_SERVER } from "../src/presets/browser/names.ts";
+import { BROWSER_SERVER } from "../../common/src/mcp-names.ts";
 import { withStructuredText } from "../src/presets/browser/tools.ts";
 import { getMcpSessionStatus } from "../src/status.ts";
 import { createMcpToolName } from "../src/tool-names.ts";

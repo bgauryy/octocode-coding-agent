@@ -27,10 +27,7 @@ export function copilotDynamicHeadersFor(provider: string, messages: Message[]):
 	return buildCopilotDynamicHeaders({ messages, hasImages: hasCopilotVisionInput(messages) });
 }
 
-function buildCopilotDynamicHeaders(params: {
-	messages: Message[];
-	hasImages: boolean;
-}): Record<string, string> {
+function buildCopilotDynamicHeaders(params: { messages: Message[]; hasImages: boolean }): Record<string, string> {
 	const headers: Record<string, string> = {
 		"X-Initiator": inferCopilotInitiator(params.messages),
 		"Openai-Intent": "conversation-edits",

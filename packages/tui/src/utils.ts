@@ -1,16 +1,16 @@
-import { extractAnsiCode } from "./utils/ansi-codes.ts";
+import { extractAnsiCode, mayHaveStrippableCode, strippableCodeLength } from "./utils/ansi-codes.ts";
 import { visibleWidth } from "./utils/width.ts";
 import { flattenLines } from "./utils/wrap.ts";
 
-/** Remove ANSI, OSC, and APC control sequences while preserving visible text. */
+/** Remove ESC and 8-bit C1 control sequences (CSI, OSC, APC, DCS and others) while preserving visible text. */
 export function stripTerminalSequences(str: string): string {
-	if (!str.includes("\x1b")) return str;
+	if (!mayHaveStrippableCode(str)) return str;
 	let result = "";
 	let i = 0;
 	while (i < str.length) {
-		const ansi = extractAnsiCode(str, i);
-		if (ansi) {
-			i += ansi.length;
+		const length = strippableCodeLength(str, i);
+		if (length > 0) {
+			i += length;
 			continue;
 		}
 		result += str[i];

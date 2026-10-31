@@ -1,5 +1,5 @@
 import type { Model, Tool } from "../../types.ts";
-import { shortHash } from "../../utils/hash.ts";
+import { fastHash } from "../../utils/hash.ts";
 
 const MAX_REMEMBERED_DOWNGRADES = 64;
 
@@ -7,7 +7,7 @@ const MAX_REMEMBERED_DOWNGRADES = 64;
 const downgrades = new Set<string>();
 
 function downgradeKey(model: Model<"anthropic-messages">, tools: readonly Tool[]): string {
-	const signature = shortHash(
+	const signature = fastHash(
 		JSON.stringify(tools.map((tool) => [tool.name, tool.parameters, tool.constrainedSampling])),
 	);
 	return `${model.provider}\n${model.id}\n${model.baseUrl}\n${signature}`;

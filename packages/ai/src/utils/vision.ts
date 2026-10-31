@@ -1,4 +1,4 @@
-import type { ModelInputLimits } from "@octocodeai/octocode-ai";
+import type { ModelInputLimits } from "../types.ts";
 
 /**
  * The long edge, in pixels, used for a model whose metadata says nothing about images. Anthropic's vision guide

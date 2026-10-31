@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ModelsJsonProvider } from "../src/core/model-config.ts";
 import type { ModelRegistry, ProviderConfigInput } from "../src/core/model-registry.ts";
-import { clearConfigValueCache } from "../src/core/resolve-config-value.ts";
+import { clearConfigValueCache } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
 
 describe("ModelRegistry", () => {

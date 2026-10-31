@@ -13,6 +13,11 @@ import { AcpEventProjector } from "./events.ts";
 import { convertPrompt } from "./input.ts";
 import { AcpStartup } from "./startup.ts";
 
+/** A failure handler for work no caller awaits or can act on: it goes to stderr, never the protocol stream. */
+function reportFailure(message: string): (error: unknown) => void {
+	return (error) => console.error(message, error);
+}
+
 export type AcpWorker = Pick<
 	RpcClient,
 	| "start"
@@ -95,13 +100,13 @@ export class AcpSession {
 				this.onTerminated();
 				if (this.closing) return;
 				this.fail("Agent process closed; execution may have occurred. The prompt was not replayed.");
-				void this.close().catch((error) => console.error("ACP session cleanup failed", error));
+				void this.close().catch(reportFailure("ACP session cleanup failed"));
 			}),
 		);
 		this.unsubscribes.push(
 			worker.onExtensionUIRequest((request) => {
 				void this.ui(request).catch(() => {
-					void this.close().catch((error) => console.error("ACP session cleanup failed", error));
+					void this.close().catch(reportFailure("ACP session cleanup failed"));
 					this.fail("Permission response could not reach the agent.");
 				});
 			}),
@@ -170,7 +175,7 @@ export class AcpSession {
 					if (!this.isClosed() && error instanceof Error && "execution" in error)
 						return this.reject(turn, error.message);
 					// Anything else (lost response, timeout) leaves execution uncertain: stop the worker without a replay.
-					void this.close().catch((error) => console.error("ACP session cleanup failed", error));
+					void this.close().catch(reportFailure("ACP session cleanup failed"));
 					this.fail("Agent rejected or failed the prompt; it was not replayed.");
 				}
 			},
@@ -216,7 +221,7 @@ export class AcpSession {
 		const size = JSON.stringify(update).length;
 		if (this.queuedChars + size > 2 * 1024 * 1024) {
 			this.fail("Client output backlog exceeded its limit; the agent was stopped.");
-			void this.close().catch((error) => console.error("ACP session cleanup failed", error));
+			void this.close().catch(reportFailure("ACP session cleanup failed"));
 			return;
 		}
 		this.queuedChars += size;
@@ -227,7 +232,7 @@ export class AcpSession {
 			});
 		void this.output.catch(() => {
 			this.fail("Client output connection failed.");
-			void this.close().catch((error) => console.error("ACP session cleanup failed", error));
+			void this.close().catch(reportFailure("ACP session cleanup failed"));
 		});
 	}
 
@@ -280,7 +285,8 @@ export class AcpSession {
 					timer = setTimeout(() => reject(new Error("Cancellation deadline")), this.cancelTimeoutMs);
 				}),
 			]);
-		} catch {
+		} catch (error) {
+			reportFailure("ACP cancellation did not complete; closing the session")(error);
 			if (this.hasTurn(turn)) await this.close();
 		} finally {
 			clearTimeout(timer);
@@ -329,12 +335,13 @@ export class AcpSession {
 				if (this.hasTurn(turn) && !turn.controller.signal.aborted) {
 					if (response.outcome.outcome === "cancelled") {
 						// Send abort before releasing the worker's dialog; awaiting completion here would deadlock it.
-						void this.cancel().catch((error) => console.error("ACP permission cancellation failed", error));
+						void this.cancel().catch(reportFailure("ACP permission cancellation failed"));
 					} else if (response.outcome.optionId === "allow-once") value = permission.allowOnce;
 					else if (response.outcome.optionId === "reject-once") value = permission.rejectOnce;
 				}
-			} catch {
-				/* Cancellation, invalid options and client failures never grant permission. */
+			} catch (error) {
+				// Cancellation, invalid options and client failures never grant permission. An abort is expected; log the rest.
+				if (!turn.controller.signal.aborted) reportFailure("ACP permission request failed; permission denied")(error);
 			}
 		}
 		if (!this.dead)

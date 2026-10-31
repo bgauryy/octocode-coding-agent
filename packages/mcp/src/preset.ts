@@ -1,7 +1,7 @@
 import type { McpServerConfig, McpServerEntry } from "./config.ts";
 import type { CompactServerInput, DescriptionOverrides } from "./compact/index.ts";
 import type { createMcpToolDefinition } from "./tool-definition.ts";
-import { mcpNamespace } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 
 export interface McpServerPreset {
 	name: string;

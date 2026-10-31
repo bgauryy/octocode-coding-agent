@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Type } from "typebox";
-import { createEventBus } from "../../coding-agent/src/core/event-bus.ts";
-import { mcpNamespace } from "../src/servers.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import type { McpServer } from "../src/server.ts";
 import { McpExtensionState } from "../src/state.ts";

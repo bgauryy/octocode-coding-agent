@@ -37,9 +37,6 @@ const MAX_PENDING_ANSI_LENGTH = 256;
  * unfinished escape sequence that should be prepended to the next chunk.
  */
 export function splitIncompleteAnsiSuffix(value: string): { complete: string; pending: string } {
-	if (!value.includes("\u001B")) {
-		return { complete: value, pending: "" };
-	}
 	const splitAt = incompleteAnsiStart(value, Math.max(0, value.length - MAX_PENDING_ANSI_LENGTH));
 	if (splitAt === -1) {
 		return { complete: value, pending: "" };

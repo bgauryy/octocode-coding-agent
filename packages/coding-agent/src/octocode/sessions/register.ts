@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
@@ -10,7 +11,6 @@ import { currentSessionId } from "../shared/home.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { expandKey, plural } from "../shared/render/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { CLAIM_MARKER, pendingReportsDir } from "../subagents/handoff/pending.ts";
 import {
 	addUsage,

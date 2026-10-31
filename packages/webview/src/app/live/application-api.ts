@@ -8,6 +8,7 @@ import {
 import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Assets stay behind the same capability as the session. Only decoded bytes reach object URLs. */
 export function createApplicationApi(access: string) {
@@ -68,9 +69,6 @@ export function createApplicationApi(access: string) {
 	};
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
 function isAsset(value: unknown): value is ApplicationAsset {
 	return (
 		isRecord(value) &&

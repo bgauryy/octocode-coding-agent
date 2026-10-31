@@ -1,13 +1,7 @@
-import {
-	type Component,
-	stripTerminalSequences,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@octocodeai/octocode-tui";
+import { type Component, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { formatDuration, shortPath } from "./format.ts";
-import { sanitizeTerminalText } from "./sanitize.ts";
 import { contentText } from "./util.ts";
 import type { UiState } from "../../theme/status.ts";
 import { rowMark, uiStateOf } from "./render/motion.ts";

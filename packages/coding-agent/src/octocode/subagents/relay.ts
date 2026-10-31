@@ -12,7 +12,7 @@ import type { ActionClass, AskReason } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
 import { headerText } from "../shared/fence.ts";
 import { withDialog } from "../shared/locks.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { stringList } from "../shared/util.ts";
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { createEventBus } from "../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
 import { ExtensionRunner } from "../src/core/extensions/runner.ts";
 import type { SessionBeforeCompactEvent } from "../src/core/extensions/types.ts";

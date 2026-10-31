@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEventBus } from "../../../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../../../src/core/extensions/loader.ts";
 import type { ExtensionAPI, ProviderConfig } from "../../../src/core/extensions/types.ts";
 

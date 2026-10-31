@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { processImage } from "../src/utils/image-process.ts";
-import { detectSupportedImageMimeType } from "../src/utils/mime.ts";
+import { detectSupportedImageMimeType } from "@octocodeai/octocode-ai/utils/mime";
 import { createTinyBmp1x1Red24bpp } from "./image-fixtures.ts";
 
 function expectPngMagic(base64Data: string): void {

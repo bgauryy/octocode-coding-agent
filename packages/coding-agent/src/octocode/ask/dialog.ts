@@ -1,14 +1,8 @@
-import {
-	Editor,
-	type KeybindingsManager,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@octocodeai/octocode-tui";
+import { Editor, type KeybindingsManager, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { Breath, tabMark } from "./dialog/marks.ts";
 import { type AskAnswer, type AskQuestion, type AskResult, answerOf, rows, SUBMIT_PICKS } from "./dialog/answers.ts";
 import { type DialogTheme, editorTheme } from "./dialog/theme.ts";

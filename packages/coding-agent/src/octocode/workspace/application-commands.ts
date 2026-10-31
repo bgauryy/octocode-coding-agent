@@ -6,7 +6,7 @@ import {
 import type { ApplicationReceiptStore } from "../../core/application/index.ts";
 import { commands } from "../agentdb/api.ts";
 import type { AgentDb } from "../agentdb/db.ts";
-import { redactSecrets, storedSecret } from "../shared/sanitize.ts";
+import { redactSecrets, storedSecret } from "../../../../common/src/sanitize.ts";
 
 export class ApplicationCommands implements ApplicationReceiptStore {
 	private readonly db: AgentDb;

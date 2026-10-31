@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
@@ -83,6 +83,20 @@ describe("bounded ACP evidence capture", () => {
 		);
 		expect(result.updates?.at(-1)).toEqual({ type: "prompt_response", response: { stopReason: "cancelled" } });
 	});
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"names the errno code when the archive cannot be extended",
+		() => {
+			const output = new AcpOutput();
+			output.append(tool("x".repeat(2 * 1024 * 1024)));
+			// The first overflow created the archive; make it read-only so the next append fails.
+			for (const entry of readdirSync(home, { recursive: true, withFileTypes: true }))
+				if (entry.isFile()) chmodSync(join(entry.parentPath, entry.name), 0o400);
+			output.append(tool("y".repeat(2 * 1024 * 1024)));
+			const result = output.reply({ stopReason: "end_turn" });
+			expect(result.text).toContain("Output archive could not be completed (EACCES).");
+		},
+	);
 
 	it("bounds artifact growth and marks omitted evidence while preserving the terminal outcome", () => {
 		const output = new AcpOutput();

@@ -1,3 +1,4 @@
+import { createAbortError, sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import semver from "semver";
@@ -31,6 +32,8 @@ export interface LaunchOptions {
 	build?: string;
 	/** How to start the daemon process; the CLI's own entry by default. */
 	invocation?: { command: string; prefix: string[] };
+	/** Stops the wait for the daemon (a drain or a start); the launch then rejects with an `AbortError`. */
+	signal?: AbortSignal;
 }
 
 export interface LaunchedDaemon {
@@ -160,7 +163,9 @@ const usable = (daemon: Live, build: string): boolean =>
 	!daemon.status.draining &&
 	(daemon.status.build === build || !isNewer(build, daemon.status.build));
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Waits `ms`; rejects with an `AbortError` as soon as `signal` aborts, so a cancelled launch stops polling. */
+const sleep = (ms: number, signal?: AbortSignal) =>
+	sleepUnlessAborted(ms, signal, () => createAbortError("The web daemon launch was aborted."));
 
 /**
  * Returns the running daemon, starting one if none runs. Launchers take `web/daemon.launch` so two racing launchers
@@ -187,7 +192,8 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 			// Another build (or a draining one) holds the record: ask it to hand over, then wait for the record to go.
 			await call(current.origin, DAEMON_ROUTES.drain, current.token, "POST");
 			const deadline = Date.now() + DRAIN_WAIT_MS;
-			while (Date.now() < deadline && readDaemonRecord(paths.record)?.nonce === current.record.nonce) await sleep(50);
+			while (Date.now() < deadline && readDaemonRecord(paths.record)?.nonce === current.record.nonce)
+				await sleep(50, options.signal);
 			removeRecord(paths.record, (text) => text.includes(current!.record.nonce));
 		} else {
 			const stale = readDaemonRecord(paths.record);
@@ -216,7 +222,7 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 				if (current && usable(current, build)) return result(current);
 				throw failed;
 			}
-			await sleep(50);
+			await sleep(50, options.signal);
 		}
 		throw new Error("The web daemon did not start in time.");
 	} finally {
@@ -225,13 +231,18 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 }
 
 /** Waits (up to `ms`) until the daemon lists `sessionId` as attached, so the page it opens finds the session. */
-export async function waitForSession(daemon: LaunchedDaemon, sessionId: string, ms = 4000): Promise<boolean> {
+export async function waitForSession(
+	daemon: LaunchedDaemon,
+	sessionId: string,
+	ms = 4000,
+	signal?: AbortSignal,
+): Promise<boolean> {
 	const deadline = Date.now() + ms;
 	while (Date.now() < deadline) {
 		const response = await call(daemon.origin, DAEMON_ROUTES.sessions, daemon.token);
 		const body = response?.json() as { sessions?: Array<{ id: string }> } | undefined;
 		if (body?.sessions?.some((session) => session.id === sessionId)) return true;
-		await sleep(100);
+		await sleep(100, signal);
 	}
 	return false;
 }

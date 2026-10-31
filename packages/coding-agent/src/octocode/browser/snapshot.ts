@@ -1,5 +1,5 @@
 import { shortPath } from "../shared/format.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { saveFullOutput } from "../shared/spill.ts";
 import { capChars } from "../shared/util.ts";
 import { dialogNotice } from "./actions.ts";

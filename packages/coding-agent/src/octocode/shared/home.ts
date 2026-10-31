@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
-import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
+import { CONFIG_DIR_NAME, getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
+import { projectMcpConfigPath as projectMcpFile, projectMcpConfigPaths as projectMcpFiles } from "../../../../common/src/mcp-paths.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
@@ -339,3 +340,9 @@ export function claudeSettingsSources(
 			: []),
 	];
 }
+
+/** The project `mcp.json` that MCP commands write. */
+export const projectMcpConfigPath = (cwd: string): string => projectMcpFile(cwd, CONFIG_DIR_NAME);
+
+/** Project MCP files, lowest precedence first. All require project trust. */
+export const projectMcpConfigPaths = (cwd: string): string[] => projectMcpFiles(cwd, CONFIG_DIR_NAME);

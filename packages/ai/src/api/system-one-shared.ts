@@ -7,7 +7,8 @@ import type {
 	ClassifierResult,
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { isRecord, parseClassifierUsage, postClassifierRequest, requiredNumber } from "./classifier-shared.ts";
+import { parseClassifierUsage, postClassifierRequest, requiredNumber } from "./classifier-shared.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** TypeSafe System One request body without the transport-specific envelope. */
 interface SystemOneWireRequest {

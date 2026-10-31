@@ -7,6 +7,7 @@ import { generateSystemThemeColors, SYSTEM_THEME_NAME } from "./system-theme.ts"
 import { resolveThemeColors, splitThemeColors, Theme, withThemeTokenFallbacks } from "./theme-class.ts";
 import type { ValidatedThemeJson } from "./theme-schema.ts";
 import { areTerminalColorsPending, getTerminalColors, getTerminalTheme } from "./theme-terminal.ts";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 type ThemeJsonValidator = (label: string, json: unknown) => ValidatedThemeJson;
 
@@ -49,7 +50,7 @@ export function getBuiltinThemes(): Record<string, ValidatedThemeJson> {
 				.filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
 				.map((entry) => [
 					path.basename(entry.name, ".json"),
-					JSON.parse(stripBom(fs.readFileSync(path.join(themesDir, entry.name), "utf-8"))) as ValidatedThemeJson,
+					readJsonFile(path.join(themesDir, entry.name)) as ValidatedThemeJson,
 				]),
 		);
 	}

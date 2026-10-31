@@ -6,7 +6,7 @@ import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookIdentity } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookVerdict } from "../contracts.ts";
-import { redactSecrets, visibleControls } from "../../shared/sanitize.ts";
+import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
 import { clipText, firstLine, optionalString, stringOrEmpty } from "../../shared/util.ts";
 import type { registerBackgroundHooks } from "../background.ts";
 import { limitCodexContext } from "../context-limit.ts";

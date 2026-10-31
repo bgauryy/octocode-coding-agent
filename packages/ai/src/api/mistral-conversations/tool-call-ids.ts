@@ -1,4 +1,4 @@
-import { shortHash } from "../../utils/hash.ts";
+import { fastHash } from "../../utils/hash.ts";
 
 const MISTRAL_TOOL_CALL_ID_LENGTH = 9;
 
@@ -29,7 +29,7 @@ export function deriveMistralToolCallId(id: string, attempt: number): string {
 	if (attempt === 0 && normalized.length === MISTRAL_TOOL_CALL_ID_LENGTH) return normalized;
 	const seedBase = normalized || id;
 	const seed = attempt === 0 ? seedBase : `${seedBase}:${attempt}`;
-	return shortHash(seed)
+	return fastHash(seed)
 		.replace(/[^a-zA-Z0-9]/g, "")
 		.slice(0, MISTRAL_TOOL_CALL_ID_LENGTH);
 }

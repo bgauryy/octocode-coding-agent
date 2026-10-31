@@ -1,5 +1,5 @@
 import type { ClassifierFunction } from "../types.ts";
-import { isRecord } from "./classifier-shared.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { classifySystemOne, type SystemOneTransport } from "./system-one-shared.ts";
 
 const LABEL = "Cloudflare Workers AI";

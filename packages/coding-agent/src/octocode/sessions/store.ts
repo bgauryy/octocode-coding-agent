@@ -4,7 +4,7 @@ import type { AgentDb } from "../agentdb/db.ts";
 import { meta, sessions } from "../agentdb/api.ts";
 import { git } from "../shared/git.ts";
 import { processStartTime } from "../shared/process.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 
 interface SessionStats {
 	cost: number;
@@ -36,7 +36,9 @@ const sessionGit = (cwd: string, args: string[]) => git(cwd, args, { timeoutMs: 
  */
 export async function gitState(cwd: string): Promise<{ branch?: string; head?: string }> {
 	try {
-		const [head = "", branch = ""] = (await sessionGit(cwd, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"])).trim().split("\n");
+		const [head = "", branch = ""] = (await sessionGit(cwd, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"]))
+			.trim()
+			.split("\n");
 		return {
 			...(branch && branch !== "HEAD" ? { branch: shownLine(branch, 120) } : {}),
 			...(/^[0-9a-f]{7,64}$/.test(head) ? { head } : {}),

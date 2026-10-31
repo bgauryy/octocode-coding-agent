@@ -91,7 +91,7 @@ const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManag
 	await import("@octocodeai/octocodecode");
 const { ApiClient } = await import(path.join(packageRoot, "src/octocode/api/client.ts"));
 const { apiDir, listInstances } = await import(path.join(packageRoot, "src/octocode/api/registry.ts"));
-const { redactData } = await import(path.join(packageRoot, "src/octocode/shared/sanitize.ts"));
+const { redactData } = await import(path.join(packageRoot, "../common/src/sanitize.ts"));
 const { descendantPids, groupMembers, stopTree, processMatch } = await import(
 	path.join(packageRoot, "src/octocode/shared/process.ts")
 );

@@ -12,11 +12,6 @@ export function globalMcpConfigPath(agentDir: string): string {
 	return join(agentDir, "mcp.json");
 }
 
-/** The project `mcp.json` that MCP commands write. */
-export function projectMcpConfigPath(cwd: string): string {
-	return join(cwd, CONFIG_DIR_NAME, "mcp.json");
-}
-
 /** Global MCP files, lowest precedence first; explicit homes and SDK directories do not inherit defaults. */
 export function globalMcpConfigPaths(agentDir: string): string[] {
 	const legacy = getLegacyConfigDirs(agentDir);
@@ -29,18 +24,6 @@ export function globalMcpConfigPaths(agentDir: string): string[] {
 			...legacy.reverse().map((dir) => join(dir, "mcp.json")),
 			...compatibilityPaths,
 			globalMcpConfigPath(agentDir),
-		]),
-	];
-}
-
-/** Project MCP files, lowest precedence first. All require project trust. */
-export function projectMcpConfigPaths(cwd: string): string[] {
-	return [
-		...new Set([
-			join(cwd, ".pi", "mcp.json"),
-			join(cwd, ".mcp.json"),
-			join(cwd, ".agents", "mcp.json"),
-			projectMcpConfigPath(cwd),
 		]),
 	];
 }

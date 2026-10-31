@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { validPid } from "../../utils/process-id.ts";
 import { killWindowsTree, signalTree, taskkillTree } from "../../utils/process-tree.ts";
 

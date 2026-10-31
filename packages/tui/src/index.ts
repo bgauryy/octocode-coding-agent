@@ -217,5 +217,6 @@ export { visibleWidth } from "./utils/width.ts";
 export { truncateToWidth } from "./utils/truncate.ts";
 export { getOsc8LinkAtColumn, sliceByColumn } from "./utils/columns.ts";
 export { stripTerminalSequences } from "./utils.ts";
+export { type VisualTruncateResult, VisualLinePreview, truncateToVisualLines } from "./components/visual-truncate.ts";
 export { incompleteAnsiStart } from "./utils/ansi-codes.ts";
 export type { WheelScrollLines } from "./wheel-scroll.ts";

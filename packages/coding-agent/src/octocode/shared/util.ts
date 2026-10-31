@@ -6,7 +6,7 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "./output-budget.ts";
-import { redactSecrets } from "./sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 
 /** node:sqlite prints an ExperimentalWarning on some Node versions; that would land in the terminal UI. */
 export function loadSqlite(): typeof Sqlite {

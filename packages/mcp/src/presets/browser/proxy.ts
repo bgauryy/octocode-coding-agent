@@ -13,7 +13,8 @@ import { hostKey, portOf } from "../../../../coding-agent/src/octocode/browser/n
 import { browserMcpUrls } from "../../../../coding-agent/src/octocode/shared/browser-mcp.ts";
 import { browserMcpAsked } from "../../../../coding-agent/src/octocode/web/browser-mcp.ts";
 import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
-import { BROWSER_SERVER } from "./names.ts";
+import { BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Page-started requests of the browser server's Chrome. The package launches its own Chrome and has no proxy of its own,
@@ -260,8 +261,6 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 	}
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Whether an `open` result says the launcher attached to a running browser instead of starting one. */
 function reusedBrowser(result: CallToolResult): boolean {

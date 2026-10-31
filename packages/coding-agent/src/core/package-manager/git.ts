@@ -1,12 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import type { GitSource } from "../../utils/git.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
-import { stripBom } from "../../../../common/src/text.ts";
 import { ensureGitIgnore, getGitDependencyInstallArgs, runNpmCommand } from "./npm.ts";
 import { assertProjectTrustedForScope, getTemporaryDir, resolveManagedPath } from "./sources.ts";
 import { NETWORK_TIMEOUT_MS, type PackageManagerHost, type SourceScope } from "./types.ts";
+import { readJsonFile } from "../../../../common/src/json.ts";
 
 export async function installGit(host: PackageManagerHost, source: GitSource, scope: SourceScope): Promise<void> {
 	const targetDir = getGitInstallPath(host, source, scope);
@@ -63,7 +63,7 @@ function hasMissingGitDependencies(targetDir: string): boolean {
 	if (!existsSync(packageJsonPath)) return false;
 
 	try {
-		const manifest = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8"))) as { dependencies?: unknown };
+		const manifest = readJsonFile(packageJsonPath) as { dependencies?: unknown };
 		if (!manifest.dependencies || typeof manifest.dependencies !== "object" || Array.isArray(manifest.dependencies)) {
 			return false;
 		}

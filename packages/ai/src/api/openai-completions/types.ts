@@ -59,7 +59,10 @@ export interface VendorRequestFields {
 	providerOptions?: { gateway: Record<string, string[]> };
 }
 
-export type CompletionsRequestParams = Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, "reasoning_effort"> &
+export type CompletionsRequestParams = Omit<
+	OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+	"reasoning_effort"
+> &
 	VendorRequestFields;
 
 export type ResolvedChatTemplateKwargValue = string | number | boolean | null;

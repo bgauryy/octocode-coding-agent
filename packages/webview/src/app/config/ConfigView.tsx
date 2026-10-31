@@ -1,6 +1,7 @@
 import type { ConfigSetting, ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errorMessage, plural } from "../model/format.ts";
+import { plural } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, Button, EmptyState, Skeleton, SkeletonLine } from "../ui/primitives.tsx";
 import { type ConfigProviders, ProviderRow } from "./sources.tsx";

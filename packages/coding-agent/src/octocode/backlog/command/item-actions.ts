@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/extensions/index.ts";
 import { USER_AUTHOR } from "../../agentdb/author.ts";
 import { say } from "../../shared/commands.ts";
-import { sanitizeTerminalText } from "../../shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { delegatePrompt, doItPrompt } from "../actions.ts";
 import type { Backlog, BacklogOptions } from "../context.ts";

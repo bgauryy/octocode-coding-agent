@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { notify } from "../../src/octocode/shared/commands.ts";
 import { resultBlock, resultText, toolHeader } from "../../src/octocode/shared/render.ts";
-import {
-	redactSecrets,
-	sanitizeTerminalText,
-	secretProblem,
-	storedText,
-	visibleControls,
-} from "../../src/octocode/shared/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText, secretProblem, storedText, visibleControls } from "../../../common/src/sanitize.ts";
 import { rendered, theme } from "./fake-host.ts";
 
 describe("sanitizeTerminalText", () => {

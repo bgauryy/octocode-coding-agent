@@ -1,5 +1,5 @@
 import { imageBudget, saveImageFile } from "../shared/spill.ts";
-import type { ImageLimits } from "../shared/vision.ts";
+import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { BrowserSession } from "./cdp/browser-session.ts";
 
 type ShotResult = {

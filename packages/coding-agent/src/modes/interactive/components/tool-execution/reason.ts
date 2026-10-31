@@ -1,9 +1,9 @@
 import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { isMcpToolName } from "../../../../../../mcp/src/servers.ts";
 import { takesCallReason } from "../../../../octocode/permission/native-tools.ts";
 import { callReason } from "../../../../octocode/shared/reason.ts";
 import { isInformativeReason } from "../../../../octocode/shared/render/text.ts";
-import { sanitizeTerminalText } from "../../../../octocode/shared/sanitize.ts";
 import { theme } from "../../../../theme/theme.ts";
 
 /** Aligned with the `⎿` of the result gutter, under the title. */

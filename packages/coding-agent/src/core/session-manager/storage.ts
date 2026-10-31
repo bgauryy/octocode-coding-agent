@@ -22,6 +22,7 @@ import {
 	createSessionId,
 	getSessionFilePath,
 	migrateToCurrentVersion,
+	parseSessionEntryLine,
 } from "./entries.ts";
 import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
 
@@ -65,16 +66,6 @@ class SessionHeaderScanLimitError extends Error {
 	constructor(filePath: string) {
 		super(`Session header exceeds ${MAX_SESSION_HEADER_SCAN_BYTES}-byte scan limit: ${filePath}`);
 		this.name = "SessionHeaderScanLimitError";
-	}
-}
-
-export function parseSessionEntryLine(line: string): FileEntry | null {
-	if (!line.trim()) return null;
-	try {
-		return JSON.parse(line) as FileEntry;
-	} catch {
-		// Skip malformed lines
-		return null;
 	}
 }
 

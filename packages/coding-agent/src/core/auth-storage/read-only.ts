@@ -1,18 +1,11 @@
-import {
-	isActiveCredential,
-	type AuthOperationOptions,
-	type Credential,
-	type CredentialInfo,
-	type CredentialStore,
-} from "@octocodeai/octocode-ai";
-import { readFileSync } from "fs";
+import { isActiveCredential, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore } from "@octocodeai/octocode-ai";
 import { join } from "path";
 import { getAgentDir } from "../../config.ts";
 import { normalizePath } from "../../../../common/src/paths.ts";
-import { stripBom } from "../../../../common/src/text.ts";
-import { isCommandConfigValue, resolveConfigValue } from "../resolve-config-value.ts";
+import { isCommandConfigValue, resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { AuthStorageData } from "./backends.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { readJsonFile } from "../../../../common/src/json.ts";
 
 export class ReadOnlyAuthStorage implements CredentialStore {
 	private readonly authPath: string;
@@ -27,7 +20,7 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 
 		let parsed: unknown;
 		try {
-			parsed = JSON.parse(stripBom(readFileSync(this.authPath, "utf-8")));
+			parsed = readJsonFile(this.authPath);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 				this.data = {};

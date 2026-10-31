@@ -31,13 +31,17 @@
 		"packages/coding-agent": {
 			// Resolved by name or path at runtime: the native MCP launcher and the sibling `octocode` CLI from package.json,
 			// the browser preset's package (`BROWSER_PACKAGE`), the native binary through its resolver (`config.ts`), and the
-			// private ACP and MCP workspaces, whose sources are compiled into this package.
+			// private ACP, MCP and common workspaces, whose sources are compiled into this package.
 			"ignoreDependencies": [
 				"octocode-mcp",
 				"octocode",
 				"@octocodeai/octocode-chrome-devtools",
 				"@octocodeai/octocode-native",
 				"@octocodeai/octocode-acp",
+				"@octocodeai/octocode-common",
+				// Imported only by the private common workspace, whose sources compile into this package.
+				"cross-spawn",
+				"@types/cross-spawn",
 				"@octocodeai/octocode-mcp",
 				// Resolved at runtime by name (`ollama/freellama.ts`), and imported by the private MCP workspace's sources.
 				"@octocodeai/freellama",

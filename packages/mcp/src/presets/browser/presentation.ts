@@ -4,7 +4,7 @@ import type { CallToolResult, ContentBlock } from "../../client/index.ts";
 import { formatDimensionNote, resizeImage } from "../../../../coding-agent/src/utils/image-resize.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { imageBudget } from "../../../../coding-agent/src/octocode/shared/spill.ts";
-import { type ImageLimits, sniffImageType } from "../../../../coding-agent/src/octocode/shared/vision.ts";
+import { type ImageLimits, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 
 /** The package's capture folder inside the session's working directory: the only place a result's files are read from. */
 const CAPTURE_FOLDER = join(".octocode", "octocode-chrome-devtools");

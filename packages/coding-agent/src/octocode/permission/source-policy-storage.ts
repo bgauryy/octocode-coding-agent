@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFile, sha256 } from "../../../../common/src/atomic-file.ts";
+import { gitMarkerDir } from "../../utils/git-marker.ts";
 import { gitSync } from "../shared/git.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -16,12 +17,8 @@ export function localPermissionAllowances(file: string): boolean {
 	if (path.basename(file) !== "settings.local.json") return false;
 	try {
 		if (fs.lstatSync(path.dirname(file)).isSymbolicLink() || fs.lstatSync(file).isSymbolicLink()) return false;
-		let directory = path.dirname(path.dirname(file));
-		while (!fs.existsSync(path.join(directory, ".git"))) {
-			const parent = path.dirname(directory);
-			if (parent === directory) return true;
-			directory = parent;
-		}
+		const directory = gitMarkerDir(path.dirname(path.dirname(file)));
+		if (directory === undefined) return true;
 		const tracked = gitSync(directory, ["ls-files", "-z", "--", path.relative(directory, file)], {
 			timeoutMs: 2000,
 			maxBuffer: 1024 * 1024,

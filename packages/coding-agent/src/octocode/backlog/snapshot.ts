@@ -1,4 +1,4 @@
-import { storedSecret } from "../shared/sanitize.ts";
+import { storedSecret } from "../../../../common/src/sanitize.ts";
 import { DAY_MS } from "../shared/util.ts";
 import { refText } from "./row.ts";
 import { BacklogError, type BacklogStore, type Item, priorityName } from "./store.ts";

@@ -1,6 +1,6 @@
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
-import { projectMcpConfigPaths } from "./paths.ts";
+import { projectMcpConfigPaths } from "../../coding-agent/src/octocode/shared/home.ts";
 import { projectTrustNow, saveDecision } from "../../coding-agent/src/octocode/shared/trust.ts";
 import {
 	projectMcpFiles,

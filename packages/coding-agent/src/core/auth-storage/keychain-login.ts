@@ -4,7 +4,7 @@
  */
 
 import type { AuthPrompt, Credential } from "@octocodeai/octocode-ai";
-import { clearConfigValueCache } from "../resolve-config-value.ts";
+import { clearConfigValueCache } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { KeychainBackend } from "./keychain.ts";
 
 export type KeychainChoice = "keychain" | "file";

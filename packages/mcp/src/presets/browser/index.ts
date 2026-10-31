@@ -1,7 +1,7 @@
 import { envFlag, MCP_BROWSER_ENV } from "../../../../common/src/env.ts";
 import type { McpServerPreset } from "../../preset.ts";
 import { browserLaunch } from "./launch.ts";
-import { BROWSER_BIN, BROWSER_SERVER } from "./names.ts";
+import { BROWSER_BIN, BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
 import { browserGuard } from "./proxy.ts";
 import { defineBrowserTool } from "./tools.ts";
 

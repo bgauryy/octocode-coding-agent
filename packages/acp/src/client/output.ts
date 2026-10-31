@@ -1,7 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { PromptResponse, SessionNotification } from "@agentclientprotocol/sdk";
 import { PRIVATE_FILE_MODE } from "../../../coding-agent/src/octocode/shared/home.ts";
-import { redactData, redactSecrets } from "../../../coding-agent/src/octocode/shared/sanitize.ts";
+import { redactData, redactSecrets } from "../../../common/src/sanitize.ts";
 import { saveTimestamped } from "../../../coding-agent/src/octocode/shared/spill.ts";
 import {
 	ACP_TEXT_BYTES,
@@ -47,8 +47,10 @@ class AcpArchive {
 				appendFileSync(this.file, text, { mode: PRIVATE_FILE_MODE });
 				this.bytes += size;
 				return;
-			} catch {
-				this.failure = "Output archive could not be completed.";
+			} catch (error) {
+				// Only the errno code is reported: the message would repeat the private archive path.
+				const code = (error as NodeJS.ErrnoException).code;
+				this.failure = `Output archive could not be completed${code ? ` (${code})` : ""}.`;
 			}
 		}
 		this.omittedBytes += size;

@@ -2,7 +2,7 @@ import type { BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewProps } from "../extension.ts";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { HistoryIcon } from "../ui/icons.tsx";
 import { Button, EmptyState } from "../ui/primitives.tsx";
 import { AuditRows } from "./ItemPanels.tsx";

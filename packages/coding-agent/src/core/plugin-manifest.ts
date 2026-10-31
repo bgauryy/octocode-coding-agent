@@ -1,8 +1,8 @@
 import { createHash, type Hash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { stripBom } from "../../../common/src/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 export interface PluginManifest {
 	protocol: "claude" | "codex";
@@ -54,7 +54,7 @@ export function discoverPluginManifests(
 		}
 		try {
 			const source = resolvePluginPath(root, entry);
-			const value: unknown = JSON.parse(stripBom(readFileSync(source, "utf8")));
+			const value: unknown = readJsonFile(source);
 			if (!isRecord(value)) throw new Error("manifest must be an object");
 			return { present: true, value, source };
 		} catch (error) {

@@ -1,7 +1,7 @@
 import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATE_TITLE, BOARD_ORDER } from "./format.ts";
 import { refText } from "./row.ts";
 import { type Item, priorityName } from "./store.ts";

@@ -1,4 +1,4 @@
-import type { EventBus } from "../../coding-agent/src/core/event-bus.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { McpExposure } from "./servers.ts";
 
 export interface McpServerStatus {

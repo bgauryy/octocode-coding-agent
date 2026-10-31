@@ -1,4 +1,5 @@
 import type { BashFileTarget } from "../bash-types.ts";
+import { CLAUDE_TOOL_NAMES } from "../../shared/claude-tool-names.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import type { SourcePermissionMode } from "../../shared/permission-updates.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -141,24 +142,19 @@ export function wildcard(pattern: string, value: string): boolean {
 	return p === pattern.length;
 }
 
+/**
+ * The Claude Code names a permission rule may use for an Octocode tool: the base map shared with hooks, plus what only
+ * rules see (`bash` is also PowerShell on Windows, `file` also covers Delete, `agent` is Agent and the `agent.*`
+ * session operations).
+ */
 export function names(tool: string): string[] {
-	return (
-		(
-			{
-				bash: process.platform === "win32" ? ["Bash", "PowerShell"] : ["Bash"],
-				powershell: ["PowerShell"],
-				read: ["Read"],
-				edit: ["Edit"],
-				write: ["Write"],
-				file: ["Write", "Edit", "Delete"],
-				grep: ["Grep"],
-				find: ["Glob"],
-				ls: ["LS"],
-				web: ["WebFetch", "WebSearch"],
-				agent: ["Agent", "agent.message", "agent.coordinate"],
-			} as Record<string, string[]>
-		)[tool] ?? [tool]
-	);
+	const extras: Record<string, readonly string[]> = {
+		bash: process.platform === "win32" ? ["Bash", "PowerShell"] : ["Bash"],
+		powershell: ["PowerShell"],
+		file: ["Write", "Edit", "Delete"],
+		agent: ["Agent", "agent.message", "agent.coordinate"],
+	};
+	return [...(extras[tool] ?? CLAUDE_TOOL_NAMES[tool] ?? [tool])];
 }
 export function toolMatches(rule: Rule, name: string): boolean {
 	if (wildcard(rule.tool, name)) return true;

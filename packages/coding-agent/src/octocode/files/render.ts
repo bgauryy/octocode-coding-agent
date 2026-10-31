@@ -1,11 +1,11 @@
 import { fileChanges } from "../shared/file-input.ts";
 import { Box, type Component, Text } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { BashToolDetails } from "../../core/tools/index.ts";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
 import { SHOW_ALL_LINES, resultBlock, resultText, toolHeader } from "../shared/render.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { clip, expandKey, isInformativeReason, plural } from "../shared/render/text.ts";
 import type { RenderContext } from "../shared/render/types.ts";

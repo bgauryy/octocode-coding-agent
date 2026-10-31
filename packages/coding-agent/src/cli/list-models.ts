@@ -7,21 +7,7 @@ import { fuzzyFilter } from "@octocodeai/octocode-tui";
 import chalk from "chalk";
 import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
-
-/**
- * Format a number as human-readable (e.g., 200000 -> "200K", 1000000 -> "1M")
- */
-function formatTokenCount(count: number): string {
-	if (count >= 1_000_000) {
-		const millions = count / 1_000_000;
-		return millions % 1 === 0 ? `${millions}M` : `${millions.toFixed(1)}M`;
-	}
-	if (count >= 1_000) {
-		const thousands = count / 1_000;
-		return thousands % 1 === 0 ? `${thousands}K` : `${thousands.toFixed(1)}K`;
-	}
-	return count.toString();
-}
+import { formatTokens } from "../octocode/shared/format.ts";
 
 /**
  * List available models, optionally filtered by search pattern
@@ -65,8 +51,8 @@ export async function listModels(
 	const rows = filteredModels.map((m) => ({
 		provider: m.provider,
 		model: m.id,
-		context: formatTokenCount(m.contextWindow),
-		maxOut: formatTokenCount(m.maxTokens),
+		context: formatTokens(m.contextWindow),
+		maxOut: formatTokens(m.maxTokens),
 		thinking: m.reasoning ? "yes" : "no",
 		images: m.input.includes("image") ? "yes" : "no",
 	}));

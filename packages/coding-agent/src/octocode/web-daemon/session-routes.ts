@@ -3,7 +3,7 @@ import { Value } from "typebox/value";
 import { ApplicationCommandSchema, WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts";
 import { WorkspaceCommandSchema } from "@octocodeai/octocode-contracts/protocol";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { redactData, redactSecrets } from "../shared/sanitize.ts";
+import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { handleApplicationDataRequest } from "../workspace/application-data.ts";
 import type { AttachClient } from "./attach-client.ts";
 import { readJsonBody, type Reply } from "./http-util.ts";

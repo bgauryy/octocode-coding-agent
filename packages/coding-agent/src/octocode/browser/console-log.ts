@@ -3,7 +3,7 @@ import { formatSize } from "../../core/tools/index.ts";
 import { shortPath } from "../shared/format.ts";
 import { sessionOutputDir } from "../shared/home.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**

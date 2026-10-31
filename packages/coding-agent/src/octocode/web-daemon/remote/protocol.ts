@@ -5,6 +5,7 @@
  * Each direction counts messages from 0 in `s`, and the receiver accepts exactly the next number, so a relay that
  * stores frames can neither replay nor reorder them, and keys are per connection, so it cannot use them elsewhere.
  */
+import type { RemoteAccess } from "@octocodeai/octocode-contracts/daemon";
 import { decodeNonce, WIRE_VERSION } from "./seal.ts";
 
 /** Relay to host, and host to relay. A peer's own socket carries bare `WireFrame` strings. */
@@ -30,7 +31,7 @@ export type TunnelRequest =
 
 /** Sealed, from the daemon to the page. */
 export type TunnelResponsePayload =
-	| { kind: "hello"; access: "view" | "control"; build: string }
+	| { kind: "hello"; access: RemoteAccess; build: string }
 	| { kind: "response"; id: string; status: number; body: string }
 	| { kind: "stream.message"; stream: string; data: string }
 	| { kind: "stream.end"; stream: string; code: number };

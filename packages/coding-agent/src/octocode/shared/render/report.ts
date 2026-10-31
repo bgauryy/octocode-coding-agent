@@ -1,6 +1,6 @@
 import { type Component, Markdown, visibleWidth } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { getMarkdownTheme, type Theme } from "../../../theme/theme.ts";
-import { sanitizeTerminalText } from "../sanitize.ts";
 import { expandKey, INDENT, plural } from "./text.ts";
 
 /** Rendered report lines shown before folding: a report is the deliverable, so only a long one folds. */

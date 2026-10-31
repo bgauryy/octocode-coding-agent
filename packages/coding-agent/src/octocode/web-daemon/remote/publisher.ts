@@ -1,5 +1,5 @@
 import os from "node:os";
-import type { RemoteLink, RemotePublish, RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
+import type { RemoteAccess, RemoteLink, RemotePublish, RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
 import { RelayClient } from "./relay-client.ts";
 import { encodeKey, fingerprintOf, newKey } from "./seal.ts";
 import type { Loopback } from "./tunnel.ts";
@@ -73,7 +73,7 @@ function defaultHost(): { user: string; hostname: string } {
 export class RemotePublisher {
 	private readonly options: PublisherOptions;
 	private readonly links: Published[] = [];
-	private readonly relays = new Map<"view" | "control", RelayClient>();
+	private readonly relays = new Map<RemoteAccess, RelayClient>();
 
 	constructor(options: PublisherOptions) {
 		this.options = options;
@@ -93,7 +93,7 @@ export class RemotePublisher {
 		return published.link;
 	}
 
-	private sshLink(access: "view" | "control"): Published {
+	private sshLink(access: RemoteAccess): Published {
 		const port = this.options.port();
 		const tokens = this.options.tokens();
 		const token = access === "view" ? tokens.view : tokens.remote;

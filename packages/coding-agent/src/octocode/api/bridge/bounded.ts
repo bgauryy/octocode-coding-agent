@@ -1,4 +1,4 @@
-import { redactData, redactSecrets } from "../../shared/sanitize.ts";
+import { redactData, redactSecrets } from "../../../../../common/src/sanitize.ts";
 import { saveContentCopy, saveFullOutput } from "../../shared/spill.ts";
 import { capChars } from "../../shared/util.ts";
 import { ERR, MAX_FRAME_BYTES, RpcError } from "../protocol.ts";

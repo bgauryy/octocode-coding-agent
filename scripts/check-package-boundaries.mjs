@@ -8,7 +8,7 @@ import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { moduleSpecifiers } from "./module-specifiers.mjs";
 
 export const PACKAGE_POLICY = {
-	acp: ["ai", "common", "contracts", "mcp", "tui"],
+	acp: ["ai", "common", "contracts", "mcp"],
 	agent: ["ai"],
 	common: ["contracts"],
 	mcp: ["agent", "ai", "common", "contracts", "tui"],

@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { McpClient, McpHttpError, McpSessionExpiredError, type StdioTransport } from "../client/index.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { VERSION } from "../../../coding-agent/src/config.ts";
-import { visibleControls } from "../../../coding-agent/src/octocode/shared/sanitize.ts";
+import { visibleControls } from "../../../common/src/sanitize.ts";
 import { cutText } from "../../../coding-agent/src/octocode/shared/util.ts";
 import { tailNote } from "../../../coding-agent/src/octocode/shared/format.ts";
 import { saveFullOutput } from "../../../coding-agent/src/octocode/shared/spill.ts";

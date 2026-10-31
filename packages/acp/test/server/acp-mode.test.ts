@@ -1,5 +1,5 @@
 import { methods, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PromptDisposition } from "../../../coding-agent/src/core/agent-session.ts";
 import { assistant, deferred, FakeWorker, harness, usage } from "./acp-test-harness.ts";
 
@@ -212,10 +212,16 @@ describe("inbound ACP protocol", () => {
 		await h.initialize();
 		const { sessionId } = await h.newSession();
 		h.workers[0].abort.mockImplementation(() => new Promise(() => {}));
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
 		const run = h.prompt(sessionId);
 		await expect.poll(() => h.workers[0].prompt.mock.calls.length).toBe(1);
 		await h.cancel(sessionId);
 		await expect(run).resolves.toMatchObject({ stopReason: "cancelled" });
+		expect(logged).toHaveBeenCalledWith(
+			expect.stringContaining("ACP cancellation did not complete"),
+			expect.objectContaining({ message: "Cancellation deadline" }),
+		);
+		logged.mockRestore();
 		expect(h.workers[0].stop).toHaveBeenCalledOnce();
 		await expect(h.prompt(sessionId)).rejects.toThrow();
 	});

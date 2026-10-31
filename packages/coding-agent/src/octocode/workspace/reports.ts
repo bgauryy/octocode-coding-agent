@@ -13,7 +13,7 @@ import {
 	type ReportsIndex,
 } from "@octocodeai/octocode-contracts/protocol";
 import { workspaceOctocodeDir } from "../shared/home.ts";
-import { redactData } from "../shared/sanitize.ts";
+import { redactData } from "../../../../common/src/sanitize.ts";
 
 /** Folders the report renderer itself treats as scratch or build output, so the board does not list them. */
 const SKIPPED_FOLDERS = new Set(["tmp", "view", "node_modules"]);

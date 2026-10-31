@@ -5,7 +5,7 @@
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { Tool as McpTool } from "./client/index.ts";
-import { visibleControls } from "../../coding-agent/src/octocode/shared/sanitize.ts";
+import { visibleControls } from "../../common/src/sanitize.ts";
 
 /** Text blocks of a result with their characters made visible; image blocks and unchanged blocks keep their identity. */
 export function visibleContent(content: (TextContent | ImageContent)[]): (TextContent | ImageContent)[] {

@@ -9,6 +9,7 @@ import { CONFIG_DIR_NAME, getAgentDir, getBinDir } from "./config.ts";
 import { migrateKeybindingsConfig } from "./core/keybindings.ts";
 import { stripBom } from "../../common/src/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { readJsonFile } from "../../common/src/json.ts";
 
 const MIGRATION_GUIDE_URL =
 	"https://github.com/bgauryy/octocodecode/blob/main/packages/coding-agent/docs/configuration.md#historical-migrations";
@@ -26,7 +27,7 @@ function migrateAuthToAuthJson(): string[] {
 	const settingsPath = join(agentDir, "settings.json");
 
 	const migrated: Record<string, unknown> = existsSync(authPath)
-		? JSON.parse(stripBom(readFileSync(authPath, "utf-8")))
+		? readJsonFile(authPath)
 		: {};
 	if (typeof migrated !== "object" || migrated === null || Array.isArray(migrated)) {
 		throw new Error(`Cannot migrate credentials: ${authPath} must contain an object.`);
@@ -38,7 +39,7 @@ function migrateAuthToAuthJson(): string[] {
 	// Migrate oauth.json
 	if (existsSync(oauthPath)) {
 		try {
-			const oauth = JSON.parse(stripBom(readFileSync(oauthPath, "utf-8")));
+			const oauth = readJsonFile<Record<string, unknown>>(oauthPath);
 			for (const [provider, cred] of Object.entries(oauth)) {
 				if (Object.hasOwn(migrated, provider) || typeof cred !== "object" || cred === null) continue;
 				migrated[provider] = { type: "oauth", ...cred };
@@ -164,7 +165,7 @@ function migrateKeybindingsConfigFile(): void {
 	if (!existsSync(configPath)) return;
 
 	try {
-		const parsed = JSON.parse(stripBom(readFileSync(configPath, "utf-8"))) as unknown;
+		const parsed = readJsonFile(configPath) as unknown;
 		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
 			return;
 		}

@@ -4,7 +4,7 @@ import path from "node:path";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../shared/format.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { capOutput, contentText, cutText } from "../shared/util.ts";
 import {

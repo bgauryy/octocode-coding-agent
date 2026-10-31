@@ -23,8 +23,6 @@ export const LAYER_RULES = [
 			"coding-agent/src/core/agent-session/bash.ts",
 			"coding-agent/src/core/agent-session/prompt-expansion.ts",
 			"coding-agent/src/core/agent-session/run-loop.ts",
-			"coding-agent/src/core/application/service/commands.ts",
-			"coding-agent/src/core/application/service/frames.ts",
 			"coding-agent/src/core/application/transcript.ts",
 			"coding-agent/src/core/bash-executor.ts",
 			"coding-agent/src/core/extensibility/inventory.ts",

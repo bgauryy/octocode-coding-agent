@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { redactData, redactSecrets, visibleControls } from "../shared/sanitize.ts";
+import { redactData, redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
 import { boundedExternal, boundedText } from "./bridge/bounded.ts";
 import { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";

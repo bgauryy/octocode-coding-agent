@@ -6,7 +6,7 @@ import { type Component, Container, type Focusable, type TUI } from "../../tui/s
 import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AutocompleteProviderFactory } from "../src/core/extensions/types.ts";
-import { createEventBus, type EventBus } from "../src/core/event-bus.ts";
+import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import { setMcpSessionStatus } from "../../mcp/src/status.ts";
 import type { QuietStartup } from "../src/core/settings-manager.ts";
 import type { SourceInfo } from "../src/core/source-info.ts";

@@ -3,7 +3,7 @@ import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
-import { redactSecrets, visibleControls } from "../../shared/sanitize.ts";
+import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
 import { capChars } from "../../shared/util.ts";
 import type { EventLog } from "../events.ts";
 import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS } from "../protocol.ts";

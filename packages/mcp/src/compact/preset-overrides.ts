@@ -5,6 +5,7 @@
 
 import { instructionsHash, toolHash } from "./render.ts";
 import type { CompactServerInput, DescriptionOverrides } from "./types.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface PresetToolOverrides {
 	/** {@link toolHash} of the tool the entries describe. */
@@ -20,8 +21,6 @@ export interface PresetOverrides {
 	tools?: Record<string, PresetToolOverrides>;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
 	isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");

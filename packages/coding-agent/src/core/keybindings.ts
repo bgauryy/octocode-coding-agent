@@ -1,17 +1,10 @@
-import {
-	type Keybinding,
-	type KeybindingDefinitions,
-	type KeybindingsConfig,
-	type KeyId,
-	TUI_KEYBINDINGS,
-	KeybindingsManager as TuiKeybindingsManager,
-} from "@octocodeai/octocode-tui";
-import { existsSync, readFileSync } from "fs";
+import { type Keybinding, type KeybindingDefinitions, type KeybindingsConfig, type KeyId, TUI_KEYBINDINGS, KeybindingsManager as TuiKeybindingsManager } from "@octocodeai/octocode-tui";
+import { existsSync } from "fs";
 import { join } from "path";
 import { Compile } from "typebox/compile";
 import { getAgentDir } from "../config.ts";
-import { stripBom } from "../../../common/src/text.ts";
 import { KeybindingValueSchema } from "./key-id-schema.ts";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 export function useWindowsKeybindings(
 	platform: NodeJS.Platform = process.platform,
@@ -331,7 +324,7 @@ function orderKeybindingsConfig(config: Record<string, unknown>): Record<string,
 function loadRawConfig(path: string): Record<string, unknown> | undefined {
 	if (!existsSync(path)) return undefined;
 	try {
-		const parsed = JSON.parse(stripBom(readFileSync(path, "utf-8"))) as unknown;
+		const parsed = readJsonFile(path) as unknown;
 		if (typeof parsed !== "object" || parsed === null) return undefined;
 		return parsed as Record<string, unknown>;
 	} catch {

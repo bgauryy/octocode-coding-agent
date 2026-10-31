@@ -4,7 +4,7 @@ import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
-import { storedText, visibleControls } from "../shared/sanitize.ts";
+import { storedText, visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
@@ -109,7 +109,7 @@ export function registerBacklogTool(
 			evidence: Type.Optional(
 				Type.Array(Type.String(), { description: "observations with source (path:line, command)" }),
 			),
-			plan: Type.Optional(Type.String({ description: "approach and steps; changes: blast radius, before -> after" })),
+			plan: Type.Optional(Type.String({ description: "approach and steps; blast radius, before -> after" })),
 			state: Type.Optional(
 				subagent
 					? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })

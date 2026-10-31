@@ -1,3 +1,4 @@
+import { gitMarkerDir } from "../../../utils/git-marker.ts";
 import { gitSync } from "../git.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -24,14 +25,6 @@ interface CachedRepo {
 }
 
 const repoCache = new Map<string, CachedRepo>();
-
-/** The nearest directory at or above `cwd` that holds a `.git` entry, or undefined without one. */
-function gitMarkerDir(cwd: string): string | undefined {
-	for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
-		if (fs.existsSync(path.join(dir, ".git"))) return dir;
-		if (path.dirname(dir) === dir) return undefined;
-	}
-}
 
 /**
  * `file` with symlinks resolved, so one file reached through two paths has one name: the realpath of its deepest
@@ -111,11 +104,12 @@ export function isWithin(file: string, dir: string): boolean {
  * `cwd` outside a repository.
  */
 export function dirsToRepoRoot(cwd: string): string[] {
+	const root = gitMarkerDir(cwd);
+	if (root === undefined) return [path.resolve(cwd)];
 	const dirs: string[] = [];
 	for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
 		dirs.push(dir);
-		if (fs.existsSync(path.join(dir, ".git"))) return dirs;
-		if (path.dirname(dir) === dir) return [path.resolve(cwd)];
+		if (dir === root) return dirs;
 	}
 }
 

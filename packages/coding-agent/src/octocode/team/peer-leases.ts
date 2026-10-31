@@ -3,6 +3,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { allRows } from "../agentdb/rows.ts";
 import { loadSqlite } from "../shared/util.ts";
 import { keysOverlap, type LeaseKind, leaseKey } from "./lease-key.ts";
 import type { Lease } from "./model.ts";
@@ -83,12 +84,13 @@ class PeerDatabase {
 		if (!db) return undefined;
 		try {
 			// Every active lease, not a query per file: the set is small, and one rule (`keysOverlap`) decides, as in the package.
-			return db
-				.prepare(
+			return allRows<Row>(
+				db.prepare(
 					`SELECT l.id, l.path, l.kind, l.pathKey, l.reasoning, l.acquiredAt, l.expiresAt, s.id AS owner, s.name, s.vendor, s.vendorSession
            FROM leases l JOIN sessions s ON s.id = l.owner WHERE l.expiresAt > ?1 AND s.expiresAt > ?1 ORDER BY l.id`,
-				)
-				.all(now) as unknown as Row[];
+				),
+				now,
+			);
 		} catch (error) {
 			this.fail(now, `could not be read (${errorMessage(error)})`);
 			return undefined;

@@ -1,7 +1,7 @@
 import type { ApplicationHistory, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { useRef, useState } from "react";
 import { useStore } from "zustand";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
 import { ActivityHistory } from "./ActivityHistory.tsx";

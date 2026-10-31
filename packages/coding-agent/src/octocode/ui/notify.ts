@@ -1,13 +1,8 @@
-import {
-	hasTmuxSession,
-	tmuxClientTerminalNames,
-	tmuxPaneAllowsPassthrough,
-	wrapTmuxPassthrough,
-} from "@octocodeai/octocode-tui";
+import { hasTmuxSession, tmuxClientTerminalNames, tmuxPaneAllowsPassthrough, wrapTmuxPassthrough } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../../../../common/src/env.ts";
 import { promptTitle } from "../shared/locks.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
 import { terminalTitle, type TitleState, TitleTracker } from "./terminal-title.ts";
 import { registerPresentWarming } from "./present-warming.ts";

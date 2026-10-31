@@ -3,7 +3,7 @@ import type { SystemMessage } from "@octocodeai/octocode-ai/compat";
 import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/client/index.ts";
 import { createInMemoryTransportPair } from "../../../mcp/src/client/testing/index.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEventBus } from "../../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import type { McpExposure, McpServerEntry } from "../../../mcp/src/config.ts";

@@ -5,6 +5,7 @@ import { createUsage } from "../utils/assistant-message.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { raceWithAbortSignal } from "../utils/abort.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 function timeoutError(timeoutMs: number): Error {
 	return Object.assign(new Error(`Request timed out after ${timeoutMs}ms`), {
@@ -12,10 +13,6 @@ function timeoutError(timeoutMs: number): Error {
 		status: undefined,
 		headers: undefined,
 	});
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function requiredNumber(label: string, value: unknown, field: string): number {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import { headerText } from "../fence.ts";
-import { visibleControls } from "../sanitize.ts";
+import { visibleControls } from "../../../../../common/src/sanitize.ts";
 
 /** How archived message text may appear in a file: one line, fenced, or an inline code span, controls made visible. */
 

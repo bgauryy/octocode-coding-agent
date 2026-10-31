@@ -47,6 +47,7 @@ import type {
 } from "./package-manager/types.ts";
 import { checkForAvailableUpdates, updatePackages } from "./package-manager/updates.ts";
 import type { SettingsManager } from "./settings-manager.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export { isSkillEnabledBySettings } from "./package-manager/patterns.ts";
 export type {
@@ -128,8 +129,7 @@ export class DefaultPackageManager implements PackageManager {
 			await operation();
 			this.emitProgress({ type: "complete", action, source });
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			this.emitProgress({ type: "error", action, source, message: errorMessage });
+			this.emitProgress({ type: "error", action, source, message: errorMessage(error) });
 			throw error;
 		}
 	}

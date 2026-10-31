@@ -1,7 +1,7 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { type FormEvent, useState } from "react";
 import { useStore } from "zustand";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { useLive } from "./session.tsx";
 

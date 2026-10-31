@@ -3,7 +3,7 @@ import { memories, meta } from "../agentdb/api.ts";
 import type { MemoryFilter, MemoryScope, ScopeFilter } from "../agentdb/queries/memories.ts";
 export type { MemoryFilter, ScopeFilter };
 import type { Row } from "../agentdb/rows.ts";
-import { storedSecret, storedText } from "../shared/sanitize.ts";
+import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { clipText, stringOrEmpty } from "../shared/util.ts";
 import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, terms } from "./query.ts";
 

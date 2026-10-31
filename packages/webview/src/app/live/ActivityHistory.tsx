@@ -1,6 +1,6 @@
 import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { useRef, useState } from "react";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
 import { ResultCard } from "./ResultCard.tsx";

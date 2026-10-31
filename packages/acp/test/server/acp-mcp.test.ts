@@ -85,6 +85,19 @@ for await (const line of createInterface({input: process.stdin})) {
 		await expect(stat(directory)).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
+	it("keeps the cause when the registration state cannot be read, unlike a missing state file", async () => {
+		const entry = await prepare([server()]);
+		await expect(entry.verify()).rejects.toThrow("did not initialize");
+		await writeFile(join(dirname(entry.args[1]), "ready.json"), "{not json");
+		const failure = await entry.verify().then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+		expect((failure as Error).message).toContain("registration state could not be read");
+		expect((failure as Error).message).not.toContain("did not initialize");
+		expect((failure as Error).cause).toBeInstanceOf(SyntaxError);
+	});
+
 	it("refuses unsupported transports, duplicate names, non-absolute commands and invalid environment entries", async () => {
 		await expect(
 			prepare([{ type: "acp", name: "channel", serverId: "fixture" } as unknown as McpServer]),

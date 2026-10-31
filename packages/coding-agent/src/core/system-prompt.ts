@@ -1,3 +1,4 @@
+import { BASH_TOOL, READ_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
 import { isOctocodeReader, isOctocodeSearch } from "../../../mcp/src/presets/octocode/names.ts";
 /**
  * System prompt construction and project context loading
@@ -84,7 +85,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 	return {
 		customPrompt: input.customPrompt,
 		forceSystemPrompt: input.forceSystemPrompt,
-		selectedTools: [...(input.selectedTools ?? ["bash"])],
+		selectedTools: [...(input.selectedTools ?? [BASH_TOOL])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
 		toolSnippets: { ...input.toolSnippets },
 		toolGuidelines: Object.fromEntries(
@@ -184,7 +185,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 			toolGuidelines,
 			promptGuidelines,
 			!customSections.octocode_communication,
-			declaredTools.includes("bash") && !octocodeSearch,
+			declaredTools.includes(BASH_TOOL) && !octocodeSearch,
 		);
 		promptSections.docs = `Octocode documentation (read only when the user asks about Octocode itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: ${getReadmePath()}
@@ -199,13 +200,13 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	// The skill tool loads a skill by name and needs no file reader, so it comes first. Octocode ships no `read` tool;
 	// an SDK session that declares its own file reader still lists its skills, with a hint that names no tool.
-	const skillFileReadTool = declaredTools.includes("skill")
-		? "skill"
+	const skillFileReadTool = declaredTools.includes(SKILL_TOOL)
+		? SKILL_TOOL
 		: declaredTools.some(isOctocodeReader)
 			? "octocode"
-			: declaredTools.includes("bash")
+			: declaredTools.includes(BASH_TOOL)
 				? "bash"
-				: declaredTools.includes("read") || selectedTools.includes("bash") || selectedTools.some(isOctocodeReader)
+				: declaredTools.includes(READ_TOOL) || selectedTools.includes(BASH_TOOL) || selectedTools.some(isOctocodeReader)
 					? "indirect"
 					: undefined;
 	if (skillFileReadTool && skills.length > 0) {

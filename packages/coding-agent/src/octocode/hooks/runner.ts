@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { formatSize } from "../../core/tools/index.ts";
 import { KILL_GRACE_MS, killTree } from "../shared/process.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { firstLine, parseJson } from "../shared/util.ts";
 import type { HookEvent, HookProtocol } from "./catalog.ts";

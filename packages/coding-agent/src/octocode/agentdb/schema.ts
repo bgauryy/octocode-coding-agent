@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { num, type Row } from "./rows.ts";
+import { allRows, num, type Row } from "./rows.ts";
 
 /**
  * The agent database's schema: durable sessions, backlog and memories, and the team's transient state (presence,
@@ -223,12 +223,10 @@ interface SchemaObject {
 }
 
 const objects = (db: DatabaseSync): SchemaObject[] =>
-	(
-		db
-			.prepare(
-				"SELECT type, name, tbl_name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger') AND sql IS NOT NULL AND substr(name, 1, 7) <> 'sqlite_'",
-			)
-			.all() as unknown as SchemaObject[]
+	allRows<SchemaObject>(
+		db.prepare(
+			"SELECT type, name, tbl_name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger') AND sql IS NOT NULL AND substr(name, 1, 7) <> 'sqlite_'",
+		),
 	).filter((object) => !FTS_OBJECTS.test(object.name));
 interface Column {
 	name: string;
@@ -237,7 +235,7 @@ interface Column {
 	dflt_value: string | null;
 }
 const columns = (db: DatabaseSync, table: string): Column[] =>
-	db.prepare(`PRAGMA table_info(${quote(table)})`).all() as unknown as Column[];
+	allRows<Column>(db.prepare(`PRAGMA table_info(${quote(table)})`));
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 /** `SCHEMA` as SQLite stores it, read from a scratch in-memory database. */

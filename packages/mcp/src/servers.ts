@@ -1,4 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { isPluginMcpServerName, mcpNamespace } from "../../common/src/mcp-names.ts";
 /**
  * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
  *
@@ -144,15 +145,6 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
 
 const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
-const PLUGIN_SERVER_NAME = /^plugin:[A-Za-z0-9_.-]+:[A-Za-z0-9_-]+$/;
-export const isPluginMcpServerName = (name: string): boolean => PLUGIN_SERVER_NAME.test(name);
-
-/** Namespace of a server's tools: `mcp__<server>` with `-` replaced by `_`, like the tool names. */
-export function mcpNamespace(server: string): string {
-	if (isPluginMcpServerName(server)) return `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
-	return `mcp__${server.replace(/-/g, "_")}`;
-}
-
 function isStringRecord(value: unknown): value is Record<string, string> {
 	return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 }
@@ -226,7 +218,7 @@ function exposureError(value: unknown): string {
 
 /** Validate one server entry of the `mcpServers` shape. Returns the config, or an error message. */
 export function validateMcpServerConfig(name: string, value: unknown): McpServerConfig | string {
-	if (!SERVER_NAME.test(name) && !PLUGIN_SERVER_NAME.test(name))
+	if (!SERVER_NAME.test(name) && !isPluginMcpServerName(name))
 		return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
 	if (!isRecord(value)) return `server "${name}" must be an object`;
 	const { type, exposure, enabled, defaultActive, timeout, toolExposure, description } = value;

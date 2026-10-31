@@ -1,6 +1,6 @@
 import { type ContentBlock, RequestError } from "@agentclientprotocol/sdk";
 import type { ImageContent } from "@octocodeai/octocode-ai";
-import { detectSupportedImageMimeType } from "../../../coding-agent/src/utils/mime.ts";
+import { detectSupportedImageMimeType } from "@octocodeai/octocode-ai/utils/mime";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_PROMPT_IMAGE_BYTES = 20 * 1024 * 1024;

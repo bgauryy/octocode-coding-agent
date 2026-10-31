@@ -1,4 +1,5 @@
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
+import { CLAUDE_FILE_TOOL_NAMES, CLAUDE_TOOL_NAMES } from "../../shared/claude-tool-names.ts";
 import { fileChanges } from "../../shared/file-input.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookConfig } from "../contracts.ts";
@@ -7,17 +8,13 @@ import { stringOrEmpty } from "../../shared/util.ts";
 import { matchesHook } from "../profiles.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
-/** Claude Code tool names for Octocode's tools, so `"matcher": "Bash"` or `"Edit|Write"` work unchanged. */
-const CLAUDE_NAMES: Record<string, string[]> = {
-	bash: ["Bash"],
-	read: ["Read"],
-	edit: ["Edit"],
-	write: ["Write"],
+/**
+ * Claude Code tool names for Octocode's tools, so `"matcher": "Bash"` or `"Edit|Write"` work unchanged: the base map
+ * shared with permission rules, plus what only hooks see (`file` is also MultiEdit; `agent` is Claude Code's Task).
+ */
+const CLAUDE_NAMES: Readonly<Record<string, readonly string[]>> = {
+	...CLAUDE_TOOL_NAMES,
 	file: ["Edit", "Write", "MultiEdit"],
-	grep: ["Grep"],
-	find: ["Glob"],
-	ls: ["LS"],
-	web: ["WebFetch", "WebSearch"],
 	agent: ["Task"],
 };
 
@@ -64,7 +61,8 @@ export function hookCalls(tool: string, input: Record<string, unknown>, cwd: str
 		return [];
 	if (tool === "file") return fileChanges(input).map((query) => fileQueryCall(query, cwd));
 	if (tool === "bash") return [{ names: toolAliases(tool), tool_name: "Bash", tool_input: input }];
-	const claude = { read: "Read", edit: "Edit", write: "Write" }[tool];
+	const claude =
+		tool in CLAUDE_FILE_TOOL_NAMES ? CLAUDE_FILE_TOOL_NAMES[tool as keyof typeof CLAUDE_FILE_TOOL_NAMES] : undefined;
 	if (claude) {
 		const { path: file, ...rest } = input;
 		return [

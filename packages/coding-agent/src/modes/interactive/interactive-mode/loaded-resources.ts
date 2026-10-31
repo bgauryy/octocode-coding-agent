@@ -3,19 +3,10 @@
  * a count; ctrl+o lists the items), followed by resource diagnostics.
  */
 
-import {
-	type Component,
-	type Container,
-	ELLIPSIS,
-	GLYPH,
-	SEPARATOR,
-	Spacer,
-	type StateSource,
-	type UiState,
-} from "@octocodeai/octocode-tui";
+import { type Component, type Container, ELLIPSIS, GLYPH, SEPARATOR, Spacer, type StateSource, type UiState } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
-import type { EventBus } from "../../../core/event-bus.ts";
-import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { keyHint } from "../components/keybinding-hints.ts";

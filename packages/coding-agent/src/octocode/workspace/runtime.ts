@@ -13,7 +13,7 @@ import { HEARTBEAT_MS } from "../team/session/activity.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
-import { redactData, redactSecrets } from "../shared/sanitize.ts";
+import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { contentText, toolHint } from "../shared/util.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 

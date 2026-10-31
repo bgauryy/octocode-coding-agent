@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parseConfigDocument } from "../../utils/config-document.ts";
+import { isDirectory, isFile } from "../../utils/fs-probe.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 
@@ -17,17 +18,10 @@ export interface HostPlugin {
 	protocol: "claude" | "codex";
 }
 
-const exists = (file: string) => {
-	try {
-		return statSync(file).isFile();
-	} catch {
-		return false;
-	}
-};
 /** The installing host's own format when the plugin ships it, else the other one it does ship. */
 const protocolOf = (dir: string, preferred: "claude" | "codex"): "claude" | "codex" => {
-	const claude = exists(path.join(dir, ".claude-plugin", "plugin.json"));
-	const codex = exists(path.join(dir, ".codex-plugin", "plugin.json")) || exists(path.join(dir, "plugin.json"));
+	const claude = isFile(path.join(dir, ".claude-plugin", "plugin.json"));
+	const codex = isFile(path.join(dir, ".codex-plugin", "plugin.json")) || isFile(path.join(dir, "plugin.json"));
 	if (preferred === "codex") return codex || !claude ? "codex" : "claude";
 	return claude || !codex ? "claude" : "codex";
 };
@@ -37,14 +31,6 @@ const readJson = (file: string): unknown => {
 		return JSON.parse(readFileSync(file, "utf8"));
 	} catch {
 		return undefined;
-	}
-};
-
-const isDirectory = (dir: string) => {
-	try {
-		return statSync(dir).isDirectory();
-	} catch {
-		return false;
 	}
 };
 

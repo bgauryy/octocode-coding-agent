@@ -3,27 +3,16 @@
  * Provider auth orchestration belongs to ModelRuntime and octocode-ai Models.
  */
 
-import {
-	isActiveCredential,
-	type AuthOperationOptions,
-	type Credential,
-	type CredentialInfo,
-	type CredentialStore,
-} from "@octocodeai/octocode-ai";
-import { readFileSync } from "fs";
+import { isActiveCredential, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore } from "@octocodeai/octocode-ai";
 import { join } from "path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
 import { stripBom } from "../../../common/src/text.ts";
-import {
-	type AuthStorageBackend,
-	type AuthStorageData,
-	FileAuthStorageBackend,
-	InMemoryAuthStorageBackend,
-} from "./auth-storage/backends.ts";
+import { type AuthStorageBackend, type AuthStorageData, FileAuthStorageBackend, InMemoryAuthStorageBackend } from "./auth-storage/backends.ts";
 import { detectKeychain, type KeychainBackend } from "./auth-storage/keychain.ts";
-import { resolveConfigValue } from "./resolve-config-value.ts";
+import { resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 export {
 	type AuthStorageBackend,
@@ -258,7 +247,7 @@ export function readStoredCredential(
 	authPath: string = join(getAgentDir(), "auth.json"),
 ): Credential | undefined {
 	try {
-		const data = JSON.parse(stripBom(readFileSync(normalizePath(authPath), "utf-8"))) as AuthStorageData;
+		const data = readJsonFile(normalizePath(authPath)) as AuthStorageData;
 		return data[providerId];
 	} catch {
 		return undefined;

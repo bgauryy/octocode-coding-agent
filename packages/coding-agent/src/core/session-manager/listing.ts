@@ -11,10 +11,10 @@ import {
 	getDefaultSessionDir,
 	getDefaultSessionDirPath,
 	getSessionHeaderCwd,
-	parseSessionEntryLine,
 	readSessionHeaderForDiscovery,
 	sessionCwdMatches,
 } from "./storage.ts";
+import { parseSessionEntryLine } from "./entries.ts";
 import type { SessionHeader, SessionInfo, SessionListProgress, SessionMessageEntry } from "./types.ts";
 
 function isMessageWithContent(message: AgentMessage): message is Message {

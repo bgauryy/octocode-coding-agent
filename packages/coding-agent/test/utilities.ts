@@ -6,12 +6,11 @@ import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@octocodeai/octocode-agent-core";
+import { Agent, createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { createEventBus, type EventBus } from "../src/core/event-bus.ts";
 import type {
 	Extension,
 	ExtensionFactory,

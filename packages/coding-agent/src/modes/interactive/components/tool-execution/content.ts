@@ -1,9 +1,9 @@
 import { Box, Container, Text } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import type { ApplicationContentBlock } from "@octocodeai/octocode-contracts";
 import { ApplicationAssets } from "../../../../core/application/assets.ts";
 import { normalizeApplicationContent } from "../../../../core/application/normalize.ts";
 import { formatToolCallWithArgs } from "../../../../core/tools/render-utils.ts";
-import { sanitizeTerminalText } from "../../../../octocode/shared/sanitize.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { keyHint } from "../keybinding-hints.ts";

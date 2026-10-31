@@ -1,6 +1,6 @@
 import type { Theme } from "../../theme/theme.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
-import type { EventBus } from "../event-bus.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";

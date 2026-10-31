@@ -1,9 +1,9 @@
 import type { TextContent } from "@octocodeai/octocode-ai";
 import { type Component, Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { MessageRenderer } from "../../../core/extensions/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
-import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 /**
  * Component that renders a custom message entry from extensions.

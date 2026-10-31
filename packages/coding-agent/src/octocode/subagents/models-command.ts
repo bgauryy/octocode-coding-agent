@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { clipText, textResult } from "../shared/util.ts";
 import {
 	type Catalog,

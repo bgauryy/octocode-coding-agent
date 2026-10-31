@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/schema.ts";
 import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { redactSecrets, secretProblem } from "../../src/octocode/shared/sanitize.ts";
+import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
 import { loadSqlite } from "../../src/octocode/shared/util.ts";
 import { tmp } from "./helpers.ts";
 import { repoKey } from "../../src/octocode/shared/home/repo.ts";

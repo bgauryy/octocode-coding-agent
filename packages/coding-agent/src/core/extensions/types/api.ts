@@ -1,11 +1,10 @@
 /** The API passed to extension factory functions. */
 
-import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { ThinkingLevel, EventBus } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, Provider, TextContent } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../../cache-warmer.ts";
-import type { EventBus } from "../../event-bus.ts";
 import type { ExecOptions, ExecResult } from "../../exec.ts";
 import type { McpServerConfig, RegisteredMcpServer } from "../../../../../mcp/src/servers.ts";
 import type { CustomMessage } from "../../messages.ts";

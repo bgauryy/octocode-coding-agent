@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { projectMcpConfigPaths } from "../../../../../mcp/src/paths.ts";
+import { isFile } from "../../../utils/fs-probe.ts";
+import { projectMcpConfigPaths, projectAgentDirs, projectHookFiles, projectSkillDirs } from "../home.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { projectAgentDirs, projectHookFiles, projectSkillDirs } from "../home.ts";
 
 /** The project MCP definition files the MCP loader reads from `cwd`; each can start a stdio command. */
 export function projectMcpFiles(cwd: string): string[] {
@@ -89,13 +89,5 @@ function listDir(dir: string): string[] {
 		return fs.readdirSync(dir).map((name) => path.join(dir, name));
 	} catch {
 		return [];
-	}
-}
-
-function isFile(file: string): boolean {
-	try {
-		return fs.statSync(file).isFile();
-	} catch {
-		return false;
 	}
 }

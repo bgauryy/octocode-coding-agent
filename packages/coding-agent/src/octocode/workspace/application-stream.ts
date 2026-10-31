@@ -1,6 +1,6 @@
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { WebSocket } from "ws";
-import { redactData } from "../shared/sanitize.ts";
+import { redactData } from "../../../../common/src/sanitize.ts";
 
 /** A view-only tab sees the session as it is but can do nothing: its snapshots carry no capabilities, so the page draws no controls. */
 function viewFrame(frame: ApplicationFrame): ApplicationFrame {

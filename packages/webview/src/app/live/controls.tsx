@@ -2,7 +2,7 @@ import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { WorkspaceCommand } from "@octocodeai/octocode-contracts/workspace";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { useStore } from "zustand";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Field, Select } from "../ui/fields.tsx";
 import { SendIcon } from "../ui/icons.tsx";
 import { Button } from "../ui/primitives.tsx";

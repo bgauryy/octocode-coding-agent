@@ -52,7 +52,8 @@ export function createRequestHeaders(
 	}
 
 	// xAI recommends this header for cache routing (the completions client sends it too).
-	if (sessionId && getProviderCapabilities(model.provider).grokConversationHeader) headers["x-grok-conv-id"] = sessionId;
+	if (sessionId && getProviderCapabilities(model.provider).grokConversationHeader)
+		headers["x-grok-conv-id"] = sessionId;
 
 	return providerHeadersToRecord(headers, optionsHeaders) ?? {};
 }
@@ -134,7 +135,8 @@ export function buildParams(
 				effort: (model.thinkingLevelMap?.off ?? "none") as NonNullable<typeof params.reasoning>["effort"],
 			};
 		}
-		if (getProviderCapabilities(model.provider).alwaysIncludeEncryptedReasoning) params.include = ["reasoning.encrypted_content"];
+		if (getProviderCapabilities(model.provider).alwaysIncludeEncryptedReasoning)
+			params.include = ["reasoning.encrypted_content"];
 	}
 
 	// Last so model and request sampling parameters override named request fields.

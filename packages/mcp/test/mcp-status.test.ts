@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEventBus, type EventBus } from "../../coding-agent/src/core/event-bus.ts";
+import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import { getMcpSessionStatus, setMcpSessionStatus, type McpServerStatus } from "../src/status.ts";
 
 const server = (name: string): McpServerStatus => ({

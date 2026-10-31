@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { createEventBus } from "../../coding-agent/src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../../coding-agent/src/core/extensions/loader.ts";
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
 import { fakeCtx } from "../../coding-agent/test/octocode/fake-host.ts";

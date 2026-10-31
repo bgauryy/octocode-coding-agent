@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createEventBus } from "../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { HOST_MODULE_SPECIFIERS, HOST_PROVIDED_PACKAGE_NAMES } from "../src/core/extensions/host-modules.ts";
 import { VIRTUAL_MODULES } from "../src/core/extensions/virtual-modules.ts";
 import type { DefaultPackageManager, PathMetadata, ResolvedPaths } from "../src/core/package-manager.ts";

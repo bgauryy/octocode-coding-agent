@@ -3,10 +3,8 @@ import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import type { DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contracts/daemon";
 import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
 
 /** Authenticated reads of the user-level daemon; every answer is shape-checked before the page uses it. */
 export function createDaemonApi(access: string) {

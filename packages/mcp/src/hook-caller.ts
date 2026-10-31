@@ -1,5 +1,5 @@
 import type { CallToolResult } from "./client/index.ts";
-import type { EventBus } from "../../coding-agent/src/core/event-bus.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 
 /**
  * One hook-initiated MCP call. The owner resolves the registered tool (`mcp__<server>__<tool>`), refuses a hidden or

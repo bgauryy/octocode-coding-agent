@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createEventBus } from "../../../src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../../../src/core/extensions/loader.ts";
 import type { ExtensionAPI, ExtensionFactory, ResourceLoader } from "../../../src/index.ts";
 import { createHarness, type Harness } from "../harness.ts";

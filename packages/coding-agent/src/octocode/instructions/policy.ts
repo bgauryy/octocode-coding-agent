@@ -200,7 +200,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			"- Ancestor instructions are already loaded. Before working under a subdirectory, read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md; a deeper file wins within its directory, and direct user instructions win over both.",
 			readOnly
 				? "- For code questions: read affected code and callers before concluding; run the deciding check when a read-only one exists."
-				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it) and before -> after impact where it applies (UX, security, performance, memory, maintenance); run the deciding check across it (focused test, typecheck or reproduction). After your last edit, and before reporting, rerun the check that proves the final state (an edit or revert after a check needs a new check); if none can run, say why.",
+				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it) and before -> after impact (UX, security, performance/memory, maintenance); run the deciding check across it (focused test, typecheck or reproduction). After your last edit, and before reporting, rerun the check that proves the final state (an edit or revert after a check needs a new check); if none can run, say why.",
 			// User request (2026-10-30): behavioral and end-to-end tests check contracts better than rigid unit tests. A read-only
 			// role writes no tests; the reviewer role carries the review form of this rule.
 			...(readOnly

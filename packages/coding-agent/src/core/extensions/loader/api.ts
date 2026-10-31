@@ -1,6 +1,6 @@
 import type { Provider } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
-import type { EventBus } from "../../event-bus.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { ExecOptions } from "../../exec.ts";
 import { execCommand } from "../../exec.ts";
 import { type McpServerChange, type McpServerConfig, validateMcpServerConfig } from "../../../../../mcp/src/servers.ts";

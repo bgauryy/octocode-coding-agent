@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
-import { clearConfigValueCache } from "../resolve-config-value.ts";
+import { clearConfigValueCache } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 
 /** Keychain service name shared by every entry; the account is the provider id. */
 const SERVICE = "octocode";

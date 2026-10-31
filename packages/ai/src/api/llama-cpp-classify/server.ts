@@ -2,6 +2,7 @@ import type { ClassifierApi, ClassifierModel, ClassifierOptions } from "../../ty
 import { headersToRecord, providerHeadersToRecord } from "../../utils/headers.ts";
 import { retryProviderRequest } from "../../utils/provider-retry.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const LABEL = "llama.cpp";
 
@@ -28,9 +29,6 @@ function timeoutError(timeoutMs: number): HttpError {
 	return error;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export interface RequestContext {
 	model: ClassifierModel<ClassifierApi>;

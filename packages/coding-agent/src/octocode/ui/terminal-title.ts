@@ -1,7 +1,7 @@
 import path from "node:path";
 import { GLYPH, SEPARATOR, SPINNER } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { APP_TITLE } from "../../config.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 
 /** What the session is doing, as the terminal tab shows it. */
 export type TitleState = "idle" | "thinking" | "running" | "waiting" | "done" | "failed";

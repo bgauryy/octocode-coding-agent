@@ -6,6 +6,7 @@ import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
 import { resolvePath } from "../../../../common/src/paths.ts";
 import { stripBom } from "../../../../common/src/text.ts";
 import { deepMergeObjects, isMergeableObject } from "./merge.ts";
+import { readJsonFile } from "../../../../common/src/json.ts";
 
 export type SettingsScope = "global" | "project";
 
@@ -81,7 +82,7 @@ export class FileSettingsStorage implements SettingsStorage {
 				for (const legacyDir of getLegacyConfigDirs(dir).reverse()) {
 					const legacyFile = join(legacyDir, "settings.json");
 					if (!existsSync(legacyFile)) continue;
-					const legacy: unknown = JSON.parse(stripBom(readFileSync(legacyFile, "utf-8")));
+					const legacy: unknown = readJsonFile(legacyFile);
 					if (!isMergeableObject(legacy)) throw new Error(`Invalid settings object: ${legacyFile}`);
 					// Resources resolve against their original directory in the resource loader.
 					for (const key of [

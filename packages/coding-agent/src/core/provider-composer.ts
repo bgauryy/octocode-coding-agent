@@ -28,7 +28,7 @@ import {
 	isCommandConfigValue,
 	isConfigValueConfigured,
 	resolveHeadersOrThrow,
-} from "./resolve-config-value.ts";
+} from "@octocodeai/octocode-ai/utils/resolve-config-value";
 
 export type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
 

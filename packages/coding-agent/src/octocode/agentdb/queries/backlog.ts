@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { num, type Row } from "../rows.ts";
+import { allRows, num, type Row } from "../rows.ts";
 
 /** A persisted item, including the joined sequence number of its origin. */
 export interface ItemRow<State extends string> {
@@ -72,7 +72,7 @@ export function itemBySeq(db: DatabaseSync, repo: string, seq: number): ItemRow<
 
 /** The rows of the items that came from `rowId`, in board order. */
 export function derivedFrom(db: DatabaseSync, rowId: number): ItemRow<string>[] {
-	return db.prepare(`${SELECT} WHERE b.from_item = ? ORDER BY ${ORDER}`).all(rowId) as unknown as ItemRow<string>[];
+	return allRows<ItemRow<string>>(db.prepare(`${SELECT} WHERE b.from_item = ? ORDER BY ${ORDER}`), rowId);
 }
 
 /** How many items a filter matches, ignoring any limit. */
@@ -84,9 +84,12 @@ export function countItems(db: DatabaseSync, filter: ItemFilter): number {
 /** Matching rows, ongoing first, then by priority and most recently updated; a negative `limit` is every row. */
 export function listItems(db: DatabaseSync, filter: ItemFilter, limit: number, offset: number): ItemRow<string>[] {
 	const { clause, args } = whereOf(filter);
-	return db
-		.prepare(`${SELECT} WHERE ${clause} ORDER BY ${ORDER} LIMIT ? OFFSET ?`)
-		.all(...args, limit, offset) as unknown as ItemRow<string>[];
+	return allRows<ItemRow<string>>(
+		db.prepare(`${SELECT} WHERE ${clause} ORDER BY ${ORDER} LIMIT ? OFFSET ?`),
+		...args,
+		limit,
+		offset,
+	);
 }
 
 /** The item count of each state present in the repository. */
@@ -104,11 +107,14 @@ export function notesPage(
 	limit: number,
 	offset: number,
 ): Array<{ at: number; author: string; kind: string; text: string }> {
-	return db
-		.prepare(
+	return allRows<{ at: number; author: string; kind: string; text: string }>(
+		db.prepare(
 			"SELECT at, author, kind, text FROM backlog_notes WHERE item = ? ORDER BY at DESC, id DESC LIMIT ? OFFSET ?",
-		)
-		.all(rowId, limit, offset) as unknown as Array<{ at: number; author: string; kind: string; text: string }>;
+		),
+		rowId,
+		limit,
+		offset,
+	);
 }
 
 export function noteCount(db: DatabaseSync, rowId: number): number {
@@ -120,14 +126,10 @@ export function commentsOf(
 	db: DatabaseSync,
 	rowId: number,
 ): Array<{ id: number; at: number; author: string; text: string }> {
-	return db
-		.prepare("SELECT id, at, author, text FROM backlog_comments WHERE item = ? ORDER BY id")
-		.all(rowId) as unknown as Array<{
-		id: number;
-		at: number;
-		author: string;
-		text: string;
-	}>;
+	return allRows<{ id: number; at: number; author: string; text: string }>(
+		db.prepare("SELECT id, at, author, text FROM backlog_comments WHERE item = ? ORDER BY id"),
+		rowId,
+	);
 }
 
 /** The newest audit rows first, `limit` of them; `ref` narrows to one item, `before` to ids below it. */
@@ -158,8 +160,8 @@ export interface EntityRow {
 
 /** The entity data of several items in one statement, each relation in its stored order. */
 export function entityRows(db: DatabaseSync, repo: string, rowIds: readonly number[]): EntityRow[] {
-	return db
-		.prepare(`
+	return allRows<EntityRow>(
+		db.prepare(`
 		SELECT b.id, b.type, p.seq AS parent_seq,
 			(SELECT json_group_array(json_object('relation', relation, 'target', target)) FROM
 				(SELECT relation, target FROM backlog_links WHERE item = b.id ORDER BY rowid)) AS links,
@@ -167,8 +169,10 @@ export function entityRows(db: DatabaseSync, repo: string, rowIds: readonly numb
 				(SELECT id, payload FROM backlog_completions WHERE item = b.id ORDER BY id)) AS completions
 		FROM backlog b LEFT JOIN backlog p ON p.id = b.parent_id AND p.repo_key = ?
 		WHERE b.id IN (SELECT value FROM json_each(?))
-	`)
-		.all(repo, JSON.stringify(rowIds)) as unknown as EntityRow[];
+	`),
+		repo,
+		JSON.stringify(rowIds),
+	);
 }
 
 export function setParent(db: DatabaseSync, rowId: number, parentRowId: number | null): void {

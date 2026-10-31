@@ -3,7 +3,7 @@ import { connectionFixture } from "./mcp-connection-fixture.ts";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-storage.ts";
-import { createEventBus } from "../../coding-agent/src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { getMcpAddedServers } from "../src/session-servers.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";

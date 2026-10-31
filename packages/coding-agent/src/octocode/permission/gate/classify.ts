@@ -10,12 +10,13 @@ import { takesCallReason } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
+import { LEGACY_CHANGE_TOOLS, LEGACY_READ_TOOLS } from "../../../core/tools/tool-names.ts";
 import { catastrophicCommand } from "../shell/destructive.ts";
 
 /** Tools named like the removed core readers (Octocode ships none now) that a custom tool or SDK caller may still register: `read` takes `path`; `grep`, `find` and `ls` default to the working directory. They stay classified so a same-named tool cannot read outside the workspace unasked. */
-const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
+const READ_TOOLS = new Set(LEGACY_READ_TOOLS);
 /** Same-named custom file changers (Octocode ships no `edit` or `write`); Octocode's `file` tool checks itself. */
-export const CHANGE_TOOLS = new Set(["edit", "write"]);
+export const CHANGE_TOOLS = new Set(LEGACY_CHANGE_TOOLS);
 /** Browser actions that act on the page; the others read the page or manage tabs. `navigate`, `tab` with a `url` and `upload` are checked by the browser tool, which knows the host and the paths. */
 const BROWSER_ACTS = new Set(["click", "hover", "drag", "type", "fill", "press", "download", "dialog"]);
 /** Browser actions that take control of a browser: the user's own Chrome, arbitrary script in the page. Each is a `browser.control` ask. */

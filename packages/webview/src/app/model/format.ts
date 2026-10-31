@@ -36,10 +36,6 @@ export function plural(count: number, one: string, many = `${one}s`): string {
 	return `${count} ${count === 1 ? one : many}`;
 }
 
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export function choice<const T extends string>(value: string, choices: readonly T[]): T {
 	const found = choices.find((option) => option === value);
 	if (!found) throw new Error(`Invalid choice: ${value}`);

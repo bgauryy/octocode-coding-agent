@@ -20,7 +20,7 @@ import type {
 	TextContent,
 	TranscriptContext,
 } from "../../types.ts";
-import { shortHash } from "../../utils/hash.ts";
+import { fastHash } from "../../utils/hash.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
@@ -95,7 +95,7 @@ export function convertResponsesMessages<TApi extends Api>(
 		sanitizeToolCallId(part, DEFAULT_TOOL_CALL_ID_MAX_LENGTH, { trimTrailingUnderscores: true });
 
 	const buildForeignResponsesItemId = (itemId: string): string => {
-		const normalized = `fc_${shortHash(itemId)}`;
+		const normalized = `fc_${fastHash(itemId)}`;
 		return normalized.length > 64 ? normalized.slice(0, 64) : normalized;
 	};
 
@@ -137,7 +137,7 @@ export function convertResponsesMessages<TApi extends Api>(
 		}
 		if (toolSupport !== "additions") return;
 		const names = tools.map((tool) => tool.name);
-		const callId = `pi_tool_load_${shortHash(`${seed}:${names.join(",")}`)}`;
+		const callId = `pi_tool_load_${fastHash(`${seed}:${names.join(",")}`)}`;
 		messages.push({
 			type: "tool_search_call",
 			call_id: callId,
@@ -257,7 +257,7 @@ export function convertResponsesMessages<TApi extends Api>(
 					if (!msgId) {
 						msgId = fallbackMessageId;
 					} else if (msgId.length > 64) {
-						msgId = `msg_${shortHash(msgId)}`;
+						msgId = `msg_${fastHash(msgId)}`;
 					}
 					output.push({
 						type: "message",

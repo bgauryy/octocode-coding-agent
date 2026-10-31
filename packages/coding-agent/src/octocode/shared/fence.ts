@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { formatClock } from "./format.ts";
-import { visibleControls } from "./sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { clipText } from "./util.ts";
 
 /**

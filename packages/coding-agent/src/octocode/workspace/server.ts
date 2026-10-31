@@ -4,7 +4,7 @@ import {
 	type ApplicationConnection,
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
-import { redactData } from "../shared/sanitize.ts";
+import { redactData } from "../../../../common/src/sanitize.ts";
 import { renderBacklogHtml } from "@octocodeai/octocode-webview";
 import {
 	WorkspaceCommandSchema,

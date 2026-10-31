@@ -11,6 +11,7 @@ import type { Permission } from "../permission/ask.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { globalPaths, nativeAgentDir, projectAgentDirs } from "../shared/home.ts";
+import { LEGACY_CHANGE_TOOLS } from "../../core/tools/tool-names.ts";
 import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 
 export interface AgentProfile {
@@ -270,7 +271,7 @@ export function profileTools(profile?: AgentProfile): string {
 /** Excluding our file tool also excludes the native tools it replaces, including when a pattern matches it. */
 export function profileExcludes(excludeTools: string | undefined): string[] {
 	const excluded = toolList(excludeTools);
-	return [...new Set(matchesTool(excluded, "file") ? [...excluded, "edit", "write"] : excluded)];
+	return [...new Set(matchesTool(excluded, "file") ? [...excluded, ...LEGACY_CHANGE_TOOLS] : excluded)];
 }
 
 export function profileSelectsTool(

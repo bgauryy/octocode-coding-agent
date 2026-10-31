@@ -1,7 +1,8 @@
 import fs from "node:fs";
-import { formatCount, formatOutputSize } from "../../../core/tools/bash/header.ts";
+import { formatCount } from "../../../core/tools/bash/header.ts";
+import { formatBytes } from "../../../utils/bytes.ts";
 import { formatDuration, shortPath } from "../../shared/format.ts";
-import { visibleControls, withoutColors } from "../../shared/sanitize.ts";
+import { visibleControls, withoutColors } from "../../../../../common/src/sanitize.ts";
 import { cutText, firstLine } from "../../shared/util.ts";
 import type { BashJob, JobExit } from "./types.ts";
 import { verificationLine } from "../bash/verification.ts";
@@ -72,7 +73,7 @@ function jobHeader(job: BashJob, exit: JobExit, lines: number): string {
 	const size =
 		lines === 0 && bytes === 0
 			? "no output"
-			: `${formatCount(lines)} ${lines === 1 ? "line" : "lines"} · ${formatOutputSize(bytes)}`;
+			: `${formatCount(lines)} ${lines === 1 ? "line" : "lines"} · ${formatBytes(bytes, "spaced")}`;
 	return `[${[status, `${exit.seconds}s`, size, `log: ${shortPath(job.log, job.cwd)}`].join(" · ")}]`;
 }
 

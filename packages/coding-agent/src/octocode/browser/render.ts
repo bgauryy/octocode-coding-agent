@@ -1,7 +1,7 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../theme/theme.ts";
 import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
-import { redactSecrets } from "../shared/sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clipText } from "../shared/util.ts";
 import { snapshotFileOf } from "./snapshot.ts";
 import { clip } from "../shared/render/text.ts";

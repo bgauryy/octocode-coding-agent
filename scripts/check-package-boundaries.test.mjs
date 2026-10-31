@@ -128,6 +128,21 @@ test("a private implementation cannot hide an outward import or an external cycl
 	assert.ok(issues.some((issue) => issue.includes("package cycle: host -> agent -> host")));
 });
 
+test("hosted workspaces reach each other only along their policy edges", () => {
+	const fixtures = {
+		host: { name: "@app/host", devDependencies: { "@app/mcp": "workspace:*", "@app/common": "workspace:*" } },
+		mcp: { name: "@app/mcp", private: true, octocodeSource: { host: "host", mount: "mcp" } },
+		common: { name: "@app/common", private: true, octocodeSource: { host: "host", mount: "common" } },
+	};
+	const sources = (from, to) => [{ package: from, path: "src/index.ts", imports: [`../../${to}/src/index.ts`] }];
+	const policy = { host: ["common"], mcp: ["common"], common: [] };
+	assert.deepEqual(checkPackageBoundaries(fixtures, sources("mcp", "common"), policy), []);
+	assert.deepEqual(checkPackageBoundaries(fixtures, sources("host", "mcp"), policy), []);
+	assert.ok(
+		checkPackageBoundaries(fixtures, sources("common", "mcp"), policy).includes("forbidden import: common/src/index.ts -> mcp"),
+	);
+});
+
 test("source workspace declarations require private ownership, a safe mount and a workspace dependency", () => {
 	for (const change of [
 		{ private: false },

@@ -1,13 +1,13 @@
 import os from "node:os";
 import path from "node:path";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { StatusEntry } from "../../core/footer-data-provider.ts";
 import { paintStatus } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
 import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATUS } from "../shared/status.ts";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
 import {

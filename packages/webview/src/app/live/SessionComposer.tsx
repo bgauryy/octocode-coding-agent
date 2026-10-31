@@ -2,7 +2,8 @@ import type { ApplicationAsset, ApplicationSnapshot } from "@octocodeai/octocode
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import { choice, errorMessage, plural } from "../model/format.ts";
+import { choice, plural } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Field, Select } from "../ui/fields.tsx";
 import { SendIcon, StopIcon } from "../ui/icons.tsx";
 import { Badge, Button } from "../ui/primitives.tsx";

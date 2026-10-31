@@ -6,7 +6,7 @@ import type {
 	UserBashEvent,
 	UserBashEventResult,
 } from "../../core/extensions/index.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { Permission } from "./ask.ts";
 import type { GateVerdict } from "./gate.ts";
 import { catastrophicCommand } from "./shell/destructive.ts";

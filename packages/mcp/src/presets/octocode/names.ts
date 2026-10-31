@@ -1,4 +1,4 @@
-import { mcpNamespace } from "../../servers.ts";
+import { mcpNamespace } from "../../../../common/src/mcp-names.ts";
 /** The MCP server name Octocode registers its research server under (and looks for in `mcp.json`). */
 export const OCTOCODE_SERVER = "octocode";
 

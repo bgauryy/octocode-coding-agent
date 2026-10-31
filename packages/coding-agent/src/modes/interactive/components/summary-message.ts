@@ -1,8 +1,8 @@
 import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
-import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 /** What a summary message shows. Every string is untrusted text: it is sanitized where drawn. */
 export interface SummaryMessageText {

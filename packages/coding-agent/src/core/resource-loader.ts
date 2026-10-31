@@ -7,7 +7,7 @@ import type { ResourceDiagnostic } from "./diagnostics.ts";
 export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.ts";
 
 import { isLocalPath, resolvePath } from "../../../common/src/paths.ts";
-import { createEventBus, type EventBus } from "./event-bus.ts";
+import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import { clearExtensionCache, createExtensionRuntime } from "./extensions/loader.ts";
 import type { Extension, InlineExtension, LoadExtensionsResult } from "./extensions/types.ts";
 import { DefaultPackageManager, type PathMetadata } from "./package-manager.ts";

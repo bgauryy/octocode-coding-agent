@@ -13,7 +13,7 @@ import * as importedModule4 from "../../src/octocode/files/tool.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
-import { visibleControls } from "../../src/octocode/shared/sanitize.ts";
+import { visibleControls } from "../../../common/src/sanitize.ts";
 import { toolHint } from "../../src/octocode/shared/util.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";

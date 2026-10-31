@@ -4,7 +4,20 @@
  */
 
 import { execSync, spawnSync } from "child_process";
-import { getShellConfig } from "../utils/shell.ts";
+
+/** How to start a shell on this host; `getShellConfig` of the coding agent is the usual provider. */
+export interface ConfigValueShell {
+	shell: string;
+	args: string[];
+	commandTransport?: "argv" | "stdin";
+}
+
+let configuredShell: (() => ConfigValueShell) | undefined;
+
+/** Sets how `!command` values find the shell on Windows. Without one they run through the default shell. */
+export function setConfigValueShell(provider: (() => ConfigValueShell) | undefined): void {
+	configuredShell = provider;
+}
 
 // Successful shell command results are cached briefly so rotating tokens (gcloud, keychains) refresh; failures never are.
 const COMMAND_RESULT_TTL_MS = 5 * 60_000;
@@ -147,7 +160,8 @@ export function resolveConfigValue(config: string, env?: Record<string, string>)
 
 function executeWithConfiguredShell(command: string): { executed: boolean; value: string | undefined } {
 	try {
-		const { shell, args, commandTransport } = getShellConfig();
+		if (!configuredShell) return { executed: false, value: undefined };
+		const { shell, args, commandTransport } = configuredShell();
 		const commandFromStdin = commandTransport === "stdin";
 		const result = spawnSync(shell, commandFromStdin ? args : [...args, command], {
 			encoding: "utf-8",

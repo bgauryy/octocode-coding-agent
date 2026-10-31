@@ -120,7 +120,7 @@ export class McpServerConnection implements McpToolCaller {
 	}
 
 	getClient(): Promise<McpClient> {
-		const unavailable = unavailableError(this.entry, this.stopped, this.closed);
+		const unavailable = unavailableError(this.entry, { stopped: this.stopped, closed: this.closed });
 		if (unavailable) return Promise.reject(unavailable);
 		if (this.client?.connectionState === "connected") return Promise.resolve(this.client);
 		const wait = this.opening ? 0 : this.backoff.remainingMs();

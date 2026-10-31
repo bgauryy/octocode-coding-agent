@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import type { TSchema } from "typebox";
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
-import { mcpNamespace } from "./servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import type { ModelRegistry } from "../../coding-agent/src/core/model-registry.ts";
 import { openBrowser } from "../../common/src/open-browser.ts";
 import {

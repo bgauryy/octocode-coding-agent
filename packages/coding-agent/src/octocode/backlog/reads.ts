@@ -6,7 +6,7 @@ import {
 	type BacklogAudit,
 } from "@octocodeai/octocode-contracts/snapshot";
 import { sessionRunningPid } from "../agentdb/liveness.ts";
-import { redactData, visibleControls } from "../shared/sanitize.ts";
+import { redactData, visibleControls } from "../../../../common/src/sanitize.ts";
 import { type Db, backlog } from "../agentdb/api.ts";
 import { type Row, toItem } from "./row.ts";
 import { enrichItems } from "./entities.ts";

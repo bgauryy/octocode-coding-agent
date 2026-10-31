@@ -347,8 +347,7 @@ export async function run(host: StartupHost): Promise<void> {
 		try {
 			await getApplicationPort(host.session).invoke("prompt", initialMessage, { images: initialImages });
 		} catch (error: unknown) {
-			const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-			host.showError(errorMessage);
+			host.showError(promptFailure(error));
 		}
 	}
 
@@ -357,8 +356,7 @@ export async function run(host: StartupHost): Promise<void> {
 			try {
 				await getApplicationPort(host.session).invoke("prompt", message);
 			} catch (error: unknown) {
-				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-				host.showError(errorMessage);
+				host.showError(promptFailure(error));
 			}
 		}
 	}
@@ -369,10 +367,14 @@ export async function run(host: StartupHost): Promise<void> {
 		try {
 			await getApplicationPort(host.session).invoke("prompt", userInput);
 		} catch (error: unknown) {
-			const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-			host.showError(errorMessage);
+			host.showError(promptFailure(error));
 		}
 	}
+}
+
+/** What the user sees when a prompt fails: the error's message, or a generic line when a non-Error was thrown. */
+function promptFailure(error: unknown): string {
+	return error instanceof Error ? error.message : "Unknown error occurred";
 }
 
 export async function getUserInput(host: StartupHost): Promise<string> {

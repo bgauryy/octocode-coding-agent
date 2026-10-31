@@ -1,6 +1,6 @@
 import { GLYPH } from "@octocodeai/octocode-tui";
+import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clip } from "../shared/render/text.ts";
-import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 

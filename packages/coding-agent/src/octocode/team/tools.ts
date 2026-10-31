@@ -9,7 +9,7 @@ import type {
 } from "../../core/extensions/index.ts";
 import { reservationPath, resolveToolPath } from "../shared/home.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
-import { storedText } from "../shared/sanitize.ts";
+import { storedText } from "../../../../common/src/sanitize.ts";
 import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
 import { EDIT_RETENTION_MINUTES, unjoinedAgent } from "./edits.ts";
 import { lockAdvice } from "./lock-advice.ts";

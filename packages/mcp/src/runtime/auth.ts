@@ -2,7 +2,7 @@
 
 import { McpAuthRequiredError } from "../client/index.ts";
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "../client/oauth/index.ts";
-import { resolveConfigValueOrThrow } from "../../../coding-agent/src/core/resolve-config-value.ts";
+import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { McpServerEntry } from "../config.ts";
 import {
 	createMcpAuthProvider,
@@ -17,7 +17,10 @@ export function signInRequiredMessage(entry: McpServerEntry): string {
 }
 
 /** Why a connection cannot be used now: disabled in its config, stopped in this session, or shut down. */
-export function unavailableError(entry: McpServerEntry, stopped: boolean, closed: boolean): Error | undefined {
+export function unavailableError(
+	entry: McpServerEntry,
+	{ stopped, closed }: { stopped: boolean; closed: boolean },
+): Error | undefined {
 	if (entry.config.enabled === false) return new Error(`MCP server "${entry.name}" is disabled`);
 	if (stopped)
 		return new Error(`MCP server "${entry.name}" is stopped in this session; connect or restart it to use it`);

@@ -63,7 +63,10 @@ function isStopped(event: WorkspaceEvent): boolean {
 }
 
 /** The shape a card shows: running until its result arrives, then done, failed or stopped. */
-function cardState(event: WorkspaceEvent, failed: boolean, notRun: boolean, stopped: boolean): UiState | undefined {
+function cardState(
+	event: WorkspaceEvent,
+	{ failed, notRun, stopped }: { failed: boolean; notRun: boolean; stopped: boolean },
+): UiState | undefined {
 	if (failed) return "failed";
 	if (notRun || stopped) return "stopped";
 	if (record(event.details).status === "streaming") return "running";
@@ -81,7 +84,7 @@ export function activityCard(event: FeedEvent): ActivityCard {
 	const prose = event.type === "message" || event.type === "agent.progress";
 	const [firstLine, ...rest] = event.type.startsWith("tool.") ? toolHeadline(event) : event.text.split("\n");
 	const hint = event.type.startsWith("tool.") ? hintOf(event) : "";
-	const ui = cardState(event, failed, notRun, stopped);
+	const ui = cardState(event, { failed, notRun, stopped });
 	return {
 		failed,
 		...(ui ? { ui } : {}),

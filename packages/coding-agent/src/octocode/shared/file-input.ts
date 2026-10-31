@@ -1,6 +1,7 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { expandPath } from "../../core/tools/path-utils.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
+import { LEGACY_CHANGE_TOOLS } from "../../core/tools/tool-names.ts";
 interface PatchChange {
 	type: "write" | "edit" | "delete";
 	path: string;
@@ -54,7 +55,7 @@ const PATH_KEYS = ["path", "filePath"] as const;
 export function mutatedPaths(toolName: string, input: unknown): string[] {
 	if (typeof input !== "object" || input === null) return [];
 	const record = input as Record<string, unknown>;
-	if (toolName === "edit" || toolName === "write")
+	if (LEGACY_CHANGE_TOOLS.includes(toolName))
 		return PATH_KEYS.flatMap((key) => (typeof record[key] === "string" ? [record[key]] : []));
 	if (toolName !== "file") return [];
 	return fileChanges(record).flatMap((query) =>

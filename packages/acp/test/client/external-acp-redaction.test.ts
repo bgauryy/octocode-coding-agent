@@ -5,7 +5,7 @@ import type { SessionNotification } from "@agentclientprotocol/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpDiagnostics, AcpOutput } from "../../src/client/output.ts";
 import { ACP_TEXT_BYTES, AcpTextRedactor } from "../../src/client/redaction.ts";
-import { redactSecrets, secretProblem } from "../../../coding-agent/src/octocode/shared/sanitize.ts";
+import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
 
 const secret = `sk-${"a".repeat(30)}`;
 const pemHeader = "-----BEGIN RSA PRIVATE KEY-----";

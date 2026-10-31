@@ -14,7 +14,7 @@ import {
 	isCommandConfigValue,
 	resolveConfigValueOrThrow,
 	resolveHeadersOrThrow,
-} from "../resolve-config-value.ts";
+} from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { ExtensionOAuthConfig, ProviderConfigInput } from "./types.ts";
 
 function adaptOAuth(config: ExtensionOAuthConfig): OAuthAuth {

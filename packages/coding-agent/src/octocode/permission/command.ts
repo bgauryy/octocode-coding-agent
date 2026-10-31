@@ -3,7 +3,7 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { PERMISSION_ENV } from "../../../../common/src/env.ts";
 import { shortcutText } from "../shared/keys.ts";
-import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { type Permission } from "./ask.ts";
 import type { AuditEntry } from "./audit.ts";
 import {

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createEventBus } from "../../coding-agent/src/core/event-bus.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
 import {
 	getMcpAddedServers,

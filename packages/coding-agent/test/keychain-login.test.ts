@@ -4,7 +4,7 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { KeychainBackend } from "../src/core/auth-storage/keychain.ts";
 import { type KeychainChoice, KeychainLoginSession } from "../src/core/auth-storage/keychain-login.ts";
 import { CredentialSynchronizationError, ModelRuntime } from "../src/core/model-runtime.ts";
-import { clearConfigValueCache, resolveConfigValue } from "../src/core/resolve-config-value.ts";
+import { clearConfigValueCache, resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 
 function fakeKeychain(options: { failStore?: boolean } = {}): KeychainBackend & {
 	stored: Map<string, string>;

@@ -1,6 +1,6 @@
 /** The tool definition registry a session builds from built-in, SDK and extension tools. */
 
-import { mcpNamespace } from "../../../../mcp/src/servers.ts";
+import { mcpNamespace } from "../../../../common/src/mcp-names.ts";
 import { OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
 import type { RegisteredTool, ToolDefinition } from "../extensions/index.ts";
 import { NATIVE_FEATURE_PATH } from "../native-tools.ts";

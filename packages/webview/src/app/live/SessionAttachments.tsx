@@ -1,6 +1,6 @@
 import type { ApplicationAsset } from "@octocodeai/octocode-contracts";
 import { useState } from "react";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { useLive } from "./session.tsx";
 

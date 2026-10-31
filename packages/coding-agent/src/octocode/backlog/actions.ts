@@ -1,4 +1,4 @@
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { itemDetail } from "./format.ts";
 import { type BacklogStore, COMPLETION_GUIDANCE, type Item } from "./store.ts";
 

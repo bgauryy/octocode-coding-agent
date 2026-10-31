@@ -18,7 +18,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 } from "../../types.ts";
-import { shortHash } from "../../utils/hash.ts";
+import { fastHash } from "../../utils/hash.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
@@ -91,7 +91,7 @@ export function convertMessages(
 			if (combinedId.length <= maxLength) {
 				return combinedId;
 			}
-			const hash = shortHash(id).slice(0, 8);
+			const hash = fastHash(id).slice(0, 8);
 			const prefix = callId.slice(0, Math.max(1, maxLength - hash.length - 1));
 			return `${prefix}_${hash}`;
 		}

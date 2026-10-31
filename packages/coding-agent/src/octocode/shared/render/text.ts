@@ -1,6 +1,6 @@
 import { type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { shortcutText } from "../keys.ts";
-import { sanitizeTerminalText } from "../sanitize.ts";
 import { clipText, firstLine } from "../util.ts";
 
 export const GUTTER = "  ⎿  ";

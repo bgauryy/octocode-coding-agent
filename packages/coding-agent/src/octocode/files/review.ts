@@ -3,7 +3,7 @@ import type { ExtensionUIPermissionRequest } from "../../core/extensions/types.t
 import { kindOption } from "../permission/ask/text.ts";
 import { plural } from "../shared/render/text.ts";
 import { foldLines } from "../permission/effect.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { clipText } from "../shared/util.ts";
 
 /**

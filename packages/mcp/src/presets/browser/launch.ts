@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { isBunBinary } from "../../../../coding-agent/src/config.ts";
-import { BROWSER_BIN, BROWSER_PACKAGE } from "./names.ts";
+import { BROWSER_BIN, BROWSER_PACKAGE } from "../../../../common/src/mcp-names.ts";
 
 export interface BrowserLaunch {
 	command: string;

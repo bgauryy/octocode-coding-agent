@@ -6,7 +6,7 @@ import type {
 	ExtensionUIContext,
 } from "../../core/extensions/index.ts";
 import { withDialog } from "./locks.ts";
-import { sanitizeTerminalText } from "./sanitize.ts";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 
 type NoticeLevel = "info" | "warning" | "error";
 

@@ -1,13 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { canonicalizePath, resolvePath } from "../../../common/src/paths.ts";
-import { stripBom } from "../../../common/src/text.ts";
 import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
 import { lockSyncWithRetry } from "../../../common/src/file-write-lock.ts";
-import { projectMcpConfigPaths } from "../../../mcp/src/paths.ts";
+import { projectMcpConfigPaths } from "../../../common/src/mcp-paths.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 export type ProjectTrustDecision = boolean | null;
 
@@ -115,7 +115,7 @@ function readTrustFileEntries(path: string): { data: TrustFile; legacy: Record<s
 
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(stripBom(readFileSync(path, "utf-8")));
+		parsed = readJsonFile(path);
 	} catch (error) {
 		const message = errorMessage(error);
 		throw new Error(`Failed to read trust store ${path}: ${message}`);
@@ -194,7 +194,7 @@ export function hasTrustRequiringProjectResources(cwd: string): boolean {
 	let currentDir = canonicalizePath(resolvePath(cwd));
 
 	const configDir = join(currentDir, CONFIG_DIR_NAME);
-	if (projectMcpConfigPaths(currentDir).some((file) => existsSync(file))) return true;
+	if (projectMcpConfigPaths(currentDir, CONFIG_DIR_NAME).some((file) => existsSync(file))) return true;
 	if (TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES.some((entry) => existsSync(join(configDir, entry)))) {
 		return true;
 	}

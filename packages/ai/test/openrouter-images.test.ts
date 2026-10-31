@@ -117,7 +117,7 @@ describe("openrouter images", () => {
 
 		const output = await generateImages(model, context, { apiKey: "test", signal: controller.signal });
 		expect(output.stopReason).toBe("aborted");
-		expect(output.errorMessage).toBe("Request aborted");
+		expect(output.errorMessage).toBe("Request was aborted");
 		expect(mockState.lastRequestOptions).toMatchObject({ signal: controller.signal });
 	});
 

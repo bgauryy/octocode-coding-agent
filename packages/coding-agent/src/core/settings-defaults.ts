@@ -1,6 +1,9 @@
 import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
 import { RESULT_DEFAULT_BYTES } from "../octocode/shared/output-budget.ts";
 
+/** Tokens kept free for the reply when compacting or summarizing a branch. */
+export const DEFAULT_RESERVE_TOKENS = 16384;
+
 /** Runtime defaults shared by settings accessors and the published JSON Schema. */
 export const SETTINGS_DEFAULTS = {
 	transport: "auto",
@@ -8,13 +11,18 @@ export const SETTINGS_DEFAULTS = {
 	followUpMode: "one-at-a-time",
 	/** Working context for a session: this many tokens, at most 90% of the model's capacity. */
 	contextBudget: 300_000,
+	/**
+	 * Built-in compaction values, not a user setting: `compaction` is a removed settings key (settings-manager/ignored-keys.ts says
+	 * its fields have no effect in a settings file), and `builtInCompactionSettings` derives the real thresholds from
+	 * these as the ceiling for each model's window.
+	 */
 	compaction: {
 		enabled: true,
-		reserveTokens: 16384,
+		reserveTokens: DEFAULT_RESERVE_TOKENS,
 		keepRecentTokens: 20000,
 	},
 	branchSummary: {
-		reserveTokens: 16384,
+		reserveTokens: DEFAULT_RESERVE_TOKENS,
 		skipPrompt: false,
 	},
 	retry: {

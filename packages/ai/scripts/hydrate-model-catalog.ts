@@ -12,12 +12,10 @@ import {
 	readModelDataProviderIds,
 	validateModelDataDirectory,
 } from "./model-data.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 type CatalogEntry = ModelCatalogEntry & Record<string, unknown>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isCatalogEntry(value: unknown): value is CatalogEntry {
 	return (

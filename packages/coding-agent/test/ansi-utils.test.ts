@@ -66,6 +66,13 @@ describe("stripAnsi", () => {
 		}
 	});
 
+	it("strips 8-bit C1 sequences like chalk strip-ansi", () => {
+		expect(stripAnsi("a\x9b31mred\x9b0mz")).toBe(referenceStripAnsi("a\x9b31mred\x9b0mz"));
+		expect(stripAnsi("a\x9b31mred\x9b0mz")).toBe("aredz");
+		expect(stripAnsi("a\x1b]0;title\x9cz")).toBe(referenceStripAnsi("a\x1b]0;title\x9cz"));
+		expect(stripAnsi("a\x9d8;;https://example.com\x07link\x9d8;;\x07z")).toBe("alinkz");
+	});
+
 	it("strips RIS without leaking the final byte", () => {
 		expect(stripAnsi("\x1bcdone")).toBe("done");
 	});
@@ -98,6 +105,12 @@ describe("splitIncompleteAnsiSuffix", () => {
 		for (const text of ["abc", "a\x1b[31mb", "a\x1b]8;;u\x07b", "a\x1b]0;t\x1b\\", "a\x1b[3Cb"]) {
 			expect(splitIncompleteAnsiSuffix(text)).toEqual({ complete: text, pending: "" });
 		}
+	});
+
+	it("holds back an unfinished 8-bit C1 sequence", () => {
+		expect(splitIncompleteAnsiSuffix("abc\x9b3")).toEqual({ complete: "abc", pending: "\x9b3" });
+		expect(splitIncompleteAnsiSuffix("abc\x9d0;t")).toEqual({ complete: "abc", pending: "\x9d0;t" });
+		expect(splitIncompleteAnsiSuffix("a\x9b31mb")).toEqual({ complete: "a\x9b31mb", pending: "" });
 	});
 
 	it("reassembles a sequence split across chunks", () => {

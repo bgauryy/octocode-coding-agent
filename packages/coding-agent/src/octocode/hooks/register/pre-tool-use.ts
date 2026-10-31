@@ -1,6 +1,7 @@
 import { rewriteClaudeBash } from "../../shared/claude-bash.ts";
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import { validateFileInput } from "../../shared/file-input.ts";
+import { PATH_INPUT_TOOLS } from "../../../core/tools/tool-names.ts";
 import { rewriteCodexCommand } from "../rewrite.ts";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
@@ -120,7 +121,7 @@ export const preToolUseGate =
 		if (rewrite?.updatedInput) {
 			if (
 				event.origin === "user" ||
-				["read", "edit", "write"].includes(event.toolName) ||
+				PATH_INPUT_TOOLS.includes(event.toolName) ||
 				(event.toolName !== "file" && calls.length !== 1)
 			)
 				return {

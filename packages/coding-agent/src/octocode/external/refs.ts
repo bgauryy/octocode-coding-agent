@@ -1,5 +1,5 @@
 import { type ReferenceContext, referencedContentBlock, resolveReferences } from "../shared/references.ts";
-import { redactSecrets } from "../shared/sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 
 /**
  * `text` with the content of `refs` appended as a `## Referenced content` block. The peer cannot read this machine's

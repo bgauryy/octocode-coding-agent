@@ -4,6 +4,7 @@ import path from "node:path";
 import { getAgentDir, getNativeSkillsDir } from "../config.ts";
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { loadSkillsFromDir } from "../core/skills.ts";
+import { isDirectory } from "../utils/fs-probe.ts";
 import { claudeConfigDir, codexConfigDir } from "../utils/host-config.ts";
 import { registerSkillDescriptions } from "./context-optimization/skills.ts";
 import { EXTRA_SKILLS_ENV, envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
@@ -47,14 +48,6 @@ export function extraSkillDirs(
 /** The Octocode skill folders core discovery reads itself: the agent directory's and the project's `.octocode/skills`. */
 function coreSkillDirs(cwd: string): Set<string> {
 	return new Set([path.join(getAgentDir(), "skills"), workspacePaths(cwd).skills].map((dir) => path.resolve(dir)));
-}
-
-function isDirectory(file: string): boolean {
-	try {
-		return fs.statSync(file).isDirectory();
-	} catch {
-		return false;
-	}
 }
 
 /** Claude.ai's synced skills: they need claude.ai connectors Octocode does not have, and their broad triggers win over local skills. */

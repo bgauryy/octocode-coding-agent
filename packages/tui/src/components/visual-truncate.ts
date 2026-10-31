@@ -3,7 +3,9 @@
  * Used by tool renderers and bash-execution.ts for consistent behavior.
  */
 
-import { type Component, Text, truncateToWidth } from "@octocodeai/octocode-tui";
+import type { Component } from "../tui.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
+import { Text } from "./text.ts";
 
 export interface VisualTruncateResult {
 	/** The visual lines to display */

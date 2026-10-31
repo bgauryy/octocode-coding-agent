@@ -4,7 +4,7 @@ import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE
 import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { cutText, firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { Change } from "./edits.ts";

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { type McpServer, RequestError } from "@agentclientprotocol/sdk";
 import { getAgentDir, isBunBinary } from "../../../coding-agent/src/config.ts";
-import { mcpNamespace } from "../../../mcp/src/servers.ts";
+import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 import { loadMcpConfig } from "../../../mcp/src/config.ts";
 
 interface ServerDefinition {
@@ -173,8 +173,14 @@ export async function prepareAcpMcpServers(servers: McpServer[], cwd: string): P
 				let state: { ready?: boolean; error?: string };
 				try {
 					state = JSON.parse(await readFile(join(directory, "ready.json"), "utf8"));
-				} catch {
-					throw new Error("ACP MCP registration did not initialize; the worker must load its session extension.");
+				} catch (error) {
+					// A missing file means the extension never ran; any other failure leaves the cause visible.
+					if ((error as NodeJS.ErrnoException).code === "ENOENT")
+						throw new Error("ACP MCP registration did not initialize; the worker must load its session extension.");
+					throw new Error(
+						`ACP MCP registration state could not be read: ${error instanceof Error ? error.message : String(error)}`,
+						{ cause: error },
+					);
 				}
 				if (state.ready !== true) throw new Error(state.error ?? "ACP MCP registration failed.");
 			},

@@ -1,5 +1,5 @@
 import { USER_SENDER } from "../../shared/messages.ts";
-import { visibleControls } from "../../shared/sanitize.ts";
+import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import type { HeldLeases } from "../held.ts";
 import type { Lease, LeaseRequest } from "../model.ts";
 import type { PeerLease, PeerLeases } from "../peer-leases.ts";

@@ -1,9 +1,9 @@
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import { formatDuration } from "../../shared/format.ts";
-import { visibleControls } from "../../shared/sanitize.ts";
+import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { capOutputToFile } from "../../shared/spill.ts";
 import { contentText, textResult, withTimeout } from "../../shared/util.ts";
-import { imageLimits } from "../../shared/vision.ts";
+import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { answerDialog, dialogNotice, download, uploadFiles } from "../actions.ts";
 import { blockedSuffix, type BrowserSession, CONSOLE_KEEP } from "../cdp/browser-session.ts";
 import { pressKey } from "../input/keyboard.ts";

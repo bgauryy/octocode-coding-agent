@@ -1,7 +1,7 @@
 import { type Component, Container, Text } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
-import { sanitizeTerminalText } from "../../../../octocode/shared/sanitize.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 
@@ -51,7 +51,7 @@ export function createResultFallback(output: string, expanded: boolean): Compone
 export function rendererFailureText(
 	error: unknown,
 	toolName: string,
-	args: any,
+	args: unknown,
 	output: string,
 	expanded: boolean,
 ): string {
@@ -59,7 +59,7 @@ export function rendererFailureText(
 }
 
 /** Generic display for a tool with no renderer definition: title, JSON arguments and text output. */
-function formatToolExecution(toolName: string, args: any, output: string, expanded = false): string {
+function formatToolExecution(toolName: string, args: unknown, output: string, expanded = false): string {
 	let text = theme.fg("toolTitle", theme.bold(sanitizeTerminalText(toolName)));
 	const content = JSON.stringify(args, null, 2);
 	if (content) {

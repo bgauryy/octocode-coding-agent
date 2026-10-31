@@ -4,7 +4,7 @@ import { createMcpToolName } from "../../tool-names.ts";
 import { createMcpToolDefinition, type McpToolDefinitionOptions } from "../../tool-definition.ts";
 import { OCTOCODE_SERVER, LOCAL_READ_TOOLS } from "./names.ts";
 import { resultBlock, resultText, toolHeader } from "../../../../coding-agent/src/octocode/shared/render.ts";
-import { visibleControls } from "../../../../coding-agent/src/octocode/shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import {
 	TEXT_MAX_CHARS,
 	boundImagePart,
@@ -14,7 +14,7 @@ import {
 import { clip, queryTarget } from "../../../../coding-agent/src/octocode/shared/render/text.ts";
 import { timedTool, timingOf } from "../../../../coding-agent/src/octocode/shared/render/rows.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { type ImageLimits, imageLimits } from "../../../../coding-agent/src/octocode/shared/vision.ts";
+import { type ImageLimits, imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { skillNameOfRead } from "../../../../coding-agent/src/octocode/skill/catalog.ts";
 import { summarizeResult } from "./summary.ts";
 import { skillHeader } from "../../../../coding-agent/src/octocode/skill/render.ts";

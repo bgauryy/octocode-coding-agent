@@ -1,5 +1,5 @@
 import { formatAgo, formatSpan } from "../shared/format.ts";
-import { visibleControls } from "../shared/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import { type BacklogStore, type Item, priorityName } from "./store.ts";
 import { type Note, STATES, type State } from "@octocodeai/octocode-contracts/snapshot";

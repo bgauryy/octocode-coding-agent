@@ -117,7 +117,9 @@ export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob
 			for (const name of fs.readdirSync(dir))
 				if (name.endsWith(RECORD_SUFFIX))
 					entries.push({ file: path.join(dir, name), record: readRecord(path.join(dir, name)) });
-		} catch {}
+		} catch {
+			// A folder that cannot be listed (gone, no permission) holds no records we can judge: skip it, keep reaping the others.
+		}
 	}
 	// The latest recorded start of each job pid on this host: a later job with the same pid means ours ended before it.
 	const latest = new Map<number, number>();

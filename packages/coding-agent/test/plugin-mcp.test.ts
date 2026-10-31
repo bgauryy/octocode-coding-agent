@@ -9,7 +9,7 @@ import { getMcpHookCaller } from "../../mcp/src/hook-caller.ts";
 import type { ExtensionAPI } from "../src/core/extensions/types.ts";
 import { createInMemoryTransportPair } from "../../mcp/src/client/testing/index.ts";
 import { LATEST_PROTOCOL_VERSION } from "../../mcp/src/client/index.ts";
-import { mcpNamespace } from "../../mcp/src/servers.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { createHarness } from "./suite/harness.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 

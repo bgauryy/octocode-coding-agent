@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { ansiCodeLength, extractAnsiCode } from "../src/utils/ansi-codes.ts";
+import { ansiCodeLength, extractAnsiCode, incompleteAnsiStart } from "../src/utils/ansi-codes.ts";
 import { stripTerminalSequences } from "../src/utils.ts";
 import { truncateToWidth } from "../src/utils/truncate.ts";
 import { visibleWidth } from "../src/utils/width.ts";
@@ -44,6 +44,40 @@ describe("CSI grammar (ECMA-48)", () => {
 
 	it("keeps the stripped text for non-SGR CSI", () => {
 		for (const code of NON_SGR_CSI) assert.strictEqual(stripTerminalSequences(`a${code}b`), "ab");
+	});
+
+	describe("8-bit C1 controls", () => {
+		it("strips C1 CSI, OSC, DCS, SOS, PM and APC sequences", () => {
+			assert.strictEqual(stripTerminalSequences("a\x9b31mred\x9b0mz"), "aredz");
+			assert.strictEqual(stripTerminalSequences("a\x9b?25lb"), "ab");
+			assert.strictEqual(stripTerminalSequences("a\x9d8;;https://example.com\x07link\x9d8;;\x07z"), "alinkz");
+			assert.strictEqual(stripTerminalSequences("a\x9d0;title\x9cz"), "az");
+			assert.strictEqual(stripTerminalSequences("a\x9dh\x1b\\z"), "az");
+			assert.strictEqual(stripTerminalSequences("a\x90abc\x9cz"), "az");
+			assert.strictEqual(stripTerminalSequences("a\x98x\x9cb\x9ey\x9cc\x9fz\x9cd"), "abcd");
+		});
+
+		it("ends an ESC-introduced string sequence at the C1 string terminator", () => {
+			assert.strictEqual(stripTerminalSequences("a\x1b]0;title\x9cz"), "az");
+			assert.strictEqual(stripTerminalSequences("a\x1bPabc\x9cz"), "az");
+		});
+
+		it("keeps text after an unfinished or malformed C1 sequence", () => {
+			assert.strictEqual(stripTerminalSequences("a\x9b31"), "a\x9b31");
+			assert.strictEqual(stripTerminalSequences("a\x9dunterminated"), "a\x9dunterminated");
+			assert.strictEqual(stripTerminalSequences("a\x9b3\x01mb"), "a\x9b3\x01mb");
+		});
+
+		it("leaves width measurement to ESC-introduced sequences", () => {
+			assert.strictEqual(ansiCodeLength("\x9b31m", 0), 0);
+			assert.strictEqual(ansiCodeLength("\x1b]0;t\x9cz", 0), 0);
+		});
+
+		it("reports an unfinished C1 sequence at the end for streaming splits", () => {
+			assert.strictEqual(incompleteAnsiStart("abc\x9b3"), 3);
+			assert.strictEqual(incompleteAnsiStart("abc\x9d0;t"), 3);
+			assert.strictEqual(incompleteAnsiStart("abc\x9b3mz"), -1);
+		});
 	});
 
 	describe("visibleWidth", () => {

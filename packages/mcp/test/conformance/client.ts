@@ -17,6 +17,7 @@ import { InMemoryAuthStorageBackend } from "../../../coding-agent/src/core/auth-
 import type { McpHttpServerConfig, McpServerEntry } from "../../src/config.ts";
 import { McpOAuthCredentialStore, type McpSignInPrompt, signInMcpServer } from "../../src/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../../src/runtime.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Sign-ins Octocode asks the user for are not limited, so a user who keeps approving them would loop
@@ -58,9 +59,6 @@ function log(message: string): void {
 	process.stderr.write(`[octocode-conformance] ${message}\n`);
 }
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 function readContext(): Record<string, unknown> {
 	const raw = process.env.MCP_CONFORMANCE_CONTEXT;

@@ -3,7 +3,7 @@ import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { peerDbPath, peerRegistryDir } from "../shared/home.ts";
 import { interactive } from "../shared/interactive.ts";
 import { terminateSelf } from "../shared/process.ts";
-import { storedText } from "../shared/sanitize.ts";
+import { storedText } from "../../../../common/src/sanitize.ts";
 import type { Ask } from "./asks.ts";
 import { Delivery } from "./delivery.ts";
 import type { EditLog } from "./edits.ts";

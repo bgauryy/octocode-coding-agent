@@ -7,7 +7,8 @@ import { formatMcpTool, type McpToolListing } from "../inspection.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
 import { describeTransport, isEnabled } from "../server.ts";
 import { createConnection, type McpCommandOptions } from "./shared.ts";
-import { globalMcpConfigPath, projectMcpConfigPath } from "../paths.ts";
+import { globalMcpConfigPath } from "../paths.ts";
+import { projectMcpConfigPath } from "../../../coding-agent/src/octocode/shared/home.ts";
 
 interface ServerReport {
 	name: string;

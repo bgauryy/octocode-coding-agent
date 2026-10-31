@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { boundImagePart, IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
-import { sniffImageType } from "../../src/octocode/shared/vision.ts";
+import { sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 import { pixelSize, tmp } from "./helpers.ts";
 
 let saved: string | undefined;

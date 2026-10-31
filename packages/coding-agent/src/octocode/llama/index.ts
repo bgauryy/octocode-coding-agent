@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/types.ts";
-import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
+import { formatBytes } from "../../utils/bytes.ts";
+import { LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
 import { createLlamaProvider, LLAMA_PROVIDER_ID } from "./provider.ts";
 import { type LlamaUi, runWithProgress, showLlamaUi } from "./ui.ts";
@@ -153,7 +154,7 @@ export default function llamaExtension(api: ExtensionAPI): void {
 		if (!quantization && details.quantizations.length > 0) {
 			const options = details.quantizations.map((entry) => {
 				const detail = [
-					entry.size === undefined ? undefined : formatBytes(entry.size),
+					entry.size === undefined ? undefined : formatBytes(entry.size, "binary"),
 					entry.name === "Q4_K_M" ? "recommended" : undefined,
 				]
 					.filter((value): value is string => Boolean(value))

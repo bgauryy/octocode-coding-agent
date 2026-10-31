@@ -85,7 +85,7 @@ describe("validateRetryDelayMs", () => {
 	it("defaults to the 60 s limit", () => {
 		expect(DEFAULT_MAX_RETRY_DELAY_MS).toBe(60_000);
 		expect(validateRetryDelayMs(60_000)).toBe(60_000);
-		expect(() => validateRetryDelayMs(60_001)).toThrow("Server requested 61s retry delay (max: 60s).");
+		expect(() => validateRetryDelayMs(60_001)).toThrow("Server requested 61s retry delay (max: 60s)");
 	});
 
 	it("honours an explicit limit, a disabled limit and the provider detail", () => {

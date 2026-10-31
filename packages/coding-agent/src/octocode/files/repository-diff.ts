@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
-import { execFile } from "node:child_process";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
+import { git as runGit, GitError } from "../shared/git.ts";
 
 const MAX_OUTPUT = 128_000;
 export interface RepositoryDiff {
@@ -13,39 +13,33 @@ export interface RepositoryDiff {
 	selectedUntracked?: string;
 }
 
-function git(
+async function git(
 	cwd: string,
 	args: string[],
 	signal?: AbortSignal,
 	options?: { configuration?: string[]; allowMissing?: boolean },
 ): Promise<{ text: string; truncated: boolean }> {
-	return new Promise((resolve, reject) => {
-		execFile(
-			"git",
+	try {
+		const text = await runGit(
+			cwd,
 			["--no-pager", "--literal-pathspecs", "-c", "core.fsmonitor=false", ...(options?.configuration ?? []), ...args],
 			{
-				cwd,
 				signal,
-				timeout: 15_000,
+				timeoutMs: 15_000,
 				maxBuffer: MAX_OUTPUT,
-				encoding: "utf8",
-				env: {
-					...process.env,
-					GIT_OPTIONAL_LOCKS: "0",
-					GIT_PAGER: "cat",
-					GIT_EXTERNAL_DIFF: "",
-					GIT_CONFIG_COUNT: "0",
-				},
-			},
-			(error, stdout, stderr) => {
-				if (signal?.aborted) return reject(new Error("Diff cancelled."));
-				if (error?.code === 1 && options?.allowMissing) return resolve({ text: "", truncated: false });
-				if (error && error.code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")
-					return reject(new Error(stderr.trim() || error.message));
-				resolve({ text: stdout.slice(0, MAX_OUTPUT), truncated: Boolean(error) });
+				raw: true,
+				env: { GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat", GIT_EXTERNAL_DIFF: "", GIT_CONFIG_COUNT: "0" },
 			},
 		);
-	});
+		return { text: text.slice(0, MAX_OUTPUT), truncated: false };
+	} catch (error) {
+		if (signal?.aborted) throw new Error("Diff cancelled.");
+		if (error instanceof GitError) {
+			if (error.exitCode === 1 && options?.allowMissing) return { text: "", truncated: false };
+			if (error.overflow) return { text: error.stdout.slice(0, MAX_OUTPUT), truncated: true };
+		}
+		throw error;
+	}
 }
 
 /** Git can execute clean/process filters even when external diff and textconv are disabled. */

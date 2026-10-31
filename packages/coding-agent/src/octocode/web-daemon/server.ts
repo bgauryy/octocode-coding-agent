@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-contracts/daemon";
 import { DAEMON_ROUTES, WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { redactSecrets } from "../shared/sanitize.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { daemonPage, type DaemonPage } from "./build.ts";
 import { bearerOf, replier, tokenAccess, type DaemonTokens, type Reply } from "./http-util.ts";
 import { RemotePublisher } from "./remote/publisher.ts";

@@ -7,7 +7,7 @@ import type { McpOAuthState, McpOAuthStateStore } from "../client/oauth/index.ts
 import lockfile from "proper-lockfile";
 import { getAgentDir } from "../../../coding-agent/src/config.ts";
 import { type AuthStorageBackend, FileAuthStorageBackend } from "../../../coding-agent/src/core/auth-storage.ts";
-import { mcpNamespace } from "../servers.ts";
+import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 
 /** A refresh lock that its holder stopped renewing (the process was killed) is taken over after this. */
 const REFRESH_LOCK_STALE_MS = 20_000;

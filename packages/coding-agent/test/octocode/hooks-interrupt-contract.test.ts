@@ -81,7 +81,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 		const { fakeHost, fakeCtx } = await import("./fake-host.ts");
-		const { createEventBus } = await import("../../src/core/event-bus.ts");
+		const { createEventBus } = await import("@octocodeai/octocode-agent-core");
 		const { registerMcpHookCaller } = await import("../../../mcp/src/hook-caller.ts");
 		const home = tmp();
 		fs.mkdirSync(path.join(home, ".codex"));

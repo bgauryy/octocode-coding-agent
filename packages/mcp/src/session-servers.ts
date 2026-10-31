@@ -4,7 +4,7 @@
  */
 
 import fs from "node:fs";
-import type { EventBus } from "../../coding-agent/src/core/event-bus.ts";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
 import { type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
 import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";

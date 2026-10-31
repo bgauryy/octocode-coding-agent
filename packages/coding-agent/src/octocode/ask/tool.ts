@@ -4,7 +4,7 @@ import { withDialog } from "../shared/locks.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../theme/status.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
-import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { showAskDialog } from "./dialog.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";

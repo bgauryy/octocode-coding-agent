@@ -1,20 +1,11 @@
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	renameSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { APP_NAME, getPackageDir, VERSION } from "../config.ts";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "../../../common/src/child-process.ts";
 import { canonicalizePath, getCwdRelativePath } from "../../../common/src/paths.ts";
-import { stripBom } from "../../../common/src/text.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
+import { readJsonFile } from "../../../common/src/json.ts";
 
 const MANAGED_INSTALL_MARKER = "managed-install.json";
 const MANAGED_RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -31,7 +22,7 @@ export function getActiveManagedInstallRoot(): string | undefined {
 
 	const markerPath = join(managedRoot, MANAGED_INSTALL_MARKER);
 	try {
-		const marker = JSON.parse(stripBom(readFileSync(markerPath, "utf8"))) as {
+		const marker = readJsonFile(markerPath) as {
 			kind?: unknown;
 			layout?: unknown;
 			schemaVersion?: unknown;

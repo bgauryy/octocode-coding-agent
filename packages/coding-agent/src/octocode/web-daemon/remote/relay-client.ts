@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import type { RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
+import type { RemoteAccess, RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
 import {
 	parseRelayFrame,
 	parseTunnelRequest,
@@ -42,7 +42,7 @@ interface Peer {
 export class RelayClient {
 	readonly url: string;
 	readonly room: string;
-	readonly access: "view" | "control";
+	readonly access: RemoteAccess;
 	private readonly key: Buffer;
 	private readonly loopback: () => Loopback;
 	private readonly build: string;
@@ -58,7 +58,7 @@ export class RelayClient {
 	constructor(options: {
 		url: string;
 		key: Buffer;
-		access: "view" | "control";
+		access: RemoteAccess;
 		loopback: () => Loopback;
 		build: string;
 		activity: () => void;

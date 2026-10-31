@@ -14,7 +14,7 @@ import {
 	VERIFICATION_LABELS,
 	VERIFICATION_STATUSES,
 } from "../model/editor.ts";
-import { errorMessage } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Field, Select } from "../ui/fields.tsx";
 import { CloseIcon } from "../ui/icons.tsx";
 import { Button, IconButton } from "../ui/primitives.tsx";

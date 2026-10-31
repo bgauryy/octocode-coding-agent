@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfigValueOrThrow } from "../../coding-agent/src/core/resolve-config-value.ts";
+import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { presetEntries } from "../src/preset.ts";
 import { octocodePreset } from "../src/presets/octocode/index.ts";
 import { literalConfigValue } from "../src/presets/octocode/literal.ts";

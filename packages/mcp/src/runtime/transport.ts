@@ -6,7 +6,7 @@ import { type AuthProvider, type McpTransport, StdioTransport, StreamableHttpTra
 import {
 	resolveConfigValueOrThrow,
 	resolveHeadersOrThrow,
-} from "../../../coding-agent/src/core/resolve-config-value.ts";
+} from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { McpServerEntry } from "../config.ts";
 
 export type McpTransportFactory = (

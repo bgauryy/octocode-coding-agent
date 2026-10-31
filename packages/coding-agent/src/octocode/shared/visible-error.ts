@@ -1,4 +1,4 @@
-import { visibleControls } from "./sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 
 /**
  * An error whose message shows control and invisible characters as visible escapes (`visibleControls`). Errors of the

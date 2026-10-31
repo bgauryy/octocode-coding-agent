@@ -2,7 +2,8 @@ import type { ReportFile, ReportSummary } from "@octocodeai/octocode-contracts/p
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import type { ViewProps } from "../extension.ts";
-import { errorMessage, plural } from "../model/format.ts";
+import { plural } from "../model/format.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { KIND_LABELS, TAB_KINDS, type ReportTab } from "../model/reports.ts";
 import { RichTextContext } from "../ui/LongText.tsx";
 import { Badge, Button, EmptyState } from "../ui/primitives.tsx";

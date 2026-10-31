@@ -9,7 +9,7 @@ import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
 import { isOctocodeTool, OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
-import { BROWSER_SERVER } from "../../../mcp/src/presets/browser/names.ts";
+import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
 import { browserMcpTool } from "./shared/browser-mcp.ts";
 import { type AgentProfile, profileSelectsTool } from "./subagents/profiles.ts";
 

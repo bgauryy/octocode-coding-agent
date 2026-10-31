@@ -52,7 +52,7 @@ export {
 	serializeConversation,
 	shouldCompact,
 } from "./core/compaction/index.ts";
-export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.ts";
+export { createEventBus, type EventBus, type EventBusController } from "@octocodeai/octocode-agent-core";
 // Extension system
 export type * from "./index/extension-types.ts";
 export {
@@ -294,7 +294,7 @@ export { copyToClipboard } from "./utils/clipboard.ts";
 export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";
 export { convertToPng } from "./utils/image-convert.ts";
 export { formatDimensionNote, type ResizedImage, resizeImage } from "./utils/image-resize.ts";
-export { detectSupportedImageMimeTypeFromFile } from "./utils/mime.ts";
+export { detectSupportedImageMimeTypeFromFile } from "@octocodeai/octocode-ai/utils/mime";
 // Shell utilities
 export { getPowerShellConfig, getShellConfig } from "./utils/shell.ts";
 

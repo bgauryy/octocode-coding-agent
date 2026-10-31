@@ -1,5 +1,5 @@
-/** Fast deterministic hash to shorten long strings */
-export function shortHash(str: string): string {
+/** Fast deterministic hash to shorten long strings (tool-call ids). Not a content hash: persisted keys use coding-agent's sha256-based `shortHash`. */
+export function fastHash(str: string): string {
 	let h1 = 0xdeadbeef;
 	let h2 = 0x41c6ce57;
 	for (let i = 0; i < str.length; i++) {

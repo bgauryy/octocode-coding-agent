@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "../../coding-agent/src/core/extensions/types.ts";
-import { sanitizeTerminalText } from "../../coding-agent/src/octocode/shared/sanitize.ts";
+import { sanitizeTerminalText } from "../../common/src/sanitize.ts";
 
 /**
  * Shows `/mcp` output. With a UI it is a notification; print and JSON modes have none (`notify` does nothing there)
