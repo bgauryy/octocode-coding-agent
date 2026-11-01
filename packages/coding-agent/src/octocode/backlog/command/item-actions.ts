@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/extensions/index.ts";
-import { USER_AUTHOR } from "../../agentdb/author.ts";
+import { USER_AUTHOR } from "../../agentdb/api.ts";
 import { say } from "../../shared/commands.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -9,6 +9,7 @@ import type { Backlog, BacklogOptions } from "../context.ts";
 import { isState, itemDetail, itemLine } from "../format.ts";
 import { refText } from "../row.ts";
 import { type BacklogStore, type Item, PRIORITIES, type UpdateInput } from "../store.ts";
+import { createTaskActions } from "./task-actions.ts";
 import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 
 /** The fields `Edit` changes, one per editor: the text shown for an item, and the store update for the text saved (a list has one entry per line). */
@@ -67,6 +68,8 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		if (refused) say(ctx, refused, "warning");
 		else if (done) say(ctx, done);
 	};
+
+	const tasks = createTaskActions(applyAndSay, apply);
 
 	/** Mark `item` ongoing for this session and hand it to the agent, now or after the current run. */
 	const handOff = (
@@ -205,6 +208,24 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 					return undefined;
 				},
 			},
+			...(item.type === "epic"
+				? []
+				: [
+						{
+							label: "Add a task",
+							run: async () => {
+								await tasks.add(ctx, backlog, { item: item.ref });
+								return undefined;
+							},
+						},
+					]),
+			{
+				label: "Add a session task",
+				run: async () => {
+					await tasks.add(ctx, backlog, { session: true });
+					return undefined;
+				},
+			},
 			{
 				label: "Priority…",
 				run: async () => {
@@ -212,7 +233,11 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 					const index = (PRIORITIES as readonly string[]).indexOf(priority ?? "");
 					if (index >= 0)
 						applyAndSay(ctx, () =>
-							backlog.store.update(item.ref, { priority: index, version: item.version, force: true }, backlog.actor),
+							backlog.store.update(
+								item.ref,
+								{ priority: index, version: item.version, force: true },
+								{ ...backlog.actor, kind: "human" },
+							),
 						);
 				},
 			},
@@ -228,7 +253,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 							backlog.store.update(
 								item.ref,
 								{ from: ref.trim() === "" ? null : ref.trim(), version: item.version, force: true },
-								backlog.actor,
+								{ ...backlog.actor, kind: "human" },
 							),
 						);
 				},
@@ -259,5 +284,5 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		);
 		return (await choices.find(({ label }) => label === choice)?.run()) === true;
 	};
-	return { apply, handOff, move, remove, add, actions };
+	return { apply, handOff, move, remove, add, actions, tasks };
 }

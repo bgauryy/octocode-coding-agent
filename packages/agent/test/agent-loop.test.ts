@@ -560,7 +560,7 @@ describe("agentLoop with AgentMessage", () => {
 		if (toolEnd?.type === "tool_execution_end") {
 			expect(toolEnd.isError).toBe(true);
 			const text = toolEnd.result.content.find((c: { type: string }) => c.type === "text");
-			expect(text && "text" in text ? text.text : "").toContain("output token limit");
+			expect(text && "text" in text ? text.text : "").toContain("output limit");
 		}
 
 		// The loop continues so the model can re-issue the tool call.

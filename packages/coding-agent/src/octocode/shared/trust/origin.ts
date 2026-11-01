@@ -52,13 +52,35 @@ export function recordWorktreeOrigin(root: string, main: string, home?: string):
 		if (!common) return;
 		const file = originsPath(home);
 		fs.mkdirSync(path.dirname(file), { recursive: true });
-		withFileLock(file, () => {
+		withFileLock(file, (assertHeld) => {
 			const origins = readOrigins(home);
 			origins[realPath(root)] = { commonDir: common, main: realPath(main) };
+			assertHeld();
 			atomicWriteFileSync(file, `${JSON.stringify(origins, null, 2)}\n`, { mode: 0o600 });
 		});
 	} catch {
 		// The home folder is not writable (or the lock is stuck): no record, so trust asks as it does for any worktree.
+	}
+}
+
+/**
+ * Drops the record of the worktree at `root` once it is removed, so the file does not collect dead paths. Works on a
+ * folder that is already gone; best effort.
+ */
+export function forgetWorktreeOrigin(root: string, home?: string): void {
+	try {
+		const file = originsPath(home);
+		const key = path.join(realPath(path.dirname(root)), path.basename(root));
+		if (!fs.existsSync(file)) return;
+		withFileLock(file, (assertHeld) => {
+			const origins = readOrigins(home);
+			if (!(key in origins)) return;
+			delete origins[key];
+			assertHeld();
+			atomicWriteFileSync(file, `${JSON.stringify(origins, null, 2)}\n`, { mode: 0o600 });
+		});
+	} catch {
+		// The record stays; `createdFrom` still checks that the worktree is linked to the recorded repository.
 	}
 }
 

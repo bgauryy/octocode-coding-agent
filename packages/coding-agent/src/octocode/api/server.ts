@@ -23,6 +23,18 @@ const MAX_CONNECTIONS = 16;
 /** A client that lets this much output queue up is not reading; drop it instead of buffering without limit. */
 const MAX_QUEUED_BYTES = 4 * 1_048_576;
 
+/**
+ * Limits of the loopback HTTP listener. The timeouts bound how long a peer may take to send a request (not how long the
+ * answer takes), the same 10 s the daemon and the board use; `connectionsCheckingInterval` is how often Node enforces
+ * them. The connection cap leaves room for the event streams (each capped at MAX_CONNECTIONS) and RPC calls.
+ */
+export const API_HTTP_LIMITS = {
+	headersTimeout: 10_000,
+	requestTimeout: 10_000,
+	connectionsCheckingInterval: 1_000,
+	maxConnections: 4 * MAX_CONNECTIONS,
+};
+
 /** What a method handler may do for the connection it was called on. */
 export interface Connection {
 	/** Start streaming events to this connection. Socket connections get notifications; HTTP clients use GET /events. */
@@ -90,12 +102,14 @@ export class ApiServer {
 	}
 
 	/** Listen on loopback only. Every request needs the bearer token; browsers (requests with an Origin) are refused. */
-	listenHttp(port: number): Promise<void> {
+	listenHttp(port: number, limits: typeof API_HTTP_LIMITS = API_HTTP_LIMITS): Promise<void> {
+		const { maxConnections, ...timeouts } = limits;
 		// A client that resets mid-body rejects the body read; an unhandled rejection would end Octocode.
-		const server = http.createServer((req, res) => {
+		const server = http.createServer(timeouts, (req, res) => {
 			this.request(req, res).catch(() => res.destroy());
 			return undefined;
 		});
+		server.maxConnections = maxConnections;
 		this.web = server;
 		return new Promise((resolve, reject) => {
 			server.once("error", reject);

@@ -1,4 +1,4 @@
-import type { ItemRow } from "../agentdb/queries/backlog.ts";
+import type { ItemRow } from "../agentdb/api.ts";
 
 /** A persisted item, including the joined sequence number of its origin. */
 export type Row<State extends string> = ItemRow<State>;

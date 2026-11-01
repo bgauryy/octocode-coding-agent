@@ -1,11 +1,18 @@
-import { validateToolArguments } from "@octocodeai/octocode-ai";
+import fs from "node:fs";
+import path from "node:path";
+import { runToolCall } from "@octocodeai/octocode-agent-core";
+import { fauxAssistantMessage, validateToolArguments } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
+import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
 import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { Params, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
 import { isNativeTool, withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { callReason, withoutReason, withReason } from "../../src/octocode/shared/reason.ts";
-import { fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { tmp } from "./helpers.ts";
 
 type Result = { content: { type: "text"; text: string }[]; details: object };
 const empty = async (..._args: unknown[]): Promise<Result> => ({ content: [], details: {} });
@@ -24,6 +31,17 @@ const validate = (definition: { name: string; parameters: unknown }, args: Recor
 		arguments: args as never,
 	});
 
+const run = (tool: any, args: Record<string, unknown>, beforeToolCall = vi.fn()) =>
+	runToolCall(
+		{ type: "toolCall", id: "c", name: tool.name, arguments: args as never },
+		{
+			tools: [tool],
+			assistantMessage: fauxAssistantMessage("Continue"),
+			context: { messages: [], tools: [tool] },
+			beforeToolCall,
+		},
+	);
+
 describe("the required reason on native tools", () => {
 	it("adds a required reason to a native tool and strips it before the tool runs", async () => {
 		const fake = fakeHost();
@@ -31,7 +49,7 @@ describe("the required reason on native tools", () => {
 		withNativePermissionOwners(fake.api).registerTool(tool("bash", execute));
 		const registered = fake.tools.get("bash");
 		expect(registered.parameters.required).toEqual(["command", "reason"]);
-		expect(registered.parameters.properties.reason.description).toMatch(/goal/);
+		expect(registered.parameters.properties.reason.description).toMatch(/^Why this call/);
 		expect(validate(registered, { command: "ls", reason: "list the folder" })).toEqual({
 			command: "ls",
 			reason: "list the folder",
@@ -66,7 +84,8 @@ describe("the required reason on native tools", () => {
 		withNativePermissionOwners(fake.api).registerTool(own as never);
 		const registered = fake.tools.get("file");
 		expect(registered.parameters).toBe(own.parameters);
-		expect(registered.prepareArguments).toBe(prepareArguments);
+		expect(registered.prepareArguments({ reason: "kept" })).toEqual({ reason: "kept" });
+		expect(prepareArguments).toHaveBeenCalledWith({ reason: "kept" });
 		expect(registered.renderCall).toBe(renderCall);
 		await registered.execute("c", { reason: "kept" }, undefined, undefined, {});
 		expect(execute.mock.calls[0][1]).toEqual({ reason: "kept" });
@@ -74,15 +93,17 @@ describe("the required reason on native tools", () => {
 
 	it("keeps the prepareArguments and rendering of a wrapped tool", () => {
 		const fake = fakeHost();
-		const prepareArguments = (args: unknown) => args as never;
+		const prepared = { command: "prepared" };
+		const prepareArguments = vi.fn(() => prepared as never);
 		const renderCall = vi.fn();
 		withNativePermissionOwners(fake.api).registerTool({ ...tool("web"), prepareArguments, renderCall } as never);
 		const registered = fake.tools.get("web");
-		expect(registered.prepareArguments).toBe(prepareArguments);
+		expect(registered.prepareArguments({ command: "raw" })).toBe(prepared);
+		expect(prepareArguments).toHaveBeenCalledWith({ command: "raw" });
 		expect(registered.renderCall).toBe(renderCall);
 	});
 
-	it("lets the agent envelope take a reason and hands its mode no unknown key", async () => {
+	it("lets the flat agent call take a reason and hands its mode no unknown key", async () => {
 		const fake = fakeHost();
 		const api = withNativePermissionOwners(fake.api);
 		const agent = agentModes();
@@ -93,14 +114,36 @@ describe("the required reason on native tools", () => {
 		agent.collect(tool("coordinate", modeExecute) as never);
 		agent.register(api);
 		const registered = fake.tools.get("agent");
-		const args = { type: "coordinate", input: { command: "list" }, reason: "see who is running" };
+		const args = { type: "coordinate", command: "list", reason: "see who is running" };
 		expect(validate(registered, args)).toEqual(args);
-		expect(() => validate(registered, { type: "coordinate", input: { command: "list" } })).toThrow(/reason/);
+		expect(() => validate(registered, { type: "coordinate", command: "list" })).toThrow(/reason/);
 		const result = await registered.execute("c", args, undefined, undefined, {});
 		expect(result.details).toMatchObject({ agentType: "coordinate" });
+		// The test mode declares no reason of its own, so the call reason stays with the call.
 		expect(modeExecute.mock.calls[0][1]).toEqual({ command: "list" });
-		// A stray key still fails the envelope's own check.
-		await expect(registered.execute("c", { ...args, stray: 1 }, undefined, undefined, {})).rejects.toThrow(/envelope/);
+		await expect(registered.execute("c", { ...args, stray: 1 }, undefined, undefined, {})).rejects.toThrow(
+			/does not take stray/,
+		);
+	});
+
+	it("requires the flat agent call's reason through the tool-call pipeline", async () => {
+		const fake = fakeHost();
+		const api = withNativePermissionOwners(fake.api);
+		const agent = agentModes();
+		const modeExecute = vi.fn(empty);
+		agent.collect(tool("coordinate", modeExecute) as never);
+		agent.register(api);
+		const registered = fake.tools.get("agent");
+		const beforeToolCall = vi.fn();
+		const args = { type: "coordinate", command: "list", reason: "top-level goal" };
+		expect((await run(registered, args, beforeToolCall)).isError).toBe(false);
+		expect(beforeToolCall.mock.calls[0][0].args.reason).toBe("top-level goal");
+		expect(callReason(args)).toBe("top-level goal");
+		expect(modeExecute.mock.calls[0][1]).toEqual({ command: "list" });
+		const missing = await run(registered, { type: "coordinate", command: "list" });
+		expect(missing.isError).toBe(true);
+		expect(missing.result.content).toMatchObject([{ text: expect.stringMatching(/reason/) }]);
+		expect(modeExecute).toHaveBeenCalledTimes(1);
 	});
 
 	it("leaves non-object parameters alone and reads only text reasons", () => {
@@ -110,6 +153,7 @@ describe("the required reason on native tools", () => {
 		expect(callReason({ reason: "  why  " })).toBe("why");
 		expect(callReason({ reason: " " })).toBeUndefined();
 		expect(callReason({ reason: 3 })).toBeUndefined();
+		expect(callReason({ request: { reason: 3 } })).toBeUndefined();
 		expect(callReason(undefined)).toBeUndefined();
 	});
 });
@@ -137,13 +181,13 @@ describe("the file tool's renamed reason", () => {
 		expect(renameReasoning({ patch: "x" })).toEqual({ patch: "x" });
 	});
 
-	it("requires the call's goal beside the per-change reasons", () => {
+	it("still requires a call goal when neither level supplies one", () => {
 		const file = { name: "file", parameters: Params };
-		const change = { type: "delete", path: "a", reason: "drop a" };
+		const change = { type: "delete", path: "a" };
 		expect(() => validate(file, { queries: [change] })).toThrow(/reason/);
-		expect(validate(file, { queries: [change], reason: "remove the old file" })).toMatchObject({
-			reason: "remove the old file",
-		});
+		expect(validate(file, { queries: [{ ...change, reason: "drop a" }], reason: "remove the old file" })).toMatchObject(
+			{ reason: "remove the old file" },
+		);
 	});
 
 	it("lets a change leave its reason out and reuses the call's", () => {
@@ -159,5 +203,28 @@ describe("the file tool's renamed reason", () => {
 		expect(() => validate(file, prepared)).not.toThrow();
 		// Without a call reason there is nothing to reuse, and the call is refused as before.
 		expect(() => validate(file, renameReasoning({ queries: [{ type: "delete", path: "a" }] }))).toThrow(/reason/);
+	});
+
+	it("executes a real write whose only call reason is on its query", async () => {
+		const fake = fakeHost();
+		const cwd = tmp();
+		registerFileTool(withNativePermissionOwners(fake.api), new FileGuard(), fakePermission());
+		const registered = fake.tools.get("file");
+		const tool = wrapToolDefinition(registered, () => fakeCtx({ cwd, hasUI: false }) as never);
+		const beforeToolCall = vi.fn();
+		const reason = "Add the crash and resume tests";
+		const outcome = await run(
+			tool,
+			{ queries: [{ type: "write", path: "nested.txt", content: "covered", reason }] },
+			beforeToolCall,
+		);
+		expect(outcome).toMatchObject({ isError: false });
+		expect(beforeToolCall.mock.calls[0][0].args.reason).toBe(reason);
+		expect(fs.readFileSync(path.join(cwd, "nested.txt"), "utf8")).toBe("covered");
+
+		const missing = await run(tool, { queries: [{ type: "write", path: "missing.txt", content: "no" }] });
+		expect(missing.isError).toBe(true);
+		expect(missing.result.content).toMatchObject([{ text: expect.stringMatching(/reason/) }]);
+		expect(fs.existsSync(path.join(cwd, "missing.txt"))).toBe(false);
 	});
 });

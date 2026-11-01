@@ -198,7 +198,9 @@ describe("team tools on a fake Octocode", () => {
 		const send = a.tools.get("sendMessage");
 		const sent = await run(send, { to: b.team.id, message: "please review src/a.ts", replyRequired: false }, a.ctx);
 		expect(text(sent)).toMatch(
-			new RegExp(`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\.`),
+			new RegExp(
+				`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes\\.`,
+			),
 		);
 		expect(sent.details).toMatchObject({ to: [b.team.id] });
 		await vi.waitFor(
@@ -223,9 +225,11 @@ describe("team tools on a fake Octocode", () => {
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const send = a.tools.get("sendMessage");
 		const sent = await run(send, { to: b.team.id, message: "which file?" }, a.ctx);
-		// An unmarked message goes out as an FYI, and the sender is told so.
+		// An unmarked message goes out as an FYI, and the sender is told it will not act on it alone.
 		expect(text(sent)).toMatch(
-			new RegExp(`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\.`),
+			new RegExp(
+				`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes\\.`,
+			),
 		);
 		const mail = (agent: typeof a) =>
 			agent.sent
@@ -298,7 +302,7 @@ describe("team tools on a fake Octocode", () => {
 		});
 		const parameters = main.tools.get("coordinate").parameters;
 		expect(parameters.properties.action.enum).toEqual(["list", "join", "leave", "lock", "unlock", "stop", "changes"]);
-		expect(parameters.properties.goal.description).toMatch(/^join: your goal\./);
+		expect(parameters.properties.goal.description).toMatch(/^join: your goal, in the form of a task goal/);
 		expect(parameters.properties).not.toHaveProperty("note");
 	});
 

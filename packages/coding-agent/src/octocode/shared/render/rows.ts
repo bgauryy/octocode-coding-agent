@@ -3,7 +3,7 @@ import type { TSchema } from "typebox";
 import type { ToolDefinition } from "../../../core/extensions/index.ts";
 import { formatDuration } from "../format.ts";
 import { exclusive, takeTiming } from "../locks.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { stopRowMotion } from "./motion.ts";
 import type { Phase, RenderContext, ToolRow } from "./types.ts";
 
@@ -13,7 +13,7 @@ export function phaseOf(context: RenderContext): Phase {
 }
 
 export function rowState(context: RenderContext): ToolRow {
-	return isRecord(context.state) ? context.state : {};
+	return asRecord(context.state);
 }
 
 /**

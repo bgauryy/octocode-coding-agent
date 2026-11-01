@@ -1,23 +1,25 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { RequestError, methods, type AgentContext } from "@agentclientprotocol/sdk";
-import { ENV_SESSION_DIR } from "../../../coding-agent/src/config.ts";
-import { SessionManager, type SessionInfo } from "../../../coding-agent/src/core/session-manager.ts";
-import { createCustomMessage } from "../../../coding-agent/src/core/messages.ts";
-import { SettingsManager } from "../../../coding-agent/src/core/settings-manager.ts";
+import type { AcpBrokerHost, AcpSessionInfo } from "../host.ts";
 import { normalizePath } from "../../../common/src/paths.ts";
 import { compactionReplay, customMessageUpdates, toolContent, toolTitle } from "./events.ts";
 
-function sessionDir(cwd: string, override?: string): string | undefined {
-	const fromEnvironment = process.env[ENV_SESSION_DIR];
-	const chosen = override ?? fromEnvironment ?? SettingsManager.createForStartup(cwd).getSessionDir();
+function sessionDir(host: AcpBrokerHost, cwd: string, override?: string): string | undefined {
+	const fromEnvironment = process.env[host.sessionDirEnv];
+	const chosen = override ?? fromEnvironment ?? host.configuredSessionDir(cwd);
 	return chosen ? resolve(cwd, normalizePath(chosen)) : undefined;
 }
 
 /** Resolve an ACP identity through the owning transcript index, never a client path. */
-export async function findHistory(id: string, cwd: string, configuredDir?: string): Promise<SessionInfo> {
+export async function findHistory(
+	host: AcpBrokerHost,
+	id: string,
+	cwd: string,
+	configuredDir?: string,
+): Promise<AcpSessionInfo> {
 	const directory = await canonicalDirectory(cwd);
-	const sessions = await SessionManager.list(directory, sessionDir(directory, configuredDir));
+	const sessions = await host.listSessions(directory, sessionDir(host, directory, configuredDir));
 	const info = sessions.find((item) => item.id === id && item.cwd && isAbsolute(item.cwd));
 	if (!info || (await realpath(info.cwd).catch(() => undefined)) !== directory) throw RequestError.resourceNotFound(id);
 	return info;
@@ -36,25 +38,24 @@ export async function canonicalDirectory(cwd: string): Promise<string> {
 }
 
 /** Snapshot history before startup hooks run; replay it before releasing the worker's live updates. */
-export function prepareHistoryReplay(path: string, id: string, client: AgentContext): () => Promise<void> {
-	const manager = SessionManager.open(path);
-	if (manager.getSessionId() !== id) throw RequestError.resourceNotFound(id);
-	const branch = manager.getBranch();
+export function prepareHistoryReplay(
+	host: AcpBrokerHost,
+	path: string,
+	id: string,
+	client: AgentContext,
+): () => Promise<void> {
+	const transcript = host.openTranscript(path);
+	if (transcript.sessionId !== id) throw RequestError.resourceNotFound(id);
+	const branch = transcript.branch;
 	return async () => {
 		const tools = new Set<string>();
 		for (const entry of branch) {
 			if (entry.type === "compaction") {
-				for (const update of compactionReplay(entry.id, entry.summary, entry.tokensBefore))
+				for (const update of compactionReplay(entry.id, host.compactionSummaryText(entry.summary, entry.tokensBefore)))
 					await client.notify(methods.client.session.update, { sessionId: id, update });
 				continue;
 			}
-			const message =
-				entry.type === "message"
-					? entry.message
-					: entry.type === "custom_message" && entry.display
-						? createCustomMessage(entry.customType, entry.content, entry.display, entry.details, entry.timestamp)
-						: undefined;
-			if (!message) continue;
+			const message = entry.message;
 			if (message.role === "toolResult") {
 				if (!tools.has(message.toolCallId)) {
 					await client.notify(methods.client.session.update, {
@@ -118,7 +119,7 @@ export function prepareHistoryReplay(path: string, id: string, client: AgentCont
 	};
 }
 
-export async function listHistory(cwd?: string, cursor?: string, configuredDir?: string) {
+export async function listHistory(host: AcpBrokerHost, cwd?: string, cursor?: string, configuredDir?: string) {
 	const directory = cwd === undefined ? undefined : await canonicalDirectory(cwd);
 	let offset = 0;
 	if (cursor !== undefined) {
@@ -133,9 +134,7 @@ export async function listHistory(cwd?: string, cursor?: string, configuredDir?:
 			throw RequestError.invalidParams(undefined, "Invalid session list cursor.");
 		}
 	}
-	const all = directory
-		? await SessionManager.list(directory, sessionDir(directory, configuredDir))
-		: await SessionManager.listAll(sessionDir(process.cwd(), configuredDir));
+	const all = await host.listSessions(directory, sessionDir(host, directory ?? process.cwd(), configuredDir));
 	const matching = (
 		await Promise.all(
 			all.map(async (entry) =>
@@ -146,7 +145,7 @@ export async function listHistory(cwd?: string, cursor?: string, configuredDir?:
 					: undefined,
 			),
 		)
-	).filter((entry): entry is SessionInfo => entry !== undefined);
+	).filter((entry): entry is AcpSessionInfo => entry !== undefined);
 	const page = matching.slice(offset, offset + 50);
 	return {
 		sessions: page.map((entry) => ({

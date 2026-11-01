@@ -4,7 +4,9 @@ import { AgentIcon, DocIcon, HistoryIcon, PulseIcon, ResearchIcon } from "../ui/
 import { ActivityView } from "./ActivityView.tsx";
 import { AgentsView } from "./AgentsView.tsx";
 import { AuditView } from "./AuditView.tsx";
+import { DocsView } from "./DocsView.tsx";
 import { Editor } from "./Editor.tsx";
+import { hierarchyControls } from "./hierarchy.tsx";
 import { ItemQuickAction } from "./ItemImplementation.tsx";
 import { ItemActions, ItemActivity } from "./ItemPanels.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -16,6 +18,7 @@ export const live: LiveExtension | null = {
 	views: [
 		{ name: "rfc", label: "RFC", Icon: DocIcon, Component: RfcView },
 		{ name: "research", label: "Research", Icon: ResearchIcon, Component: ResearchView },
+		{ name: "docs", label: "Docs", Icon: DocIcon, Component: DocsView },
 		{ name: "agents", label: "Agents", Icon: AgentIcon, Component: AgentsView },
 		{ name: "activity", label: "Activity", Icon: PulseIcon, Component: ActivityView },
 		{ name: "audit", label: "Audit", Icon: HistoryIcon, Component: AuditView },
@@ -23,6 +26,7 @@ export const live: LiveExtension | null = {
 	Provider: LiveProvider,
 	ConnectionStatus,
 	ItemActions,
+	controls: hierarchyControls,
 	ItemQuickAction,
 	ItemActivity,
 	Editor,

@@ -91,6 +91,23 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--tex
 .tree details > summary { cursor: pointer; padding: 2px 0; }
 .tree .leaf { padding-left: 18px; }
 .tree-alone { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.task-list { list-style: none; margin: 4px 0 4px 18px; padding: 0; display: grid; gap: 4px; }
+.task-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.task-mark { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid currentColor; vertical-align: middle; }
+.task-ongoing .task-mark { background: linear-gradient(90deg, transparent 50%, currentColor 50%); }
+.task-done .task-mark { background: currentColor; }
+.task-dropped .task-mark { border-style: dashed; }
+.task-dropped .task-goal { text-decoration: line-through; color: var(--muted); }
+.task-tools, .tree-tools, .state-control { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.tree-tools { display: flex; margin: 4px 0 4px 18px; }
+.task-tools select, .tree-tools select, .state-control select { min-height: 28px; font-size: 12px; }
+.task-tools .btn, .inline-add .btn { min-height: 28px; padding: 2px 8px; font-size: 12px; }
+.inline-add { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.inline-add input { min-width: 14ch; flex: 1; min-height: 28px; font-size: 13px; }
+.session-group h4 { margin: 10px 0 4px; font-size: 13px; }
+.session-group .task-list { margin-left: 0; }
+.card-tasks { margin: 0; font-size: 12px; }
+.rollup { white-space: normal; }
 .fold > summary, .disclosure > summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 .fold[open] > summary { margin-bottom: 8px; }
 .panel { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
@@ -103,6 +120,18 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--tex
 .row-list li:last-child { border-bottom: 0; }
 .row-reason { color: var(--text-3); font-size: 12px; }
 .related-list li, .plain-list li { padding: 3px 0; }
+
+/* Docs library */
+.docs-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 16px; }
+.docs-filters input[type="search"] { flex: 1 1 220px; }
+.docs-topic { margin: 4px 0 12px; }
+.doc-body { max-width: 860px; }
+.diagram { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.diagram-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.diagram-canvas { overflow: auto; text-align: center; }
+.diagram-canvas svg { max-width: 100%; height: auto; }
+.diagram-source { margin: 0; padding: 12px; max-height: 480px; overflow: auto; border-radius: var(--radius-sm); background: var(--surface-2); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diagram-error { margin: 0 0 8px; color: var(--danger); font-size: 13px; }
 
 /* Sheet */
 .backdrop { position: fixed; inset: 0; z-index: 20; background: rgb(13 17 23 / .45); animation: fade-in .15s var(--ease); }

@@ -3,7 +3,7 @@
  * and those with declared tools are awaited before the first prompt.
  */
 
-import type { ExtensionAPI, ExtensionFactory } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpExtensionApi, McpExtensionFactory } from "./host/types.ts";
 import { registerMcpCommand } from "./command.ts";
 import { registerSessionEvents } from "./events.ts";
 import { registerMcpManageTool } from "./manage-tool-wiring.ts";
@@ -14,13 +14,13 @@ import { createMcpToolRenderers } from "./tool-definition.ts";
 export type { McpTransportFactory } from "./runtime.ts";
 export type { McpExtensionOptions } from "./state.ts";
 
-export function createMcpExtension(options: McpExtensionOptions = {}): ExtensionFactory {
-	return (api: ExtensionAPI) => {
+export function createMcpExtension(options: McpExtensionOptions = {}): McpExtensionFactory {
+	return (api: McpExtensionApi) => {
 		registerMcpHost(api, options);
 	};
 }
 
-export function registerMcpHost(api: ExtensionAPI, options: McpExtensionOptions = {}): McpExtensionState {
+export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptions = {}): McpExtensionState {
 	const state = new McpExtensionState(api, options);
 	registerInheritedMcpServers(api);
 

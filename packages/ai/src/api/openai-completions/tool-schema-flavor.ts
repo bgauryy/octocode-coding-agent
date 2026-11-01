@@ -95,9 +95,40 @@ function booleanSchemaObject(): Record<string, unknown> {
 	return {};
 }
 
-function repairSchemaNode(value: unknown): unknown {
-	if (typeof value === "boolean") return repairSchema(booleanSchemaObject());
-	if (isSchemaObject(value)) return repairSchema(value);
+/** The root's definitions, by the `#/$defs/<name>` or `#/definitions/<name>` pointer that names them. */
+type Definitions = ReadonlyMap<string, unknown>;
+
+function rootDefinitions(root: Record<string, unknown>): Definitions {
+	const definitions = new Map<string, unknown>();
+	for (const key of ["$defs", "definitions"] as const) {
+		const map = root[key];
+		if (!isSchemaObject(map)) continue;
+		for (const [name, schema] of Object.entries(map)) definitions.set(`#/${key}/${name}`, schema);
+	}
+	return definitions;
+}
+
+/**
+ * Moonshot rejects `$ref` under `propertyNames` ("$ref is not allowed"), so a local reference there is replaced by the
+ * definition it names, following chained references. An unresolvable one drops the keyword: it only narrows key names,
+ * and the original schema stays authoritative for local argument validation.
+ */
+function inlinePropertyNames(value: unknown, definitions: Definitions): unknown {
+	const seen = new Set<string>();
+	let node = value;
+	while (isSchemaObject(node) && typeof node.$ref === "string") {
+		if (seen.has(node.$ref) || !definitions.has(node.$ref)) return undefined;
+		seen.add(node.$ref);
+		const { $ref, ...siblings } = node;
+		const target = definitions.get($ref);
+		node = isSchemaObject(target) ? { ...target, ...siblings } : target;
+	}
+	return repairSchemaNode(node, definitions);
+}
+
+function repairSchemaNode(value: unknown, definitions: Definitions): unknown {
+	if (typeof value === "boolean") return repairSchema(booleanSchemaObject(), definitions);
+	if (isSchemaObject(value)) return repairSchema(value, definitions);
 	return value;
 }
 
@@ -105,24 +136,27 @@ function repairSchemaNode(value: unknown): unknown {
  * One schema node with the Moonshot repairs applied. The input is never mutated; a node without
  * repairs still returns a copy, so callers can adjust the root afterwards.
  */
-function repairSchema(schema: Record<string, unknown>): Record<string, unknown> {
+function repairSchema(schema: Record<string, unknown>, definitions: Definitions): Record<string, unknown> {
 	const repaired: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(schema)) {
 		let next: unknown = value;
 		if (SCHEMA_MAP_KEYS.has(key) && isSchemaObject(next)) {
 			const map: Record<string, unknown> = {};
 			for (const [name, subschema] of Object.entries(next)) {
-				map[name] = repairSchemaNode(subschema);
+				map[name] = repairSchemaNode(subschema, definitions);
 			}
 			next = map;
 		} else if (SCHEMA_LIST_KEYS.has(key) && Array.isArray(next)) {
-			next = next.map((item) => repairSchemaNode(item));
+			next = next.map((item) => repairSchemaNode(item, definitions));
+		} else if (key === "propertyNames") {
+			next = inlinePropertyNames(next, definitions);
+			if (next === undefined) continue;
 		} else if (SCHEMA_NODE_KEYS.has(key)) {
 			if (BOOLEAN_KEYWORD_VALUES.has(key)) {
 				// Leave boolean keyword values alone; repair only object subschemas.
-				if (isSchemaObject(next)) next = repairSchema(next);
+				if (isSchemaObject(next)) next = repairSchema(next, definitions);
 			} else {
-				next = repairSchemaNode(next);
+				next = repairSchemaNode(next, definitions);
 			}
 		}
 		repaired[key] = next;
@@ -132,7 +166,7 @@ function repairSchema(schema: Record<string, unknown>): Record<string, unknown> 
 		const { type: _parentType, ...withoutType } = repaired;
 		return withoutType;
 	}
-	// A `$ref` node takes its type from the referenced definition, which is repaired on its own.
+	// A `$ref` node takes its type from the referenced definition, which is repaired on its own (`propertyNames` aside).
 	if ("$ref" in repaired) return repaired;
 	if (repaired.type === undefined || repaired.type === null) repaired.type = inferType(repaired);
 	return repaired;
@@ -145,7 +179,7 @@ function repairSchema(schema: Record<string, unknown>): Record<string, unknown> 
  */
 export function sanitizeMoonshotToolParameters(parameters: TSchema): Record<string, unknown> {
 	if (!isSchemaObject(parameters)) return { type: "object", properties: {} };
-	const repaired = repairSchema(parameters);
+	const repaired = repairSchema(parameters, rootDefinitions(parameters));
 	// The root is different from nested union parents: Moonshot requires its tool parameters to be an object.
 	repaired.type = "object";
 	if (repaired.properties === undefined) repaired.properties = {};

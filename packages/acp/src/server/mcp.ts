@@ -3,9 +3,9 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { type McpServer, RequestError } from "@agentclientprotocol/sdk";
-import { getAgentDir, isBunBinary } from "../../../coding-agent/src/config.ts";
 import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 import { loadMcpConfig } from "../../../mcp/src/config.ts";
+import type { AcpServerHost } from "../host.ts";
 
 interface ServerDefinition {
 	name: string;
@@ -144,13 +144,17 @@ function definitions(servers: McpServer[]): ServerDefinition[] {
 }
 
 /** Session-local MCP registrations; no user or workspace configuration is written. */
-export async function prepareAcpMcpServers(servers: McpServer[], cwd: string): Promise<AcpMcpServers> {
+export async function prepareAcpMcpServers(
+	servers: McpServer[],
+	cwd: string,
+	host: Pick<AcpServerHost, "agentDir" | "nodeRuntime">,
+): Promise<AcpMcpServers> {
 	if (servers.length === 0) return { args: [], verify: async () => {}, cleanup: async () => {} };
 	if (!isAbsolute(cwd)) invalid("ACP MCP working directory must be absolute.");
 	const requested = definitions(servers);
 	// Read every candidate config without executing it. Refuse collisions even in currently
 	// untrusted project config: a later trust change must not substitute another server.
-	const configured = loadMcpConfig({ agentDir: getAgentDir(), cwd, projectTrusted: true });
+	const configured = loadMcpConfig({ agentDir: host.agentDir(), cwd, projectTrusted: true });
 	const occupied = new Set(configured.servers.map((server) => mcpNamespace(server.name)));
 	for (const server of requested)
 		if (occupied.has(mcpNamespace(server.namespace)))
@@ -161,7 +165,7 @@ export async function prepareAcpMcpServers(servers: McpServer[], cwd: string): P
 		await chmod(directory, 0o700);
 		await writeFile(
 			join(directory, "manifest.json"),
-			JSON.stringify({ cwd, runtime: isBunBinary ? "node" : process.execPath, servers: requested }),
+			JSON.stringify({ cwd, runtime: host.nodeRuntime(), servers: requested }),
 			{ mode: 0o600 },
 		);
 		await writeFile(join(directory, "launcher.mjs"), LAUNCHER, { mode: 0o600 });

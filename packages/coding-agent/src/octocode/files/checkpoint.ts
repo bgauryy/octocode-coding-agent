@@ -1,9 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
-import { atomicWriteFile, atomicWriteFileSync, sha256, sha256File, tempSibling } from "../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
+import {
+	atomicWriteFile,
+	atomicWriteFileSync,
+	sha256,
+	sha256File,
+	tempSibling,
+} from "../../../../common/src/atomic-file.ts";
+import { privateDir } from "../shared/home.ts";
 import { type CheckpointEntry, journalOf, readJournal, serialize } from "./checkpoint-store.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 /**
  * Edit checkpoints: before the `file` tool first changes a path in a turn, its current bytes are saved

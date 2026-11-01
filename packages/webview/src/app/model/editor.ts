@@ -1,4 +1,4 @@
-import { ITEM_TYPES, PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
+import { DEFAULT_ITEM_TYPE, ITEM_TYPES, PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
 import type { BacklogMutation } from "@octocodeai/octocode-contracts/protocol";
 import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
 import { choice } from "./format.ts";
@@ -44,7 +44,7 @@ export function editorDefaults(it?: SnapshotItem, correction = false): EditorVal
 	const prior = correction ? it?.completions?.at(-1) : undefined;
 	return {
 		title: it?.title ?? "",
-		type: it?.type ?? "task",
+		type: it?.type ?? DEFAULT_ITEM_TYPE,
 		state: it?.state ?? "backlog",
 		why: it?.why ?? "",
 		goal: it?.goal ?? "",

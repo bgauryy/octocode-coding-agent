@@ -115,9 +115,10 @@ it.each([false, true])("streams one engine run and preserves late attachment (he
 			detach();
 			const frame = (await port!.connect()[Symbol.asyncIterator]().next()).value;
 			expect(frame.snapshot.runId).toEqual(expect.any(String));
+			// A late view sees the text released so far: the unfinished last word waits until it is proven free of a secret.
 			expect(frame.snapshot.messages).toContainEqual(
 				expect.objectContaining({
-					text: "Headless partial",
+					text: "Headless ",
 					complete: false,
 				}),
 			);
@@ -155,7 +156,7 @@ it.each([false, true])("streams one engine run and preserves late attachment (he
 		expect(a).toEqual(b);
 		expect(a).toMatchObject({
 			type: "event",
-			event: { type: "message.delta", text: "Partial output" },
+			event: { type: "message.delta", delta: "Partial ", block: { index: 0, length: 0 } },
 		});
 		expect(
 			native.some(

@@ -13,6 +13,8 @@ export interface McpServerPreset {
 	 * tool with the hash of the tool they were written for (`presetOverridesFor`), so changed tools get none.
 	 */
 	compactOverrides?: (input: CompactServerInput) => DescriptionOverrides | undefined;
+	/** Warnings raised while preparing launches since the last call, for the host to show the user. */
+	takeWarnings?: () => string[];
 	/** Stops what the preset started outside its server (a proxy, say); called on session shutdown, so it must be idempotent. */
 	dispose?: () => void | Promise<void>;
 }

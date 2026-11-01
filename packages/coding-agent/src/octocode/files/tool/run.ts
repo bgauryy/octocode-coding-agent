@@ -6,9 +6,15 @@ import { FileLockReleaseError, withFileWriteLock } from "../../../../../common/s
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
-import { runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
-import { atomicWriteFile, ChangedOnDiskError, changedOnDisk, sha256, sha256File } from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
+import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
+import {
+	atomicWriteFile,
+	ChangedOnDiskError,
+	changedOnDisk,
+	sha256,
+	sha256File,
+} from "../../../../../common/src/atomic-file.ts";
+import { canonicalPath, workspaceRoot } from "../../shared/home/repo.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { notify } from "../../shared/commands.ts";
 import { resolveToolPath } from "../../shared/home.ts";
@@ -86,10 +92,13 @@ function guardedOperations(
 ) {
 	let read: string | undefined;
 	let written: WrittenContent | undefined;
+	let unverified = false;
 	let cached = initial;
 	return {
 		/** The digest and size of what the last write put on disk. */
 		written: () => written,
+		/** The last write's read-back did not match what was written. */
+		unverified: () => unverified,
 		readFile: async (file: string) => {
 			if (cached && cached.file === file && checked !== null) {
 				const { data } = cached;
@@ -126,6 +135,19 @@ function guardedOperations(
 					onCommit?.(written.sha256);
 				}
 				throw error instanceof ChangedOnDiskError ? changedOnDisk(display) : error;
+			}
+			// Check the file after the write: one that is gone or has another size (torn, truncated or replaced right
+			// after) must not report success. A stat, not a read: a change keeps to two reads (before it, and the
+			// compare-and-swap), and a same-size rewrite is caught by the next change's compare-and-swap.
+			const landed = await fs.promises.stat(file).then(
+				(stat) => (stat.isFile() ? stat.size : null),
+				() => null,
+			);
+			if (written && landed !== written.size) {
+				unverified = true;
+				throw new Error(
+					`${display}: checking it after the write found ${landed === null ? "no file" : `a different size (${landed} bytes, expected ${written.size})`}: the write did not land intact, or another process changed the file right after it.`,
+				);
 			}
 		},
 		access: (file: string) => fs.promises.access(file, fs.constants.R_OK | fs.constants.W_OK),
@@ -202,7 +224,7 @@ export async function runQuery(
 		const effective = query.type === "edit" && data ? resolveAnchoredEdits(query, data, guard, file) : query;
 		const lost =
 			!prepared && changed && data
-				? lostAnchor(query.path, effective.edits ?? [], data.toString("utf8"), guard.reader)
+				? lostAnchor(query.path, effective.edits ?? [], data.toString("utf8"), guard.reader, inspection.by)
 				: undefined;
 		if (lost) throw new Error(lost);
 		const copied = copiedElision(effective, data?.toString("utf8") ?? "");
@@ -266,6 +288,8 @@ export async function runQuery(
 		// Octocode can observe cancellation after writeFile succeeded: retain both the read guard and the undo checkpoint.
 		const written = operations?.written();
 		if (written) recordChange(guard, file, mode, before, written);
+		// What the read-back found is not what the guard just recorded: the next change needs a fresh read.
+		if (operations?.unverified()) guard.forget(file);
 		if (deleted) guard.record(file);
 		const note = await settleCheckpoint(
 			ctx,
@@ -279,7 +303,7 @@ export async function runQuery(
 			...base,
 			ok: false,
 			...(receipt ? { receipt } : {}),
-			message: `${errorMessage(error)}${written || deleted ? " The file was changed; inspect it before retrying." : ""}${note}`,
+			message: `${errorMessage(error)}${error instanceof ChangedOnDiskError ? guard.modifierNote(file) : ""}${written || deleted ? " The file was changed; inspect it before retrying." : ""}${note}`,
 		};
 	}
 }
@@ -329,7 +353,7 @@ export async function workspaceRefusal(
 		return undefined;
 	}
 	const root = workspaceRoot(ctx.cwd);
-	const inside = root !== undefined && isWithin(real, root);
+	const inside = root !== undefined && changesOnlyWorkspace(real, root);
 	if (inside && !runsLater(real, root)) return undefined;
 	const dir = path.dirname(real);
 	const verdict = await permission.check(ctx, {

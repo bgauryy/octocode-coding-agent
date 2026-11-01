@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { getDefaultSessionDirPath } from "../src/core/session-manager/storage.ts";
 
 const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 const resolver = new URL("../scripts/source-resolver.ts", import.meta.url).href;
@@ -65,4 +66,67 @@ describe("explicit historical migrations", () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	}, 90_000);
+
+	it("moves a root-level session into the folder the session listing reads for its cwd", () => {
+		const root = mkdtempSync(join(tmpdir(), "octocode-migrate-sessions-"));
+		const home = join(root, "config");
+		const project = join(root, "proj");
+		mkdirSync(home, { recursive: true });
+		// A header cwd written with a trailing separator names the same directory as `project`.
+		const header = {
+			type: "session",
+			version: 3,
+			id: "legacy-1",
+			timestamp: new Date(0).toISOString(),
+			cwd: `${project}/`,
+		};
+		writeFileSync(join(home, "legacy.jsonl"), `${JSON.stringify(header)}\n`);
+		const env = { ...process.env, OCTOCODE_HOME: home, OCTOCODE_CODING_AGENT_DIR: home, OCTOCODE_OFFLINE: "1" };
+		try {
+			const result = spawnSync(process.execPath, ["--import", resolver, cli, "migrate"], {
+				cwd: root,
+				env,
+				encoding: "utf8",
+				timeout: 30_000,
+			});
+			expect(result.status).toBe(0);
+			expect(existsSync(join(getDefaultSessionDirPath(project, home), "legacy.jsonl"))).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	}, 60_000);
+
+	it("does not write auth.json or retire legacy keys while another process holds the auth lock", () => {
+		const root = mkdtempSync(join(tmpdir(), "octocode-migrate-lock-"));
+		const home = join(root, "config");
+		mkdirSync(home, { recursive: true });
+		const settings = JSON.stringify({ apiKeys: { example: "fixture-only" } });
+		writeFileSync(join(home, "settings.json"), settings);
+		const auth = JSON.stringify({ retained: { type: "api_key", key: "native-fixture" } });
+		writeFileSync(join(home, "auth.json"), auth);
+		// A fresh `proper-lockfile` lock: a running session is writing auth.json (a token refresh, a login).
+		mkdirSync(join(home, "auth.json.lock"));
+		const env = {
+			...process.env,
+			OCTOCODE_HOME: home,
+			OCTOCODE_CODING_AGENT_DIR: home,
+			OCTOCODE_OFFLINE: "1",
+			OCTOCODE_API: "0",
+			OCTOCODE_MCP: "0",
+			OCTOCODE_MODELS_DEV: "0",
+		};
+		try {
+			const result = spawnSync(process.execPath, ["--import", resolver, cli, "migrate"], {
+				cwd: root,
+				env,
+				encoding: "utf8",
+				timeout: 30_000,
+			});
+			expect(result.status).not.toBe(0);
+			expect(readFileSync(join(home, "auth.json"), "utf8")).toBe(auth);
+			expect(readFileSync(join(home, "settings.json"), "utf8")).toBe(settings);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	}, 60_000);
 });

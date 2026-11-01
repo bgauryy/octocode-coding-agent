@@ -153,7 +153,7 @@ describe("browser MCP page-request filter", () => {
 		const guard = createBrowserGuard({
 			running: async () => true,
 			start: async (options) => {
-				const { startFilteringProxy } = await import("../../coding-agent/src/octocode/browser/proxy.ts");
+				const { startFilteringProxy } = await import("../../common/src/browser-proxy.ts");
 				const proxy = await startFilteringProxy(options);
 				started.push(proxy.port);
 				return proxy;

@@ -3,7 +3,7 @@ import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { getLegacyConfigDirs } from "../../config.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
 import { ModelConfig } from "../model-config.ts";
-import { resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { resolveConfigValue } from "../config-value.ts";
 
 export interface PiProviderCredential extends CredentialInfo {
 	authPath: string;

@@ -1,4 +1,5 @@
 import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type TuiMouseEvent } from "../tui.ts";
+import { renderIsolated } from "../tui/render-isolation.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { flattenLines } from "../utils/wrap.ts";
 
@@ -123,7 +124,7 @@ export class Box implements Component {
 		const childLines: string[] = [];
 		const mouseChildren: Array<{ component: Component; height: number }> = [];
 		for (const child of this.children) {
-			const lines = child.render(contentWidth);
+			const lines = renderIsolated(child, contentWidth);
 			mouseChildren.push({ component: child, height: lines.length });
 			for (const line of lines) {
 				childLines.push(line);

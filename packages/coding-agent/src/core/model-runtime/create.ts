@@ -8,6 +8,7 @@ import {
 import * as builtinProviderCatalog from "@octocodeai/octocode-ai/providers/all";
 import { personalizeOpenRouterCatalog } from "@octocodeai/octocode-ai/providers/openrouter";
 import { getAgentDir } from "../../config.ts";
+import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { AuthStorage as DefaultAuthStorage } from "../auth-storage.ts";
 import { ModelConfig } from "../model-config.ts";
 import { FileModelsStore } from "../models-store.ts";
@@ -22,6 +23,8 @@ export interface ModelRuntimeParts {
 	modelsPath: string | undefined;
 	modelsStore: ModelsStore;
 	providers: Provider[];
+	/** False in offline mode: catalog and availability refreshes stay local. */
+	modelNetworkEnabled: boolean;
 }
 
 /** Load credentials, models.json and the catalog store, and create the built-in providers. */
@@ -36,7 +39,7 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 			? new FileModelsStore(options.modelsStorePath ?? join(dirname(modelsPath), "models-store.json"))
 			: new InMemoryModelsStore());
 	const providers = createBuiltinProviders(options.catalogBaseUrl);
-	return { credentials, config, modelsPath, modelsStore, providers };
+	return { credentials, config, modelsPath, modelsStore, providers, modelNetworkEnabled: !isOfflineModeEnabled() };
 }
 
 /** The built-in providers, each refreshing its catalog from `catalogBaseUrl`. */

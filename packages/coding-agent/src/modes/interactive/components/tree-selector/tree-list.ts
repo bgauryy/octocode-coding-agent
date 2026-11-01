@@ -1,7 +1,7 @@
 import { type Component, getKeybindings, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { formatLabelTimestamp, getEntryCopyText, getEntryDisplayText } from "./entry-text.ts";
+import { formatLabelTimestamp, getEntryCopyText, getEntryDisplayText, plainText } from "./entry-text.ts";
 import { matchesTreeFilter } from "./filter.ts";
 import {
 	buildActivePath,
@@ -248,7 +248,7 @@ export class TreeList implements Component {
 			const isOnActivePath = this.activePathIds.has(entry.id);
 			const pathMarker = isOnActivePath ? theme.fg("accent", "• ") : "";
 
-			const label = flatNode.node.label ? theme.fg("warning", `[${flatNode.node.label}] `) : "";
+			const label = flatNode.node.label ? theme.fg("warning", `[${plainText(flatNode.node.label)}] `) : "";
 			const labelTimestamp =
 				this.showLabelTimestamps && flatNode.node.label && flatNode.node.labelTimestamp
 					? theme.fg("muted", `${formatLabelTimestamp(flatNode.node.labelTimestamp)} `)

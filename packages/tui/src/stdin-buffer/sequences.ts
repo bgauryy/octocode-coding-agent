@@ -252,9 +252,10 @@ export function extractCompleteSequences(buffer: string): { sequences: string[];
 				return { sequences, remainder: remaining };
 			}
 		} else {
-			// Not an escape sequence - take a single character
-			sequences.push(remaining[0]);
-			pos++;
+			// Not an escape sequence - take one code point, so a surrogate pair stays whole
+			const char = String.fromCodePoint(remaining.codePointAt(0)!);
+			sequences.push(char);
+			pos += char.length;
 		}
 	}
 

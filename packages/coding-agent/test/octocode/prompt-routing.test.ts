@@ -67,7 +67,7 @@ describe("Octocode research routing in the policy", () => {
 		const declared = await build(["bash", "file", "mcp", "mcp__octocode__localSearch"]);
 		expect(declared).toContain("Use Octocode MCP");
 		expect(declared).not.toContain("Use bash for file operations");
-		// A server that failed later keeps the same policy bytes (its state is in mcp_status, and the policy says how to
+		// A server that failed later keeps the same policy bytes (its state is in the `mcps` section, and the policy says how to
 		// recover when a tool is missing); only a server that is not enabled gives the base rule.
 		setMcpSessionStatus(fake.api.events, [
 			{ name: "octocode", enabled: true, state: "failed", toolCount: 0, source: "mcp.json", exposure: "direct" },
@@ -167,7 +167,8 @@ describe("registerTurnSetup routing and child trim", () => {
 		});
 		const full = await run(fake, { selectedTools: ["bash", "web", "agent"] });
 		expect(full.octocode).toContain("Use `web`");
-		expect(full.octocode).toContain("`agent` type `external`");
+		// The `<tools>` line of `agent` owns how to reach external agents; the policy does not repeat it.
+		expect(full.octocode).not.toContain("`agent` type `external`");
 		const shell = await run(fake, { selectedTools: ["bash"] });
 		expect(shell.octocode).toContain("Use the `gh` CLI in bash when available");
 		expect(shell.octocode).not.toMatch(/`web`|`agent`|agents-communication tools/);
@@ -177,29 +178,10 @@ describe("registerTurnSetup routing and child trim", () => {
 		expect((await run(fake, { selectedTools: ["bash", "web", "agent"] })).octocode).toBe(full.octocode);
 	});
 
-	it("routes native graph questions without MCP and updates the cached prompt with tool selection", async () => {
+	it("does not restate the server's tool routing", async () => {
 		const fake = fakeHost();
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
-		const selectedTools = ["graphBuild", "graphQuery"];
-		const full = (await run(fake, { selectedTools })).octocode;
-		expect(full).toContain("Repeated repository or package dependency, cycle and broad impact questions");
-		expect(full).toContain("`graphQuery`");
-		expect(full).toContain("`graphBuild` when writes are permitted");
-		expect(full).not.toContain("Use Octocode MCP");
-		const query = (await run(fake, { selectedTools: ["graphQuery"] })).octocode;
-		expect(query).toContain("`graphQuery` on an existing snapshot");
-		expect(query).not.toContain("graphBuild");
-		expect((await run(fake, { selectedTools: [] })).octocode).not.toMatch(/graphBuild|graphQuery/);
-		expect((await run(fake, { selectedTools })).octocode).toBe(full);
-	});
-
-	it("routes graph questions without restating the server's tool routing", async () => {
-		const fake = fakeHost();
-		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
-		const { octocode } = await run(fake, {
-			selectedTools: ["graphBuild", "graphQuery", "mcp__octocode__lspSearch"],
-		});
-		expect(octocode).toContain("broad impact questions: `graphQuery`");
+		const { octocode } = await run(fake, { selectedTools: ["mcp__octocode__lspSearch"] });
 		expect(octocode).not.toContain("lspSearch");
 	});
 
@@ -220,20 +202,6 @@ describe("registerTurnSetup routing and child trim", () => {
 			for (const name of Object.keys(before).filter((key) => key.startsWith("octocode")))
 				expect(after[name]).toBe(before[name]);
 		}
-	});
-
-	it("lets a read-only child build a graph, saying it writes only derived snapshots", async () => {
-		vi.stubEnv("OCTOCODE_READ_ONLY", "1");
-		const fake = fakeHost();
-		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
-		const { octocode } = await run(fake, { selectedTools: ["file", "graphBuild", "graphQuery"] });
-		expect(octocode).toContain("`graphQuery` on an existing snapshot; create or refresh it with `graphBuild`");
-		expect(octocode).toContain(".octocode/graph/");
-		expect(octocode).not.toContain("when writes are permitted");
-		// Without graphQuery the build line stands alone and says the same.
-		const build = (await run(fake, { selectedTools: ["file", "graphBuild"] })).octocode;
-		expect(build).toContain("`graphBuild`");
-		expect(build).toContain(".octocode/graph/");
 	});
 
 	it("keeps bounded evidence and authorization guidance in root and child context", async () => {
@@ -274,7 +242,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			registerTurnSetup(fake.api, {
 				isSubagent,
 				profiles: () =>
-					new Map([["browser", { name: "browser", description: "Drives Chrome", tools: "+browser" } as never]]),
+					new Map([["browser", { name: "browser", description: "Drives Chrome", tools: "mcp__browser__*" } as never]]),
 			});
 			setMcpSessionStatus(fake.api.events, status("connecting", 0));
 			const before = await run(fake, { selectedTools: natives });
@@ -292,7 +260,7 @@ describe("registerTurnSetup routing and child trim", () => {
 		const fake = fakeHost();
 		fake.api.events = createEventBus();
 		const profiles = new Map([
-			["browser", { name: "browser", description: "Drives Chrome", tools: "+browser" } as never],
+			["browser", { name: "browser", description: "Drives Chrome", tools: "mcp__browser__*" } as never],
 		]);
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => profiles });
 		const selectedTools = ["bash", "agent", "mcp"];

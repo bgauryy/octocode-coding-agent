@@ -83,7 +83,8 @@ it("runs native tools and releases team resources across a real session reload",
 				fauxAssistantMessage(
 					fauxToolCall("agent", {
 						type: "coordinate",
-						input: { action: "join", goal: "Verify native lifecycle" },
+						action: "join",
+						joinGoal: "Verify native lifecycle",
 						reason: "Register this session in the team",
 					}),
 					{
@@ -93,7 +94,8 @@ it("runs native tools and releases team resources across a real session reload",
 				fauxAssistantMessage(
 					fauxToolCall("agent", {
 						type: "coordinate",
-						input: { action: "lock", paths: [`run-${run}.txt`] },
+						action: "lock",
+						paths: [`run-${run}.txt`],
 						reason: "Reserve the file before editing",
 					}),
 					{

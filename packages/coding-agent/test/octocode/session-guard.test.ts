@@ -51,13 +51,13 @@ describe("leaving a session with running work", () => {
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		ctx.ui.selects.push("Allow once", "Allow once");
 		const agent = fake.tools.get("agent");
-		const call = (input: unknown) =>
-			agent.execute("external-guard", { type: "external", input }, undefined, undefined, ctx);
+		const call = (fields: Record<string, unknown>) =>
+			agent.execute("external-guard", { type: "external", ...fields }, undefined, undefined, ctx);
 		try {
 			expect(
 				await call({
-					action: "connect",
-					id: "peer",
+					externalAction: "connect",
+					connection: "peer",
 					transport: "acp",
 					vendor: "fixture",
 					command: process.execPath,
@@ -69,7 +69,9 @@ describe("leaving a session with running work", () => {
 					cwd,
 				}),
 			).toMatchObject({ details: { id: "peer" } });
-			expect(await call({ action: "prompt", id: "peer", text: "work", timeoutMs: 1000 })).toMatchObject({
+			expect(
+				await call({ externalAction: "prompt", connection: "peer", promptText: "work", timeoutMs: 1000 }),
+			).toMatchObject({
 				isError: true,
 				details: { execution: "uncertain" },
 			});
@@ -90,13 +92,13 @@ describe("leaving a session with running work", () => {
 				"Stop 1 external prompt and start a new session?",
 				"Stop 1 external prompt and fork?",
 			]);
-			await call({ action: "cancel", id: "peer" });
+			await call({ externalAction: "cancel", connection: "peer" });
 			expect(
 				await decide(fake, "session_before_switch", { type: "session_before_switch", reason: "new" }, ctx),
 			).toBeUndefined();
 			expect(questions).toHaveLength(2);
 		} finally {
-			await call({ action: "disconnect", id: "peer" });
+			await call({ externalAction: "disconnect", connection: "peer" });
 			await fake.emit("session_shutdown", { type: "session_shutdown" }, ctx);
 		}
 	});

@@ -14,6 +14,8 @@ import type { ModelRef } from "./model.ts";
 const CREDENTIAL_REFUSED =
 	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|expired|insufficient[ _](?:quota|credit|balance)|billing/i;
 const CHECK_TIMEOUT_MS = 20_000;
+/** How long a credential refusal steers routing away from its provider: a `/login` since then is not otherwise seen. */
+const REFUSAL_ROUTING_MS = 15 * 60_000;
 
 export interface ProviderStatus {
 	ok: boolean;
@@ -54,6 +56,20 @@ export class ProviderHealth {
 
 	get(provider: string): ProviderStatus | undefined {
 		return this.status.get(provider);
+	}
+
+	/**
+	 * Whether `provider` refused its credential in the last `REFUSAL_ROUTING_MS` (a run or check said so; a timeout or
+	 * other failure does not count): routing then prefers other providers (`RouteInput.refused`).
+	 */
+	refused(provider: string): boolean {
+		const status = this.status.get(provider);
+		return (
+			status !== undefined &&
+			!status.ok &&
+			Date.now() - status.at < REFUSAL_ROUTING_MS &&
+			CREDENTIAL_REFUSED.test(status.detail ?? "")
+		);
 	}
 }
 
@@ -122,7 +138,7 @@ async function listAccepted(registry: CheckRegistry, providerId: string, signal:
 	if (!resolved) return false;
 	const listed = await checkCredentialByList(provider, resolved.auth, {
 		signal,
-		chatGPT: providerId === "openai" && resolved.source === "OAuth",
+		credentialSource: resolved.source,
 	});
 	return listed?.ok === true;
 }

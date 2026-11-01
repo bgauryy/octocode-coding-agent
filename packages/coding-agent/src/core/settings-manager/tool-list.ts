@@ -1,9 +1,18 @@
+import { RENAMED_TOOLS } from "../tools/tool-names.ts";
+
 /** Tools enabled at startup when `defaultTools` does not change them. */
 export const DEFAULT_TOOL_NAMES: readonly string[] = ["bash"];
 
 /** Whether a tool selection entry is a `+name` or `-name` modifier. */
 export function isToolModifier(entry: unknown): boolean {
 	return typeof entry === "string" && (entry.startsWith("+") || entry.startsWith("-"));
+}
+
+/** A tool name or selection entry (`name`, `+name`, `-name`) with a renamed tool's old name (`task`) made current (`steps`). */
+export function currentToolName(entry: string): string {
+	const prefix = isToolModifier(entry) ? entry[0] : "";
+	const name = entry.slice(prefix.length);
+	return Object.hasOwn(RENAMED_TOOLS, name) ? `${prefix}${RENAMED_TOOLS[name]}` : entry;
 }
 
 /**
@@ -51,7 +60,8 @@ export function mergeDefaultTools(base: string[] | undefined, overrides: string[
  * Resolve a merged `defaultTools` list: plain names replace `DEFAULT_TOOL_NAMES`, then `+name` adds
  * and `-name` removes a tool, in list order.
  */
-export function resolveDefaultTools(entries: string[], defaults: readonly string[]): string[] {
+export function resolveDefaultTools(given: string[], defaults: readonly string[]): string[] {
+	const entries = given.map(currentToolName);
 	const plain = entries.filter((entry) => !isToolModifier(entry));
 	return applyToolModifiers(plain.length > 0 || entries.length === 0 ? plain : defaults, entries);
 }

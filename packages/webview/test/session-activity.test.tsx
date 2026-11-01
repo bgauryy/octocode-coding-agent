@@ -196,6 +196,21 @@ it("loads full activity metadata without treating arbitrary data as a message or
 	expect(screen.queryByRole("button", { name: "Load full details" })).toBeNull();
 });
 
+it("clears a failed details load when the activity's full details change", async () => {
+	const card = (revision: string) => {
+		const full = { id: "details", mimeType: "application/json", size: 80, revision };
+		const [event] = new ApplicationProjection().update({ ...snapshot, activities: [activity("usage", { full })] }, 1);
+		return <ResultCard event={event} />;
+	};
+	responses = [{ asset: { id: "details", mimeType: "application/json", size: 8 }, encoding: "utf8", data: "not json" }];
+	const view = render(card("one"), { wrapper: Wrapper });
+	await userEvent.click(screen.getByRole("button", { name: "Load full details" }));
+	expect(await screen.findByRole("alert")).toBeInTheDocument();
+	view.rerender(card("two"));
+	expect(screen.queryByRole("alert")).toBeNull();
+	expect(screen.getByRole("button", { name: "Load full details" })).toBeEnabled();
+});
+
 it("preserves role-specific message details alongside the displayed output", () => {
 	const [event] = new ApplicationProjection().update(
 		{

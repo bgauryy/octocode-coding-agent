@@ -16,6 +16,7 @@ import { APP_NAME, getAgentDir, VERSION } from "../../../config.ts";
 import { DefaultPackageManager } from "../../../core/package-manager.ts";
 import { isInstallTelemetryEnabled } from "../../../core/telemetry.ts";
 import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
+import { isOfflineModeEnabled } from "../../../utils/env-flag.ts";
 import { getOctocodeUserAgent } from "../../../utils/user-agent.ts";
 import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
 import { DynamicBorder } from "../components/dynamic-border.ts";
@@ -38,7 +39,7 @@ type StartupChecksHost = Pick<
 >;
 
 export async function checkForPackageUpdates(host: StartupChecksHost): Promise<string[]> {
-	if (process.env.OCTOCODE_OFFLINE) {
+	if (isOfflineModeEnabled()) {
 		return [];
 	}
 
@@ -102,7 +103,7 @@ export function getChangelogForDisplay(host: StartupChecksHost): string | undefi
 }
 
 function reportInstallTelemetry(host: StartupChecksHost, version: string): void {
-	if (process.env.OCTOCODE_OFFLINE) {
+	if (isOfflineModeEnabled()) {
 		return;
 	}
 

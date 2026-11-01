@@ -1,7 +1,8 @@
 /** Tool call and tool result events with their type guards. */
 
 import type { ImageContent, JsonValue, TextContent, Usage } from "@octocodeai/octocode-ai";
-import type { BashToolDetails, BashToolInput } from "../../tools/index.ts";
+import type { BashToolDetails } from "../../tools/bash/outcome.ts";
+import type { BashToolInput } from "../../tools/bash/schema.ts";
 
 // ============================================================================
 // Tool Events

@@ -1,5 +1,5 @@
 import type { OAuthCredential, ProviderAuthInteraction } from "../../types.ts";
-import { pollOAuthDeviceCodeFlow } from "../device-code.ts";
+import { describeResponseFields, pollOAuthDeviceCodeFlow } from "../device-code.ts";
 import {
 	AUTH_BASE_URL,
 	CLIENT_ID,
@@ -58,7 +58,7 @@ async function startOpenAICodexDeviceAuth(signal: AbortSignal): Promise<DeviceAu
 		!Number.isFinite(intervalSeconds) ||
 		intervalSeconds < 0
 	) {
-		throw new Error(`Invalid OpenAI Codex device code response: ${JSON.stringify(json)}`);
+		throw new Error(`Invalid OpenAI Codex device code response: ${describeResponseFields(json)}`);
 	}
 
 	return {
@@ -90,7 +90,7 @@ async function pollOpenAICodexDeviceAuth(device: DeviceAuthInfo, signal: AbortSi
 				if (!json?.authorization_code || !json.code_verifier) {
 					return {
 						status: "failed",
-						message: `Invalid OpenAI Codex device auth token response: ${JSON.stringify(json)}`,
+						message: `Invalid OpenAI Codex device auth token response: ${describeResponseFields(json)}`,
 					};
 				}
 				return {

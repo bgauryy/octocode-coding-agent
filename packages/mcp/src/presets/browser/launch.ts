@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { isBunBinary } from "../../../../coding-agent/src/config.ts";
+import { hostIdentity } from "../../host.ts";
 import { BROWSER_BIN, BROWSER_PACKAGE } from "../../../../common/src/mcp-names.ts";
 
 export interface BrowserLaunch {
@@ -31,5 +31,5 @@ export function browserLaunch(cwd: string, entry = browserMcpEntry()): BrowserLa
 		throw new Error(
 			`${BROWSER_PACKAGE} is not installed next to Octocode. Reinstall Octocode to restore the browser MCP server.`,
 		);
-	return { command: isBunBinary ? "node" : process.execPath, args: [entry], cwd };
+	return { command: hostIdentity().isBunBinary() ? "node" : process.execPath, args: [entry], cwd };
 }

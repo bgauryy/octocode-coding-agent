@@ -19,6 +19,7 @@ import * as loadedResources from "../src/modes/interactive/interactive-mode/load
 import * as resourceGroups from "../src/modes/interactive/interactive-mode/resource-groups.ts";
 import * as resourcePaths from "../src/modes/interactive/interactive-mode/resource-paths.ts";
 import * as statusIndicators from "../src/modes/interactive/interactive-mode/status-indicators.ts";
+import { handleGithubCommand } from "../src/modes/interactive/interactive-mode/github-command.ts";
 import * as viewState from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import type { ToolStatus } from "../src/utils/tools-manager.ts";
@@ -169,6 +170,49 @@ describe("InteractiveMode.showStatus", () => {
 		expect(fakeThis.chatContainer.children).toHaveLength(2);
 		expect(renderLastLine(fakeThis.chatContainer)).toContain("STATUS_TWO");
 		expect(renderLastLine(fakeThis.chatContainer)).not.toContain("STATUS_ONE");
+	});
+
+	const CONTROLS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+	const withoutColors = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
+
+	test("strips terminal controls from status text, such as a GitHub host name", async () => {
+		const fakeThis: any = {
+			chatContainer: new Container(),
+			ui: { requestRender: vi.fn() },
+			footerDataProvider: { setGithubStatusText: vi.fn() },
+			showExtensionConfirm: async () => true,
+		};
+		fakeThis.showStatus = (message: string) => statusIndicators.showStatus(createFakeHost(fakeThis), message);
+		const run = vi.fn(async (action: string) =>
+			action === "logout" ? { hostname: "github.com\u001b]0;pwned\u0007\u001b[2J" } : { authenticated: false },
+		);
+
+		await handleGithubCommand(createFakeHost(fakeThis), "logout", run as never);
+
+		const line = withoutColors(renderLastLine(fakeThis.chatContainer));
+		expect(line).toContain("Signed out of GitHub on github.com.");
+		expect(line).not.toMatch(CONTROLS);
+	});
+
+	test("draws a validated link as OSC 8 and shows any other link as plain text", () => {
+		const fakeThis: any = { chatContainer: new Container(), ui: { requestRender: vi.fn() } };
+		const host = createFakeHost(fakeThis);
+
+		statusIndicators.showStatus(host, ["Share URL: ", { url: "https://example.test/s?id=1" }]);
+		expect(renderLastLine(fakeThis.chatContainer)).toContain(
+			"\u001b]8;;https://example.test/s?id=1\u001b\\https://example.test/s?id=1\u001b]8;;\u001b\\",
+		);
+
+		fakeThis.chatContainer.addChild({ render: () => ["(reply)"], invalidate: () => {} });
+		statusIndicators.showStatus(host, [
+			"Links: ",
+			{ url: "javascript:alert(1)", label: "run" },
+			" ",
+			{ url: "https://example.test/\u001b]0;pwned\u0007" },
+		]);
+		const line = withoutColors(renderLastLine(fakeThis.chatContainer));
+		expect(line).toContain("Links: run https://example.test/");
+		expect(line).not.toMatch(CONTROLS);
 	});
 });
 
@@ -346,7 +390,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 		const showExtensionCustom = <T>(
 			factory: (tui: TUI, theme: unknown, keybindings: unknown, done: (result: T) => void) => Component,
 			options?: { overlay?: boolean },
-		): Promise<T> => extensionDialogs.showExtensionCustom(createFakeHost(fakeThis), factory, options);
+		): Promise<T | undefined> => extensionDialogs.showExtensionCustom(createFakeHost(fakeThis), factory, options);
 
 		editorContainer.addChild(editor);
 		ui.addChild(editorContainer);
@@ -417,7 +461,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 			const showExtensionCustom = <T>(
 				factory: (tui: TUI, theme: unknown, keybindings: unknown, done: (result: T) => void) => Component,
 				options?: { overlay?: boolean; overlayOptions?: { nonCapturing?: boolean } },
-			): Promise<T> => extensionDialogs.showExtensionCustom(createFakeHost(fakeThis), factory, options);
+			): Promise<T | undefined> => extensionDialogs.showExtensionCustom(createFakeHost(fakeThis), factory, options);
 
 			editorContainer.addChild(editor);
 			ui.addChild(editorContainer);
@@ -1550,5 +1594,43 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toContain("⚠ Skill conflicts");
 		expect(output).not.toMatch(/^Skills\s/m);
+	});
+
+	test("strips terminal controls from resource names, paths and diagnostics", () => {
+		// File names, skill frontmatter and package data are untrusted: none may reach the terminal as a control sequence.
+		const osc = "\u001b]0;pwned\u0007";
+		const fakeThis = createShowLoadedResourcesThis({
+			quietStartup: false,
+			toolOutputExpanded: true,
+			useRealScopeGroups: true,
+			contextFiles: [{ path: `/tmp/project/${osc}AGENTS.md` }],
+			skills: [{ filePath: `/tmp/skills/${osc}one/SKILL.md`, name: "one" }],
+			extensions: [{ path: `/tmp/extensions/${osc}ext.ts` }],
+			skillDiagnostics: [
+				{
+					type: "collision",
+					message: "collision",
+					collision: {
+						resourceType: "skill",
+						name: `dup${osc}`,
+						winnerPath: `/tmp/a/${osc}SKILL.md`,
+						loserPath: "/tmp/b/SKILL.md",
+					},
+				} as never,
+				{ type: "error", message: "bad \u001b[2J\u009b31mname", path: `/tmp/c/${osc}SKILL.md` } as never,
+			],
+		});
+		fakeThis.session.promptTemplates = [{ name: `fix\u001b[2J`, filePath: "/tmp/prompts/fix.md" }];
+		fakeThis.formatDiagnostics = (...args: [never, never]) =>
+			resourceGroups.formatDiagnostics(createFakeHost(fakeThis), ...args);
+
+		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: true });
+
+		const output = renderAll(fakeThis.loadedResourcesContainer);
+		expect(output).toContain("AGENTS.md");
+		expect(output).toContain('"dup" collision');
+		expect(output).toContain("bad name");
+		expect(output).toContain("/fix");
+		expect(output).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
 	});
 });

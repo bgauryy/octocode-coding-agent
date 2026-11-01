@@ -9,6 +9,7 @@ const agentSrcIndex = fileURLToPath(new URL("./src/index.ts", import.meta.url));
 
 export default defineConfig({
 	test: {
+		globalSetup: [fileURLToPath(new URL("../../vitest.tmp.global.ts", import.meta.url))],
 		globals: true,
 		environment: "node",
 		testTimeout: 30000, // 30 seconds for API calls

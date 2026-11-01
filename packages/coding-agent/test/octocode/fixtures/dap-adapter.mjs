@@ -1,3 +1,13 @@
+import { spawn } from "node:child_process";
+import { appendFileSync, writeFileSync } from "node:fs";
+
+const option = (name) => process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+// --record=<file> appends each request command; --debuggee=<pidfile> starts a detached program on launch
+// that only terminate or disconnect{terminateDebuggee} stops; --ignore-stop never answers either.
+const record = option("record");
+const pidFile = option("debuggee");
+let debuggee;
+const stopDebuggee = () => debuggee?.kill("SIGKILL");
 let buffer = Buffer.alloc(0);
 let seq = 0;
 let configured = false;
@@ -18,6 +28,8 @@ function receive(chunk) {
 		const request = JSON.parse(buffer.subarray(end + 4, end + 4 + length).toString());
 		buffer = buffer.subarray(end + 4 + length);
 		if (request.type !== "request") continue;
+		if (record) appendFileSync(record, `${request.command}${request.command === "disconnect" ? `:${request.arguments?.terminateDebuggee}` : ""}\n`);
+		if ((request.command === "terminate" || request.command === "disconnect") && process.argv.includes("--ignore-stop")) continue;
 		if (process.argv.includes("--hang")) continue;
 		if (process.argv.includes("--malformed")) {
 			process.stdout.write("Content-Length: 999999999\r\n\r\n");
@@ -29,13 +41,18 @@ function receive(chunk) {
 				else
 					respond(request, {
 						supportsConfigurationDoneRequest: true,
-						supportsTerminateRequest: true,
+						supportsTerminateRequest: !process.argv.includes("--no-terminate-request"),
 						supportsExceptionInfoRequest: true,
 						exceptionBreakpointFilters: [{ filter: "uncaught", label: "Uncaught" }, { filter: "raised", label: "Raised" }],
 					});
 				break;
 			case "launch":
 				if (process.argv.includes("--exit-before-initialized")) process.exit(0);
+				if (pidFile) {
+					debuggee = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
+					debuggee.unref();
+					writeFileSync(pidFile, String(debuggee.pid));
+				}
 				if (!process.argv.includes("--omit-initialized")) event("initialized");
 				respond(request);
 				if (configured) event("stopped", { reason: "breakpoint", threadId: 1 });
@@ -71,8 +88,13 @@ function receive(chunk) {
 					event("terminated");
 					process.exit(0);
 				}
+				stopDebuggee();
 				respond(request);
 				event("terminated");
+				break;
+			case "disconnect":
+				if (request.arguments?.terminateDebuggee) stopDebuggee();
+				respond(request);
 				break;
 			default: send({ type: "response", request_seq: request.seq, command: request.command, success: false, message: "unsupported" });
 		}

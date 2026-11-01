@@ -29,7 +29,6 @@ import {
 	type ModelsImagesOptions,
 	type ModelsRefreshOptions,
 	type ModelsRefreshResult,
-	type ModelsStore,
 	type ModelThinkingLevel,
 	type ModelType,
 	type ModelTypeMap,
@@ -40,9 +39,8 @@ import {
 import type { CachePreferenceLayer } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { dirname } from "node:path";
 import { resolveConfiguredCache } from "./cache-configuration.ts";
-import type { ModelConfig } from "./model-config.ts";
 import { ModelAvailability } from "./model-runtime/availability.ts";
-import { loadModelRuntimeParts, refreshOnCreate } from "./model-runtime/create.ts";
+import { loadModelRuntimeParts, type ModelRuntimeParts, refreshOnCreate } from "./model-runtime/create.ts";
 import { CredentialOperations } from "./model-runtime/credential-operations.ts";
 import { refreshModelRuntime } from "./model-runtime/refresh.ts";
 import { ProviderRegistrations } from "./model-runtime/registrations.ts";
@@ -92,14 +90,14 @@ export class ModelRuntime implements Models {
 	private readonly credentialOperations: CredentialOperations;
 	private readonly registrations: ProviderRegistrations;
 
-	private constructor(
-		credentials: RuntimeCredentials,
-		config: ModelConfig,
-		modelsPath: string | undefined,
-		modelsStore: ModelsStore,
-		providers: readonly Provider[],
-		modelNetworkEnabled: boolean,
-	) {
+	private constructor({
+		credentials,
+		config,
+		modelsPath,
+		modelsStore,
+		providers,
+		modelNetworkEnabled,
+	}: ModelRuntimeParts) {
 		this.credentials = credentials;
 		this.modelsPath = modelsPath;
 		this.modelNetworkEnabled = modelNetworkEnabled;
@@ -119,15 +117,7 @@ export class ModelRuntime implements Models {
 	}
 
 	static async create(options: CreateModelRuntimeOptions = {}): Promise<ModelRuntime> {
-		const { credentials, config, modelsPath, modelsStore, providers } = await loadModelRuntimeParts(options);
-		const runtime = new ModelRuntime(
-			credentials,
-			config,
-			modelsPath,
-			modelsStore,
-			providers,
-			process.env.OCTOCODE_OFFLINE === undefined,
-		);
+		const runtime = new ModelRuntime(await loadModelRuntimeParts(options));
 		runtime.rebuildProviders();
 		await refreshOnCreate((refreshOptions) => runtime.refresh(refreshOptions), runtime.modelNetworkEnabled, options);
 		return runtime;

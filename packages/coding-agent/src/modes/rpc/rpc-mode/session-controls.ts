@@ -1,8 +1,6 @@
 import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts";
 import type { ExtensionCommandContextActions } from "../../../core/extensions/index.ts";
 
-export const ACP_WORKER_ENV = "OCTOCODE_INTERNAL_ACP_WORKER";
-
 /** ACP chooses transcript identity through its broker; ordinary RPC extension controls remain available. */
 export function createSessionControls(
 	runtime: AgentSessionRuntime,

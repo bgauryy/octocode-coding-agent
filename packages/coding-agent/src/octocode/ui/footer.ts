@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText, styledLine } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { StatusEntry } from "../../core/footer-data-provider.ts";
 import { paintStatus } from "../../theme/status.ts";
@@ -92,12 +92,8 @@ function tilde(cwd: string, home: string | undefined): string {
 			: `~${path.sep}${relative}`;
 }
 
-const singleLine = (text: string) =>
-	text
-		.replace(/[\r\n\t\u2028\u2029]/g, " ")
-		.replace(/ +/g, " ")
-		.trim();
-const plainRow = (text: string) => singleLine(sanitizeTerminalText(text));
+/** Text drawn without colour (a model id, a path, a branch): every terminal control removed, on one row. */
+const plainRow = (text: string) => styledLine(sanitizeTerminalText(text));
 
 /** Joins the left parts with dim dots and pushes the right parts to the edge, shortening and dropping until it fits. */
 function fitLine(left: Part[], right: Part[], theme: Paint, width: number): string {
@@ -151,7 +147,8 @@ export function footerLines(
 	width: number,
 ): string[] {
 	// Statuses are data: each is painted in its tone with this frame's theme, so a theme switch reaches every one.
-	const text = (key: string) => singleLine(statuses.get(key)?.text ?? "");
+	// A status may carry its own colours; any other control goes, and it stays on one row (`styledLine`).
+	const text = (key: string) => styledLine(statuses.get(key)?.text ?? "");
 	const status = (key: string, shown = text(key)) => paintStatus({ text: shown, tone: statuses.get(key)?.tone }, theme);
 	// `provider/id` when it fits; the short form drops the provider before cutting the id.
 	const model = plainRow(
@@ -256,8 +253,7 @@ export function footerLines(
 				priority: 75,
 			},
 			// Keep the workspace entry point when counts no longer fit; location and active-work statuses still win.
-			{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/octocode") },
-			// As Octocode's own footer does (sanitizeStatusText): a line break inside a footer row breaks octocode-tui's row tracking.
+			{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/web") },
 			...others.map(([key]) => ({ text: status(key), priority: 20 })),
 		],
 		[],

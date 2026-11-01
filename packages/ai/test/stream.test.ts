@@ -1,4 +1,4 @@
-import { type ChildProcess, execSync, spawn } from "child_process";
+import type { ChildProcess } from "child_process";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { Type } from "typebox";
@@ -15,6 +15,7 @@ import { hasAzureOpenAICredentials, resolveAzureDeploymentName } from "./azure-u
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
 import { getCopilotResponsesReasoningModel } from "./catalog-models.ts";
 import { hasCloudflareAiGatewayCredentials, hasCloudflareWorkersAICredentials } from "./cloudflare-utils.ts";
+import { localOllamaEnabled, OLLAMA_MODEL, startOllama } from "./local-ollama.ts";
 import { resolveApiKey } from "./oauth.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1638,60 +1639,16 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	// Check if ollama is installed and local LLM tests are enabled
-	let ollamaInstalled = false;
-	if (!process.env.OCTOCODE_NO_LOCAL_LLM) {
-		try {
-			execSync("which ollama", { stdio: "ignore" });
-			ollamaInstalled = true;
-		} catch {
-			ollamaInstalled = false;
-		}
-	}
-
-	describe.skipIf(!ollamaInstalled)("Ollama Provider (gpt-oss-20b via OpenAI Completions)", () => {
+	// Opt-in (OCTOCODE_LOCAL_LLM=1) and only with the model already pulled: a test run never downloads it.
+	describe.skipIf(!localOllamaEnabled())("Ollama Provider (gpt-oss-20b via OpenAI Completions)", () => {
 		let llm: Model<"openai-completions">;
 		let ollamaProcess: ChildProcess | null = null;
 
 		beforeAll(async () => {
-			// Check if model is available, if not pull it
-			try {
-				execSync("ollama list | grep -q 'gpt-oss:20b'", { stdio: "ignore" });
-			} catch {
-				console.log("Pulling gpt-oss:20b model for Ollama tests...");
-				try {
-					execSync("ollama pull gpt-oss:20b", { stdio: "inherit" });
-				} catch (_e) {
-					console.warn("Failed to pull gpt-oss:20b model, tests will be skipped");
-					return;
-				}
-			}
-
-			// Start ollama server
-			ollamaProcess = spawn("ollama", ["serve"], {
-				detached: false,
-				stdio: "ignore",
-			});
-
-			// Wait for server to be ready
-			await new Promise<void>((resolve) => {
-				const checkServer = async () => {
-					try {
-						const response = await fetch("http://localhost:11434/api/tags");
-						if (response.ok) {
-							resolve();
-						} else {
-							setTimeout(checkServer, 500);
-						}
-					} catch {
-						setTimeout(checkServer, 500);
-					}
-				};
-				setTimeout(checkServer, 1000); // Initial delay
-			});
+			ollamaProcess = await startOllama(25_000);
 
 			llm = {
-				id: "gpt-oss:20b",
+				id: OLLAMA_MODEL,
 				api: "openai-completions",
 				provider: "ollama",
 				baseUrl: "http://localhost:11434/v1",

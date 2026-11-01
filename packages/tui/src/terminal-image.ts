@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { wrapTmuxPassthrough } from "./multiplexer.ts";
+import { stripControlCharacters } from "./utils/chars.ts";
 import { getCapabilities, getCellDimensions, kittyPlaceholderMode } from "./terminal-image/capabilities.ts";
 import { KITTY_PREFIX, registerKittyImageMetadata } from "./terminal-image/kitty-metadata.ts";
 import {
@@ -12,6 +13,8 @@ import {
 import type { CellDimensions, ImageCellSize, ImageDimensions, ImageRenderOptions } from "./terminal-image/types.ts";
 
 const ITERM2_PREFIX = "\x1b]1337;File=";
+/** Any character outside base64 and line breaks. */
+const NON_BASE64 = /[^A-Za-z0-9+/=\r\n]/;
 
 export function isImageLine(line: string): boolean {
 	// Fast path: sequence at line start (single-row images)
@@ -243,6 +246,12 @@ export function renderImage(
 		return null;
 	}
 
+	// The payload is written inside a Kitty APC or iTerm2 OSC string. Anything but base64 (an ESC or BEL from an
+	// untrusted tool result) could end that string early and start a sequence of its own, so callers get the fallback.
+	if (NON_BASE64.test(base64Data)) {
+		return null;
+	}
+
 	const maxWidth = options.maxWidthCells ?? 80;
 	// Reduce Kitty's cell-aligned distortion without shrinking iTerm2 reservations.
 	const size = calculateImageCellSize(
@@ -325,14 +334,14 @@ function shortenImagePath(filename: string): string {
 export function imageFallback(mimeType: string, dimensions?: ImageDimensions, filename?: string): string {
 	const parts: string[] = [];
 	if (filename) {
-		const display = shortenImagePath(filename);
+		const display = stripControlCharacters(shortenImagePath(filename));
 		if (getCapabilities().hyperlinks && isAbsolute(filename)) {
 			parts.push(hyperlink(display, pathToFileURL(filename).href));
 		} else {
 			parts.push(display);
 		}
 	}
-	parts.push(`[${mimeType}]`);
+	parts.push(`[${stripControlCharacters(mimeType)}]`);
 	if (dimensions) parts.push(`${dimensions.widthPx}x${dimensions.heightPx}`);
 	return `[Image: ${parts.join(" ")}]`;
 }

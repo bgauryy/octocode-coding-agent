@@ -2,7 +2,7 @@ import type { ApplicationService } from "../../core/application/index.ts";
 import { appendWorkspaceEvent, createWorkspaceRuntimeState } from "../../core/application/workspace-state.ts";
 import { ApplicationCommands } from "./application-commands.ts";
 import { presentAgentReport } from "../subagents/presentation.ts";
-import { dbStamp, sharedAgentDb, type AgentDb } from "../agentdb/db.ts";
+import { dbStamp, sharedAgentDb, type AgentDb } from "../agentdb/api.ts";
 import type { RevisedWorkspace } from "./revision.ts";
 import { WorkspaceCommands } from "./commands.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
@@ -15,7 +15,7 @@ import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-cont
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { contentText, toolHint } from "../shared/util.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface Operations {
 	application?: (ctx: ExtensionContext) => ApplicationService | undefined;
@@ -86,7 +86,7 @@ export class WorkspaceRuntime {
 		});
 		api.on("tool_execution_end", (event, ctx) => {
 			if (this.application(ctx)) return;
-			const result = isRecord(event.result) ? event.result : {};
+			const result = asRecord(event.result);
 			this.publish(
 				"tool.result",
 				`${event.toolName}${event.isError ? " failed" : ""}\n${contentText(result.content)}`,
@@ -100,7 +100,7 @@ export class WorkspaceRuntime {
 				const message = event.message;
 				const details = "details" in message ? message.details : undefined;
 				if (message.role === "custom" && message.customType === AGENT_RESULT_TYPE) {
-					const report = presentAgentReport(message.content, isRecord(details) ? details : {});
+					const report = presentAgentReport(message.content, asRecord(details));
 					const outcome = report.structured
 						? report.structured.status === "valid" && report.status === "done" && report.outcome === "done"
 							? "succeeded"

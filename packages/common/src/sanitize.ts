@@ -62,6 +62,23 @@ export function sanitizeTerminalText(value: string): string {
 
 /** Well-formed SGR (color and style) sequences: `ESC [ <digits;:> m`. */
 const SGR = /\u001b\[[0-9;:]*m/g;
+/** The same, captured, so `split` keeps each sequence as its own part. */
+const SGR_PART = /(\u001b\[[0-9;:]*m)/u;
+
+/**
+ * One row of text that may carry colours (a status or working message): colour and style sequences stay, every other
+ * control (a title, a link, a cursor move, bidi) is removed, and line breaks and tabs become single spaces, since a
+ * break inside a footer or status row breaks the renderer's row tracking.
+ */
+export function styledLine(text: string): string {
+	return text
+		.split(SGR_PART)
+		.map((part, index) => (index % 2 === 1 ? part : sanitizeTerminalText(part)))
+		.join("")
+		.replace(/[\n\t]/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
+}
 
 /**
  * Removes color and style sequences only, as Octocode's bash does for its output: they carry no evidence. Any other control

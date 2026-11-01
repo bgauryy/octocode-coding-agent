@@ -13,8 +13,9 @@ import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
 import { type ModelRoute, routedModel, routeModel } from "./model.ts";
+import { providerHealth } from "./provider-health.ts";
 import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
-import { type AgentProfile, GENERAL_PROFILE, profileSelectsTool, profileTools } from "./profiles.ts";
+import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
@@ -203,7 +204,7 @@ export function planRun(
 	}
 	profileTools(profile);
 	if (params.headless !== undefined) {
-		if (!profile || !profileSelectsTool(profile, "browser", []))
+		if (!profile || !profileSelectsBrowser(profile))
 			throw new Error("headless requires a browser-enabled profile; use profile: browser.");
 		profile = { ...profile, headless: params.headless };
 	}
@@ -214,6 +215,7 @@ export function planRun(
 		available: childAvailable(ctx.modelRegistry, params.model),
 		parent: ctx.model,
 		catalog: currentCatalog(),
+		refused: (provider) => providerHealth.refused(provider),
 	});
 	if ("error" in route) throw new Error(route.error);
 	// No model argument, or a preference that fell back, runs the child on this session's model.

@@ -18,14 +18,14 @@ export function forwardSearch(text: string, pattern: RegExp): Search {
 	};
 }
 
-/** The first `</name>` (any case) at or after a position, one remembered search per name. */
+/** The first `</name>` (any case, whitespace allowed before `>`, as browsers read it) at or after a position, one remembered search per name. */
 export function closeTags(text: string): (name: string, from: number) => RegExpExecArray | null {
 	const searches = new Map<string, Search>();
 	return (name, from) => {
 		const key = name.toLowerCase();
 		let search = searches.get(key);
 		if (!search) {
-			search = forwardSearch(text, new RegExp(`</${key}>`, "gi"));
+			search = forwardSearch(text, new RegExp(`</${key}\\s*>`, "gi"));
 			searches.set(key, search);
 		}
 		return search(from);

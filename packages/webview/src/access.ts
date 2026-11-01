@@ -4,7 +4,7 @@
  */
 const ACCESS_KEY = "backlog-access";
 
-/** `/backlog` launches with `#access=…&view=…`; the token moves to session storage and the hash becomes a plain view. */
+/** `/web` launches with `#access=…&view=…`; the token moves to session storage and the hash becomes a plain view. */
 export function readLaunch(hash: string): { access: string; hash: string } | null {
 	if (!hash.startsWith("#access=")) return null;
 	const launch = new URLSearchParams(hash.slice(1));

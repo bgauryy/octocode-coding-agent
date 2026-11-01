@@ -1,5 +1,5 @@
 import { worktreeNameProblem } from "../../octocode/worktrees/name.ts";
-import type { FlagSpec } from "./flags.ts";
+import type { FlagSpec } from "./types.ts";
 
 /** `--worktree <name>`: see `cli/worktree-startup.ts`, which acts on it before settings and sessions load. */
 export const WORKTREE_FLAG: FlagSpec = {

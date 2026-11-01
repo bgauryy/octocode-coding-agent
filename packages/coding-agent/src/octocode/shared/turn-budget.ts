@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { ToolResultMessage } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { TEXT_MAX_CHARS, TURN_MAX_CHARS } from "./output-budget.ts";
+import { TEXT_MAX_CHARS, TURN_MAX_CHARS } from "../../utils/output-budget.ts";
 import { capResultText, saveFullOutput } from "./spill.ts";
 /** Space reserved for the recovery pointer when a turn exhausts its text budget. */
 const RECOVERY_CHARS = 1024;

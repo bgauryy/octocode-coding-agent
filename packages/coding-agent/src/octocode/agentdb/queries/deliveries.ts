@@ -68,12 +68,15 @@ export function deleteMessage(db: DatabaseSync, team: string, id: number): void 
 	db.prepare("DELETE FROM messages WHERE id = ? AND workspace = ?").run(id, team);
 }
 
-/** Deletes messages created before `before` whose deliveries are all settled. */
+/**
+ * Deletes messages created before `before` whose deliveries are all settled. A dead letter not yet reported counts as
+ * settled once its sender has no agent row: only the sender's own session reports it (`team/mail.ts`), so it never would.
+ */
 export function pruneMessages(db: DatabaseSync, before: number): void {
 	db.prepare(
 		`DELETE FROM messages WHERE created_at < ? AND NOT EXISTS (
       SELECT 1 FROM deliveries d WHERE d.message = messages.id AND d.completed_at IS NULL
-        AND (d.dead_at IS NULL OR d.notified_at IS NULL)
+        AND (d.dead_at IS NULL OR (d.notified_at IS NULL AND EXISTS (SELECT 1 FROM agents a WHERE a.id = messages.sender)))
     )`,
 	).run(before);
 }
@@ -197,6 +200,34 @@ export function markDelivered(db: DatabaseSync, recipient: string, messageIds: n
 		"UPDATE deliveries SET delivered_at = ?, completed_at = CASE WHEN (SELECT reply_required FROM messages WHERE id = ?) = 1 THEN completed_at ELSE COALESCE(completed_at, ?) END WHERE message = ? AND recipient = ? AND delivered_at IS NULL",
 	);
 	for (const message of messageIds) mark.run(now, message, now, message, recipient);
+}
+
+/**
+ * Closes the open `replyRequired` questions `sender` asked (deliveries read or not; relay requests stay for the parent to
+ * settle), unless `sender` is a subagent whose parent still has a row: that parent may resume it with the answer.
+ * Run before the sender's row is removed.
+ */
+export function closeAsksOf(db: DatabaseSync, sender: string, now: number): void {
+	db.prepare(
+		`UPDATE deliveries SET completed_at = ? WHERE completed_at IS NULL AND dead_at IS NULL AND relay_to IS NULL
+       AND message IN (SELECT id FROM messages WHERE sender = ? AND reply_required = 1)
+       AND NOT EXISTS (SELECT 1 FROM agents a JOIN agents p ON p.id = a.parent_id WHERE a.id = ?)`,
+	).run(now, sender, sender);
+}
+
+/**
+ * The questions read and not yet answered in `team`, oldest first: recipient, message id, sender, body and time. The
+ * same rows `agents.inTeam` counts as `pending`; relay requests are the parent's errand, not questions to it.
+ */
+export function openQuestions(db: DatabaseSync, team: string): Row[] {
+	return db
+		.prepare(
+			`SELECT d.recipient, m.id, m.sender, m.body, m.created_at FROM deliveries d JOIN messages m ON m.id = d.message
+         WHERE m.workspace = ? AND m.reply_required = 1 AND d.delivered_at IS NOT NULL AND d.completed_at IS NULL
+           AND d.dead_at IS NULL AND d.relay_to IS NULL
+         ORDER BY m.id`,
+		)
+		.all(team);
 }
 
 /** Dead-letters `id`'s unread mail, and its read but unanswered questions and the relay requests it took but never settled. */

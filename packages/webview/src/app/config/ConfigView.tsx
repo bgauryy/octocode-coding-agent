@@ -1,15 +1,22 @@
-import type { ConfigSetting, ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+	ConfigCredentialCommand,
+	ConfigSetting,
+	ConfigSettingCommand,
+	ConfigSnapshot,
+} from "@octocodeai/octocode-contracts/config";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { plural } from "../model/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, Button, EmptyState, Skeleton, SkeletonLine } from "../ui/primitives.tsx";
+import { SettingEditor, type SaveSetting } from "./SettingEditor.tsx";
+import type { SaveCredential } from "./CredentialEditor.tsx";
 import { type ConfigProviders, ProviderRow } from "./sources.tsx";
 
 type LoadState =
 	| { status: "loading" }
-	| { status: "error"; message: string; attempt: number }
-	| { status: "ready"; snapshot: ConfigSnapshot; attempt: number };
+	| { status: "error"; message: string; key: string }
+	| { status: "ready"; snapshot: ConfigSnapshot; key: string };
 
 const SETTING_SOURCE_LABELS = { global: "Global", workspace: "Workspace", default: "Default" } as const;
 
@@ -33,11 +40,15 @@ function ProviderGroup({
 	rows,
 	now,
 	open,
+	save,
+	keychainAvailable,
 }: {
 	title: string;
 	rows: ConfigProviders;
 	now: number;
 	open: boolean;
+	save?: SaveCredential;
+	keychainAvailable: boolean;
 }) {
 	if (rows.length === 0) return null;
 	return (
@@ -48,14 +59,14 @@ function ProviderGroup({
 			</summary>
 			<ul className="row-list" aria-label={title}>
 				{rows.map((row) => (
-					<ProviderRow key={row.provider} row={row} now={now} />
+					<ProviderRow key={row.provider} row={row} now={now} save={save} keychainAvailable={keychainAvailable} />
 				))}
 			</ul>
 		</details>
 	);
 }
 
-function Providers({ snapshot }: { snapshot: ConfigSnapshot }) {
+function Providers({ snapshot, save }: { snapshot: ConfigSnapshot; save?: SaveCredential }) {
 	const configured = snapshot.providers.filter((row) => row.configured);
 	const missing = snapshot.providers.filter((row) => !row.configured);
 	return (
@@ -64,7 +75,7 @@ function Providers({ snapshot }: { snapshot: ConfigSnapshot }) {
 				<h2 id="config-providers">Provider credentials</h2>
 				<p className="muted">
 					Shows where a credential exists, never its value. When several sources exist, this page does not say which one
-					a request uses.
+					a request uses. {save && "A key you save here is not shown again."}
 				</p>
 				<p className="config-keychain">
 					<StateMark state={snapshot.keychainAvailable ? "done" : "stopped"} size={12} />{" "}
@@ -85,12 +96,21 @@ function Providers({ snapshot }: { snapshot: ConfigSnapshot }) {
 							No provider has a credential yet. Sign in with <code>/login</code> in a terminal session.
 						</p>
 					)}
-					<ProviderGroup title="Configured" rows={configured} now={snapshot.generatedAt} open />
+					<ProviderGroup
+						title="Configured"
+						rows={configured}
+						now={snapshot.generatedAt}
+						open
+						save={save}
+						keychainAvailable={snapshot.keychainAvailable}
+					/>
 					<ProviderGroup
 						title="Not configured"
 						rows={missing}
 						now={snapshot.generatedAt}
 						open={configured.length === 0}
+						save={save}
+						keychainAvailable={snapshot.keychainAvailable}
 					/>
 				</>
 			)}
@@ -98,7 +118,15 @@ function Providers({ snapshot }: { snapshot: ConfigSnapshot }) {
 	);
 }
 
-function SettingRow({ setting }: { setting: ConfigSetting }) {
+function SettingRow({
+	setting,
+	save,
+	workspace,
+}: {
+	setting: ConfigSetting;
+	save?: SaveSetting;
+	workspace?: { id: string; trusted: boolean };
+}) {
 	return (
 		<li className="config-row">
 			<div className="config-row-head">
@@ -113,19 +141,34 @@ function SettingRow({ setting }: { setting: ConfigSetting }) {
 					{SETTING_SOURCE_LABELS[setting.source]}
 				</Badge>
 			</div>
+			{save && <SettingEditor key={workspace?.id ?? ""} setting={setting} save={save} workspace={workspace} />}
 		</li>
 	);
 }
 
-function Settings({ snapshot }: { snapshot: ConfigSnapshot }) {
+function Settings({
+	snapshot,
+	save,
+	workspace,
+}: {
+	snapshot: ConfigSnapshot;
+	save?: SaveSetting;
+	workspace?: { id: string; trusted: boolean };
+}) {
 	return (
 		<section className="panel" aria-labelledby="config-settings">
 			<div className="panel-header">
 				<h2 id="config-settings">Settings</h2>
-				<p className="muted">
-					Read-only. Change settings with <code>/settings</code> in a terminal session; running sessions pick them up
-					with <code>/reload</code>.
-				</p>
+				{save ? (
+					<p className="muted">
+						A workspace value replaces the global one. Running sessions pick a change up with <code>/reload</code>.
+					</p>
+				) : (
+					<p className="muted">
+						Read-only here. Change settings with <code>/settings</code> in a terminal session; running sessions pick
+						them up with <code>/reload</code>.
+					</p>
+				)}
 			</div>
 			{snapshot.settingsErrors?.map((error) => (
 				<p key={error.scope} className="callout tone-danger" role="alert">
@@ -135,18 +178,42 @@ function Settings({ snapshot }: { snapshot: ConfigSnapshot }) {
 			))}
 			<ul className="row-list" aria-label="Settings">
 				{snapshot.settings.map((setting) => (
-					<SettingRow key={setting.key} setting={setting} />
+					<SettingRow key={setting.key} setting={setting} save={save} workspace={workspace} />
 				))}
 			</ul>
 		</section>
 	);
 }
 
-function Workspace({ workspace }: { workspace: ConfigSnapshot["workspace"] }) {
+function Workspace({
+	workspace,
+	repos,
+	repoId,
+	onRepo,
+}: {
+	workspace: ConfigSnapshot["workspace"];
+	repos?: readonly { id: string; name: string }[];
+	repoId?: string;
+	onRepo: (id: string | undefined) => void;
+}) {
 	return (
 		<section className="panel" aria-labelledby="config-workspace">
 			<div className="panel-header">
 				<h2 id="config-workspace">Workspace</h2>
+				{repos && repos.length > 0 && (
+					<select
+						aria-label="Workspace"
+						value={repoId ?? ""}
+						onChange={(event) => onRepo(event.target.value || undefined)}
+					>
+						<option value="">None (global settings only)</option>
+						{repos.map((repo) => (
+							<option key={repo.id} value={repo.id}>
+								{repo.name}
+							</option>
+						))}
+					</select>
+				)}
 			</div>
 			<div className="config-row">
 				{workspace ? (
@@ -172,13 +239,27 @@ function Workspace({ workspace }: { workspace: ConfigSnapshot["workspace"] }) {
 	);
 }
 
+export interface ConfigViewProps {
+	/** The host's snapshot, for the chosen workspace when `repoId` is given. */
+	load: (repoId?: string) => Promise<ConfigSnapshot>;
+	/** Changes one setting and returns the fresh snapshot. Settings are editable only when this is given and the host says the connection is `writable`. */
+	save?: (command: ConfigSettingCommand) => Promise<ConfigSnapshot>;
+	/** Sets, replaces or clears a provider key and returns the fresh snapshot (for the chosen workspace). Offered only when the host says the connection is `writable`. */
+	saveCredential?: (command: ConfigCredentialCommand, repoId?: string) => Promise<ConfigSnapshot>;
+	/** Repositories that can be chosen as the workspace whose trust and settings file are shown. */
+	repos?: readonly { id: string; name: string }[];
+}
+
 /**
- * The read-only Settings page: provider credential sources, the allow-listed settings with the file they come from, and
- * workspace trust. `load` returns the host's snapshot; nothing on the page can change configuration.
+ * The Settings page: provider credential sources (read-only), the allow-listed settings with the file they come from
+ * (editable through `save` when the host allows it), and workspace trust. Persistence, precedence and trust belong to
+ * the host; the page only shows its answer and its refusals.
  */
-export function ConfigView({ load }: { load: () => Promise<ConfigSnapshot> }) {
+export function ConfigView({ load, save, saveCredential, repos }: ConfigViewProps) {
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
+	const [repoId, setRepoId] = useState<string | undefined>();
+	const key = `${attempt}:${repoId ?? ""}`;
 	// The latest `load`, so a parent that passes a new function on each render does not refetch.
 	const loader = useRef(load);
 	useEffect(() => {
@@ -187,21 +268,40 @@ export function ConfigView({ load }: { load: () => Promise<ConfigSnapshot> }) {
 
 	useEffect(() => {
 		let current = true;
-		loader.current().then(
+		const loaded = `${attempt}:${repoId ?? ""}`;
+		loader.current(repoId).then(
 			(snapshot) => {
-				if (current) setState({ status: "ready", snapshot, attempt });
+				if (current) setState({ status: "ready", snapshot, key: loaded });
 			},
 			(error: unknown) => {
-				if (current) setState({ status: "error", message: errorMessage(error), attempt });
+				if (current) setState({ status: "error", message: errorMessage(error), key: loaded });
 			},
 		);
 		return () => {
 			current = false;
 		};
-	}, [attempt]);
+	}, [attempt, repoId]);
 
 	const reload = useCallback(() => setAttempt((count) => count + 1), []);
-	const refreshing = state.status !== "loading" && state.attempt !== attempt;
+	const refreshing = state.status !== "loading" && state.key !== key;
+	const saveSetting = useMemo<SaveSetting | undefined>(
+		() =>
+			save &&
+			(async (command) => {
+				const next = await save(command);
+				setState((current) => (current.status === "ready" ? { ...current, snapshot: next } : current));
+			}),
+		[save],
+	);
+	const saveKey = useMemo<SaveCredential | undefined>(
+		() =>
+			saveCredential &&
+			(async (command) => {
+				const next = await saveCredential(command, repoId);
+				setState((current) => (current.status === "ready" ? { ...current, snapshot: next } : current));
+			}),
+		[saveCredential, repoId],
+	);
 
 	if (state.status === "loading") return <ConfigSkeleton />;
 	if (state.status === "error") {
@@ -230,9 +330,13 @@ export function ConfigView({ load }: { load: () => Promise<ConfigSnapshot> }) {
 					Refresh
 				</Button>
 			</div>
-			<Providers snapshot={snapshot} />
-			<Settings snapshot={snapshot} />
-			<Workspace workspace={snapshot.workspace} />
+			<Providers snapshot={snapshot} save={snapshot.writable ? saveKey : undefined} />
+			<Settings
+				snapshot={snapshot}
+				save={snapshot.writable ? saveSetting : undefined}
+				workspace={repoId && snapshot.workspace ? { id: repoId, trusted: snapshot.workspace.trusted } : undefined}
+			/>
+			<Workspace workspace={snapshot.workspace} repos={repos} repoId={repoId} onRepo={setRepoId} />
 		</div>
 	);
 }

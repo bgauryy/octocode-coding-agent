@@ -20,6 +20,18 @@ export function agentLabel(member: Member, panes: readonly TmuxPane[]): string {
 	return `${member.id} (${parts.join(", ")})`;
 }
 
+/** A finished child some session keeps reachable for follow-ups (a parked or lingering run); it works in `workspace`. */
+export interface ParkedResident {
+	id: string;
+	role: string;
+	/** The session that holds its window; `/resume` it to reach the child. */
+	session: string;
+	workspace: string;
+}
+
+/** `calm-prawn (implementer, session 01a1…)`. */
+export const parkedLabel = (child: ParkedResident): string => `${child.id} (${child.role}, session ${child.session})`;
+
 /** `work:3.0 (zsh, pid 5120)`. */
 export const paneLabel = (pane: TmuxPane): string => `${pane.label} (${pane.command || "unknown"}, pid ${pane.pid})`;
 

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalPath } from "../../shared/home/repo.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Research envelopes compact row paths relative to an explicit `root` or `base`; without one, a relative path is
@@ -13,7 +13,7 @@ export function matchesResponsePath(
 	target: string,
 	workspaceRoot?: string,
 ): boolean {
-	const data = isRecord(row.data) ? row.data : {};
+	const data = asRecord(row.data);
 	if (typeof data.path !== "string") return false;
 	let shown = data.path;
 	if (shown.startsWith("file://")) {

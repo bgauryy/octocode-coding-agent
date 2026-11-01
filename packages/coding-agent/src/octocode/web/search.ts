@@ -1,8 +1,9 @@
-import { stringOrEmpty, untilAborted } from "../shared/util.ts";
+import { stringOrEmpty } from "../shared/util.ts";
 import { combineSignals, language, readCapped, USER_AGENT } from "./fetch.ts";
 import { isHttpUrl, type PublicFetchInit, publicFetch } from "../../../../common/src/web-guard.ts";
 import { decodeEntities, htmlToText } from "./html.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { untilAborted } from "../../../../common/src/abort.ts";
 
 interface SearchHit {
 	title: string;
@@ -90,11 +91,14 @@ function unwrapDuckDuckGo(href: string): string | undefined {
 	}
 }
 
-/** An API answer as JSON; a body cut at the size cap does not parse, so it is reported as too large. */
-function parseJson({ text, truncated }: { text: string; truncated: boolean }, url: string): unknown {
+/** An API answer as JSON; a body cut at the size cap or in transit does not parse, so it is reported as such. */
+function parseJson({ text, truncated, cut }: BodyText, url: string): unknown {
 	if (truncated) throw new Error(`the answer from ${new URL(url).host} is over the size limit`);
+	if (cut) throw new Error(`the answer from ${new URL(url).host} was cut short in transit`);
 	return JSON.parse(text);
 }
+
+type BodyText = Awaited<ReturnType<typeof readCapped>>;
 
 interface SearchOutcome {
 	provider: string;
@@ -119,7 +123,7 @@ export async function search(
 	// keyed API (it carries a secret), and a body read to at most the shared cap.
 	const deadline = combineSignals(signal);
 	const send = (url: string, init: PublicFetchInit) => publicFetch(url, { ...init, signal: deadline });
-	const read = async (response: Response): Promise<{ text: string; truncated: boolean }> =>
+	const read = async (response: Response): Promise<BodyText> =>
 		readCapped(response, response.headers.get("content-type") ?? "");
 	const post = async (url: string, headers: Record<string, string>, body: unknown) => {
 		const response = await send(url, {

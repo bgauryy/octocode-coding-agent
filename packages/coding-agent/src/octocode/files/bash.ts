@@ -13,6 +13,7 @@ import { contentText, firstLine, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
 import { foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
 import { foregroundPlan } from "./bash/auto.ts";
+import { hostQuirkHint } from "./bash/host-hints.ts";
 import { type BashDetails, renderBashResult, renderJobMessage } from "./render.ts";
 import {
 	adoptFullOutput,
@@ -35,7 +36,7 @@ import {
 import { recordShellMutation } from "./bash/mutation.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool } from "../shared/render/rows.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { jobDetails, jobReport } from "./bash-jobs/report.ts";
@@ -199,10 +200,9 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			description:
-				"Run shell commands in the working directory: builds, tests, git, formatters and CLIs. Foreground calls return combined output. " +
-				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message; background false with a timeout stops there instead. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
-			// Octocode's own snippet ("ls, grep, find") would contradict the Octocode research routing.
-			promptSnippet: "Run shell commands: builds, tests, git",
+				"Run a command in the working directory. Foreground calls return combined output. " +
+				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message. To wait in the foreground instead, set background: false with a timeout; the command is then stopped at the timeout. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
+			promptSnippet: "Run builds, tests, git, formatters and other CLIs",
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined
@@ -216,7 +216,7 @@ export function registerBashTool(
 			// A pipe such as `cmd | tail` exits with the last command's status, so a failing build would read as passing.
 			promptGuidelines: [
 				...(builtin.promptGuidelines ?? []),
-				"Each result starts with exit code, time and output size. Output over the budget is trimmed (head, tail, matched error lines) and saved in full: search or read that file by line range instead of rerunning; maxOutputTokens makes it smaller. Put `set -o pipefail;` before an explicit pipe.",
+				"Output over the budget is trimmed (head, tail, matched error lines) and saved in full: search or read that file by line range instead of rerunning, or pass a smaller maxOutputTokens. Put `set -o pipefail;` before an explicit pipe so a failing command is not hidden by the last command's status.",
 			],
 			parameters: Type.Object({
 				type: Type.Optional(
@@ -227,13 +227,14 @@ export function registerBashTool(
 				command: Type.String({ description: "Command in the selected syntax" }),
 				timeout: Type.Optional(
 					Type.Number({
-						description: `Timeout in seconds; foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s, then it moves to the background. A background job has none unless given`,
+						description: `Seconds before the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s. Separately, a foreground call still running after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s moves to the background unless background is false. A background job has none unless given`,
 					}),
 				),
 				maxOutputTokens: maxOutputTokensParameter,
 				background: Type.Optional(
 					Type.Boolean({
-						description: "Return at once; for servers and long builds",
+						description:
+							"true: return at once with a job id; false with a timeout: wait in the foreground and stop at the timeout",
 					}),
 				),
 				verify: Type.Optional(
@@ -326,7 +327,8 @@ export function registerBashTool(
 						ctx,
 					);
 					const stray = group === undefined ? undefined : strayNote(group);
-					const notices = [stray, clamped ? `(${CLAMP_NOTE})` : undefined].filter((note) => note !== undefined);
+					const quirk = raw.details?.exitCode ? hostQuirkHint(contentText(raw.content), params.command) : undefined;
+					const notices = [stray, clamped ? `(${CLAMP_NOTE})` : undefined, quirk].filter((note) => note !== undefined);
 					const notes = notices.join("\n\n");
 					const result = notes
 						? { ...raw, content: [{ type: "text" as const, text: `${contentText(raw.content)}\n\n${notes}` }] }
@@ -341,7 +343,7 @@ export function registerBashTool(
 							content: [
 								{ type: "text" as const, text: `${contentText(value.content)}\n\n${verificationLine(receipt)}` },
 							],
-							structuredContent: { ...(isRecord(output) ? output : {}), verification: verificationJson(receipt) },
+							structuredContent: { ...asRecord(output), verification: verificationJson(receipt) },
 							details: {
 								...finalDetails,
 								verification: receipt,

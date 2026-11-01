@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
-import { sessions } from "./api.ts";
+import * as sessions from "./queries/sessions.ts";
 import { sharedAgentDb } from "./db.ts";
 import { sameProcess } from "../shared/process.ts";
 

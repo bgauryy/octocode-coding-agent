@@ -4,7 +4,7 @@
  */
 
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
-import { getApplicationPort } from "../../../core/application/index.ts";
+import { ApplicationServiceError, getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../../core/messages.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -12,6 +12,7 @@ import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events
 import { addToolExecution } from "./session-render.ts";
 import { stoppedToolText } from "../../../core/application/interrupted-tools.ts";
 import { applicationRenderer } from "./application-events.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 const applicationDriven = new WeakSet<object>();
 
@@ -65,13 +66,18 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 	const port = getApplicationPort(session);
 	const render = applicationRenderer(host, port);
 	applicationDriven.add(host);
+	// A failed redraw or a service failure is shown in the transcript: stderr would write over the screen.
+	const onError = (error: unknown) => {
+		if (host.session !== session) return;
+		host.showError(error instanceof ApplicationServiceError ? error.message : `Display failed: ${errorMessage(error)}`);
+	};
 	const closeApplication = port.subscribe((event) => {
 		if (host.session === session) render(event);
-	});
+	}, onError);
 	const closeNative = port.subscribeNative(async (event) => {
 		if (host.session !== session) return;
 		await host.handleEvent(event);
-	});
+	}, onError);
 	host.unsubscribe = () => {
 		closeApplication();
 		closeNative();

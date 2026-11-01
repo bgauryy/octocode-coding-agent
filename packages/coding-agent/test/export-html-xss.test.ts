@@ -1,8 +1,9 @@
-import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
+import { getExportTemplateDir } from "../src/config.ts";
+import { readTemplateScript } from "../src/core/export-html/template-script.ts";
 
 describe("export HTML markdown link sanitization", () => {
-	const templateJs = readFileSync(new URL("../src/core/export-html/template.js", import.meta.url), "utf-8");
+	const templateJs = readTemplateScript(getExportTemplateDir());
 
 	it("overrides the marked link renderer to use scheme allow-list sanitization", () => {
 		expect(templateJs).toMatch(/link\s*\(\s*token\s*\)/);

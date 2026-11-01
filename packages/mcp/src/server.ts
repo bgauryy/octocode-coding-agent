@@ -1,3 +1,4 @@
+import { firstLine } from "../../common/src/clip.ts";
 import type { McpExposure, McpServerEntry } from "./config.ts";
 import type { McpServerConnection } from "./runtime.ts";
 
@@ -26,10 +27,6 @@ export const EXPOSURE_DESCRIPTIONS: Record<McpExposure, string> = {
 	hidden: "not callable",
 	direct: "declared to the model like built-in tools",
 };
-
-export function firstLine(text: string): string {
-	return text.split("\n", 1)[0] ?? "";
-}
 
 export function isEnabled(server: Pick<McpServer, "entry">): boolean {
 	return server.entry.config.enabled !== false;

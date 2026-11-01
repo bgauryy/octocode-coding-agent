@@ -46,6 +46,7 @@ import type {
 	ScopeGroupFormatOptions,
 	ScopeGroupName,
 	SourcedPath,
+	StatusText,
 } from "./types.ts";
 import type { InteractiveModeState } from "./host-state.ts";
 
@@ -231,7 +232,7 @@ export interface InteractiveModeMethods {
 	showStartupNoticesIfNeeded(): void;
 	/** Open the queued-messages list focused on the first (default) or last message; false when nothing is queued. */
 	showQueueManager(focus?: "first" | "last"): boolean;
-	showStatus(message: string): void;
+	showStatus(message: StatusText): void;
 	showStatusIndicator(indicator: StatusIndicator): void;
 	showTreeSelector(initialSelectedId?: string): void;
 	showTrustSelector(): void;

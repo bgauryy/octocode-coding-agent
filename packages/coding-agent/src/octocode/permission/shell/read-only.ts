@@ -1,4 +1,8 @@
-import { mask, SEPARATOR, unhide, words } from "./words.ts";
+import { bashSyntax } from "../bash-syntax.ts";
+import { programSetting } from "./git-programs.ts";
+import { gitInputIndexOnly, runInput, type RunInput } from "./input-runners.ts";
+import { WORD_WRITERS } from "./program-forms.ts";
+import { mask, SEPARATOR, unhide, words, wrappedCommand } from "./words.ts";
 
 /** Programs that only read and print: running one again gives the same view of the same state, and writes nothing. */
 const READERS = new Set([
@@ -79,9 +83,23 @@ const WRITING_OPTIONS: Record<string, OptionTest> = {
 	tree: short("o"),
 	file: anyOf(short("C"), long("compile")),
 	date: anyOf(short("s"), long("set")),
-	// `-O<pager>` runs a program on the matches, `--ext-diff` and `--textconv` run the configured filters, `--output` and `-o` write a file.
-	git: anyOf(exact("-o"), short("O"), long("output", "ext-diff", "textconv", "open-files-in-pager")),
 };
+/**
+ * A git reader's writing options, by subcommand. Any of them may parse diff's options: `--output` writes a file,
+ * `--ext-diff` and `--textconv` run the configured filters. Only `grep` runs a program with `-O<pager>`
+ * (`--open-files-in-pager`); diff's `-O` reads an order file. No reader's `-o` writes: it is `ls-files --others` and
+ * `grep --only-matching`, and log/diff/show refuse it. The `-o` that writes belongs to `format-patch` and `archive`,
+ * which are not readers (destinations.ts `gitDestinations` names their files).
+ */
+const GIT_WRITING = long("output", "ext-diff", "textconv", "open-files-in-pager");
+/** `cat-file --filters` runs the configured `filter.<driver>` programs, as `--textconv` runs `diff.<driver>.textconv` (builtin/cat-file.c:1251-1254). */
+const GIT_SUBCOMMAND_WRITING: Record<string, OptionTest> = {
+	grep: anyOf(short("O"), GIT_WRITING),
+	"cat-file": anyOf(GIT_WRITING, long("filters")),
+};
+/** The writing-option test of the reader `name`, a git reader's by its subcommand (`options[0]`); none for another program. */
+const writingTest = (name: string, options: ReadonlyArray<string | undefined>): OptionTest | undefined =>
+	name === "git" ? (GIT_SUBCOMMAND_WRITING[options[0] ?? ""] ?? GIT_WRITING) : WRITING_OPTIONS[name];
 /** `uniq` writes its result to a second operand; its value-taking options (`-f 2`) are not operands. */
 const UNIQ_VALUED = new Set(["-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"]);
 const writesOperand = (options: string[]): boolean => {
@@ -93,6 +111,105 @@ const writesOperand = (options: string[]): boolean => {
 	}
 	return operands > 1;
 };
+/**
+ * The options of the reader `name` that write a file or run another program (`sort -o`, `rg --pre`), with `uniq`'s
+ * output operand as `uniq OUTPUT`; empty for a program this file does not list or a `git` subcommand that is not a reader.
+ */
+export function readerWritingOptions(name: string, options: string[]): string[] {
+	if (name === "git" && !GIT_READERS.has(options[0] ?? "")) return [];
+	const test = writingTest(name, options);
+	const found = options.filter((option) => test?.(option));
+	return name === "uniq" && writesOperand(options) ? [...found, "uniq OUTPUT"] : found;
+}
+
+/**
+ * Whether words read at run time by an input runner (`xargs`, `parallel`) can make `name` write: a reader with a writing
+ * option or output operand, `git` but for a visible subcommand that stays in the index (`gitInputIndexOnly`, given its
+ * words `args`), or a writer judged by its words (`WORD_WRITERS`). Not a reader that writes nothing whatever its words
+ * (`grep`, `wc`), nor a program the guard does not model, whose writes go unjudged with or without the runner.
+ */
+export function inputMayWrite(name: string, args: ReadonlyArray<string | undefined>, input: RunInput): boolean {
+	if (READERS.has(name)) return WRITING_OPTIONS[name] !== undefined || name === "uniq";
+	if (name === "git") return !gitInputIndexOnly(args, input);
+	return WORD_WRITERS.has(name);
+}
+
+/**
+ * Options whose next word is their value, by reader (git's for any reader subcommand): `find -name "$N"` reads the value
+ * as a pattern whatever it holds, so a quoted value there never becomes an option.
+ */
+const VALUE_OPTIONS: Record<string, ReadonlySet<string>> = {
+	find: new Set(
+		["name", "path", "wholename", "regex", "lname"]
+			.flatMap((test) => [`-${test}`, `-i${test}`])
+			.concat(["-type", "-newer", "-user", "-group", "-perm", "-size", "-mtime", "-mmin", "-maxdepth", "-mindepth"]),
+	),
+	rg: new Set(["-e", "--regexp", "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not", "-r", "--replace"]),
+	sort: new Set(["-k", "--key", "-t", "--field-separator"]),
+	date: new Set(["-d", "--date", "-r", "--reference"]),
+	tree: new Set(["-L", "-P", "-I"]),
+	git: new Set(["--since", "--until", "--after", "--before", "--author", "--committer", "--grep", "-n"]),
+};
+const DOUBLE_QUOTED = /^"(?:[^"\\]|\\.)*"$/s;
+
+/** Whether `raw`, a word's source text, has a `$` or backtick outside quotes: the shell splits what it expands into words. */
+function splits(raw: string): boolean {
+	let quote: string | undefined;
+	for (let at = 0; at < raw.length; at++) {
+		const char = raw[at];
+		if (char === "\\" && quote !== "'") at++;
+		else if (quote) {
+			if (char === quote) quote = undefined;
+		} else if (char === "'" || char === '"') quote = char;
+		else if (char === "$" || char === "`") return true;
+	}
+	return false;
+}
+
+/**
+ * Whether a word the parse cannot spell out (`raw`, its source text; `previous`, the value of the word before it) still
+ * cannot become an option of a reader whose writing options `test` names: it is not split (`splits`) and its value starts
+ * with a literal character other than `-` (`src/*.ts`, `./"$F"`, `"src/$X"`; a glob there matches only names with that
+ * start), or it is a quoted value right after one of the reader's value-taking options (`-name "$N"`), or it is a long
+ * option with a literal name and an attached value (`--since="$D"`) that does not write.
+ */
+function cannotBeOption(
+	raw: string,
+	previous: string | undefined,
+	values: ReadonlySet<string> | undefined,
+	test: OptionTest,
+): boolean {
+	if (splits(raw)) return false;
+	if (/^(?:""|'')*["']?[A-Za-z0-9_./]/.test(raw)) return true;
+	if (previous !== undefined && values?.has(previous) && DOUBLE_QUOTED.test(raw)) return true;
+	const named = /^--[A-Za-z0-9][\w-]*=/.exec(raw)?.[0];
+	return named !== undefined && !test(named);
+}
+
+/**
+ * The first word the reader `name` is given before `--` (any word for `find` and `uniq`, whose operands act) that the
+ * line does not spell out (undefined in `args`) and that may become a writing option at run time, or `uniq`'s output
+ * operand: its source text from `raws` (same indexes as `args`), or "a computed word" without them. Undefined when there
+ * is none, or `name` has no writing form. A word that `cannotBeOption` is not one.
+ */
+export function computedOption(
+	name: string,
+	args: ReadonlyArray<string | undefined>,
+	raws?: ReadonlyArray<string>,
+): string | undefined {
+	if (name === "git" && !GIT_READERS.has(args[0] ?? "")) return undefined;
+	const test = writingTest(name, args);
+	if (name !== "uniq" && !test) return undefined;
+	const end = name === "find" || name === "uniq" ? -1 : args.indexOf("--");
+	for (let at = 0; at < args.length && (end < 0 || at < end); at++) {
+		if (args[at] !== undefined) continue;
+		const raw = raws?.[at];
+		if (raw !== undefined && test && cannotBeOption(raw, args[at - 1], VALUE_OPTIONS[name], test)) continue;
+		return raw ?? "a computed word";
+	}
+	return undefined;
+}
+
 /** `git` subcommands that only read the repository. */
 const GIT_READERS = new Set([
 	"status",
@@ -114,29 +231,85 @@ const GIT_READERS = new Set([
 const HARMLESS_REDIRECT = /(?:&|\d*)>>?\s*(?:&\d+|\/dev\/null)(?=\s|$)/g;
 
 /**
- * Whether every command `command` runs only reads: each simple command (in a pipeline, after `&&` or `;`, in a
- * substitution, or behind a wrapper such as `sudo` or `xargs`) is a program of `READERS` or a read-only `git`
- * subcommand, without an option that writes a file or runs another program (`WRITING_OPTIONS`, abbreviations
- * included), and nothing is redirected but to a file descriptor or `/dev/null`. A command the list does not know is
- * not read-only, and neither is a shell given a script (`sh -c`) or `uniq` given an output operand. A policy for what
- * may be left out of the context (its output can be had again), not a security check.
+ * Whether one simple command, as its words (program first, wrappers already skipped; undefined for a word the parse
+ * cannot spell out; `raws`, their source text when known), only reads: a program of `READERS` or a read-only `git`
+ * subcommand, without an option that writes a file or runs another program, and `uniq` without an output operand. An
+ * unresolved word (`$X`, a glob) may expand to such an option, so a reader that has one takes it only when it cannot
+ * become one (`computedOption`). Behind an input runner (`input`), whose words from input may be any option, only a
+ * reader with no writing form reads.
  */
-export function readOnlyCommand(command: string): boolean {
+function reads(tokens: ReadonlyArray<string | undefined>, input?: RunInput, raws?: ReadonlyArray<string>): boolean {
+	const [name, ...options] = tokens;
+	if (name === undefined || name.includes("/") || (!READERS.has(name) && name !== "git")) return false;
+	if (input && (input.programFromInput || inputMayWrite(name, options, input))) return false;
+	if (name === "git" && !GIT_READERS.has(options[0] ?? "")) return false;
+	if (computedOption(name, options, raws?.slice(1)) !== undefined) return false;
+	const test = writingTest(name, options);
+	const known = options.filter((option): option is string => option !== undefined);
+	if (known.some((option) => test?.(option))) return false;
+	return name !== "uniq" || !writesOperand(known);
+}
+
+/** The quick lexical reading: the command split at its operators (`mask`), each part's words past wrappers (`words`). */
+function maskedReadOnly(command: string): boolean {
 	const bodies: string[] = [];
 	const parts = mask(command, bodies).replace(HARMLESS_REDIRECT, " ").split(SEPARATOR);
 	let commands = 0;
 	for (let at = 0; at < parts.length; at += 2) {
 		const segment = parts[at];
 		if (segment.includes(">")) return false;
-		const tokens = words(segment).map(unhide);
-		const name = tokens[0];
-		if (name === undefined) continue;
+		const tokens = words(segment, true).map(unhide);
+		// `words` drops the wrappers in front: an input runner among them (`xargs sudo`) may run what its input names.
+		const all = segment.trim().split(/\s+/).filter(Boolean).map(unhide);
+		// A variable set in front or alone (`GIT_PAGER=x git log`, `GIT_PAGER=x; git log`) through which git runs a program.
+		if (all.slice(0, all.length - tokens.length).some((word) => programSetting(word) !== undefined)) return false;
+		const input = runInput(all, 0, all.length - tokens.length);
+		if (tokens.length === 0) {
+			if (input?.programFromInput) return false;
+			continue;
+		}
 		commands++;
-		if (name.includes("/") || (!READERS.has(name) && name !== "git")) return false;
-		const options = tokens.slice(1);
-		if (name === "git" && !GIT_READERS.has(options[0] ?? "")) return false;
-		if (options.some((option) => WRITING_OPTIONS[name]?.(option))) return false;
-		if (name === "uniq" && writesOperand(options)) return false;
+		if (!reads(tokens, input)) return false;
 	}
 	return commands > 0;
+}
+
+/**
+ * The bash parse's reading: complete (no syntax it does not model), no write target, and every simple command it finds
+ * (in a list, pipeline or substitution, past wrappers) a reader by `reads`.
+ */
+function parsedReadOnly(command: string): boolean {
+	const syntax = bashSyntax(command);
+	if (syntax.incomplete || syntax.targets.some((target) => target.kind === "write")) return false;
+	return syntax.commands.every((part) => {
+		const literals = part.tokens.map((token) => token.literal);
+		const at = wrappedCommand(literals, 0);
+		if (at === undefined) return false;
+		const input = runInput(literals, 0, at);
+		const raws = part.tokens.slice(at).map((token) => token.raw);
+		return at >= literals.length ? !input?.programFromInput : reads(literals.slice(at), input, raws);
+	});
+}
+
+/**
+ * PowerShell syntax a bash reading gets wrong: the backtick escape, `<#…#>` block comments, `@'…'@` here-strings and
+ * `--%` (the rest of the line passed as is). A PowerShell line with any of them is not taken as read-only.
+ */
+const POWERSHELL_ONLY = /`|<#|#>|@['"]|--%/;
+
+/**
+ * Whether every command `command` runs only reads: each simple command (in a pipeline, after `&&` or `;`, in a
+ * substitution, or behind a wrapper such as `sudo` or `xargs`) is a program of `READERS` or a read-only `git`
+ * subcommand, without an option that writes a file or runs another program (`WRITING_OPTIONS`, abbreviations
+ * included), and nothing is redirected but to a file descriptor or `/dev/null`. A command the list does not know is
+ * not read-only, and neither is a shell given a script (`sh -c`) or `uniq` given an output operand.
+ *
+ * Gates rely on it (plan mode, the reservation gate, `shellMutation`'s shortcut, PowerShell callers), so the quick
+ * lexical reading alone never decides: the bash parse (`bashSyntax`) must agree, and a line it cannot read fully, or
+ * read without the parser loaded, is not read-only. A mistake in either reading then costs a check, not a bypass.
+ * `shell: "powershell"` also refuses syntax only PowerShell has (`POWERSHELL_ONLY`).
+ */
+export function readOnlyCommand(command: string, shell: "bash" | "powershell" = "bash"): boolean {
+	if (shell === "powershell" && POWERSHELL_ONLY.test(command)) return false;
+	return maskedReadOnly(command) && parsedReadOnly(command);
 }

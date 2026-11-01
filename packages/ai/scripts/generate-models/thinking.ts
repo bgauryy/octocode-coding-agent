@@ -26,7 +26,9 @@ import {
 /** Thinking-level metadata applied to every generated chat model. */
 
 function supportsDirectReasoningEffort(model: Model<Api>): boolean {
-	if (model.api === "anthropic-messages") return model.compat?.forceAdaptiveThinking === true;
+	if (model.api === "anthropic-messages") {
+		return (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking === true;
+	}
 	if (
 		model.api === "openai-responses" ||
 		model.api === "azure-openai-responses" ||
@@ -174,7 +176,7 @@ export function applyThinkingLevelMetadata(model: Model<any>): void {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
 	if (model.provider === "fireworks") {
-		if (model.api === "anthropic-messages" && model.compat?.forceAdaptiveThinking) {
+		if (model.api === "anthropic-messages" && (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking) {
 			// Qwen Max currently advertises only a toggle. Prefer upstream effort
 			// metadata once available instead of replacing it with this fallback.
 			if (model.id === "accounts/fireworks/models/qwen3p8-max" && !model.thinkingLevelMap) {

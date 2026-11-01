@@ -39,7 +39,7 @@ function setup() {
 describe("backlog implementation handoff", () => {
 	it.each(["work", "delegate"] as const)("delivers full saved context and every comment for %s", async (action) => {
 		const app = setup();
-		const origin = add("Original investigation");
+		const origin = store.add({ title: "Original investigation", type: "epic", createdBy: "user" });
 		let item = store.add({
 			title: "Fix login",
 			goal: "Login submits without freezing",

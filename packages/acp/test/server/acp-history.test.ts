@@ -70,14 +70,6 @@ describe("ACP persistent sessions", () => {
 		worker.getState.mockImplementation(async () => ({
 			sessionId: saved.id,
 			sessionFile: saved.path,
-			thinkingLevel: "off",
-			isStreaming: false,
-			isCompacting: false,
-			steeringMode: "all",
-			followUpMode: "all",
-			autoCompactionEnabled: false,
-			messageCount: 2,
-			pendingMessageCount: 0,
 		}));
 		const h = harness({ createWorker: async () => worker });
 		await h.initialize();
@@ -111,14 +103,6 @@ describe("ACP persistent sessions", () => {
 		worker.getState.mockResolvedValue({
 			sessionId: saved.id,
 			sessionFile: saved.path,
-			thinkingLevel: "off",
-			isStreaming: false,
-			isCompacting: false,
-			steeringMode: "all",
-			followUpMode: "all",
-			autoCompactionEnabled: false,
-			messageCount: 2,
-			pendingMessageCount: 0,
 		});
 		const h = harness({ createWorker: async () => worker });
 		await h.initialize();
@@ -200,14 +184,6 @@ describe("ACP persistent sessions", () => {
 		worker.getState.mockResolvedValue({
 			sessionId: saved.id,
 			sessionFile: saved.path,
-			thinkingLevel: "off",
-			isStreaming: false,
-			isCompacting: false,
-			steeringMode: "all",
-			followUpMode: "all",
-			autoCompactionEnabled: false,
-			messageCount: 2,
-			pendingMessageCount: 0,
 		});
 		const h = harness({ createWorker: async () => worker });
 		await h.initialize();
@@ -257,14 +233,6 @@ describe("ACP persistent sessions", () => {
 		worker.getState.mockResolvedValue({
 			sessionId: saved.id,
 			sessionFile: saved.path,
-			thinkingLevel: "off",
-			isStreaming: false,
-			isCompacting: false,
-			steeringMode: "all",
-			followUpMode: "all",
-			autoCompactionEnabled: false,
-			messageCount: 2,
-			pendingMessageCount: 0,
 		});
 		const h = harness({ createWorker: async () => worker });
 		await h.initialize();

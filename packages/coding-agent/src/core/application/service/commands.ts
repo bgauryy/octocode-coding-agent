@@ -5,17 +5,19 @@ import {
 	type ApplicationReceipt,
 } from "@octocodeai/octocode-contracts";
 import { redactSecrets } from "../../../../../common/src/sanitize.ts";
+import { ApplicationServiceError } from "./delivery.ts";
 import type { ApplicationReceiptStore } from "./types.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ImageContent } from "@octocodeai/octocode-ai";
 import type { ApplicationAssets } from "../assets.ts";
-import type { AgentSession } from "../../agent-session.ts";
+import type { ApplicationSession } from "../session-port.ts";
 import { assertImageInputSupported, assertImageCounts } from "@octocodeai/octocode-ai/utils/image-input";
 
 /** Resolve attachment references before accepting a command, while the current session still owns them. */
 export function commandImages(
 	command: ApplicationCommand,
 	assets: ApplicationAssets,
-	session: Pick<AgentSession, "model">,
+	session: Pick<ApplicationSession, "model">,
 ): ImageContent[] | undefined {
 	if (command.action === "abort" || command.action === "answer") return undefined;
 	if (!command.text.trim() && !command.attachments?.length) throw new Error("Enter a message or attach an image");
@@ -39,13 +41,14 @@ export function commandImages(
 export function invokeCommand(
 	command: ApplicationCommand,
 	images: ImageContent[] | undefined,
-	session: Pick<AgentSession, "abort" | "prompt" | "steer" | "followUp" | "answerDialog">,
+	session: Pick<ApplicationSession, "abort" | "prompt" | "steer" | "followUp" | "answerDialog">,
 ): unknown {
 	switch (command.action) {
 		case "abort":
 			return session.abort();
+		// /web text is typed by the user, so image files it names attach too.
 		case "prompt":
-			return session.prompt(command.text, { images });
+			return session.prompt(command.text, { images, attachImagePaths: true });
 		case "answer": {
 			const result = session.answerDialog(command.dialogId, {
 				...(command.choice !== undefined ? { choice: command.choice } : {}),
@@ -55,7 +58,7 @@ export function invokeCommand(
 			return undefined;
 		}
 		default:
-			return session[command.action](command.text, images);
+			return session[command.action](command.text, images, { attachImagePaths: true });
 	}
 }
 
@@ -71,6 +74,8 @@ export interface CommandDispatch {
 	/** Call the session operation the command names. */
 	invoke(): unknown;
 	publishDomain(event: ApplicationEvent): void;
+	/** Where a failure to record the outcome goes (the subscribers' error handlers, else stderr). */
+	reportFailure(error: ApplicationServiceError): void;
 }
 
 /** Run the command after the current call returns, then record and publish its outcome while the session is current. */
@@ -105,7 +110,10 @@ export function dispatchCommand(dispatch: CommandDispatch): void {
 			},
 		)
 		.catch((error) => {
-			console.error("Application receipt persistence failed", error);
+			const reason = redactSecrets(errorMessage(error)).slice(0, 500);
+			dispatch.reportFailure(
+				new ApplicationServiceError(`Command outcome could not be saved: ${reason}`, { cause: error }),
+			);
 			if (dispatch.isCurrent()) {
 				receipt.status = "failed";
 				receipt.message = "Command outcome could not be persisted; inspect the session before retrying.";

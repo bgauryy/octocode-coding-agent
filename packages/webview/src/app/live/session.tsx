@@ -1,12 +1,14 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import {
 	REPORT_KINDS,
+	type BacklogCommand,
 	type BacklogMutation,
 	type ReportFile,
 	type ReportSummary,
 	type ReportsIndex,
 	WORKSPACE_ROUTES,
 } from "@octocodeai/octocode-contracts/protocol";
+import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { BacklogAudit, Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type {
 	WorkspaceCommand,
@@ -23,6 +25,7 @@ import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
 import { BrowserConnection } from "../../transport.ts";
 import { createApplicationApi } from "./application-api.ts";
+import { createDocsApi } from "./docs-api.ts";
 import type { BacklogStore } from "../extension.ts";
 import { stamp } from "../model/format.ts";
 import { Spinner } from "../ui/primitives.tsx";
@@ -52,10 +55,18 @@ function createApi(access: string) {
 	const headers = { ...authorization, "Content-Type": "application/json" };
 	return {
 		...createApplicationApi(access),
+		...createDocsApi(access),
 		backlogs: async () =>
 			requestJson<Snapshot>(scopedRoute(WORKSPACE_ROUTES.backlogs), { headers }, "Could not load the board"),
 		mutate: async (payload: BacklogMutation) =>
 			requestJson<{ item: Pick<SnapshotItem, "ref" | "version"> }>(
+				scopedRoute(WORKSPACE_ROUTES.backlogs),
+				{ method: "POST", headers, body: JSON.stringify(payload) },
+				"Could not save",
+			),
+		/** One hierarchy edit; the host applies it as the user and answers with the store's one-line error on refusal. */
+		backlogCommand: async (payload: BacklogCommand) =>
+			requestJson<{ item?: Pick<SnapshotItem, "ref" | "version">; task?: BacklogTask }>(
 				scopedRoute(WORKSPACE_ROUTES.backlogs),
 				{ method: "POST", headers, body: JSON.stringify(payload) },
 				"Could not save",

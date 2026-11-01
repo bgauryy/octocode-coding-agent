@@ -16,7 +16,7 @@ See [native features](docs/native-features.md) for ownership and migration detai
 
 Use `/login` to connect an AI account or API key, manage saved credentials, or import Pi configuration. `/model` selects the model for this chat; `/modelsettings` manages model shortcuts, catalog details and agent routing. `/effort` changes reasoning effort and `/context size` selects a session context budget. `/github` connects code-search access separately from AI providers.
 
-Each command has one name: start over with `/new`, leave with `/quit`, and open settings with `/settings`. Session workflows include `/btw`, `/compact [instructions]`, `/context`, `/diff` and native `/plan`. The [complete command reference](docs/commands.md) lists all built-in commands, bundled skills, command operations and shell entry points.
+Each command has one name: start over with `/new` (or its equivalents `/clear` and `/reset`), leave with `/quit`, and open settings with `/settings`. Session workflows include `/btw`, `/compact [instructions]`, `/context`, `/diff` and native `/plan`. The [complete command reference](docs/commands.md) lists all built-in commands, bundled skills, command operations and shell entry points.
 
 In the terminal editor, type a command and a space to see its available values. Tab accepts a suggestion; command and nested-command completions ending with a space show the next choices immediately. Arrow keys select an option and Escape dismisses hints. Tab reopens them. Free text stays free text; import and export offer file paths.
 

@@ -16,7 +16,7 @@ function writeSnapshot(cwd: string, name: string, content: string): string {
 	return file;
 }
 
-/** Writes `<repo>/.octocode/backlog.md` and returns its path. */
+/** Writes `<repo>/.octocode/backlog.md` (refused, like the HTML page, when any text it carries looks like a secret) and returns its path. */
 export const exportBacklog = (backlog: Backlog, cwd: string, now = Date.now()): string =>
 	writeSnapshot(cwd, "backlog.md", exportMarkdown(backlog.store, backlog.repoName, now));
 

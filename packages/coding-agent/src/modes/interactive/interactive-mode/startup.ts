@@ -10,6 +10,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { takeUnnotifiedCrash } from "../../../core/crash-log.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
 import { loadAllHighlightLanguages } from "../../../utils/syntax-highlight.ts";
+import { isOfflineModeEnabled } from "../../../utils/env-flag.ts";
 import { ensureTool } from "../../../utils/tools-manager.ts";
 import { checkForNewOctocodeVersion } from "../../../utils/version-check.ts";
 import { createChatViewport } from "../chat-viewport.ts";
@@ -100,9 +101,7 @@ export async function init(host: StartupHost): Promise<void> {
 			.join(", ");
 		const cycleKeys = host.keybindings.getKeys("app.model.cycleForward");
 		const cycleHint =
-			cycleKeys.length > 0
-				? theme.fg("muted", ` (${formatKeyText(cycleKeys.join("/"), { capitalize: true })} to cycle)`)
-				: "";
+			cycleKeys.length > 0 ? theme.fg("muted", ` (${formatKeyText(cycleKeys.join("/"))} to cycle)`) : "";
 		console.log(theme.fg("dim", `Model scope: ${modelList}${cycleHint}`));
 	}
 
@@ -271,7 +270,7 @@ export function updateTerminalTitle(host: StartupHost): void {
 export async function run(host: StartupHost): Promise<void> {
 	await host.init();
 
-	if (!process.env.OCTOCODE_OFFLINE) {
+	if (!isOfflineModeEnabled()) {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 15_000);
 		void refreshModelCatalogs(host.session.modelRuntime, controller.signal)
@@ -365,7 +364,7 @@ export async function run(host: StartupHost): Promise<void> {
 	while (true) {
 		const userInput = await host.getUserInput();
 		try {
-			await getApplicationPort(host.session).invoke("prompt", userInput);
+			await getApplicationPort(host.session).invoke("prompt", userInput, { attachImagePaths: true });
 		} catch (error: unknown) {
 			host.showError(promptFailure(error));
 		}

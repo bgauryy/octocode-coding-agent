@@ -12,7 +12,6 @@ import { ROLE_PROMPT_FILE_ENV } from "../../instructions/role.ts";
 import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
 	BACKLOG_ITEM_ENV,
-	BROWSER_VISIBLE_ENV,
 	CACHE_RETENTION_ENV,
 	SUBAGENT_HOOKS_ENV,
 	READ_ONLY_ENV,
@@ -32,13 +31,14 @@ import {
 	AGENT_SCRATCH_ENV,
 	TEAM_WORKSPACE_ENV,
 } from "../../../../../common/src/env.ts";
-import { PRIVATE_FILE_MODE, sessionOutputDir } from "../../shared/home.ts";
+import { sessionOutputDir } from "../../shared/home.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
 import type { AgentProfile } from "../profiles.ts";
 import type { ResultContract } from "../result-schema.ts";
 import { CHILD_OWNED_ENV } from "./child-env.ts";
+import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
 export interface Identity {
@@ -121,7 +121,6 @@ export function subagentProcessEnv(
 		...(rolePromptFile ? { [ROLE_PROMPT_FILE_ENV]: rolePromptFile } : {}),
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),
 		...(mcpServersFile ? { [MCP_SESSION_SERVERS_FILE_ENV]: mcpServersFile } : {}),
-		...(profile?.headless === false ? { [BROWSER_VISIBLE_ENV]: "1" } : {}),
 		...(identity ? { [AGENT_ID_ENV]: identity.id } : {}),
 		...(identity?.parentId ? { [PARENT_ID_ENV]: identity.parentId } : {}),
 		...(identity?.role ? { [AGENT_ROLE_ENV]: identity.role } : {}),

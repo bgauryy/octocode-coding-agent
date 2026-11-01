@@ -136,6 +136,34 @@ describe("relay settlement", () => {
 		}
 	});
 
+	it("forgets resumes in flight on reset, so the next session's requests are neither held nor settled by a stale resume", async () => {
+		const store = team();
+		try {
+			const finishes: ((value: string) => void)[] = [];
+			const resumer = vi.fn<Resumer>(() => new Promise<string>((resolve) => finishes.push(resolve)));
+			const relays = parent(resumer);
+			await sendMessage(child(store, "a-1"), "done-1", "first question", { replyRequired: true });
+			relays.take(store);
+			expect(resumer).toHaveBeenCalledTimes(1);
+			// Team.stop: a session switch while the first resume still runs.
+			relays.reset();
+			await sendMessage(child(store, "a-1"), "done-1", "second question", { replyRequired: true });
+			relays.take(store);
+			expect(resumer).toHaveBeenCalledTimes(2);
+			// The old resume settles; it must not start the rejoin wait of the new one, which still runs.
+			finishes[0]("Resumed");
+			await settle();
+			const fyi = await sendMessage(child(store, "a-1"), "done-1", "also Y");
+			relays.take(store, Date.now() + 5 * 60_000);
+			expect(store.deadLetters("a-1")).toEqual([]);
+			store.save(member("done-1", "p-1"));
+			relays.take(store);
+			expect(store.pending("done-1").map((message) => message.id)).toEqual([(fyi as { id: number }).id]);
+		} finally {
+			store.close();
+		}
+	});
+
 	it("relays a question from a child that exited before the parent's tick", async () => {
 		const store = team();
 		try {
@@ -156,12 +184,34 @@ describe("relay settlement", () => {
 		}
 	});
 
+	it("keeps a relay request when its settlement fails to write, and delivers it on the next tick", async () => {
+		const store = team();
+		try {
+			const sent = await sendMessage(child(store, "a-1"), "b-1", "here is the plan");
+			const id = (sent as { relayed: string; id: number }).id;
+			store.save(member("b-1", "p-1"));
+			const busy = Object.assign(new Error("database is locked"), { errstr: "database is locked" });
+			const write = vi.spyOn(store.refs, "deliverRelay").mockImplementationOnce(() => {
+				throw busy;
+			});
+			const relays = parent(vi.fn<Resumer>(async () => "Resumed"));
+			expect(() => relays.take(store)).toThrow("database is locked");
+			expect(store.pending("b-1")).toEqual([]);
+			write.mockRestore();
+			relays.take(store);
+			expect(store.pending("b-1").map((message) => message.id)).toEqual([id]);
+			expect(store.deadLetters("a-1")).toEqual([]);
+		} finally {
+			store.close();
+		}
+	});
+
 	it("dead-letters a relay its parent took but never settled when the parent leaves", async () => {
 		const store = team();
 		try {
 			const sent = await sendMessage(child(store, "a-1"), "done-1", "fyi");
 			const id = (sent as { id: number }).id;
-			expect(store.refs.claimRelay(id, "p-1")).toBe(true);
+			expect(store.refs.takeRelay(id, "p-1", () => undefined)).toBe(true);
 			store.remove("p-1");
 			const [letter] = store.deadLetters("a-1");
 			expect(letter).toMatchObject({ id, relay: { to: "done-1" } });

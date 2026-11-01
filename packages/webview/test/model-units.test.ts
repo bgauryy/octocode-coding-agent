@@ -123,9 +123,9 @@ describe("backlog helpers", () => {
 		expect(filterTable(index, { sort: "ref", dir: "desc" }).map((it) => it.ref)).toEqual(["B3", "B2", "B1"]);
 	});
 
-	it("filterBoard treats an untyped item as a task and a whitespace query as no query", () => {
+	it("filterBoard treats an untyped item as a feature and a whitespace query as no query", () => {
 		const index = indexBacklog(snapshot([snapshotItem("B1"), snapshotItem("B2", { type: "epic" })]));
-		expect(filterBoard(index, { type: "task" }).map((it) => it.ref)).toEqual(["B1"]);
+		expect(filterBoard(index, { type: "feature" }).map((it) => it.ref)).toEqual(["B1"]);
 		expect(filterBoard(index, { q: "   " }).map((it) => it.ref)).toEqual(["B1", "B2"]);
 	});
 

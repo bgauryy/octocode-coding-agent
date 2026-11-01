@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { renderContractSections } from "../../../mcp/src/section.ts";
 import { leanPromptSections } from "../../src/octocode/instructions/lean.ts";
 import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
 import { reportContract, reportContractSentences } from "../../src/octocode/instructions/report.ts";
@@ -20,19 +19,9 @@ describe("prompt", () => {
 		expect(root).toContain(
 			"Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it, here (instead of ls, rg, grep or find in bash) and in GitHub or package registries outside this repository (instead of answering from memory).",
 		);
-		// The server's own instructions route each question to a tool; the prompt points at the section by its real name.
-		const [contractSection] = Object.keys(
-			renderContractSections([
-				{
-					entry: { name: "octocode", config: {} } as never,
-					state: "connected",
-					declared: true,
-				},
-			]),
-		);
-		expect(contractSection).toBe("mcp_contract_octocode");
-		expect(root).toContain(`Its \`${contractSection}\` section routes each question to a tool.`);
-		expect(root).not.toContain("Its mcp_contract section");
+		// The server's own instructions route each question to a tool; the prompt points at its block in `<mcps>`.
+		expect(root).toContain("Its `<mcps>` block routes each question to a tool.");
+		expect(root).not.toContain("mcp_contract");
 		// A missing or refusing server has a stated recovery.
 		expect(root).toContain(
 			"If an Octocode tool is unavailable, say so and use permitted bash search (`rg`, `fd`, `sed -n`).",
@@ -164,7 +153,7 @@ describe("prompt", () => {
 		});
 		// A read-only role keeps `file`: it saves its scratch evidence and the report its task names, and nothing else.
 		expect(reader).toContain(
-			"- Investigate and report; do not modify repository source. Write reports and evidence only in your scratch folder, `.octocode/tmp/`, or Markdown files under `.octocode/` outside `.octocode/skills/`. Run only read-only commands. If a check would write, name the exact command for your parent and mark what it would settle as unverified. Call only read-only MCP tools.",
+			"- Investigate and report; do not modify repository source. Write reports and evidence only in your scratch folder, `.octocode/tmp/`, or Markdown files under `.octocode/` outside the folders later sessions load (such as `skills/`, `agents/` and `prompts/`). Run only read-only commands. If a check would write, name the exact command for your parent and mark what it would settle as unverified. Call only read-only MCP tools.",
 		);
 		expect(reader).toContain("a Markdown doc in your scratch folder");
 		// It limits only the writers this agent has: the browser specialist has `file` and MCP but no shell.
@@ -179,7 +168,7 @@ describe("prompt", () => {
 				canShell: false,
 			}),
 		).toContain(
-			"- Investigate and report; do not modify repository source. Write reports and evidence only in your scratch folder, `.octocode/tmp/`, or Markdown files under `.octocode/` outside `.octocode/skills/`. Call only read-only MCP tools.",
+			"- Investigate and report; do not modify repository source. Write reports and evidence only in your scratch folder, `.octocode/tmp/`, or Markdown files under `.octocode/` outside the folders later sessions load (such as `skills/`, `agents/` and `prompts/`). Call only read-only MCP tools.",
 		);
 		// Without a way to save files, output goes into the report.
 		const bare = octocodePrompt({
@@ -216,7 +205,8 @@ describe("prompt", () => {
 			"Think as the system's architect: fix a behavior in the module that owns it",
 			"Avoid hand-picked special cases, one-call-site patches and rigid rules",
 			"find the root cause before fixing",
-			"Fix causes, not symptoms",
+			// "Fix causes" is the architect rule's own point; this line adds the blocker duty.
+			"Report blockers without suppressing errors",
 		])
 			expect(writer).toContain(rule);
 		// A child's report contract already asks for verification and open questions; only the user gets a summary.
@@ -284,7 +274,11 @@ describe("prompt", () => {
 			{ octocode: false, profiles: [], canDelegate: false, canWrite: false, readOnlyRole: true },
 		]) {
 			const prompt = octocodePrompt(input);
-			expect(prompt.match(/For code (changes|questions): read affected code and callers/g)).toHaveLength(1);
+			expect(
+				prompt.match(
+					/For code (changes: before editing, read the code you change and rely on, with its callers|questions: read the code you rely on and its callers)/g,
+				),
+			).toHaveLength(1);
 			expect(prompt.match(/smallest complete change|[Ii]nvestigate (and report|without edits)/g)).toHaveLength(1);
 			expect(prompt.match(/run a hypothesis test: compare the likely cause with its strongest rival/g)).toHaveLength(1);
 			expect(prompt).toContain("match detail to the task");
@@ -301,7 +295,7 @@ describe("prompt", () => {
 			expect(prompt).not.toContain("State uncertainty");
 		}
 		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnlyRole: true });
-		expect(reader).toContain("For code questions: read affected code and callers before concluding");
+		expect(reader).toContain("For code questions: read the code you rely on and its callers before concluding");
 		expect(reader).not.toContain("after editing");
 		const child = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true });
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
@@ -330,15 +324,26 @@ describe("prompt", () => {
 		expect(root).toContain("(a deletion, a costly run, a change of plan), state it in one line.");
 		// A subagent works to its task contract; the main session to the user's request.
 		expect(child.match(/Work until the Definition of Done or a blocker/g)).toHaveLength(1);
-		expect(root).toContain("- Work until the request is done and checked, or you are blocked.");
-		// The summary is conditional and goes to the user; a child's report contract already asks for verification.
 		expect(root).toContain(
-			"- When you finish a task, end with a short TL;DR for the user; when more than one file changed or a check failed, it names changed paths, checks run and the blast radius.",
+			"- Work until the request is done and checked, or you are blocked. While requested work remains that you can do, keep going instead of ending the turn with a progress report or asking whether to continue.",
+		);
+		expect(child).not.toContain("keep going instead of ending the turn");
+		// The summary goes to the user; a child's report contract already asks for verification.
+		expect(root).toContain(
+			"- When you finish a task, end with a short TL;DR for the user: what was done; the files changed, each with what changed; checks run with their results; and what is left. Skip the parts that do not apply.",
 		);
 		expect(root).not.toContain("After changing files or other multi-step work");
 		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
 		expect(root).toContain("Leave nothing open: finish or revert partial edits, stop jobs and agents you started");
+		// A decision the user must make closes with askUser, not a question after the TL;DR (2026-10-31: most remaining misses).
+		// Named only when the tool is selected: without a tool list the prompt names no tool.
+		expect(root).not.toContain("goes to `askUser`");
+		const main = { octocode: false, profiles: [], canDelegate: true };
+		expect(octocodePrompt({ ...main, canAsk: true })).toContain(
+			"name any work left unfinished. A decision you need goes to `askUser`, not the TL;DR.",
+		);
+		expect(octocodePrompt({ ...main, canAsk: true, canDelegate: false })).not.toContain("goes to `askUser`");
 		expect(root).not.toMatch(/release locks|close claimed items/);
 		// The agent message guideline owns "no completion pings" and coordinate owns conflict resolution.
 		expect(child).not.toContain("completion message");
@@ -346,8 +351,7 @@ describe("prompt", () => {
 	});
 
 	it("states one research scope that agrees with the Research section, and the delegate clause only to a delegator", () => {
-		const scope = (requester: string) =>
-			`do not re-research them. Research the code you change or rely on, and anything ${requester} asks you to verify.`;
+		const scope = (requester: string) => `do not re-research them. Verify what ${requester} asks you to verify.`;
 		for (const octocode of [true, false]) {
 			const root = octocodePrompt({ octocode, profiles: [], canDelegate: true });
 			// The delegate clause is the delegator's instruction to itself about writing a brief, not a task it receives.
@@ -366,11 +370,10 @@ describe("prompt", () => {
 		}
 	});
 
-	it("tells the main session which coordination system reaches whom", () => {
+	it("leaves the agent types to the agent tool's own text", () => {
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
-		expect(root).toContain(
-			"- Reach configured agents in other hosts with `agent` type `external`; its permissions still apply.",
-		);
+		// The `<tools>` line names external ("reach an outside agent"); the policy no longer repeats it.
+		expect(root).not.toContain("`agent` type `external`");
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).not.toContain("agents-communication");
 		// Without the agent tool, the rule names no `agent` modes.
 		const withoutAgent = octocodePrompt({ octocode: false, profiles: [], canDelegate: true, canUseAgent: false });
@@ -378,19 +381,15 @@ describe("prompt", () => {
 		expect(withoutAgent).not.toContain("`agent`");
 	});
 
-	it("leaves tool-by-tool Octocode routing to the server and routes only the native graph tools", () => {
+	it("leaves tool-by-tool Octocode and graph routing to the tool descriptions", () => {
 		const prompt = octocodePrompt({
 			octocode: true,
 			profiles: [],
 			canDelegate: true,
-			graphTools: ["graphQuery", "graphBuild"],
 		});
 		// The server's instructions and tool descriptions own which tool answers which question.
 		expect(prompt).not.toMatch(
 			/Choose the Octocode tool|structureSearch|localSearch|lspSearch|ghSearch|artifactSearch|astSearch/,
-		);
-		expect(prompt).toContain(
-			"`graphQuery` on an existing snapshot; create or refresh it with `graphBuild` when writes are permitted",
 		);
 		// The browser specialist has no GitHub tools, and the shared bullet still names none of them.
 		expect(
@@ -417,13 +416,17 @@ describe("prompt", () => {
 		const writerOnly = [
 			"follows the repository's conventions and existing dependencies",
 			"Leave the code clean",
-			"Fix causes",
+			"Report blockers without suppressing errors",
 		];
 		for (const prompt of [root, writer]) for (const rule of writerOnly) expect(prompt).toContain(rule);
 		for (const rule of writerOnly) expect(reader).not.toContain(rule);
 		expect(reader).toContain("Name causes");
 		for (const prompt of [root, writer, reader]) {
-			// The loader preloads only the working directory's and its ancestors' AGENTS.md.
+			// The loader preloads only the working directory's and its ancestors' AGENTS.md, and none when context files are off.
+			expect(prompt).toContain(
+				"Instructions from the working directory and its ancestors are in <project_context> when present.",
+			);
+			expect(prompt).not.toContain("already loaded");
 			expect(prompt).toContain("read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md");
 			expect(prompt).toContain("Run independent calls together and dependent ones in sequence.");
 			expect(prompt).toContain("write one short script instead of many calls");
@@ -447,7 +450,9 @@ describe("prompt", () => {
 		expect(root).toContain("Answer a child's request only within the user's authorization; otherwise ask the user.");
 		// The agent tool's `model` field owns the model choice; the policy keeps only the budget.
 		expect(root).not.toMatch(/`small`|`medium`|low thinking/);
-		expect(root).toContain("Spend within the user's budget.");
+		expect(root).toContain(
+			"Spend within any budget the user states (cost, time, agent count); each child has a request limit the harness enforces.",
+		);
 		// Parallel-work mechanics (the contract file, path locks) belong to the agent and coordinate tools.
 		expect(root).toContain("give coupled work one owner and independent work disjoint files");
 		expect(root).not.toMatch(/contract\.md|\block/);
@@ -572,7 +577,7 @@ describe("prompt", () => {
 	});
 
 	it("does not declare the debugger to read-only roles, whose permission layer refuses it", () => {
-		for (const name of ["researcher", "reviewer"]) expect(role(name)).toMatch(/^excludeTools: browser,debug(?:,|$)/m);
+		for (const name of ["researcher", "reviewer"]) expect(role(name)).toMatch(/^excludeTools: debug(?:,|$)/m);
 	});
 
 	it("leaves the bash output recipe to the bash tool", () => {

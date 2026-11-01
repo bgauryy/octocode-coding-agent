@@ -2,10 +2,9 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, JsonValue, TextContent, Usage } from "@octocodeai/octocode-ai";
-import type { BashResult } from "../../bash-executor.ts";
+import type { BashOperations, BashResult } from "../../tools/bash/types.ts";
 import type { CacheWarmingDecisionEvent } from "../../cache-warmer.ts";
 import type { CustomMessage } from "../../messages.ts";
-import type { BashOperations } from "../../tools/bash.ts";
 import type {
 	AfterProviderResponseEvent,
 	AgentBeforeSettleEvent,
@@ -26,6 +25,7 @@ import type {
 	ToolExecutionStartEvent,
 	ToolExecutionUpdateEvent,
 	TurnEndEvent,
+	TurnPromptEvent,
 	TurnStartEvent,
 	UIPromptEndEvent,
 	UIPromptStartEvent,
@@ -67,6 +67,7 @@ export type ExtensionEvent =
 	| UIPromptStartEvent
 	| UIPromptEndEvent
 	| TurnStartEvent
+	| TurnPromptEvent
 	| TurnEndEvent
 	| MessageStartEvent
 	| MessageUpdateEvent

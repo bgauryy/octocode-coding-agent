@@ -3,7 +3,16 @@
  * a count; ctrl+o lists the items), followed by resource diagnostics.
  */
 
-import { type Component, type Container, ELLIPSIS, GLYPH, SEPARATOR, Spacer, type StateSource, type UiState } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	type Container,
+	ELLIPSIS,
+	GLYPH,
+	SEPARATOR,
+	Spacer,
+	type StateSource,
+	type UiState,
+} from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
@@ -61,7 +70,8 @@ export function showLoadedResources(
 	}
 
 	const formatCompactList = (items: string[], options?: { sort?: boolean }): string => {
-		const labels = items.map((item) => item.trim()).filter((item) => item.length > 0);
+		// Labels are file and package names: untrusted text, shown without terminal controls.
+		const labels = items.map((item) => sanitizeTerminalText(item).trim()).filter((item) => item.length > 0);
 		if (options?.sort !== false) {
 			labels.sort((a, b) => a.localeCompare(b));
 		}
@@ -121,7 +131,10 @@ export function showLoadedResources(
 						{ sort: false },
 					),
 				expandedSummary: () => theme.fg("dim", "files in the system prompt"),
-				details: () => contextFiles.map((f) => theme.fg("dim", `  ${host.formatDisplayPath(f.path)}`)).join("\n"),
+				details: () =>
+					contextFiles
+						.map((f) => theme.fg("dim", `  ${sanitizeTerminalText(host.formatDisplayPath(f.path))}`))
+						.join("\n"),
 			});
 		}
 

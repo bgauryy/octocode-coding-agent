@@ -13,9 +13,9 @@ import { recordMutation } from "../feedback/revisions.ts";
  * effect no parse shows (`node script.js`) is not seen, so a receipt can stay fresh after one.
  */
 async function changesWorkspace(command: string, cwd: string, powershell: boolean): Promise<boolean> {
-	// PowerShell is not parsed: anything that is not plainly a read may write.
-	if (powershell) return !readOnlyCommand(command);
 	await shellParserReady();
+	// PowerShell is not parsed: anything that is not plainly a read may write.
+	if (powershell) return !readOnlyCommand(command, "powershell");
 	const effect = shellMutation(command);
 	if (effect.opaque.length > 0 || effect.uncertain) return true;
 	const { root, tmp } = workspacePaths(cwd);

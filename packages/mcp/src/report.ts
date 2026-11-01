@@ -1,6 +1,6 @@
 /** Plain-text status of the servers: the startup report and `/mcp list` outside the TUI. */
 
-import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpContext } from "./host/types.ts";
 import { exposureOf } from "./exposure.ts";
 import { describeState, isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
@@ -9,7 +9,7 @@ import type { McpExtensionState } from "./state.ts";
  * One message for everything that needs the user after startup, or only for `only`, servers
  * that connected later.
  */
-export function reportProblems(state: McpExtensionState, ctx: ExtensionContext, only?: readonly McpServer[]): void {
+export function reportProblems(state: McpExtensionState, ctx: McpContext, only?: readonly McpServer[]): void {
 	const lines = only ? [] : state.configErrors.map((error) => `config: ${error}`);
 	for (const server of only ?? state.servers) {
 		const connectionState = server.connection?.state;

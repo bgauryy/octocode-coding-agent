@@ -54,17 +54,19 @@ describe("AgentSession tool registration", () => {
 
 	it("registerTools makes every tool of a catalog available with one registry refresh", async () => {
 		let host: ExtensionAPI | undefined;
+		let refreshes = 0;
 		const live = await session((api) => {
 			host = api;
+			// Every registry refresh rebuilds the loadout, which runs each active tool's public `prepareLoadout` hook once.
+			api.registerTool({
+				...tool("loadout_probe"),
+				prepareLoadout: () => {
+					refreshes++;
+					return undefined;
+				},
+			});
 		});
-		let refreshes = 0;
-		// The runner keeps the shared runtime privately; wrap the refresh hook every registration calls.
-		const runtime = (live.extensionRunner as unknown as { runtime: { refreshTools: () => void } }).runtime;
-		const refresh = runtime.refreshTools;
-		runtime.refreshTools = () => {
-			refreshes++;
-			refresh();
-		};
+		refreshes = 0;
 
 		host!.registerTools(Array.from({ length: 25 }, (_, index) => tool(`catalog_${index}`)));
 
@@ -86,26 +88,46 @@ describe("AgentSession tool registration", () => {
 		expect(live.getAllTools().map((entry) => entry.name)).not.toContain("good_tool");
 	});
 
-	// C-10 (audit lane C, B155) is real: refresh() in core/agent-session/tool-loadout.ts activates a tool whose exposure
-	// flips hidden -> direct as a new registration. The fix belongs there (held by another agent); `it.fails` turns
-	// into an error when it lands, so remove the `.fails` then.
-	it.fails("keeps a deselected direct tool inactive when it is withdrawn (hidden) and registered again", async () => {
+	// What `registerTools`/`hideTools` in packages/mcp do when a server drops and re-offers its tools; the same
+	// refresh path serves every extension tool, so a non-MCP tool and a model-only one must behave alike.
+	for (const [name, exposure] of [
+		["mcp__srv__a", "direct"],
+		["mcp__srv__m", "model-only"],
+		["plain_tool", "direct"],
+	] as const) {
+		it(`keeps a deselected ${exposure} tool ${name} inactive when it is withdrawn (hidden) and registered again`, async () => {
+			let host: ExtensionAPI | undefined;
+			const live = await session((api) => {
+				host = api;
+				api.registerTool(tool(name, exposure));
+				api.registerTool(tool("mcp__srv__b"));
+			});
+			expect(live.getActiveToolNames()).toContain(name);
+
+			live.setActiveToolsByName(live.getActiveToolNames().filter((active) => active !== name));
+			expect(live.getActiveToolNames()).not.toContain(name);
+
+			host!.registerTool(tool(name, "hidden"));
+			host!.registerTool(tool(name, exposure));
+
+			expect(live.getActiveToolNames()).toContain("mcp__srv__b");
+			expect(live.getActiveToolNames()).not.toContain(name);
+
+			// Selecting it again lifts the deselection.
+			live.setActiveToolsByName([...live.getActiveToolNames(), name]);
+			expect(live.getActiveToolNames()).toContain(name);
+		});
+	}
+
+	it("reactivates a tool the user kept when its server withdraws and re-offers it", async () => {
 		let host: ExtensionAPI | undefined;
 		const live = await session((api) => {
 			host = api;
 			api.registerTool(tool("mcp__srv__a"));
-			api.registerTool(tool("mcp__srv__b"));
 		});
-		expect(live.getActiveToolNames()).toContain("mcp__srv__a");
-
-		live.setActiveToolsByName(live.getActiveToolNames().filter((name) => name !== "mcp__srv__a"));
-		expect(live.getActiveToolNames()).not.toContain("mcp__srv__a");
-
-		// What `registerTools`/`hideTools` in packages/mcp do when the server drops and re-offers its tools.
 		host!.registerTool(tool("mcp__srv__a", "hidden"));
-		host!.registerTool(tool("mcp__srv__a", "direct"));
-
-		expect(live.getActiveToolNames()).toContain("mcp__srv__b");
 		expect(live.getActiveToolNames()).not.toContain("mcp__srv__a");
+		host!.registerTool(tool("mcp__srv__a", "direct"));
+		expect(live.getActiveToolNames()).toContain("mcp__srv__a");
 	});
 });

@@ -8,7 +8,7 @@ type MessageParam = MessageCreateParamsStreaming["messages"][number];
 type CacheableBlock = ContentBlockParam & { cache_control?: CacheControlEphemeral | null };
 
 /** Anthropic accepts at most four explicit cache breakpoints per request. */
-export const MAX_CACHE_BREAKPOINTS = 4;
+const MAX_CACHE_BREAKPOINTS = 4;
 
 const CACHEABLE_BLOCK_TYPES = new Set(["text", "image", "tool_result", "tool_addition", "tool_removal"]);
 

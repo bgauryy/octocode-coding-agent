@@ -11,10 +11,9 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { toolState } from "../model/ui-state.ts";
 import { Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
-import { AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
+import { type AssetLoader, AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
 import { Markdown } from "./Markdown.tsx";
 
-export type AssetLoader = (id: string, signal?: AbortSignal) => Promise<Blob>;
 interface ContentProps {
 	content: readonly ApplicationContentBlock[];
 	tools?: readonly ApplicationTool[];
@@ -185,7 +184,16 @@ function Resource({ uri, name }: { uri?: string; name: string }) {
 	);
 }
 
-/** Never embed provider URLs; authenticated session bytes become short-lived local object URLs. */
+const PREVIEW_IMAGE = /^image\/(png|jpeg|gif|webp|avif)$/;
+/** Types the page previews; a browser shows them as media, never as a document. */
+const previewable = (mimeType: string) =>
+	PREVIEW_IMAGE.test(mimeType) || mimeType.startsWith("audio/") || mimeType.startsWith("video/");
+
+/**
+ * Never embed provider URLs; authenticated session bytes become short-lived local object URLs. An object URL has the
+ * page's origin, so any other type (HTML, SVG, XML) is downloaded as opaque bytes: a download link opened in a tab
+ * must not run the asset's script with the page's origin and storage.
+ */
 function AssetPreview({
 	asset,
 	loadAsset,
@@ -206,7 +214,9 @@ function AssetPreview({
 			.then(
 				(blob) => {
 					if (controller.signal.aborted) return;
-					url = URL.createObjectURL(blob);
+					url = URL.createObjectURL(
+						previewable(asset.mimeType) ? blob : new Blob([blob], { type: "application/octet-stream" }),
+					);
 					setState({ id: assetKey, url });
 				},
 				(cause: unknown) => {
@@ -220,11 +230,11 @@ function AssetPreview({
 			controller.abort();
 			if (url) URL.revokeObjectURL(url);
 		};
-	}, [asset.id, assetKey, loadAsset]);
+	}, [asset.id, asset.mimeType, assetKey, loadAsset]);
 	const current = state?.id === assetKey ? state : undefined;
 	const url = current?.url;
 	const label = asset.name ?? (image ? "Image attachment" : asset.mimeType);
-	const imageMime = /^image\/(png|jpeg|gif|webp|avif)$/.test(asset.mimeType);
+	const imageMime = PREVIEW_IMAGE.test(asset.mimeType);
 	return (
 		<figure className="content-asset">
 			{!current && <p className="muted">Loading {label}…</p>}

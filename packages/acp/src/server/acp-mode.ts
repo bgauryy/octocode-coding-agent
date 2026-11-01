@@ -1,17 +1,14 @@
 import { Readable } from "node:stream";
 import { resolve } from "node:path";
 import { ndJsonStream } from "@agentclientprotocol/sdk";
-import type { Args } from "../../../coding-agent/src/cli/args.ts";
-import { ENV_SESSION_DIR, getCliInvocation } from "../../../coding-agent/src/config.ts";
-import { flushRawStdout, takeOverStdout, writeRawStdoutAsync } from "../../../coding-agent/src/core/output-guard.ts";
+import { ACP_WORKER_ENV } from "../../../common/src/env.ts";
 import { normalizePath } from "../../../common/src/paths.ts";
-import { RpcClient } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
-import { ACP_WORKER_ENV } from "../../../coding-agent/src/modes/rpc/rpc-mode/session-controls.ts";
+import type { AcpLaunchOptions, AcpServerHost } from "../host.ts";
 import { AcpBroker, type AcpWorker } from "./broker.ts";
 import { prepareAcpMcpServers } from "./mcp.ts";
 
 /** ACP owns stdin and session selection; normal runtime options belong to its workers. */
-export function acpWorkerArguments(args: string[], parsed: Args): string[] {
+export function acpWorkerArguments(args: string[], parsed: AcpLaunchOptions): string[] {
 	if (
 		parsed.messages.length ||
 		parsed.fileArgs.length ||
@@ -41,35 +38,35 @@ export function acpWorkerArguments(args: string[], parsed: Args): string[] {
 }
 
 /** Expose ACP without starting a native session in the broker process. */
-export async function runAcpMode(workerArgs: string[]): Promise<void> {
-	takeOverStdout();
-	const invocation = getCliInvocation();
+export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Promise<void> {
+	host.stdout.takeOver();
 	const sessionDirIndex = workerArgs.lastIndexOf("--session-dir");
 	const launchDirectory = process.cwd();
 	const cliSessionDir = sessionDirIndex >= 0 ? workerArgs[sessionDirIndex + 1] : undefined;
-	const envSessionDir = process.env[ENV_SESSION_DIR];
+	const envSessionDir = process.env[host.sessionDirEnv];
 	const sharedSessionDir = cliSessionDir ?? envSessionDir;
 	const absoluteSessionDir = sharedSessionDir ? resolve(launchDirectory, normalizePath(sharedSessionDir)) : undefined;
 	const sessionArgs = [...workerArgs];
 	if (cliSessionDir && absoluteSessionDir) sessionArgs[sessionDirIndex + 1] = absoluteSessionDir;
 	const broker = new AcpBroker({
+		host,
 		sessionDir: absoluteSessionDir,
 		createWorker: async (cwd, servers, sessionPath): Promise<AcpWorker> => {
 			if (servers.length && workerArgs.includes("--no-mcp"))
 				throw new Error("Client MCP servers cannot be used with --no-mcp.");
-			const mcp = await prepareAcpMcpServers(servers, cwd);
+			const mcp = await prepareAcpMcpServers(servers, cwd, host);
 			const identityListeners = new Set<(id: string) => void>();
-			const client = new RpcClient({
+			const client = host.createWorker({
 				onSessionIdentity: (id) => {
 					for (const listener of identityListeners) listener(id);
 				},
 				cwd,
-				ownProcessTree: true,
-				invocation: { command: invocation.command, args: invocation.prefix },
 				args: [...sessionArgs, ...mcp.args, ...(sessionPath ? ["--session", sessionPath] : [])],
 				env: {
 					[ACP_WORKER_ENV]: "1",
-					...(envSessionDir && !cliSessionDir && absoluteSessionDir ? { [ENV_SESSION_DIR]: absoluteSessionDir } : {}),
+					...(envSessionDir && !cliSessionDir && absoluteSessionDir
+						? { [host.sessionDirEnv]: absoluteSessionDir }
+						: {}),
 				},
 			});
 			return {
@@ -104,7 +101,7 @@ export async function runAcpMode(workerArgs: string[]): Promise<void> {
 	const output = new WritableStream<Uint8Array>({
 		write: async (chunk) => {
 			try {
-				await writeRawStdoutAsync(Buffer.from(chunk).toString("utf8"));
+				await host.stdout.write(Buffer.from(chunk).toString("utf8"));
 			} catch (error) {
 				stopAfterOutputFailure();
 				throw error;
@@ -134,7 +131,7 @@ export async function runAcpMode(workerArgs: string[]): Promise<void> {
 	} finally {
 		try {
 			await broker.close();
-			if (!outputFailed) await flushRawStdout();
+			if (!outputFailed) await host.stdout.flush();
 		} finally {
 			for (const [signal, handler] of handlers) process.off(signal, handler);
 			process.stdout.off("error", stopAfterOutputFailure);

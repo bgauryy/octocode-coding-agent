@@ -67,6 +67,11 @@ function linkSignal(source: AbortSignal | undefined, target: AbortController): (
 	return () => source.removeEventListener("abort", abort);
 }
 
+/** The most an unfinished live-update event may hold; llama.cpp events are small JSON objects. */
+const MAX_EVENT_CHARS = 1024 * 1024;
+/** How long `unloadAndWait` waits; the router stops a model's process, which takes seconds. */
+const UNLOAD_WAIT_MS = 60_000;
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return sleepUnlessAborted(ms, signal, () => signal?.reason ?? new Error("Cancelled"));
 }
@@ -184,11 +189,19 @@ export class LlamaClient {
 		await this.request("/models/unload", { method: "POST", body: JSON.stringify({ model }), signal });
 	}
 
-	async unloadAndWait(model: string, signal?: AbortSignal): Promise<void> {
+	/** Unload and wait until the catalog says so. Callers show no stop control, so the wait is bounded. */
+	async unloadAndWait(model: string, options: { signal?: AbortSignal; waitMs?: number } = {}): Promise<void> {
+		const { signal, waitMs = UNLOAD_WAIT_MS } = options;
+		const deadline = Date.now() + waitMs;
 		await this.unload(model, signal);
 		while (true) {
 			const entry = (await this.list({ signal })).find((candidate) => candidate.id === model);
 			if (!entry || entry.status.value === "unloaded") return;
+			if (Date.now() >= deadline) {
+				throw new Error(
+					`${model} is still ${entry.status.value} ${Math.ceil(waitMs / 1000)} s after the unload request`,
+				);
+			}
 			await sleep(100, signal);
 		}
 	}
@@ -208,7 +221,8 @@ export class LlamaClient {
 		while (true) {
 			const chunk = await reader.read();
 			if (chunk.done) break;
-			buffer += decoder.decode(chunk.value, { stream: true }).replaceAll("\r\n", "\n");
+			// Normalize the joined text: a CRLF split across two chunks would otherwise hide an event boundary.
+			buffer = (buffer + decoder.decode(chunk.value, { stream: true })).replaceAll("\r\n", "\n");
 			let boundary = buffer.indexOf("\n\n");
 			while (boundary >= 0) {
 				const frame = buffer.slice(0, boundary);
@@ -227,6 +241,10 @@ export class LlamaClient {
 					}
 				}
 				boundary = buffer.indexOf("\n\n");
+			}
+			if (buffer.length > MAX_EVENT_CHARS) {
+				await reader.cancel().catch(() => {});
+				throw new Error("llama.cpp live updates sent more than 1 MiB without ending an event; stopped reading them");
 			}
 		}
 	}
@@ -302,6 +320,14 @@ export class LlamaClient {
 				const models = await this.list({ signal });
 				polls++;
 				const entry = models.find((candidate) => candidate.id === model);
+				// The failure event is best effort (the stream may drop): the catalog's `failed` mark is authoritative.
+				if (entry?.status.failed) {
+					throw new Error(
+						entry.status.exit_code === undefined
+							? "Download failed"
+							: `Download failed (exit code ${entry.status.exit_code})`,
+					);
+				}
 				if (entry?.status.value === "downloading") {
 					sawDownloading = true;
 					const progress = parseDownloadProgress(entry.status.progress);

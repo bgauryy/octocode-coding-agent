@@ -1,7 +1,6 @@
 import { methods, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import { describe, expect, it, vi } from "vitest";
-import type { PromptDisposition } from "../../../coding-agent/src/core/agent-session.ts";
-import { assistant, deferred, FakeWorker, harness, usage } from "./acp-test-harness.ts";
+import { assistant, deferred, FakeWorker, harness } from "./acp-test-harness.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
@@ -158,12 +157,10 @@ describe("inbound ACP protocol", () => {
 		worker.emit({ type: "message_start", message: assistant("") });
 		worker.emit({
 			type: "message_update",
-			usage,
 			assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Hello" },
 		});
 		worker.emit({
 			type: "message_update",
-			usage,
 			assistantMessageEvent: { type: "thinking_delta", contentIndex: 1, delta: "private thinking" },
 		});
 		worker.emit({ type: "message_end", message: assistant("Hello world") });
@@ -262,7 +259,7 @@ describe("inbound ACP protocol", () => {
 		const h = harness();
 		await h.initialize();
 		const { sessionId } = await h.newSession();
-		const accepted = deferred<PromptDisposition>();
+		const accepted = deferred<string>();
 		h.workers[0].prompt.mockImplementationOnce(() => accepted.promise);
 		let completed = false;
 		const run = h.prompt(sessionId).then((response) => {

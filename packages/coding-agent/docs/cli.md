@@ -39,6 +39,6 @@ The groups below name the flags; `octocode --help` has the exact syntax.
 - **Trust and network**: `--approve`, `--no-approve`, `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).
 - **Interface**: `--tui-mode`, `--use-theme`, `--verbose`.
 
-When `--continue`, `--session` or `--session-id` opens a saved session that another running Octocode process has open, Octocode asks whether to resume it here as well, as `/resume` and `--resume` do; Cancel exits. Print, JSON and RPC modes cannot ask, so they exit with an error instead: two processes appending to one session overwrite each other's history. `--fork` copies the session and is never refused.
+When `--continue`, `--session` or `--session-id` opens a saved session that another running Octocode process has open, Octocode asks whether to resume it here as well, as `/resume` and `--resume` do; Cancel exits. Print, JSON and RPC modes cannot ask, so they exit with an error instead: two processes appending to one session overwrite each other's history. `--fork` copies the session and is never refused. `--session-id <id>` and `--fork --session-id <id>` refuse an id that belongs to a saved session in another folder and name its file; use `--session <id>` to open it.
 
 Settings supply defaults for most of these; see [settings](settings.md). Environment variables that change behavior are listed in [environment variables](environment-variables.md).

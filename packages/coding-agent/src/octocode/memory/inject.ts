@@ -1,8 +1,8 @@
-import { USER_AUTHOR } from "../agentdb/author.ts";
+import { USER_AUTHOR } from "../agentdb/api.ts";
 import { clipText } from "../shared/util.ts";
 import { MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
 import { type Memory, type MemoryStore, memoryGetCall, memoryTags, type ScopeFilter } from "./store.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const MEMORY_MESSAGE_TYPE = "octocode-memory";
 export const MEMORY_HEADER =
@@ -13,6 +13,8 @@ export const PINNED_BUDGET = 1200;
 export const TOTAL_BUDGET = 2400;
 /** Unseen pinned memories read per injection: more than the shortest lines that fit `PINNED_BUDGET`. */
 const PINNED_WINDOW = 50;
+/** Hits fetched per wanted one: the relevance filter drops some, so irrelevant top hits must not crowd out relevant lower ones. */
+const SEARCH_WINDOW = 3;
 /** A hit scoring below this share of the best hit is noise. */
 const RELATIVE_THRESHOLD = 0.3;
 /** Shorter prompt words (`ts`, `ok`) match too much by chance to pull a memory in. */
@@ -48,7 +50,7 @@ export function injectedIds(entries: readonly unknown[]): Map<number, number | u
 			return;
 		}
 		if (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE) return;
-		const details = isRecord(entry.details) ? entry.details : {};
+		const details = asRecord(entry.details);
 		const list = Array.isArray(details.ids) ? details.ids : [];
 		const updated = Array.isArray(details.updated) ? details.updated : [];
 		injections.push({
@@ -103,15 +105,23 @@ function relevant(memory: Memory, words: ReadonlySet<string>): boolean {
  */
 export function selectInjection(
 	store: MemoryStore,
-	options: { query: string; scope: ScopeFilter; seen: ReadonlySet<number>; topK: number; pinned?: boolean },
+	options: {
+		query: string;
+		scope: ScopeFilter;
+		seen: ReadonlySet<number>;
+		topK: number;
+		pinned?: boolean;
+		now?: number;
+	},
 ): Injection | undefined {
+	const now = options.now ?? Date.now();
 	const lines: string[] = [];
 	const ids: number[] = [];
 	const updated: number[] = [];
 	let used = 0;
 	const take = (memory: Memory, budget: number): boolean => {
 		if (options.seen.has(memory.id) || ids.includes(memory.id)) return false;
-		const line = injectedLine(memory);
+		const line = injectedLine(memory, now);
 		if (used + line.length + 1 > budget) return false;
 		lines.push(line);
 		ids.push(memory.id);
@@ -131,7 +141,7 @@ export function selectInjection(
 	const stems = new Set(words.map(stem));
 	const found =
 		words.length > 0
-			? store.search(words.join(" "), options.scope, options.topK, new Set([...options.seen, ...ids]))
+			? store.search(words.join(" "), options.scope, options.topK * SEARCH_WINDOW, new Set([...options.seen, ...ids]))
 			: [];
 	const hits = found.filter((hit) => relevant(hit, stems));
 	const best = hits[0]?.score ?? 0;
@@ -151,13 +161,13 @@ export function selectInjection(
 }
 
 /**
- * One memory on one line within `LINE_MAX`: its label, tags, `(agent-written)` unless the user wrote it, the title,
+ * One memory on one line within `LINE_MAX`: its label, tags with its age, `(agent-written)` unless the user wrote it, the title,
  * then the body as one JSON string. The quotes and escapes keep a body from ending its line or imitating another
  * entry. A body that does not fit is cut and ends with the call that reads it whole.
  */
-function injectedLine(memory: Memory): string {
+function injectedLine(memory: Memory, now: number): string {
 	const flat = (text: string) => text.replace(/\s+/g, " ").trim();
-	const head = `${memoryLabel(memory.id)} (${memoryTags(memory)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} ${flat(memory.title)}`;
+	const head = `${memoryLabel(memory.id)} (${memoryTags(memory, now)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} ${flat(memory.title)}`;
 	const body = flat(memory.body);
 	if (!body) return head;
 	const line = `${head} — ${JSON.stringify(body)}`;

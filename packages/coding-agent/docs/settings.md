@@ -152,11 +152,15 @@ See [packages](packages.md), [skills](skills.md), [extensions](extensions.md) an
 | `$schema` | string |  | JSON Schema reference. |
 | `providerModels` | object |  | Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. |
 | `contextBudget` | `integer \| "full"` | `300000` | Working context per session in tokens, capped at 90% of the model's capacity; "full" uses the whole capacity. /context overrides it for one session. |
+| `research` | object |  | Research tool settings. |
+| `research.allowedPaths` | `string[]` |  | Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn. |
 | `toggles` | object |  | Plugin and hook switches by ID, as `/plugins` writes them: `plugin:&lt;path>`, `hooks:&lt;host>`, `hooks:&lt;host>:&lt;source>` or `hook:&lt;id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository. |
 | `remote` | object |  |  |
-| `remote.transport` | `"ssh" \| "relay"` | `"ssh"` | How /remote reaches this machine: "ssh" prints a port forward to run; "relay" dials remote.relayUrl. |
+| `remote.transport` | `"ssh" \| "relay"` | `"ssh"` | How a published /remote link reaches the daemon: "ssh" prints a port forward to run; "relay" dials remote.relayUrl. |
 | `remote.relayUrl` | string |  | The ws:// or wss:// relay the daemon dials for relay links. |
-| `remote.autoStart` | `"off" \| "view" \| "control"` | `"off"` | Publish a link when a session starts. A project settings file can set "off" but never turn it on. |
+| `remote.autoStart` | `"off" \| "view" \| "control"` | `"off"` | Publish a link of that access ("view" or "control") when a session starts and print it. A project settings file can set "off" but never turn it on; the global value stands. |
+| `sessions` | object |  |  |
+| `sessions.autoTitle` | boolean | `true` | Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title. |
 | `queueMode` | `"all" \| "one-at-a-time"` |  | Legacy setting migrated to steeringMode. |
 | `websockets` | boolean |  | Legacy setting migrated to transport. |
 

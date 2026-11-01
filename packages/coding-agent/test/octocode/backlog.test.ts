@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { USER_AUTHOR } from "../../src/octocode/agentdb/author.ts";
 import { type AgentDb, closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { boardRows, showBoard } from "../../src/octocode/backlog/board.ts";
+import { boardRows } from "../../src/octocode/backlog/board-model.ts";
+import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { countsText, itemDetail, itemLine } from "../../src/octocode/backlog/format.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogError, BacklogStore, type Item, parseRef } from "../../src/octocode/backlog/store.ts";
@@ -505,9 +506,13 @@ describe("backlog tool", () => {
 		await expect(
 			sub.call({ op: "add", why: "Required work", title: "with note", goal: "it works", note: "details" }),
 		).rejects.toThrow("A subagent adds without a note: put the details in plan or evidence.");
-		// The child schema omits hierarchy and dependencies; the tool refuses them with a message naming each.
-		const childFields = Object.keys(sub.tool.parameters.properties);
-		for (const field of ["parentId", "dependsOn", "reason", "body"]) expect(childFields).not.toContain(field);
+		// The child cannot write hierarchy or dependencies: its schema declares them as list filters only, and add and
+		// update refuse them with a message naming each.
+		const childProperties = sub.tool.parameters.properties as Record<string, { description?: string }>;
+		for (const field of ["reason", "body"]) expect(Object.keys(childProperties)).not.toContain(field);
+		for (const field of ["parentId", "dependsOn"]) expect(childProperties[field].description).toMatch(/^list only:/);
+		await expect(sub.call({ op: "update", id: "B1", parentId: "B2" })).rejects.toThrow(/only the state and notes/);
+		await expect(sub.call({ op: "update", id: "B1", dependsOn: ["B2"] })).rejects.toThrow(/only the state and notes/);
 		expect(sub.tool.parameters.properties).toHaveProperty("completion");
 		expect(sub.tool.parameters.properties).toHaveProperty("links");
 		await expect(
@@ -536,6 +541,33 @@ describe("backlog tool", () => {
 			}),
 		).toBe("Updated B1 [done p2] delegated");
 		await expect(sub.call({ op: "remove", id: "B3" })).rejects.toThrow(/subagent cannot remove/);
+	});
+
+	it("in a subagent: why and goal on a parent-owned claim are kept as the parent set them, with a note", async () => {
+		const parent = setup();
+		await parent.text({ op: "add", why: "Parent reason", title: "delegated", goal: "parent goal", state: "todo" });
+		storeFor(fs.realpathSync(parent.cwd)).update("B1", { state: "ongoing" }, { id: "parent-session" });
+		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
+		// The description says a claim needs why and goal, so a child that sends them is not refused.
+		const result = await sub.text({
+			op: "update",
+			id: "B1",
+			state: "ongoing",
+			why: "child reason",
+			goal: "child goal",
+			note: "started",
+		});
+		expect(result).toBe("Updated B1 [ongoing p2] delegated (parent)\n(goal/why kept: your parent owns them.)");
+		const item = storeFor(fs.realpathSync(sub.cwd)).get("B1")!;
+		expect([item.why, item.goal]).toEqual(["Parent reason", "parent goal"]);
+		// The permission rule stands: the other fields stay the parent's, and so does an item it has not claimed.
+		await expect(sub.call({ op: "update", id: "B1", why: "x", title: "renamed" })).rejects.toThrow(
+			/only the state and notes/,
+		);
+		await parent.text({ op: "add", why: "Other", title: "unclaimed", goal: "g", state: "todo" });
+		await expect(sub.call({ op: "update", id: "B2", state: "ongoing", why: "w", goal: "g" })).rejects.toThrow(
+			/not claimed by your parent/,
+		);
 	});
 
 	it("keeps strict link validation in the store behind the compact tool schema", async () => {
@@ -665,13 +697,13 @@ describe("backlog tool", () => {
 		const t = setup();
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.call({ op: "add", why: "Required work", title: "one", goal: "it works", state: "todo" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity · 1 todo");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 todo");
 		await t.call({ op: "update", id: "B1", state: "ongoing" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity · 1 ongoing");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 ongoing");
 		// Items live on the board (`/backlog`), not in a widget under the editor.
 		expect(ctx.ui.widgets.has("octocode-backlog")).toBe(false);
 		await t.call({ op: "update", id: "B1", state: "done", completion: completed(), note: "ok" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
 			"○ Backlog(update B1 → done)",
 		);
@@ -705,16 +737,16 @@ describe("backlog tool", () => {
 describe("backlog status", () => {
 	it("names every open state and keeps the web hint when there are no open items", () => {
 		expect(countsText({ ongoing: 2, todo: 4, backlog: 1, done: 9 })).toBe(
-			"/octocode · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
+			"/web · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
 		);
-		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("/octocode · backlogs & activity");
+		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("/web · backlogs & activity");
 	});
 
 	it("shows the web workspace hint at session start before any item exists", async () => {
 		const t = setup();
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.emit("session_start", {}, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
 	});
 
 	it("gives RPC clients the same status text and clears it when the database becomes unreadable", async () => {
@@ -722,7 +754,7 @@ describe("backlog status", () => {
 		const rpc = fakeCtx({ cwd: t.cwd, mode: "rpc" });
 		await t.call({ op: "add", why: "Required work", title: "one", goal: "it works", state: "todo" }, rpc);
 		await t.call({ op: "update", id: "B1", state: "ongoing" }, rpc);
-		expect(rpc.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity · 1 ongoing");
+		expect(rpc.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 ongoing");
 		expect(rpc.ui.widgets.has("octocode-backlog")).toBe(false);
 		const db = path.join(t.cwd, "foreign.sqlite");
 		fs.writeFileSync(db, "not sqlite at all, not even close to a header of one".repeat(20));
@@ -768,7 +800,7 @@ describe("/backlog", () => {
 			updatedAt: 0,
 			startedAt: 0,
 			version: 1,
-			type: "task",
+			type: "feature",
 			dependsOn: [],
 			links: [],
 			completions: [],
@@ -996,7 +1028,7 @@ describe("/backlog", () => {
 		// → moves alpha from todo to ongoing; ← would move it back.
 		expect(frames[2]).toContain("Ongoing (1)");
 		expect(frames[2]).toMatch(/› B1 p2 alpha/);
-		expect(frames[2]).toContain("Left/Right move state");
+		expect(frames[2]).toContain("left/right move state");
 		expect(store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
 		expect(t.sent.at(-1)!.message).toMatch(/^Implement backlog item B1\n/);
 		expect(t.sent.at(-1)!.message).toContain("B1 [ongoing p2] alpha");

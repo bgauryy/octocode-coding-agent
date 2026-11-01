@@ -26,37 +26,40 @@ const MAX_LIMIT = 100;
 /** Why an agent's global or pinned change asks: the system's reason line on the card. */
 const WIDE_REASON = "A global or pinned memory is injected into later sessions, untrusted projects included.";
 
-/** A note under reads in an untrusted project, where project memories stay hidden as they do from auto-injection. */
-const HIDDEN_NOTE = "(untrusted project: project memories are hidden; only global ones are shown)";
+/** The one line an untrusted project adds to a result: project memories stay readable but are not auto-injected. */
+const PAUSED_NOTE = "(untrusted project: project memories are not auto-injected until the user runs /trust)";
 
 /** What the model reads about `memory`: the description says what it is, `op` owns the operations, the guidelines only when to use it. */
 function memoryPrompt(subagent: boolean): {
+	promptSnippet: string;
 	description: string;
 	ops: string;
-	promptSnippet: string;
 	promptGuidelines: string[];
 } {
 	const description =
 		// The same text for every role, so parent and child declare identical bytes; a subagent's limit is stated when it hits it.
 		"Durable decisions and preferences across sessions: search, read and, where `op` allows, save. " +
-		"Near-duplicates and secrets are refused; global or pinned changes need a trusted project and the user's approval. " +
-		"An untrusted project shows only global memories.";
+		"Lines show each memory's age since its last update. " +
+		"Near-duplicates are refused; global or pinned changes need a trusted project and the user's approval.";
 	const ops =
 		"search: by query; get: full note by id; list: pinned first, then newest" +
 		(subagent ? "" : "; set: add a memory (title required), or update one with id; delete: remove id");
+	/** Shared by every role, ending as each role acts on a wrong memory. */
+	const stale = "A memory may be stale: check a file, function or flag it names before relying on it, and";
 	return {
+		// For every role: when to read. Only the main session saves, and its guidelines say when.
+		promptSnippet: "When the user asks you to recall or remember something, or a past preference or decision may apply",
 		description,
 		ops,
-		promptSnippet: subagent
-			? "Search and read durable notes from earlier sessions"
-			: "Search, read or save durable notes shared across sessions",
 		promptGuidelines: subagent
 			? [
-					"Memory is read-only here: search it when earlier decisions may matter, and put anything worth remembering in your report. A memory may be stale; verify it against the code before relying on it.",
+					`Memory is read-only here: put anything worth remembering in your report. ${stale} report one that proves wrong.`,
 				]
 			: [
-					"Save lasting user preferences or verified decisions that code and docs do not capture; keep task progress and secrets out.",
-					"Search before saving and update a match; use scope global or pinned only when the user asks. A memory may be stale; verify it against the code before relying on it.",
+					"Save when the user corrects your approach, confirms a non-obvious one, or asks you to remember: the rule, why, and absolute dates. Search first and update a match.",
+					"Don't save what code, git history, AGENTS.md, skills or the backlog already hold, task progress, fix recipes or secrets, even when asked; save what was non-obvious instead. Use scope global or pinned only when the user asks.",
+					`${stale} update or delete one that proves wrong.`,
+					"When a report proposes something to remember, decide and save it.",
 				],
 	};
 }
@@ -90,6 +93,10 @@ export function describeMemory(memory: Memory, now = Date.now()): string {
 /** Characters of a body in a search, list or save line; a longer body ends its line with the `memory get` that reads it whole. */
 const LINE_BODY_CHARS = 160;
 const SAVED_BODY_CHARS = 60;
+/** A saved body longer than this keeps its save but gets a warning: an injected line is cut at 600 characters. */
+const BODY_SOFT_MAX = 500;
+/** Other memories named after a save, so the agent can merge overlapping ones. */
+const RELATED_COUNT = 2;
 
 function listText(memories: readonly Memory[], empty: string): string {
 	return memories.length > 0 ? memories.map((memory) => memoryToolLine(memory, LINE_BODY_CHARS)).join("\n") : empty;
@@ -100,8 +107,9 @@ function listText(memories: readonly Memory[], empty: string): string {
  * parent decides what is worth remembering. Global and pinned memories reach every session, so changing them needs a
  * trusted project (an invariant no mode skips, recorded in the audit) and then the user's approval through the
  * permission check, as a change that runs in later sessions (`file.outside`): denied, or with no one to ask, nothing
- * changes. A plain project memory saves at once. An untrusted project reads only global memories, matching what
- * auto-injection shows there. `/memory` is the user's own command and never asks.
+ * changes. A plain project memory saves at once. Project memories sit in the user's own database, so every operation
+ * sees them whatever the trust state; only auto-injection waits for trust. A read counts as use of the memories it
+ * returns (`get`, and the hits of `search`). `/memory` is the user's own command and never asks.
  */
 export function registerMemoryTool(
 	api: ExtensionAPI,
@@ -122,7 +130,7 @@ export function registerMemoryTool(
 					op: StringEnum(ops, { description: opsDescription }),
 					id: Type.Optional(
 						Type.String({
-							description: options.isSubagent ? "get: M<n>" : "get/delete: M<n>; with set, updates that memory",
+							description: options.isSubagent ? "get: M<n>" : "get/delete: M<n>",
 						}),
 					),
 					query: Type.Optional(Type.String({ description: "search: keywords" })),
@@ -151,7 +159,11 @@ export function registerMemoryTool(
 								keywords: Type.Optional(
 									Type.String({ description: "set: synonyms/terms that should retrieve this memory" }),
 								),
-								kind: Type.Optional(StringEnum(MEMORY_KINDS, { description: "set: what sort of note (default fact)" })),
+								kind: Type.Optional(
+									StringEnum(MEMORY_KINDS, {
+										description: "set: what sort of note (default fact; reference: a URL, dashboard or ticket)",
+									}),
+								),
 								pinned: Type.Optional(
 									Type.Boolean({
 										description: "set: always inject this memory (keep pinned ones few and short)",
@@ -171,8 +183,16 @@ export function registerMemoryTool(
 					const store = storeFor(ctx);
 					const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIMIT)));
 					const trusted = projectTrustNow(ctx) === true;
-					const readScope = trusted ? (params.scope ?? "all") : "global";
-					const note = (text: string) => (trusted ? text : `${text}\n${HIDDEN_NOTE}`);
+					const readScope = params.scope ?? "all";
+					const note = (text: string) => (trusted ? text : `${text}\n${PAUSED_NOTE}`);
+					/** Counts what a read returned as used, so `/memory review` and `get` tell the truth; a missing DB never fails the read. */
+					const markRead = (ids: readonly number[]) => {
+						try {
+							store.markUsed(ids);
+						} catch {
+							// Use counts are bookkeeping.
+						}
+					};
 					/** Refuses changing a memory that reaches every session (global or pinned) unless the project is trusted. */
 					const guardWide = (wide: boolean, what: string) => {
 						if (!wide || trusted) return;
@@ -215,14 +235,15 @@ export function registerMemoryTool(
 										? "\n… more memories match; narrow the query."
 										: "\n… more memories match; raise limit, or narrow the query."
 									: "";
+							markRead(hits.map((hit) => hit.id));
 							return textResult(note(`${listText(hits, "No memory matches.")}${more}`), {
 								ids: hits.map((hit) => hit.id),
 							});
 						}
 						case "get": {
-							const found = store.get(needId());
-							const memory = found && (trusted || found.scope === "global") ? found : undefined;
+							const memory = store.get(needId());
 							if (!memory) throw noMemory(needId());
+							markRead([memory.id]);
 							return textResult(describeMemory(memory), { ids: [memory.id] });
 						}
 						case "list": {
@@ -242,8 +263,6 @@ export function registerMemoryTool(
 							if (options.isSubagent)
 								throw new Error("Memory is read-only in a subagent: report it to your parent instead.");
 							const current = id === undefined ? undefined : store.get(id);
-							// Reads hide project memories in an untrusted project; changing one by id must not reveal or touch it either.
-							if (current && !trusted && current.scope !== "global") throw noMemory(current.id);
 							if (params.op === "delete") {
 								if (current) {
 									const wide = current.scope === "global" || current.pinned;
@@ -286,14 +305,24 @@ export function registerMemoryTool(
 								...(params.pinned !== undefined ? { pinned: params.pinned } : {}),
 								author: "agent",
 								sourceSession: ctx.sessionManager.getSessionId(),
-								...(trusted ? {} : { hideProject: true }),
 							});
-							const hidden =
-								!trusted && memory.scope === "project"
-									? "\nThis untrusted project hides project memories from reads until the user /trusts it."
+							const long =
+								memory.body.length > BODY_SOFT_MAX
+									? `\nKept, but the body is ${memory.body.length} chars: shorten it to under ${BODY_SOFT_MAX}, the rule and why.`
 									: "";
+							const related = store
+								.search(
+									`${memory.title} ${memory.keywords} ${memory.body}`,
+									readScope,
+									RELATED_COUNT,
+									new Set([memory.id]),
+								)
+								.map((hit) => `${memoryLabel(hit.id)} ${hit.title.replace(/\s+/g, " ")}`);
+							const neighbours = related.length > 0 ? `\nRelated: ${related.join("; ")}` : "";
 							return textResult(
-								`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${hidden}`,
+								note(
+									`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${long}${neighbours}`,
+								),
 								{ ids: [memory.id] },
 							);
 						}

@@ -1,6 +1,7 @@
 import { closeSync, constants, copyFileSync, existsSync, fstatSync, openSync, readSync, truncateSync } from "fs";
 import { resolvePath } from "../../../../common/src/paths.ts";
 import { withSessionFileLock } from "./shared-file.ts";
+import { endOfLastRecord } from "./storage.ts";
 
 /** What `repairSessionFile` changed. */
 export interface SessionRepair {
@@ -24,19 +25,6 @@ export function backupSessionFile(file: string): string {
 	const backup = backupPath(file);
 	copyFileSync(file, backup, constants.COPYFILE_EXCL);
 	return backup;
-}
-
-/** Offset just past the last newline of `fd` (0 when there is none), reading backwards in blocks. */
-function endOfLastRecord(fd: number, size: number): number {
-	const block = Buffer.alloc(64 * 1024);
-	for (let end = size; end > 0;) {
-		const start = Math.max(0, end - block.length);
-		const read = readSync(fd, block, 0, end - start, start);
-		const at = block.subarray(0, read).lastIndexOf(10);
-		if (at >= 0) return start + at + 1;
-		end = start;
-	}
-	return 0;
 }
 
 /**

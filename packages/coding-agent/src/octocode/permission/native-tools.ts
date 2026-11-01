@@ -1,25 +1,24 @@
 import type { TSchema } from "typebox";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/extensions/index.ts";
-import { withoutReason, withReason } from "../shared/reason.ts";
+import { declaresReason, liftNestedReason, withoutReason, withReason } from "../shared/reason.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
  * effects; a read-only hint alone cannot bypass that review. Extensions outside Octocode retain their own contract.
  */
 const NATIVE_PERMISSION_OWNERS = new Map([
-	["graphBuild", "gate/classify: derived workspace snapshots; Rust enforces path scope"],
-	["graphQuery", "Rust CLI: workspace-scoped immutable graph reads"],
 	["bash", "gate/classify: shell and destructive commands"],
-	["debug", "gate/classify: debugger execution; termination only stops an existing session"],
+	["debug", "gate/classify: debugger execution; termination and launch help (no adapter) run nothing"],
 	["ollama", "gate/classify: a task runs the FreeLlama CLI on a local model; models and route read its state"],
-	["browser", "gate/classify plus BrowserTool: page actions, host access, uploads and control"],
 	["web", "gate/classify plus Web tool: search, resolved URLs and private hosts"],
 	["file", "File tool: checked mutation transaction and source-policy projection"],
 	["memory", "Memory tool: persistent memory scope checks"],
 	["agent", "Agent modes: task/profile and external-process checks; session coordination and messages"],
+	["models", "Session state only: lists model and provider state; check sends one small request per provider"],
 	["askUser", "Session UI only: collects the user's answers"],
 	["backlog", "Session workspace state only: backlog records and comments"],
+	["steps", "Session workspace state only: steps (tasks) of repository items and of this session"],
 	["archive", "Archive tool: authorized session history, checked by the history reader"],
 	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
@@ -37,17 +36,24 @@ const CORE_REASON_TOOLS = new Set([MCP_MANAGE_TOOL_NAME]);
 export const takesCallReason = (name: string): boolean => isNativeTool(name) || CORE_REASON_TOOLS.has(name);
 
 /**
- * A native tool as the model sees it: `reason` is a required argument (unless the tool declares its own). The tool's
- * `execute` never receives the one added here, so strict argument checks such as the `agent` envelope's still hold.
- * `renderCall` keeps the whole call, so rows can show it.
+ * A native tool as the model sees it: `reason` is required at the top level or copied there from a nested argument
+ * before validation. The tool's `execute` never receives one added here, so strict argument checks such as the `agent`
+ * envelope's still hold; a tool's own declared reason remains. `renderCall` keeps the whole call, so rows can show it.
  */
 function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, S>): ToolDefinition<P, D, S> {
+	const ownReason = declaresReason(tool.parameters);
 	const parameters = withReason(tool.parameters);
-	if (parameters === tool.parameters) return tool;
+	// A tool with its own top-level reason can already have nested slots (notably `file`), so its schema may be
+	// unchanged even though its arguments still need the nested-reason preparation below.
+	if (parameters === tool.parameters && !ownReason) return tool;
 	return {
 		...tool,
 		parameters,
-		execute: (id, params, ...rest) => tool.execute(id, withoutReason(params), ...rest),
+		prepareArguments: (args) => {
+			const prepared = tool.prepareArguments ? tool.prepareArguments(args) : args;
+			return liftNestedReason(prepared) as never;
+		},
+		execute: ownReason ? tool.execute : (id, params, ...rest) => tool.execute(id, withoutReason(params), ...rest),
 	};
 }
 

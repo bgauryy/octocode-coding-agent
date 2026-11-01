@@ -5,13 +5,30 @@ import octocode from "../../octocode/index.ts";
 import { canonicalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { loadExtensionFromFactory, loadExtensionsCached } from "../extensions/loader.ts";
-import type { Extension, ExtensionFactory, ExtensionRuntime, InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
-import { DefaultPackageManager, type PathMetadata, type ResolvedPaths, type ResolvedResource } from "../package-manager.ts";
+import type {
+	Extension,
+	ExtensionFactory,
+	ExtensionRuntime,
+	InlineExtension,
+	LoadExtensionsResult,
+} from "../extensions/types.ts";
+import {
+	DefaultPackageManager,
+	type PathMetadata,
+	type ResolvedPaths,
+	type ResolvedResource,
+} from "../package-manager.ts";
 import { effectivePlugins } from "../extensibility/toggles.ts";
 import { loadConfiguredPluginMcp } from "../plugin-mcp.ts";
 import { SettingsManager } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX, isSyntheticPath } from "../source-info.ts";
-import { type BuiltinExtension, collectExtensionPackageWarnings, detectExtensionConflicts, mergeExtensionWarnings, omitReplacedExtensions } from "./extension-sets.ts";
+import {
+	type BuiltinExtension,
+	collectExtensionPackageWarnings,
+	detectExtensionConflicts,
+	mergeExtensionWarnings,
+	omitReplacedExtensions,
+} from "./extension-sets.ts";
 import { collectEnabledResources } from "./enabled-resources.ts";
 import { mergePaths } from "./paths.ts";
 import { readJsonFile } from "../../../../common/src/json.ts";

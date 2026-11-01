@@ -1,3 +1,4 @@
+import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import type { Note, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { ReactNode } from "react";
 import { useCopy } from "../hooks.ts";
@@ -7,7 +8,9 @@ import { ago, span, stamp } from "../model/format.ts";
 import { CheckIcon, CloseIcon, LinkIcon } from "../ui/icons.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, IconButton, PriorityIcon, RelativeTime, Section, StatusLabel } from "../ui/primitives.tsx";
+import { isEpic, shownState } from "../model/hierarchy.ts";
 import { RelatedList, StaleBadge } from "./shared.tsx";
+import { RollupLine, TaskList } from "./Tasks.tsx";
 
 export function MissingItem({ refName, onClose }: { refName: string; onClose: () => void }) {
 	return (
@@ -35,6 +38,7 @@ export function ItemDetail({
 	onClose,
 	actions,
 	activity,
+	tasks,
 	reportHref,
 }: {
 	item: SnapshotItem;
@@ -42,6 +46,8 @@ export function ItemDetail({
 	onClose: () => void;
 	actions?: ReactNode;
 	activity?: ReactNode;
+	/** The live page's editable task list; without it the item's tasks are listed read-only. */
+	tasks?: ReactNode;
 	/** Live pages pass this to open files links that point at saved workspace reports in their tab. */
 	reportHref?: (path: string) => string | undefined;
 }) {
@@ -91,7 +97,8 @@ export function ItemDetail({
 
 			<dl className="properties">
 				<Property label="Status">
-					<StatusLabel state={it.state} />
+					<StatusLabel state={shownState(it)} />
+					{isEpic(it) && <span className="muted"> · derived from its items</span>}
 				</Property>
 				<Property label="Priority">
 					<span className="priority-cell">
@@ -99,7 +106,7 @@ export function ItemDetail({
 						{PRIORITY_TITLES[it.priority] ?? it.priority}
 					</span>
 				</Property>
-				<Property label="Type">{it.type ?? "task"}</Property>
+				<Property label="Type">{it.type ?? DEFAULT_ITEM_TYPE}</Property>
 				{it.parentId && (
 					<Property label="Parent">
 						<a href={`#${it.parentId}`}>{it.parentId}</a>
@@ -149,6 +156,17 @@ export function ItemDetail({
 					<LongText text={it.plan} label="plan" />
 				</Section>
 			)}
+			{isEpic(it) && (
+				<Section title="Roll-up">
+					<RollupLine index={index} epic={it} />
+				</Section>
+			)}
+			{tasks ??
+				(it.tasks?.length ? (
+					<Section title="Tasks" count={it.tasks.length}>
+						<TaskList tasks={it.tasks} label={`Tasks of ${it.ref}`} />
+					</Section>
+				) : null)}
 			<Results item={it} />
 			{it.children?.length ? (
 				<Section title="Children" count={it.children.length}>

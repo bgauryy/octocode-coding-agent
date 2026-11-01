@@ -11,8 +11,9 @@ import {
 
 /** Page metadata (JSON-LD, price and date meta tags) up to this size leads the page text; longer metadata follows it, whole. */
 const METADATA_LEAD_CHARS = 1_500;
-/** What to do when the static HTML is not the page: the main session has no `browser`, so the advice names both routes. */
-export const RENDER_ADVICE = "render it with the browser tool, or with a browser subagent when browser is not active";
+/** What to do when the static HTML is not the page: the main session usually lacks the browser MCP tools, so the advice names both routes. */
+export const RENDER_ADVICE =
+	"render it with the browser tools (`mcp__browser__*`), or with a browser subagent when they are not active";
 /** Less visible text than this in the static HTML means the page is built by JavaScript. */
 const SHELL_TEXT_CHARS = 500;
 
@@ -54,7 +55,7 @@ export function decodeEntities(text: string): string {
 
 /** Readable text from HTML: drops scripts/styles/chrome, keeps headings, links, list items and paragraphs. */
 export function htmlToText(html: string): string {
-	let text = removeElements(html, /<(script|style|noscript|svg|template|iframe)/gi);
+	let text = removeElements(html, /<(script|style|noscript|svg|template|iframe)(?=[\s/>])/gi);
 	text = removeComments(text);
 	text = stripHidden(text);
 	// The title is extracted separately; nothing else in <head> is page text.
@@ -86,12 +87,15 @@ export function htmlToText(html: string): string {
  * The passes match what those patterns matched, but each search remembers how far it has looked.
  */
 
-/** Removes each `<name…>…</name>` element `opener` starts (group 1 is the name); one that never closes stays. */
+const RAW_TEXT = /^(?:script|style|noscript|iframe)$/i;
+/** Removes each `<name…>…</name>` element `opener` starts (group 1 is the name). One that never closes stays, but a
+ * raw-text one (`RAW_TEXT`) takes the rest of the document, as a browser reads it. */
 function removeElements(text: string, opener: RegExp): string {
 	const close = closeTags(text);
 	return rewrite(text, opener, (open) => {
 		const end = close(open[1], open.index + open[0].length);
-		return end && { end: end.index + end[0].length, text: "" };
+		if (end) return { end: end.index + end[0].length, text: "" };
+		return RAW_TEXT.test(open[1]) ? { end: text.length, text: "" } : undefined;
 	});
 }
 

@@ -15,7 +15,7 @@ import {
 	sessionCwdMatches,
 } from "./storage.ts";
 import { parseSessionEntryLine } from "./entries.ts";
-import type { SessionHeader, SessionInfo, SessionListProgress, SessionMessageEntry } from "./types.ts";
+import type { SessionEntry, SessionHeader, SessionInfo, SessionListProgress, SessionMessageEntry } from "./types.ts";
 
 function isMessageWithContent(message: AgentMessage): message is Message {
 	return isRecord(message) && typeof message.role === "string" && "content" in message;
@@ -48,7 +48,76 @@ function getMessageActivityTime(entry: SessionMessageEntry): number | undefined 
 	return Number.isNaN(t) ? undefined : t;
 }
 
-async function buildSessionInfo(
+/**
+ * Folds a session's entries after its header, in file order, into what a listing shows. The file listing
+ * (`buildSessionInfo`) and the live session's catalog row (`octocode/sessions/catalog.ts`) share it, so both derive the
+ * same name, first prompt, message count and activity time.
+ */
+export function sessionInfoFolder(): {
+	add(entry: SessionEntry): void;
+	/** The info for `header`; `fallbackModified` dates a session with no timed message and no valid header time. */
+	info(filePath: string, header: SessionHeader, fallbackModified: Date): SessionInfo;
+} {
+	let messageCount = 0;
+	let firstMessage = "";
+	const allMessages: string[] = [];
+	let name: string | undefined;
+	let nameSource: SessionInfo["nameSource"];
+	let lastActivityTime: number | undefined;
+	return {
+		add(entry) {
+			// Extract session name (use latest, including explicit clears)
+			if (entry.type === "session_info") {
+				name = entry.name?.trim() || undefined;
+				nameSource = name ? entry.source : undefined;
+			}
+
+			if (entry.type !== "message") return;
+			messageCount++;
+
+			const activityTime = getMessageActivityTime(entry);
+			if (typeof activityTime === "number") {
+				lastActivityTime = Math.max(lastActivityTime ?? 0, activityTime);
+			}
+
+			const message = entry.message;
+			if (!isMessageWithContent(message)) return;
+			if (message.role !== "user" && message.role !== "assistant") return;
+
+			const textContent = extractTextContent(message);
+			if (!textContent) return;
+
+			allMessages.push(textContent);
+			if (!firstMessage && message.role === "user") {
+				firstMessage = textContent;
+			}
+		},
+		info(filePath, header, fallbackModified) {
+			const headerTime = typeof header.timestamp === "string" ? new Date(header.timestamp).getTime() : NaN;
+			const modified =
+				typeof lastActivityTime === "number" && lastActivityTime > 0
+					? new Date(lastActivityTime)
+					: !Number.isNaN(headerTime)
+						? new Date(headerTime)
+						: fallbackModified;
+			return {
+				path: filePath,
+				id: header.id,
+				cwd: typeof header.cwd === "string" ? header.cwd : "",
+				name,
+				...(nameSource ? { nameSource } : {}),
+				parentSessionPath: header.parentSession,
+				created: new Date(header.timestamp),
+				modified,
+				messageCount,
+				firstMessage: firstMessage || "(no messages)",
+				allMessagesText: allMessages.join(" "),
+			};
+		},
+	};
+}
+
+export async function buildSessionInfo(
 	filePath: string,
 	signal?: AbortSignal,
 	fileStats?: Stats,
@@ -56,11 +125,7 @@ async function buildSessionInfo(
 	try {
 		const stats = fileStats ?? (await stat(filePath));
 		let header: SessionHeader | null = null;
-		let messageCount = 0;
-		let firstMessage = "";
-		const allMessages: string[] = [];
-		let name: string | undefined;
-		let lastActivityTime: number | undefined;
+		const folder = sessionInfoFolder();
 
 		const rl = createInterface({
 			input: createReadStream(filePath, { encoding: "utf8", signal }),
@@ -76,57 +141,11 @@ async function buildSessionInfo(
 				header = entry;
 				continue;
 			}
-
-			// Extract session name (use latest, including explicit clears)
-			if (entry.type === "session_info") {
-				name = entry.name?.trim() || undefined;
-			}
-
-			if (entry.type !== "message") continue;
-			messageCount++;
-
-			const activityTime = getMessageActivityTime(entry);
-			if (typeof activityTime === "number") {
-				lastActivityTime = Math.max(lastActivityTime ?? 0, activityTime);
-			}
-
-			const message = entry.message;
-			if (!isMessageWithContent(message)) continue;
-			if (message.role !== "user" && message.role !== "assistant") continue;
-
-			const textContent = extractTextContent(message);
-			if (!textContent) continue;
-
-			allMessages.push(textContent);
-			if (!firstMessage && message.role === "user") {
-				firstMessage = textContent;
-			}
+			if (entry.type !== "session") folder.add(entry);
 		}
 
 		if (!header) return null;
-
-		const cwd = typeof header.cwd === "string" ? header.cwd : "";
-		const parentSessionPath = header.parentSession;
-		const headerTime = typeof header.timestamp === "string" ? new Date(header.timestamp).getTime() : NaN;
-		const modified =
-			typeof lastActivityTime === "number" && lastActivityTime > 0
-				? new Date(lastActivityTime)
-				: !Number.isNaN(headerTime)
-					? new Date(headerTime)
-					: stats.mtime;
-
-		return {
-			path: filePath,
-			id: header.id,
-			cwd,
-			name,
-			parentSessionPath,
-			created: new Date(header.timestamp),
-			modified,
-			messageCount,
-			firstMessage: firstMessage || "(no messages)",
-			allMessagesText: allMessages.join(" "),
-		};
+		return folder.info(filePath, header, stats.mtime);
 	} catch {
 		signal?.throwIfAborted();
 		return null;

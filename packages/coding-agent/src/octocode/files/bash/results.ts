@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { formatDuration, shortPath } from "../../shared/format.ts";
-import { PRIVATE_FILE_MODE } from "../../shared/home.ts";
 import { plural } from "../../shared/render/text.ts";
 import type { BashJob, VerificationReceipt } from "../bash-jobs/types.ts";
 import type { OrphanJob } from "../bash-jobs/records.ts";
@@ -12,13 +11,22 @@ import { verificationJson, verificationLine } from "./verification.ts";
 import { BashExecutionError } from "../../../core/tools/bash/outcome.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { RERUN_HINT } from "../render.ts";
+import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
+import { cutText } from "../../../../../common/src/text.ts";
 
 /** Deadlines of foreground commands and the text `bash` returns about moved and orphaned jobs. */
 
-/** The three lines that say where a background job logs and how to check and stop it. */
+/** A shell word for `file`, single-quoted when it holds anything a shell would split or expand; a leading `~/` stays outside the quotes so it still expands. */
+function shellWord(file: string): string {
+	const tilde = file.startsWith(`~${path.sep}`) ? `~${path.sep}` : "";
+	const rest = file.slice(tilde.length);
+	return /^[\w@%+=:,./-]+$/.test(rest) ? file : `${tilde}'${rest.replaceAll("'", `'\\''`)}'`;
+}
+
+/** The three lines that say where a background job logs and how to check and stop it; the Check line runs as shown. */
 export function jobLines(job: BashJob, cwd: string): string[] {
 	const log = shortPath(job.log, cwd);
-	return [`Log: ${log}`, `Check: tail -n 40 ${log}`, `Stop: kill -- -${job.pid}`];
+	return [`Log: ${log}`, `Check: tail -n 40 ${shellWord(log)}`, `Stop: kill -- -${job.pid}`];
 }
 
 /** Deadline of a foreground command whose call names none, in seconds. */
@@ -34,7 +42,7 @@ export function adoptFullOutput(text: string, from: string | undefined, dir: str
 	if (fs.existsSync(to)) return { text };
 	if (!moveFile(from, to)) return { text };
 	fs.chmodSync(to, PRIVATE_FILE_MODE);
-	return { text: text.split(from).join(shortPath(to)), path: to };
+	return { text: text.split(from).join(to), path: to };
 }
 
 /** The longest a foreground command may hold a turn, in seconds; a longer one belongs in the background. */
@@ -76,7 +84,7 @@ function movedResult(
 	const moved = [
 		lead,
 		...jobLines(job, cwd),
-		...(fullOutputPath ? [`Output so far, in full: ${shortPath(fullOutputPath)}`] : []),
+		...(fullOutputPath ? [`Output so far, in full: ${fullOutputPath}`] : []),
 	].join("\n");
 	const threshold =
 		how === "threshold" ? `(${AUTO_NOTE}; pass background: false with a timeout to wait in the foreground)` : "";
@@ -130,8 +138,7 @@ export function foregroundFailure(
 	const failure = error instanceof BashExecutionError ? error : undefined;
 	const details = { ...failure?.details, ...(full.path ? { fullOutputPath: full.path } : {}) };
 	const output = failure?.outputText ?? "";
-	const adoptedOutput =
-		full.path && options.spilled ? output.split(options.spilled).join(shortPath(full.path)) : output;
+	const adoptedOutput = full.path && options.spilled ? output.split(options.spilled).join(full.path) : output;
 	if (options.adopted)
 		return movedResult(
 			adoptedOutput,
@@ -159,7 +166,7 @@ export function foregroundFailure(
 /** The notice for jobs found running after their Octocode died (`reapOrphanJobs`). */
 export function orphanNotice(orphans: readonly OrphanJob[]): string {
 	const line = (job: OrphanJob) =>
-		`  ${job.id} · pid ${job.pid} · ${firstLine(job.command).slice(0, 80)}\n    log: ${shortPath(job.log)}`;
+		`  ${job.id} · pid ${job.pid} · ${cutText(firstLine(job.command), 80, { chars: true })}\n    log: ${shortPath(job.log)}`;
 	const stopped = orphans.filter((job) => job.stopped);
 	const unsure = orphans.filter((job) => !job.stopped);
 	return [

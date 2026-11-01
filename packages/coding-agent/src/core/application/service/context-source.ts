@@ -1,7 +1,9 @@
-import type { AgentSession } from "../../agent-session.ts";
+import type { ApplicationSession } from "../session-port.ts";
 import type { ApplicationTranscript } from "../transcript.ts";
 
-function branchIds(session: AgentSession): string[] {
+type Source = Pick<ApplicationSession, "messages" | "sessionManager">;
+
+function branchIds(session: Source): string[] {
 	return (session.sessionManager?.getBranch() ?? []).map((entry) => entry.id);
 }
 
@@ -14,7 +16,7 @@ export class ContextSource {
 	private messages: readonly unknown[] = [];
 	private branch: readonly string[] = [];
 
-	reset(session: AgentSession): void {
+	reset(session: Source): void {
 		this.messages = session.messages;
 		this.branch = branchIds(session);
 	}
@@ -25,7 +27,7 @@ export class ContextSource {
 	}
 
 	/** Whether the projection still matches `session`; an equal rebuilt array is adopted in place. */
-	unchanged(session: AgentSession, transcript: ApplicationTranscript): boolean {
+	unchanged(session: Source, transcript: ApplicationTranscript): boolean {
 		if (this.messages === session.messages) return true;
 		const branch = branchIds(session);
 		const grew = branch.length >= this.branch.length && this.branch.every((id, index) => branch[index] === id);

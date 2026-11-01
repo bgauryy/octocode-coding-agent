@@ -171,7 +171,16 @@ export class EditorAutocomplete {
 			const snapshotLine = this.host.state.cursorLine;
 			const snapshotCol = this.host.state.cursorCol;
 
-			await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options);
+			try {
+				await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options);
+			} catch {
+				// A failed provider call yields no suggestions. The task must still settle: every later request awaits it,
+				// so a rejection here would end autocomplete for the editor's lifetime.
+				if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) return;
+				this.autocompleteAbort = undefined;
+				this.cancelAutocomplete();
+				this.host.requestRender();
+			}
 		})();
 		await this.autocompleteRequestTask;
 	}

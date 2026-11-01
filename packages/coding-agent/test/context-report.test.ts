@@ -135,3 +135,38 @@ it("suggests /context all only while contributors are folded into 'Other contrib
 	expect(renderContextReport(report(3))).not.toContain("Use /context all");
 	expect(renderContextReport(report(3))).toContain("/mcp exposure controls");
 });
+
+it("leads with the total in use, free space and distance to compaction, and totals the contributors", () => {
+	const base = {
+		model: "m",
+		at: "now",
+		reportedTokens: 50_000,
+		capacity: 200_000,
+		reserve: 25_000,
+		threshold: 175_000,
+		catalogCapacity: 200_000,
+		difference: 0,
+		note: "n",
+		contributors: [
+			{ name: "System instructions", tokens: 10_000 },
+			{ name: "user messages", tokens: 40_000 },
+		],
+		estimatedTotal: 50_000,
+	};
+	const text = renderContextReport({ ...base, currentTokens: 50_000 });
+	const [first] = text.split("\n\n");
+	expect(first).toBe(
+		[
+			"**Total context: 50,000 of 200,000 tokens in use (25%)**",
+			`\`${"█".repeat(8)}${"░".repeat(22)}\` 150,000 free`,
+			"Compaction starts at 175,000 tokens, 125,000 from now.",
+		].join("\n"),
+	);
+	expect(text).toContain("| user messages | 40,000 | 80% |");
+	expect(text).toContain("| **Total** | **50,000** | 100% |");
+	// Without a usage figure the contents estimate stands in, labelled; past the threshold it says compaction comes next.
+	expect(renderContextReport({ ...base, currentTokens: null })).toContain("(estimated from the contents below)");
+	expect(renderContextReport({ ...base, currentTokens: 180_000 })).toContain(
+		"Past the compaction point (175,000 tokens): the next request compacts first.",
+	);
+});

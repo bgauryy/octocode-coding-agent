@@ -141,4 +141,27 @@ describe("provider setup flow", () => {
 		expect(actions).toContain("Remove saved and session credentials");
 		expect(actions).not.toContain("Remove saved credential");
 	});
+
+	it("reports a failure in the provider manager reopened by a login dialog's back action", async () => {
+		const { host, value, runtime } = manager();
+		vi.spyOn(runtime, "getProviderAuthStatus").mockReturnValue({
+			configured: true,
+			source: "runtime",
+			label: "session credential",
+		});
+		Object.assign(runtime, {
+			removeRuntimeApiKey: vi.fn(async () => {
+				throw new Error("auth store locked");
+			}),
+		});
+		value.showExtensionSelector
+			.mockResolvedValueOnce("Update saved API key")
+			.mockResolvedValueOnce("Clear session API key override — keep saved credentials");
+		await showProviderManager(host, "openai");
+		const back = value.showApiKeyLoginDialog.mock.calls[0][2] as () => void;
+
+		// Login dialogs call onBack synchronously and never await it.
+		back();
+		await vi.waitFor(() => expect(value.showError).toHaveBeenCalledWith(expect.stringContaining("auth store locked")));
+	});
 });

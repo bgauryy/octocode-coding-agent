@@ -11,6 +11,7 @@ import { createAgentSession } from "../src/core/sdk.ts";
 import type { CreateAgentSessionOptions } from "../src/core/sdk/types.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { removedToolWarnings } from "../src/core/settings-manager/ignored-keys.ts";
 
 /**
  * Octocode's only core tool is `bash`. These inactive extension tools stand in for further built-in tools: a
@@ -115,17 +116,63 @@ describe("defaultTools setting", () => {
 		}
 	});
 
+	it("ignores the retired graph tool names in saved defaults and in --tools", async () => {
+		for (const options of [{}, { tools: ["file", "graphBuild", "graphQuery"] }]) {
+			const session = await createSession(["file", "graphBuild", "graphQuery"], options, [], true);
+			try {
+				expect(session.getAllTools().map((tool) => tool.name)).not.toContain("graphQuery");
+				expect(session.getAllTools().map((tool) => tool.name)).not.toContain("graphBuild");
+				expect(session.getActiveToolNames()).toEqual(["file"]);
+				expect(session.systemPrompt).not.toMatch(/graphBuild|graphQuery/);
+			} finally {
+				session.dispose();
+			}
+		}
+	});
+
+	it("selects `steps` where saved defaults, --tools or --exclude-tools name its old name `task`, for one release", async () => {
+		const cases: Array<[string[], ToolOptions, string[]]> = [
+			[["file", "task"], {}, ["file", "steps"]],
+			[["file", "+task"], {}, ["file", "steps"]],
+			[["file"], { tools: ["file", "task"] }, ["file", "steps"]],
+			[["file", "steps"], { tools: ["-task"] }, ["file"]],
+			[["file", "steps"], { excludeTools: ["task"] }, ["file"]],
+		];
+		for (const [defaults, options, active] of cases) {
+			const session = await createSession(defaults, options, [], true);
+			try {
+				// One registered name: the old one is only an input alias.
+				expect(session.getAllTools().map((tool) => tool.name)).not.toContain("task");
+				expect(session.getActiveToolNames().sort(), JSON.stringify([defaults, options])).toEqual(active);
+				// A transcript from before the rename renders its `task` calls with the `steps` tool's renderers (an
+				// excluded tool is not registered, so there is nothing to render with then).
+				const old = session.getToolDefinition("task");
+				if (options.excludeTools) expect(old).toBeUndefined();
+				else {
+					expect(old?.name).toBe("steps");
+					expect(old?.renderCall).toBeTypeOf("function");
+					expect(old?.renderResult).toBeTypeOf("function");
+				}
+			} finally {
+				session.dispose();
+			}
+		}
+		expect(removedToolWarnings({ defaultTools: ["-task"] })).toEqual([
+			'Setting "defaultTools" entry "-task" names the old name of "steps"; it selects "steps" for this release only. Write "steps" instead.',
+		]);
+	});
+
 	it.each([
-		// Browsing defaults to the built-in browser MCP server; the native `browser` tool is opt-in (`+browser`).
+		// Browsing is the built-in browser MCP server; the native `browser` tool is retired, so `+browser` adds nothing.
 		{ defaults: undefined, options: {}, expected: ["debug", "web"] },
 		{ defaults: ["-browser"], options: {}, expected: ["debug", "web"] },
 		{ defaults: ["-debug"], options: {}, expected: ["web"] },
-		{ defaults: ["+browser"], options: {}, expected: ["browser", "debug", "web"] },
+		{ defaults: ["+browser"], options: {}, expected: ["debug", "web"] },
 		{ defaults: ["-web"], options: {}, expected: ["debug"] },
 		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: ["debug"] },
 		{ defaults: undefined, options: { tools: ["file"] }, expected: [] },
 	])(
-		"activates debug by default, native browser on request, and preserves selections through startup: %j",
+		"activates debug by default, never a native browser, and preserves selections through startup: %j",
 		async ({ defaults, options, expected }) => {
 			const session = await createSession(defaults, options, [], true);
 			try {
@@ -155,7 +202,7 @@ describe("defaultTools setting", () => {
 		},
 	);
 
-	it.each([{ tools: ["file", "web"] }, { tools: ["agent", "browser"] }])(
+	it.each([{ tools: ["file", "web"] }, { tools: ["agent", "debug"] }])(
 		"retains SDK selected native tools after session startup: $tools",
 		async ({ tools }) => {
 			const session = await createSession([], { tools }, [], true);

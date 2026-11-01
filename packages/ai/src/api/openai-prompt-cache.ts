@@ -20,7 +20,7 @@ export function clampOpenAIPromptCacheKey(key: string | undefined): string | und
 	return chars.slice(0, OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH).join("");
 }
 
-export type OpenAIPromptCacheTtl = "30m" | "12h";
+type OpenAIPromptCacheTtl = "30m" | "12h";
 
 export interface OpenAIResponsesCacheFields {
 	prompt_cache_key?: string;

@@ -44,7 +44,7 @@ export type ResolvedOpenAICompletionsCompat = Omit<
  * Fields OpenAI-compatible vendors accept beyond the OpenAI SDK's typed request, so the request builder writes them
  * with their real types instead of casting. `reasoning_effort` is a plain string because vendors define their own levels.
  */
-export interface VendorRequestFields {
+interface VendorRequestFields {
 	tool_stream?: boolean;
 	priority?: number;
 	enable_thinking?: boolean;

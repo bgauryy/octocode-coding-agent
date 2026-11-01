@@ -15,7 +15,7 @@ import { handleEditorInput } from "./editor/input.ts";
 import { createScrollBorder } from "./editor/layout.ts";
 import { EditorModel } from "./editor/model.ts";
 import { handleEditorMouse } from "./editor/movement.ts";
-import type { EditorOptions, EditorTheme } from "./editor/types.ts";
+import type { EditorBorderDecorator, EditorOptions, EditorTheme } from "./editor/types.ts";
 
 export class Editor implements Component, Focusable {
 	/**
@@ -31,6 +31,9 @@ export class Editor implements Component, Focusable {
 
 	// Border color (can be changed dynamically)
 	public borderColor: (str: string) => string;
+
+	/** Draws the border rows in place of the editor's own (see `EditorBorderDecorator`); undefined keeps them. */
+	public borderDecorator: EditorBorderDecorator | undefined;
 
 	public onSubmit?: (text: string) => void;
 	public onChange?: (text: string) => void;
@@ -64,10 +67,10 @@ export class Editor implements Component, Focusable {
 	}
 
 	/**
-	 * Text rows drawn by the last render. Octocode's prompt box reads this by name
-	 * (`decorateEditor` in coding-agent) to place its side borders.
+	 * Text rows the last render drew between its borders: `render` output is the top border, these rows, the bottom
+	 * border, then any autocomplete rows. A decoration that frames the text rows reads it.
 	 */
-	private get renderedVisibleLineCount(): number {
+	get visibleLineCount(): number {
 		return this.model.renderedVisibleLineCount;
 	}
 
@@ -121,6 +124,12 @@ export class Editor implements Component, Focusable {
 		return this.borderColor(border);
 	}
 
+	private border(edge: "top" | "bottom", width: number, hiddenLineCount: number): string {
+		const standard = () =>
+			edge === "top" ? this.renderTopBorder(width, hiddenLineCount) : this.renderBottomBorder(width, hiddenLineCount);
+		return this.borderDecorator ? this.borderDecorator(edge, width, hiddenLineCount, standard) : standard();
+	}
+
 	render(width: number): string[] {
 		const maxPadding = Math.max(0, Math.floor((width - 1) / 2));
 		const paddingX = Math.min(this.model.paddingX, maxPadding);
@@ -164,7 +173,7 @@ export class Editor implements Component, Focusable {
 		const rightPadding = leftPadding;
 
 		// Render top border (with scroll indicator if scrolled down)
-		result.push(this.renderTopBorder(width, this.model.scrollOffset));
+		result.push(this.border("top", width, this.model.scrollOffset));
 
 		// Render each visible layout line
 		// Emit hardware cursor marker when focused so TUI can position the
@@ -216,7 +225,7 @@ export class Editor implements Component, Focusable {
 
 		// Render bottom border (with scroll indicator if more content below)
 		const linesBelow = layoutLines.length - (this.model.scrollOffset + visibleLines.length);
-		result.push(this.renderBottomBorder(width, linesBelow));
+		result.push(this.border("bottom", width, linesBelow));
 
 		// Add autocomplete list if active
 		this.model.renderedAutocompleteHeight = 0;

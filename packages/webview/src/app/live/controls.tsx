@@ -23,7 +23,7 @@ export function ConnectionNotice() {
 	return available && tone !== "live" ? (
 		<p className="callout tone-warning" role="note">
 			Connection interrupted. Showing the last known session; agent availability and progress may be out of date. If the
-			session ended, run <code>/octocode</code> in a running terminal to reopen it.
+			session ended, run <code>/web</code> in a running terminal to reopen it.
 		</p>
 	) : null;
 }

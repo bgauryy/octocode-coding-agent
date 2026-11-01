@@ -11,7 +11,7 @@ import { sessionChildren } from "../shared/session-children.ts";
 import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
 import { noteMerge } from "./ref-link.ts";
-import { mergeAgent, pendingRefs } from "./worktree.ts";
+import { mergeAgent, pendingRefs, reservedChanges } from "./worktree.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
 export interface BackgroundRun {
@@ -115,6 +115,13 @@ export function agentsCommand(
 			);
 		}
 		try {
+			// A merge writes files like any other writer: another agent's reservation stops it unless the user, asked, overrides it.
+			const held = await reservedChanges(ctx.cwd, id, (file, shown) => team.reservation(file, shown));
+			if (held.length > 0) {
+				const listed = `${held.slice(0, 5).join("\n")}${held.length > 5 ? `\n(${held.length - 5} more)` : ""}`;
+				const confirmed = ctx.hasUI && (await ctx.ui.confirm(`Merge ${id} over reservations?`, listed));
+				if (!confirmed) return say(ctx, `Not merged: ${id} changes reserved files.\n${listed}`, "warning");
+			}
 			const result = await mergeAgent(ctx.cwd, id);
 			const noted = result.ok && result.ref ? noteMerge(ctx, result.ref, result.into ?? "HEAD") : "";
 			say(ctx, `${result.text}${noted}`, result.ok ? "info" : "error");
@@ -190,7 +197,7 @@ export function agentsCommand(
 			}
 			if (sub) return say(ctx, AGENTS_USAGE, "warning");
 			const { members, error } = team.snapshot();
-			const listing = describeMembers(members, team.id, Date.now(), asksOf(members));
+			const listing = describeMembers(members, team.id, Date.now(), asksOf(members), team.openQuestions());
 			say(ctx, error ? `${error}\n${listing}` : listing, error ? "warning" : "info");
 		},
 	};

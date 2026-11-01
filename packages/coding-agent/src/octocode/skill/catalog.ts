@@ -74,13 +74,18 @@ export function skillNameOfRead(args: unknown, cwd: string): string | undefined 
 	return typeof file === "string" && file ? active.byFile(file, cwd)?.skill.name : undefined;
 }
 
-/** Levenshtein distance, capped: skill names are short. */
-function distance(a: string, b: string): number {
+/** Edits between two names: insertions, deletions, substitutions and swaps of adjacent letters (`wbe` is one from `web`). */
+export function editDistance(a: string, b: string): number {
+	let previous: number[] = [];
 	let row = Array.from({ length: b.length + 1 }, (_, index) => index);
 	for (let i = 1; i <= a.length; i++) {
 		const next = [i];
-		for (let j = 1; j <= b.length; j++)
+		for (let j = 1; j <= b.length; j++) {
 			next[j] = Math.min(next[j - 1] + 1, row[j] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+			if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+				next[j] = Math.min(next[j], previous[j - 2] + 1);
+		}
+		previous = row;
 		row = next;
 	}
 	return row[b.length];
@@ -93,7 +98,7 @@ export function closeNames(name: string, names: readonly string[]): string[] {
 		.map((candidate) => {
 			const lower = candidate.toLowerCase();
 			const near = lower.includes(wanted) || wanted.includes(lower);
-			return { candidate, score: near ? 0 : distance(wanted, lower) };
+			return { candidate, score: near ? 0 : editDistance(wanted, lower) };
 		})
 		.filter(({ score }) => score <= Math.max(2, Math.floor(wanted.length / 3)))
 		.sort((a, b) => a.score - b.score || a.candidate.localeCompare(b.candidate))

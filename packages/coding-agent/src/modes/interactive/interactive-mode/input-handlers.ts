@@ -193,7 +193,11 @@ async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> 
 		});
 		if (result.status === "complete") {
 			host.editor.setText(result.content);
+		} else if (result.error) {
+			host.showError(`External editor failed: ${result.error}`);
 		}
+	} catch (error) {
+		host.showError(`External editor failed: ${errorMessage(error)}`);
 	} finally {
 		host.ui.start();
 		host.ui.requestRender(true);

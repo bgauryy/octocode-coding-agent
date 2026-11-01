@@ -113,7 +113,7 @@ describe("ApplicationStream event reducers", () => {
 		expect(stream.snapshot?.tools?.[0].order).toBe(5);
 	});
 
-	it("caps retained messages at 200, tools at 50 and receipts at 100, keeping the newest", () => {
+	it("caps retained messages at 200, tools at 200 and receipts at 100, keeping the newest", () => {
 		const stream = started({ ...base, messages: [] });
 		let sequence = 0;
 		for (let index = 0; index < 205; index++)
@@ -123,13 +123,13 @@ describe("ApplicationStream event reducers", () => {
 					message: { id: `m${index}`, role: "assistant", text: "", complete: false },
 				}),
 			);
-		for (let index = 0; index < 55; index++)
+		for (let index = 0; index < 205; index++)
 			stream.accept(event(++sequence, { type: "tool.started", toolCallId: `t${index}`, toolName: "read" }));
 		for (let index = 0; index < 105; index++)
 			stream.accept(event(++sequence, { type: "command.receipt", receipt: { id: `r${index}`, status: "accepted" } }));
 		expect(stream.snapshot?.messages).toHaveLength(200);
 		expect(stream.snapshot?.messages[0].id).toBe("m5");
-		expect(stream.snapshot?.tools).toHaveLength(50);
+		expect(stream.snapshot?.tools).toHaveLength(200);
 		expect(stream.snapshot?.tools?.[0].toolCallId).toBe("t5");
 		expect(stream.snapshot?.receipts).toHaveLength(100);
 		expect(stream.snapshot?.receipts[0].id).toBe("r5");

@@ -62,4 +62,30 @@ describe("RPC JSONL framing", () => {
 
 		expect(lines).toEqual(['{"a":1}']);
 	});
+
+	test("joins records split across chunks, including a character split between chunks", async () => {
+		const lines: string[] = [];
+		const bytes = Buffer.from('{"a":"é"}\n{"b":"line two"}\n{"c":3}');
+		const chunks = [...bytes].map((byte) => Buffer.from([byte]));
+		const stream = Readable.from(chunks);
+		const done = new Promise<void>((resolve) => stream.on("end", resolve));
+		attachJsonlLineReader(stream, (line) => lines.push(line));
+		await done;
+		expect(lines).toEqual(['{"a":"é"}', '{"b":"line two"}', '{"c":3}']);
+	});
+
+	test("reads a 64 MB record that arrives in 64 KB chunks in linear time", () => {
+		// A get_messages response carrying base64 images can be tens of megabytes on one line. Rescanning the whole
+		// buffer on every chunk made this quadratic: about 7 s for 64 MB on an M-series laptop, against well under 1 s.
+		const stream = new Readable({ read() {} });
+		const lengths: number[] = [];
+		attachJsonlLineReader(stream, (line) => lengths.push(line.length));
+		const chunk = Buffer.alloc(64 * 1024, 97);
+		const started = performance.now();
+		for (let i = 0; i < 1024; i++) stream.emit("data", chunk);
+		stream.emit("data", Buffer.from("\n"));
+		const elapsed = performance.now() - started;
+		expect(lengths).toEqual([64 * 1024 * 1024]);
+		expect(elapsed).toBeLessThan(3000);
+	});
 });

@@ -1,9 +1,8 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { CallToolResult, ContentBlock } from "../../client/index.ts";
-import { formatDimensionNote, resizeImage } from "../../../../coding-agent/src/utils/image-resize.ts";
+import { hostImages, hostOutput } from "../../host.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { imageBudget } from "../../../../coding-agent/src/octocode/shared/spill.ts";
 import { type ImageLimits, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 
 /** The package's capture folder inside the session's working directory: the only place a result's files are read from. */
@@ -98,9 +97,11 @@ async function previewOf(
 		const mimeType = sniffImageType(bytes);
 		if (!mimeType) return undefined;
 		if (limits) {
-			const fitted = await resizeImage(bytes, mimeType, { ...limits, maxBytes: imageBudget(limits) }).catch(() => null);
+			const fitted = await hostImages()
+				.fit(bytes, mimeType, { ...limits, maxBytes: hostOutput().imageBudget(limits) })
+				.catch(() => null);
 			if (fitted) {
-				const note = formatDimensionNote(fitted);
+				const note = fitted.note;
 				return { block: { type: "image", data: fitted.data, mimeType: fitted.mimeType }, ...(note ? { note } : {}) };
 			}
 		}

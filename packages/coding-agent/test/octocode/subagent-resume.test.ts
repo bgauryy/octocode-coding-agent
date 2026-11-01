@@ -148,6 +148,46 @@ describe("resuming a subagent of this session by id", () => {
 	}, 30_000);
 });
 
+describe("resuming a child that crashed while starting", () => {
+	it("records the foreground child, refuses another profile, and starts it again with its original task", async () => {
+		const cwd = tmp();
+		const first = setup(cwd);
+		const input = { goal: "start late", task: "startup until 3" };
+		let details: Record<string, unknown>;
+		try {
+			// A bundled child gets one retry: both starts crash while loading, and nothing is saved.
+			const error = (await first.call(input).then(
+				() => undefined,
+				(thrown: unknown) => thrown,
+			)) as { message: string; result?: { details: Record<string, unknown> } };
+			expect(error.message).toMatch(/^Subagent failed \(startup\)/);
+			details = structuredClone(error.result!.details);
+			expect(details).toMatchObject({ status: "failed", startup: { failed: true } });
+		} finally {
+			await first.control.stopAll();
+			first.team.stop();
+		}
+		const id = details.id as string;
+		const resumed = setup(cwd, recorded(input, details, true));
+		try {
+			await expect(
+				resumed.call({ goal: "start late", task: "go on", resume: id, profile: "reviewer" }),
+			).rejects.toThrow(
+				`${id} ran as general, and a resume keeps that profile. Omit profile to continue it, or start a new agent as reviewer.`,
+			);
+			const result = await resumed.call({ goal: "start late", task: "go on", resume: id });
+			expect(result.isError).toBeFalsy();
+			expect(result.details.id).toBe(id);
+			const text = result.content[0].text;
+			expect(text).toContain("RECOVERED on start 3: startup until 3");
+			expect(text).toContain("Follow-up from your parent:\ngo on");
+		} finally {
+			await resumed.control.stopAll();
+			resumed.team.stop();
+		}
+	}, 30_000);
+});
+
 describe("a fork of a session whose subagents were still running", () => {
 	it("tells the model which children stopped with the session it forked from, and how to continue them", async () => {
 		const cwd = tmp();

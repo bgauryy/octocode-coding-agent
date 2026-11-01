@@ -1,4 +1,9 @@
-import { hasTmuxSession, tmuxClientTerminalNames, tmuxPaneAllowsPassthrough, wrapTmuxPassthrough } from "@octocodeai/octocode-tui";
+import {
+	hasTmuxSession,
+	tmuxClientTerminalNames,
+	tmuxPaneAllowsPassthrough,
+	wrapTmuxPassthrough,
+} from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../../../../common/src/env.ts";
@@ -320,7 +325,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		if (event.nested) return;
 		title.promptStart();
 		paintTitle();
-		// Only the agent's dialogs: one the user opened (a `/permissions` or `/octocode` picker) needs no call back.
+		// Only the agent's dialogs: one the user opened (such as a `/permissions` picker) needs no call back.
 		if (runStartedAt === undefined) return;
 		const type: NoticeType = event.kind === "confirm" ? "permission_prompt" : "elicitation_dialog";
 		fire(

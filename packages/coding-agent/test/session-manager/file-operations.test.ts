@@ -92,7 +92,7 @@ describe("loadEntriesFromFile", () => {
 		expect(entries).toHaveLength(2);
 	});
 
-	it("adds a newline after an unterminated valid record", () => {
+	it("reads an unterminated valid record without writing the file", () => {
 		const file = join(tempDir, "unterminated.jsonl");
 		const content =
 			'{"type":"session","id":"abc","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp"}\n' +
@@ -100,7 +100,7 @@ describe("loadEntriesFromFile", () => {
 		writeFileSync(file, content);
 
 		expect(loadEntriesFromFile(file)).toHaveLength(2);
-		expect(readFileSync(file, "utf8")).toBe(`${content}\n`);
+		expect(readFileSync(file, "utf8")).toBe(content);
 	});
 
 	it("preserves an unterminated malformed final fragment for explicit recovery", () => {

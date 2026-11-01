@@ -13,8 +13,11 @@ import { join } from "node:path";
 import type { Credential } from "@octocodeai/octocode-ai";
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
+import { Value } from "typebox/value";
 import {
 	CONFIG_PROTOCOL_VERSION,
+	CONFIG_SETTING_KEYS,
+	ProviderIdSchema,
 	type ConfigSetting,
 	type ConfigSnapshot,
 	type CredentialSourceStatus,
@@ -23,7 +26,7 @@ import {
 } from "@octocodeai/octocode-contracts/config";
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
-import { getConfigValueEnvVarNames, isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/config-value.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { ProjectTrustStore } from "../../core/trust-manager.ts";
 import { repoKey } from "../shared/home/repo.ts";
@@ -38,14 +41,11 @@ export interface ConfigStatusOptions {
 	keychain?: KeychainBackend | null;
 }
 
-/** The settings the page shows, in order. Each is a string; project values replace global ones. */
-const CONFIG_SETTING_KEYS = ["defaultProvider", "defaultModel"] as const;
-
 const CREDENTIALS_ERROR = "auth.json could not be read; only environment variables are shown.";
 const SETTINGS_ERROR = "This settings file is invalid, so its values are not shown. Fix it in a terminal.";
 
 /** References made by either platform's keychain tool are ours wherever the file was written; nothing is run. */
-function referenceMatchers(extra: KeychainBackend | null | undefined): KeychainBackend[] {
+export function referenceMatchers(extra: KeychainBackend | null | undefined): KeychainBackend[] {
 	const never = async () => {
 		throw new Error("not used");
 	};
@@ -59,7 +59,7 @@ function isSet(name: string, credential: Credential | undefined, env: NodeJS.Pro
 }
 
 /** The sources one `auth.json` entry provides. Reads only the entry's shape; no value or reference text is kept. */
-function classify(
+export function classify(
 	provider: string,
 	credential: Credential,
 	matchers: readonly KeychainBackend[],
@@ -124,7 +124,9 @@ function providerRows(stored: StoredSources, env: NodeJS.ProcessEnv): ProviderCr
 	return ids.map((provider) => {
 		const sources = mergeSources(stored.byProvider.get(provider) ?? [], envSources(provider, env));
 		const name = known.get(provider);
-		return { provider, ...(name ? { name } : {}), configured: sources.length > 0, sources };
+		// The credential endpoint accepts only ids its schema accepts; the page must not offer edits it would refuse.
+		const editable = Value.Check(ProviderIdSchema, provider) ? {} : { editable: false };
+		return { provider, ...(name ? { name } : {}), configured: sources.length > 0, ...editable, sources };
 	});
 }
 

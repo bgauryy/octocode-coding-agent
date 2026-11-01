@@ -7,11 +7,13 @@ import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
 import type { ReferenceContext } from "../shared/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { AcpBackend, type AcpPermission } from "../../../../acp/src/client/client.ts";
+import { type AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../../acp/src/client/client.ts";
+import { connectAcp } from "./acp-host.ts";
 import { type InstalledAcpAgent, installedAcpAgents } from "./discover.ts";
 import { OctocodeBackend } from "./octocode.ts";
 import { expandPromptRefs } from "./refs.ts";
-import { type ExternalBackend, type ExternalInfo, type ExternalParams, parseExternalParams } from "./protocol.ts";
+import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
+import { type ExternalInfo, type ExternalParams, parseExternalParams } from "./protocol.ts";
 
 export const MAX_EXTERNAL_CONNECTIONS = 8;
 /** Model ids a connect result lists; the rest are counted in `modelsMore`. */
@@ -60,7 +62,7 @@ function offered(backend: ExternalBackend): { models?: string[]; modelsMore?: nu
 }
 
 export interface ExternalFactories {
-	acp: typeof AcpBackend.connect;
+	acp: (input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal) => Promise<AcpBackend>;
 	octocode: typeof OctocodeBackend.connect;
 	/** Installed ACP agents for `list`; PATH lookup when omitted. */
 	discover?: () => InstalledAcpAgent[];
@@ -74,7 +76,7 @@ export class ExternalAgents {
 	private readonly factories: ExternalFactories;
 	constructor(
 		policy: ExternalPolicy,
-		factories: ExternalFactories = { acp: AcpBackend.connect, octocode: OctocodeBackend.connect },
+		factories: ExternalFactories = { acp: connectAcp, octocode: OctocodeBackend.connect },
 	) {
 		this.policy = policy;
 		this.factories = factories;

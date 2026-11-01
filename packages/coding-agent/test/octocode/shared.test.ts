@@ -5,7 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import { atomicWriteFile, atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, repoKey, workspaceRoot } from "../../src/octocode/shared/home/repo.ts";
 import { statusCommand } from "../../src/octocode/status-command.ts";
-import { Subcommands, say, wordCompletions, legacyNativeCommandGuidance } from "../../src/octocode/shared/commands.ts";
+import {
+	Subcommands,
+	say,
+	wordCompletions,
+	legacyNativeCommandGuidance,
+	retiredCommandReplacement,
+} from "../../src/octocode/shared/commands.ts";
 import {
 	envFlag,
 	envInt,
@@ -26,7 +32,6 @@ import {
 	capOutput,
 	clipText,
 	contentText,
-	cutText,
 	emptyTotals,
 	entryMessage,
 	finiteNumber,
@@ -39,6 +44,7 @@ import {
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
+import { cutText } from "../../../common/src/text.ts";
 
 describe("untyped field guards", () => {
 	it("read a string, or nothing, from any value", () => {
@@ -451,19 +457,10 @@ describe("native commands", () => {
 		expect(await fake.fire("input", { text: "/octocode-example" }, ctx)).toEqual({ action: "continue" });
 		expect(fake.commands.has("octocode")).toBe(false);
 	});
-	it("lets bare /octocode execute while retaining namespaced migration guidance", async () => {
-		const commands = new Subcommands();
-		commands.add("octocode", { description: "Workspace", handler: vi.fn(async () => {}) });
-		const fake = fakeHost();
-		commands.register(fake.api);
-		const ctx = fakeCtx({ cwd: ".", hasUI: true });
-		expect(await fake.fire("input", { text: "/octocode" }, ctx)).toEqual({ action: "continue" });
-		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });
-	});
-	it("answers a retired namespaced form through the registered /octocode command, which runs before input hooks", async () => {
+	it("points the retired /octocode workspace forms at /web without running it", async () => {
 		const board = vi.fn(async (_args: string) => {});
 		const commands = new Subcommands();
-		commands.add("octocode", {
+		commands.add("web", {
 			description: "Workspace",
 			complete: (prefix) => wordCompletions(["backlogs"], prefix),
 			handler: board,
@@ -471,19 +468,25 @@ describe("native commands", () => {
 		commands.add("permissions", { description: "Permissions", handler: vi.fn(async () => {}) });
 		const fake = fakeHost();
 		commands.register(fake.api);
+		expect([...fake.commands.keys()].sort()).toEqual(["permissions", "web"]);
 		const ctx = fakeCtx({ cwd: ".", hasUI: true });
-		const octocode = fake.commands.get("octocode")!;
-		await octocode.handler("permissions manual", ctx);
-		expect(ctx.ui.notes.at(-1)?.message).toBe(
+		const guidance = async (text: string) => {
+			expect(await fake.fire("input", { text }, ctx)).toEqual({ action: "handled" });
+			return ctx.ui.notes.at(-1)?.message;
+		};
+		expect(await guidance("/octocode")).toBe("/octocode moved to /web. Run the new command to continue.");
+		expect(await guidance("/octocode backlogs")).toBe(
+			"/octocode backlogs moved to /web backlogs. Run the new command to continue.",
+		);
+		expect(await guidance("/octocode permissions manual")).toBe(
 			"/octocode permissions moved to /permissions manual. Run the new command to continue.",
 		);
-		await octocode.handler("help", ctx);
-		expect(ctx.ui.notes.at(-1)?.message).toBe("Commands now have direct names: /mcp, /octocode and /permissions.");
+		expect(await guidance("/octocode help")).toBe("Commands now have direct names: /mcp, /permissions and /web.");
 		expect(board).not.toHaveBeenCalled();
-		// The command's own arguments and the bare form still open the board.
-		await octocode.handler("backlogs", ctx);
-		await octocode.handler("", ctx);
-		expect(board.mock.calls.map(([args]) => args)).toEqual(["backlogs", ""]);
+		// `/web` itself is an ordinary registered command the input hook leaves alone.
+		expect(await fake.fire("input", { text: "/web backlogs" }, ctx)).toEqual({ action: "continue" });
+		await fake.commands.get("web")!.handler("backlogs", ctx);
+		expect(board.mock.calls.map(([args]) => args)).toEqual(["backlogs"]);
 	});
 	it("maps retired namespace inputs to precise migration guidance", () => {
 		expect(legacyNativeCommandGuidance("permissions workspace", ["permissions"])).toContain("/permissions workspace");
@@ -493,8 +496,22 @@ describe("native commands", () => {
 		expect(legacyNativeCommandGuidance("mcp restart")).toContain("/mcp reconnect octocode");
 		expect(legacyNativeCommandGuidance("external list")).toContain("/agents external list");
 	});
+	it("names the registered replacement of a retired /octocode input, as the terminal's unknown-command hint does", () => {
+		const commands = ["web", "agents", "mcp"];
+		expect(retiredCommandReplacement("/octocode", commands)).toBe("web");
+		expect(retiredCommandReplacement(" /octocode backlogs ", commands)).toBe("web backlogs");
+		expect(retiredCommandReplacement("/octocode external list", commands)).toBe("agents external list");
+		expect(retiredCommandReplacement("/octocode mcp restart", commands)).toBe("mcp reconnect octocode");
+		// Retired, but nothing registered replaces it: no command to point at.
+		expect(retiredCommandReplacement("/octocode help", commands)).toBeNull();
+		expect(retiredCommandReplacement("/octocode", ["agents"])).toBeNull();
+		expect(retiredCommandReplacement("/octocode mcp", ["web"])).toBeNull();
+		// Not a retired form.
+		expect(retiredCommandReplacement("/octocode-research", commands)).toBeUndefined();
+		expect(retiredCommandReplacement("/web", commands)).toBeUndefined();
+	});
 	it("lists the registered commands, not a fixed set, when asked for the old namespace", () => {
-		const help = legacyNativeCommandGuidance("", ["web", "agents", "status"]);
+		const help = legacyNativeCommandGuidance("help", ["web", "agents", "status"]);
 		expect(help).toBe("Commands now have direct names: /agents, /mcp, /status and /web.");
 		expect(legacyNativeCommandGuidance("help")).toBe("Commands now have direct names: /mcp.");
 	});

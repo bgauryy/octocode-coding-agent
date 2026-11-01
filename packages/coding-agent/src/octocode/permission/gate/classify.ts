@@ -1,11 +1,11 @@
 import path from "node:path";
 import type { ExtensionContext, ToolCallEvent } from "../../../core/extensions/index.ts";
 import { readableHistory } from "../../shared/history.ts";
-import { resolveToolPath, workspaceOctocodeDir } from "../../shared/home.ts";
+import { resolveToolPath } from "../../shared/home.ts";
 import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
 import { callReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
-import { runsLater } from "../file-access.ts";
+import { changesOnlyWorkspace, runsLater } from "../file-access.ts";
 import { takesCallReason } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
@@ -17,10 +17,6 @@ import { catastrophicCommand } from "../shell/destructive.ts";
 const READ_TOOLS = new Set(LEGACY_READ_TOOLS);
 /** Same-named custom file changers (Octocode ships no `edit` or `write`); Octocode's `file` tool checks itself. */
 export const CHANGE_TOOLS = new Set(LEGACY_CHANGE_TOOLS);
-/** Browser actions that act on the page; the others read the page or manage tabs. `navigate`, `tab` with a `url` and `upload` are checked by the browser tool, which knows the host and the paths. */
-const BROWSER_ACTS = new Set(["click", "hover", "drag", "type", "fill", "press", "download", "dialog"]);
-/** Browser actions that take control of a browser: the user's own Chrome, arbitrary script in the page. Each is a `browser.control` ask. */
-const BROWSER_CONTROL = new Set(["evaluate", "attach"]);
 
 /** Whether `command` is a shell command a destructive pattern matches, relative targets resolved against `cwd`: a `shell.destructive` call, ask each time. */
 const destructive = (command: string, cwd: string): boolean => catastrophicCommand(command, cwd) !== undefined;
@@ -71,21 +67,15 @@ function classOf(
 	cwd: string,
 	forceDestructive: boolean,
 ): PermissionRequest | undefined {
-	if (tool === "graphBuild")
-		return {
-			action: "file.workspace",
-			title: "Build a workspace graph snapshot?",
-			what: [args(input), `Storage: ${path.join(workspaceOctocodeDir(cwd), "graph")}`],
-			grant: { key: "graphBuild", label: "derived graph snapshots in this workspace" },
-		};
 	const inRepo = (raw: string) => {
 		const file = canonicalPath(resolveToolPath(cwd, raw));
 		const root = workspaceRoot(cwd);
 		return { file, root, inside: root !== undefined && isWithin(file, root) };
 	};
-	// Inspection can execute adapter getters; all debugger operations share process authorization.
+	// Inspection can execute adapter getters; all debugger operations share process authorization. Termination stops an
+	// existing session, and a launch without an adapter only returns the adapter recipes (`debug/tool.ts`).
 	if (tool === "debug")
-		return input.action === "terminate"
+		return input.action === "terminate" || (input.action === "launch" && !input.adapter)
 			? undefined
 			: { action: "shell", title: "Run this debugger operation?", what: [args(input), `cwd: ${cwd}`] };
 	// A local model task runs the FreeLlama CLI and spends local compute; `models` and `route` only read its state.
@@ -117,8 +107,9 @@ function classOf(
 		};
 	}
 	if (CHANGE_TOOLS.has(tool) && optionalString(input.path)) {
-		const { file, root, inside } = inRepo(optionalString(input.path)!);
-		if (inside && runsLater(file, root!)) {
+		const { file, root } = inRepo(optionalString(input.path)!);
+		const inside = root !== undefined && changesOnlyWorkspace(file, root);
+		if (inside && runsLater(file, root)) {
 			return {
 				action: "file.outside",
 				title: "Change a file that runs in later sessions?",
@@ -160,23 +151,6 @@ function classOf(
 			title: "Search the web?",
 			what: [optionalString(input.query) ?? ""],
 			grant: { key: "search", label: "web searches" },
-		};
-	}
-	if (tool === "browser") {
-		const action = optionalString(input.action) ?? "";
-		if (BROWSER_CONTROL.has(action))
-			return {
-				action: "browser.control",
-				title: action === "attach" ? "Attach to a browser?" : "Run script in the page?",
-				what: [`${action} ${args(input)}`],
-			};
-		if (!BROWSER_ACTS.has(action)) return undefined;
-		// A page action is granted per kind: the gate cannot see the page's host.
-		return {
-			action: "browser",
-			title: "Act on the page?",
-			what: [`${action} ${args(input)}`],
-			grant: { key: `page ${action}`, label: `browser ${action} on any page` },
 		};
 	}
 	if (isMcpToolName(tool)) {

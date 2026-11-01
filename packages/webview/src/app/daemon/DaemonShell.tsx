@@ -199,7 +199,12 @@ export function DaemonShell({ access }: { access: string }) {
 						)}
 					</List>
 				) : (
-					<ConfigView load={api.config} />
+					<ConfigView
+						load={api.config}
+						save={api.saveSetting}
+						saveCredential={api.saveCredential}
+						repos={repos.status === "ready" ? repos.value.repos : undefined}
+					/>
 				)}
 				<p className="muted daemon-note">
 					<Button size="sm" onClick={() => location.reload()}>

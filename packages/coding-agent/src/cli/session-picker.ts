@@ -8,7 +8,7 @@ import type { SessionInfo, SessionListProgress } from "../core/session-manager.t
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { SessionSelectorComponent } from "../modes/interactive/components/session-selector.ts";
 import { createStartupTui, showStartupSelector, startStartupTui } from "./startup-ui.ts";
-import { sessionFileRunningPid } from "../octocode/agentdb/liveness.ts";
+import { sessionFileRunningPid } from "../octocode/agentdb/api.ts";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
 

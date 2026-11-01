@@ -99,7 +99,7 @@ describe("application delivery ordering", () => {
 		f.emit({ type: "agent_start" });
 		expect(observed).not.toHaveBeenCalled();
 		expect((await iterator.next()).done).toBe(true);
-		expect((f.service as unknown as { replay: unknown[] }).replay).toEqual([]);
+		expect((f.service as unknown as { replay: { frames: unknown[] } }).replay.frames).toEqual([]);
 		expect(() => f.service.getSnapshot()).toThrow("closed");
 	});
 	it("queues command acceptance without exposing its receipt in an earlier notification", async () => {

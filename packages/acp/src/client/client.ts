@@ -11,14 +11,14 @@ import {
 	type RequestPermissionResponse,
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
-import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../../../coding-agent/src/octocode/shared/process.ts";
-import { untilAborted } from "../../../coding-agent/src/octocode/shared/util.ts";
-import type { ExternalBackend, ExternalReply } from "../../../coding-agent/src/octocode/external/protocol.ts";
+import type { AcpClientHost } from "../host.ts";
+import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
 import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
+import { untilAborted } from "../../../common/src/abort.ts";
 
-interface AcpConnectInput {
+export interface AcpConnectInput {
 	command: string;
 	args?: string[];
 	vendor: string;
@@ -74,18 +74,22 @@ export class AcpBackend implements ExternalBackend {
 	private active?: Turn;
 	private closing?: Promise<void>;
 	private cancelling?: Promise<void>;
-	private readonly stderr = new AcpDiagnostics();
+	private readonly stderr: AcpDiagnostics;
+	private readonly host: AcpClientHost;
 	private readonly child: ChildProcessWithoutNullStreams;
 	readonly cwd: string;
 	private currentSessionId: string;
 	private currentModels?: AcpModels;
 	private readonly permission: AcpPermission;
 	private constructor(
+		host: AcpClientHost,
 		child: ChildProcessWithoutNullStreams,
 		cwd: string,
 		currentSessionId: string,
 		permission: AcpPermission,
 	) {
+		this.host = host;
+		this.stderr = new AcpDiagnostics(host.saveOutput);
 		this.child = child;
 		this.cwd = cwd;
 		this.currentSessionId = currentSessionId;
@@ -125,14 +129,19 @@ export class AcpBackend implements ExternalBackend {
 		return this.active !== undefined && !this.isClosed;
 	}
 
-	static async connect(input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal): Promise<AcpBackend> {
+	static async connect(
+		host: AcpClientHost,
+		input: AcpConnectInput,
+		permission: AcpPermission,
+		signal?: AbortSignal,
+	): Promise<AcpBackend> {
 		const startup = AbortSignal.any([timeoutSignal(input.timeoutMs ?? 60_000), ...(signal ? [signal] : [])]);
 		startup.throwIfAborted();
 		const cwd = realpathSync(input.cwd);
 		if (!statSync(cwd).isDirectory()) throw new Error("ACP cwd must be a directory.");
 		if (!input.command.trim() || !input.vendor.trim())
 			throw new Error("ACP requires an executable and the real host vendor.");
-		await untilAborted(prepareTree(), startup);
+		await untilAborted(host.processTree.prepare(), startup);
 		startup.throwIfAborted();
 		const child = spawn(input.command, input.args ?? [], {
 			cwd,
@@ -140,8 +149,8 @@ export class AcpBackend implements ExternalBackend {
 			detached: process.platform !== "win32",
 			windowsHide: true,
 		});
-		adoptTree(child.pid);
-		const backend = new AcpBackend(child, cwd, input.sessionId ?? "", permission);
+		host.processTree.adopt(child.pid);
+		const backend = new AcpBackend(host, child, cwd, input.sessionId ?? "", permission);
 		let phase = "initialize";
 		try {
 			const stream = ndJsonStream(
@@ -231,7 +240,7 @@ export class AcpBackend implements ExternalBackend {
 		const deadline = timeoutSignal(options.timeoutMs);
 		const signal = AbortSignal.any([requestSignal, deadline]);
 		if (signal.aborted) throw new AcpRefusal("ACP prompt aborted before it was sent.");
-		const turn: Turn = { controller, signal, output: new AcpOutput() };
+		const turn: Turn = { controller, signal, output: new AcpOutput(this.host.saveOutput) };
 		this.active = turn;
 		// A timed-out request can still emit session-scoped updates. Keep its slot until the peer
 		// settles it so a new turn cannot receive those updates. Cancellation still closes the process.
@@ -316,7 +325,7 @@ export class AcpBackend implements ExternalBackend {
 				if (this.connection && !this.connection.signal.aborted) {
 					await untilAborted(
 						this.connection.agent.notify(methods.agent.session.cancel, { sessionId: this.sessionId }),
-						timeoutSignal(KILL_GRACE_MS),
+						timeoutSignal(this.host.processTree.graceMs),
 					);
 				}
 			} catch {
@@ -336,7 +345,7 @@ export class AcpBackend implements ExternalBackend {
 		this.lifetime.abort(reason);
 		this.closing = Promise.resolve().then(async () => {
 			this.connection?.close(reason);
-			await stopTree(this.child.pid);
+			await this.host.processTree.stop(this.child.pid);
 			this.child.stdin.destroy();
 			this.child.stdout.destroy();
 			this.child.stderr.destroy();

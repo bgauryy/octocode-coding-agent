@@ -23,6 +23,10 @@ interface ChangeQuery {
 // Model-supplied paths, reason and file text reach Octocode's dialogs: strip terminal escapes first.
 const clipLine = (line: string, max = 110) => clipText(sanitizeTerminalText(line), max);
 
+/** A change's target on one line: a path may hold a line break, which must not add dialog lines. */
+const target = (query: ChangeQuery): string =>
+	`${query.type} ${foldLines(query.path)}${query.movePath ? ` → ${foldLines(query.movePath)}` : ""}`;
+
 /** What the agent says a change is for, as the dialogs label it. */
 const agentSays = (reason: string): string => `agent says (unverified): ${clipLine(foldLines(reason), 160)}`;
 
@@ -36,7 +40,7 @@ function snippet(text: string, sign: "-" | "+", maxLines = 3): string[] {
 
 /** What a change does, for the review dialog: what, a bounded preview of the text involved, then what the agent says about it (unverified, last). */
 export function describeChange(query: ChangeQuery): string[] {
-	const head = `${query.type} ${sanitizeTerminalText(query.path)}${query.movePath ? ` → ${sanitizeTerminalText(query.movePath)}` : ""}`;
+	const head = target(query);
 	const says = `  ${agentSays(query.reason)}`;
 	if (query.type === "delete") return [head, "  removes the file", says];
 	if (query.type === "write") return [head, ...snippet(query.content ?? "", "+", 5).map((line) => `  ${line}`), says];
@@ -86,9 +90,7 @@ export async function askReview(
 		permission: { ...identity, action: "file.workspace", targets, allowOnce, rejectOnce },
 	});
 	// What changes first, then the system's reason lines (the same card every prompt leads with), then what the agent says.
-	const list = queries
-		.map((query, index) => sanitizeTerminalText(`${index + 1}. ${query.type} ${query.path}`))
-		.join("\n");
+	const list = queries.map((query, index) => `${index + 1}. ${target(query)}`).join("\n");
 	const says = queries.map((query, index) => `  ${index + 1}. ${agentSays(query.reason)}`).join("\n");
 	const choice = await ctx.ui.select(
 		`Apply ${plural(queries.length, "file change")}?\n${[list, ...reasonLines, says].join("\n")}`,

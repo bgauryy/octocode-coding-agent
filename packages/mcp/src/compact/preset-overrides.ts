@@ -18,9 +18,15 @@ interface PresetToolOverrides {
 export interface PresetOverrides {
 	/** The server text, for the instructions with this {@link instructionsHash}. */
 	server?: { instructionsHash: string; text: string };
-	tools?: Record<string, PresetToolOverrides>;
+	/**
+	 * Per tool, the entry for the tool's hash; a list holds one entry per variant of the tool a server sends (the
+	 * Octocode server drops the `classification` field of its read and search tools without a classification key).
+	 */
+	tools?: Record<string, PresetToolOverrides | PresetToolOverrides[]>;
 }
 
+const entriesOf = (entry: PresetToolOverrides | PresetToolOverrides[] | undefined): PresetToolOverrides[] =>
+	entry === undefined ? [] : Array.isArray(entry) ? entry : [entry];
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
 	isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
@@ -49,10 +55,11 @@ export function parsePresetOverrides(value: unknown): { overrides: PresetOverrid
 		return { error: '"server" needs "instructionsHash" and "text" strings' };
 	if (tools !== undefined) {
 		if (!isRecord(tools)) return { error: '"tools" must map tool names to entries' };
-		for (const [name, entry] of Object.entries(tools)) {
-			const error = toolError(name, entry);
-			if (error) return { error };
-		}
+		for (const [name, entry] of Object.entries(tools))
+			for (const variant of Array.isArray(entry) ? entry : [entry]) {
+				const error = toolError(name, variant);
+				if (error) return { error };
+			}
 	}
 	return { overrides: value };
 }
@@ -66,8 +73,9 @@ export function presetOverridesFor(
 	const triggers: Record<string, string> = {};
 	const fields: Record<string, Record<string, string>> = {};
 	for (const tool of input.tools) {
-		const entry = preset.tools?.[tool.name];
-		if (!entry || entry.hash !== toolHash(tool)) continue;
+		const hash = toolHash(tool);
+		const entry = entriesOf(preset.tools?.[tool.name]).find((variant) => variant.hash === hash);
+		if (!entry) continue;
 		if (entry.description !== undefined) tools[tool.name] = entry.description;
 		if (entry.trigger !== undefined) triggers[tool.name] = entry.trigger;
 		if (entry.fields && Object.keys(entry.fields).length) fields[tool.name] = entry.fields;

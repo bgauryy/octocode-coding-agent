@@ -664,6 +664,17 @@ describe("AgentSessionRuntime characterization", () => {
 		expect(header.cwd).toBe(otherDir);
 	});
 
+	it("resolves a relative new-session folder against the session's folder, not the process directory", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		mkdirSync(join(tempDir, "worktree"));
+		expect(realpathSync(process.cwd())).not.toBe(realpathSync(tempDir));
+		await runtime.newSession({ cwd: "worktree" });
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(join(tempDir, "worktree")));
+		// From there, `..` is the folder the session just left.
+		await runtime.newSession({ cwd: ".." });
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(tempDir));
+	});
+
 	it("refuses a new-session folder that does not exist and changes nothing", async () => {
 		const { runtime, tempDir } = await createRuntimeForTest(() => {});
 		const before = runtime.session.sessionFile;

@@ -11,10 +11,11 @@ import {
 	collectBugReportMetadata,
 	writeBugReportArchive,
 } from "../../core/bug-report.ts";
-import { uploadBugReport } from "../../core/bug-report-upload.ts";
+import { bugReportUploadTarget, uploadBugReport } from "../../core/bug-report-upload.ts";
 import { clearCrashLog, readCrashLog } from "../../core/crash-log.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { serializeSessionBranch } from "../../core/session-export.ts";
+import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
@@ -52,7 +53,7 @@ export async function reportBug(context: BugReportContext, initialHint?: string)
 		context.showStatus("Bug report cancelled");
 		return;
 	}
-	if (options.delivery === "upload" && process.env.OCTOCODE_OFFLINE) {
+	if (options.delivery === "upload" && isOfflineModeEnabled()) {
 		context.showError("Uploading bug reports requires online mode. Use Export as Zip instead.");
 		return;
 	}
@@ -130,11 +131,17 @@ async function promptForOptions(
 		includeSummary = summary !== "No";
 	}
 	const description = hint.trim();
+	// A malformed upload URL only costs the upload choice; local export stays available.
+	const target = bugReportUploadTarget();
+	const uploadTo = target && "url" in target ? target.url.host : undefined;
+	const deliveryNote = uploadTo
+		? `Upload sends the report to ${uploadTo}. Export writes a zip archive to the current directory instead.`
+		: `${target && "error" in target ? `${target.error} ` : ""}Export writes a zip archive to the current directory.`;
 	const delivery = await choose(
 		context,
 		"Bug report",
-		process.env.OCTOCODE_BUG_REPORT_URL ? ["Upload Report", "Export as Zip", "Cancel"] : ["Export as Zip", "Cancel"],
-		`Description: ${description || "none"}\nTranscript: ${includeSession ? "included" : "not included"}\nSummary: ${includeSummary ? `written by ${context.session.model?.name ?? "the current model"}` : "none"}\n\nUpload sends the report to ${process.env.OCTOCODE_BUG_REPORT_URL ? new URL(process.env.OCTOCODE_BUG_REPORT_URL).host : "your configured report service"}. Export writes a zip archive to the current directory instead.`,
+		uploadTo ? ["Upload Report", "Export as Zip", "Cancel"] : ["Export as Zip", "Cancel"],
+		`Description: ${description || "none"}\nTranscript: ${includeSession ? "included" : "not included"}\nSummary: ${includeSummary ? `written by ${context.session.model?.name ?? "the current model"}` : "none"}\n\n${deliveryNote}`,
 	);
 	if (!delivery || delivery === "Cancel") return undefined;
 	return {

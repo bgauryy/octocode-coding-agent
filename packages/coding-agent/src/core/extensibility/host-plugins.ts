@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { parseConfigDocument } from "../../utils/config-document.ts";
 import { isDirectory, isFile } from "../../utils/fs-probe.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 
 /** A plugin another host installed: `/plugins` lists it, and switching it on adds it to Octocode's `plugins`. */
@@ -42,7 +42,7 @@ function claudePlugins(home: string, env: NodeJS.ProcessEnv): HostPlugin[] {
 		: path.join(config, "plugins");
 	const installed = readJson(path.join(root, "installed_plugins.json"));
 	const settings = readJson(path.join(config, "settings.json"));
-	const enabled = isRecord(settings) && isRecord(settings.enabledPlugins) ? settings.enabledPlugins : {};
+	const enabled = asRecord(asRecord(settings).enabledPlugins);
 	if (!isRecord(installed) || !isRecord(installed.plugins)) return [];
 	return Object.entries(installed.plugins).flatMap(([id, installs]) =>
 		(Array.isArray(installs) ? installs : [])
@@ -73,7 +73,7 @@ function codexPlugins(home: string, env: NodeJS.ProcessEnv): HostPlugin[] {
 	} catch {
 		return [];
 	}
-	const plugins = isRecord(config) && isRecord(config.plugins) ? config.plugins : {};
+	const plugins = asRecord(asRecord(config).plugins);
 	return Object.entries(plugins).flatMap(([id, entry]) => {
 		const [name, marketplace] = id.split("@");
 		if (!name || !marketplace) return [];

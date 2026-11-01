@@ -47,6 +47,27 @@ describe("shared git helper", () => {
 		expect(error.stdout.length).toBeLessThanOrEqual(3);
 	});
 
+	it("redacts a password in a URL from git's stderr", async () => {
+		// git strips credentials from `unable to access`, but a failed submodule clone repeats the URL as given.
+		const url = "https://user:s3cr3tTOKEN@127.0.0.1:1/x.git";
+		const error = (await git(repo(), ["submodule", "add", url, "sub"]).catch((reason: unknown) => reason)) as GitError;
+		expect(error).toBeInstanceOf(GitError);
+		expect(error.message).toContain("submodule path");
+		expect(error.message).not.toContain("s3cr3tTOKEN");
+	});
+
+	it("redacts a password in a URL from the spawn error when git wrote no stderr", async () => {
+		// A timed-out git writes nothing; Node's message then repeats the command line.
+		const error = (await git(
+			repo(),
+			["-c", "alias.wait=!sleep 1; true", "wait", "https://user:s3cr3tTOKEN@127.0.0.1:1/x.git"],
+			{ timeoutMs: 100 },
+		).catch((reason: unknown) => reason)) as GitError;
+		expect(error.timedOut).toBe(true);
+		expect(error.message).toContain("Command failed");
+		expect(error.message).not.toContain("s3cr3tTOKEN");
+	});
+
 	it("passes extra environment and stops on an aborted signal", async () => {
 		const dir = repo();
 		expect(

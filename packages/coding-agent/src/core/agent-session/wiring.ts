@@ -173,7 +173,7 @@ export function createSessionCollaborators(
 		runLoop,
 		bindings,
 		runtime,
-		prompting: { ...base, inputs, compaction, runLoop },
+		prompting: { ...base, inputs, compaction, runLoop, limitsModel: () => models.limitsModel() },
 		hooks: {
 			...base,
 			inputs,

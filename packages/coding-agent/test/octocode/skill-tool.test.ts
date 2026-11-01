@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { octocodeToolDefinition } from "../../../mcp/test/mcp-preset-tool-fixture.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,7 +9,7 @@ import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snap
 import { formatSkillsForPrompt, loadSkillsFromDir } from "../../src/core/skills.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
-import { SkillCatalog, closeNames, setActiveSkillCatalog } from "../../src/octocode/skill/catalog.ts";
+import { SkillCatalog, closeNames, editDistance, setActiveSkillCatalog } from "../../src/octocode/skill/catalog.ts";
 import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
 import { createHarness, getToolResult, type Harness } from "../suite/harness.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
@@ -322,6 +323,11 @@ describe("close names", () => {
 		expect(closeNames("roas", names)).toEqual(["octocode-roast"]);
 		expect(closeNames("r", names)).toHaveLength(5);
 		expect(closeNames("qqqqqq", names)).toEqual([]);
+		// Swapped adjacent letters count as one edit.
+		expect(closeNames("octocode-raost", names)).toEqual(["octocode-roast"]);
+		expect(editDistance("wbe", "web")).toBe(1);
+		expect(editDistance("web", "new")).toBe(2);
+		expect(editDistance("exit", "quit")).toBe(2);
 	});
 });
 
@@ -341,7 +347,9 @@ describe("skill policy", () => {
 			`Use the skill tool with a skill's name to load it ${trigger}.`,
 		);
 		const { tool } = setup(fixtures().snapshot);
-		expect(tool.promptSnippet).toBe("Load a listed skill's instructions by name");
+		// The tool list points to the skills section instead of restating its trigger.
+		expect(tool.promptSnippet).toContain("<available_skills>");
+		expect(tool.promptSnippet).not.toContain(trigger);
 		expect(tool.description).not.toContain(trigger);
 		expect(tool.description).not.toContain("matches the description");
 	});

@@ -5,6 +5,7 @@ import type { SessionNotification } from "@agentclientprotocol/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpDiagnostics, AcpOutput } from "../../src/client/output.ts";
 import { ACP_TEXT_BYTES, AcpTextRedactor } from "../../src/client/redaction.ts";
+import { acpClientHost } from "../../../coding-agent/src/octocode/external/acp-host.ts";
 import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
 
 const secret = `sk-${"a".repeat(30)}`;
@@ -84,7 +85,7 @@ describe("ACP logical stream redaction", () => {
 		(complete) => {
 			expect(secretProblem(pemHeader)).toContain("private key");
 			expect(redactSecrets(pem)).toBe("[redacted]");
-			const output = new AcpOutput();
+			const output = new AcpOutput(acpClientHost.saveOutput);
 			output.append(tool());
 			output.append(chunk(pemHeader.slice(0, 12)));
 			output.append(chunk(`${pemHeader.slice(12)}\n${pemBody}\n`));
@@ -104,7 +105,7 @@ describe("ACP logical stream redaction", () => {
 	);
 
 	it("redacts PEM bodies across retained small-reply fragments", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk(`${pemHeader}\n`, "answer", "header"));
 		output.append(chunk(`${pemBody}\n`, "answer", "body"));
 		output.append(chunk(pemFooter, "answer", "footer"));
@@ -114,7 +115,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("drops oversized PEM bodies through a matching split footer while ignoring a nonmatching footer", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk(`${pemHeader}\n`));
 		output.append(chunk(`${pemBody}\n`.repeat(2000)));
 		output.append(chunk(`-----END EC PRIVATE KEY-----\n${pemBody}\n`));
@@ -130,7 +131,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("never persists unfinished stderr, even when snapshots are requested between chunks", () => {
-		const diagnostics = new AcpDiagnostics();
+		const diagnostics = new AcpDiagnostics(acpClientHost.saveOutput);
 		diagnostics.append(`${"x".repeat(ACP_TEXT_BYTES + 1)}\n`);
 		const file = fileIn(home, ".txt");
 		diagnostics.append("sk-");
@@ -148,7 +149,7 @@ describe("ACP logical stream redaction", () => {
 	it.each(
 		["before", "after"].flatMap((timing) => ["sk-", "Bearer\n", "password\n=\n"].map((prefix) => ({ timing, prefix }))),
 	)("redacts $prefix deltas starting $timing spill while preserving source metadata", ({ timing, prefix }) => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		if (timing === "after") output.append(tool());
 		output.append(chunk(prefix, "answer", "first"));
 		if (timing === "before") output.append(tool());
@@ -177,14 +178,14 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("redacts text formed by joining separate message previews before taking the bounded tail", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk("sk-", "one"));
 		output.append(chunk("a".repeat(30), "two"));
 		expect(output.reply({ stopReason: "end_turn" }).text).toBe("[redacted]");
 	});
 
 	it("redacts complete structured values and secret-looking metadata keys before JSON serialization", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(tool());
 		output.append({
 			sessionId: "session",
@@ -209,7 +210,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("redacts small replies across metadata changes and interleaved message identities", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk("sk-", "private", "first"));
 		output.append(chunk("unrelated answer\n", "other"));
 		output.append(chunk("a".repeat(30), "private", "last"));
@@ -239,7 +240,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("marks oversized secret units incomplete and preserves the answer after the next safe boundary", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk("sk-"));
 		output.append(chunk("a".repeat(ACP_TEXT_BYTES * 2)));
 		output.append(chunk("\nfinal answer"));
@@ -256,7 +257,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("caps independent stream identities with explicit omitted-byte metadata", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(tool());
 		for (let index = 0; index < 9; index++) output.append(chunk(secret, `message-${index}`));
 		const reply = output.reply({ stopReason: "end_turn" });
@@ -270,7 +271,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("reuses completed stream slots so later messages retain their final answer", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(tool());
 		for (let index = 0; index < 12; index++) output.append(chunk(`${secret}\n`, `message-${index}`));
 		output.append(chunk("final answer", "final"));
@@ -281,7 +282,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("bounds huge identity keys without retaining their text stream", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(tool());
 		output.append(chunk(secret, "m".repeat(2000)));
 		const reply = output.reply({ stopReason: "end_turn" });
@@ -290,7 +291,7 @@ describe("ACP logical stream redaction", () => {
 	});
 
 	it("seals partial captures, marks them incomplete, and never appends a late credential suffix", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(tool());
 		output.append(chunk("sk-"));
 		const reply = output.reply();

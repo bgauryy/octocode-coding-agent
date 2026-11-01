@@ -15,6 +15,7 @@ import { formatDuration } from "../../../octocode/shared/format.ts";
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
+import { styledLine } from "./styled-line.ts";
 
 /** Longer details are thoughts or targets, not a verb: they stay plain. */
 const SHIMMER_MAX_CHARS = 120;
@@ -111,7 +112,8 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	 * detail, never the time; the interrupt hint goes first when even that does not fit.
 	 */
 	private compose(width: number, paint: (detail: string) => string, withHint: boolean): string {
-		const detail = this.workingMessage.replace(/[\r\n]+/g, " ");
+		// Model thinking and tool targets reach this line, so only colours survive.
+		const detail = styledLine(this.workingMessage);
 		const prefix = ` ${this.getRenderedIndicator()} `;
 		const key = withHint ? interruptKey() : "";
 		const paintedSuffix = (hint: boolean) =>

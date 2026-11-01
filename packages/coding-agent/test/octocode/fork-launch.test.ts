@@ -61,6 +61,24 @@ describe("/fork pane and /fork window", () => {
 		expect(messages).toEqual(["status:Opened fork in tmux pane %9"]);
 	});
 
+	it("reads the injected environment for the gate, the forwarded variables and the launch", async () => {
+		delete process.env.TMUX;
+		delete process.env.OCTOCODE_HOME;
+		const env = { TMUX: "/tmp/x,1,0", TMUX_PANE: "%5", OCTOCODE_HOME: "/injected/home" };
+		const launch = vi.spyOn(tmux, "launchInTmux").mockResolvedValue({ placement: "window", id: "@2" });
+		await handleForkLaunchCommand(host(sessionFile), "window", env);
+		expect(launch.mock.calls[0]?.[0].env).toEqual({ OCTOCODE_HOME: "/injected/home" });
+		expect(launch.mock.calls[0]?.[1]).toEqual({ env });
+		expect(messages).toEqual(["status:Opened fork in tmux window @2"]);
+
+		messages.length = 0;
+		process.env.TMUX = "/tmp/x,1,0";
+		launch.mockClear();
+		await handleForkLaunchCommand(host(sessionFile), "window", {});
+		expect(launch).not.toHaveBeenCalled();
+		expect(messages).toEqual(["error:/fork pane and /fork window need Octocode to run inside tmux."]);
+	});
+
 	it("explains itself outside tmux without launching", async () => {
 		delete process.env.TMUX;
 		const launch = vi.spyOn(tmux, "launchInTmux");

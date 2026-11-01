@@ -2,7 +2,7 @@
 
 `/remote` lets another device reach this machine's Octocode: every session the user-level web daemon knows, with the
 ones blocked on an approval or a question first, their live view, the task board and saved reports. An approval or a
-question a run is blocked on can be answered from the remote page (see [native features](native-features.md#backlog-view)).
+question a run is blocked on can be answered from the remote page (see [native features](web-workspace.md#backlog-view)).
 
 Remote access is built on the [user-level web daemon](../../../CONFIGURATIONS.md): sessions started with
 `OCTOCODE_WEB_DAEMON=1` attach to it, and `/remote` publishes that daemon. Without the flag `/remote` says so and
@@ -118,11 +118,7 @@ relay counts as use, a published link nobody has joined does not, so unused link
 
 ## Settings
 
-| Setting            | Values                             | Meaning                                                                                                                                                    |
-| ------------------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `remote.transport` | `ssh` (default), `relay`           | How a published link reaches the daemon.                                                                                                                   |
-| `remote.relayUrl`  | `ws://…` or `wss://…`              | The relay the daemon dials for `relay` links.                                                                                                              |
-| `remote.autoStart` | `off` (default), `view`, `control` | Publish a link of that access when a session starts and print it. A project settings file can set `off` but can never turn it on; the global value stands. |
+`remote.transport` (`ssh` or `relay`), `remote.relayUrl` and `remote.autoStart` (`off`, `view` or `control`) are described with their defaults in the generated [settings reference](settings.md#schema-and-legacy-settings).
 
 ## Daemon routes
 

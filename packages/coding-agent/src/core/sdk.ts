@@ -21,7 +21,13 @@ import { createConvertToLlmWithBlockImages } from "./sdk/block-images.ts";
 import { createProviderHooks } from "./sdk/provider-hooks.ts";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/types.ts";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
-import { applyToolModifiers, getToolListError, isToolModifier, SettingsManager } from "./settings-manager.ts";
+import {
+	applyToolModifiers,
+	currentToolName,
+	getToolListError,
+	isToolModifier,
+	SettingsManager,
+} from "./settings-manager.ts";
 import { time } from "./timings.ts";
 import { getBranchSelection, isVirtualModel } from "./virtual-models.ts";
 
@@ -157,20 +163,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = clampThinkingLevel(model, thinkingLevel);
 	}
 
-	const toolListError = options.tools ? getToolListError(options.tools) : undefined;
+	// A renamed tool's old name (`task`) selects the current one for one release.
+	const tools = options.tools?.map(currentToolName);
+	const toolListError = tools ? getToolListError(tools) : undefined;
 	if (toolListError) throw new Error(`Invalid tools option: ${toolListError}`);
 	const builtinDefaults = getDefaultToolNames(resourceLoader.getExtensions().extensions);
 	const defaultToolNames = options.noTools ? [] : (settingsManager.getDefaultTools(builtinDefaults) ?? builtinDefaults);
 	// A `tools` list of only `+name`/`-name` entries changes the default selection instead of
 	// replacing it, like the `defaultTools` setting.
-	const toolModifiers = options.tools?.some(isToolModifier) ? options.tools : undefined;
-	const selectedToolNames = toolModifiers ? applyToolModifiers(defaultToolNames, toolModifiers) : options.tools;
+	const toolModifiers = tools?.some(isToolModifier) ? tools : undefined;
+	const selectedToolNames = toolModifiers ? applyToolModifiers(defaultToolNames, toolModifiers) : tools;
 	const allowedToolNames = toolModifiers
 		? options.noTools === "all"
 			? selectedToolNames
 			: undefined
-		: (options.tools ?? (options.noTools === "all" ? [] : undefined));
-	const excludedToolNames = options.excludeTools;
+		: (tools ?? (options.noTools === "all" ? [] : undefined));
+	const excludedToolNames = options.excludeTools?.map(currentToolName);
 	const isExcludedTool = excludedToolNames ? createToolNameMatcher(excludedToolNames) : undefined;
 	const initialActiveToolNames = (selectedToolNames ?? defaultToolNames).filter((name) => !isExcludedTool?.(name));
 

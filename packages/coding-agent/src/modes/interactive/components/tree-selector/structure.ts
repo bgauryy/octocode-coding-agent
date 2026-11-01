@@ -1,4 +1,5 @@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
+import { ancestors } from "../../../../core/session-manager/ancestors.ts";
 import type { FlatNode, GutterInfo, ToolCallInfo } from "./types.ts";
 
 /** Visible tree maps recomputed after filtering, used for ancestor/descendant navigation. */
@@ -28,14 +29,11 @@ export function findNearestVisibleIndex(
 	// Build a map of visible entry IDs to their indices in filteredNodes
 	const visibleIdToIndex = new Map<string, number>(filteredNodes.map((node, i) => [node.node.entry.id, i]));
 
-	// Walk from entryId up to root, looking for a visible entry
-	let currentId = entryId;
-	while (currentId !== null) {
-		const index = visibleIdToIndex.get(currentId);
+	// Walk from entryId up to root, looking for a visible entry (a parent loop ends the walk)
+	const lookup = (id: string) => entryMap.get(id)?.node.entry;
+	for (const entry of ancestors(entryId === null ? undefined : lookup(entryId), lookup)) {
+		const index = visibleIdToIndex.get(entry.id);
 		if (index !== undefined) return index;
-		const node = entryMap.get(currentId);
-		if (!node) break;
-		currentId = node.node.entry.parentId ?? null;
 	}
 
 	// Fallback: last visible entry
@@ -53,13 +51,10 @@ export function buildActivePath(flatNodes: FlatNode[], currentLeafId: string | n
 		entryMap.set(flatNode.node.entry.id, flatNode);
 	}
 
-	// Walk from leaf to root
-	let currentId: string | null = currentLeafId;
-	while (currentId) {
-		activePathIds.add(currentId);
-		const node = entryMap.get(currentId);
-		if (!node) break;
-		currentId = node.node.entry.parentId ?? null;
+	// Walk from leaf to root; a self-parented or looping entry ends the walk
+	activePathIds.add(currentLeafId);
+	for (const entry of ancestors(entryMap.get(currentLeafId)?.node.entry, (id) => entryMap.get(id)?.node.entry)) {
+		activePathIds.add(entry.id);
 	}
 }
 
@@ -220,12 +215,9 @@ export function recalculateVisualStructure(
 
 	// Find nearest visible ancestor for a node
 	const findVisibleAncestor = (nodeId: string): string | null => {
-		let currentId = entryMap.get(nodeId)?.node.entry.parentId ?? null;
-		while (currentId !== null) {
-			if (visibleIds.has(currentId)) {
-				return currentId;
-			}
-			currentId = entryMap.get(currentId)?.node.entry.parentId ?? null;
+		const lookup = (id: string) => entryMap.get(id)?.node.entry;
+		for (const entry of ancestors(lookup(nodeId), lookup)) {
+			if (entry.id !== nodeId && visibleIds.has(entry.id)) return entry.id;
 		}
 		return null;
 	};

@@ -1,5 +1,3 @@
-import { EventEmitter } from "node:events";
-
 export interface EventBus {
 	emit(channel: string, data: unknown): void;
 	on(channel: string, handler: (data: unknown) => void): () => void;
@@ -9,11 +7,17 @@ export interface EventBusController extends EventBus {
 	clear(): void;
 }
 
+/**
+ * A channel-keyed event bus with no Node dependency, so the package stays browser-safe. Handlers run in subscription
+ * order; a handler added or removed during an emit takes effect from the next emit.
+ */
 export function createEventBus(): EventBusController {
-	const emitter = new EventEmitter();
+	const channels = new Map<string, Set<(data: unknown) => Promise<void>>>();
 	return {
 		emit: (channel, data) => {
-			emitter.emit(channel, data);
+			const handlers = channels.get(channel);
+			// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot: changes during this emit apply from the next one
+			if (handlers) for (const handler of [...handlers]) void handler(data);
 		},
 		// Handlers may be async; their results are awaited so rejections are reported.
 		on: (channel, handler: (data: unknown) => unknown) => {
@@ -24,11 +28,16 @@ export function createEventBus(): EventBusController {
 					console.error(`Event handler error (${channel}):`, err);
 				}
 			};
-			emitter.on(channel, safeHandler);
-			return () => emitter.off(channel, safeHandler);
+			let handlers = channels.get(channel);
+			if (!handlers) channels.set(channel, (handlers = new Set()));
+			handlers.add(safeHandler);
+			return () => {
+				handlers.delete(safeHandler);
+				if (handlers.size === 0 && channels.get(channel) === handlers) channels.delete(channel);
+			};
 		},
 		clear: () => {
-			emitter.removeAllListeners();
+			channels.clear();
 		},
 	};
 }

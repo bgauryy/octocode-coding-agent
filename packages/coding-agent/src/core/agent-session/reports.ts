@@ -2,8 +2,7 @@
 
 import { contentText } from "@octocodeai/octocode-ai";
 import { getThemeByName, theme } from "../../theme/theme.ts";
-import { exportSessionToHtml, type ToolHtmlRenderer } from "../export-html/index.ts";
-import { createToolHtmlRenderer } from "../export-html/tool-renderer.ts";
+import type { ToolHtmlRenderer } from "../export-html/index.ts";
 import type { ToolDefinition } from "../extensions/index.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { SessionPublic } from "./host.ts";
@@ -26,7 +25,10 @@ export function getUserMessagesForForking(sessionManager: SessionManager): Array
 	return result;
 }
 
-/** Export the session to HTML with the requested or configured theme and extension tool renderers. */
+/**
+ * Export the session to HTML with the requested or configured theme and extension tool renderers. The exporter loads
+ * on first use: it pulls in the web assets and terminal tool components, which headless SDK sessions never need.
+ */
 export async function exportToHtml(
 	session: Pick<SessionPublic, "settingsManager" | "extensionRunner" | "sessionManager" | "agent">,
 	getToolDefinition: (name: string) => ToolDefinition | undefined,
@@ -37,6 +39,10 @@ export async function exportToHtml(
 		(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
 	);
 
+	const [{ exportSessionToHtml }, { createToolHtmlRenderer }] = await Promise.all([
+		import("../export-html/index.ts"),
+		import("../export-html/tool-renderer.ts"),
+	]);
 	// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
 	const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({
 		getToolRenderers: (name) => session.extensionRunner.resolveToolRenderers(name, () => getToolDefinition(name)),

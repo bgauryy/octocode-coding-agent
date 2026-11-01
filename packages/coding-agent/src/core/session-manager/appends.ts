@@ -16,6 +16,7 @@ import type {
 	ModelChangeEntry,
 	SessionInfoEntry,
 	SessionMessageEntry,
+	SessionNameSource,
 	ThinkingLevelChangeEntry,
 	UsageEntry,
 } from "./types.ts";
@@ -131,7 +132,7 @@ export function appendCustomEntry(state: SessionState, customType: string, data?
 	return entry.id;
 }
 
-export function appendSessionInfo(state: SessionState, name: string): string {
+export function appendSessionInfo(state: SessionState, name: string, source: SessionNameSource = "user"): string {
 	const sanitizedName = name.replace(/[\r\n]+/g, " ").trim();
 	const entry: SessionInfoEntry = {
 		type: "session_info",
@@ -139,6 +140,7 @@ export function appendSessionInfo(state: SessionState, name: string): string {
 		parentId: state.leafId,
 		timestamp: new Date().toISOString(),
 		name: sanitizedName,
+		...(source === "user" ? {} : { source }),
 	};
 	appendEntry(state, entry);
 	return entry.id;
@@ -227,7 +229,7 @@ export function branchWithSummary(
 		throw new Error(`Entry ${branchFromId} not found`);
 	}
 	const fromId = state.leafId ?? "root";
-	state.leafId = branchFromId;
+	// The entry names its parent; appendEntry moves the leaf to it only once it is saved.
 	const entry: BranchSummaryEntry = {
 		type: "branch_summary",
 		id: generateId(state.byId),

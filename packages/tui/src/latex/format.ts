@@ -12,8 +12,15 @@ function replaceCharacters(value: string, replacements: Readonly<Record<string, 
 	return result;
 }
 
+const SCRIPT_OPERATORS = new Set(["=", "+", "-"]);
+
+/** Drop the whitespace around `=`, `+` and `-`. Each whitespace run is matched once, so long runs stay linear. */
 function normalizeScriptValue(value: string): string {
-	return value.trim().replace(/\s*([=+-])\s*/g, "$1");
+	return value
+		.trim()
+		.replace(/\s+/g, (run, offset: number, text: string) =>
+			SCRIPT_OPERATORS.has(text[offset - 1] ?? "") || SCRIPT_OPERATORS.has(text[offset + run.length] ?? "") ? "" : run,
+		);
 }
 
 export function formatUnicodeScript(value: string, kind: "sub" | "sup"): string | undefined {

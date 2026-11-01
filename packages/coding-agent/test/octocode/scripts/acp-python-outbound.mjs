@@ -8,6 +8,7 @@ assert.equal(process.env.OCTOCODE_HOME, config.env.OCTOCODE_HOME);
 assert.equal(process.env.OCTOCODE_ACP_PARENT_ONLY, undefined);
 await import(config.resolver);
 const { AcpBackend } = await import(join(config.packageDir, "../acp/src/client/client.ts"));
+const { acpClientHost } = await import(join(config.packageDir, "src/octocode/external/acp-host.ts"));
 const { processAlive } = await import(join(config.packageDir, "src/octocode/shared/process.ts"));
 const stop = new AbortController();
 const interrupt = () => stop.abort(new Error("Interrupted"));
@@ -20,6 +21,7 @@ try {
 	const connect = async (sessionId) => {
 		const pidFile = join(config.cwd, `peer-${backends.length}.pid`);
 		const backend = await AcpBackend.connect(
+			acpClientHost,
 			{
 				command: config.python,
 				args: [config.peer, "agent", pidFile],

@@ -3,7 +3,6 @@ import { delimiter, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "child_process";
 import { getBinDir } from "../config.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
-import { setConfigValueShell } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 
 export interface ShellConfig {
 	shell: string;
@@ -168,9 +167,6 @@ export function getPowerShellConfig(): ShellConfig {
 	return { shell, args: [...POWERSHELL_ARGS] };
 }
 
-// `!command` config values on Windows run in the same shell as the bash tool.
-setConfigValueShell(() => getShellConfig());
-
 /** Which shell runs a command: PowerShell on Windows when asked, else the configured or discovered bash. */
 export function resolveShell(settings: { type?: string; shellPath?: string } = {}): ShellConfig {
 	return settings.type === "powershell" ? getPowerShellConfig() : getShellConfig(settings.shellPath);
@@ -178,7 +174,7 @@ export function resolveShell(settings: { type?: string; shellPath?: string } = {
 
 /** Node timers fire at once beyond 2^31-1 ms; every shell timeout is clamped to what they can hold. */
 export const MAX_TIMER_MS = 2_147_483_647;
-export const MAX_TIMER_SECONDS = Math.floor(MAX_TIMER_MS / 1000);
+const MAX_TIMER_SECONDS = Math.floor(MAX_TIMER_MS / 1000);
 
 /** A shell timeout in seconds, at most `MAX_TIMER_SECONDS`; a missing, non-finite or non-positive one means no timeout. */
 export function clampTimeoutSeconds(seconds: number | undefined): number | undefined {

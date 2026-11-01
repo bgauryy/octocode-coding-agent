@@ -3,9 +3,10 @@ import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { childSession, childSessionFile } from "./process/session.ts";
-import { PRIVATE_FILE_MODE, privateDir, sessionDir } from "../shared/home.ts";
+import { privateDir, sessionDir, sessionDirName, sessionFolderNames } from "../shared/home.ts";
 import { scratchRoot } from "./handoff/scratch.ts";
 import type { Run } from "./claim.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 /** A private, bounded address book; the child transcript, not this record, owns its conversation. */
 export interface ParkedWorker {
@@ -19,7 +20,8 @@ export interface ParkedWorker {
 const LIMIT = 128;
 const recordFile = (session: string) => path.join(sessionDir(session), "parked-workers.json");
 
-export function readParked(session: string, workspace: string): ParkedWorker[] {
+/** Parked workers of `session` that work in `workspace`, or in any folder when `workspace` is undefined. */
+export function readParked(session: string, workspace?: string): ParkedWorker[] {
 	let data: unknown;
 	try {
 		if (fs.lstatSync(sessionDir(session)).isSymbolicLink() || fs.lstatSync(recordFile(session)).isSymbolicLink())
@@ -34,7 +36,8 @@ export function readParked(session: string, workspace: string): ParkedWorker[] {
 		const worker = entry as Partial<ParkedWorker>;
 		const identity = worker.run?.identity;
 		if (
-			worker.workspace !== workspace ||
+			typeof worker.workspace !== "string" ||
+			(workspace !== undefined && worker.workspace !== workspace) ||
 			!Number.isSafeInteger(worker.generation) ||
 			typeof worker.until !== "number" ||
 			!Number.isFinite(worker.until) ||
@@ -47,9 +50,10 @@ export function readParked(session: string, workspace: string): ParkedWorker[] {
 			worker.run?.route === undefined
 		)
 			return false;
+		const folder = worker.workspace;
 		try {
 			if (identity.scratch) {
-				const root = scratchRoot(workspace);
+				const root = scratchRoot(folder);
 				if (
 					[identity.scratch, root, path.dirname(root), path.dirname(path.dirname(root))].some((part) =>
 						fs.lstatSync(part).isSymbolicLink(),
@@ -59,7 +63,7 @@ export function readParked(session: string, workspace: string): ParkedWorker[] {
 			}
 			if (
 				identity.scratch &&
-				canonicalPath(identity.scratch) !== canonicalPath(path.join(scratchRoot(workspace), identity.id))
+				canonicalPath(identity.scratch) !== canonicalPath(path.join(scratchRoot(folder), identity.id))
 			)
 				return false;
 			const child = childSession(identity);
@@ -70,6 +74,35 @@ export function readParked(session: string, workspace: string): ParkedWorker[] {
 			return false;
 		}
 	});
+}
+
+/** A follow-up window some session still holds open for a finished child. */
+export interface ParkedChild {
+	id: string;
+	role: string;
+	session: string;
+	workspace: string;
+}
+
+/** Every live parked child of every session, from the session folders' records; a rare, user-asked read. */
+export function allParked(): ParkedChild[] {
+	const found: ParkedChild[] = [];
+	for (const folder of sessionFolderNames()) {
+		let sessions: string[] = [];
+		try {
+			const data: unknown = JSON.parse(fs.readFileSync(path.join(sessionDir(folder), "parked-workers.json"), "utf8"));
+			if (!Array.isArray(data)) continue;
+			sessions = [
+				...new Set(data.map((entry) => (entry as Partial<ParkedWorker>)?.run?.identity?.parentSession)),
+			].filter((id): id is string => typeof id === "string" && sessionDirName(id) === folder);
+		} catch {
+			continue;
+		}
+		for (const session of sessions)
+			for (const { run, workspace } of readParked(session))
+				found.push({ id: run.identity.id, role: run.identity.role, session, workspace });
+	}
+	return found;
 }
 
 export function writeParked(session: string, workers: Iterable<ParkedWorker>): void {

@@ -28,8 +28,7 @@
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { globalMcpConfigPath, globalMcpConfigPaths } from "./paths.ts";
-import { projectMcpConfigPaths, projectMcpConfigPath } from "../../coding-agent/src/octocode/shared/home.ts";
+import { globalMcpConfigPath, globalMcpConfigPaths, projectMcpConfigPaths, projectMcpConfigPath } from "./paths.ts";
 import { DEFAULT_MCP_EXPOSURE, type McpExposure, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";

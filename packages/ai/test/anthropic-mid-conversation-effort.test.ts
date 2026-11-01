@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AnthropicOptions, stream } from "../src/api/anthropic-messages.ts";
+import { type AnthropicOptions, stream, streamSimple } from "../src/api/anthropic-messages.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Context, Model } from "../src/types.ts";
@@ -136,6 +136,48 @@ describe("Anthropic mid-conversation effort", () => {
 		expect(payload.thinking?.block_binding?.prefix_mismatch_behavior).toBe("drop_block");
 		expect(message.providerThinkingLevel).toBe("high");
 	});
+
+	it("asks a model that cannot turn thinking off for its least effort when no reasoning is requested", async () => {
+		let payload: CapturedPayload | undefined;
+		const result = streamSimple(managedModel(), normalizeContext({ messages: [user("one", 1)] }), {
+			apiKey: "test-key",
+			cacheRetention: "none",
+			maxTokens: 256,
+			onPayload: (value) => {
+				payload = value as CapturedPayload;
+				throw new Error("payload captured");
+			},
+		});
+		const message = await result.result();
+		expect(payload?.messages.at(-1)).toEqual({ role: "system", content: [], output_config: { effort: "low" } });
+		expect(message.providerThinkingLevel).toBe("low");
+	});
+
+	it.each([
+		["anthropic claude-fable-5", () => getBuiltinModel("anthropic", "claude-fable-5")],
+		["github-copilot claude-sonnet-5.5", () => getBuiltinModel("github-copilot", "claude-sonnet-5.5")],
+	] as const)(
+		"asks %s, which cannot turn thinking off, for its least effort without effort markers",
+		async (_label, load) => {
+			const model = load();
+			expect(model.thinkingLevelMap?.off).toBeNull();
+			expect(model.compat?.supportsMidConvoEffort).toBeUndefined();
+			let payload: CapturedPayload | undefined;
+			const result = streamSimple(model, normalizeContext({ messages: [user("one", 1)] }), {
+				apiKey: "test-key",
+				cacheRetention: "none",
+				maxTokens: 256,
+				onPayload: (value) => {
+					payload = value as CapturedPayload;
+					throw new Error("payload captured");
+				},
+			});
+			await result.result();
+			expect(payload?.thinking).toEqual({ type: "adaptive", display: "summarized" });
+			expect(payload?.output_config).toEqual({ effort: "low" });
+			expect(effortMessages(payload as CapturedPayload)).toEqual([]);
+		},
+	);
 
 	it("does not invent markers for legacy or other-provider assistants", async () => {
 		const model = managedModel();

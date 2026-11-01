@@ -59,7 +59,6 @@ function log(message: string): void {
 	process.stderr.write(`[octocode-conformance] ${message}\n`);
 }
 
-
 function readContext(): Record<string, unknown> {
 	const raw = process.env.MCP_CONFORMANCE_CONTEXT;
 	if (!raw) return {};

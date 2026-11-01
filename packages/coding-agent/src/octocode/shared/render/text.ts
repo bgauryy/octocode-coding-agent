@@ -1,7 +1,9 @@
 import { type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { clip, plural, queryTarget } from "../../../../../common/src/clip.ts";
 import { shortcutText } from "../keys.ts";
-import { clipText, firstLine } from "../util.ts";
+
+export { clip, plural, queryTarget };
 
 export const GUTTER = "  ⎿  ";
 export const INDENT = "     ";
@@ -13,7 +15,7 @@ export function expandKey(): string {
 
 /** Compact shortcut text, including an explicit unbound state. */
 export function appKey(action: Keybinding): string {
-	return shortcutText(action).toLowerCase();
+	return shortcutText(action);
 }
 
 /** Fewest words a model-given reason needs to say anything the row's title does not (`Edit` alone does not; `Run tests` does). */
@@ -24,11 +26,6 @@ export function isInformativeReason(reason: string | undefined): reason is strin
 	return reason !== undefined && reason.trim().split(/\s+/).length >= REASON_MIN_WORDS;
 }
 
-/** `1 line`, `2 lines`; pass `many` for irregular plurals. */
-export function plural(count: number, one: string, many = `${one}s`): string {
-	return `${count} ${count === 1 ? one : many}`;
-}
-
 /** A multi-line message (an error that lists what was wrong) as one line, for a summary that `clip` would cut at its first line. */
 export function oneLine(text: string): string {
 	return text
@@ -36,11 +33,6 @@ export function oneLine(text: string): string {
 		.map((line) => line.trim())
 		.filter(Boolean)
 		.join(" ");
-}
-
-/** One sanitized line of at most `max` characters, ending in `…` when cut. */
-export function clip(text: string, max: number): string {
-	return clipText(firstLine(sanitizeTerminalText(text).replace(/\t/g, " ")).trim(), max);
 }
 
 /** The SGR reset `truncateToWidth` wraps around its ellipsis; a sanitized line holds no other escape sequence. */
@@ -63,41 +55,4 @@ export function bodyLines(text: string): string[] {
 	while (rows.length > 0 && rows.at(-1)!.trim() === "") rows.pop();
 	while (rows.length > 0 && rows[0].trim() === "") rows.shift();
 	return rows;
-}
-
-/** Search terms first (what the call looks for), then where it looks. */
-const TERM_KEYS = [
-	"searchText",
-	"pattern",
-	"keywords",
-	"keywordsToSearch",
-	"symbolName",
-	"packageName",
-	"query",
-	"url",
-	"name",
-] as const;
-const PATH_KEYS = ["path", "filePath", "uri"] as const;
-
-function stringValue(value: unknown): string {
-	return Array.isArray(value)
-		? value.filter((item) => typeof item === "string").join(" ")
-		: typeof value === "string"
-			? value
-			: "";
-}
-
-/**
- * The most telling value of one query: `term in path`, `owner/repo term`, `owner/repo/path` or the term alone.
- * Unsanitized: callers clip it.
- */
-export function queryTarget(query: Record<string, unknown>): string {
-	const repo =
-		typeof query.owner === "string" && typeof query.repo === "string" ? `${query.owner}/${query.repo}` : undefined;
-	const term = TERM_KEYS.map((key) => stringValue(query[key])).find(Boolean) ?? "";
-	const path = PATH_KEYS.map((key) => stringValue(query[key])).find(Boolean) ?? "";
-	const where = repo && path ? `${repo}/${path}` : ((path || repo) ?? "");
-	if (term && path) return `${term} in ${where}`;
-	if (term) return repo ? `${repo} ${term}` : term;
-	return where;
 }

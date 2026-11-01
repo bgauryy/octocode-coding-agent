@@ -5,6 +5,7 @@ import { decodePastedControlKeys } from "../src/bracketed-paste.ts";
 import {
 	detectMultiplexer,
 	hasTmuxSession,
+	paneTarget,
 	resetMultiplexerCache,
 	tmuxClientTermFeatures,
 	tmuxClientTerminalNames,
@@ -123,6 +124,22 @@ describe("tmux queries through a fake tmux", () => {
 	it("treats a failing show-options as not allowed", () => {
 		withFake({ fail: ["passthrough"] });
 		assert.equal(tmuxPaneAllowsPassthrough(TMUX_ENV), false);
+	});
+
+	it("names the pane from TMUX_PANE alone, and leaves the command untargeted without one", () => {
+		assert.equal(paneTarget(TMUX_ENV), "%3");
+		assert.equal(paneTarget({ TMUX: TMUX_ENV.TMUX }), undefined);
+		assert.equal(paneTarget({ ...TMUX_ENV, TMUX_PANE: "" }), undefined);
+		for (const env of [{ TMUX: TMUX_ENV.TMUX }, { ...TMUX_ENV, TMUX_PANE: "" }]) {
+			resetMultiplexerCache();
+			const f = installFakeTmux({ allowPassthrough: "on" });
+			try {
+				tmuxPaneAllowsPassthrough(env);
+				assert.doesNotMatch(f.calls()[0] ?? "", /-t /);
+			} finally {
+				f.restore();
+			}
+		}
 	});
 
 	it("caches per TMUX and TMUX_PANE", () => {

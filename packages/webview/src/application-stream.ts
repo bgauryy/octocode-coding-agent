@@ -1,6 +1,9 @@
 import {
+	appendApplicationMessage,
 	type ApplicationCursor,
 	type ApplicationActivity,
+	type ApplicationMessage,
+	type ApplicationTool,
 	type ApplicationReceipt,
 	type ApplicationSnapshot,
 	parseApplicationFrame,
@@ -41,7 +44,7 @@ export class ApplicationStream {
 			if (
 				frame.type !== "event" ||
 				frame.event.type !== "message.delta" ||
-				frame.event.text === undefined ||
+				(frame.event.text === undefined && frame.event.block === undefined) ||
 				frame.fromSequence !== this.cursor.sequence + 1 ||
 				frame.fromSequence >= frame.cursor.sequence
 			)
@@ -56,31 +59,31 @@ export class ApplicationStream {
 			case "message.started":
 			case "message.completed": {
 				const found = next.messages.some((message) => message.id === event.message.id);
-				next = {
-					...next,
-					messages: (found
-						? next.messages.map((message) => (message.id === event.message.id ? event.message : message))
-						: [...next.messages, event.message]
-					).slice(-200),
-				};
+				const messages = found
+					? next.messages.map((message) => (message.id === event.message.id ? event.message : message))
+					: [...next.messages, event.message];
+				next = { ...next, ...retainTranscript(messages, next.tools) };
 				break;
 			}
-			case "message.delta":
-				if (!next.messages.some((message) => message.id === event.messageId)) return this.resync();
-				next = {
-					...next,
-					messages: next.messages.map((message) =>
-						message.id === event.messageId
-							? {
-									...message,
-									text: event.text ?? message.text + event.delta,
-									...(event.content === undefined ? {} : { content: event.content }),
-									...(event.full === undefined ? {} : { full: event.full }),
-								}
-							: message,
-					),
-				};
+			case "message.delta": {
+				const index = next.messages.findIndex((message) => message.id === event.messageId);
+				if (index === -1) return this.resync();
+				const message = next.messages[index];
+				// An append continues the block exactly as this view holds it; any other state needs a fresh snapshot.
+				const updated = event.block
+					? appendApplicationMessage(message, event.block, event.delta)
+					: {
+							...message,
+							text: event.text ?? message.text + event.delta,
+							...(event.content === undefined ? {} : { content: event.content }),
+							...(event.full === undefined ? {} : { full: event.full }),
+						};
+				if (!updated) return this.resync();
+				const messages = [...next.messages];
+				messages[index] = updated;
+				next = { ...next, messages };
 				break;
+			}
 			case "run.started":
 				next = { ...next, runId: event.runId, streaming: true };
 				break;
@@ -128,7 +131,10 @@ export class ApplicationStream {
 				};
 				next = {
 					...next,
-					tools: [...tools.filter((previous) => previous.toolCallId !== tool.toolCallId), tool].slice(-50),
+					...retainTranscript(next.messages, [
+						...tools.filter((previous) => previous.toolCallId !== tool.toolCallId),
+						tool,
+					]),
 				};
 				break;
 			}
@@ -176,6 +182,46 @@ export class ApplicationStream {
 		this.cursor = undefined;
 		return "resync";
 	}
+}
+
+const LIVE_MESSAGES = 200;
+const LIVE_TOOLS = 200;
+
+/**
+ * The live transcript: the newest messages, the tools that belong to them, and every tool at or after the first of
+ * them. Loaded history (`history-window.ts`) takes the tools before that message as messages leave, so a tool leaves
+ * the live window only when history can show it. When more tools than the cap follow, older messages leave first;
+ * past the last message, the oldest tools do. A tool without an order (only an older host sends one) has no place a
+ * history page could return it at, so it stays live and does not count toward the cap.
+ */
+function retainTranscript(source: readonly ApplicationMessage[], tools: readonly ApplicationTool[] | undefined) {
+	let messages = source.slice(-LIVE_MESSAGES);
+	if (!tools) return { messages };
+	const from = (cut: number | undefined) => {
+		const ids = new Set(messages.map((message) => message.id));
+		const calls = new Set(messages.flatMap((message) => (message.toolCallId ? [message.toolCallId] : [])));
+		return tools.filter(
+			(tool) =>
+				cut === undefined ||
+				tool.order === undefined ||
+				tool.order >= cut ||
+				(tool.messageId !== undefined && ids.has(tool.messageId)) ||
+				calls.has(tool.toolCallId),
+		);
+	};
+	// Tools older than the first message leave only with the messages before it.
+	let live = messages.length < source.length ? from(messages[0]?.order) : [...tools];
+	const ordered = (list: readonly ApplicationTool[]) => list.filter((tool) => tool.order !== undefined).length;
+	if (ordered(live) > LIVE_TOOLS) {
+		const orders = live.flatMap((tool) => (tool.order === undefined ? [] : [tool.order])).sort((a, b) => a - b);
+		const floor = orders[orders.length - LIVE_TOOLS];
+		const after = messages.findIndex((message) => message.order === undefined || message.order > floor);
+		if (floor !== undefined) messages = messages.slice(after === -1 ? -1 : after);
+		live = from(messages[0]?.order);
+		let excess = ordered(live) - LIVE_TOOLS;
+		live = live.filter((tool) => tool.order === undefined || excess-- <= 0);
+	}
+	return { messages, tools: live };
 }
 
 /** Match the host's retained window so a reconnect does not change which notices need paging. */

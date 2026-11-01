@@ -15,7 +15,7 @@ import { capOutputToFile } from "../shared/spill.ts";
 import { firstLine, parseJson } from "../shared/util.ts";
 import type { HookEvent, HookProtocol } from "./catalog.ts";
 import { unsupportedOutput } from "./profiles.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { leadsProcessGroup } from "../../utils/shell.ts";
 
 /** How long output pipes may stay open after the hook process exited (a background child can hold them) before its result stands. */
@@ -243,7 +243,7 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 		json.continue === false
 	)
 		return { stop: true };
-	const specific = isRecord(json.hookSpecificOutput) ? json.hookSpecificOutput : {};
+	const specific = asRecord(json.hookSpecificOutput);
 	if (
 		event === "PreToolUse" &&
 		protocol !== "octocode" &&
@@ -313,6 +313,18 @@ export function failureOf(hook: Pick<HookBase, "timeoutMs">, run: HookRun, cance
 	const out = run.stdout.trim();
 	if (run.code === 0 && /^[[{]/.test(out) && !isRecord(parseJson(out))) return "printed invalid JSON";
 	return undefined;
+}
+
+/**
+ * Claude Code reads a command hook's JSON object on any exit code other than 2: the fields alone decide and the exit
+ * code is ignored, so a deny printed by a hook that exits 1 still denies. A hook whose failure blocks the action
+ * (`onFailure: "block"` or `failClosed`) keeps the exit code and fails, as Claude Code counts it.
+ */
+export function claudeJsonRun(hook: HookHandler, run: HookRun): HookRun {
+	if (hook.protocol !== "claude" || (hook.type !== undefined && hook.type !== "command")) return run;
+	if (hook.failClosed || hook.onFailure === "block" || run.timedOut) return run;
+	if (run.code === null || run.code === 0 || run.code === 2) return run;
+	return isRecord(parseJson(run.stdout.trim())) ? { ...run, code: 0 } : run;
 }
 
 /** Keeps hook text within 16 KB: longer text is saved whole to a file and shown as its head and tail with the path. */

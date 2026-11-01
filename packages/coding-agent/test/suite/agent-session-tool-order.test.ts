@@ -72,8 +72,8 @@ describe("orderToolNames", () => {
 	});
 
 	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
-		const invariant = ["bash", "file", "web", "archive", "graphBuild", "graphQuery", "mcp"];
-		const variant = ["backlog", "memory", "debug", "askUser", "agent", "skill"];
+		const invariant = ["bash", "file", "web", "archive", "mcp"];
+		const variant = ["backlog", "steps", "memory", "debug", "askUser", "agent", "skill"];
 		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
 		const arrivals = [
 			[...variant, ...invariant, ...octocode, "mcp__a__x"],
@@ -84,7 +84,7 @@ describe("orderToolNames", () => {
 	});
 
 	it("gives a child and its parent the same declaration prefix up to the first role-variant tool", () => {
-		const shared = ["bash", "file", "web", "archive", "graphBuild", "graphQuery", "mcp"];
+		const shared = ["bash", "file", "web", "archive", "mcp"];
 		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
 		// The parent also has debug, the browser server, askUser and a skill tool; a read-only child has none of them.
 		const parent = orderToolNames(

@@ -4,8 +4,11 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 ## Native agent
 
+- [How to: short recipes for common tasks](how-to.md)
 - [All commands](commands.md)
 - [Native features and migration from the Pi extension](native-features.md)
+- [Web workspace: `/web`, Activity, the backlog board and the Docs view](web-workspace.md)
+- [Memory: notes that later sessions reuse](memory.md)
 - [Remote access: `/remote`, links, transports and the `octocode remote` CLI](remote.md)
 - [Configuration locations and controls](../../../CONFIGURATIONS.md)
 - [Add hooks, plugins and extensions](../../../PLUGINS.md)
@@ -32,10 +35,11 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Codemode migration](codemode.md)
 - [Optional native debugger](debugging.md)
 - [Extensions](extensions.md)
+- [Extension contracts: events, tools, MCP, state, UI and errors](extension-contracts.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
 - [Hook events: what each source profile accepts](hook-events.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
-- [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md)
+- [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md), with its [rollout](../../../docs/PLUGINS_MODS_HOOKS_ROLLOUT.md) and [conformance evidence](../../../docs/PLUGINS_MODS_HOOKS_CONFORMANCE.md)
 - [RFC: align hooks, plugins and extensions under one source model](../../../docs/RFC_HOOKS_PLUGINS_EXTENSIONS.md)
 - [Packages](packages.md)
 - [Skills](skills.md)
@@ -68,6 +72,6 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 | ai             | [Provider APIs, authentication and model catalog](../../ai/README.md) |
 | tui            | [Terminal components and rendering](../../tui/README.md)              |
 | webview        | [Browser state, transport and rendering](../../webview/README.md)     |
-| contracts       | [Shared serializable contracts and schemas](../../contracts/README.md) |
+| contracts      | [Shared serializable contracts and schemas](../../contracts/README.md) |
 | MCP client API | [Private MCP workspace and public client API](../../mcp/README.md)    |
 | telemetry      | [Telemetry contracts and schemas](../../telemetry/README.md)          |

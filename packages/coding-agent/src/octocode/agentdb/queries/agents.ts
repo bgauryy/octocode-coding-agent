@@ -19,11 +19,11 @@ const processRow = (row: Row): MemberProcess => ({
 	...(typeof row.started === "string" ? { started: row.started } : {}),
 });
 
-/** The heartbeat's `UPDATE`: matches the row only while it still names this process (and records its `checkout`); whether it did. */
+/** The heartbeat's `UPDATE`: matches the row only while it still names this process (and records its `checkout` and session); whether it did. */
 export function refresh(db: DatabaseSync, member: Member, checkout: string): boolean {
 	const { changes } = db
 		.prepare(
-			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, checkout = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
+			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, checkout = ?, session_id = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
          WHERE id = ? AND pid = ? AND started IS ?`,
 		)
 		.run(
@@ -32,6 +32,7 @@ export function refresh(db: DatabaseSync, member: Member, checkout: string): boo
 			member.activity ?? null,
 			member.model ?? null,
 			checkout,
+			member.sessionId ?? null,
 			member.updatedAt,
 			member.toolCalls,
 			member.input,
@@ -53,8 +54,8 @@ export function refresh(db: DatabaseSync, member: Member, checkout: string): boo
 export function insert(db: DatabaseSync, team: string, checkout: string, member: Member): boolean {
 	const row = db
 		.prepare(
-			`INSERT INTO agents (id, workspace, checkout, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO agents (id, workspace, checkout, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced, session_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO NOTHING RETURNING id`,
 		)
 		.get(
@@ -78,6 +79,7 @@ export function insert(db: DatabaseSync, team: string, checkout: string, member:
 			member.output,
 			member.cost,
 			member.unpriced ? 1 : 0,
+			member.sessionId ?? null,
 		);
 	return row !== undefined;
 }
@@ -108,12 +110,13 @@ export function ids(db: DatabaseSync): string[] {
 	return (db.prepare("SELECT id FROM agents").all() as Row[]).map((row) => String(row.id));
 }
 
-/** The agent rows of `team`, oldest first, each with `pending`: the questions delivered to it and not yet answered. */
+/** The agent rows of `team`, oldest first, each with `pending`: the questions delivered to it and not yet answered (`deliveries.openQuestions`). */
 export function inTeam(db: DatabaseSync, team: string): Row[] {
 	return db
 		.prepare(
 			`SELECT a.*, (SELECT count(*) FROM deliveries d JOIN messages m ON m.id = d.message
-                      WHERE d.recipient = a.id AND d.delivered_at IS NOT NULL AND d.completed_at IS NULL AND m.reply_required = 1) AS pending
+                      WHERE d.recipient = a.id AND d.delivered_at IS NOT NULL AND d.completed_at IS NULL AND m.reply_required = 1
+                        AND d.dead_at IS NULL AND d.relay_to IS NULL) AS pending
          FROM agents a WHERE a.workspace = ? ORDER BY a.joined_at, a.id`,
 		)
 		.all(team);

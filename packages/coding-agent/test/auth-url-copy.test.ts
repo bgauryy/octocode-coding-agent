@@ -1,3 +1,4 @@
+import "./mcp-host.ts";
 import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";

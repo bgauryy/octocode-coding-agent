@@ -2,6 +2,7 @@ import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
 import type { RunRoute } from "./claim.ts";
+import { fallbackNote } from "./model.ts";
 import type { RunDetails } from "./run-types.ts";
 import { runFooter } from "./tracking.ts";
 
@@ -53,7 +54,7 @@ const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("
  */
 export function failedNext(route: RunRoute, error: string, partial: boolean): string {
 	const ran = route.model
-		? `Ran on ${route.model} (${route.via ?? (route.fallback ? `${route.fallback} unavailable` : "this session's model")}).`
+		? `Ran on ${route.model} (${route.via ?? (route.fallback ? fallbackNote(route.fallback, route.refusedBy) : "this session's model")}).`
 		: "";
 	const unverified = partial ? PARTIAL_UNVERIFIED : "";
 	if (RATE_LIMITED.test(error) && !MODEL_REFUSED.test(error))

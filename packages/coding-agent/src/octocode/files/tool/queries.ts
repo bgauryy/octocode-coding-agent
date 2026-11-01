@@ -37,18 +37,18 @@ const QuerySchema = Type.Object({
 				),
 			}),
 			{
-				description: "Edits match original content; no overlaps.",
+				description: "edit: replacements, each matched against the original content; none may overlap",
 			},
 		),
 	),
-	content: Type.Optional(Type.String({ description: "For write: complete file content" })),
+	content: Type.Optional(Type.String({ description: "write: complete file content" })),
 });
 
 export const Params = Type.Object({
 	queries: Type.Optional(Type.Array(QuerySchema)),
 	patch: Type.Optional(
 		Type.String({
-			description: "Codex apply_patch text; use instead of queries",
+			description: "Codex apply_patch text, instead of queries",
 		}),
 	),
 	// Declared here (so `execute` keeps it for a patch's changes) and required like every native tool's: the row shows it.
@@ -64,10 +64,27 @@ const aliased = <T extends Record<string, unknown>>(value: T): T => {
 	return { ...rest, reason: rest.reason ?? reasoning } as unknown as T;
 };
 
-/** The call's arguments with `reasoning` (top level and per query) read as `reason`; a change without one takes the call's. */
+const CHANGE_TYPES: readonly unknown[] = ["edit", "write", "delete"];
+
+/** A call that is one change itself (`{type, path, edits|content}`) with neither `queries` nor `patch`: the change moves into `queries`; its reason stays the call's. */
+function wrapSingleChange(args: Record<string, unknown>): Record<string, unknown> {
+	if (args.queries !== undefined || args.patch !== undefined) return args;
+	if (!CHANGE_TYPES.includes(args.type) || typeof args.path !== "string") return args;
+	const { reason, reasoning, ...change } = args;
+	return {
+		...(reason !== undefined ? { reason } : {}),
+		...(reasoning !== undefined ? { reasoning } : {}),
+		queries: [change],
+	};
+}
+
+/**
+ * The call's arguments with `reasoning` (top level and per query) read as `reason`; a change without one takes the
+ * call's. A single flat change becomes a one-item `queries`.
+ */
 export function renameReasoning(args: unknown): Static<typeof Params> {
 	if (!isRecord(args)) return args as Static<typeof Params>;
-	const renamed = aliased(args);
+	const renamed = aliased(wrapSingleChange(args));
 	if (!Array.isArray(renamed.queries)) return renamed as Static<typeof Params>;
 	const queries = renamed.queries.map((query) => {
 		if (!isRecord(query)) return query;

@@ -1,7 +1,9 @@
 import { contentText, getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
+import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { parseSkillBlock } from "./prompt-expansion.ts";
-import type { AgentSession } from "../agent-session.ts";
-import { charsToTokens, estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
+import type { ContextUsage } from "../extensions/index.ts";
+import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts";
+import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
 
 export interface ContextContributor {
 	name: string;
@@ -23,7 +25,13 @@ export interface ContextReport {
 }
 
 /** Inspect the committed effective transcript without running hooks or a model request. */
-export function contextReport(session: AgentSession): ContextReport {
+export function contextReport(
+	session: Pick<
+		AgentSessionStateApi,
+		"sessionManager" | "settingsManager" | "model" | "routedModel" | "thinkingLevel" | "systemPrompt"
+	> &
+		Pick<AgentSessionModelApi, "getContextWindowLimit"> & { getContextUsage(): ContextUsage | undefined },
+): ContextReport {
 	const projection = session.sessionManager.buildSessionProjection();
 	const system = getCurrentSystemMessage(projection.messages);
 	const tools = getCurrentTools(projection.messages);
@@ -71,26 +79,56 @@ export function contextReport(session: AgentSession): ContextReport {
 	};
 }
 
+/** Cells of the usage bar under the total. */
+const BAR_CELLS = 30;
+
+const percentOf = (part: number, whole: number) => `${Math.round((part / whole) * 100)}%`;
+
+/**
+ * The total first: tokens in use out of the working window, the share, what is free and how far compaction is, with a
+ * bar. Without a usage figure (none since the last compaction) the contributors' estimate stands in, labelled.
+ */
+function totalLines(report: ContextReport, number: (value: number | null) => string): string {
+	const used = report.currentTokens ?? report.estimatedTotal;
+	const source = report.currentTokens === null ? " (estimated from the contents below)" : "";
+	if (!report.capacity)
+		return `**Total context: ${number(used)} tokens in use**${source}; the model's window is unknown.`;
+	const filled = Math.min(BAR_CELLS, Math.max(0, Math.round((used / report.capacity) * BAR_CELLS)));
+	const lines = [
+		`**Total context: ${number(used)} of ${number(report.capacity)} tokens in use (${percentOf(used, report.capacity)})**${source}`,
+		`\`${"█".repeat(filled)}${"░".repeat(BAR_CELLS - filled)}\` ${number(Math.max(0, report.capacity - used))} free`,
+	];
+	if (report.threshold !== null)
+		lines.push(
+			used >= report.threshold
+				? `Past the compaction point (${number(report.threshold)} tokens): the next request compacts first.`
+				: `Compaction starts at ${number(report.threshold)} tokens, ${number(report.threshold - used)} from now.`,
+		);
+	return lines.join("\n");
+}
+
 export function renderContextReport(report: ContextReport, all = false): string {
 	const number = (value: number | null) => (value === null ? "unknown" : value.toLocaleString());
 	const rows = [...report.contributors].sort((a, b) => b.tokens - a.tokens);
 	const visible = all ? rows : rows.slice(0, 8);
+	const share = (tokens: number) => (report.estimatedTotal > 0 ? percentOf(tokens, report.estimatedTotal) : "");
+	const rest = rows.slice(visible.length).reduce((sum, row) => sum + row.tokens, 0);
 	return [
+		totalLines(report, number),
+		[
+			"| What uses it | Estimated tokens | Share |\n| --- | ---: | ---: |",
+			...visible.map((row) => `| ${row.name.replaceAll("|", "\\|")} | ${number(row.tokens)} | ${share(row.tokens)} |`),
+			rows.length > visible.length ? `| Other contributors | ${number(rest)} | ${share(rest)} |` : "",
+			`| **Total** | **${number(report.estimatedTotal)}** | ${report.estimatedTotal > 0 ? "100%" : ""} |`,
+		]
+			.filter(Boolean)
+			.join("\n"),
 		`Model: ${report.model}\nSnapshot: ${report.at}`,
 		`Latest valid provider receipt: ${number(report.reportedTokens)} tokens\nCurrent estimate: ${number(report.currentTokens)} / ${number(report.capacity)} tokens\nOutput reserve: ${number(report.reserve)}\nCompaction threshold: ${number(report.threshold)}`,
 		report.catalogCapacity === null
 			? "Select a physical model with /model before choosing a context budget."
 			: `Catalog capacity: ${number(report.catalogCapacity)} tokens. /context size chooses a smaller working budget for this session; /context reset restores full capacity.`,
-		[
-			"| Contributor | Estimated tokens |\n| --- | ---: |",
-			...visible.map((row) => `| ${row.name.replaceAll("|", "\\|")} | ${number(row.tokens)} |`),
-			rows.length > visible.length
-				? `| Other contributors | ${number(rows.slice(visible.length).reduce((sum, row) => sum + row.tokens, 0))} |`
-				: "",
-		]
-			.filter(Boolean)
-			.join("\n"),
-		`\nProjection estimate: ${number(report.estimatedTotal)}. Difference from current estimate: ${number(report.difference)} (signed, unattributed).`,
+		`Contents total: ${number(report.estimatedTotal)}. Difference from current estimate: ${number(report.difference)} (signed, unattributed).`,
 		report.note,
 		report.currentTokens !== null && report.threshold !== null && report.currentTokens >= report.threshold
 			? "Consider /compact to free context."

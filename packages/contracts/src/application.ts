@@ -205,6 +205,17 @@ export const ApplicationEventSchema = Type.Union([
 		type: Type.Literal("message.delta"),
 		messageId: Type.String(),
 		delta: Type.String(),
+		/**
+		 * Append-only form: `delta` extends `content[index]` (see `appendApplicationMessage`) and `text`, `content` and
+		 * `full` are omitted. Without it, `text`, `content` and `full` replace the message's.
+		 */
+		block: Type.Optional(
+			Type.Object({
+				index: Type.Integer({ minimum: 0 }),
+				length: Type.Integer({ minimum: 0 }),
+				full: Type.Optional(ApplicationAssetSchema),
+			}),
+		),
 		text: Type.Optional(Type.String()),
 		/** Authoritative ordered blocks, including reasoning and non-text updates. */
 		content: Type.Optional(Type.Array(ApplicationContentBlockSchema)),
@@ -300,7 +311,7 @@ export const ApplicationFrameSchema = Type.Union([
 	Type.Object({
 		...frameFields,
 		type: Type.Literal("event"),
-		/** Inclusive first sequence represented by a coalesced full-text delta; omitted for ordinary events. */
+		/** Inclusive first sequence represented by a coalesced delta (joined appends, or the latest full text); omitted otherwise. */
 		fromSequence: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
 		event: ApplicationEventSchema,
 	}),

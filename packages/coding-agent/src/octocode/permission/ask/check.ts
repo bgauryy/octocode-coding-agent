@@ -5,6 +5,7 @@ import { withDialog } from "../../shared/locks.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SourceDecision } from "../source-policy/rules.ts";
 import { shellTargetAccess } from "../file-access.ts";
+import { commandWriteTargets } from "../shell/write-targets.ts";
 import { computeCard } from "../effect.ts";
 import { type ActionClass, decide, kindOf, type PermissionMode, UNGRANTABLE } from "../mode.ts";
 import type { PermissionRequest } from "../request.ts";
@@ -67,8 +68,14 @@ export async function checkPermission(
 			reason: [request.reason, source.message].filter(Boolean).join("\n"),
 		};
 	const targetClasses = new Set<ActionClass>();
-	for (const target of source?.shellTargets ?? []) {
-		const access = shellTargetAccess(target, request.cwd ?? ctx.cwd ?? process.cwd());
+	const cwd = request.cwd ?? ctx.cwd ?? process.cwd();
+	// The source policy's redirect and `tee` targets (with its rule verdicts), then every other place the command writes.
+	const shellTargets = [
+		...(source?.shellTargets ?? []),
+		...(invocation ? commandWriteTargets(invocation, cwd, source?.shellTargets) : []),
+	];
+	for (const target of shellTargets) {
+		const access = shellTargetAccess(target, cwd);
 		if (access.refusal)
 			return host.decided(request, {
 				allowed: false,
@@ -88,7 +95,7 @@ export async function checkPermission(
 		request = {
 			...request,
 			also: [...new Set([...(request.also ?? []), ...targetClasses])],
-			what: [...request.what, ...(source?.shellTargets ?? []).map((target) => `${target.kind} ${target.raw}`)],
+			what: [...request.what, ...shellTargets.map((target) => `${target.kind} ${target.raw}`)],
 		};
 	const signal = request.signal ? AbortSignal.any([request.signal, host.policy().signal]) : host.policy().signal;
 	const action = request.action;

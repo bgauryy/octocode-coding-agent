@@ -1,11 +1,9 @@
-import { registerGraphTools } from "./graph/register.ts";
 import { registerRunGuards } from "./run-guards.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
 import { registerExtensibilityCommands } from "./plugins/command.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
-import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { BrowserTool } from "./browser/tool/browser-tool.ts";
+import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "./files/tool/guard.ts";
 import { plural } from "./shared/render/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -21,7 +19,6 @@ import { agentModes, agentOperation } from "./agent-tool.ts";
 import { registerApi } from "./api/register.ts";
 import { registerAskUser } from "./ask/tool.ts";
 import { registerBacklog } from "./backlog/index.ts";
-import { registerBrowserTool } from "./browser/tool.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
 import { registerArchiveTool } from "./compaction/archive-tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
@@ -44,7 +41,7 @@ import { registerPermissionCommand } from "./permission/command.ts";
 import { PROFILE_DECLARABLE } from "./permission/mode.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { pruneSnapshots } from "./permission/snapshot.ts";
-import { reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
+import { parsedShell, reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
 import { readOnlyCommand } from "./permission/shell/read-only.ts";
 import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
@@ -63,9 +60,11 @@ import { statusCommand } from "./status-command.ts";
 import { currentCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
+import { registerModelsTool } from "./subagents/models-tool.ts";
 import { type AgentProfile, loadProfiles, profileFileName } from "./subagents/profiles.ts";
 import { type AgentControl, registerAgentTool } from "./subagents/tool.ts";
 import { Team } from "./team/session.ts";
+import { changeNote } from "./team/edits.ts";
 import { registerCollab } from "./team/tools.ts";
 import { registerToolGates } from "./tool-gates.ts";
 import { registerTurnSetup } from "./turn.ts";
@@ -89,7 +88,7 @@ import { registerWebTool } from "./web/web.ts";
  *   (`compaction/register`) are registered before the headless hold at the end of this function, so a continued or
  *   retried run is decided before the hold waits for background work.
  */
-export default function octocode(api: ExtensionAPI): void | Promise<void> {
+export default function octocode(api: ExtensionAPI): void {
 	api = withNativePermissionOwners(api);
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
 	// First, so every feature's api.sendMessage goes through it and its agent_settled handler runs before theirs.
@@ -125,6 +124,7 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 	api.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 
 	guard.reservedBy = (file) => team.reservation(file, file);
+	guard.modifiedBy = (file) => changeNote(team.editLog(), file, team.id);
 	const checkpoints = new Checkpoints();
 	registerFileTool(
 		api,
@@ -142,7 +142,6 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 	const jobs = registerBashTool(api, commands);
 	let agents: AgentControl | undefined;
 	let external: ExternalAgents | undefined;
-	const graphTools = registerGraphTools(api); // pending only after a new graph CLI build; the loader awaits it
 	const planning = registerPlanning(api, commands, async () => {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
@@ -171,6 +170,7 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 	registerSessions(api, {
 		commands,
 		isSubagent,
+		...(isSubagent && process.env[AGENT_GOAL_ENV] ? { goal: process.env[AGENT_GOAL_ENV] } : {}),
 		filesChanged: () => new Set(checkpoints.list().map((entry) => entry.path)).size,
 	});
 	const workspace = isSubagent
@@ -188,7 +188,7 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
 	if (!isSubagent) registerWebCommands(api, { commands, workspace, openWorkspace });
-	registerMemory(api, { commands, isSubagent, permission });
+	registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });
 	commands.add(
 		"status",
 		statusCommand(api, () =>
@@ -202,7 +202,6 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 		),
 	);
 	registerWebTool(api, permission);
-	registerBrowserTool(api, new BrowserTool(permission));
 	registerDebugTool(api);
 	if (!isSubagent) registerOllamaTool(api);
 	const agentTool = agentModes();
@@ -212,6 +211,7 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 		registerTool: agentTool.collect,
 		shellWrites: (command) => shellParserReady().then(() => reservationTargets(command)),
 		shellReadOnly: readOnlyCommand,
+		shellCommands: parsedShell,
 		shellChanges: async (command) => {
 			await shellParserReady();
 			return shellMutation(command).writes;
@@ -221,7 +221,7 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
 		registerEditor(api, permission);
 		registerTrustCommand(commands);
-		registerWorktrees(api, commands, team);
+		registerWorktrees(api, commands, team, () => agents?.parked() ?? []);
 		registerAskUser(api);
 		agents = registerAgentTool(
 			api,
@@ -234,7 +234,8 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 		commands.add("agents", agents.command);
 		// A user's narrowing mode change names the running subagents it would stop and asks first.
 		permission.setConfirmStop(stopConfirmation(() => agents?.running() ?? [], isSubagent));
-		registerModels(commands, () => profiles, agentTool.collect);
+		registerModels(commands, () => profiles);
+		registerModelsTool(api, () => profiles);
 	}
 	registerSkills(api);
 	registerUi(api, isSubagent);
@@ -396,5 +397,4 @@ export default function octocode(api: ExtensionAPI): void | Promise<void> {
 	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
 	// Register each native command once, after every feature has supplied its handler.
 	commands.register(api);
-	return graphTools;
 }

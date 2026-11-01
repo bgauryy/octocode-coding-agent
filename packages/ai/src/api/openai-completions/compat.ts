@@ -1,5 +1,5 @@
 import type { Model } from "../../types.ts";
-import { isOpenRouterModel } from "../../utils/provider-host.ts";
+import { isOpenRouterModel, matchesDomain } from "../../utils/provider-host.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 /**
@@ -35,54 +35,45 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const provider = model.provider;
 	const baseUrl = model.baseUrl;
 
+	// Hosts match by domain (host or subdomain), never by substring: a proxy URL that only names a provider in its path
+	// keeps the generic request format.
 	const isZai =
-		provider === "zai" ||
-		provider === "zai-coding-cn" ||
-		baseUrl.includes("api.z.ai") ||
-		baseUrl.includes("open.bigmodel.cn");
-	const isTogether =
-		provider === "together" || baseUrl.includes("api.together.ai") || baseUrl.includes("api.together.xyz");
+		provider === "zai" || provider === "zai-coding-cn" || matchesDomain(baseUrl, "api.z.ai", "open.bigmodel.cn");
+	const isTogether = provider === "together" || matchesDomain(baseUrl, "api.together.ai", "api.together.xyz");
 	const isMoonshot =
 		provider === "moonshotai" ||
 		provider === "moonshotai-cn" ||
 		provider === "kimi-coding" ||
-		baseUrl.includes("api.moonshot.") ||
-		baseUrl.includes("api.kimi.com");
+		matchesDomain(baseUrl, "api.moonshot.ai", "api.moonshot.cn", "api.kimi.com");
 	const isOpenRouter = isOpenRouterModel(model);
-	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
-	const isCloudflareAiGateway = provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
-	const isNvidia = provider === "nvidia" || baseUrl.includes("integrate.api.nvidia.com");
-	const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
-	const isCerebras = provider === "cerebras" || baseUrl.includes("cerebras.ai");
-	const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
+	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || matchesDomain(baseUrl, "api.cloudflare.com");
+	const isCloudflareAiGateway =
+		provider === "cloudflare-ai-gateway" || matchesDomain(baseUrl, "gateway.ai.cloudflare.com");
+	const isNvidia = provider === "nvidia" || matchesDomain(baseUrl, "integrate.api.nvidia.com");
+	const isAntLing = provider === "ant-ling" || matchesDomain(baseUrl, "api.ant-ling.com");
+	const isCerebras = provider === "cerebras" || matchesDomain(baseUrl, "cerebras.ai");
+	const isDeepSeek = provider === "deepseek" || matchesDomain(baseUrl, "deepseek.com");
+	const isGrok = provider === "xai" || matchesDomain(baseUrl, "api.x.ai");
+	const isChutes = matchesDomain(baseUrl, "chutes.ai");
+	const isOpencode = provider === "opencode" || matchesDomain(baseUrl, "opencode.ai");
 
 	const isNonStandard =
 		isNvidia ||
 		isCerebras ||
-		provider === "xai" ||
-		baseUrl.includes("api.x.ai") ||
+		isGrok ||
 		isTogether ||
-		baseUrl.includes("chutes.ai") ||
+		isChutes ||
 		isDeepSeek ||
 		isZai ||
 		isMoonshot ||
-		provider === "opencode" ||
-		baseUrl.includes("opencode.ai") ||
+		isOpencode ||
 		isCloudflareWorkersAI ||
 		isCloudflareAiGateway ||
 		isAntLing;
 
 	const useMaxTokens =
-		baseUrl.includes("chutes.ai") ||
-		isDeepSeek ||
-		isMoonshot ||
-		isCloudflareAiGateway ||
-		isTogether ||
-		isNvidia ||
-		isAntLing ||
-		isZai;
+		isChutes || isDeepSeek || isMoonshot || isCloudflareAiGateway || isTogether || isNvidia || isAntLing || isZai;
 
-	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isOpenRouterDeveloperRoleModel =
 		isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
 	const isOpenRouterAnthropic = provider === "openrouter" && /^~?anthropic\//.test(model.id);

@@ -157,7 +157,7 @@ ${chalk.bold("Environment Variables:")}
   ${ENV_AGENT_DIR.padEnd(32)} - Config directory (default: ~/${CONFIG_DIR_NAME}/octocodecode)
   ${ENV_SESSION_DIR.padEnd(32)} - Session storage directory (overridden by --session-dir)
   OCTOCODE_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
-  OCTOCODE_OFFLINE                       - Disable startup network operations when set to 1/true/yes
+  OCTOCODE_OFFLINE                       - Disable startup network operations when set to 1/true/on/yes
   OCTOCODE_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
   OCTOCODE_SHARE_VIEWER_URL              - Base URL for /share command (default: GitHub gist)
 

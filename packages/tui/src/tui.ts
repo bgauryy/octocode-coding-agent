@@ -1,635 +1,115 @@
 /**
  * Minimal TUI implementation with differential rendering
+ *
+ * `TuiBase` composes collaborators from `./tui/`: the focus manager and overlay compositor, the
+ * render scheduler, terminal queries and input listeners. This module also re-exports the public
+ * names those modules own, so `./tui.ts` stays the one place to import them from.
  */
 
-import { performance } from "node:perf_hooks";
 import { matchesKey } from "./keys/match.ts";
 import { isKeyRelease } from "./keys/sequences.ts";
-import {
-	DEVICE_ATTRIBUTES_QUERY,
-	DEVICE_ATTRIBUTES_RESPONSE_PATTERN,
-	type OutputTelemetry,
-	type Terminal,
-} from "./terminal.ts";
-import {
-	parseOscColorResponse,
-	parseTerminalColorSchemeReport,
-	type RgbColor,
-	type TerminalColorScheme,
-	type TerminalColors,
-} from "./terminal-colors.ts";
-import { getCapabilities, kittyPlaceholderMode, setCellDimensions } from "./terminal-image/capabilities.ts";
+import type { Terminal } from "./terminal/types.ts";
+import type { TerminalColorScheme, TerminalColors } from "./terminal-colors.ts";
+import { kittyPlaceholderMode } from "./terminal-image/capabilities.ts";
 import { TmuxImageReupload } from "./terminal-image/tmux-reupload.ts";
-import { isImageLine } from "./terminal-image.ts";
 import { FOCUS_IN } from "./tui-alt-screen/constants.ts";
-import { visibleWidth } from "./utils/width.ts";
-import { extractSegments, sliceByColumn, sliceWithWidth } from "./utils/columns.ts";
-import { normalizeTerminalOutput } from "./utils.ts";
+import type { Component, TuiMouseDispatchResult, TuiMouseDispatchTarget, TuiMouseEvent } from "./tui/component.ts";
+import { applyLineResets } from "./tui/composite.ts";
+import { Container } from "./tui/container.ts";
+import { extractCursorPosition, resolveFakeCursors } from "./tui/cursor.ts";
+import { FocusManager } from "./tui/focus-manager.ts";
+import { InputListeners, type TuiInputListener } from "./tui/input-listeners.ts";
+import { OverlayCompositor } from "./tui/overlay-compositor.ts";
+import type { OverlayHandle, OverlayOptions } from "./tui/overlay-types.ts";
+import type { RenderPacingOptions, RenderPacingStats } from "./tui/render-pacing.ts";
+import { appendRenderErrorLog, type RenderErrorListener, withRenderIsolation } from "./tui/render-isolation.ts";
+import { RenderScheduler } from "./tui/render-scheduler.ts";
+import { TerminalQueries } from "./tui/terminal-queries.ts";
+import type { TUI, TuiMode, TuiStopOptions } from "./tui/types.ts";
 
-/**
- * Component interface - all components must implement this
- */
-export type TuiMouseEventType = "press" | "release" | "move" | "drag" | "click" | "wheel";
-export type TuiMouseButton = "left" | "middle" | "right" | "none";
+export {
+	type Component,
+	dispatchMouseEvent,
+	type Focusable,
+	isFocusable,
+	retargetMouseEvent,
+	type TuiMouseButton,
+	type TuiMouseDispatchResult,
+	type TuiMouseDispatchTarget,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
+	type TuiMouseEventType,
+} from "./tui/component.ts";
+export { compositeTuiLine } from "./tui/composite.ts";
+export { Container } from "./tui/container.ts";
+export { CURSOR_MARKER, FAKE_CURSOR_START, renderFakeCursor } from "./tui/cursor.ts";
+export type { TuiInputListener, TuiInputListenerResult } from "./tui/input-listeners.ts";
+export type {
+	OverlayAnchor,
+	OverlayBounds,
+	OverlayHandle,
+	OverlayMargin,
+	OverlayOptions,
+	OverlayUnfocusOptions,
+	SizeValue,
+} from "./tui/overlay-types.ts";
+export { computeRenderDelayMs, type RenderPacingOptions, type RenderPacingStats } from "./tui/render-pacing.ts";
+export type { RenderErrorListener } from "./tui/render-isolation.ts";
 
-/** Normalized cell-based mouse event. Coordinates are zero-based. */
-export interface TuiMouseEvent {
-	type: TuiMouseEventType;
-	button: TuiMouseButton;
-	/** Coordinates local to the receiving component. */
-	x: number;
-	y: number;
-	/** Absolute terminal coordinates. */
-	screenX: number;
-	screenY: number;
-	/** Current component bounds. */
-	width: number;
-	height: number;
-	shift: boolean;
-	alt: boolean;
-	ctrl: boolean;
-	/** Logical lines. Negative values scroll up. */
-	wheelDelta?: number;
-	/** Consecutive click count when type is click. */
-	clickCount?: number;
-}
-
-export interface TuiMouseEventResult {
-	/** Stop propagation and suppress renderer-level fallback behavior. */
-	handled?: boolean;
-	/** Route subsequent drag/release events to this component. Implies handled. */
-	capture?: boolean;
-	/** Give keyboard focus to this component. Implies handled. */
-	focus?: boolean;
-	/**
-	 * Explicitly request or suppress a render. Move and release default to false;
-	 * press, click, drag, and wheel default to true.
-	 */
-	render?: boolean;
-}
-
-/** Internal target metadata used by containers and alternate-screen dispatch. */
-export interface TuiMouseDispatchTarget {
-	component: Component;
-	originX: number;
-	originY: number;
-	width: number;
-	height: number;
-	/** Forwarding components from the target outward, retained for gesture-lifecycle checks. */
-	owners?: readonly Component[];
-}
-
-/** Result of dispatching to a concrete component. */
-export interface TuiMouseDispatchResult extends TuiMouseEventResult {
-	handled: true;
-	target: TuiMouseDispatchTarget;
-	/** Keyboard focus target, which may be a delegating parent container. */
-	focusTarget?: Component;
-}
-
-/**
- * Dispatch an event to a component and retain the exact target and coordinate
- * transform. Containers use this when forwarding events to nested children.
- */
-export function dispatchMouseEvent(component: Component, event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
-	const result = component.handleMouse?.(event);
-	if (!result) return undefined;
-	if ("target" in result) {
-		// The component forwarded the event to a child it hosts. Like a delegating container, it routes
-		// keys to that child itself, so it keeps keyboard focus. Focusing the child directly would leave
-		// focus on a detached component once the host removes it, e.g. a closed settings submenu.
-		const forwarded = result as TuiMouseDispatchResult;
-		const target = forwarded.target;
-		const owners = component === target.component ? target.owners : [...(target.owners ?? []), component];
-		return {
-			...forwarded,
-			target: { ...target, ...(owners ? { owners } : {}) },
-			...(forwarded.focus && component.handleInput ? { focusTarget: component } : {}),
-		};
-	}
-	if (!result.handled && !result.capture && !result.focus) return undefined;
-	return {
-		...result,
-		handled: true,
-		...(result.focus ? { focusTarget: component } : {}),
-		target: {
-			component,
-			originX: event.screenX - event.x,
-			originY: event.screenY - event.y,
-			width: event.width,
-			height: event.height,
-		},
-	};
-}
-
-/** Recreate local coordinates for a previously dispatched mouse target. */
-export function retargetMouseEvent(event: TuiMouseEvent, target: TuiMouseDispatchTarget): TuiMouseEvent {
-	return {
-		...event,
-		x: event.screenX - target.originX,
-		y: event.screenY - target.originY,
-		width: target.width,
-		height: target.height,
-	};
-}
-
-export interface Component {
-	/**
-	 * Render the component to lines for the given viewport width
-	 * @param width - Current viewport width
-	 * @returns Array of strings, each representing a line
-	 */
-	render(width: number): string[];
-
-	/** Optional handler for keyboard input when component has focus. */
-	handleInput?(data: string): void;
-
-	/** Optional normalized mouse handler. */
-	handleMouse?(event: TuiMouseEvent): TuiMouseEventResult | undefined;
-
-	/**
-	 * If true, component receives key release events (Kitty protocol).
-	 * Default is false - release events are filtered out.
-	 */
-	wantsKeyRelease?: boolean;
-
-	/**
-	 * Invalidate any cached rendering state.
-	 * Called when theme changes or when component needs to re-render from scratch.
-	 */
-	invalidate(): void;
-}
-
-export type TuiInputListenerResult = { consume?: boolean; data?: string } | undefined;
-export type TuiInputListener = (data: string) => TuiInputListenerResult;
-type PendingTerminalColorQuery = {
-	foreground?: RgbColor;
-	background?: RgbColor;
-	palette: Array<RgbColor | undefined>;
-	/** Targets that already replied, so duplicates do not count twice. */
-	replied: Set<string>;
-	/**
-	 * Receives the result: the promise's resolve until the timeout, then `onLateReply`. Unset once the
-	 * query completed (on the DA1 reply or once every color replied); later replies are ignored.
-	 */
-	deliver: ((colors: TerminalColors) => void) | undefined;
-	timer: NodeJS.Timeout | undefined;
-};
-
-const TERMINAL_PALETTE_SIZE = 16;
-/** OSC 10 and 11 plus OSC 4 for every palette color. */
-const TERMINAL_COLOR_REPLY_COUNT = 2 + TERMINAL_PALETTE_SIZE;
-/**
- * Default colors, palette colors 0-15, and a trailing primary device attributes (DA1) request.
- * Every terminal answers DA1 and terminals answer in order, so the DA1 reply marks the end of
- * the color replies, including for terminals that ignore the color queries.
- */
-const TERMINAL_COLOR_QUERY = `\x1b]10;?\x07\x1b]11;?\x07${Array.from(
-	{ length: TERMINAL_PALETTE_SIZE },
-	(_, index) => `\x1b]4;${index};?\x07`,
-).join("")}${DEVICE_ATTRIBUTES_QUERY}`;
-
-/**
- * Interface for components that can receive focus and display a hardware cursor.
- * When focused, the component should emit CURSOR_MARKER at the cursor position
- * in its render output. TUI will find this marker and position the hardware
- * cursor there for proper IME candidate window positioning.
- */
-export interface Focusable {
-	/** Set by TUI when focus changes. Component should emit CURSOR_MARKER when true. */
-	focused: boolean;
-}
-
-/** Type guard to check if a component implements Focusable */
-export function isFocusable(component: Component | null): component is Component & Focusable {
-	return component !== null && "focused" in component;
-}
-
-/**
- * Cursor position marker - APC (Application Program Command) sequence.
- * This is a zero-width escape sequence that terminals ignore.
- * Components emit this at the cursor position when focused.
- * TUI finds and strips this marker, then positions the hardware cursor there.
- */
-export const CURSOR_MARKER = "\x1b_octo:c\x07";
-
-/** Fake cursor markers - zero-width APC sequences around the text drawn as the cursor. See resolveFakeCursors(). */
-export const FAKE_CURSOR_START = "\x1b_octo:fc\x07";
-const FAKE_CURSOR_END = "\x1b_octo:/fc\x07";
-// CURSOR_MARKER + FAKE_CURSOR_START + text + FAKE_CURSOR_END. Truncating the line right after the cursor cell drops the end.
-const FOCUSED_FAKE_CURSOR = /(\x1b_octo:c\x07)\x1b_octo:fc\x07(.*?)(?:\x1b_octo:\/fc\x07|$)/s;
-
-/** Wrap text in fake cursor markers. */
-export function renderFakeCursor(text: string): string {
-	return `${FAKE_CURSOR_START}${text}${FAKE_CURSOR_END}`;
-}
-
-/**
- * Anchor position for overlays
- */
-export type OverlayAnchor =
-	| "center"
-	| "top-left"
-	| "top-right"
-	| "bottom-left"
-	| "bottom-right"
-	| "top-center"
-	| "bottom-center"
-	| "left-center"
-	| "right-center";
-
-/**
- * Margin configuration for overlays
- */
-export interface OverlayMargin {
-	top?: number;
-	right?: number;
-	bottom?: number;
-	left?: number;
-}
-
-/** Value that can be absolute (number) or percentage (string like "50%") */
-export type SizeValue = number | `${number}%`;
-
-/** The number in a percentage string like "50%" (50), or undefined when the string is not one. */
-function parsePercent(value: string): number | undefined {
-	const match = value.match(/^(\d+(?:\.\d+)?)%$/);
-	return match ? parseFloat(match[1]) : undefined;
-}
-
-/** Parse a SizeValue into absolute value given a reference size; undefined when absent or not a percentage. */
-function parseSizeValue(value: SizeValue | undefined, referenceSize: number): number | undefined {
-	if (value === undefined) return undefined;
-	if (typeof value === "number") return value;
-	const percent = parsePercent(value);
-	return percent === undefined ? undefined : Math.floor((referenceSize * percent) / 100);
-}
-
-/**
- * Resolve an overlay row or column: an absolute number, or a percentage of the free space
- * (0% = start, 100% = end, so the overlay stays within bounds) offset by the start margin.
- * Undefined for a string that is not a percentage; the caller then centers the overlay.
- */
-function parseOverlayPosition(value: SizeValue, freeSpace: number, startMargin: number): number | undefined {
-	if (typeof value === "number") return value;
-	const percent = parsePercent(value);
-	return percent === undefined ? undefined : startMargin + Math.floor(freeSpace * (percent / 100));
-}
-
-/**
- * Options for overlay positioning and sizing.
- * Values can be absolute numbers or percentage strings (e.g., "50%").
- */
-export interface OverlayOptions {
-	// === Sizing ===
-	/** Width in columns, or percentage of terminal width (e.g., "50%") */
-	width?: SizeValue;
-	/** Minimum width in columns */
-	minWidth?: number;
-	/** Maximum height in rows, or percentage of terminal height (e.g., "50%") */
-	maxHeight?: SizeValue;
-
-	// === Positioning - anchor-based ===
-	/** Anchor point for positioning (default: 'center') */
-	anchor?: OverlayAnchor;
-	/** Horizontal offset from anchor position (positive = right) */
-	offsetX?: number;
-	/** Vertical offset from anchor position (positive = down) */
-	offsetY?: number;
-
-	// === Positioning - percentage or absolute ===
-	/** Row position: absolute number, or percentage (e.g., "25%" = 25% from top) */
-	row?: SizeValue;
-	/** Column position: absolute number, or percentage (e.g., "50%" = centered horizontally) */
-	col?: SizeValue;
-
-	// === Margin from terminal edges ===
-	/** Margin from terminal edges. Number applies to all sides. */
-	margin?: OverlayMargin | number;
-
-	// === Visibility ===
-	/**
-	 * Control overlay visibility based on terminal dimensions.
-	 * If provided, overlay is only rendered when this returns true.
-	 * Called each render cycle with current terminal dimensions.
-	 */
-	visible?: (termWidth: number, termHeight: number) => boolean;
-	/** If true, don't capture keyboard focus when shown */
-	nonCapturing?: boolean;
-}
-
-/** Options for {@link OverlayHandle.unfocus}. */
-export interface OverlayUnfocusOptions {
-	/** Explicit target to focus after releasing this overlay. */
-	target: Component | null;
-}
-
-/** Last rendered terminal-relative overlay rectangle. */
-export interface OverlayBounds {
-	row: number;
-	col: number;
-	width: number;
-	height: number;
-}
-
-/**
- * Handle returned by showOverlay for controlling the overlay
- */
-export interface OverlayHandle {
-	/** Permanently remove the overlay (cannot be shown again) */
-	hide(): void;
-	/** Temporarily hide or show the overlay */
-	setHidden(hidden: boolean): void;
-	/** Check if overlay is temporarily hidden */
-	isHidden(): boolean;
-	/** Focus this overlay and bring it to the visual front */
-	focus(): void;
-	/** Release focus to the next visible capturing overlay or previous target, or to an explicit target when provided */
-	unfocus(options?: OverlayUnfocusOptions): void;
-	/** Check if this overlay currently has focus */
-	isFocused(): boolean;
-	/** Get the most recent rendered bounds for a visible overlay. */
-	getBounds(): OverlayBounds | undefined;
-}
-
-type OverlayStackEntry = {
-	component: Component;
-	options?: OverlayOptions;
-	preFocus: Component | null;
-	hidden: boolean;
-	focusOrder: number;
-	bounds?: OverlayBounds;
-};
-
-type RenderedOverlayLayout = {
-	entry: OverlayStackEntry;
-	row: number;
-	col: number;
-	width: number;
-	height: number;
-};
-
-type OverlayBlockedFocusResume = { status: "restore-overlay" } | { status: "focus-target"; target: Component | null };
-type EligibleOverlayFocusRestoreState = { status: "eligible"; overlay: OverlayStackEntry };
-type BlockedOverlayFocusRestoreState = {
-	status: "blocked";
-	overlay: OverlayStackEntry;
-	blockedBy: Component;
-	resume: OverlayBlockedFocusResume;
-};
-type ActiveOverlayFocusRestoreState = EligibleOverlayFocusRestoreState | BlockedOverlayFocusRestoreState;
-type OverlayFocusRestoreState = { status: "inactive" } | ActiveOverlayFocusRestoreState;
-type OverlayFocusRestorePolicy = "clear" | "preserve";
-
-/**
- * Container - a component that contains other components
- */
-export class Container implements Component {
-	children: Component[] = [];
-	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
-
-	addChild(component: Component): void {
-		this.children.push(component);
-	}
-
-	removeChild(component: Component): void {
-		const index = this.children.indexOf(component);
-		if (index !== -1) {
-			this.children.splice(index, 1);
-		}
-	}
-
-	clear(): void {
-		this.children = [];
-	}
-
-	invalidate(): void {
-		for (const child of this.children) {
-			child.invalidate?.();
-		}
-	}
-
-	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
-		if (event.y < 0 || event.y >= event.height) return undefined;
-		const mouseChildren =
-			this.mouseLayout?.width === event.width
-				? this.mouseLayout.children
-				: this.children.map((component) => ({ component, height: component.render(event.width).length }));
-		let childY = 0;
-		for (const { component: child, height: childHeight } of mouseChildren) {
-			if (event.y >= childY && event.y < childY + childHeight) {
-				// Keep the last painted positions until redraw, but never activate a detached child.
-				if (!this.children.includes(child)) return undefined;
-				const result = dispatchMouseEvent(child, {
-					...event,
-					y: event.y - childY,
-					height: childHeight,
-				});
-				if (result?.focus && (this as Component).handleInput) return { ...result, focusTarget: this };
-				return result;
-			}
-			childY += childHeight;
-		}
-		return undefined;
-	}
-
-	render(width: number): string[] {
-		const lines: string[] = [];
-		const mouseChildren: Array<{ component: Component; height: number }> = [];
-		for (const child of this.children) {
-			const childLines = child.render(width);
-			mouseChildren.push({ component: child, height: childLines.length });
-			for (const line of childLines) {
-				lines.push(line);
-			}
-		}
-		this.mouseLayout = { width, children: mouseChildren };
-		return lines;
-	}
-}
-
-/**
- * TUI - Main class for managing terminal UI with differential rendering
- */
-const SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07";
-
-/** Composite overlay content into a terminal line at a fixed column. */
-export function compositeTuiLine(
-	baseLine: string,
-	overlayLine: string,
-	startCol: number,
-	overlayWidth: number,
-	totalWidth: number,
-): string {
-	if (isImageLine(baseLine)) return baseLine;
-
-	const afterStart = startCol + overlayWidth;
-	const base = extractSegments(baseLine, startCol, afterStart, totalWidth - afterStart, true);
-	const overlay = sliceWithWidth(overlayLine, 0, overlayWidth, true);
-	const beforePad = Math.max(0, startCol - base.beforeWidth);
-	const overlayPad = Math.max(0, overlayWidth - overlay.width);
-	const actualBeforeWidth = Math.max(startCol, base.beforeWidth);
-	const actualOverlayWidth = Math.max(overlayWidth, overlay.width);
-	const afterTarget = Math.max(0, totalWidth - actualBeforeWidth - actualOverlayWidth);
-	const afterPad = Math.max(0, afterTarget - base.afterWidth);
-	const result =
-		base.before +
-		" ".repeat(beforePad) +
-		SEGMENT_RESET +
-		overlay.text +
-		" ".repeat(overlayPad) +
-		SEGMENT_RESET +
-		base.after +
-		" ".repeat(afterPad);
-
-	return visibleWidth(result) <= totalWidth ? result : sliceByColumn(result, 0, totalWidth, true);
-}
-
-export type TuiMode = "regular" | "fullscreen";
-
-export interface TuiStopOptions {
-	/** Leave renderer output in place for another TUI taking over the same terminal. */
-	preserveScreen?: boolean;
-}
-
-export interface TUI extends Component {
-	readonly mode: TuiMode;
-	children: Component[];
-	terminal: Terminal;
-	onDebug?: () => void;
-	readonly fullRedraws: number;
-	addChild(component: Component): void;
-	removeChild(component: Component): void;
-	clear(): void;
-	getShowHardwareCursor(): boolean;
-	setShowHardwareCursor(enabled: boolean): void;
-	getClearOnShrink(): boolean;
-	setClearOnShrink(enabled: boolean): void;
-	setFocus(component: Component | null): void;
-	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
-	hideOverlay(): void;
-	hasOverlay(): boolean;
-	start(): void;
-	stop(options?: TuiStopOptions): void;
-	renderNow(force?: boolean): void;
-	requestRender(force?: boolean): void;
-	addInputListener(listener: TuiInputListener): () => void;
-	removeInputListener(listener: TuiInputListener): void;
-	onTerminalColorSchemeChange(listener: (scheme: TerminalColorScheme) => void): () => void;
-	setTerminalColorSchemeNotifications(enabled: boolean): void;
-	queryTerminalColors(options: {
-		timeoutMs: number;
-		onLateReply?: (colors: TerminalColors) => void;
-	}): Promise<TerminalColors>;
-}
-
-export const VIEWPORT_TUI = Symbol.for("@octocodeai/octocode-tui/viewport");
-
-export interface ViewportTUI extends TUI {
-	readonly [VIEWPORT_TUI]: true;
-	setLayoutRoot(component: Component | undefined): void;
-}
-
-export function isViewportTUI(tui: TUI): tui is ViewportTUI {
-	return (tui as Partial<ViewportTUI>)[VIEWPORT_TUI] === true;
-}
-
-/** Experimental scheduler controls. Both behaviors are off unless explicitly enabled. */
-export interface RenderPacingOptions {
-	outputGate?: boolean;
-	adaptiveCadence?: boolean;
-	metrics?: boolean;
-	highWaterBytes?: number;
-	lowWaterBytes?: number;
-	retryMs?: number;
-}
-
-export interface RenderPacingStats {
-	paintedFrames: number;
-	deferredFrames: number;
-	forcedFrames: number;
-	immediateFrames: number;
-	maxPendingOutputBytes: number;
-	lastFrameCostMs: number;
-	maxFrameCostMs: number;
-	maxInputToPaintMs: number;
-	maxTimerLagMs: number;
-	output?: Readonly<OutputTelemetry>;
-}
-
-/** Cadence and frame-cost floors are independent of output queue admission. */
-export function computeRenderDelayMs(
-	intervalMs: number,
-	frameCostMs: number,
-	elapsedMs: number,
-	adaptive: boolean,
-): number {
-	const floor = adaptive ? Math.max(intervalMs, Math.min(200, frameCostMs * 2)) : intervalMs;
-	return Math.max(0, floor - elapsedMs);
-}
+export {
+	isViewportTUI,
+	type TUI,
+	type TuiMode,
+	type TuiStopOptions,
+	VIEWPORT_TUI,
+	type ViewportTUI,
+} from "./tui/types.ts";
 
 export abstract class TuiBase extends Container implements TUI {
 	abstract readonly mode: TuiMode;
 	public terminal: Terminal;
-	private focusedComponent: Component | null = null;
-	/** Tracks focus owners once mounted, so later removals cannot receive keyboard input. */
-	private readonly mountedFocusOwners = new WeakSet<Component>();
-	private inputListeners = new Set<TuiInputListener>();
 
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
 	public onDebug?: () => void;
-	private renderRequested = false;
-	private immediateRenderScheduled = false;
-	private renderTimer: NodeJS.Timeout | undefined;
-	private lastRenderAt = 0;
-	private static readonly MIN_RENDER_INTERVAL_MS = 16;
-	private renderPacing: Required<RenderPacingOptions> = {
-		outputGate: false,
-		adaptiveCadence: false,
-		metrics: false,
-		highWaterBytes: 256 * 1024,
-		lowWaterBytes: 128 * 1024,
-		retryMs: 10,
-	};
-	private renderPacingStats: RenderPacingStats = {
-		paintedFrames: 0,
-		deferredFrames: 0,
-		forcedFrames: 0,
-		immediateFrames: 0,
-		maxPendingOutputBytes: 0,
-		lastFrameCostMs: 0,
-		maxFrameCostMs: 0,
-		maxInputToPaintMs: 0,
-		maxTimerLagMs: 0,
-	};
-	private lastFrameCostMs = 0;
-	private lastInputAt: number | undefined;
-	private outputPressureHeld = false;
-	private renderLifecycle = 0;
+	/** A component that throws while painting shows a one-line fallback; its error goes here, or to the render error log when unset. */
+	public onRenderError?: RenderErrorListener;
 	private showHardwareCursor = false;
 	private clearOnShrink = false;
 	protected fullRedrawCount = 0;
 	protected stopped = false;
 	private readonly imageReupload = new TmuxImageReupload();
-	/**
-	 * Color queries waiting for their DA1 reply, oldest first. Terminals answer in order, so color
-	 * replies belong to the oldest one. Queries stay here after a timeout to collect late replies.
-	 */
-	private pendingTerminalColorQueries: PendingTerminalColorQuery[] = [];
-	private terminalColorSchemeListeners = new Set<(scheme: TerminalColorScheme) => void>();
-	private terminalColorSchemeNotificationsEnabled = false;
 	/** Directory for debug/crash logs. When undefined, debug logging is disabled and crash dumps fall back to the OS temp directory. */
 	protected readonly logDirectory: string | undefined;
 
-	// Overlay stack for modal components rendered on top of base content
-	private focusOrderCounter = 0;
-	private overlayStack: OverlayStackEntry[] = [];
-	private renderedOverlayLayouts: RenderedOverlayLayout[] = [];
+	private readonly inputListeners = new InputListeners();
+	private readonly focus = new FocusManager({
+		viewport: () => this.terminal,
+		mountedRoots: () => this.getMountedRoots(),
+		requestRender: () => this.requestRender(),
+		hideCursor: () => this.hideTerminalCursor(),
+	});
+	private readonly overlays = new OverlayCompositor(this.focus);
+	private readonly scheduler = new RenderScheduler({
+		terminal: () => this.terminal,
+		isStopped: () => this.stopped,
+		paint: () => withRenderIsolation(this.reportRenderError, () => this.doRender()),
+	});
+	private readonly reportRenderError: RenderErrorListener = (error, component) =>
+		this.onRenderError
+			? this.onRenderError(error, component)
+			: appendRenderErrorLog(this.logDirectory, error, component);
+	private readonly queries = new TerminalQueries({
+		terminal: () => this.terminal,
+		isStopped: () => this.stopped,
+		onCellSizeChanged: () => {
+			this.invalidate();
+			this.requestRender();
+		},
+	});
 
 	get hasOverlayEntries(): boolean {
-		return this.overlayStack.length > 0;
+		return this.focus.stack.length > 0;
 	}
-	private overlayFocusRestore: OverlayFocusRestoreState = { status: "inactive" };
 
 	constructor(terminal: Terminal, showHardwareCursor?: boolean, logDirectory?: string) {
 		super();
@@ -661,80 +141,11 @@ export abstract class TuiBase extends Container implements TUI {
 
 	/** Opt in to output gating and/or adaptive cadence independently; unspecified options keep existing values. */
 	setRenderPacing(options: RenderPacingOptions): void {
-		const next = { ...this.renderPacing, ...options };
-		if (
-			!Number.isFinite(next.highWaterBytes) ||
-			next.highWaterBytes <= 0 ||
-			!Number.isFinite(next.lowWaterBytes) ||
-			next.lowWaterBytes < 0 ||
-			next.lowWaterBytes >= next.highWaterBytes ||
-			!Number.isFinite(next.retryMs) ||
-			next.retryMs <= 0
-		)
-			throw new RangeError("Invalid render pacing thresholds");
-		this.renderPacing = next;
-		this.outputPressureHeld = false;
-		this.syncTerminalPacing(true);
-	}
-
-	/** Mirror the pacing options into the terminal while the TUI runs; stopped, the terminal gets no gate and no telemetry. */
-	private syncTerminalPacing(running: boolean): void {
-		const { outputGate, highWaterBytes, metrics } = this.renderPacing;
-		this.terminal.setDecorativeOutputPressureThreshold?.(running && outputGate ? highWaterBytes : undefined);
-		this.terminal.setOutputTelemetryEnabled?.(running && metrics);
+		this.scheduler.setPacing(options);
 	}
 
 	getRenderPacingStats(): Readonly<RenderPacingStats> {
-		return {
-			...this.renderPacingStats,
-			...(this.renderPacing.metrics && this.terminal.getOutputTelemetry
-				? { output: this.terminal.getOutputTelemetry() }
-				: {}),
-		};
-	}
-
-	private outputIsPressured(): boolean {
-		if (!this.renderPacing.outputGate) return false;
-		const pending = this.terminal.pendingOutputBytes;
-		if (pending === undefined || !Number.isFinite(pending) || pending < 0) {
-			this.outputPressureHeld = false;
-			return false;
-		}
-		if (this.renderPacing.metrics) {
-			this.renderPacingStats.maxPendingOutputBytes = Math.max(this.renderPacingStats.maxPendingOutputBytes, pending);
-		}
-		this.outputPressureHeld = this.outputPressureHeld
-			? pending > this.renderPacing.lowWaterBytes
-			: pending > this.renderPacing.highWaterBytes;
-		return this.outputPressureHeld;
-	}
-
-	private paint(measure = false): void {
-		const start = measure ? performance.now() : 0;
-		if (this.renderPacing.metrics) this.samplePendingOutput();
-		this.doRender();
-		if (!measure) return;
-		this.lastFrameCostMs = performance.now() - start;
-		if (this.renderPacing.metrics) {
-			this.samplePendingOutput();
-			this.renderPacingStats.paintedFrames++;
-			this.renderPacingStats.lastFrameCostMs = this.lastFrameCostMs;
-			this.renderPacingStats.maxFrameCostMs = Math.max(this.renderPacingStats.maxFrameCostMs, this.lastFrameCostMs);
-			if (this.lastInputAt !== undefined) {
-				this.renderPacingStats.maxInputToPaintMs = Math.max(
-					this.renderPacingStats.maxInputToPaintMs,
-					performance.now() - this.lastInputAt,
-				);
-			}
-		}
-		this.lastInputAt = undefined;
-	}
-
-	private samplePendingOutput(): void {
-		const pending = this.terminal.pendingOutputBytes;
-		if (pending !== undefined && Number.isFinite(pending) && pending >= 0) {
-			this.renderPacingStats.maxPendingOutputBytes = Math.max(this.renderPacingStats.maxPendingOutputBytes, pending);
-		}
+		return this.scheduler.getStats();
 	}
 
 	get fullRedraws(): number {
@@ -768,157 +179,20 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	getFocusedComponent(): Component | null {
-		return this.focusedComponent;
+		return this.focus.focusedComponent;
 	}
 
 	setFocus(component: Component | null): void {
-		this.setFocusInternal({ component, overlayFocusRestore: "clear" });
-	}
-
-	private setFocusInternal({
-		component,
-		overlayFocusRestore,
-	}: {
-		component: Component | null;
-		overlayFocusRestore: OverlayFocusRestorePolicy;
-	}): void {
-		const previousFocus = this.focusedComponent;
-		let nextFocus = component;
-		const previousFocusedOverlay = previousFocus
-			? this.overlayStack.find((entry) => entry.component === previousFocus && this.isOverlayVisible(entry))
-			: undefined;
-		const nextFocusIsOverlay = nextFocus ? this.overlayStack.some((entry) => entry.component === nextFocus) : false;
-		const restoreState = this.getVisibleOverlayFocusRestore();
-		if (nextFocus && !nextFocusIsOverlay) {
-			if (restoreState.status === "blocked" && restoreState.blockedBy === previousFocus) {
-				if (restoreState.resume.status === "focus-target" || !this.isComponentMounted(restoreState.blockedBy)) {
-					nextFocus = this.resolveBlockedOverlayFocusResume(restoreState);
-				} else {
-					this.overlayFocusRestore = {
-						status: "blocked",
-						overlay: restoreState.overlay,
-						blockedBy: nextFocus,
-						resume: restoreState.resume,
-					};
-				}
-			} else if (
-				previousFocusedOverlay &&
-				restoreState.status !== "inactive" &&
-				restoreState.overlay === previousFocusedOverlay &&
-				!this.isOverlayFocusAncestor(previousFocusedOverlay, nextFocus)
-			) {
-				this.overlayFocusRestore = {
-					status: "blocked",
-					overlay: previousFocusedOverlay,
-					blockedBy: nextFocus,
-					resume: { status: "restore-overlay" },
-				};
-			}
-		} else if (nextFocus === null) {
-			if (restoreState.status === "blocked" && restoreState.blockedBy === previousFocus) {
-				nextFocus = this.resolveBlockedOverlayFocusResume(restoreState);
-			} else if (overlayFocusRestore === "clear") {
-				this.clearOverlayFocusRestore();
-			}
-		}
-		if (
-			nextFocus &&
-			!this.overlayStack.some((entry) => entry.component === nextFocus && this.isOverlayVisible(entry))
-		) {
-			if (this.isDetachedFocusOwner(nextFocus)) nextFocus = null;
-		}
-
-		if (isFocusable(this.focusedComponent)) {
-			this.focusedComponent.focused = false;
-		}
-
-		this.focusedComponent = nextFocus;
-
-		if (isFocusable(nextFocus)) {
-			nextFocus.focused = true;
-		}
-
-		const focusedOverlay = nextFocus
-			? this.overlayStack.find((entry) => entry.component === nextFocus && this.isOverlayVisible(entry))
-			: undefined;
-		if (focusedOverlay) {
-			this.overlayFocusRestore = { status: "eligible", overlay: focusedOverlay };
-		}
-	}
-
-	private clearOverlayFocusRestore(): void {
-		this.overlayFocusRestore = { status: "inactive" };
-	}
-
-	private clearOverlayFocusRestoreFor(overlay: OverlayStackEntry): void {
-		if (this.overlayFocusRestore.status !== "inactive" && this.overlayFocusRestore.overlay === overlay) {
-			this.clearOverlayFocusRestore();
-		}
-	}
-
-	private resolveBlockedOverlayFocusResume(restoreState: BlockedOverlayFocusRestoreState): Component | null {
-		if (restoreState.resume.status === "restore-overlay") return restoreState.overlay.component;
-		this.clearOverlayFocusRestore();
-		return restoreState.resume.target;
-	}
-
-	private getVisibleOverlayFocusRestore(): OverlayFocusRestoreState {
-		const restoreState = this.overlayFocusRestore;
-		if (restoreState.status === "inactive") return restoreState;
-		if (!this.overlayStack.includes(restoreState.overlay) || !this.isOverlayVisible(restoreState.overlay)) {
-			return { status: "inactive" };
-		}
-		return restoreState;
-	}
-
-	private isOverlayFocusAncestor(entry: OverlayStackEntry, component: Component): boolean {
-		const visited = new Set<Component>();
-		let current = entry.preFocus;
-		while (current && !visited.has(current)) {
-			visited.add(current);
-			if (current === component) return true;
-			current = this.overlayStack.find((overlay) => overlay.component === current)?.preFocus ?? null;
-		}
-		return false;
-	}
-
-	private retargetOverlayPreFocus(removed: OverlayStackEntry): void {
-		for (const overlay of this.overlayStack) {
-			if (overlay !== removed && overlay.preFocus === removed.component) {
-				overlay.preFocus = removed.preFocus;
-			}
-		}
+		this.focus.setFocus(component);
 	}
 
 	protected getMountedRoots(): readonly Component[] {
 		return this.children;
 	}
 
-	private isComponentMounted(component: Component): boolean {
-		return this.getMountedRoots().some((child) => this.containsComponent(child, component));
-	}
-
 	/** A retained mouse gesture must not outlive its component or visible overlay. */
 	protected isMouseTargetMounted(target: TuiMouseDispatchTarget): boolean {
-		let component = target.component;
-		for (const owner of target.owners ?? []) {
-			// An opaque forwarding wrapper owns the target it returned; Container exposes its
-			// live children, so a child removed after press can be rejected before release.
-			if (owner instanceof Container && !owner.children.includes(component)) return false;
-			component = owner;
-		}
-		return (
-			this.isComponentMounted(component) ||
-			this.overlayStack.some(
-				(entry) => this.isOverlayVisible(entry) && this.containsComponent(entry.component, component),
-			)
-		);
-	}
-
-	private containsComponent(root: Component, target: Component): boolean {
-		if (root === target) return true;
-		if (!(root instanceof Container)) return false;
-		return root.children.some((child) => this.containsComponent(child, target));
+		return this.focus.isMouseTargetMounted(target);
 	}
 
 	/**
@@ -926,118 +200,12 @@ export abstract class TuiBase extends Container implements TUI {
 	 * Returns a handle to control the overlay's visibility.
 	 */
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle {
-		const entry: OverlayStackEntry = {
-			component,
-			...(options === undefined ? {} : { options }),
-			preFocus: this.focusedComponent,
-			hidden: false,
-			focusOrder: ++this.focusOrderCounter,
-		};
-		this.overlayStack.push(entry);
-		// Only focus if overlay is actually visible
-		if (!options?.nonCapturing && this.isOverlayVisible(entry)) {
-			this.setFocus(component);
-		}
-		this.hideTerminalCursor();
-		this.requestRender();
-
-		// Return handle for controlling this overlay
-		return {
-			hide: () => {
-				const index = this.overlayStack.indexOf(entry);
-				if (index !== -1) {
-					this.clearOverlayFocusRestoreFor(entry);
-					this.retargetOverlayPreFocus(entry);
-					this.overlayStack.splice(index, 1);
-					// Restore focus if this overlay had focus
-					if (this.focusedComponent === component) {
-						const topVisible = this.getTopmostVisibleOverlay();
-						this.setFocus(topVisible?.component ?? entry.preFocus);
-					}
-					if (this.overlayStack.length === 0) this.hideTerminalCursor();
-					this.requestRender();
-				}
-			},
-			setHidden: (hidden: boolean) => {
-				if (entry.hidden === hidden) return;
-				entry.hidden = hidden;
-				// Update focus when hiding/showing
-				if (hidden) {
-					this.clearOverlayFocusRestoreFor(entry);
-					// If this overlay had focus, move focus to next visible or preFocus
-					if (this.focusedComponent === component) {
-						const topVisible = this.getTopmostVisibleOverlay();
-						this.setFocus(topVisible?.component ?? entry.preFocus);
-					}
-				} else {
-					// Restore focus to this overlay when showing (if it's actually visible)
-					if (!options?.nonCapturing && this.isOverlayVisible(entry)) {
-						entry.focusOrder = ++this.focusOrderCounter;
-						this.setFocus(component);
-					}
-				}
-				this.requestRender();
-			},
-			isHidden: () => entry.hidden,
-			focus: () => {
-				if (!this.overlayStack.includes(entry) || !this.isOverlayVisible(entry)) return;
-				entry.focusOrder = ++this.focusOrderCounter;
-				this.setFocus(component);
-				this.requestRender();
-			},
-			unfocus: (unfocusOptions) => {
-				const isFocused = this.focusedComponent === component;
-				const restoreState = this.overlayFocusRestore;
-				const hasPendingRestore = restoreState.status !== "inactive" && restoreState.overlay === entry;
-				if (!isFocused && !hasPendingRestore) return;
-				if (
-					restoreState.status === "blocked" &&
-					restoreState.overlay === entry &&
-					this.focusedComponent === restoreState.blockedBy
-				) {
-					if (unfocusOptions) {
-						this.overlayFocusRestore = {
-							status: "blocked",
-							overlay: entry,
-							blockedBy: restoreState.blockedBy,
-							resume: { status: "focus-target", target: unfocusOptions.target },
-						};
-					} else {
-						this.clearOverlayFocusRestore();
-					}
-					this.requestRender();
-					return;
-				}
-				this.clearOverlayFocusRestoreFor(entry);
-				if (isFocused || unfocusOptions) {
-					const topVisible = this.getTopmostVisibleOverlay();
-					const fallbackTarget = topVisible && topVisible !== entry ? topVisible.component : entry.preFocus;
-					this.setFocus(unfocusOptions ? unfocusOptions.target : fallbackTarget);
-				}
-				this.requestRender();
-			},
-			isFocused: () => this.focusedComponent === component,
-			getBounds: () => {
-				if (!this.overlayStack.includes(entry) || !this.isOverlayVisible(entry) || !entry.bounds) return undefined;
-				return { ...entry.bounds };
-			},
-		};
+		return this.focus.showOverlay(component, options);
 	}
 
 	/** Hide the topmost overlay and restore previous focus. */
 	hideOverlay(): void {
-		const overlay = this.overlayStack[this.overlayStack.length - 1];
-		if (!overlay) return;
-		this.clearOverlayFocusRestoreFor(overlay);
-		this.retargetOverlayPreFocus(overlay);
-		this.overlayStack.pop();
-		if (this.focusedComponent === overlay.component) {
-			// Find topmost visible overlay, or fall back to preFocus
-			const topVisible = this.getTopmostVisibleOverlay();
-			this.setFocus(topVisible?.component ?? overlay.preFocus);
-		}
-		if (this.overlayStack.length === 0) this.hideTerminalCursor();
-		this.requestRender();
+		this.focus.hideOverlay();
 	}
 
 	/** Hide the cursor while running. After stop(), the shell owns the cursor and it must stay visible. */
@@ -1047,88 +215,32 @@ export abstract class TuiBase extends Container implements TUI {
 
 	/** Check if there are any visible overlays */
 	hasOverlay(): boolean {
-		return this.overlayStack.some((o) => this.isOverlayVisible(o));
+		return this.focus.hasVisibleOverlay();
 	}
 
 	/** Check if the focused component is a visible overlay */
 	protected isOverlayFocused(): boolean {
-		return this.overlayStack.some((entry) => entry.component === this.focusedComponent && this.isOverlayVisible(entry));
+		return this.focus.isOverlayFocused();
 	}
 
 	/** Keep overlay containers as keyboard focus owners when a nested control is clicked. */
 	protected resolveMouseFocusTarget(component: Component): Component {
-		for (let index = this.overlayStack.length - 1; index >= 0; index--) {
-			const overlay = this.overlayStack[index];
-			if (this.isOverlayVisible(overlay) && this.containsComponent(overlay.component, component)) {
-				return overlay.component;
-			}
-		}
-		return component;
+		return this.focus.resolveMouseFocusTarget(component);
 	}
 
 	/** Dispatch to the visually topmost overlay under the pointer. */
 	protected dispatchMouseToOverlay(event: TuiMouseEvent): { hit: boolean; result?: TuiMouseDispatchResult } {
-		for (let index = this.renderedOverlayLayouts.length - 1; index >= 0; index--) {
-			const layout = this.renderedOverlayLayouts[index];
-			if (
-				event.screenX < layout.col ||
-				event.screenX >= layout.col + layout.width ||
-				event.screenY < layout.row ||
-				event.screenY >= layout.row + layout.height
-			) {
-				continue;
-			}
-			const result = dispatchMouseEvent(layout.entry.component, {
-				...event,
-				x: event.screenX - layout.col,
-				y: event.screenY - layout.row,
-				width: layout.width,
-				height: layout.height,
-			});
-			return result
-				? {
-						hit: true,
-						result: result.focus ? { ...result, focusTarget: layout.entry.component } : result,
-					}
-				: { hit: true };
-		}
-		return { hit: false };
-	}
-
-	/** Check if an overlay entry is currently visible */
-	private isOverlayVisible(entry: OverlayStackEntry): boolean {
-		if (entry.hidden) return false;
-		if (entry.options?.visible) {
-			return entry.options.visible(this.terminal.columns, this.terminal.rows);
-		}
-		return true;
-	}
-
-	/** Find the visual-frontmost visible capturing overlay, if any */
-	private getTopmostVisibleOverlay(): OverlayStackEntry | undefined {
-		let topmost: OverlayStackEntry | undefined;
-		for (const overlay of this.overlayStack) {
-			if (overlay.options?.nonCapturing || !this.isOverlayVisible(overlay)) continue;
-			if (!topmost || overlay.focusOrder > topmost.focusOrder) {
-				topmost = overlay;
-			}
-		}
-		return topmost;
+		return this.overlays.dispatchMouse(event);
 	}
 
 	override invalidate(): void {
 		for (const root of this.getMountedRoots()) root.invalidate();
-		for (const overlay of this.overlayStack) overlay.component.invalidate();
+		for (const overlay of this.focus.stack) overlay.component.invalidate();
 	}
 
 	start(): void {
-		this.renderLifecycle++;
-		this.cancelRenderTimer();
-		this.renderRequested = false;
-		this.immediateRenderScheduled = false;
 		this.stopped = false;
-		this.outputPressureHeld = false;
-		this.syncTerminalPacing(true);
+		this.scheduler.start();
 		this.beforeTerminalStart();
 		this.terminal.start(
 			(data) => this.handleTerminalInput(data),
@@ -1137,229 +249,65 @@ export abstract class TuiBase extends Container implements TUI {
 				if (this.stopped) return;
 				this.onTerminalCapabilitiesChanged();
 				this.invalidate();
-				this.queryCellSize();
+				this.queries.queryCellSize();
 				this.requestRender();
 			},
 		);
 		this.afterTerminalStart();
 		this.terminal.hideCursor();
-		if (this.terminalColorSchemeNotificationsEnabled) this.writeColorSchemeMode(true);
-		this.queryCellSize();
+		this.queries.start();
+		this.queries.queryCellSize();
 		this.requestRender();
 	}
 
 	addInputListener(listener: TuiInputListener): () => void {
-		this.inputListeners.add(listener);
-		return () => {
-			this.inputListeners.delete(listener);
-		};
+		return this.inputListeners.add(listener);
 	}
 
 	removeInputListener(listener: TuiInputListener): void {
-		this.inputListeners.delete(listener);
+		this.inputListeners.remove(listener);
 	}
 
 	onTerminalColorSchemeChange(listener: (scheme: TerminalColorScheme) => void): () => void {
-		this.terminalColorSchemeListeners.add(listener);
-		return () => {
-			this.terminalColorSchemeListeners.delete(listener);
-		};
+		return this.queries.onColorSchemeChange(listener);
 	}
 
 	setTerminalColorSchemeNotifications(enabled: boolean): void {
-		if (this.terminalColorSchemeNotificationsEnabled === enabled) {
-			return;
-		}
-		this.terminalColorSchemeNotificationsEnabled = enabled;
-		if (!this.stopped) this.writeColorSchemeMode(enabled);
-	}
-
-	/** Turn terminal color scheme change reports (DEC mode 2031) on or off. */
-	private writeColorSchemeMode(enabled: boolean): void {
-		this.terminal.write(enabled ? "\x1b[?2031h" : "\x1b[?2031l");
-	}
-
-	private queryCellSize(): void {
-		// Only query if terminal supports images (cell size is only used for image rendering)
-		if (!getCapabilities().images) {
-			return;
-		}
-		// Query terminal for cell size in pixels: CSI 16 t
-		// Response format: CSI 6 ; height ; width t
-		this.terminal.write("\x1b[16t");
+		this.queries.setColorSchemeNotifications(enabled);
 	}
 
 	stop(options: TuiStopOptions = {}): void {
-		this.renderLifecycle++;
 		this.stopped = true;
-		this.renderRequested = false;
-		this.immediateRenderScheduled = false;
-		this.outputPressureHeld = false;
-		this.cancelRenderTimer();
-		this.syncTerminalPacing(false);
-		if (this.terminalColorSchemeNotificationsEnabled) this.writeColorSchemeMode(false);
+		this.scheduler.stop();
+		this.queries.stop();
 		this.beforeTerminalStop(options);
 		this.terminal.showCursor();
 		this.terminal.stop();
-		this.afterTerminalStop(options);
+		withRenderIsolation(this.reportRenderError, () => this.afterTerminalStop(options));
 	}
 
 	renderNow(force = false): void {
-		this.rememberMountedFocus();
+		this.focus.rememberMountedFocus();
 		if (force) this.resetRenderState();
-		this.cancelRenderTimer();
-		if (this.renderPacing.metrics) this.renderPacingStats.immediateFrames++;
-		this.emitFrame();
-	}
-
-	/** Paint now and mark the pending render request as served. */
-	private emitFrame(): void {
-		this.renderRequested = false;
-		this.lastRenderAt = performance.now();
-		this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
+		this.scheduler.paintNow();
 	}
 
 	requestRender(force = false): void {
-		this.rememberMountedFocus();
+		this.focus.rememberMountedFocus();
 		if (force) {
 			this.resetRenderState();
 			this.requestImmediateRender();
 			return;
 		}
-		if (this.renderRequested) return;
-		this.renderRequested = true;
-		const lifecycle = this.renderLifecycle;
-		process.nextTick(() => {
-			if (lifecycle === this.renderLifecycle) this.scheduleRender();
-		});
-	}
-
-	private rememberMountedFocus(): void {
-		if (this.focusedComponent) this.isDetachedFocusOwner(this.focusedComponent);
-	}
-
-	/**
-	 * Whether the component was mounted when focus last saw it and no longer is. A mounted component
-	 * is remembered as a focus owner; a component that never was mounted (a detached widget the
-	 * caller focused on purpose) keeps its focus.
-	 */
-	private isDetachedFocusOwner(component: Component): boolean {
-		if (this.isComponentMounted(component)) {
-			this.mountedFocusOwners.add(component);
-			return false;
-		}
-		return this.mountedFocusOwners.has(component);
-	}
-
-	/**
-	 * Repair focus before input is delivered, in order: leave a focused overlay that stopped being
-	 * visible, return to an overlay whose focus was taken or is owed back, and drop a mounted
-	 * component that left the tree.
-	 */
-	private reconcileFocus(): void {
-		// Overlay visibility can change with a terminal resize or a visible() callback.
-		const focusedOverlay = this.overlayStack.find((o) => o.component === this.focusedComponent);
-		if (focusedOverlay && !this.isOverlayVisible(focusedOverlay)) {
-			const topVisible = this.getTopmostVisibleOverlay();
-			if (topVisible) {
-				this.setFocus(topVisible.component);
-			} else {
-				this.setFocusInternal({ component: focusedOverlay.preFocus, overlayFocusRestore: "preserve" });
-			}
-		}
-
-		const focusIsOverlay = this.overlayStack.some((o) => o.component === this.focusedComponent);
-		if (focusIsOverlay) return;
-		const restoreState = this.getVisibleOverlayFocusRestore();
-		if (restoreState.status === "eligible") {
-			this.setFocus(restoreState.overlay.component);
-		} else if (restoreState.status === "blocked" && restoreState.blockedBy !== this.focusedComponent) {
-			if (restoreState.resume.status === "restore-overlay") {
-				this.setFocus(restoreState.overlay.component);
-			} else {
-				this.clearOverlayFocusRestore();
-				this.setFocus(restoreState.resume.target);
-			}
-		}
-		if (this.focusedComponent && this.isDetachedFocusOwner(this.focusedComponent)) this.setFocus(null);
+		this.scheduler.request();
 	}
 
 	private requestImmediateRender(): void {
-		this.cancelRenderTimer();
-		this.renderRequested = true;
-		if (this.immediateRenderScheduled) return;
-		this.immediateRenderScheduled = true;
-		const lifecycle = this.renderLifecycle;
-		process.nextTick(() => {
-			if (lifecycle !== this.renderLifecycle) return;
-			this.immediateRenderScheduled = false;
-			if (this.stopped || !this.renderRequested) return;
-			// A previously queued scheduleRender() can create a timer before this
-			// callback runs. User input must preempt that throttled frame.
-			this.cancelRenderTimer();
-			if (this.renderPacing.metrics) this.renderPacingStats.forcedFrames++;
-			this.emitFrame();
-		});
-	}
-
-	private cancelRenderTimer(): void {
-		if (!this.renderTimer) return;
-		clearTimeout(this.renderTimer);
-		this.renderTimer = undefined;
-	}
-
-	private scheduleRender(): void {
-		if (this.stopped || this.renderTimer || !this.renderRequested) {
-			return;
-		}
-		const elapsed = performance.now() - this.lastRenderAt;
-		const delay = computeRenderDelayMs(
-			TuiBase.MIN_RENDER_INTERVAL_MS,
-			this.lastFrameCostMs,
-			elapsed,
-			this.renderPacing.adaptiveCadence,
-		);
-		const dueAt = this.renderPacing.metrics ? performance.now() + delay : 0;
-		const lifecycle = this.renderLifecycle;
-		const timer = setTimeout(() => {
-			if (this.renderTimer !== timer) return;
-			this.renderTimer = undefined;
-			if (lifecycle !== this.renderLifecycle || this.stopped || !this.renderRequested) {
-				return;
-			}
-			if (this.renderPacing.metrics) {
-				this.renderPacingStats.maxTimerLagMs = Math.max(
-					this.renderPacingStats.maxTimerLagMs,
-					performance.now() - dueAt,
-				);
-			}
-			if (this.outputIsPressured()) {
-				if (this.renderPacing.metrics) this.renderPacingStats.deferredFrames++;
-				const retry = setTimeout(() => {
-					if (this.renderTimer !== retry) return;
-					this.renderTimer = undefined;
-					if (lifecycle === this.renderLifecycle) this.scheduleRender();
-				}, this.renderPacing.retryMs);
-				this.renderTimer = retry;
-				return;
-			}
-			this.emitFrame();
-			if (this.renderRequested) {
-				this.scheduleRender();
-			}
-		}, delay);
-		this.renderTimer = timer;
+		this.scheduler.requestImmediate();
 	}
 
 	private handleTerminalInput(data: string): void {
-		if (this.consumeTerminalColorResponse(data)) {
-			return;
-		}
-		if (this.consumeTerminalColorSchemeReport(data)) {
-			return;
-		}
-		// Terminal replies are protocol, not user input: input listeners never see or alter them.
-		if (this.consumeCellSizeResponse(data)) {
+		if (this.queries.consumeReply(data)) {
 			return;
 		}
 		// tmux sends a focus-in when a client attaches; it does not consume the event.
@@ -1372,22 +320,11 @@ export abstract class TuiBase extends Container implements TUI {
 			);
 		}
 
-		if (this.inputListeners.size > 0) {
-			let current = data;
-			for (const listener of this.inputListeners) {
-				const result = listener(current);
-				if (result?.consume) {
-					return;
-				}
-				if (result?.data !== undefined) {
-					current = result.data;
-				}
-			}
-			if (current.length === 0) {
-				return;
-			}
-			data = current;
+		const filtered = this.inputListeners.filter(data);
+		if (filtered === undefined) {
+			return;
 		}
+		data = filtered;
 
 		// Global debug key handler (Shift+Ctrl+D)
 		if (matchesKey(data, "shift+ctrl+d") && this.onDebug) {
@@ -1395,301 +332,33 @@ export abstract class TuiBase extends Container implements TUI {
 			return;
 		}
 
-		this.reconcileFocus();
+		this.focus.reconcileFocus();
 
 		// Pass input to focused component (including Ctrl+C)
 		// The focused component can decide how to handle Ctrl+C
-		if (this.focusedComponent?.handleInput) {
+		const focused = this.focus.focusedComponent;
+		if (focused?.handleInput) {
 			// Filter out key release events unless component opts in
-			if (isKeyRelease(data) && !this.focusedComponent.wantsKeyRelease) {
+			if (isKeyRelease(data) && !focused.wantsKeyRelease) {
 				return;
 			}
-			if (this.renderPacing.metrics) this.lastInputAt = performance.now();
-			this.focusedComponent.handleInput(data);
+			this.scheduler.noteInput();
+			focused.handleInput(data);
 			// Keyboard input is latency-sensitive. Avoid the throttled timer path,
 			// where even setTimeout(0) can take a full 16 ms tick on Windows.
 			this.requestImmediateRender();
 		}
 	}
 
-	private consumeTerminalColorResponse(data: string): boolean {
-		const query = this.pendingTerminalColorQueries[0];
-		if (!query) {
-			return false;
-		}
-		if (DEVICE_ATTRIBUTES_RESPONSE_PATTERN.test(data)) {
-			this.pendingTerminalColorQueries.shift();
-			this.completeTerminalColorQuery(query);
-			return true;
-		}
-
-		const response = parseOscColorResponse(data);
-		if (!response) {
-			return false;
-		}
-		const { target, rgb } = response;
-		const key = String(target);
-		if (!query.deliver || query.replied.has(key)) {
-			return true;
-		}
-		query.replied.add(key);
-		if (target === "foreground") {
-			query.foreground = rgb;
-		} else if (target === "background") {
-			query.background = rgb;
-		} else if (target < TERMINAL_PALETTE_SIZE) {
-			query.palette[target] = rgb;
-		}
-		if (query.replied.size === TERMINAL_COLOR_REPLY_COUNT) {
-			this.completeTerminalColorQuery(query);
-		}
-		return true;
-	}
-
-	private terminalColorQueryResult(query: PendingTerminalColorQuery): TerminalColors {
-		const palette = query.palette.every((color) => color !== undefined) ? query.palette : undefined;
-		return { foreground: query.foreground, background: query.background, palette };
-	}
-
-	private completeTerminalColorQuery(query: PendingTerminalColorQuery): void {
-		const deliver = query.deliver;
-		query.deliver = undefined;
-		clearTimeout(query.timer);
-		deliver?.(this.terminalColorQueryResult(query));
-	}
-
-	private consumeTerminalColorSchemeReport(data: string): boolean {
-		const scheme = parseTerminalColorSchemeReport(data);
-		if (!scheme) {
-			return false;
-		}
-
-		for (const listener of this.terminalColorSchemeListeners) {
-			listener(scheme);
-		}
-		return true;
-	}
-
-	private consumeCellSizeResponse(data: string): boolean {
-		// Response format: ESC [ 6 ; height ; width t
-		const match = data.match(/^\x1b\[6;(\d+);(\d+)t$/);
-		if (!match) {
-			return false;
-		}
-
-		const heightPx = parseInt(match[1], 10);
-		const widthPx = parseInt(match[2], 10);
-		if (heightPx <= 0 || widthPx <= 0) {
-			return true;
-		}
-
-		setCellDimensions({ widthPx, heightPx });
-		// Invalidate all components so images re-render with correct dimensions.
-		this.invalidate();
-		this.requestRender();
-		return true;
-	}
-
-	/**
-	 * Resolve overlay layout from options.
-	 * Returns { width, row, col, maxHeight } for rendering.
-	 */
-	private resolveOverlayLayout(
-		options: OverlayOptions | undefined,
-		overlayHeight: number,
-		termWidth: number,
-		termHeight: number,
-	): { width: number; row: number; col: number; maxHeight: number | undefined } {
-		const opt = options ?? {};
-
-		// Parse margin (clamp to non-negative)
-		const margin =
-			typeof opt.margin === "number"
-				? { top: opt.margin, right: opt.margin, bottom: opt.margin, left: opt.margin }
-				: (opt.margin ?? {});
-		const marginTop = Math.max(0, margin.top ?? 0);
-		const marginRight = Math.max(0, margin.right ?? 0);
-		const marginBottom = Math.max(0, margin.bottom ?? 0);
-		const marginLeft = Math.max(0, margin.left ?? 0);
-
-		// Available space after margins
-		const availWidth = Math.max(1, termWidth - marginLeft - marginRight);
-		const availHeight = Math.max(1, termHeight - marginTop - marginBottom);
-
-		// === Resolve width ===
-		let width = parseSizeValue(opt.width, termWidth) ?? Math.min(80, availWidth);
-		// Apply minWidth
-		if (opt.minWidth !== undefined) {
-			width = Math.max(width, opt.minWidth);
-		}
-		// Clamp to available space
-		width = Math.max(1, Math.min(width, availWidth));
-
-		// === Resolve maxHeight ===
-		let maxHeight = parseSizeValue(opt.maxHeight, termHeight);
-		// Clamp to available space
-		if (maxHeight !== undefined) {
-			maxHeight = Math.max(1, Math.min(maxHeight, availHeight));
-		}
-
-		// Effective overlay height (may be clamped by maxHeight)
-		const effectiveHeight = maxHeight !== undefined ? Math.min(overlayHeight, maxHeight) : overlayHeight;
-
-		// === Resolve position ===
-		// An explicit row or column wins over the anchor; an invalid one centers (default anchor: center).
-		const anchor = opt.anchor ?? "center";
-		const rowAnchor = opt.row === undefined ? anchor : "center";
-		const colAnchor = opt.col === undefined ? anchor : "center";
-		let row =
-			(opt.row === undefined
-				? undefined
-				: parseOverlayPosition(opt.row, Math.max(0, availHeight - effectiveHeight), marginTop)) ??
-			this.resolveAnchorRow(rowAnchor, effectiveHeight, availHeight, marginTop);
-		let col =
-			(opt.col === undefined
-				? undefined
-				: parseOverlayPosition(opt.col, Math.max(0, availWidth - width), marginLeft)) ??
-			this.resolveAnchorCol(colAnchor, width, availWidth, marginLeft);
-
-		// Apply offsets
-		if (opt.offsetY !== undefined) row += opt.offsetY;
-		if (opt.offsetX !== undefined) col += opt.offsetX;
-
-		// Clamp to terminal bounds (respecting margins)
-		row = Math.max(marginTop, Math.min(row, termHeight - marginBottom - effectiveHeight));
-		col = Math.max(marginLeft, Math.min(col, termWidth - marginRight - width));
-
-		return { width, row, col, maxHeight };
-	}
-
-	private resolveAnchorRow(anchor: OverlayAnchor, height: number, availHeight: number, marginTop: number): number {
-		switch (anchor) {
-			case "top-left":
-			case "top-center":
-			case "top-right":
-				return marginTop;
-			case "bottom-left":
-			case "bottom-center":
-			case "bottom-right":
-				return marginTop + availHeight - height;
-			case "left-center":
-			case "center":
-			case "right-center":
-				return marginTop + Math.floor((availHeight - height) / 2);
-		}
-	}
-
-	private resolveAnchorCol(anchor: OverlayAnchor, width: number, availWidth: number, marginLeft: number): number {
-		switch (anchor) {
-			case "top-left":
-			case "left-center":
-			case "bottom-left":
-				return marginLeft;
-			case "top-right":
-			case "right-center":
-			case "bottom-right":
-				return marginLeft + availWidth - width;
-			case "top-center":
-			case "center":
-			case "bottom-center":
-				return marginLeft + Math.floor((availWidth - width) / 2);
-		}
-	}
-
 	/** Composite all overlays into content lines (sorted by focusOrder, higher = on top). */
 	protected compositeOverlays(lines: string[], termWidth: number, termHeight: number): string[] {
-		if (this.overlayStack.length === 0) {
-			this.renderedOverlayLayouts = [];
-			return lines;
-		}
-		const result = [...lines];
-
-		for (const entry of this.overlayStack) entry.bounds = undefined;
-
-		// Pre-render all visible overlays and calculate positions
-		const rendered: { entry: OverlayStackEntry; overlayLines: string[]; row: number; col: number; w: number }[] = [];
-		let minLinesNeeded = result.length;
-
-		const visibleEntries = this.overlayStack.filter((e) => this.isOverlayVisible(e));
-		visibleEntries.sort((a, b) => a.focusOrder - b.focusOrder);
-		for (const entry of visibleEntries) {
-			const { component, options } = entry;
-
-			// Get layout with height=0 first to determine width and maxHeight
-			// (width and maxHeight don't depend on overlay height)
-			const { width, maxHeight } = this.resolveOverlayLayout(options, 0, termWidth, termHeight);
-
-			// Render component at calculated width
-			let overlayLines = this.resolveFakeCursors(component.render(width));
-
-			// Apply maxHeight if specified
-			if (maxHeight !== undefined && overlayLines.length > maxHeight) {
-				overlayLines = overlayLines.slice(0, maxHeight);
-			}
-
-			// Get final row/col with actual overlay height
-			const { row, col } = this.resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight);
-			entry.bounds = { row, col, width, height: overlayLines.length };
-
-			rendered.push({ entry, overlayLines, row, col, w: width });
-			minLinesNeeded = Math.max(minLinesNeeded, row + overlayLines.length);
-		}
-		this.renderedOverlayLayouts = rendered.map(({ entry, row, col, w, overlayLines }) => ({
-			entry,
-			row,
-			col,
-			width: w,
-			height: overlayLines.length,
-		}));
-
-		// Pad to at least terminal height so overlays have screen-relative positions.
-		// Excludes maxLinesRendered: the historical high-water mark caused self-reinforcing
-		// inflation that pushed content into scrollback on terminal widen.
-		const workingHeight = Math.max(result.length, termHeight, minLinesNeeded);
-
-		// Extend result with empty lines if content is too short for overlay placement or working area
-		while (result.length < workingHeight) {
-			result.push("");
-		}
-
-		const viewportStart = Math.max(0, workingHeight - termHeight);
-
-		// Composite each overlay
-		for (const { overlayLines, row, col, w } of rendered) {
-			for (let i = 0; i < overlayLines.length; i++) {
-				const idx = viewportStart + row + i;
-				if (idx >= 0 && idx < result.length) {
-					// Defensive: truncate overlay line to declared width before compositing
-					// (components should already respect width, but this ensures it)
-					const truncatedOverlayLine =
-						visibleWidth(overlayLines[i]) > w ? sliceByColumn(overlayLines[i], 0, w, true) : overlayLines[i];
-					result[idx] = this.compositeLineAt(result[idx], truncatedOverlayLine, col, w, termWidth);
-				}
-			}
-		}
-
-		return result;
+		return this.overlays.composite(lines, termWidth, termHeight, (overlayLines) =>
+			this.resolveFakeCursors(overlayLines),
+		);
 	}
 
 	protected applyLineResets(lines: string[]): string[] {
-		const reset = SEGMENT_RESET;
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i];
-			if (!isImageLine(line)) {
-				lines[i] = normalizeTerminalOutput(line) + reset;
-			}
-		}
-		return lines;
-	}
-
-	private compositeLineAt(
-		baseLine: string,
-		overlayLine: string,
-		startCol: number,
-		overlayWidth: number,
-		totalWidth: number,
-	): string {
-		return compositeTuiLine(baseLine, overlayLine, startCol, overlayWidth, totalWidth);
+		return applyLineResets(lines);
 	}
 
 	/**
@@ -1701,23 +370,7 @@ export abstract class TuiBase extends Container implements TUI {
 	 * @returns Cursor position { row, col } or null if no marker found
 	 */
 	protected extractCursorPosition(lines: string[], height: number): { row: number; col: number } | null {
-		// Only scan the bottom `height` lines (visible viewport)
-		const viewportTop = Math.max(0, lines.length - height);
-		for (let row = lines.length - 1; row >= viewportTop; row--) {
-			const line = lines[row];
-			const markerIndex = line.indexOf(CURSOR_MARKER);
-			if (markerIndex !== -1) {
-				// Calculate visual column (width of text before marker)
-				const beforeMarker = line.slice(0, markerIndex);
-				const col = visibleWidth(beforeMarker);
-
-				// Strip marker from the line
-				lines[row] = line.slice(0, markerIndex) + line.slice(markerIndex + CURSOR_MARKER.length);
-
-				return { row, col };
-			}
-		}
-		return null;
+		return extractCursorPosition(lines, height);
 	}
 
 	/**
@@ -1726,11 +379,7 @@ export abstract class TuiBase extends Container implements TUI {
 	 * of components without focus have no CURSOR_MARKER and stay visible.
 	 */
 	protected resolveFakeCursors(lines: string[]): string[] {
-		return lines.map((line) => {
-			if (!line.includes(FAKE_CURSOR_START)) return line;
-			const resolved = this.showHardwareCursor ? line.replace(FOCUSED_FAKE_CURSOR, "$1$2") : line;
-			return resolved.replaceAll(FAKE_CURSOR_START, "\x1b[7m").replaceAll(FAKE_CURSOR_END, "\x1b[27m");
-		});
+		return resolveFakeCursors(lines, this.showHardwareCursor);
 	}
 
 	/**
@@ -1741,27 +390,10 @@ export abstract class TuiBase extends Container implements TUI {
 	 * @param timeoutMs Query timeout in milliseconds, for terminals that do not answer DA1 either.
 	 * @param onLateReply Receives the replies if the query completes after the timeout, e.g. over slow links.
 	 */
-	queryTerminalColors({
-		timeoutMs,
-		onLateReply,
-	}: {
+	queryTerminalColors(options: {
 		timeoutMs: number;
 		onLateReply?: (colors: TerminalColors) => void;
 	}): Promise<TerminalColors> {
-		return new Promise((resolve) => {
-			const query: PendingTerminalColorQuery = {
-				palette: Array.from({ length: TERMINAL_PALETTE_SIZE }, () => undefined),
-				replied: new Set(),
-				deliver: resolve,
-				timer: undefined,
-			};
-			// Resolve with the replies so far, and keep collecting late replies for `onLateReply`.
-			query.timer = setTimeout(() => {
-				query.deliver = onLateReply;
-				resolve(this.terminalColorQueryResult(query));
-			}, timeoutMs);
-			this.pendingTerminalColorQueries.push(query);
-			this.terminal.write(TERMINAL_COLOR_QUERY);
-		});
+		return this.queries.queryColors(options);
 	}
 }

@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
-import type { ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
+import type { Settings, ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
 import type { ModelSettingsApi } from "../api/model.ts";
 import { DEFAULT_TOOL_NAMES, resolveDefaultTools } from "../tool-list.ts";
 import { SettingsAccessorBase } from "./base.ts";
@@ -32,6 +32,21 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 		this.globalSettings.defaultModel = modelId;
 		this.markModified("defaultProvider");
 		this.markModified("defaultModel");
+		this.save();
+	}
+
+	setDefaultSelection(
+		scope: "global" | "project",
+		field: "defaultProvider" | "defaultModel",
+		value: string | undefined,
+	): void {
+		const update = (settings: Settings) => {
+			if (value === undefined) delete settings[field];
+			else settings[field] = value;
+		};
+		if (scope === "project") return this.updateProjectSettings(field, update);
+		update(this.globalSettings);
+		this.markModified(field);
 		this.save();
 	}
 

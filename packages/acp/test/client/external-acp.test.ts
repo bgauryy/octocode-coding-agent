@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpBackend, AcpError, type AcpPermission } from "../../src/client/client.ts";
+import { acpClientHost } from "../../../coding-agent/src/octocode/external/acp-host.ts";
 import { processAlive } from "../../../coding-agent/src/octocode/shared/process.ts";
 
 const fixture = fileURLToPath(
@@ -55,7 +56,7 @@ function entries(journal: string): Entry[] {
 }
 async function connect(mode = "stream", permission = deny): Promise<{ backend: AcpBackend; journal: string }> {
 	const { input, journal } = setup(mode);
-	const backend = await AcpBackend.connect(input, permission);
+	const backend = await AcpBackend.connect(acpClientHost, input, permission);
 	backends.push(backend);
 	return { backend, journal };
 }
@@ -102,7 +103,7 @@ describe("external ACP backend over SDK stdio", () => {
 		const alias = `${root}-alias`;
 		roots.push(alias);
 		symlinkSync(root, alias);
-		const backend = await AcpBackend.connect({ ...input, cwd: alias }, deny);
+		const backend = await AcpBackend.connect(acpClientHost, { ...input, cwd: alias }, deny);
 		backends.push(backend);
 		expect(backend.cwd).toBe(realpathSync(root));
 		expect(backend.sessionId).toBe("fixture-session");
@@ -141,7 +142,7 @@ describe("external ACP backend over SDK stdio", () => {
 
 	it("loads an explicitly named saved session only when capability is advertised", async () => {
 		const { input, journal } = setup();
-		const backend = await AcpBackend.connect({ ...input, sessionId: "saved-session" }, deny);
+		const backend = await AcpBackend.connect(acpClientHost, { ...input, sessionId: "saved-session" }, deny);
 		backends.push(backend);
 		expect(backend.sessionId).toBe("saved-session");
 		expect(entries(journal).some((entry) => entry.event === "new")).toBe(false);
@@ -151,7 +152,7 @@ describe("external ACP backend over SDK stdio", () => {
 
 	it.each(["no-load", "missing-session"])("never replaces an unavailable saved session (%s)", async (mode) => {
 		const { input, journal } = setup(mode);
-		await expect(AcpBackend.connect({ ...input, sessionId: "saved-session" }, deny)).rejects.toThrow(
+		await expect(AcpBackend.connect(acpClientHost, { ...input, sessionId: "saved-session" }, deny)).rejects.toThrow(
 			/session\/load|saved conversation/,
 		);
 		expect(entries(journal).some((entry) => entry.event === "new")).toBe(false);
@@ -162,7 +163,7 @@ describe("external ACP backend over SDK stdio", () => {
 		"fails startup and reaps its owned process (%s)",
 		async (mode) => {
 			const { input, journal } = setup(mode);
-			await expect(AcpBackend.connect(input, deny)).rejects.toThrow(/ACP connection failed/);
+			await expect(AcpBackend.connect(acpClientHost, input, deny)).rejects.toThrow(/ACP connection failed/);
 			expect(processAlive(entries(journal)[0]?.pid)).toBe(false);
 		},
 	);
@@ -170,7 +171,7 @@ describe("external ACP backend over SDK stdio", () => {
 	it.each(["hang-initialize", "hang-new", "hang-load"])("bounds startup and reaps its process (%s)", async (mode) => {
 		const { input, journal } = setup(mode);
 		const sessionId = mode === "hang-load" ? "saved-session" : undefined;
-		await expect(AcpBackend.connect({ ...input, sessionId, timeoutMs: 300 }, deny)).rejects.toThrow(
+		await expect(AcpBackend.connect(acpClientHost, { ...input, sessionId, timeoutMs: 300 }, deny)).rejects.toThrow(
 			/ACP connection failed.*aborted due to timeout/,
 		);
 		expect(processAlive(entries(journal)[0]?.pid)).toBe(false);
@@ -179,18 +180,20 @@ describe("external ACP backend over SDK stdio", () => {
 	it("does not launch when already aborted, and rejects executable failures", async () => {
 		const { input, journal } = setup();
 		await expect(
-			AcpBackend.connect(input, deny, AbortSignal.abort(new Error("cancelled before startup"))),
+			AcpBackend.connect(acpClientHost, input, deny, AbortSignal.abort(new Error("cancelled before startup"))),
 		).rejects.toThrow("cancelled before startup");
 		expect(entries(journal)).toEqual([]);
-		await expect(AcpBackend.connect({ ...input, command: join(input.cwd, "missing-agent") }, deny)).rejects.toThrow(
-			"ACP connection failed",
-		);
+		await expect(
+			AcpBackend.connect(acpClientHost, { ...input, command: join(input.cwd, "missing-agent") }, deny),
+		).rejects.toThrow("ACP connection failed");
 	});
 
 	it("reaps startup when its caller aborts during initialize", async () => {
 		const { input, journal } = setup("hang-initialize");
 		const controller = new AbortController();
-		const connected = AcpBackend.connect(input, deny, controller.signal).catch((error: unknown) => error);
+		const connected = AcpBackend.connect(acpClientHost, input, deny, controller.signal).catch(
+			(error: unknown) => error,
+		);
 		await vi.waitFor(() => expect(entries(journal).some((entry) => entry.event === "initialize")).toBe(true));
 		controller.abort(new Error("caller cancelled startup"));
 		expect(((await connected) as Error).message).toContain("caller cancelled startup");
@@ -199,10 +202,14 @@ describe("external ACP backend over SDK stdio", () => {
 
 	it("rejects invalid connect inputs without launching a process", async () => {
 		const { input, journal } = setup();
-		await expect(AcpBackend.connect({ ...input, timeoutMs: 0 }, deny)).rejects.toThrow("positive timer duration");
-		await expect(AcpBackend.connect({ ...input, vendor: " " }, deny)).rejects.toThrow("real host vendor");
-		await expect(AcpBackend.connect({ ...input, command: " " }, deny)).rejects.toThrow("executable");
-		await expect(AcpBackend.connect({ ...input, cwd: fixture }, deny)).rejects.toThrow("directory");
+		await expect(AcpBackend.connect(acpClientHost, { ...input, timeoutMs: 0 }, deny)).rejects.toThrow(
+			"positive timer duration",
+		);
+		await expect(AcpBackend.connect(acpClientHost, { ...input, vendor: " " }, deny)).rejects.toThrow(
+			"real host vendor",
+		);
+		await expect(AcpBackend.connect(acpClientHost, { ...input, command: " " }, deny)).rejects.toThrow("executable");
+		await expect(AcpBackend.connect(acpClientHost, { ...input, cwd: fixture }, deny)).rejects.toThrow("directory");
 		expect(entries(journal)).toEqual([]);
 	});
 

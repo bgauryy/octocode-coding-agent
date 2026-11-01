@@ -53,7 +53,7 @@ export function registerSessionAttach(
 			return endpoint;
 		});
 	if (!options.isSubagent && options.workspace) {
-		// A session that cannot attach (an unreadable database, no free port) still works; /octocode falls back.
+		// A session that cannot attach (an unreadable database, no free port) still works; /web falls back.
 		api.on("session_start", (_event, ctx) => void start(ctx).catch(() => undefined));
 		api.on("session_shutdown", () => stop());
 	}

@@ -454,6 +454,49 @@ describe("OpenAI Codex OAuth", () => {
 		);
 	});
 
+	it("keeps the device polling credential out of an invalid device code response error", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown): Promise<Response> => {
+				const url = getUrl(input);
+				if (url === "https://auth.openai.com/api/accounts/deviceauth/usercode") {
+					// No interval: invalid, but the body still carries the polling credential.
+					return jsonResponse({ device_auth_id: "secret-device-auth-id", user_code: "SECRET-CODE" });
+				}
+				throw new Error(`Unexpected fetch URL: ${url}`);
+			}),
+		);
+
+		const error = await loginOpenAICodexDeviceCodeForTest({ onDeviceCode: () => {} }).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(Error);
+		const message = (error as Error).message;
+		expect(message).toContain("Invalid OpenAI Codex device code response");
+		expect(message).not.toContain("secret-device-auth-id");
+		expect(message).not.toContain("SECRET-CODE");
+	});
+
+	it("keeps the authorization code out of an incomplete device token response error", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown): Promise<Response> => {
+				const url = getUrl(input);
+				if (url === "https://auth.openai.com/api/accounts/deviceauth/usercode") {
+					return jsonResponse({ device_auth_id: "device-auth-id", user_code: "ABCD-1234", interval: 0 });
+				}
+				if (url === "https://auth.openai.com/api/accounts/deviceauth/token") {
+					return jsonResponse({ authorization_code: "secret-authorization-code" });
+				}
+				throw new Error(`Unexpected fetch URL: ${url}`);
+			}),
+		);
+
+		const error = await loginOpenAICodexDeviceCodeForTest({ onDeviceCode: () => {} }).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(Error);
+		const message = (error as Error).message;
+		expect(message).toContain("Invalid OpenAI Codex device auth token response");
+		expect(message).not.toContain("secret-authorization-code");
+	});
+
 	it("does not write token refresh failures to stderr", async () => {
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.stubGlobal(

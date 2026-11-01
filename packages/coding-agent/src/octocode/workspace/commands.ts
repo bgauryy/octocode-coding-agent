@@ -1,5 +1,4 @@
-import { commands } from "../agentdb/api.ts";
-import type { AgentDb } from "../agentdb/db.ts";
+import { type AgentDb, commands } from "../agentdb/api.ts";
 import { Value } from "typebox/value";
 import { WorkspaceCommandSchema } from "@octocodeai/octocode-contracts/protocol";
 import { storedSecret } from "../../../../common/src/sanitize.ts";

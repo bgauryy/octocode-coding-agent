@@ -93,7 +93,6 @@ export interface InteractiveModeState {
 	readonly keybindings: KeybindingsManager;
 	lastEscapeTime: number;
 	lastSigintTime: number;
-	lastStatusMessage: string;
 	lastStatusSpacer: Spacer | undefined;
 	lastStatusText: ThemedText | undefined;
 	readonly loadedResourcesContainer: Container;

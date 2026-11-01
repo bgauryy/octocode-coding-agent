@@ -41,11 +41,21 @@ function writeAuthFile(path: string, next: string): void {
 	atomicWriteFileSync(path, next, existsSync(path) ? {} : { mode: 0o600 });
 }
 
+/** What the store held when an async operation failed, read under the same lock; `unreadable` when it could not be read. */
+export type LockFailureState = { content: string | undefined } | "unreadable";
+
+/**
+ * Runs while the lock is still held, after `fn`, the write or a lock check failed, so compensation (undoing an outside
+ * write) cannot interleave with another writer. Its own errors are ignored here: the handler records what it needs.
+ */
+export type LockFailureHandler = (state: LockFailureState) => Promise<void>;
+
 export interface AuthStorageBackend {
 	withLock<T>(fn: (current: string | undefined) => LockResult<T>): T;
 	withLockAsync<T>(
 		fn: (current: string | undefined) => Promise<LockResult<T>>,
 		options?: AuthOperationOptions,
+		onFailure?: LockFailureHandler,
 	): Promise<T>;
 }
 
@@ -132,9 +142,25 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 		}
 	}
 
+	/** Reads the file as it is now and hands it to `handler`; the caller still holds the lock. */
+	private async runFailureHandler(handler: LockFailureHandler): Promise<void> {
+		let state: LockFailureState;
+		try {
+			state = { content: existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined };
+		} catch {
+			state = "unreadable";
+		}
+		try {
+			await handler(state);
+		} catch {
+			// The handler records its own outcome; the original failure is the one to report.
+		}
+	}
+
 	async withLockAsync<T>(
 		fn: (current: string | undefined) => Promise<LockResult<T>>,
 		options?: AuthOperationOptions,
+		onFailure?: LockFailureHandler,
 	): Promise<T> {
 		options?.signal?.throwIfAborted();
 		this.ensureParentDir();
@@ -158,14 +184,19 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			throwIfCompromised();
 			options?.signal?.throwIfAborted();
 			const current = existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined;
-			const { result, next } = await fn(current);
-			throwIfCompromised();
-			options?.signal?.throwIfAborted();
-			if (next !== undefined) {
-				writeAuthFile(this.authPath, next);
+			try {
+				const { result, next } = await fn(current);
+				throwIfCompromised();
+				options?.signal?.throwIfAborted();
+				if (next !== undefined) {
+					writeAuthFile(this.authPath, next);
+				}
+				throwIfCompromised();
+				return result;
+			} catch (error) {
+				if (onFailure) await this.runFailureHandler(onFailure);
+				throw error;
 			}
-			throwIfCompromised();
-			return result;
 		} finally {
 			if (release) {
 				try {
@@ -193,17 +224,23 @@ export class InMemoryAuthStorageBackend implements AuthStorageBackend {
 	withLockAsync<T>(
 		fn: (current: string | undefined) => Promise<LockResult<T>>,
 		options?: AuthOperationOptions,
+		onFailure?: LockFailureHandler,
 	): Promise<T> {
 		const previous = this.asyncChain;
 		const operation = (async () => {
 			await previous.catch(() => {});
 			options?.signal?.throwIfAborted();
-			const { result, next } = await fn(this.value);
-			options?.signal?.throwIfAborted();
-			if (next !== undefined) {
-				this.value = next;
+			try {
+				const { result, next } = await fn(this.value);
+				options?.signal?.throwIfAborted();
+				if (next !== undefined) {
+					this.value = next;
+				}
+				return result;
+			} catch (error) {
+				await onFailure?.({ content: this.value }).catch(() => {});
+				throw error;
 			}
-			return result;
 		})();
 		this.asyncChain = operation.catch(() => {});
 		return raceWithAbortSignal(operation, options?.signal);

@@ -217,6 +217,7 @@ describe("team resource bounds", () => {
 	it("dead-letters a read but unanswered question when its recipient leaves, then prunes it once the asker is told", () => {
 		const s = setup();
 		try {
+			s.store.save(member("peer", Date.now()));
 			s.store.save(member("departing", Date.now()));
 			const question = s.store.send("peer", ["departing"], "which option?", { replyRequired: true }).id!;
 			const fyi = s.store.send("peer", ["departing"], "fyi", { replyRequired: false }).id!;
@@ -241,6 +242,8 @@ describe("team resource bounds", () => {
 	it("prunes only resolved old messages and preserves unread mail, open questions and unreported dead letters", () => {
 		const s = setup();
 		try {
+			// The sender is a member, so it can still be told of its dead letters.
+			s.store.save(member("peer", Date.now()));
 			const unread = s.store.send("peer", [s.id], "unread", { replyRequired: false }).id!;
 			const question = s.store.send("peer", [s.id], "question", { replyRequired: true }).id!;
 			const complete = s.store.send("peer", [s.id], "complete", { replyRequired: false }).id!;
@@ -259,6 +262,25 @@ describe("team resource bounds", () => {
 			expect(s.store.replyTarget(dead)).toBeUndefined();
 			expect(s.store.replyTarget(unread)).toBeDefined();
 			expect(s.store.replyTarget(question)).toBeDefined();
+		} finally {
+			s.close();
+		}
+	});
+
+	it("prunes an old dead letter whose sender has no row, since no one is left to tell", () => {
+		const s = setup();
+		try {
+			s.store.save(member("sender-gone", Date.now()));
+			s.store.save(member("departing", Date.now()));
+			const early = s.store.send("sender-gone", ["departing"], "unread before the sender left", {
+				replyRequired: false,
+			}).id!;
+			s.store.remove("sender-gone");
+			s.store.remove("departing");
+			expect(s.store.deadLetters("sender-gone").map((letter) => letter.id)).toEqual([early]);
+			const later = Date.now() + 25 * 3_600_000;
+			s.store.renew(s.id, later);
+			expect(s.store.replyTarget(early)).toBeUndefined();
 		} finally {
 			s.close();
 		}

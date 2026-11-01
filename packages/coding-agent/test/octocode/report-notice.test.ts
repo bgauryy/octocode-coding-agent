@@ -26,6 +26,10 @@ describe("the mid-turn notice of a background report (B11)", () => {
 			report("w1", {
 				content:
 					"Background subagent w1 reported done\n\nFull report: .octocode/tmp/agents/w1/report.md (read only the parts you need).",
+				details: {
+					...report("w1").details,
+					reportArtifact: { sha256: "a".repeat(64), path: ".octocode/tmp/agents/w1/report.md" },
+				},
 			}),
 		);
 		expect(text).toContain("w1 done");

@@ -1,7 +1,6 @@
 import type { DescriptionOverrides } from "./types.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
-
 const isStringRecord = (value: unknown): value is Record<string, string> =>
 	isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 

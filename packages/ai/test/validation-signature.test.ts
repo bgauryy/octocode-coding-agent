@@ -10,7 +10,7 @@ const call = (args: Record<string, unknown>): ToolCall => ({
 	arguments: args as ToolCall["arguments"],
 });
 
-const thin = (hint?: () => string | undefined): Tool => ({
+const thin = (hint?: Tool["validationHint"]): Tool => ({
 	name: "mcp__docs__search",
 	description: "Search the docs.",
 	parameters: { type: "object", additionalProperties: true },
@@ -37,6 +37,18 @@ describe("validation schema separate from the declaration", () => {
 			/query[\s\S]*\n\nfunction search\(input: \{ query: string \}\): unknown;$/,
 		);
 		expect(validateToolArguments(hinted, call({ query: "ok" }))).toEqual({ query: "ok" });
+	});
+
+	it("tells the hint when the problem is unexpected root properties, not a missing or nested value", () => {
+		const seen: boolean[] = [];
+		const hinted = thin((failure) => {
+			seen.push(failure.envelope);
+			return "hint";
+		});
+		expect(() => validateToolArguments(hinted, call({ query: "x", extra: true }))).toThrow();
+		expect(() => validateToolArguments(hinted, call({ mode: "fast" }))).toThrow();
+		expect(() => validateToolArguments(hinted, call({ query: "x", mode: "slow" }))).toThrow();
+		expect(seen).toEqual([true, false, false]);
 	});
 
 	it("omits the hint when it returns nothing", () => {

@@ -19,6 +19,8 @@
 			"@octocodeai/octocodecode/*": ["./packages/coding-agent/src/*"],
 			"typebox": ["./node_modules/typebox"],
 			"@octocodeai/octocode-tui": ["./packages/tui/src/index.ts"],
+			"@octocodeai/octocode-tui/ansi": ["./packages/tui/src/utils/ansi-codes.ts"],
+			"@octocodeai/octocode-tui/multiplexer": ["./packages/tui/src/multiplexer.ts"],
 			"@octocodeai/octocode-tui/*": ["./packages/tui/src/*"],
 			"@octocodeai/octocode-contracts": ["./packages/contracts/src/index.ts"],
 			"@octocodeai/octocode-contracts/*": ["./packages/contracts/src/*.ts"],
@@ -39,6 +41,7 @@
 	"include": [
 		"packages/*/src/**/*",
 		"packages/*/test/**/*",
+		"packages/ai/scripts/**/*",
 		"packages/coding-agent/scripts/source-resolver.ts",
 		"packages/coding-agent/examples/**/*"
 	],

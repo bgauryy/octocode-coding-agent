@@ -6,6 +6,7 @@ import type { LayoutBox, LayoutFrame, LayoutRect } from "./layout/types.ts";
 import { cropKittyImageLine, getKittyImageMetadata } from "./terminal-image/kitty-metadata.ts";
 import { isImageLine } from "./terminal-image.ts";
 import { type Component, CURSOR_MARKER, compositeTuiLine } from "./tui.ts";
+import { renderIsolated } from "./tui/render-isolation.ts";
 import { visibleWidth } from "./utils/width.ts";
 
 const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
@@ -34,7 +35,7 @@ function renderCached(context: LayoutContext, component: Component, width: numbe
 	}
 	let lines = widths.get(safeWidth);
 	if (!lines) {
-		lines = component.render(safeWidth);
+		lines = renderIsolated(component, safeWidth);
 		widths.set(safeWidth, lines);
 	}
 	return lines;

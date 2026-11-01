@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
-import { RESULT_DEFAULT_BYTES } from "../octocode/shared/output-budget.ts";
+import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
 
 /** Tokens kept free for the reply when compacting or summarizing a branch. */
 export const DEFAULT_RESERVE_TOKENS = 16384;
@@ -70,6 +70,7 @@ export const SETTINGS_DEFAULTS = {
 	},
 	cacheWarming: "idle",
 	remote: { transport: "ssh", autoStart: "off" },
+	sessions: { autoTitle: true },
 	cacheRetention: "long",
 	instructionCacheRetention: "long",
 	tuiMode: "fullscreen",

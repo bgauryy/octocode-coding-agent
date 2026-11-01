@@ -1,3 +1,4 @@
+import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
 import { ID_PATTERN, LEGACY_REF_PREFIX, REF_PREFIX, repoRoot } from "./worktree-base.ts";
@@ -49,6 +50,26 @@ export async function mergeAgent(
 	await gitQuiet(repo, ["update-ref", "-d", ref]);
 	const into = (await gitQuiet(repo, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "HEAD";
 	return { ok: true, ref, into, text: `Merged ${ref} into ${into}.` };
+}
+
+/**
+ * Why the merge of `agentId`'s saved ref may not write its files: `reservation`'s refusal (another agent's lease, as
+ * the file tool checks it) for each path the ref changes since its merge base with HEAD. Empty when nothing is held.
+ */
+export async function reservedChanges(
+	cwd: string,
+	agentId: string,
+	reservation: (absolute: string, display: string) => string | undefined,
+): Promise<string[]> {
+	if (!ID_PATTERN.test(agentId)) return [];
+	const repo = repoRoot(cwd);
+	const ref = await savedRef(repo, agentId);
+	if (!ref) return [];
+	const changed = (await gitQuiet(repo, ["diff", "--name-only", "--no-renames", `HEAD...${ref}`])) ?? "";
+	return changed
+		.split("\n")
+		.filter(Boolean)
+		.flatMap((file) => reservation(path.join(repo, file), file) ?? []);
 }
 
 /** Agent ids of isolated results not merged yet, under the current ref path or the legacy one. */

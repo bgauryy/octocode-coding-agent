@@ -1,23 +1,14 @@
 import { type CallToolResult, toLlmContent } from "../../client/index.ts";
-import type { AgentToolResult } from "../../../../coding-agent/src/core/extensions/index.ts";
+import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import { createMcpToolName } from "../../tool-names.ts";
 import { createMcpToolDefinition, type McpToolDefinitionOptions } from "../../tool-definition.ts";
 import { OCTOCODE_SERVER, LOCAL_READ_TOOLS } from "./names.ts";
-import { resultBlock, resultText, toolHeader } from "../../../../coding-agent/src/octocode/shared/render.ts";
+import { hostOutput, hostRender } from "../../host.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
-import {
-	TEXT_MAX_CHARS,
-	boundImagePart,
-	capResultText,
-	saveFullOutput,
-} from "../../../../coding-agent/src/octocode/shared/spill.ts";
-import { clip, queryTarget } from "../../../../coding-agent/src/octocode/shared/render/text.ts";
-import { timedTool, timingOf } from "../../../../coding-agent/src/octocode/shared/render/rows.ts";
+import { clip, queryTarget } from "../../../../common/src/clip.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ImageLimits, imageLimits } from "@octocodeai/octocode-ai/utils/vision";
-import { skillNameOfRead } from "../../../../coding-agent/src/octocode/skill/catalog.ts";
 import { summarizeResult } from "./summary.ts";
-import { skillHeader } from "../../../../coding-agent/src/octocode/skill/render.ts";
 
 /** What the extension registers one of the server's tools as: the generic path's name rules (charset, length) apply here too. */
 export function octocodeToolName(tool: string): string {
@@ -27,7 +18,7 @@ export function octocodeToolName(tool: string): string {
 /**
  * A tool result for Octocode. Shared content conversion handles text and images.
  * A server bounds and pages its own output and a cut can hide the continuation inside
- * it, so text is left whole up to `TEXT_MAX_CHARS` (less once the turn's `budget` is nearly used); a longer part is
+ * it, so text is left whole up to `hostOutput().textMaxChars` (less once the turn's `budget` is nearly used); a longer part is
  * saved whole to the session's `output/` folder and replaced by its head and tail plus the file's path. An oversized
  * image is saved and resized by Octocode to `limits` (the active model's image limit, `imageLimits(ctx.model)`); the model sees the fitted image, its original path and the
  * dimension mapping (only the path if resizing fails). Repository, GitHub and registry text is untrusted: terminal control
@@ -52,8 +43,8 @@ export async function toToolResult(
 	let failed = result.isError;
 	if (structuredContent !== undefined) {
 		const serialized = JSON.stringify(structuredContent);
-		if (serialized.length > TEXT_MAX_CHARS) {
-			const file = saveFullOutput(serialized, `mcp-${tool}-structured`);
+		if (serialized.length > hostOutput().textMaxChars) {
+			const file = hostOutput().saveFullOutput(serialized, `mcp-${tool}-structured`);
 			structuredContent = undefined;
 			failed = true;
 			result = {
@@ -62,7 +53,7 @@ export async function toToolResult(
 					{
 						type: "text",
 						text: file
-							? `Structured result exceeds ${TEXT_MAX_CHARS} characters. Full JSON: ${file}. Request a smaller page or read the saved JSON.`
+							? `Structured result exceeds ${hostOutput().textMaxChars} characters. Full JSON: ${file}. Request a smaller page or read the saved JSON.`
 							: "Structured result exceeds the output limit and could not be saved. Request a smaller page.",
 					},
 				],
@@ -72,11 +63,11 @@ export async function toToolResult(
 	const modelContent = toLlmContent(result);
 	for (const part of sanitizeJson(modelContent) as ReturnType<typeof toLlmContent>) {
 		if (part.type === "text") {
-			const text = capResultText(part.text, `mcp ${tool}`);
+			const text = hostOutput().capResultText(part.text, `mcp ${tool}`);
 			outputTruncated ||= text !== part.text;
 			content.push({ ...part, text });
 		} else if (part.type === "image") {
-			content.push(...(await boundImagePart(part, `mcp ${tool} image`, limits ? { limits } : {})));
+			content.push(...(await hostOutput().boundImagePart(part, `mcp ${tool} image`, limits ? { limits } : {})));
 		} else content.push(part);
 	}
 	if (failed && content.length === 0) {
@@ -130,7 +121,7 @@ export function defineOctocodeTool(options: McpToolDefinitionOptions) {
 	const outputSchema = tool.outputSchema ?? (LOCAL_READ_TOOLS.has(name) ? {} : undefined);
 	const declaresOutput = outputSchema !== undefined;
 	const localFetchName = octocodeToolName("localFetch");
-	return timedTool(
+	return hostRender().timedTool(
 		createMcpToolDefinition({
 			...options,
 			presentation: {
@@ -138,33 +129,38 @@ export function defineOctocodeTool(options: McpToolDefinitionOptions) {
 				...(declaresOutput ? { outputSchema } : {}),
 				renderCall(args, theme, context) {
 					// A model reading a loaded skill's SKILL.md is loading that skill: the row says so.
-					const skill = name === localFetchName ? skillNameOfRead(args, context.cwd) : undefined;
-					if (skill) return skillHeader(theme, context, skill);
+					const skill = name === localFetchName ? hostRender().skillNameOfRead(args, context.cwd) : undefined;
+					if (skill) return hostRender().skillHeader(theme, context, skill);
 					const { summary, queries } = callSummary(args);
 					const lines = queries.map((query) => `${theme.fg("mdCode", query)}`);
-					return toolHeader(theme, context, tool.name, summary, { lines });
+					return hostRender().toolHeader(theme, context, tool.name, summary, { lines });
 				},
 				renderResult(result, _options, theme, context) {
-					const text = resultText(result);
+					const text = hostRender().resultText(result);
 					// An error is one message: its first line is the summary, the rest the body.
 					const failed = context.isError;
 					// A skill's instructions are one collapsed line, as the `skill` tool shows them.
-					if (!failed && name === localFetchName && skillNameOfRead(context.args, context.cwd))
-						return resultBlock(theme, context, {
+					if (!failed && name === localFetchName && hostRender().skillNameOfRead(context.args, context.cwd))
+						return hostRender().resultBlock(theme, context, {
 							summary: "Loaded skill",
 							summaryColor: "customMessageText",
 							body: text,
 							max: 0,
-							...timingOf(result.details),
+							...hostRender().timingOf(result.details),
 						});
 					// The server's JSON envelope reads as one human line; the full payload shows when the row expands.
 					const brief = summarizeResult(text);
 					if (brief)
-						return resultBlock(theme, context, { summary: brief, body: text, max: 0, ...timingOf(result.details) });
-					return resultBlock(theme, context, {
+						return hostRender().resultBlock(theme, context, {
+							summary: brief,
+							body: text,
+							max: 0,
+							...hostRender().timingOf(result.details),
+						});
+					return hostRender().resultBlock(theme, context, {
 						summary: failed ? text : "",
 						body: failed ? text.split("\n").slice(1).join("\n") : text,
-						...timingOf(result.details),
+						...hostRender().timingOf(result.details),
 					});
 				},
 				async convertResult(result, ctx) {

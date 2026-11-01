@@ -6,7 +6,7 @@ The built-in footer reserves its own line for the coordinator's provider/model a
 
 `@octocodeai/octocode-tui` provides the terminal component system used by Octocode. Extensions use it when built-in dialogs, notifications, status text, and widgets are not enough for the interaction they need.
 
-Start with `ctx.ui` methods from an [extension](extensions.md#ui-and-modes). Build a custom component only when the UI needs its own rendering, keyboard or mouse input, focus, layout, or lifecycle.
+Start with `ctx.ui` methods from an [extension](extension-contracts.md#ui-and-modes). Build a custom component only when the UI needs its own rendering, keyboard or mouse input, focus, layout, or lifecycle.
 
 ## Choose an integration point
 
@@ -21,7 +21,7 @@ Start with `ctx.ui` methods from an [extension](extensions.md#ui-and-modes). Bui
 
 These APIs receive Octocode’s active theme and keybindings where needed. Do not create a second terminal renderer inside an extension.
 
-Pass a footer status as plain text with an optional tone instead of colouring it: `ctx.ui.setStatus("jobs", "2 jobs", "accent")`. The tone is one of `accent`, `muted`, `dim`, `success`, `warning` or `error`. The terminal footer paints it with the live theme, so a theme switch recolours it, and RPC clients receive the text without escape codes. A custom footer reads the same data from `footerData.getState().statuses` (`{ text, tone }` per key) and can `subscribe()` to changes.
+Pass a footer status as plain text with an optional tone instead of colouring it: `ctx.ui.setStatus("jobs", "2 jobs", "accent")`. The tone is one of `accent`, `muted`, `dim`, `success`, `warning` or `error`. The terminal footer paints it with the live theme, so a theme switch recolours it, and RPC clients receive the text without escape codes. Text coloured beforehand with `ctx.ui.theme.fg()` still shows in the terminal footer (its colour codes are kept, other controls are removed), but it keeps the theme it was painted with and reaches RPC clients with its escape codes. A custom footer reads the same data from `footerData.getState().statuses` (`{ text, tone }` per key) and can `subscribe()` to changes.
 
 ## Understand the component model
 
@@ -69,7 +69,7 @@ Regular mode leaves mouse input to the terminal because the terminal owns scroll
 
 ## Use custom screens and overlays
 
-`ctx.ui.custom()` temporarily gives one component control of the interactive area and resolves when that component calls the supplied completion callback.
+`ctx.ui.custom()` temporarily gives one component control of the interactive area and resolves when that component calls the supplied completion callback. Its promise is `Promise<T | undefined>`: it resolves `undefined` when another dialog or view takes the component's place, or when `/reload` or a session replacement resets the extension UI (overlays included). The component is disposed exactly once either way, also when the factory calls the completion callback before it returns.
 
 ### Build a minimal custom screen
 
@@ -147,7 +147,7 @@ Focused overlays retain input ownership across ordinary renders. If another comp
 
 Treat each custom component instance as belonging to one interaction. Create a new instance when starting that interaction again.
 
-Finish the interaction with the completion callback supplied to the component factory. It resolves the `ctx.ui.custom()` promise and disposes the component. Do not call `OverlayHandle.hide()` on an overlay created by `ctx.ui.custom()`.
+Finish the interaction with the completion callback supplied to the component factory. It resolves the `ctx.ui.custom()` promise and disposes the component; handle the `undefined` result of a component that was replaced before it finished. Do not call `OverlayHandle.hide()` on an overlay created by `ctx.ui.custom()`.
 
 See `overlay-qa-tests.ts` for positioning, stacking, focus, responsive visibility, and animation behavior.
 
@@ -181,7 +181,7 @@ Use [Themes](themes.md) to create terminal palettes. Use Octocode’s `getMarkdo
 
 ## Keep rendering responsive
 
-Rendering runs on the interactive path. Cache expensive layout and highlighting work by width and content, then clear that cache from `invalidate()`.
+Rendering runs on the interactive path. A component that throws from `render()` no longer stops the screen: it is drawn as a one-line fallback, and the chat shows `Display failed: <Component> could not render: <first line of the error>` once per distinct failure. Fix the error rather than relying on that fallback. Cache expensive layout and highlighting work by width and content, then clear that cache from `invalidate()`.
 
 Keep the default view compact and reveal detail through expansion or a dedicated screen. For custom tool rendering, handle partial results and reuse the previous component when it can be updated safely.
 

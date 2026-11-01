@@ -10,6 +10,9 @@ const IDENTITY = ["-c", "user.name=Octocode", "-c", "user.email=octocode@localho
 /** Git options that run a command against a private index file instead of the repository's own. */
 const onIndex = (index: string): GitOptions => ({ env: { GIT_INDEX_FILE: index } });
 
+/** Diff output that `git apply` and a report can read whatever the user's Git configuration (color, prefixes) says. */
+export const PLAIN_DIFF = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"];
+
 async function withIndex<T>(work: (index: string, dir: string) => Promise<T>): Promise<T> {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-worktree-index-"));
 	fs.chmodSync(dir, 0o700);
@@ -63,6 +66,20 @@ export async function rejectChangedFilters(worktree: string): Promise<void> {
 	const changed = await listFiles(worktree, ["--modified", "--others", "--exclude-standard"], off);
 	const file = changed.find((each) => drivers.has(each));
 	if (file) throw new Error(`Saving refuses to run the Git filter on ${file}`);
+}
+
+/**
+ * A repository the child made or moved inside its worktree (`git init`, a clone, an initialised submodule) is saved as a
+ * gitlink: a commit id whose files live only under the worktree, which removal deletes. Refuses such a change so the
+ * worktree is kept.
+ */
+export async function rejectNestedRepositories(repo: string, from: string, head: string): Promise<void> {
+	const fields = (await git(repo, ["diff-tree", "-r", "--no-renames", "-z", from, head], { raw: true })).split("\0");
+	const nested: string[] = [];
+	for (let at = 0; at + 1 < fields.length; at += 2)
+		if (fields[at].split(" ")[1] === "160000") nested.push(fields[at + 1]);
+	if (nested.length)
+		throw new Error(`Saving refuses nested repositories, whose commits only this worktree holds: ${nested.join(", ")}`);
 }
 
 /** Capture tracked and non-ignored untracked files as a private commit, without touching the parent's index. */
@@ -132,10 +149,10 @@ export function workerDeltaCommit(
 ): Promise<string> {
 	return withIndex(async (index, dir) => {
 		await git(repo, ["read-tree", base], onIndex(index));
-		const patch = await git(repo, ["diff", "--binary", "--no-ext-diff", snapshot, head], { raw: true });
+		// Git writes the patch itself: no output buffer caps the size of the child's change.
 		const patchFile = path.join(dir, "worker.patch");
-		fs.writeFileSync(patchFile, patch, { mode: 0o600 });
-		await git(repo, ["apply", "--cached", "--3way", patchFile], onIndex(index));
+		await git(repo, ["diff", ...PLAIN_DIFF, "--binary", `--output=${patchFile}`, snapshot, head]);
+		await git(repo, ["apply", "--cached", "--3way", "--whitespace=nowarn", patchFile], onIndex(index));
 		const tree = await git(repo, ["write-tree"], onIndex(index));
 		if (tree === (await git(repo, ["rev-parse", `${base}^{tree}`]))) return base;
 		return git(

@@ -1,5 +1,7 @@
-import { Type } from "typebox";
-import { EntityFields, type EntityInput } from "@octocodeai/octocode-contracts/backlogs";
+import { type TSchema, Type } from "typebox";
+import { StringEnum } from "@octocodeai/octocode-ai";
+import { type EntityInput, ITEM_TYPES, LEGACY_ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { withReason } from "../shared/reason.ts";
 import { parseRef } from "./item.ts";
 
 /** A link as the model may write it: `target` is a reference object or a shorthand string (`tool.ts` `linkInput`). */
@@ -16,7 +18,7 @@ export interface LinkArgument {
 const LinkField = Type.Unsafe<LinkArgument[]>({
 	type: "array",
 	description:
-		'References (docs, reports, URLs, items); replaces all. target: a repository path, URL or item id, e.g. [{relation: "output", target: ".octocode/x/report.md"}], or {resource: sessions|messages|reports|memories|artifacts, namespace, id}.',
+		"Replaces all the item's links. target: a repository path, URL or item id, or {resource: sessions|messages|reports|memories|artifacts, namespace, id}.",
 	items: {
 		type: "object",
 		required: ["relation", "target"],
@@ -35,35 +37,55 @@ const completion = Type.Optional(
 			summary: { type: "string" },
 			files: { type: "array" },
 			verification: { type: "object" },
-			lesson: { type: "string" },
 			operationKey: { type: "string" },
-			replaces: { type: "number" },
 		},
 		description:
-			"Done result. files: [{path, role: changed|reviewed|produced, repositoryKey?, revision?}]; verification: {status: passed|failed|not_run|not_applicable, summary}; lesson: what to reuse next time; operationKey: unique per completion; replaces: optional, a done item's new completion replaces the latest.",
+			"update with state done: the result. files: [{path, role: changed|reviewed|produced}]; verification: {status: passed|failed|not_run|not_applicable, summary}; operationKey: unique per completion; optional lesson (what to reuse) and replaces (a done item's completion to correct).",
 	}),
 );
 
 /**
  * A subagent changes item state, notes and completion (and `add` takes a type and links), so it sees only those
- * fields. The parameter type stays the full shape: the tool refuses the omitted fields with an error naming them.
+ * fields, plus `parentId` and `dependsOn` as list filters only: it cannot write hierarchy or dependencies, and the
+ * store refuses them on add and update with an error naming them (`writes.ts`). The parameter type stays the full shape.
  */
 export function entityFields(subagent: boolean) {
 	const full = {
-		type: EntityFields.type,
-		parentId: EntityFields.parentId,
-		dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Prerequisite IDs; [] clears." })),
+		type: Type.Optional(StringEnum(ITEM_TYPES, { description: "Default feature; epic groups work. list: only this" })),
+		parentId: Type.Optional(
+			Type.Union([Type.String(), Type.Null()], { description: "Parent epic ID; null clears. list: its items" }),
+		),
+		dependsOn: Type.Optional(
+			Type.Array(Type.String(), {
+				description: "add/update: prerequisite item IDs; [] clears. list: items needing any",
+			}),
+		),
 		links: Type.Optional(LinkField),
 		completion,
 		version: Type.Optional(
 			Type.Integer({
-				description: "The version get showed; a changed item refuses the edit. Omit, never guess.",
+				description: "update: the version get showed; a changed item refuses the edit. Omit, never guess",
 			}),
 		),
 	};
 	if (!subagent) return full;
 	const { type, links, completion: done, version } = full;
-	return { type, links, completion: done, version } as unknown as typeof full;
+	const listOnly = {
+		parentId: Type.Optional(Type.String({ description: "list only: items under this epic" })),
+		dependsOn: Type.Optional(Type.Array(Type.String(), { description: "list only: items needing any of these" })),
+	};
+	return { type, ...listOnly, links, completion: done, version } as unknown as typeof full;
+}
+
+/**
+ * The schema a call is validated against: the declared one, except that `type` also takes the item type `task` of the
+ * last release (`itemTypeInput`), which the tool maps to `feature` and says so. The call's `reason` is added as the
+ * registry does for the declared schema.
+ */
+export function withLegacyType<T extends TSchema>(parameters: T): TSchema {
+	const { properties } = parameters as unknown as { properties: Record<string, TSchema> };
+	const type = Type.Optional(StringEnum([...ITEM_TYPES, ...Object.keys(LEGACY_ITEM_TYPES)] as [string, ...string[]]));
+	return withReason({ ...parameters, properties: { ...properties, type } });
 }
 
 /**

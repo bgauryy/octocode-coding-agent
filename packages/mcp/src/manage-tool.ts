@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpContext, McpToolDefinition } from "./host/types.ts";
 import { MCP_MANAGE_TOOL_NAME, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
@@ -25,7 +25,7 @@ export interface McpManageOperations {
 	/** Read the current catalog without connecting or executing a server. */
 	tools?(name: string): McpToolListing[];
 	/** Start a stopped or failed server, or restart a running one. Resolves with an error message on failure. */
-	restart(name: string, ctx: ExtensionContext): Promise<string | undefined>;
+	restart(name: string, ctx: McpContext): Promise<string | undefined>;
 	/** Stop a server for this session. Resolves with an error message when it cannot be stopped. */
 	stop(name: string): Promise<string | undefined>;
 	/** Run a new server for this session only. */
@@ -54,11 +54,9 @@ const ConfigSchema = Type.Object(
 );
 
 const ManageSchema = Type.Object({
-	intent: Type.Unsafe<Intent>({ type: "string", enum: [...INTENTS], description: "What to do" }),
-	server: Type.Optional(Type.String({ description: "Server name; every intent but list needs it" })),
-	tool: Type.Optional(
-		Type.String({ description: "For tools: one tool name to inspect its full description and schema" }),
-	),
+	intent: Type.Unsafe<Intent>({ type: "string", enum: [...INTENTS] }),
+	server: Type.Optional(Type.String({ description: "Server name; required for every intent except list" })),
+	tool: Type.Optional(Type.String({ description: "tools: the tool to inspect" })),
 	config: Type.Optional(ConfigSchema),
 });
 
@@ -110,7 +108,7 @@ const describe = (server: ManagedMcpServer): string =>
  * The model's `mcp` tool. It acts on this session's servers only, and changes no configuration file: a subagent
  * restarts its own servers, never its parent's. Adding a server runs a new command, so it needs the user's confirmation.
  */
-export function createMcpManageTool(operations: McpManageOperations): ToolDefinition<typeof ManageSchema> {
+export function createMcpManageTool(operations: McpManageOperations): McpToolDefinition<typeof ManageSchema> {
 	const lastRestart = new Map<string, number>();
 	const assertAvailable = (name: string): void => {
 		const existing = operations.servers().find((server) => mcpNamespace(server.name) === mcpNamespace(name));
@@ -122,15 +120,18 @@ export function createMcpManageTool(operations: McpManageOperations): ToolDefini
 		if (server) return server;
 		const known = servers.map((candidate) => candidate.name).join(", ") || "none";
 		throw new Error(
-			name ? `No MCP server "${name}" in this session. Servers: ${known}.` : `Name the server. Servers: ${known}.`,
+			name
+				? `No MCP server "${name}" in this session. Servers: ${known}.`
+				: `Name the server in the server field (every intent except list needs it). Servers: ${known}.`,
 		);
 	};
 	return {
 		name: MCP_MANAGE_TOOL_NAME,
 		label: "MCP",
+		promptSnippet:
+			"When an MCP server's tools fail, time out or disappear, to check its state, or to add one the user asks for",
 		description:
-			"Manage this session's MCP servers. list or status: state, tool count and last error. tools: inspect the current catalog; name a tool for its full description, input/output schemas, without running it. connect or restart: start a server whose tools fail, time out or lost their connection. stop: end a server for this session, including default servers. add: run a new server for this session (the user confirms). remove: drop a server this tool added. Configuration files are not changed.",
-		promptSnippet: "Check, restart, stop or add this session's MCP servers",
+			"Manage this session's MCP servers. list or status: state, tool count and last error. tools: inspect the current catalog; name a tool for its full description, input/output schemas, without running it. connect or restart: start a stopped or failed server, or reconnect one that lost its connection (a restart within 10s of the previous one is refused). stop: end a server for this session, including default servers. add: run a new server for this session (the user confirms). remove: drop a server this tool added. Configuration files are not changed.",
 		parameters: ManageSchema,
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();

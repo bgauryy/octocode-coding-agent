@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExternalAgents, type ExternalFactories, type ExternalPolicy } from "../../src/octocode/external/manager.ts";
-import type { ExternalBackend } from "../../src/octocode/external/protocol.ts";
+import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
 import type { MessageReader } from "../../src/octocode/shared/references.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

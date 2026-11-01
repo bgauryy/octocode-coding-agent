@@ -83,6 +83,7 @@ export function switchTuiMode(
 	const showHardwareCursor = previousUi.getShowHardwareCursor();
 	const clearOnShrink = previousUi.getClearOnShrink();
 	const onDebug = previousUi.onDebug;
+	const onRenderError = previousUi.onRenderError;
 	if (previousUi instanceof TuiMainScreen) {
 		host.mainScreenRenderState = previousUi.captureRenderState();
 	}
@@ -103,6 +104,7 @@ export function switchTuiMode(
 	});
 	nextUi.setClearOnShrink(clearOnShrink);
 	nextUi.onDebug = onDebug;
+	nextUi.onRenderError = onRenderError;
 	if (nextUi instanceof TuiMainScreen && host.mainScreenRenderState) {
 		nextUi.restoreRenderState(host.mainScreenRenderState);
 	}

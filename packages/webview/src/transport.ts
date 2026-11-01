@@ -73,7 +73,7 @@ export class BrowserConnection {
 			try {
 				message = JSON.parse(String(event.data));
 			} catch {
-				this.observer.status("Invalid server response. Reopen /octocode.");
+				this.observer.status("Invalid server response. Reopen /web.");
 				retire(1008);
 				return;
 			}
@@ -87,7 +87,7 @@ export class BrowserConnection {
 					this.observer.status("Refreshing session state…");
 					retire();
 				} else if (result === "invalid") {
-					this.observer.status("Incompatible session stream. Reopen /octocode.");
+					this.observer.status("Incompatible session stream. Reopen /web.");
 					retire(1008);
 				} else if (result === "applied") {
 					this.authenticated = true;
@@ -124,8 +124,8 @@ export class BrowserConnection {
 			this.authenticated = false;
 			this.observer.status(
 				event.code === 1008
-					? "Access or protocol expired — reopen /octocode. Showing last received state."
-					: "Disconnected · reconnecting… If the session ended, open /octocode in a running terminal.",
+					? "Access or protocol expired — reopen /web. Showing last received state."
+					: "Disconnected · reconnecting… If the session ended, open /web in a running terminal.",
 			);
 			if (event.code !== 1008) {
 				this.timer = setTimeout(() => this.open(), this.delay);

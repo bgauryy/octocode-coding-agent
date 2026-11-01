@@ -1,5 +1,6 @@
 import { closeSync, openSync, readSync, statSync } from "fs";
 import lockfile from "proper-lockfile";
+import { jsonlLines } from "../../../../common/src/jsonl.ts";
 import { generateId } from "./entries.ts";
 import type { SessionState } from "./state.ts";
 import { indexSessionEntry } from "./tree.ts";
@@ -74,15 +75,13 @@ function readForeignEntries(file: string, known: number, to: number): SessionEnt
 	}
 	const start = known === 0 ? 0 : bytes.indexOf(10) + 1;
 	const entries: SessionEntry[] = [];
-	for (const line of bytes.subarray(start).toString("utf8").split("\n")) {
-		if (!line.trim()) continue;
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(line);
-		} catch {
+	// Unlike a load, which skips a torn line, a merge refuses any record it cannot place: skipping would drop another
+	// process's entry from this state and then from the file.
+	for (const line of jsonlLines(bytes.subarray(start).toString("utf8"))) {
+		if (!line.ok) {
 			throw new Error("Session has a malformed record written by another process; recover the transcript.");
 		}
-		const record = parsed as { type?: unknown; id?: unknown } | null;
+		const record = line.value as { type?: unknown; id?: unknown } | null;
 		if (typeof record !== "object" || record === null || typeof record.type !== "string") {
 			throw new Error("Session has an unrecognized record written by another process; recover the transcript.");
 		}

@@ -1,3 +1,4 @@
+import "../../../octocode/mcp-host/core-install.ts";
 /**
  * `/github`: GitHub sign-in for Octocode research, through the native CLI's `octocode auth` device flow.
  */

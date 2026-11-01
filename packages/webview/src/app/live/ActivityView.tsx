@@ -50,7 +50,7 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 	if (!available)
 		return (
 			<div className="view activity-view">
-				<SessionUnavailable hint="Open /octocode from a running Octocode session to message that agent." />
+				<SessionUnavailable hint="Open /web from a running Octocode session to message that agent." />
 			</div>
 		);
 	return (

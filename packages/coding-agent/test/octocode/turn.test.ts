@@ -116,11 +116,12 @@ describe("registerTurnSetup", () => {
 
 	it.each([false, true])("preserves browser and web selections for isSubagent=%s", async (isSubagent) => {
 		const fake = fakeHost();
-		const selected = ["read", "file", "browser", "web", "agent"];
+		const selected = ["read", "file", "mcp__browser__run", "web", "agent"];
 		for (const name of selected) fake.tools.set(name, { name });
 		registerTurnSetup(fake.api, {
 			isSubagent,
-			profiles: () => new Map([["browser", { name: "browser", description: "", prompt: "", tools: "read,browser" }]]),
+			profiles: () =>
+				new Map([["browser", { name: "browser", description: "", prompt: "", tools: "read,mcp__browser__*" }]]),
 		});
 		for (const reason of ["startup", "reload", "resume"]) {
 			await fake.emit("session_start", { type: "session_start", reason }, {});
@@ -143,7 +144,8 @@ describe("registerTurnSetup", () => {
 		expect(await run(fake, ["agent", "file", "web"])).toMatch(
 			/send follow-ups to that same agent while it is reachable/,
 		);
-		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
+		// The removed native `browser` tool no longer counts as a browser; only the browser MCP tools do.
+		expect(await run(fake, ["agent", "file", "browser"])).toContain("Delegate browser interaction");
 		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
 		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
 	});
@@ -152,20 +154,19 @@ describe("registerTurnSetup", () => {
 		const fake = fakeHost();
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => loadProfiles(tmp(), tmp(), false, {}) });
 		const routing = "When static text from `web` cannot answer the question, use the browser tools";
-		expect(await run(fake, ["agent", "file", "web", "browser"])).toContain(routing);
 		expect(await run(fake, ["agent", "file", "web", "mcp__browser__run"])).toContain(routing);
+		expect(await run(fake, ["agent", "file", "web", "browser"])).not.toContain(routing);
 		// No browser: the delegation line names the specialist, and the web guideline no longer points at tools it lacks.
 		expect(await run(fake, ["agent", "file", "web"])).not.toContain(routing);
-		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
+		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
 	});
 
 	it("keeps browser role instructions stable across modes and reads them once per child", async () => {
 		const profile = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		const sections = [];
 		for (const headless of [true, false]) {
-			const file = writeRolePrompt(profile.prompt, tmp());
+			const file = writeRolePrompt({ ...profile, headless }.prompt, tmp());
 			vi.stubEnv(ROLE_PROMPT_FILE_ENV, file);
-			vi.stubEnv("OCTOCODE_BROWSER_VISIBLE", headless ? "" : "1");
 			const fake = fakeHost();
 			registerTurnSetup(fake.api, {
 				isSubagent: true,
@@ -175,7 +176,7 @@ describe("registerTurnSetup", () => {
 				systemPromptOptions: {
 					sections: {} as Record<string, string>,
 					baseSections: {} as Record<string, string>,
-					selectedTools: ["file", "agent", "archive", "browser", "web"],
+					selectedTools: ["file", "agent", "archive", "mcp__browser__run", "web"],
 				},
 			};
 			await fake.emit("before_agent_start", event, {});

@@ -30,7 +30,7 @@ import {
 	writeRecord,
 } from "./registry.ts";
 import { ApiServer, type Connection } from "./server.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Session entry (`api.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";
@@ -284,7 +284,7 @@ export class OctocodeApi {
 				try {
 					return boundedExternal(await this.operations.externalCall(params, this.session()));
 				} catch (error) {
-					const details = isRecord(error) ? error : {};
+					const details = asRecord(error);
 					const data = Object.fromEntries(
 						["partial", "execution", "stderr"]
 							.filter((key) => details[key] !== undefined)

@@ -58,7 +58,7 @@ describe("octocode mcp compact", () => {
 		const stored = readGenerated(store, "octocode");
 		const catalog = JSON.parse(readFileSync(OCTOCODE_CATALOG, "utf8"));
 		expect(stored?.meta.hash).toBe(catalogHash(catalog));
-		expect(stored?.meta.overrides?.tools?.lspSearch).toContain("rust");
+		expect(stored?.meta.overrides?.tools?.lspSearch).toContain("workspaceSymbol");
 		const again = await run(["compact", "show", "octocode"]);
 		expect(again.output).toBe(first.output);
 	});

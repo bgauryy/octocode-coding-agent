@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/in
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../shared/home/repo.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookIdentity } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookVerdict } from "../contracts.ts";
@@ -15,7 +15,7 @@ import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
 import { conflictingRewrites, firstRewrite, reducePermission } from "../verdicts.ts";
-import { capContext, failureOf, interpret, runHook } from "../runner.ts";
+import { capContext, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
 	type HookFailureSink,
@@ -70,6 +70,22 @@ export function createDispatcher(
 
 	/** Hooks already warned about for a failure, so each is shown once per Octocode process (every failure is audited). */
 	const failureWarned = new Set<string>();
+	/**
+	 * A PermissionRequest prompt answer never decides the approval (docs/hooks.md): a malformed one is a hook failure, so
+	 * `failClosed` denies, and the reason of an `ok: false` is shown, once per hook and reason, instead of being dropped.
+	 */
+	const observePermissionPrompt = (ctx: ExtensionContext, hook: HookHandler, observed: HookVerdict): HookVerdict => {
+		if (observed.error) return { error: observed.error };
+		if (observed.block) {
+			const reason = clipText(redactSecrets(observed.block), 200);
+			const key = `observed\0${hookIdentity(hook)}\0${reason}`;
+			if (!failureWarned.has(key)) {
+				failureWarned.add(key);
+				say(ctx, `PermissionRequest prompt hook (observational): ${reason}`, "warning");
+			}
+		}
+		return {};
+	};
 	/**
 	 * A `PreToolUse` hook gave no answer. Hooks fail open, so the call goes ahead unless the hook is `failClosed`; either
 	 * way the user sees a warning (once per hook, with a UI) and the audit records it. Returns the block reason when failing closed.
@@ -175,22 +191,25 @@ export function createDispatcher(
 					);
 				return {};
 			}
-			const run = await timeHook(ctx, event, hook, () =>
-				runHook(
-					hook,
-					hookPayload(hook.protocol ?? "octocode", payload, dispatchMetadata),
-					ctx.cwd,
-					env,
-					signal,
-					boundMcpHookCaller(api.events, ctx, event),
-					hook.type === "prompt" ? createPromptEvaluator(ctx) : undefined,
+			const run = claudeJsonRun(
+				hook,
+				await timeHook(ctx, event, hook, () =>
+					runHook(
+						hook,
+						hookPayload(hook.protocol ?? "octocode", payload, dispatchMetadata),
+						ctx.cwd,
+						env,
+						signal,
+						boundMcpHookCaller(api.events, ctx, event),
+						hook.type === "prompt" ? createPromptEvaluator(ctx) : undefined,
+					),
 				),
 			);
 			if (race && signal?.aborted) return {};
 			const verdict =
 				hook.type === "prompt"
 					? event === "PermissionRequest"
-						? {}
+						? observePermissionPrompt(ctx, hook, interpretPromptHook(event, run))
 						: interpretPromptHook(event, run, hook.continueOnBlock)
 					: interpret(event, run, hook.protocol);
 			if (verdict.systemMessage) say(ctx, verdict.systemMessage, "warning");
@@ -198,7 +217,7 @@ export function createDispatcher(
 				verdict.context = limitCodexContext(verdict.context, hook.additionalContextLimit);
 			const gate = event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
 			const failure = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
-			const message = isRecord(payload.message) ? payload.message : {};
+			const message = asRecord(payload.message);
 			const target =
 				gate === "PreMessageSend"
 					? `${stringOrEmpty(message.from)} -> ${stringOrEmpty(message.to)}`

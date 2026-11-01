@@ -12,6 +12,10 @@ export const CONFIG_CSS = `/* Settings view */
 .config-sources { display: grid; gap: 4px; padding-left: 12px; }
 .config-source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
 .config-source .badge code { font-size: 11px; }
+.config-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.config-edit input { flex: 1 1 200px; min-width: 0; padding: 6px 10px; }
+.config-edit select, .panel-header select { padding: 6px 10px; max-width: 100%; }
+.config-edit > p { flex-basis: 100%; margin: 0; }
 .panel > .callout { margin: 12px 16px 0; }
 @media (forced-colors: active) { .config-row { border-bottom-color: CanvasText; } }
 `;

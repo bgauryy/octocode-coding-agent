@@ -49,4 +49,13 @@ describe("debugger permission integration", () => {
 		expect(classify(call("terminate"), { cwd: worktree })).toBeUndefined();
 		expect(isolatedTreeRefusal(call("launch"), main, env)).toBeUndefined();
 	});
+
+	it("does not ask before a launch without an adapter, which only returns the adapter recipes", () => {
+		const help: ToolCallEvent = { type: "tool_call", toolCallId: "h", toolName: "debug", input: { action: "launch" } };
+		expect(classify(help, { cwd: "/repo" })).toBeUndefined();
+		const empty = { ...help, input: { action: "launch", adapter: "", launch: { program: "/x" } } };
+		expect(classify(empty, { cwd: "/repo" })).toBeUndefined();
+		// Any named adapter is a process launch and still asks.
+		expect(classify(call("launch"), { cwd: "/repo" })).toMatchObject({ action: "shell" });
+	});
 });

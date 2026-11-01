@@ -1,6 +1,6 @@
 import path from "node:path";
-import { type Db, edits } from "../agentdb/api.ts";
-import { num } from "../agentdb/rows.ts";
+import { type Db, edits, num } from "../agentdb/api.ts";
+import { formatAgo } from "../shared/format.ts";
 import { DAY_MS, MINUTE_MS } from "../shared/util.ts";
 import { canonicalIn } from "./store/workspace.ts";
 
@@ -14,6 +14,36 @@ export interface Change {
 	tools: string[];
 	at: number;
 	count: number;
+}
+
+/** How far back `changeNote` looks for the file's last change. */
+const NOTE_WINDOW_MS = 60 * MINUTE_MS;
+
+/**
+ * Who last changed `file` (absolute) according to the log, as a sentence for a changed-on-disk refusal; undefined without a
+ * log or outside the workspace. `self`: this session's own name, so its own writes read as such.
+ */
+export function changeNote(
+	log: EditLog | undefined,
+	file: string,
+	self: string | undefined,
+	now = Date.now(),
+): string | undefined {
+	if (!log) return undefined;
+	const relative = path.relative(log.workspace, canonicalIn(log.workspace, file)).split(path.sep).join("/");
+	if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+	const change = log
+		.changes({ withinMs: NOTE_WINDOW_MS, prefixes: [relative] }, now)
+		.find((row) => row.path === relative);
+	if (!change) {
+		return "No agent change to it is recorded in the last hour, so an editor, git, a formatter or another process wrote it.";
+	}
+	const me = self ?? unjoinedAgent();
+	const others = change.agents.filter((agent) => agent !== me);
+	const how = `${change.tools.join(", ")}, ${formatAgo(now - change.at)}`;
+	return others.length > 0
+		? `Last recorded change: ${others.join(", ")} (${how}).`
+		: `Its last recorded change is this session's own (${how}); another process may also have written it.`;
 }
 
 /** What a session's writes are recorded under until it has a team name (it joins later; see `EditLog.adopt`). */

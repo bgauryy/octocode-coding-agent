@@ -173,12 +173,13 @@ export function handleCtrlZ(host: LifecycleHost): void {
 	process.on("SIGINT", ignoreSigint);
 
 	// Set up handler to restore TUI when resumed
-	process.once("SIGCONT", () => {
+	const onResume = () => {
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		host.ui.start();
 		host.ui.requestRender(true);
-	});
+	};
+	process.once("SIGCONT", onResume);
 
 	try {
 		// Stop the TUI (restore terminal to normal mode)
@@ -189,6 +190,8 @@ export function handleCtrlZ(host: LifecycleHost): void {
 	} catch (error) {
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
+		// Never suspended: a later SIGCONT must not restart the TUI.
+		process.removeListener("SIGCONT", onResume);
 		throw error;
 	}
 }

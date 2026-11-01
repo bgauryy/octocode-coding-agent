@@ -1,10 +1,11 @@
-import type { ApplicationHistory, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
-import { useRef, useState } from "react";
+import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
-import { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
+import { ApplicationProjection } from "./application-projection.ts";
 import { ActivityHistory } from "./ActivityHistory.tsx";
+import { addHistoryPage, type LoadedHistory, requestHistory, retainEvicted } from "./history-window.ts";
 import { ResultCard } from "./ResultCard.tsx";
 import { useLive } from "./session.tsx";
 
@@ -23,33 +24,49 @@ export function HistoryPanel() {
 
 function HistoryPages({ snapshot }: { snapshot: ApplicationSnapshot }) {
 	const { api, session } = useLive();
-	const [history, setHistory] = useState<ApplicationHistory>();
-	const [events, setEvents] = useState<FeedEvent[]>([]);
+	const [history, setHistory] = useState<LoadedHistory>();
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
-	const projection = useRef(new ApplicationProjection());
+	// The projection is an incremental row cache; one instance lives as long as this history.
+	const [projection] = useState(() => new ApplicationProjection());
+	const live = useRef(snapshot);
+	const { sessionId } = snapshot;
+	// The live window drops its oldest messages as new ones arrive; once history is shown they move into it before paint.
+	useLayoutEffect(() => {
+		const previous = live.current;
+		live.current = snapshot;
+		if (previous !== snapshot) setHistory((current) => current && retainEvicted(current, previous, snapshot));
+	}, [snapshot]);
+	const events = useMemo(
+		() =>
+			history
+				? projection
+						.update(
+							{
+								sessionId,
+								messages: history.messages,
+								tools: history.tools,
+								streaming: false,
+								steering: [],
+								followUp: [],
+								receipts: [],
+								capabilities: [],
+							},
+							0,
+						)
+						.filter((event) => !event.embedded)
+				: [],
+		[history, projection, sessionId],
+	);
 	async function load() {
 		setLoading(true);
 		setError("");
+		const cursor = requestHistory(history, snapshot.messages[0]?.id).before;
+		setHistory((current) => requestHistory(current, snapshot.messages[0]?.id));
 		try {
-			const page = await api.history(snapshot.sessionId, history?.before ?? snapshot.messages[0]?.id);
-			if (session.getState().application?.sessionId !== snapshot.sessionId) return;
-			const next: ApplicationHistory = {
-				...page,
-				messages: [
-					...new Map([...page.messages, ...(history?.messages ?? [])].map((message) => [message.id, message])).values(),
-				],
-				tools: [...new Map([...page.tools, ...(history?.tools ?? [])].map((tool) => [tool.toolCallId, tool])).values()],
-			};
-			setHistory(next);
-			setEvents(
-				projection.current
-					.update(
-						{ ...snapshot, messages: next.messages, tools: next.tools, streaming: false, errors: [], activities: [] },
-						0,
-					)
-					.filter((event) => !event.embedded),
-			);
+			const page = await api.history(sessionId, cursor);
+			if (session.getState().application?.sessionId !== sessionId) return;
+			setHistory((current) => current && addHistoryPage(current, page, cursor));
 		} catch (cause) {
 			setError(errorMessage(cause));
 		} finally {

@@ -19,6 +19,7 @@ export function createRunnerBindings(cwd: string): RunnerBindings {
 		waitForIdleFn: async () => {},
 		abortFn: () => {},
 		hasPendingMessagesFn: () => false,
+		isMessageQueuedFn: () => false,
 		getContextUsageFn: () => undefined,
 		compactFn: () => {},
 		getSystemPromptFn: () => "",
@@ -74,6 +75,7 @@ export function bindRunnerCore(
 	host.bindings.getTurnIdFn = contextActions.getTurnId ?? (() => undefined);
 	host.bindings.abortFn = contextActions.abort;
 	host.bindings.hasPendingMessagesFn = contextActions.hasPendingMessages;
+	host.bindings.isMessageQueuedFn = contextActions.isMessageQueued;
 	host.bindings.shutdownHandler = contextActions.shutdown;
 	host.bindings.getContextUsageFn = contextActions.getContextUsage;
 	host.bindings.compactFn = contextActions.compact;

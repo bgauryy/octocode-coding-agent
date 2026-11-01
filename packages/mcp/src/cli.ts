@@ -10,39 +10,37 @@ import { octocodePreset } from "./presets/octocode/index.ts";
 
 import { existsSync } from "node:fs";
 import chalk from "chalk";
-import { APP_NAME, CONFIG_DIR_NAME } from "../../coding-agent/src/config.ts";
-import { globalMcpConfigPath } from "./paths.ts";
-import { projectMcpConfigPaths, projectMcpConfigPath } from "../../coding-agent/src/octocode/shared/home.ts";
-import { ProjectTrustStore } from "../../coding-agent/src/core/trust-manager.ts";
+import { hostIdentity, hostTrust } from "./host.ts";
+import { globalMcpConfigPath, projectMcpConfigPaths, projectMcpConfigPath } from "./paths.ts";
 import { MCP_COMMANDS } from "./cli/commands.ts";
-import { compact, COMPACT_USAGE } from "./cli/compact.ts";
+import { compact, compactUsage } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
 import { list } from "./cli/list.ts";
 import { login } from "./cli/login.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { createConnection, HELP_HINT, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
+import { createConnection, helpHint, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
 import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts";
 import { loadMcpConfig, type McpExposure, updateMcpServerConfig } from "./config.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 import { projectMcpChanged, projectMcpTrusted } from "./trust.ts";
 
-const HELP = `${chalk.bold("Usage:")}
-  ${APP_NAME} mcp add <server> [options] -- <command> [args...]
-  ${APP_NAME} mcp add <server> [options] --url <url>
-  ${APP_NAME} mcp remove <server> [-l]
-  ${APP_NAME} mcp enable|disable <server> [-l]
-  ${APP_NAME} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]
-  ${APP_NAME} mcp list [--json]
-  ${APP_NAME} mcp tools [server] [tool] [--json]
-  ${COMPACT_USAGE}
-  ${APP_NAME} mcp config [--json]
-  ${APP_NAME} mcp login <server> [--timeout <seconds>]
-  ${APP_NAME} mcp logout <server>
+const help = (): string => `${chalk.bold("Usage:")}
+  ${hostIdentity().appName} mcp add <server> [options] -- <command> [args...]
+  ${hostIdentity().appName} mcp add <server> [options] --url <url>
+  ${hostIdentity().appName} mcp remove <server> [-l]
+  ${hostIdentity().appName} mcp enable|disable <server> [-l]
+  ${hostIdentity().appName} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]
+  ${hostIdentity().appName} mcp list [--json]
+  ${hostIdentity().appName} mcp tools [server] [tool] [--json]
+  ${compactUsage()}
+  ${hostIdentity().appName} mcp config [--json]
+  ${hostIdentity().appName} mcp login <server> [--timeout <seconds>]
+  ${hostIdentity().appName} mcp logout <server>
 
 Configure and check MCP servers and sign in to OAuth servers without starting a session.
 Reads the agent directory's mcp.json and trusted project files:
-.pi/mcp.json, .mcp.json, .agents/mcp.json, ${CONFIG_DIR_NAME}/mcp.json (last wins).
+.pi/mcp.json, .mcp.json, .agents/mcp.json, ${hostIdentity().configDirName}/mcp.json (last wins).
 
 Commands:
 ${MCP_COMMANDS.map(([name, args, description]) => `  ${`${name} ${args}`.trimEnd().padEnd(26)}${description}`).join("\n")}
@@ -82,7 +80,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 	// Only options before `--` belong to this command: after it they are the server's own arguments.
 	const own = args.includes("--") ? args.slice(0, args.indexOf("--")) : args;
 	if (command === undefined || command === "help" || own.includes("--help") || own.includes("-h")) {
-		log(HELP);
+		log(help());
 		return 0;
 	}
 
@@ -94,14 +92,14 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 	}
 	// Writing project controls needs the directory decision. Project definitions start commands, so, as in a session,
 	// they load only when the project's config files also match the content trusted with /trust.
-	const directoryTrusted = new ProjectTrustStore(options.agentDir).get(options.cwd) === true;
+	const directoryTrusted = hostTrust().directoryTrusted(options.agentDir, options.cwd);
 	const trustContext = { cwd: options.cwd, isProjectTrusted: () => directoryTrusted };
 	const projectTrusted = projectMcpTrusted(trustContext);
 	if (command === "config") {
 		const parsed = parseOptions(rest, { json: "flag" }, error);
 		if (!parsed) return 1;
 		if (parsed.positional.length) {
-			error(`Usage: ${APP_NAME} mcp config [--json]`);
+			error(`Usage: ${hostIdentity().appName} mcp config [--json]`);
 			return 1;
 		}
 		const locations = getMcpConfigLocations(options.agentDir, options.cwd, projectTrusted);
@@ -115,9 +113,9 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 		defaults: presetEntries(options.presets ?? []),
 	});
 	const untrustedNote = projectMcpChanged(trustContext, projectTrusted)
-		? `Project MCP servers are not loaded: their config is new or changed since the project was trusted. Run /trust in a ${APP_NAME} session in the project to review it.`
+		? `Project MCP servers are not loaded: their config is new or changed since the project was trusted. Run /trust in a ${hostIdentity().appName} session in the project to review it.`
 		: !directoryTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
-			? `Project MCP configuration is ignored because the project is not trusted. Start ${APP_NAME} in the project to trust it.`
+			? `Project MCP configuration is ignored because the project is not trusted. Start ${hostIdentity().appName} in the project to trust it.`
 			: undefined;
 	const credentials = options.credentials ?? new McpOAuthCredentialStore();
 
@@ -127,7 +125,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			if (!parsed) return 1;
 			const [server, tool, ...extra] = parsed.positional;
 			if (extra.length) {
-				error(`Usage: ${APP_NAME} mcp tools [server] [tool] [--json]`);
+				error(`Usage: ${hostIdentity().appName} mcp tools [server] [tool] [--json]`);
 				return 1;
 			}
 			if (server && !loaded.servers.some((entry) => entry.name === server)) {
@@ -149,7 +147,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 				(command === "exposure" && !isMcpExposure(mode))
 			) {
 				error(
-					`Usage: ${APP_NAME} mcp ${command} <server>${command === "exposure" ? ` <${MCP_EXPOSURES.join("|")}>` : ""} [-l]`,
+					`Usage: ${hostIdentity().appName} mcp ${command} <server>${command === "exposure" ? ` <${MCP_EXPOSURES.join("|")}>` : ""} [-l]`,
 				);
 				return 1;
 			}
@@ -198,7 +196,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			const parsed = parseOptions(rest, { json: "flag" }, error);
 			if (!parsed) return 1;
 			if (parsed.positional.length > 0) {
-				error(`Usage: ${APP_NAME} mcp list [--json]\n${HELP_HINT}`);
+				error(`Usage: ${hostIdentity().appName} mcp list [--json]\n${helpHint()}`);
 				return 1;
 			}
 			return list(loaded, parsed.values.has("json"), untrustedNote, options, credentials, log);
@@ -209,7 +207,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			if (!parsed) return 1;
 			const [name, ...extra] = parsed.positional;
 			if (!name || extra.length > 0) {
-				error(`Usage: ${APP_NAME} mcp ${command} <server>\n${HELP_HINT}`);
+				error(`Usage: ${hostIdentity().appName} mcp ${command} <server>\n${helpHint()}`);
 				return 1;
 			}
 			const entry = loaded.servers.find((server) => server.name === name);
@@ -242,7 +240,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			}
 		}
 		default:
-			error(`Unknown mcp command "${command}".\n${HELP_HINT}`);
+			error(`Unknown mcp command "${command}".\n${helpHint()}`);
 			return 1;
 	}
 }

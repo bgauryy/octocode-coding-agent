@@ -2,6 +2,7 @@ import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { ReactNode } from "react";
 import type { BacklogIndex } from "../model/backlog.ts";
 import { isStale } from "../model/backlog.ts";
+import { isEpic, shownState } from "../model/hierarchy.ts";
 import type { Params } from "../model/route.ts";
 import { Badge, StatusIcon } from "../ui/primitives.tsx";
 
@@ -19,10 +20,12 @@ export function StaleBadge({ item }: { item: SnapshotItem }) {
 
 /** One line per item: status, reference and title, with optional trailing detail. */
 export function ItemLine({ item, children }: { item: SnapshotItem; children?: ReactNode }) {
+	const state = shownState(item);
 	return (
-		<span className={`item-line state-${item.state}`}>
-			<StatusIcon state={item.state} />
+		<span className={`item-line state-${state}`}>
+			<StatusIcon state={state} />
 			<span className="ref">{item.ref}</span>
+			{isEpic(item) && <Badge>epic</Badge>}
 			<a className="item-line-title" href={`#${item.ref}`}>
 				{item.title}
 			</a>

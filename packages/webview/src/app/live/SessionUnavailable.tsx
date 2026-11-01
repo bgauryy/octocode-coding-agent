@@ -17,7 +17,7 @@ export function SessionUnavailable({ hint }: { hint: string }) {
 				title="Can't reach the session"
 				action={<Button onClick={() => location.reload()}>Reload page</Button>}
 			>
-				The terminal session may have ended. Run <code>/octocode</code> again to reopen it.
+				The terminal session may have ended. Run <code>/web</code> again to reopen it.
 			</EmptyState>
 		);
 	return (

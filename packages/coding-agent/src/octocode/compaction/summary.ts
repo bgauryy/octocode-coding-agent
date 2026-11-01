@@ -15,8 +15,8 @@ import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
-import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contentText } from "../shared/util.ts";
 import { archivePointer } from "./archive.ts";
 import {
@@ -98,7 +98,9 @@ export function transcriptNote(
 						: `The full transcript before this summary is ${transcript} (JSONL, one entry per line): search it for an exact message, error or tool result instead of guessing.`,
 				]
 			: []),
-		...(backlog ? ["Record follow-ups that must outlive this session with `backlog`."] : []),
+		...(backlog
+			? ["Record follow-ups that must outlive this session with `backlog`; list open tasks as they stand."]
+			: []),
 	];
 	return lines.length > 0 ? `\n\n${RECOVERY_HEADING}\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
 }
@@ -328,7 +330,7 @@ export async function writeSummary(
 			saveText,
 		);
 		const details = {
-			...(isRecord(result.details) ? result.details : {}),
+			...asRecord(result.details),
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),
 			[SUMMARY_METHOD_DETAILS]: method,
 		};

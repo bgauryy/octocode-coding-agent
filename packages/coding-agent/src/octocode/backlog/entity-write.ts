@@ -3,6 +3,7 @@ import { EntityFieldsSchema, type EntityInput, type BacklogRef } from "@octocode
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { type Db, backlog } from "../agentdb/api.ts";
 import { entityInput } from "./entities.ts";
+import { checkHierarchy, openTasksRefusal } from "./hierarchy.ts";
 import { type Actor, type Item, BacklogError, refuseSecrets } from "./item.ts";
 import { getItem, list } from "./reads.ts";
 
@@ -39,7 +40,24 @@ export function validateEntityInput(input: EntityInput): void {
 	}
 }
 
-/** Writes an item's entities: type, parent, dependencies and links, then checks the board for cycles and blocked work. */
+/**
+ * The parent and type an input changes, checked against the depth rules; the caller writes them with the item's own
+ * update, so one write leaves one audit row. Unchanged ones are left out.
+ */
+export function entityColumns(db: Db, repo: string, before: Item, input: EntityInput): backlog.EntityColumns {
+	checkHierarchy(db, repo, before, input);
+	const columns: backlog.EntityColumns = {};
+	if (input.parentId !== undefined && input.parentId !== (before.parentId ?? null)) {
+		const parent = input.parentId === null ? undefined : getItem(db, repo, input.parentId);
+		if (input.parentId !== null && !parent) throw new BacklogError("Parent does not exist in this repository.");
+		if (parent?.state === "done") throw new BacklogError("Reopen the parent before adding children.");
+		columns.parent = { rowId: parent?.rowId ?? null };
+	}
+	if (input.type !== undefined && input.type !== before.type) columns.type = input.type;
+	return columns;
+}
+
+/** Writes an item's dependencies and links (after `entityColumns`), then checks the board for cycles and blocked work. */
 export function applyEntities(
 	db: Db,
 	repo: string,
@@ -48,13 +66,6 @@ export function applyEntities(
 	actor: Actor,
 	at: number,
 ): void {
-	if (input.parentId !== undefined && input.parentId !== (before.parentId ?? null)) {
-		const parent = input.parentId === null ? undefined : getItem(db, repo, input.parentId);
-		if (input.parentId !== null && !parent) throw new BacklogError("Parent does not exist in this repository.");
-		if (parent?.state === "done") throw new BacklogError("Reopen the parent before adding children.");
-		backlog.setParent(db, before.rowId, parent?.rowId ?? null);
-	}
-	if (input.type !== undefined) backlog.setType(db, before.rowId, input.type);
 	if (input.dependsOn !== undefined) {
 		const refs = input.dependsOn.map((value): BacklogRef => {
 			const ref = typeof value === "string" ? { resource: "backlogs" as const, repositoryKey: repo, id: value } : value;
@@ -72,11 +83,12 @@ export function applyEntities(
 	const items = list(db, repo).items;
 	const current = items.find((i) => i.rowId === before.rowId)!;
 	const byRef = new Map(items.map((i) => [i.ref, i]));
+	// One pass for every item's children, so the edge map stays linear in the board's size.
+	const children = new Map<string, Item[]>();
+	for (const i of items)
+		if (i.parentId) (children.get(i.parentId) ?? children.set(i.parentId, []).get(i.parentId)!).push(i);
 	const edges = new Map(
-		items.map((i) => [
-			i.ref,
-			[...i.dependsOn.map((r) => r.id), ...items.filter((child) => child.parentId === i.ref).map((child) => child.ref)],
-		]),
+		items.map((i) => [i.ref, [...i.dependsOn.map((r) => r.id), ...(children.get(i.ref) ?? []).map((c) => c.ref)]]),
 	);
 	const active = new Set<string>();
 	const visited = new Set<string>();
@@ -99,9 +111,12 @@ export function applyEntities(
 		throw new BacklogError(`Blocked by ${unresolved.map((r) => r.id).join(", ")}.`);
 
 	const descendants = (parent: string): Item[] =>
-		items.filter((i) => i.parentId === parent).flatMap((child) => [child, ...descendants(child.ref)]);
+		(children.get(parent) ?? []).flatMap((child) => [child, ...descendants(child.ref)]);
 	if (closing && descendants(current.ref).some((i) => i.state !== "done"))
 		throw new BacklogError("Finish child items before completing their parent.");
+	const openTasks =
+		current.state === "done" && before.state !== "done" ? openTasksRefusal(db, repo, current) : undefined;
+	if (openTasks) throw new BacklogError(openTasks);
 	if (input.completion && current.state === "done") {
 		// On a done item a completion corrects the latest one: `replaces` defaults to it and may only name it.
 		const latest = before.completions.at(-1)?.id;

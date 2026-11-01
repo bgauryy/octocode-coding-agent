@@ -3,7 +3,7 @@ import { type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Mail } from "../mail.ts";
-import type { Message, SendOptions } from "../model.ts";
+import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
 import { interruptRefusal, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
 import { spilledMessage } from "./spilled-message.ts";
@@ -28,9 +28,16 @@ export type Resumer = (
 
 export type MessageHook = (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>;
 
-/** Who got a message and its id (`resumed`: a resumed subagent's receipt; `relayed`: the parent that relays it), or an error text. */
+/** Who got a message and its id (`resumed`: a resumed subagent's receipt; `relayed`: the parent that relays it; `delivery`: how each recipient meets it), or an error text. */
 export type SendResult =
-	| { sent: string[]; id: number; departed?: string[]; resumed?: string; relayed?: string }
+	| {
+			sent: string[];
+			id: number;
+			departed?: string[];
+			resumed?: string;
+			relayed?: string;
+			delivery?: Record<string, DeliveryStatus>;
+	  }
 	| { error: string };
 
 /** What sending reads of the team (`Team`, `session.ts`): the current values each time, so a change while a hook runs is seen. */
@@ -64,7 +71,12 @@ export function outbound(host: SendHost, from: string, signal?: AbortSignal) {
 		? AbortSignal.any([signal, ...(sendingContext?.signal ? [sendingContext.signal] : [])])
 		: sendingContext?.signal;
 	const changed = () => host.ctx() !== sendingContext || host.me() !== sendingMember || host.db() !== db;
-	const check = async (recipient: string, text: string, replyTo?: number): Promise<string | undefined> => {
+	const check = async (
+		recipient: string,
+		text: string,
+		replyTo?: number,
+		flags: Pick<MessageEnvelope, "replyRequired" | "wake" | "interrupt"> = {},
+	): Promise<string | undefined> => {
 		if (changed()) return CHANGED;
 		const hook = host.messageHook();
 		if (!hook || !sendingContext) return undefined;
@@ -77,6 +89,7 @@ export function outbound(host: SendHost, from: string, signal?: AbortSignal) {
 					to: recipient,
 					text,
 					...(replyTo !== undefined ? { replyTo: String(replyTo) } : {}),
+					...flags,
 				},
 				sendingContext,
 				joined,
@@ -157,10 +170,23 @@ export async function sendMessage(
 	// A broadcast stays in the sender's session tree; the user's and an API client's in this session's tree.
 	const scope = outside(from) ? host.me()?.id : from;
 	if (to === "all" && !scope) return { error: "No agents in this session yet: nothing to broadcast to." };
+	// A broadcast that starts every idle agent would spend a turn in each of them: name who needs to act.
+	if (to === "all" && options.wake)
+		return {
+			error:
+				'`wake` starts an idle agent\'s turn, so it needs a named recipient (an id, role or "parent"), not "all". Nothing was sent.',
+		};
 	const members = db.list();
-	const targets = resolveTarget(members, from, to, host.parentId(), scope);
+	// A stalled member (process running, silent for `STALE_MS`) is hidden but still reads its mail: its name reaches it.
+	const targets = resolveTarget(members, from, to, host.parentId(), scope, db.list(Date.now(), true));
 	// A message is FYI unless the sender says it needs an answer: a default that asked for answers made two agents wake each other forever.
 	const replyRequired = options.replyRequired ?? false;
+	// What a PreMessageSend hook sees: the question, the wake (a question wakes, and so does `wake`) and the interrupt.
+	const hookFlags = {
+		replyRequired,
+		wake: outside(from) || options.wake === true || replyRequired,
+		interrupt: options.interrupt === true,
+	};
 	const reply = options.replyTo !== undefined ? { replyTo: options.replyTo } : {};
 	// Stored with controls shown as escapes: every reader (the model, the panel, other processes) gets text that cannot steer a terminal, and the evidence stays.
 	const stored = () => spilledMessage(visibleControls(text), from);
@@ -174,8 +200,14 @@ export async function sendMessage(
 			!["all", "parent", from].includes(to) &&
 			!options.interrupt &&
 			members.filter((member) => member.role === to).length < 2;
-		if (!(finished && host.resumer()) && !relay) return { error: finished ? finishedText(host, to) : targets };
-		const denied = (await check(to, text, options.replyTo)) ?? ready();
+		if (!(finished && host.resumer()) && !relay) {
+			if (finished) return { error: finishedText(host, to) };
+			// An answer its asker can no longer read: the question closes, so it stops waiting on this agent.
+			if (options.replyTo === undefined || to !== answered?.from) return { error: targets };
+			db.refs.closeQuestion(options.replyTo, from);
+			return { error: `${targets} Its question #${options.replyTo} is closed; nothing was sent.` };
+		}
+		const denied = (await check(to, text, options.replyTo, hookFlags)) ?? ready();
 		if (denied) return { error: denied };
 		const delivered = stored();
 		if (typeof delivered !== "string") return delivered;
@@ -202,7 +234,7 @@ export async function sendMessage(
 	const refused = options.interrupt ? interruptRefusal(members, targets, from, to, scope) : undefined;
 	if (refused) return { error: refused };
 	for (const target of targets) {
-		const denied = await check(target.id, text, options.replyTo);
+		const denied = await check(target.id, text, options.replyTo, hookFlags);
 		if (denied) return { error: denied };
 	}
 	const notReady = ready();
@@ -214,12 +246,12 @@ export async function sendMessage(
 		from === USER_SENDER ? (id: number, recipient: string) => host.signed(id, recipient, delivered) : undefined;
 	const flags = {
 		replyRequired,
-		wake: outside(from),
+		wake: outside(from) || options.wake === true,
 		interrupt: options.interrupt === true,
 		...reply,
 		...(sign ? { sign } : {}),
 	};
-	const { id, departed } = db.send(
+	const { id, departed, woken } = db.send(
 		from,
 		targets.map((target) => target.id),
 		delivered,
@@ -227,6 +259,20 @@ export async function sendMessage(
 	);
 	if (id === undefined) return { error: `${departed.join(", ")} left the team; the message was not sent.` };
 	const sent = targets.map((target) => target.id).filter((target) => !departed.includes(target));
+	// How each recipient meets the message, so a sender is told when an idle FYI only waits for its next turn. A recipient
+	// that got the message (its process runs) but is no longer listed has not been seen for `STALE_MS`: it may only be stalled.
+	const listed = db.list();
+	const listedIds = new Set(listed.map((member) => member.id));
+	const working = new Set(listed.filter((member) => member.status === "working").map((member) => member.id));
+	const delivery: Record<string, DeliveryStatus> = {};
+	for (const recipient of sent)
+		delivery[recipient] = !listedIds.has(recipient)
+			? "stalled"
+			: woken.includes(recipient)
+				? "wake"
+				: working.has(recipient)
+					? "next-step"
+					: "queued-quiet";
 	if (from === USER_SENDER) host.mail.createdForUser(id, delivered, sent);
-	return { sent, id, ...(departed.length > 0 ? { departed } : {}) };
+	return { sent, id, delivery, ...(departed.length > 0 ? { departed } : {}) };
 }

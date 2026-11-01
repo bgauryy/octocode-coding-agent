@@ -13,6 +13,13 @@ import type { AiGatewayModel, NvidiaNimModelListItem } from "./types.ts";
 
 /** Fetchers for the NVIDIA NIM, OpenRouter and Vercel AI Gateway catalogs. */
 
+const CATALOG_FETCH_TIMEOUT_MS = 60_000;
+
+/** GET an upstream catalog; a stalled server fails the run after a minute instead of undici's five-minute defaults. */
+export function fetchCatalog(url: string): Promise<Response> {
+	return fetch(url, { signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS) });
+}
+
 export function normalizeNvidiaModelId(modelId: string): string {
 	return modelId.toLowerCase().replaceAll("_", ".");
 }
@@ -20,7 +27,7 @@ export function normalizeNvidiaModelId(modelId: string): string {
 export async function fetchNvidiaNimModelIds(): Promise<Map<string, string>> {
 	try {
 		console.log("Fetching models from NVIDIA NIM API...");
-		const response = await fetch(`${NVIDIA_BASE_URL}/models`);
+		const response = await fetchCatalog(`${NVIDIA_BASE_URL}/models`);
 		if (!response.ok) throw new Error(`NVIDIA NIM API returned ${response.status}`);
 		const data = (await response.json()) as { data?: NvidiaNimModelListItem[] };
 		const modelIds = new Map<string, string>();
@@ -40,7 +47,7 @@ export async function fetchNvidiaNimModelIds(): Promise<Map<string, string>> {
 }
 
 async function fetchOpenRouterList(query: string): Promise<OpenRouterModelListItem[]> {
-	const response = await fetch(`https://openrouter.ai/api/v1/models${query}`);
+	const response = await fetchCatalog(`https://openrouter.ai/api/v1/models${query}`);
 	if (!response.ok) throw new Error(`OpenRouter API returned ${response.status}`);
 	const data = (await response.json()) as { data?: OpenRouterModelListItem[] };
 	return data.data ?? [];
@@ -75,9 +82,9 @@ export async function fetchAiGatewayModels(): Promise<{
 }> {
 	try {
 		console.log("Fetching models from Vercel AI Gateway API...");
-		const response = await fetch(`${AI_GATEWAY_MODELS_URL}/models`);
+		const response = await fetchCatalog(`${AI_GATEWAY_MODELS_URL}/models`);
 		if (!response.ok) throw new Error(`Vercel AI Gateway API returned ${response.status}`);
-		const data = await response.json();
+		const data = (await response.json()) as { data?: unknown };
 		const models: Model<any>[] = [];
 		const classifiers: ClassifierModel<"typesafe-system-one">[] = [];
 

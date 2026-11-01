@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { getResearchCliInvocation } from "../../../../coding-agent/src/config.ts";
+import { hostIdentity } from "../../host.ts";
 
 /**
  * GitHub sign-in for Octocode research, through the installed native CLI's `octocode auth` commands. The research server
@@ -81,7 +81,7 @@ export function runGithubAuth<A extends GithubAuthAction>(
 	options: GithubAuthOptions = {},
 ): Promise<GithubAuthResults[A]> {
 	const { signal, onDeviceCode } = options;
-	const invocation = options.invocation ?? getResearchCliInvocation("native");
+	const invocation = options.invocation ?? hostIdentity().researchCliInvocation("native");
 	return new Promise((resolve, reject) => {
 		if (signal?.aborted) {
 			reject(new Error("Login cancelled"));

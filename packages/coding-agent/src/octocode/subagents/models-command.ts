@@ -1,10 +1,8 @@
-import { StringEnum } from "@octocodeai/octocode-contracts/schema";
-import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { clipText, textResult } from "../shared/util.ts";
+import { clipText } from "../shared/util.ts";
 import {
 	type Catalog,
 	catalogFile,
@@ -15,7 +13,15 @@ import {
 	modelsDevEnabled,
 	readCatalog,
 } from "./catalog.ts";
-import { isModelTier, MODEL_TIERS, type ModelRef, resolveTier, routeModel } from "./model.ts";
+import {
+	fallbackNote,
+	isModelTier,
+	MODEL_TIERS,
+	type ModelRef,
+	resolveTier,
+	routeModel,
+	usableModels,
+} from "./model.ts";
 import type { AgentProfile } from "./profiles.ts";
 import {
 	checkCandidates,
@@ -39,28 +45,43 @@ const describe = (text: string) => {
 };
 const name = (model: ModelRef) => `${model.provider}/${model.id}`;
 
-/** One line per available model, the parent's marked, cheapest first; each provider's credential status when known. */
+/** The abilities a model row names and the `models` tool filters by. */
+export const MODEL_ABILITIES = ["tools", "images", "reasoning"] as const;
+type ModelAbility = (typeof MODEL_ABILITIES)[number];
+
+/** What `model` can do, from its own metadata and the models.dev entry; tools unless the catalog says otherwise. */
+export function modelAbilities(model: ModelRef, catalog: Catalog | undefined): ModelAbility[] {
+	const known = lookup(catalog, model.provider, model.id);
+	return [
+		...(known?.toolCall === false ? [] : ["tools" as const]),
+		...((model.input ?? known?.input)?.includes("image") ? ["images" as const] : []),
+		...(known?.reasoning ? ["reasoning" as const] : []),
+	];
+}
+
+/**
+ * One line per available model, the parent's marked, cheapest first; each provider's credential status when known.
+ * `shown` limits the rows; the purposes and profile routes still resolve over every available model, skipping a
+ * provider that `refused` its credential as a run's routing does (`planRun`).
+ */
 export function describeModels(
 	available: readonly ModelRef[],
 	parent: ModelRef | undefined,
 	profiles: Map<string, AgentProfile>,
 	catalog: Catalog | undefined,
 	health: (provider: string) => ProviderStatus | undefined = () => undefined,
+	shown: (model: ModelRef) => boolean = () => true,
+	refused: (provider: string) => boolean = (provider) => providerHealth.refused(provider),
 ): string {
 	if (available.length === 0) return "No models are configured.";
-	const rows = available.map((model) => {
+	const rows = available.filter(shown).map((model) => {
 		const known = lookup(catalog, model.provider, model.id);
 		const cost =
 			model.cost && model.cost.input + model.cost.output > 0
 				? model.cost
 				: listedCost(catalog, model.provider, model.id);
-		const caps = [
-			known?.toolCall === false ? "no tools" : "tools",
-			(model.input ?? known?.input)?.includes("image") ? "images" : undefined,
-			known?.reasoning ? "reasoning" : undefined,
-		]
-			.filter(Boolean)
-			.join(", ");
+		const abilities = modelAbilities(model, catalog);
+		const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
 		const price = cost ? `${perMillion(cost.input)}/${perMillion(cost.output)}` : "price ?";
 		const mark = parent && name(model) === name(parent) ? "● " : "  ";
 		const description = known?.description ? ` — ${describe(known.description)}` : "";
@@ -84,17 +105,17 @@ export function describeModels(
 					? " (no capable model at 15–80% of its price)"
 					: " (no cheaper capable model)";
 	const tiers = MODEL_TIERS.map((tier) => {
-		const chosen = resolveTier(tier, available, parent, catalog);
+		const chosen = resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
 		return `  ${tier}: ${chosen ? name(chosen) : parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model"}`;
 	});
 	// Each profile as it would route now: the model it runs on, and what it asked for.
 	const routed = [...profiles.values()].map((profile) => {
-		const route = routeModel({ preferred: profile.model, available, parent, catalog });
+		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused });
 		const runs = "error" in route ? route.error : (route.model ?? "this session's model");
 		const asked = !profile.model
 			? ""
 			: "fallback" in route && route.fallback
-				? ` (${profile.model} unavailable)`
+				? ` (${fallbackNote(route.fallback, route.refusedBy)})`
 				: ` (${profile.model}${isModelTier(profile.model.split(":")[0]) ? ", a purpose" : ""})`;
 		return `  ${profile.name}: ${runs}${asked}`;
 	});
@@ -122,6 +143,16 @@ async function modelListing(
 	profiles: Map<string, AgentProfile>,
 	fetching?: () => void,
 ): Promise<string> {
+	const { catalog, source } = await modelCatalog(fetching);
+	const listing = describeModels(available, parent, profiles, catalog, (provider) => providerHealth.get(provider));
+	return `${listing}\n\n${source}\n${CREDENTIAL_MARKS}`;
+}
+
+export const CREDENTIAL_MARKS =
+	"Credential marks come from this process's subagent runs and checks; no mark means not yet tried.";
+
+/** The models.dev index unless it is turned off, and a line saying where capabilities and prices come from. */
+export async function modelCatalog(fetching?: () => void): Promise<{ catalog: Catalog | undefined; source: string }> {
 	const enabled = modelsDevEnabled();
 	if (enabled && !readCatalog(catalogFile())) fetching?.();
 	const catalog = enabled ? await loadCatalog({ file: catalogFile() }) : undefined;
@@ -130,103 +161,11 @@ async function modelListing(
 		: catalog
 			? `Capabilities and missing prices from models.dev (fetched ${new Date(catalog.fetchedAt).toISOString().slice(0, 10)}).`
 			: "models.dev could not be reached now or within the last hour; Octocode's metadata only.";
-	const listing = describeModels(available, parent, profiles, catalog, (provider) => providerHealth.get(provider));
-	return `${listing}\n\n${source}\nCredential marks come from this process's subagent runs and checks; no mark means not yet tried.`;
+	return { catalog, source };
 }
 
-/**
- * The `agent` tool's `models` mode: the models this session can start a task on, as `/modelsettings` shows them to the
- * user. It is a call, not prompt text: the list changes with configuration and credentials, and the cached prompt must
- * not.
- */
-function registerModelsMode(
-	registerTool: ExtensionAPI["registerTool"],
-	getProfiles: () => Map<string, AgentProfile>,
-): void {
-	registerTool({
-		name: "agentModels",
-		label: "Models",
-		description:
-			"Models a task can run on: provider/id, price, context, abilities, small/medium and profile routes, credential status; query filters; check tests credentials; scope catalog adds unconnected ones.",
-		parameters: Type.Object({
-			query: Type.Optional(Type.String()),
-			check: Type.Optional(Type.Boolean()),
-			scope: Type.Optional(StringEnum(["connected", "catalog"] as const)),
-		}),
-		async execute(_id, params, signal, _onUpdate, ctx) {
-			signal?.throwIfAborted();
-			const query = params.query?.trim().toLowerCase();
-			const matches = (model: ModelRef) => !query || `${model.provider}/${model.id}`.toLowerCase().includes(query);
-			const all = ctx.modelRegistry.getAvailable();
-			const available = all.filter(matches);
-			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
-			if (query && available.length === 0 && unconnected.length === 0)
-				return textResult(`No model matches "${params.query}". Call again without query to list all ${all.length}.`);
-			if (params.check)
-				await checkProviders(ctx.modelRegistry, checkCandidates(available, ctx.model), providerHealth, signal);
-			const listing = await modelListing(available, ctx.model, getProfiles());
-			return textResult(
-				[
-					sessionHeader(ctx),
-					listing,
-					...sessionOnlyNote(ctx.modelRegistry, available),
-					...catalogRows(unconnected),
-					'Pass one as `model` ("provider/id") when you start a task; append :low, :medium or :high to set its thinking.',
-				].join("\n\n"),
-			);
-		},
-	});
-}
-
-type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRegistry">;
-
-/** This session's model, thinking level and working context: the call is the agent's only view of them. */
-function sessionHeader(ctx: ModelsContext): string {
-	const model = ctx.model;
-	if (!model) return "This session: no model selected.";
-	const capacity = ctx.modelRegistry.find?.(model.provider, model.id)?.contextWindow ?? model.contextWindow;
-	const budget =
-		capacity > model.contextWindow
-			? `context budget ${formatTokens(model.contextWindow)} of ${formatTokens(capacity)} capacity`
-			: `context ${formatTokens(model.contextWindow)}`;
-	return `This session: ${model.provider}/${model.id} · thinking ${ctx.thinkingLevel ?? "off"} · ${budget}.`;
-}
-
-/** Providers authenticated only by this session's --api-key: listed, but a task cannot run on them. */
-function sessionOnlyNote(registry: ModelsContext["modelRegistry"], available: readonly ModelRef[]): string[] {
-	const providers = [...new Set(available.map((model) => model.provider))].filter(
-		(provider) => registry.getProviderAuthStatus?.(provider).source === "runtime",
-	);
-	return providers.length
-		? [`Session only (--api-key; subagents do not receive it, so tasks cannot use them): ${providers.join(", ")}.`]
-		: [];
-}
-
-/** Catalog models of providers that are not connected: what the user could connect, not what a task can run on. */
-function catalogOnly(registry: ModelsContext["modelRegistry"], connected: readonly ModelRef[]): ModelRef[] {
-	const providers = new Set(connected.map((model) => model.provider));
-	return (registry.getAll?.() ?? []).filter((model) => !providers.has(model.provider));
-}
-
-function catalogRows(models: readonly ModelRef[]): string[] {
-	if (models.length === 0) return [];
-	return [
-		[
-			"Not connected (not runnable; the user connects a provider with /login):",
-			...models.map(
-				(model) =>
-					`  ${model.provider}/${model.id}${model.contextWindow ? ` · ${formatTokens(model.contextWindow)} context` : ""}`,
-			),
-		].join("\n"),
-	];
-}
-
-/** `/modelsettings` for the user and the `agent` tool's `models` mode for the model: the same listing. */
-export function registerModels(
-	commands: Subcommands,
-	getProfiles: () => Map<string, AgentProfile>,
-	registerTool: ExtensionAPI["registerTool"],
-): void {
+/** `/modelsettings`: the listing the `models` tool (`models-tool.ts`) gives the model, for the user. */
+export function registerModels(commands: Subcommands, getProfiles: () => Map<string, AgentProfile>): void {
 	commands.add("modelsettings", {
 		description: "Models, prices and subagent routing",
 		argumentHint: "[check]",
@@ -243,5 +182,4 @@ export function registerModels(
 			say(ctx, listing);
 		},
 	});
-	registerModelsMode(registerTool, getProfiles);
 }

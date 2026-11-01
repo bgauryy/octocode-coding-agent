@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
-import { EntityFields } from "./backlogs.ts";
+import { EntityFields, ITEM_TYPES } from "./backlogs.ts";
 import { STATES } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
 import type { WorkspaceSnapshot } from "./workspace.ts";
@@ -24,6 +24,10 @@ export const WORKSPACE_ROUTES = {
 export const DAEMON_ROUTES = {
 	health: "/api/health",
 	config: "/api/config",
+	/** Launch capability only (under `/api/admin/`): POST one `ConfigSettingCommand`; the reply is the fresh `ConfigSnapshot`. */
+	configSettings: "/api/admin/config/settings",
+	/** Launch capability only: POST one `ConfigCredentialCommand` (the one request that carries a key); the reply is the fresh `ConfigSnapshot`. */
+	configCredentials: "/api/admin/config/credentials",
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",
@@ -79,21 +83,14 @@ export const ReportFileSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-export const WorkspaceCommandSchema = Type.Object(
-	{
-		id: Type.String({ minLength: 1, maxLength: 128 }),
-		action: StringEnum(["message", "work", "delegate", "stop"] as const),
-		backlogId: Type.Optional(Type.String()),
-		version: Type.Optional(Type.Integer()),
-		to: Type.Optional(Type.String()),
-		text: Type.Optional(Type.String({ maxLength: 64000 })),
-	},
-	{ additionalProperties: false },
-);
+export { BacklogCommandSchema, WorkspaceCommandSchema } from "./workspace-command.ts";
+export type { BacklogCommand } from "./workspace-command.ts";
 
 export const BacklogMutationSchema = Type.Object(
 	{
 		...EntityFields,
+		/** The item types, and the former name `task` of `feature`, still accepted for one release (the store maps it). */
+		type: Type.Optional(StringEnum([...ITEM_TYPES, "task"] as const)),
 		op: StringEnum(["add", "update", "remove", "comment"] as const),
 		id: Type.Optional(Type.String()),
 		title: Type.Optional(Type.String()),

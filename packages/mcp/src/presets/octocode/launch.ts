@@ -2,9 +2,9 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getPackageDir, isBunBinary } from "../../../../coding-agent/src/config.ts";
-import { sessionsRoot } from "../../../../coding-agent/src/octocode/shared/home.ts";
+import { hostIdentity, hostPaths } from "../../host.ts";
 import { findManifest } from "../../../../common/src/package.ts";
+import { warnOnce } from "./warnings.ts";
 export interface Launch {
 	command: string;
 	args: string[];
@@ -17,7 +17,7 @@ const MCP_PACKAGE = "octocode-mcp";
 
 /** The `octocode-mcp` range this package's `package.json` depends on (the one source of the version this extension runs). */
 function octocodeMcpRange(): string {
-	const manifest = JSON.parse(fs.readFileSync(path.join(getPackageDir(), "package.json"), "utf8")) as {
+	const manifest = JSON.parse(fs.readFileSync(path.join(hostIdentity().packageDir(), "package.json"), "utf8")) as {
 		dependencies?: Record<string, string>;
 	};
 	const range = manifest.dependencies?.[MCP_PACKAGE];
@@ -34,15 +34,21 @@ export const OCTOCODE_MCP_SPEC = `${MCP_PACKAGE}@${octocodeMcpRange()}`;
 
 /**
  * The folders the server's local readers may reach: the workspace, the session folders (spilled output, bash logs,
- * archives) and loaded skills. Not Octocode's home itself: its trust store, agent database and credentials stay out of
- * reach of a read-only tool that asks no permission.
+ * archives), loaded skills, and the folders the user added (the host validates them: `McpPathsPort.researchRoots`).
+ * Not Octocode's home itself: its trust store, agent database and credentials stay out of reach of a read-only tool
+ * that asks no permission. A host without user folders (a standalone SDK session) gets the first three.
  */
 export function octocodeAllowedPaths(
 	cwd: string,
 	skillDirectories: readonly string[] = [],
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
-	return [...new Set([cwd, sessionsRoot(env), ...[...new Set(skillDirectories)].sort()])].join(",");
+	const paths = hostPaths();
+	const user = paths.researchRoots?.(env);
+	for (const warning of user?.warnings ?? []) warnOnce(warning);
+	return [
+		...new Set([cwd, paths.sessionsRoot(env), ...[...new Set(skillDirectories)].sort(), ...(user?.roots ?? [])]),
+	].join(",");
 }
 
 /**
@@ -70,7 +76,7 @@ export function octocodeLaunch(
 			"octocode-mcp is not installed next to Octocode, and the npx fallback runs only in a trusted project (it could start a package from the project's node_modules). Reinstall Octocode, or trust this project.",
 		);
 	const command = entry
-		? { command: isBunBinary ? "node" : process.execPath, args: [entry] }
+		? { command: hostIdentity().isBunBinary() ? "node" : process.execPath, args: [entry] }
 		: { command: "npx", args: ["-y", OCTOCODE_MCP_SPEC] };
 	return {
 		...command,

@@ -17,6 +17,8 @@ import type { InteractiveModeHost } from "./host.ts";
 /** Interactive-mode members used by the extension dialogs. */
 type ExtensionDialogsHost = Pick<
 	InteractiveModeHost,
+	| "activeSelectorDispose"
+	| "activeSelectorToken"
 	| "disposeActiveSelector"
 	| "editor"
 	| "editorContainer"
@@ -36,6 +38,81 @@ type ExtensionDialogsHost = Pick<
 >;
 
 /**
+ * The open dialog's cancel, per host. Selectors, inputs and the editor share the editor slot, so one is open at a time:
+ * opening another or hiding it from outside (`resetExtensionUI` on reload or session replacement) answers it with no
+ * value, instead of leaving its caller and the dialog queue (`withDialog`) waiting for an answer nobody can give.
+ */
+const openDialogs = new WeakMap<object, () => void>();
+
+/** Each host's open custom overlays, closed (answered with no value) by `closeExtensionOverlays`. */
+const openOverlays = new WeakMap<object, Set<() => void>>();
+
+function takeOpenDialog(host: object): (() => void) | undefined {
+	const cancel = openDialogs.get(host);
+	openDialogs.delete(host);
+	return cancel;
+}
+
+type SlotHost = Pick<ExtensionDialogsHost, "activeSelectorDispose" | "activeSelectorToken" | "disposeActiveSelector">;
+
+/**
+ * Take the editor slot for a dialog or a non-overlay custom component. Whatever holds it (an extension dialog, a
+ * built-in selector or another custom component) is answered or disposed first, and `cancel` becomes the slot's
+ * dispose, so whatever takes the slot next through `disposeActiveSelector` (a dialog, `showSelector`, a custom component,
+ * a custom editor, the reset on reload or session replacement, or stop) answers this one with no value. Returns the
+ * release to call when it closes by itself.
+ */
+function takeSlot(host: SlotHost, cancel: () => void): () => void {
+	takeOpenDialog(host)?.();
+	host.disposeActiveSelector();
+	const token = {};
+	host.activeSelectorToken = token;
+	host.activeSelectorDispose = cancel;
+	return () => {
+		if (host.activeSelectorToken !== token) return;
+		host.activeSelectorToken = undefined;
+		host.activeSelectorDispose = undefined;
+	};
+}
+
+/**
+ * Answer the open dialog, then register a new one in the editor slot; the result settles it once, releases the slot,
+ * hides it and stops listening to `signal`.
+ */
+function openDialog<T>(
+	host: SlotHost,
+	resolve: (value: T | undefined) => void,
+	hide: () => void,
+	signal: AbortSignal | undefined,
+): (value: T | undefined) => void {
+	let done = false;
+	const finish = (value: T | undefined) => {
+		if (done) return;
+		done = true;
+		signal?.removeEventListener("abort", cancel);
+		if (openDialogs.get(host) === cancel) openDialogs.delete(host);
+		release();
+		hide();
+		resolve(value);
+	};
+	const cancel = () => finish(undefined);
+	const release = takeSlot(host, cancel);
+	signal?.addEventListener("abort", cancel, { once: true });
+	openDialogs.set(host, cancel);
+	return finish;
+}
+
+/**
+ * Answer every custom overlay open on `host` with no value, as the reset on reload or session replacement does, and
+ * report whether there was one.
+ */
+export function closeExtensionOverlays(host: object): boolean {
+	const closes = [...(openOverlays.get(host) ?? [])];
+	for (const close of closes) close();
+	return closes.length > 0;
+}
+
+/**
  * Show a selector for extensions.
  */
 export function showExtensionSelector(
@@ -51,29 +128,13 @@ export function showExtensionSelector(
 			return;
 		}
 
-		const onAbort = () => {
-			host.hideExtensionSelector();
-			resolve(undefined);
-		};
-		opts?.signal?.addEventListener("abort", onAbort, { once: true });
+		const finish = openDialog(host, resolve, () => host.hideExtensionSelector(), opts?.signal);
+		host.extensionSelector = new ExtensionSelectorComponent(title, options, finish, () => finish(undefined), {
+			tui: host.ui,
+			timeout: opts?.timeout,
+			onToggleToolsExpanded: () => host.toggleToolOutputExpansion(),
+		});
 
-		host.extensionSelector = new ExtensionSelectorComponent(
-			title,
-			options,
-			(option) => {
-				opts?.signal?.removeEventListener("abort", onAbort);
-				host.hideExtensionSelector();
-				resolve(option);
-			},
-			() => {
-				opts?.signal?.removeEventListener("abort", onAbort);
-				host.hideExtensionSelector();
-				resolve(undefined);
-			},
-			{ tui: host.ui, timeout: opts?.timeout, onToggleToolsExpanded: () => host.toggleToolOutputExpansion() },
-		);
-
-		host.disposeActiveSelector();
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.extensionSelector);
 		host.ui.setFocus(host.extensionSelector);
@@ -87,6 +148,8 @@ export function showExtensionSelector(
  * Hide the extension selector.
  */
 export function hideExtensionSelector(host: ExtensionDialogsHost): void {
+	const cancel = takeOpenDialog(host);
+	if (cancel) return cancel();
 	host.extensionSelector?.dispose();
 	host.editorContainer.clear();
 	host.editorContainer.addChild(host.editor);
@@ -138,29 +201,12 @@ export function showExtensionInput(
 			return;
 		}
 
-		const onAbort = () => {
-			host.hideExtensionInput();
-			resolve(undefined);
-		};
-		opts?.signal?.addEventListener("abort", onAbort, { once: true });
+		const finish = openDialog(host, resolve, () => host.hideExtensionInput(), opts?.signal);
+		host.extensionInput = new ExtensionInputComponent(title, placeholder, finish, () => finish(undefined), {
+			tui: host.ui,
+			timeout: opts?.timeout,
+		});
 
-		host.extensionInput = new ExtensionInputComponent(
-			title,
-			placeholder,
-			(value) => {
-				opts?.signal?.removeEventListener("abort", onAbort);
-				host.hideExtensionInput();
-				resolve(value);
-			},
-			() => {
-				opts?.signal?.removeEventListener("abort", onAbort);
-				host.hideExtensionInput();
-				resolve(undefined);
-			},
-			{ tui: host.ui, timeout: opts?.timeout },
-		);
-
-		host.disposeActiveSelector();
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.extensionInput);
 		host.ui.setFocus(host.extensionInput);
@@ -173,6 +219,8 @@ export function showExtensionInput(
  * Hide the extension input.
  */
 export function hideExtensionInput(host: ExtensionDialogsHost): void {
+	const cancel = takeOpenDialog(host);
+	if (cancel) return cancel();
 	host.extensionInput?.dispose();
 	host.editorContainer.clear();
 	host.editorContainer.addChild(host.editor);
@@ -191,24 +239,18 @@ export function showExtensionEditor(
 	prefill?: string,
 ): Promise<string | undefined> {
 	return new Promise((resolve) => {
+		const finish = openDialog(host, resolve, () => host.hideExtensionEditor(), undefined);
 		host.extensionEditor = new ExtensionEditorComponent(
 			host.ui,
 			host.keybindings,
 			title,
 			prefill,
-			(value) => {
-				host.hideExtensionEditor();
-				resolve(value);
-			},
-			() => {
-				host.hideExtensionEditor();
-				resolve(undefined);
-			},
+			finish,
+			() => finish(undefined),
 			undefined,
 			host.settingsManager.getExternalEditorCommand(),
 		);
 
-		host.disposeActiveSelector();
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.extensionEditor);
 		host.ui.setFocus(host.extensionEditor);
@@ -221,6 +263,8 @@ export function showExtensionEditor(
  * Hide the extension editor.
  */
 export function hideExtensionEditor(host: ExtensionDialogsHost): void {
+	const cancel = takeOpenDialog(host);
+	if (cancel) return cancel();
 	host.editorContainer.clear();
 	host.editorContainer.addChild(host.editor);
 	host.extensionEditor = undefined;
@@ -229,7 +273,11 @@ export function hideExtensionEditor(host: ExtensionDialogsHost): void {
 	host.ui.requestRender();
 }
 
-/** Show a custom component with keyboard focus. Overlay mode renders on top of existing content. */
+/**
+ * Show a custom component with keyboard focus. Overlay mode renders on top of existing content; otherwise the
+ * component takes the editor slot. It resolves with the component's result, or undefined when something else takes its
+ * slot or the reset closes it; either way it is disposed once.
+ */
 export async function showExtensionCustom<T>(
 	host: ExtensionDialogsHost,
 	factory: (
@@ -243,7 +291,7 @@ export async function showExtensionCustom<T>(
 		overlayOptions?: OverlayOptions | (() => OverlayOptions);
 		onHandle?: (handle: OverlayHandle) => void;
 	},
-): Promise<T> {
+): Promise<T | undefined> {
 	const savedText = host.editor.getText();
 	const isOverlay = options?.overlay ?? false;
 
@@ -258,11 +306,13 @@ export async function showExtensionCustom<T>(
 	return new Promise((resolve, reject) => {
 		let component: Component & { dispose?(): void };
 		let overlayHandle: OverlayHandle | undefined;
+		let release: (() => void) | undefined;
 		let closed = false;
 
-		const close = (result: T) => {
+		const close = (result: T | undefined) => {
 			if (closed) return;
 			closed = true;
+			release?.();
 			// Remove this overlay, not the topmost one: another overlay may have opened above it.
 			if (isOverlay) overlayHandle?.hide();
 			else restoreEditor();
@@ -277,7 +327,15 @@ export async function showExtensionCustom<T>(
 
 		Promise.resolve(factory(host.ui, theme, host.keybindings, close))
 			.then((c) => {
-				if (closed) return;
+				// `done` ran before the factory returned: `close` had no component to dispose, so dispose it here.
+				if (closed) {
+					try {
+						c.dispose?.();
+					} catch {
+						/* ignore dispose errors */
+					}
+					return;
+				}
 				component = c;
 				if (isOverlay) {
 					// Resolve overlay options - can be static or dynamic function
@@ -292,10 +350,15 @@ export async function showExtensionCustom<T>(
 						return w ? { width: w } : undefined;
 					};
 					overlayHandle = host.ui.showOverlay(component, resolveOptions());
+					const overlays = openOverlays.get(host) ?? new Set<() => void>();
+					openOverlays.set(host, overlays);
+					const cancel = () => close(undefined);
+					overlays.add(cancel);
+					release = () => overlays.delete(cancel);
 					// Expose handle to caller for visibility control
 					options?.onHandle?.(overlayHandle);
 				} else {
-					host.disposeActiveSelector();
+					release = takeSlot(host, () => close(undefined));
 					host.editorContainer.clear();
 					host.editorContainer.addChild(component);
 					host.ui.setFocus(component);

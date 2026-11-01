@@ -1,4 +1,3 @@
-import { lookup as dnsLookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -11,7 +10,9 @@ const MAX_REDIRECTS = 10;
 
 export type HostLookup = (hostname: string) => Promise<Array<{ address: string }>>;
 
-export const defaultLookup: HostLookup = (hostname) => dnsLookup(hostname, { all: true, verbatim: true });
+/** Resolves through the system resolver, loaded on first use so importing the guard costs no resolver setup. */
+export const defaultLookup: HostLookup = async (hostname) =>
+	(await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true });
 
 /** Non-public IPv4 ranges: this network, private, CGNAT, loopback, link-local (cloud metadata), protocol/test/benchmark, multicast, reserved. */
 const V4_BLOCKS: ReadonlyArray<readonly [string, number]> = [
@@ -264,15 +265,13 @@ function toResponse(target: URL, response: http.IncomingMessage): Response {
 	const headers = new Headers();
 	for (let index = 0; index + 1 < response.rawHeaders.length; index += 2)
 		headers.append(response.rawHeaders[index], response.rawHeaders[index + 1]);
-	let body: Readable | null = response;
-	if (NULL_BODY_STATUSES.has(status)) {
-		response.resume();
-		body = null;
-	} else {
+	let body: ReadableStream<Uint8Array> | null = null;
+	if (NULL_BODY_STATUSES.has(status)) response.resume();
+	else {
 		const decoder = decompressor(response.headers["content-encoding"]);
-		if (decoder) body = pipeline(response, decoder, () => undefined);
+		body = decoder ? decodedBody(response, decoder) : (Readable.toWeb(response) as ReadableStream<Uint8Array>);
 	}
-	const result = new Response(body && (Readable.toWeb(body) as ReadableStream<Uint8Array>), {
+	const result = new Response(body, {
 		status,
 		statusText: (response.statusMessage ?? "").replace(/[^\t\x20-\x7e\x80-\xff]/g, ""),
 		headers,
@@ -281,20 +280,87 @@ function toResponse(target: URL, response: http.IncomingMessage): Response {
 	return result;
 }
 
-/** A stream that undoes the Content-Encoding the request accepted; a cut stream yields what arrived. */
+/**
+ * A compressed body that ended before its compressed stream did. Every byte decoded before the cut was delivered
+ * first, so a reader that catches this keeps the partial content and knows it is partial.
+ */
+export class TruncatedBodyError extends Error {
+	constructor(cause?: unknown) {
+		super("content truncated: compressed stream ended early", { cause });
+		this.name = "TruncatedBodyError";
+	}
+}
+
+/** zlib's report of input that ended inside the compressed stream (gzip, deflate and Brotli alike). */
+const isCutStream = (error: unknown): boolean =>
+	error instanceof Error && (error as NodeJS.ErrnoException).code === "Z_BUF_ERROR";
+
+/** Decoded chunks a body buffers before the decoder pauses for the reader. */
+const DECODED_QUEUE_CHUNKS = 16;
+
+/**
+ * The decoded body as a pull stream. The reader gets every decoded chunk before an error: a cut stream ends with
+ * `TruncatedBodyError`, a corrupt one or a failed connection with its own error. (`Readable.toWeb` would drop the
+ * chunks still queued when the error arrives.)
+ */
+function decodedBody(response: http.IncomingMessage, decoder: Transform): ReadableStream<Uint8Array> {
+	const queue: Buffer[] = [];
+	let finished = false;
+	let failure: unknown;
+	let wake: (() => void) | undefined;
+	const settle = (error?: unknown) => {
+		if (finished) return;
+		finished = true;
+		failure = error;
+		wake?.();
+	};
+	// The response's own failure (an abort, a reset) reaches the decoder through the pipeline and is settled there.
+	pipeline(response, decoder, () => undefined);
+	decoder.on("data", (chunk: Buffer) => {
+		queue.push(chunk);
+		if (queue.length >= DECODED_QUEUE_CHUNKS) decoder.pause();
+		wake?.();
+	});
+	decoder.once("end", () => settle());
+	decoder.once("error", (error) => settle(isCutStream(error) ? new TruncatedBodyError(error) : error));
+	decoder.once("close", () => settle(new TruncatedBodyError()));
+	return new ReadableStream<Uint8Array>(
+		{
+			async pull(controller) {
+				while (queue.length === 0 && !finished) {
+					decoder.resume();
+					await new Promise<void>((resolve) => (wake = resolve));
+					wake = undefined;
+				}
+				const chunk = queue.shift();
+				if (chunk) controller.enqueue(chunk);
+				else if (failure === undefined) controller.close();
+				else controller.error(failure);
+			},
+			cancel(reason) {
+				response.destroy();
+				decoder.destroy();
+				settle(reason);
+			},
+		},
+		// No read-ahead: the queue is empty whenever an error is reported, so it never drops decoded bytes.
+		{ highWaterMark: 0 },
+	);
+}
+
+/**
+ * A stream that undoes the Content-Encoding the request accepted. Each chunk is flushed as it arrives, so a cut stream
+ * still yields what arrived before `decodedBody` reports the cut.
+ */
 function decompressor(encoding: string | undefined): Transform | undefined {
-	const flush = { flush: zlib.constants.Z_SYNC_FLUSH, finishFlush: zlib.constants.Z_SYNC_FLUSH };
 	switch (encoding?.trim().toLowerCase()) {
 		case "gzip":
 		case "x-gzip":
-			return zlib.createGunzip(flush);
+			return zlib.createGunzip({ flush: zlib.constants.Z_SYNC_FLUSH });
 		case "deflate":
-			return zlib.createInflate(flush);
+			return zlib.createInflate({ flush: zlib.constants.Z_SYNC_FLUSH });
 		case "br":
-			return zlib.createBrotliDecompress({
-				flush: zlib.constants.BROTLI_OPERATION_FLUSH,
-				finishFlush: zlib.constants.BROTLI_OPERATION_FLUSH,
-			});
+			return zlib.createBrotliDecompress({ flush: zlib.constants.BROTLI_OPERATION_FLUSH });
 		default:
 			return undefined;
 	}

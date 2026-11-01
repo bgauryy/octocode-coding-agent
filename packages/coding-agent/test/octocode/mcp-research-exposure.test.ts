@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
 import fs from "node:fs";
 import path from "node:path";

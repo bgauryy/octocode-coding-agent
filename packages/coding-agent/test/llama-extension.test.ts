@@ -142,6 +142,80 @@ describe("llama.cpp extension", () => {
 		]);
 	});
 
+	it("keeps the catalog when one loaded model's /props call fails, and names that model", async () => {
+		const { url } = await listen((request, response) => {
+			const requestUrl = new URL(request.url ?? "", "http://localhost");
+			if (requestUrl.pathname === "/models") {
+				json(response, {
+					data: [
+						{ id: "good", status: { value: "loaded" } },
+						{ id: "gone", status: { value: "loaded" } },
+					],
+				});
+				return;
+			}
+			if (requestUrl.pathname === "/props" && requestUrl.searchParams.get("model") === "good") {
+				json(response, { chat_template: "{% if enable_thinking %}think{% endif %}" });
+				return;
+			}
+			// The router unloaded this model between /models and /props.
+			response.writeHead(400, { "Content-Type": "application/json" });
+			response.end(JSON.stringify({ error: { message: "model is not loaded" } }));
+		});
+
+		const controller = createLlamaProvider();
+		let published = 0;
+		await controller.provider.refreshModels?.({
+			credential: { type: "api_key", key: "local", env: { LLAMA_BASE_URL: url } },
+			stored: undefined,
+			publish: async (publication) => {
+				published++;
+				publication.update?.();
+				return true;
+			},
+			allowNetwork: true,
+			signal: new AbortController().signal,
+		});
+
+		expect(published).toBe(1);
+		expect(controller.provider.getModels().map((model) => [model.id, model.reasoning])).toEqual([
+			["good", true],
+			["gone", false],
+		]);
+		expect([...controller.unreadTemplates()]).toEqual([["gone", expect.stringContaining("model is not loaded")]]);
+	});
+
+	it("still ends the refresh without publishing when it is aborted during a /props call", async () => {
+		const abort = new AbortController();
+		const { url } = await listen((request, response) => {
+			const requestUrl = new URL(request.url ?? "", "http://localhost");
+			if (requestUrl.pathname === "/models") {
+				json(response, { data: [{ id: "slow", status: { value: "loaded" } }] });
+				return;
+			}
+			// Never answers: the refresh is cancelled while it waits.
+			abort.abort();
+		});
+
+		const controller = createLlamaProvider();
+		let published = 0;
+		const refresh = controller.provider.refreshModels?.({
+			credential: { type: "api_key", key: "local", env: { LLAMA_BASE_URL: url } },
+			stored: undefined,
+			publish: async (publication) => {
+				published++;
+				publication.update?.();
+				return true;
+			},
+			allowNetwork: true,
+			signal: abort.signal,
+		});
+
+		await expect(refresh).rejects.toThrow();
+		expect(published).toBe(0);
+		expect(controller.provider.getModels()).toEqual([]);
+	});
+
 	it("persists and restores selectable models for cache-only startup refreshes", async () => {
 		let cachedEntry: ModelsStoreEntry | undefined;
 		const { url } = await listen((request, response) => {

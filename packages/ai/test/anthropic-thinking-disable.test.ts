@@ -165,11 +165,12 @@ describe("Anthropic thinking disable payload", () => {
 		expect(payload.output_config).toBeUndefined();
 	});
 
-	it("omits thinking.type=disabled for Claude Fable 5 when thinking is off", async () => {
+	it("omits thinking.type=disabled for Claude Fable 5 when thinking is off and asks for its least effort", async () => {
 		const payload = await capturePayload(getBuiltinModel("anthropic", "claude-fable-5"));
 
-		expect(payload.thinking).toBeUndefined();
-		expect(payload.output_config).toBeUndefined();
+		// Fable 5 cannot turn thinking off (`off: null`), so it thinks adaptively at its least effort.
+		expect(payload.thinking).toEqual({ type: "adaptive", display: "summarized" });
+		expect(payload.output_config).toEqual({ effort: "low" });
 	});
 
 	it("uses adaptive thinking for Claude Opus 4.8 when reasoning is enabled", async () => {

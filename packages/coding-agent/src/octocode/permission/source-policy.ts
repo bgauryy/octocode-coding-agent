@@ -158,7 +158,9 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 		if (actual.length > 0 && actual.every(editsInside)) decision = { decision: "allow" };
 	}
 	if (policy.defaultMode === "dontAsk") decision = { ...decision, dontAsk: true };
-	return shellTargets.length ? { ...decision, shellTargets, shellBroadAllowance: broadBashAllow } : decision;
+	// `shellBroadAllowance` also covers the write targets `checkPermission` adds for command operands.
+	if (shellTargets.length) return { ...decision, shellTargets, shellBroadAllowance: broadBashAllow };
+	return broadBashAllow ? { ...decision, shellBroadAllowance: true } : decision;
 }
 
 export function unprojectedSourcePolicy(policy: SourcePolicy, toolName: string): SourceDecision {

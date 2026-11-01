@@ -14,6 +14,7 @@ import {
 } from "@octocodeai/octocode-contracts/protocol";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { redactData } from "../../../../common/src/sanitize.ts";
+import { cutText } from "../../../../common/src/text.ts";
 
 /** Folders the report renderer itself treats as scratch or build output, so the board does not list them. */
 const SKIPPED_FOLDERS = new Set(["tmp", "view", "node_modules"]);
@@ -25,14 +26,13 @@ function isReportFolder(name: string): boolean {
 	return !name.startsWith(".") && !SKIPPED_FOLDERS.has(name);
 }
 
-function truncate(value: string | undefined, max: number): string | undefined {
-	if (value === undefined) return undefined;
-	if (value.length <= max) return value;
-	return value.slice(0, max);
+/** A report field cut to `max` characters with no marker (a cut value stays a plain status, confidence or question). */
+export function truncate(value: string | undefined, max: number): string | undefined {
+	return value === undefined ? undefined : cutText(value, max, { chars: true });
 }
 
 /** Returns true when the entry at `filePath` is a symbolic link. Symlinks are never followed for report content. */
-function isSymlink(filePath: string): boolean {
+export function isSymlink(filePath: string): boolean {
 	try {
 		return fs.lstatSync(filePath).isSymbolicLink();
 	} catch {
@@ -41,7 +41,7 @@ function isSymlink(filePath: string): boolean {
 }
 
 /** Flat frontmatter keys the saved skills write (`status`, `question`, `confidence`); multi-line values are not parsed. */
-function readFrontmatter(markdown: string): Record<string, string> {
+export function readFrontmatter(markdown: string): Record<string, string> {
 	const text = markdown.replace(/\r\n/g, "\n");
 	if (!text.startsWith("---\n")) return {};
 	const end = text.indexOf("\n---", 4);
@@ -56,7 +56,7 @@ function readFrontmatter(markdown: string): Record<string, string> {
 	return out;
 }
 
-function firstHeading(markdown: string): string {
+export function firstHeading(markdown: string): string {
 	const lines = markdown.replace(/\r\n/g, "\n").split("\n");
 	let inFrontmatter = false;
 	let inCode = false;
@@ -129,6 +129,8 @@ function scanReports(root: string): ScannedReport[] {
 	const reports: ScannedReport[] = [];
 	for (const [sourceDir, kind] of Object.entries(REPORT_SOURCE_DIRS)) {
 		const source = path.join(workspaceOctocodeDir(root), sourceDir);
+		// A linked source folder could point anywhere on the host; like the docs library, links below `.octocode/` are never followed.
+		if (isSymlink(source)) continue;
 		let folders: fs.Dirent[];
 		try {
 			folders = fs.readdirSync(source, { withFileTypes: true });

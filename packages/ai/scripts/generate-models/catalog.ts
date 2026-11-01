@@ -97,20 +97,18 @@ export interface SortedProviderCatalogs {
 }
 
 export function sortProviderCatalogs(providers: Record<string, ProviderCatalog>): SortedProviderCatalogs {
+	// Code-unit order, like the provider ids: localeCompare would follow the generating machine's locale.
+	const byKey = ([left]: [string, unknown], [right]: [string, unknown]) => (left < right ? -1 : left > right ? 1 : 0);
 	const sortedProviderIds = Object.keys(providers).sort();
 	const jsonChatProviders: Record<string, Record<string, Model<Api>>> = {};
 	const jsonImageProviders: Record<string, Record<string, ImageModel<ImageApi>>> = {};
 	const jsonClassifierProviders: Record<string, Record<string, ClassifierModel<ClassifierApi>>> = {};
 	const jsonAllProviders: Record<string, AnyModel[]> = {};
 	for (const providerId of sortedProviderIds) {
-		jsonChatProviders[providerId] = Object.fromEntries(
-			Object.entries(providers[providerId].chat).sort(([left], [right]) => left.localeCompare(right)),
-		);
-		jsonImageProviders[providerId] = Object.fromEntries(
-			Object.entries(providers[providerId].image).sort(([left], [right]) => left.localeCompare(right)),
-		);
+		jsonChatProviders[providerId] = Object.fromEntries(Object.entries(providers[providerId].chat).sort(byKey));
+		jsonImageProviders[providerId] = Object.fromEntries(Object.entries(providers[providerId].image).sort(byKey));
 		jsonClassifierProviders[providerId] = Object.fromEntries(
-			Object.entries(providers[providerId].classifier).sort(([left], [right]) => left.localeCompare(right)),
+			Object.entries(providers[providerId].classifier).sort(byKey),
 		);
 		jsonAllProviders[providerId] = [
 			...Object.values(jsonChatProviders[providerId]),

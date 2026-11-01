@@ -61,7 +61,7 @@ describe("ConfigView", () => {
 
 		const anthropic = within(row("Anthropic"));
 		expect(anthropic.getByText("Plaintext in auth.json")).toBeInTheDocument();
-		expect(anthropic.getByText(/OS keychain will be possible from this page later/)).toBeInTheDocument();
+		expect(anthropic.getByText(/OS keychain is possible from the page opened in the terminal/)).toBeInTheDocument();
 
 		expect(within(row("Groq")).getByText("Custom command")).toBeInTheDocument();
 		const codex = within(row("ChatGPT"));

@@ -13,6 +13,7 @@ import {
 import { llamaCppClassifyApi } from "@octocodeai/octocode-ai/api/llama-cpp-classify.lazy";
 import { typesafeSystemOneApi } from "@octocodeai/octocode-ai/api/typesafe-system-one.lazy";
 import { stream, streamSimple } from "@octocodeai/octocode-ai/compat";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
 	LlamaClient,
 	type LlamaModelInfo,
@@ -161,11 +162,14 @@ function toChatModel(
 interface LlamaProviderController {
 	provider: Provider<"openai-completions">;
 	setCatalog(models: readonly LlamaModelInfo[], serverUrl: string, options?: { routerAutoload?: boolean }): void;
+	/** Loaded models whose chat template the last published refresh could not read, with why; listed without thinking. */
+	unreadTemplates(): ReadonlyMap<string, string>;
 }
 
 export function createLlamaProvider(): LlamaProviderController {
 	let models: readonly Model<"openai-completions">[] = [];
 	let classifiers: readonly ClassifierModel<LlamaClassifierApi>[] = [];
+	let unreadTemplates: ReadonlyMap<string, string> = new Map();
 	const fallbackClassifier = llamaCppClassifyApi();
 	const decisionClassifier = typesafeSystemOneApi();
 
@@ -265,11 +269,20 @@ export function createLlamaProvider(): LlamaProviderController {
 			// need to be loaded, while querying sleeping models may wake them. Those models remain without thinking
 			// support until they are loaded and a later catalog refresh discovers it. Decision models need no
 			// template, and llama.cpp reports them in the catalog regardless of their status.
+			const unread = new Map<string, string>();
 			const refreshed = await Promise.all(
 				selectable.filter(isChatModel).map(async (model) => {
 					const cachedContextWindow = cachedContextWindows.get(model.id);
 					if (model.status.value !== "loaded") return toChatModel(model, serverUrl, undefined, cachedContextWindow);
-					const props = await client.props({ model: model.id, signal: context.signal });
+					let props: LlamaServerProps | undefined;
+					try {
+						props = await client.props({ model: model.id, signal: context.signal });
+					} catch (error) {
+						if (context.signal.aborted) throw error;
+						// The router may unload a model between /models and /props; one such model must not hide the others,
+						// so it stays listed like an unloaded one, without thinking support until a later refresh reads it.
+						unread.set(model.id, errorMessage(error));
+					}
 					return toChatModel(model, serverUrl, props, cachedContextWindow);
 				}),
 			);
@@ -282,6 +295,7 @@ export function createLlamaProvider(): LlamaProviderController {
 				update: () => {
 					models = refreshed;
 					classifiers = refreshedClassifiers;
+					unreadTemplates = unread;
 				},
 			});
 		},
@@ -291,5 +305,5 @@ export function createLlamaProvider(): LlamaProviderController {
 			(model.api === "typesafe-system-one" ? decisionClassifier : fallbackClassifier).classify(model, context, options),
 	};
 
-	return { provider, setCatalog };
+	return { provider, setCatalog, unreadTemplates: () => unreadTemplates };
 }

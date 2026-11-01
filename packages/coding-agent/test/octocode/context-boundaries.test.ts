@@ -14,7 +14,6 @@ describe("agent context boundaries", () => {
 			OCTOCODE_AGENT_GOAL: "old-task",
 			OCTOCODE_AGENT_SCRATCH: "/old",
 			OCTOCODE_TRUST_ROOT: "/old-trust",
-			OCTOCODE_BROWSER_VISIBLE: "1",
 			OCTOCODE_SUBAGENT_HOOKS: "1",
 			OCTOCODE_MCP: "0",
 			PATH: "/bin",
@@ -32,7 +31,6 @@ describe("agent context boundaries", () => {
 			"OCTOCODE_AGENT_GOAL",
 			"OCTOCODE_AGENT_SCRATCH",
 			"OCTOCODE_TRUST_ROOT",
-			"OCTOCODE_BROWSER_VISIBLE",
 			"OCTOCODE_SUBAGENT_HOOKS",
 		]) {
 			expect(child).not.toHaveProperty(key);

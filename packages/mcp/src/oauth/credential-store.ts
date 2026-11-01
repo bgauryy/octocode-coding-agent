@@ -5,8 +5,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { McpOAuthState, McpOAuthStateStore } from "../client/oauth/index.ts";
 import lockfile from "proper-lockfile";
-import { getAgentDir } from "../../../coding-agent/src/config.ts";
-import { type AuthStorageBackend, FileAuthStorageBackend } from "../../../coding-agent/src/core/auth-storage.ts";
+import { hostModels, hostPaths } from "../host.ts";
+import type { McpAuthBackend as AuthStorageBackend } from "../host.ts";
 import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 
 /** A refresh lock that its holder stopped renewing (the process was killed) is taken over after this. */
@@ -48,8 +48,8 @@ export class McpOAuthCredentialStore {
 	private readonly lockDir: string | undefined;
 
 	constructor(backend?: AuthStorageBackend, lockDir?: string) {
-		this.backend = backend ?? new FileAuthStorageBackend(join(getAgentDir(), "mcp-auth.json"));
-		this.lockDir = backend ? lockDir : getAgentDir();
+		this.backend = backend ?? hostModels().fileAuthBackend(join(hostPaths().agentDir(), "mcp-auth.json"));
+		this.lockDir = backend ? lockDir : hostPaths().agentDir();
 	}
 
 	forServer(name: string, serverUrl: string): McpOAuthServerStore {

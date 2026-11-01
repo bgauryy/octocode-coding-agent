@@ -1,5 +1,6 @@
 import type { Api, Model, ModelThinkingLevel, TranscriptContext } from "@octocodeai/octocode-ai";
 import { clampMaxTokensToContext } from "@octocodeai/octocode-ai/api/simple-options";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { describe, expect, it } from "vitest";
 import { builtInCompactionSettings, thinkingBudgetTokens } from "../src/core/compaction/settings.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -106,8 +107,11 @@ describe("thinking-sized compaction reserve", () => {
 		const reserveTokens = reserve(window, level);
 		const contextTokens = window - reserveTokens;
 		const model = { contextWindow: window, maxTokens: 64_000 } as Model<Api>;
-		// The estimator counts 3.5 characters per token.
-		const context = { messages: [{ role: "user", content: "x".repeat(contextTokens * 3.5), timestamp: 0 }] };
+		// A context the shared estimator (which both the compaction trigger and the request clamp use) counts as exactly
+		// `contextTokens`.
+		const context = {
+			messages: [{ role: "user", content: "x".repeat(contextTokens * CHARS_PER_TOKEN), timestamp: 0 }],
+		};
 		const clamp = clampMaxTokensToContext(model, context as unknown as TranscriptContext, model.maxTokens);
 		expect(clamp).toBeGreaterThanOrEqual(thinkingBudgetTokens({}, { level }) + 8192);
 	});

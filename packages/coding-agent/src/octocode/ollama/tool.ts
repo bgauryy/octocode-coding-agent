@@ -1,7 +1,7 @@
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { resultBlock, resultText, toolHeader } from "../shared/render.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { textResult } from "../shared/util.ts";
@@ -27,14 +27,13 @@ interface OllamaDetails {
 	doneReason?: string;
 }
 
-const record = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
 const str = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);
 const num = (value: unknown): number | undefined =>
 	typeof value === "number" && Number.isFinite(value) ? value : undefined;
 const gb = (bytes: unknown): string => (num(bytes) === undefined ? "?" : `${(Number(bytes) / 1e9).toFixed(1)} GB`);
 
 function modelsResult(receipt: unknown) {
-	const models = Array.isArray(record(receipt).models) ? (record(receipt).models as unknown[]).map(record) : [];
+	const models = Array.isArray(asRecord(receipt).models) ? (asRecord(receipt).models as unknown[]).map(asRecord) : [];
 	const lines = models.map((model) => {
 		const capabilities = Array.isArray(model.capabilities) ? model.capabilities.join(", ") : "";
 		const context = num(model.advertised_context);
@@ -53,7 +52,7 @@ function modelsResult(receipt: unknown) {
 }
 
 function routeResult(receipt: unknown) {
-	const route = record(receipt);
+	const route = asRecord(receipt);
 	const model = str(route.selected_model);
 	const reasons = Array.isArray(route.reasons) ? route.reasons.join(", ") : "";
 	const confidence = str(route.confidence);
@@ -72,13 +71,13 @@ function routeResult(receipt: unknown) {
 }
 
 function taskResult(receipt: unknown) {
-	const root = record(receipt);
-	const response = record(root.response);
-	const message = record(response.message);
-	const metrics = record(root.metrics);
-	const model = str(record(root.route).selected_model) ?? str(response.model);
+	const root = asRecord(receipt);
+	const response = asRecord(root.response);
+	const message = asRecord(response.message);
+	const metrics = asRecord(root.metrics);
+	const model = str(asRecord(root.route).selected_model) ?? str(response.model);
 	// A low-confidence route is a capability-only fallback (any resident model that can complete): weigh its reply.
-	const confidence = str(record(root.route).confidence);
+	const confidence = str(asRecord(root.route).confidence);
 	const doneReason = str(response.done_reason);
 	const details: OllamaDetails = {
 		action: "task",
@@ -106,9 +105,9 @@ function taskResult(receipt: unknown) {
 }
 
 const DESCRIPTION =
-	"Run a prompt on a local Ollama model through FreeLlama, which picks an installed model within memory limits. " +
+	"Runs a prompt on a local Ollama model through FreeLlama, which picks an installed model within memory limits. " +
 	"models: installed models; route: the model a task would use; task: one prompt, reply with model and token receipt. " +
-	"Needs `freellama serve` running. The prompt is the model's only context; replies stop at the output limit.";
+	"Needs `freellama serve` running. The prompt is the model's only context, so include everything it needs; replies stop at the output limit.";
 
 /** The `ollama` tool. `run` is the CLI boundary; tests replace it. */
 export function registerOllamaTool(api: ExtensionAPI, run: FreellamaRunner = runFreellama): void {
@@ -116,9 +115,12 @@ export function registerOllamaTool(api: ExtensionAPI, run: FreellamaRunner = run
 		timedTool({
 			name: "ollama",
 			label: "Ollama",
-			defaultActive: true,
+			// Opt-in (`--tools +ollama` or `defaultTools`): it works only beside a running `freellama serve`, which nothing in the
+			// session can learn without a network probe, and a declaration that depends on connection state would change the
+			// cached prompt prefix. Naming the tool is the user's statement that the server is set up.
+			defaultActive: false,
+			promptSnippet: "To offload a small, self-contained prompt to a local model, or to see which local models exist",
 			description: DESCRIPTION,
-			promptSnippet: "Offload a self-contained prompt to a local Ollama model",
 			parameters: Type.Object({
 				action: StringEnum(["models", "route", "task"] as const),
 				prompt: Type.Optional(Type.String({ description: "task: the whole prompt, as one user message" })),
@@ -127,8 +129,7 @@ export function registerOllamaTool(api: ExtensionAPI, run: FreellamaRunner = run
 				),
 				objective: Type.Optional(
 					StringEnum(OBJECTIVES, {
-						description:
-							"route/task: fastest, balanced (server default) or quality (needs a policy unless model is set)",
+						description: "route/task: balanced is the server default; quality needs a policy unless model is set",
 					}),
 				),
 				model: Type.Optional(Type.String({ description: "route/task: exact installed model tag; omit to route" })),

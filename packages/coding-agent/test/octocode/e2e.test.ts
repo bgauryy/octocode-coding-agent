@@ -224,10 +224,16 @@ describe("with Octocode MCP (default)", () => {
 		console.log(
 			`default Octocode + Octocode prefix: ${fixedChars} chars (prompt ${turn.systemPrompt.length}, ${turn.tools.length} tools)`,
 		);
-		// 85_500 (measured 84,212): the prefix includes the `mcp_contract_octocode` section, which the old 45_500 ceiling
-		// (measured 44,632 before that section) no longer fit: 93,097 before the contract renderer left out validation-only
-		// constraints, hoisted repeated types and stated repeated field docs once per function.
-		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(85_500);
+		// 75_300 (2026-10-31, measured 74,790; B338/B340/B343/B344): native tool text re-authored, `<tools>`/`<mcps>` from one
+		// section registry, the flat `agent` tool and the `models` tool. 79_500 (2026-10-31, measured 78,252; B327): down from 88_300 (measured 88,140) after re-authoring the stale
+		// `octocode-mcp` preset overrides (a drift test now fails when the linked server changes them), sharing docs and types
+		// in the contract renderer, ollama opt-in and same-fact duplicates removed from policy and
+		// tool text. The prefix includes the `mcps` section, so a stale override (raw server text) or a
+		// longer catalog in the sibling repository moves it: 88_300 had absorbed about 1,800 of such growth and the `task`
+		// tool; before that, 93,097 and 98,493 while the renderer kept full schemas (B322).
+		// 75_000 (2026-10-31, measured 74,765; B366): the sibling server's catalog had changed, so every preset override was stale
+		// and the raw contract made 82,523. The overrides were rewritten (prose -46%), and `agent` shows one line per type.
+		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(75_000);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
 		expect(turn.tools).toContain("mcp__octocode__localFetch");
@@ -254,7 +260,18 @@ describe("with Octocode MCP (default)", () => {
 		// The extension's client connects before the first request is built, so the guidance and the server's contract
 		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
 		expect(turn.systemPrompt).toContain("Use Octocode MCP (`mcp__octocode__*`");
-		expect(turn.systemPrompt).toMatch(/<mcp_contract_octocode>\n\/\/ MCP server "octocode"[^\n]*\n\/\*\* \S/);
+		expect(turn.systemPrompt).toMatch(
+			/<mcps>\n<mcp name="octocode" tools="mcp__octocode__\*">\n[^\n]+\n\/\/ MCP server "octocode"[^\n]*\n\/\*\* \S/,
+		);
+		// `<tools>` lists native tools only; the server's tools are in `<mcps>`.
+		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
+		expect(toolLines.length).toBeGreaterThan(0);
+		expect(toolLines.every((line) => /^- [\w-]+: \S/.test(line))).toBe(true);
+		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
+			expect(
+				toolLines.some((line) => line.startsWith(`- ${name}: `)),
+				`<tools> lists ${name}`,
+			).toBe(true);
 		const next = (await s.run("continue", [say("ready")])).at(-1)!;
 		expect(next.tools).toContain("mcp__octocode__localSearch");
 		expect(next.systemPrompt).toBe(turn.systemPrompt);
@@ -451,7 +468,18 @@ describe("with another MCP server and Octocode disabled", () => {
 
 	it("keeps Octocode read, leaves MCP to Octocode, and drops the Octocode research line", async () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
-		for (const name of ["read", "file", "bash", "web", "agent", "askUser", "backlog", "memory", "mcp__echo__shout"])
+		for (const name of [
+			"read",
+			"file",
+			"bash",
+			"web",
+			"agent",
+			"askUser",
+			"backlog",
+			"steps",
+			"memory",
+			"mcp__echo__shout",
+		])
 			expect(turn.tools).toContain(name);
 		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
 		expect(turn.tools).toContain("mcp");
@@ -766,26 +794,21 @@ describe("request too large (HTTP 413)", () => {
 	}, 60_000);
 });
 
-describe("a subagent session with visible browser and MCP enabled", () => {
+describe("a subagent session with MCP enabled", () => {
 	let s: Awaited<ReturnType<typeof startSession>>;
 	const previous = {
-		web: process.env.OCTOCODE_BROWSER_VISIBLE,
 		sub: process.env.OCTOCODE_SUBAGENT,
 	};
 
 	beforeAll(async () => {
-		process.env.OCTOCODE_BROWSER_VISIBLE = "1";
 		process.env.OCTOCODE_SUBAGENT = "1";
-		s = await startSession({}, { tools: ["+browser"] });
+		s = await startSession({}, {});
 		fs.writeFileSync(path.join(s.cwd, "app.ts"), "export const answer = 41;\n");
 	}, 200_000);
 
 	afterAll(async () => {
 		await s?.dispose();
-		for (const [key, value] of [
-			["OCTOCODE_BROWSER_VISIBLE", previous.web],
-			["OCTOCODE_SUBAGENT", previous.sub],
-		] as const) {
+		for (const [key, value] of [["OCTOCODE_SUBAGENT", previous.sub]] as const) {
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
 		}
@@ -794,7 +817,7 @@ describe("a subagent session with visible browser and MCP enabled", () => {
 	it("has Octocode and browser tools and can call Octocode", async () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
 		expect(turn.tools).toContain("mcp__octocode__localFetch");
-		expect(turn.tools).toContain("browser");
+		expect(turn.tools).not.toContain("browser");
 		expect(turn.tools.filter((name) => name.includes("cua"))).toEqual([]);
 		expect(turn.tools).toContain("agent");
 		expect(turn.tools).not.toContain("askUser");
@@ -804,7 +827,7 @@ describe("a subagent session with visible browser and MCP enabled", () => {
 		expect(turn.toolContracts.find((tool) => tool.name === "backlog")?.parameters).toMatchObject({
 			properties: { op: { enum: ["list", "get", "add", "update"] } },
 		});
-		for (const name of ["agent", "backlog", "memory"]) expect(turn.tools).toContain(name);
+		for (const name of ["agent", "backlog", "steps", "memory"]) expect(turn.tools).toContain(name);
 		expect(turn.systemPrompt).toContain("You are a subagent");
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();
 		const appPath = path.join(s.cwd, "app.ts");

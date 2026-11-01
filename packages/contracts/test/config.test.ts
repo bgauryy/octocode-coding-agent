@@ -2,6 +2,7 @@ import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import {
 	CONFIG_PROTOCOL_VERSION,
+	ConfigSettingCommandSchema,
 	ConfigSnapshotSchema,
 	CREDENTIAL_SOURCES,
 	CredentialSourceSchema,
@@ -75,5 +76,21 @@ describe("config schemas", () => {
 		expect(Value.Check(ConfigSnapshotSchema, { ...snapshot, settingsErrors: [{ ...error, scope: "project" }] })).toBe(
 			false,
 		);
+	});
+
+	it("accepts a setting change only for an allow-listed key and a file the page can write", () => {
+		const command = { key: "defaultModel", scope: "workspace", value: "gpt-5", repoId: "abc123" };
+		expect(Value.Check(ConfigSettingCommandSchema, command)).toBe(true);
+		expect(Value.Check(ConfigSettingCommandSchema, { ...command, value: null })).toBe(true);
+		for (const bad of [
+			{ ...command, key: "packages" },
+			{ ...command, scope: "default" },
+			{ ...command, value: "" },
+			{ ...command, value: "a\nb" },
+			{ ...command, value: "x".repeat(257) },
+			{ ...command, repoId: "../etc" },
+			{ ...command, extra: 1 },
+		])
+			expect(Value.Check(ConfigSettingCommandSchema, bad), JSON.stringify(bad)).toBe(false);
 	});
 });

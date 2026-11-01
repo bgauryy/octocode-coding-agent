@@ -100,13 +100,13 @@ export function buildToolDefinitionRegistry(
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Tools every role is given in the same form, declared first and in this order. */
-const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "archive", "graphBuild", "graphQuery", "mcp"];
+const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "archive", "mcp"];
 
 /**
  * Tools whose presence or declaration depends on the role (a read-only child lacks debug), declared last and in this
  * order.
  */
-const ROLE_VARIANT_TOOLS = ["backlog", "memory", "debug", "askUser", "agent", "skill"];
+const ROLE_VARIANT_TOOLS = ["backlog", "steps", "memory", "debug", "askUser", "agent", "skill"];
 
 /** The research server's namespace: every role that has MCP tools has these, so they come before other servers' tools. */
 const SHARED_MCP_NAMESPACE = mcpNamespace(OCTOCODE_SERVER);

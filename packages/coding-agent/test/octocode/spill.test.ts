@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";

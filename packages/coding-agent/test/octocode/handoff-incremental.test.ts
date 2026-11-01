@@ -92,4 +92,32 @@ describe("incremental report receipts", () => {
 			vi.useRealTimers();
 		}
 	});
+
+	it("skips a malformed transcript line that mentions a receipt and still reads the receipt after it", async () => {
+		vi.useFakeTimers();
+		const fake = fakeHost();
+		fake.api.sendMessage = vi.fn(() => Promise.reject(new Error("response lost")));
+		const file = path.join(tmp(), "session.jsonl");
+		fs.writeFileSync(file, `{"customType":"${AGENT_RESULT_TYPE}",\n`);
+		const queue = new ReportQueue(fake.api, 60_000);
+		queue.start({ getSessionFile: () => file, getEntries: () => [] });
+		queue.pendingDir = tmp();
+		try {
+			queue.add({
+				reportId: "r1",
+				content: "report",
+				details: { id: "child", status: "done", summary: "Done" },
+				wake: true,
+			});
+			queue.flush();
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(fs.readdirSync(queue.pendingDir)).not.toEqual([]);
+			fs.appendFileSync(file, `${JSON.stringify(entry("receipt", AGENT_RESULT_TYPE, { reportId: "r1" }))}\n`);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(fs.readdirSync(queue.pendingDir)).toEqual([]);
+		} finally {
+			queue.persist();
+			vi.useRealTimers();
+		}
+	});
 });

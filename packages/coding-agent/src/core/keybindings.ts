@@ -1,4 +1,11 @@
-import { type Keybinding, type KeybindingDefinitions, type KeybindingsConfig, type KeyId, TUI_KEYBINDINGS, KeybindingsManager as TuiKeybindingsManager } from "@octocodeai/octocode-tui";
+import {
+	type Keybinding,
+	type KeybindingDefinitions,
+	type KeybindingsConfig,
+	type KeyId,
+	TUI_KEYBINDINGS,
+	KeybindingsManager as TuiKeybindingsManager,
+} from "@octocodeai/octocode-tui";
 import { existsSync } from "fs";
 import { join } from "path";
 import { Compile } from "typebox/compile";
@@ -117,6 +124,10 @@ const APP_KEYBINDINGS = {
 	"app.session.delete": {
 		defaultKeys: "ctrl+d",
 		description: "Delete session",
+	},
+	"app.session.actions": {
+		defaultKeys: "ctrl+o",
+		description: "Open session actions",
 	},
 	"app.session.deleteNoninvasive": {
 		defaultKeys: "ctrl+backspace",

@@ -7,6 +7,7 @@ import { Thought, thoughtGist } from "../shared/thought.ts";
 import { addUsage, contentText, emptyUsage, finiteNumber, toolHint } from "../shared/util.ts";
 import { imagesOf } from "./screenshots.ts";
 import { jobNotice } from "./report.ts";
+import { type ChildNotices, NoticeLog, NOTICES_INLINE, NOTICES_INLINE_CHARS } from "./notices.ts";
 
 export interface WatchdogLimits {
 	/**
@@ -34,37 +35,6 @@ export interface Compactions {
 	/** Context size in tokens before and after the latest finished compaction. */
 	tokensBefore?: number;
 	tokensAfter?: number;
-}
-
-/** A warning or error the child's extensions showed (`notify` with `notifyType` warning or error): the child has no screen, the parent keeps them. Whole, whatever its length. */
-interface ChildNotice {
-	level: "warning" | "error";
-	text: string;
-	/** How many times the child showed this exact notice (same level and text): repeats fold into one. */
-	count: number;
-}
-
-/** `error: text`, or `warning (×3): text` for a notice shown three times. */
-export const noticeText = (notice: ChildNotice): string =>
-	`${notice.level}${notice.count > 1 ? ` (×${notice.count})` : ""}: ${notice.text}`;
-
-/**
- * The inline page of a run's notices: the first distinct notices in the order they came, at most `NOTICES_INLINE` and
- * `NOTICES_INLINE_CHARS` characters of text. The page holds whole notices only; the rest are counted in
- * `ChildNotices.more` and every one is in the run's saved log (`notices.txt`).
- */
-export const NOTICES_INLINE = 5;
-export const NOTICES_INLINE_CHARS = 4_000;
-
-export interface ChildNotices {
-	/** The inline page (see `NOTICES_INLINE`), counts included. */
-	kept: ChildNotice[];
-	/** Distinct notices that came after the inline page. */
-	more: number;
-	/** The latest error raised since the child's last model turn, whether or not it fits in `kept`: the reason an aborted child gives. A later turn means the child went on, so the error is not why it stopped. */
-	lastError?: string;
-	/** The file holding every notice, whole, one per line; set when the run ends with `more` above 0. */
-	file?: string;
 }
 
 /** One step of a running child, for the parent's live row. */
@@ -126,8 +96,8 @@ export interface ChildState {
 	thought: Thought;
 	compactions: Compactions;
 	notices: ChildNotices;
-	/** Every distinct notice, keyed by level and text, in the order they first came: the source of the saved log. `notices.kept` shares its first entries. */
-	noticeLog: Map<string, ChildNotice>;
+	/** The run's distinct notices, the source of the saved log; `notices.kept` shares its first entries. */
+	noticeLog: NoticeLog;
 }
 
 export function newChildState(): ChildState {
@@ -148,7 +118,7 @@ export function newChildState(): ChildState {
 		thought: new Thought(),
 		compactions: { done: 0, aborted: 0, failed: 0 },
 		notices: { kept: [], more: 0 },
-		noticeLog: new Map(),
+		noticeLog: new NoticeLog(),
 	};
 }
 
@@ -263,14 +233,11 @@ function noteNotice(state: ChildState, event: Record<string, unknown>): boolean 
 	)
 		return false;
 	const text = visibleControls(message.replace(/\s+/g, " ").trim());
-	const key = `${level}\u0000${text}`;
-	const seen = state.noticeLog.get(key);
-	if (seen) seen.count += 1;
-	else {
-		const notice: ChildNotice = { level, text, count: 1 };
-		state.noticeLog.set(key, notice);
+	const { notice, repeat } = state.noticeLog.add(level, text);
+	if (!repeat) {
 		const { kept } = state.notices;
 		const room =
+			notice !== undefined &&
 			state.notices.more === 0 &&
 			kept.length < NOTICES_INLINE &&
 			kept.reduce((chars, entry) => chars + entry.text.length, text.length) <= NOTICES_INLINE_CHARS;

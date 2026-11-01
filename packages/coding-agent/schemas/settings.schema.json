@@ -274,6 +274,19 @@
       "description": "How MCP tools reach the model. \"compact\" shows each server as a generated TypeScript file in the cached system prompt, declares its tools with a one-line trigger and the top-level field types, and validates calls against the server's own JSON Schema. \"json\" declares every tool with its full JSON Schema and ignores the generated files.",
       "default": "compact"
     },
+    "research": {
+      "type": "object",
+      "properties": {
+        "allowedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example [\"~/code/private-skills\"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, \"..\", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn."
+        }
+      },
+      "description": "Research tool settings."
+    },
     "npmCommand": {
       "type": "array",
       "items": {
@@ -730,7 +743,7 @@
               "const": "relay"
             }
           ],
-          "description": "How /remote reaches this machine: \"ssh\" prints a port forward to run; \"relay\" dials remote.relayUrl.",
+          "description": "How a published /remote link reaches the daemon: \"ssh\" prints a port forward to run; \"relay\" dials remote.relayUrl.",
           "default": "ssh"
         },
         "relayUrl": {
@@ -752,8 +765,19 @@
               "const": "control"
             }
           ],
-          "description": "Publish a link when a session starts. A project settings file can set \"off\" but never turn it on.",
+          "description": "Publish a link of that access (\"view\" or \"control\") when a session starts and print it. A project settings file can set \"off\" but never turn it on; the global value stands.",
           "default": "off"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessions": {
+      "type": "object",
+      "properties": {
+        "autoTitle": {
+          "type": "boolean",
+          "description": "Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title.",
+          "default": true
         }
       },
       "additionalProperties": false

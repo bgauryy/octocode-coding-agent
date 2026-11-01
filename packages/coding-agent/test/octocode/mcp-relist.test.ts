@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { connectionFixture } from "../../../mcp/test/mcp-connection-fixture.ts";

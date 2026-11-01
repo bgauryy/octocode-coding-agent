@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sourceWorkspaceGroups } from "./source-workspaces.mjs";
-import { HOST_IMPORT_BASELINE } from "./host-import-baseline.mjs";
 import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { moduleSpecifiers } from "./module-specifiers.mjs";
 
@@ -20,13 +19,7 @@ export const PACKAGE_POLICY = {
 	webview: ["contracts"],
 };
 
-export function checkPackageBoundaries(
-	packages,
-	sources,
-	policy = PACKAGE_POLICY,
-	hostImportBaseline = HOST_IMPORT_BASELINE,
-	layerRules = LAYER_RULES,
-) {
+export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLICY, layerRules = LAYER_RULES) {
 	const { hosts, issues } = sourceWorkspaceGroups(packages);
 	const unit = (name) => hosts.get(name) ?? name;
 	const names = new Map(Object.entries(packages).map(([dir, manifest]) => [manifest.name, dir]));
@@ -64,19 +57,21 @@ export function checkPackageBoundaries(
 			}
 			// A layer may not reach the layer above it, except through files its baseline already lists.
 			for (const rule of layerRules) {
-				if (`${source.package}/${source.path}`.startsWith(rule.from) && reached.startsWith(rule.to)) {
+				if (
+					`${source.package}/${source.path}`.startsWith(rule.from) &&
+					[rule.to].flat().some((to) => reached.startsWith(to))
+				) {
 					layerEdges.add(`${rule.name}: ${source.package}/${source.path}`);
 					if (!rule.baseline.includes(`${source.package}/${source.path}`))
 						issues.push(`${rule.name}: ${source.package}/${source.path} -> ${reached} (not in its baseline)`);
 				}
 			}
-			// A hosted workspace compiles into its host, but may only reach host files already in the baseline.
-			if (target && target === unit(source.package) && target !== source.package) {
-				if (!(hostImportBaseline[source.package] ?? []).includes(reached.replace(/\.js$/, ".ts")))
-					issues.push(
-						`hosted workspace reaches host internals: ${source.package}/${source.path} -> ${reached} (not in HOST_IMPORT_BASELINE)`,
-					);
-			}
+			// A hosted workspace compiles into its host but never imports host files: the host hands it what it needs
+			// through the ports the workspace defines (mcp/src/host.ts, acp/src/host.ts).
+			if (target && target === unit(source.package) && target !== source.package)
+				issues.push(
+					`hosted workspace reaches host internals: ${source.package}/${source.path} -> ${reached} (use a host port)`,
+				);
 			// Hosted workspaces compiled into one host may reach each other only along their policy edges.
 			if (
 				target &&
@@ -108,7 +103,9 @@ export function checkPackageBoundaries(
 				sources.some((source) => `${source.package}/${source.path}`.startsWith(rule.from)) &&
 				!layerEdges.has(`${rule.name}: ${file}`)
 			)
-				issues.push(`${rule.name}: ${file} no longer imports ${rule.to} (remove it from its baseline)`);
+				issues.push(
+					`${rule.name}: ${file} no longer imports ${[rule.to].flat().join(" or ")} (remove it from its baseline)`,
+				);
 	const done = new Set();
 	function visit(dir, trail) {
 		if (trail.includes(dir)) {

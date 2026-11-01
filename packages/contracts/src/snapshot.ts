@@ -1,6 +1,18 @@
-import type { ItemType, BacklogRef, WorkLink, Completion } from "./backlogs.ts";
+import type { ItemType, BacklogRef, WorkLink, Completion, BacklogTask } from "./backlogs.ts";
 export const STATES = ["backlog", "todo", "ongoing", "done"] as const;
 export type State = (typeof STATES)[number];
+
+/**
+ * What an epic shows, from its children's states: no children keeps `stored`; all done is done; any ongoing is ongoing;
+ * any todo is todo; otherwise (children still in the backlog, or backlog and done mixed) backlog. The stored state is
+ * only set when the epic is closed with its summary.
+ */
+export function deriveEpicState(stored: State, children: readonly State[]): State {
+	if (!children.length) return stored;
+	if (children.every((state) => state === "done")) return "done";
+	if (children.includes("ongoing")) return "ongoing";
+	return children.includes("todo") ? "todo" : "backlog";
+}
 export type NoteKind = "note" | "change";
 export interface Note {
 	at: number;
@@ -34,6 +46,10 @@ export interface SnapshotItem {
 	dependsOn?: BacklogRef[];
 	links?: WorkLink[];
 	completions?: Completion[];
+	/** The item's tasks in position order. */
+	tasks?: BacklogTask[];
+	/** What an epic shows, derived from its children (`deriveEpicState`); absent for other types. */
+	epicState?: State;
 	children?: string[];
 	blockedBy?: string[];
 	needsReview?: boolean;
@@ -73,4 +89,6 @@ export interface Snapshot {
 	states: readonly State[];
 	idleMs: number;
 	items: SnapshotItem[];
+	/** Tasks that belong to a session and no item, by session then position. */
+	sessionTasks?: BacklogTask[];
 }

@@ -8,7 +8,7 @@ import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { SHARED_SUMMARY_PROMPT, sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
-import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 
 const model = {
 	provider: "p",

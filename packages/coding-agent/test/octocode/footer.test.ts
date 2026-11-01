@@ -31,7 +31,7 @@ const statuses = new Map([
 	["mcp", "mcp 3/3"],
 	["octocode-team", "agents 1/2 ↑1k ↓2k"],
 	["octocode-bash", "1 bash job"],
-	["octocode-permission", "⏸ permission: manual · Shift+Tab"],
+	["octocode-permission", "⏸ permission: manual · shift+tab"],
 	["octocode-speed", "58 tok/s"],
 	["other-ext", "lint ok"],
 ]);
@@ -49,7 +49,7 @@ describe("footer", () => {
 	it("shows the model, context, mode and running work first, and where you are second", () => {
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 170);
 		expect(top).toMatch(
-			/^claude-opus-5-5 · ⏸ permission: manual · Shift\+Tab · thinking high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
+			/^claude-opus-5-5 · ⏸ permission: manual · shift\+tab · thinking high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
 		);
 		expect(bottom).toBe("~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok");
 		expect(visibleWidth(top)).toBe(170);
@@ -91,6 +91,27 @@ describe("footer", () => {
 		expect(bottom).not.toMatch(/[\r\n\t]/);
 	});
 
+	it("draws native and extension statuses with their colours but without other terminal controls", () => {
+		const hostile = "\u001b]0;pwned\u0007\u001b]8;;https://x.test\u0007";
+		const [top, bottom] = footerLines(
+			state,
+			null,
+			new Map([
+				[STATUS.subagents, `${hostile}2 sub\u202eagents\u001b[2J`],
+				[STATUS.queued, `\u001b[31m✉ 1 queued\u001b[39m\r${hostile}`],
+				["other-ext", `\u001b[32mlint ok\u001b[39m${hostile}\u2028done`],
+			]),
+			theme,
+			240,
+		);
+		expect(top).toContain("2 subagents");
+		expect(top).toContain("\u001b[31m✉ 1 queued\u001b[39m");
+		expect(bottom).toContain("\u001b[32mlint ok\u001b[39m done");
+		for (const line of [top, bottom]) {
+			expect(line).not.toMatch(/\u001b\]|\u0007|\u001b\[2J|\u202e|[\r\n\u2028]/);
+		}
+	});
+
 	it("keeps raw model, directory, branch and session text on their own rows", () => {
 		const dirty = (value: string) => `${value}\nnext\tpart\u2028last\u001b[2J`;
 		const lines = footerLines(
@@ -117,7 +138,7 @@ describe("footer", () => {
 		const busy = new Map([...statuses, ["octocode-team", "agents ".repeat(40)]]);
 		const [normal] = footerLines(long, null, statuses, theme, 170);
 		// The footer is the one home of the mode: its full chip names the shortcut while there is room.
-		expect(normal).toContain("permission: manual · Shift+Tab");
+		expect(normal).toContain("permission: manual · shift+tab");
 		for (const width of [75, 40, 26, 20, 10]) {
 			const lines = footerLines(long, null, busy, theme, width);
 			expect(lines[0], `mode at ${width} columns`).toContain("manual");
@@ -165,7 +186,7 @@ describe("footer", () => {
 		const [narrow] = footerLines(
 			{ ...state, context: undefined },
 			"main",
-			new Map([["octocode-permission", "⏵⏵ permission: full · Shift+Tab"]]),
+			new Map([["octocode-permission", "⏵⏵ permission: full · shift+tab"]]),
 			theme,
 			40,
 		);
@@ -173,7 +194,7 @@ describe("footer", () => {
 		const [squeezed] = footerLines(
 			{ ...state, context: undefined, thinking: undefined },
 			"main",
-			new Map([["octocode-permission", "⏸ permission: manual · Shift+Tab"]]),
+			new Map([["octocode-permission", "⏸ permission: manual · shift+tab"]]),
 			theme,
 			26,
 		);
@@ -236,7 +257,7 @@ describe("footer line 1 work statuses", () => {
 
 describe("footer under a busy status row", () => {
 	const busy = new Map([
-		["octocode-permission", "⏸ permission: manual · Shift+Tab"],
+		["octocode-permission", "⏸ permission: manual · shift+tab"],
 		["octocode-team", "agents 3/6 ↑12k ↓34k"],
 		["octocode-subagents", "3 background agents"],
 		["octocode-bash", "2 bash jobs"],
@@ -513,11 +534,11 @@ describe("footer wiring", () => {
 	});
 
 	it("counts what full ran in the chip, and keeps the count in the short form", () => {
-		expect(chipText("full")).toBe("⏵⏵ permission: full · Shift+Tab");
-		expect(chipText("full", { actions: 0, warnings: 0 })).toBe("⏵⏵ permission: full · Shift+Tab");
-		expect(chipText("full", { actions: 1, warnings: 0 })).toBe("⏵⏵ permission: full · 1 action · Shift+Tab");
-		expect(chipText("full", { actions: 12, warnings: 2 })).toBe("⏵⏵ permission: full · 12 actions · 2 ⚠ · Shift+Tab");
-		expect(chipText("workspace", { actions: 12, warnings: 2 })).toBe("permission: workspace · Shift+Tab");
+		expect(chipText("full")).toBe("⏵⏵ permission: full · shift+tab");
+		expect(chipText("full", { actions: 0, warnings: 0 })).toBe("⏵⏵ permission: full · shift+tab");
+		expect(chipText("full", { actions: 1, warnings: 0 })).toBe("⏵⏵ permission: full · 1 action · shift+tab");
+		expect(chipText("full", { actions: 12, warnings: 2 })).toBe("⏵⏵ permission: full · 12 actions · 2 ⚠ · shift+tab");
+		expect(chipText("workspace", { actions: 12, warnings: 2 })).toBe("permission: workspace · shift+tab");
 		const counted = new Map([["octocode-permission", chipText("full", { actions: 12, warnings: 2 })]]);
 		const [narrow] = footerLines({ ...state, context: undefined }, "main", counted, theme, 44);
 		expect(narrow).toContain("⏵⏵ full · 12 actions · 2 ⚠");

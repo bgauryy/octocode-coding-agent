@@ -325,11 +325,29 @@ export interface RenderLatexOptions {
 	display?: boolean;
 }
 
+const INTERNAL_MARKER_PATTERN = /[\u{f0000}-\u{f0005}]/u;
+
 /**
  * Render a basic LaTeX math expression as terminal-friendly Unicode text.
  * Returns undefined when the expression contains unsupported or malformed syntax.
  */
 export function renderLatex(source: string, options: RenderLatexOptions = {}): string | undefined {
+	// The private-use marker characters stand for layout nodes; taken from the source they could point a node at itself.
+	if (INTERNAL_MARKER_PATTERN.test(source)) {
+		return undefined;
+	}
+	try {
+		return renderLatexSource(source, options);
+	} catch (error) {
+		// Nesting deeper than the stack, or more rows than one call can spread, is beyond what this renderer supports.
+		if (error instanceof RangeError) {
+			return undefined;
+		}
+		throw error;
+	}
+}
+
+function renderLatexSource(source: string, options: RenderLatexOptions): string | undefined {
 	const layoutNodes: LayoutNode[] = [];
 	const rendered = new LatexParser(source, layoutNodes, options.display === true).render();
 	if (rendered === undefined) {

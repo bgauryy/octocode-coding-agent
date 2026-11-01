@@ -1,5 +1,3 @@
-import type { TelemetryMetrics } from "./metrics.ts";
-
 export type AttributeValue = string | number | boolean | readonly string[] | readonly number[] | readonly boolean[];
 
 export interface SpanAttributes {
@@ -107,4 +105,37 @@ export interface TelemetrySpan extends TelemetryContext {
 	addEvent(name: string, attributes?: SpanAttributes): void;
 	setAttributes(attributes: SpanAttributes): void;
 	setStatus(status: SpanStatus): void;
+}
+
+export interface InstrumentOptions {
+	description?: string;
+	unit?: string;
+}
+
+export interface HistogramOptions extends InstrumentOptions {
+	/** Bucket hints; callers supply finite, strictly increasing values. */
+	boundaries?: readonly number[];
+}
+
+export interface TelemetryCounter {
+	add(value: number, attributes?: SpanAttributes): void;
+}
+
+export interface TelemetryUpDownCounter {
+	add(value: number, attributes?: SpanAttributes): void;
+}
+
+export interface TelemetryHistogram {
+	record(value: number, attributes?: SpanAttributes, context?: TelemetryContext): void;
+}
+
+/**
+ * Optional adapter capability with synchronous factories and recording methods.
+ * Typed inputs are trusted; callers supply finite measurements and nonnegative counter increments.
+ * Malformed input behavior is unspecified.
+ */
+export interface TelemetryMetrics {
+	counter(name: string, options?: InstrumentOptions): TelemetryCounter;
+	upDownCounter(name: string, options?: InstrumentOptions): TelemetryUpDownCounter;
+	histogram(name: string, options?: HistogramOptions): TelemetryHistogram;
 }

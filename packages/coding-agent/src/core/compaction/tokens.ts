@@ -15,10 +15,6 @@ import {
 } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry, SessionProjection } from "../session-manager.ts";
 
-// The estimators live in ai; compaction code reaches them through here.
-export { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
-export type { ContextUsageEstimate };
-
 /**
  * Find the last valid assistant message usage from session entries.
  */
@@ -34,11 +30,12 @@ export function getLastAssistantUsage(entries: SessionEntry[]): Usage | undefine
 }
 
 /**
- * Estimate context tokens from messages, using the last assistant usage that still describes the prefix (see ai's
- * `estimateContextTokensWith`) and estimating what follows it with `estimateTokens`.
+ * Estimate context tokens from messages, using the last valid assistant usage and estimating what follows it with
+ * `estimateTokens`. Session structure owns staleness here: `estimateProjectedContextTokens` and the compaction check
+ * drop usage captured before a later compaction or context edit, so timestamps are not consulted.
  */
 export function estimateContextTokens(messages: AgentMessage[]): ContextUsageEstimate {
-	return estimateContextTokensWith(messages, estimateTokens);
+	return estimateContextTokensWith(messages, estimateTokens, { staleUsage: "none" });
 }
 
 /** Estimate projected context without trusting usage captured before a later edit or compaction. */

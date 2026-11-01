@@ -1,4 +1,5 @@
-import type { FileEntry, SessionEntry } from "./types.ts";
+import { pathFromRoot } from "./ancestors.ts";
+import type { FileEntry, SessionEntry, SessionInfoEntry, SessionNameSource } from "./types.ts";
 
 /**
  * Entry, label and leaf state of one `SessionManager`, shared with the modules that load,
@@ -46,15 +47,8 @@ export function getSessionEntries(state: SessionState): SessionEntry[] {
 
 /** Walk from an entry (default: the leaf) to root, returning all entries in path order. */
 export function getBranchEntries(state: SessionState, fromId?: string): SessionEntry[] {
-	const path: SessionEntry[] = [];
 	const startId = fromId ?? state.leafId;
-	let current = startId ? state.byId.get(startId) : undefined;
-	while (current) {
-		path.push(current);
-		current = current.parentId ? state.byId.get(current.parentId) : undefined;
-	}
-	path.reverse();
-	return path;
+	return pathFromRoot(startId ? state.byId.get(startId) : undefined, (id) => state.byId.get(id));
 }
 
 /** Get all direct children of an entry. */
@@ -68,16 +62,25 @@ export function getChildEntries(state: SessionState, parentId: string): SessionE
 	return children;
 }
 
-/** The current session name from the latest session_info entry, if any. */
-export function getLatestSessionName(state: SessionState): string | undefined {
-	// Walk entries in reverse to find the latest session_info entry.
-	// Empty names explicitly clear the session title. Reads fileEntries directly: the footer
-	// calls this on every frame, and getEntries() copies the whole session.
+/** The latest session_info entry, if any. */
+function latestSessionInfo(state: SessionState): SessionInfoEntry | undefined {
+	// Walk entries in reverse. Reads fileEntries directly: the footer calls this on every frame, and getEntries()
+	// copies the whole session.
 	for (let i = state.fileEntries.length - 1; i >= 0; i--) {
 		const entry = state.fileEntries[i];
-		if (entry.type === "session_info") {
-			return entry.name?.trim() || undefined;
-		}
+		if (entry.type === "session_info") return entry;
 	}
 	return undefined;
+}
+
+/** The current session name from the latest session_info entry, if any. Empty names explicitly clear it. */
+export function getLatestSessionName(state: SessionState): string | undefined {
+	return latestSessionInfo(state)?.name?.trim() || undefined;
+}
+
+/** Who gave the current session name; undefined when there is no name. */
+export function getLatestSessionNameSource(state: SessionState): SessionNameSource | undefined {
+	const entry = latestSessionInfo(state);
+	if (!entry?.name?.trim()) return undefined;
+	return entry.source ?? "user";
 }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, realpathSync } from "fs";
 import { createRequire } from "module";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
@@ -73,9 +73,14 @@ export function getExamplesPath(): string {
 	return resolve(join(getPackageDir(), "examples"));
 }
 
+/** The Markdown prompt files under `octocode/instructions/` (policy, lean, subagent, system, workflows and roles): `instructions/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
+export function getInstructionsDir(): string {
+	if (isBunBinary) return join(getPackageDir(), "instructions");
+	return join(getSourceOrDistDir(), "octocode", "instructions");
+}
+
 export function getSubagentsDir(): string {
-	if (isBunBinary) return join(getPackageDir(), "roles");
-	return join(getSourceOrDistDir(), "octocode", "instructions", "roles");
+	return join(getInstructionsDir(), "roles");
 }
 
 /** Skills this application ships itself, such as `octocode-context-optimization`: `native-skills/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
@@ -90,17 +95,36 @@ export function getBundledSkillsDir(): string {
 	return join(dirname(createRequire(getPackageJsonPath()).resolve("octocode/package.json")), "skills");
 }
 
+/** The entry file this process was started with, symlinks resolved (an installed `bin` links to the bundle). */
+function loadedEntry(): string | undefined {
+	const entry = process.argv[1];
+	if (!entry) return undefined;
+	try {
+		return realpathSync(entry);
+	} catch {
+		return resolve(entry);
+	}
+}
+
+/**
+ * How to start another Octocode process (subagents, forks, workers): the entry this process runs. A process started from
+ * the bundle starts the bundle even in a checkout with `src/`, so its children never load a peer's half-saved source
+ * edit; a source process, or any other host (tests), uses `src/cli.ts` when it exists.
+ */
 export function getCliInvocation(): { command: string; prefix: string[] } {
 	if (isBunBinary) return { command: process.execPath, prefix: [] };
 	const packageDir = getPackageDir();
 	const sourceCli = join(packageDir, "src", "cli.ts");
-	if (existsSync(sourceCli)) {
+	const bundleCli = join(packageDir, "dist", "bundle", "cli.js");
+	const entry = loadedEntry();
+	const runsBundle = entry !== undefined && existsSync(bundleCli) && entry === realpathSync(bundleCli);
+	if (!runsBundle && existsSync(sourceCli)) {
 		return {
 			command: process.execPath,
 			prefix: ["--import", pathToFileURL(join(packageDir, "scripts", "source-resolver.ts")).href, sourceCli],
 		};
 	}
-	return { command: process.execPath, prefix: [join(packageDir, "dist", "bundle", "cli.js")] };
+	return { command: process.execPath, prefix: [bundleCli] };
 }
 
 /** The installed platform binary of `@octocodeai/octocode-native`, through the package's own resolver (it ships no `bin`). */

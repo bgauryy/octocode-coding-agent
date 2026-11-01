@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
-import { clearConfigValueCache } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { clearConfigValueCache } from "../config-value.ts";
 
 /** Keychain service name shared by every entry; the account is the provider id. */
 const SERVICE = "octocode";
@@ -57,9 +57,22 @@ function assertSecret(secret: string): void {
 	if (CONTROL_CHARACTERS.test(secret)) throw new Error("Cannot store a key with control characters in the keychain.");
 }
 
+/** A keychain command ran and failed. `code` is null when it was killed (a timeout): then it may have taken effect. */
+export class KeychainCommandError extends Error {
+	readonly code: number | null;
+	constructor(message: string, code: number | null) {
+		super(message);
+		this.name = "KeychainCommandError";
+		this.code = code;
+	}
+}
+
 function failure(action: string, backend: string, result: KeychainRunResult): Error {
 	const detail = result.stderr.trim();
-	return new Error(`${backend} could not ${action} (exit code ${result.code ?? "none"})${detail ? `: ${detail}` : ""}`);
+	return new KeychainCommandError(
+		`${backend} could not ${action} (exit code ${result.code ?? "none"})${detail ? `: ${detail}` : ""}`,
+		result.code,
+	);
 }
 
 interface BackendSpec {

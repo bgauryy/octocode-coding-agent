@@ -85,7 +85,13 @@ const profiles = new Map<string, AgentProfile>([
 	],
 	[
 		"browser",
-		{ name: "browser", description: "browser", prompt: "Drive the browser.", tools: "browser,web", headless: true },
+		{
+			name: "browser",
+			description: "browser",
+			prompt: "Drive the browser.",
+			tools: "mcp__browser__*,web",
+			headless: true,
+		},
 	],
 ]);
 
@@ -102,7 +108,7 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 		fakePermission(),
 		() => refused,
 	);
-	// As index.ts wires it: `/octocode agents`, with the `/agents` shortcut.
+	// As index.ts wires it: the `/agents` command.
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
 	commands.register(f.api);
@@ -301,7 +307,7 @@ describe("agent tool with a scripted child", () => {
 				"--tools",
 				"read,bash,file,agent,archive,skill,mcp,mcp__*",
 				"--exclude-tools",
-				"browser",
+				"browser,mcp__browser__*",
 			]),
 		);
 		expect(text).toContain("(Last screenshot: ");
@@ -432,8 +438,9 @@ describe("agent tool with a scripted child", () => {
 			await s.run({ task: "auth error please", profile: "scout", background: true });
 			await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 			const report = String(s.sent[0].message.content);
-			expect(report).toContain("Ran on alt/shared (profile scout: shared).");
-			expect(report).toContain('model: "faux/model"');
+			// The first run's credential refusal steers routing away from `alt` (B347 P2-5): the report names where it ran instead.
+			expect(report).toContain("Ran on faux/model (shared: alt refused its credential).");
+			expect(report).toContain("fix the faux credential with /login");
 			expect(report).not.toContain("narrower task");
 			// On this session's own model, switching to it cannot help: the credential is the fix.
 			const own = await s.run({ task: "auth error please" });
@@ -488,7 +495,7 @@ describe("agent tool with a scripted child", () => {
 			);
 		}
 		for (const [index, child] of facts.entries()) {
-			expect(child.browserVisible).toBe(index === 1 ? "1" : undefined);
+			expect(child.browserVisible).toBeUndefined();
 			expect(child.task).toContain(`Browser mode: headless=${index !== 1}.`);
 			expect(child.rolePrompt).toBe("Drive the browser.");
 			expect(child.rolePromptFile).toBe(facts[0].rolePromptFile);
@@ -1749,7 +1756,7 @@ describe("a child bound to a backlog item", () => {
 		expect(facts.item).toBe("B1");
 		expect(facts.task).toContain("## You\n");
 		expect(facts.task).toContain(
-			" Your backlog item is `B1`: note progress on it and close it when its goal is verified; you may update no other item.",
+			" Your backlog item is `B1`: note progress on it, track its steps under it (`steps`), and close it when its goal is verified; you may update no other item.",
 		);
 		// The parent's own line, after the fence, says the report was noted.
 		expect(text).toMatch(/>>>\nNoted on B1\.\n\nSession [^:\n]+: [^\n]+\.jsonl$/);

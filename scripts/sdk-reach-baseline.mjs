@@ -2,17 +2,14 @@
  * Interactive layers the headless SDK entry (`core/sdk.ts`) still reaches through static value imports, as
  * `importer -> tui | webview | file under modes/` with importers relative to `packages/`. `check:boundaries` fails on a
  * new edge and on a listed edge that is gone. Shrink it by moving theme, keybinding and render helpers out of the
- * terminal layers and by injecting the HTML exporter (`core/export-html`) into the session; never add to it.
+ * terminal layers; the HTML exporter (`core/export-html`) loads lazily and `@octocodeai/octocode-tui/multiplexer` is
+ * headless, so neither is an edge. Never add to it.
  */
 export const SDK_REACH_BASELINE = [
-	"coding-agent/src/core/bug-report.ts -> tui",
-	"coding-agent/src/core/export-html/index.ts -> webview",
-	"coding-agent/src/core/export-html/tool-renderer.ts -> coding-agent/src/modes/interactive/components/tool-execution/reason.ts",
 	"coding-agent/src/core/key-id-schema.ts -> tui",
 	"coding-agent/src/core/keybindings.ts -> tui",
 	"coding-agent/src/core/resource-loader/collections.ts -> tui",
 	"coding-agent/src/core/tools/render-utils.ts -> tui",
-	"coding-agent/src/core/tools/renderers/bash.ts -> coding-agent/src/modes/interactive/components/keybinding-hints.ts",
 	"coding-agent/src/core/tools/renderers/bash.ts -> tui",
 	"coding-agent/src/core/tools/renderers/output.ts -> tui",
 	"coding-agent/src/octocode/agent-tool.ts -> tui",
@@ -46,7 +43,6 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/octocode/team/panel-traffic.ts -> tui",
 	"coding-agent/src/octocode/team/panel.ts -> tui",
 	"coding-agent/src/octocode/team/tools/messages.ts -> tui",
-	"coding-agent/src/octocode/terminal-launch/tmux.ts -> tui",
 	"coding-agent/src/octocode/ui/activity.ts -> coding-agent/src/modes/interactive/components/status-indicator.ts",
 	"coding-agent/src/octocode/ui/activity.ts -> tui",
 	"coding-agent/src/octocode/ui/banner.ts -> tui",
@@ -59,6 +55,7 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/octocode/ui/terminal-title.ts -> tui",
 	"coding-agent/src/octocode/ui/turn-line.ts -> tui",
 	"coding-agent/src/octocode/web-daemon/build.ts -> webview",
+	"coding-agent/src/octocode/workspace/docs.ts -> webview",
 	"coding-agent/src/octocode/workspace/server.ts -> webview",
 	"coding-agent/src/octocode/worktrees/command.ts -> tui",
 	"coding-agent/src/theme/status.ts -> tui",
@@ -68,10 +65,6 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/theme/theme-tui-helpers.ts -> tui",
 	"coding-agent/src/theme/theme.ts -> tui",
 	"coding-agent/src/utils/image-convert.ts -> tui",
-	"mcp/src/tool-definition.ts -> coding-agent/src/modes/interactive/components/keybinding-hints.ts",
 	"mcp/src/tool-definition.ts -> tui",
-	"mcp/src/ui.ts -> coding-agent/src/modes/interactive/components/auth-url.ts",
-	"mcp/src/ui.ts -> coding-agent/src/modes/interactive/components/framed-view.ts",
-	"mcp/src/ui.ts -> coding-agent/src/modes/interactive/components/keybinding-hints.ts",
 	"mcp/src/ui.ts -> tui",
 ];

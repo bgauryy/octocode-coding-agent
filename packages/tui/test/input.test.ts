@@ -35,6 +35,20 @@ describe("Input component", () => {
 		assert.strictEqual(input.getValue(), "\\x");
 	});
 
+	it("keeps no control character from a set value, as typed and pasted text do", () => {
+		const input = new Input();
+		// A stored name or label: OSC 52 and a C1 CSI would reach the terminal when the input draws its value.
+		input.setValue("a\x1b]52;c;eA==\x07b\u009b2Jc\nd\te");
+
+		assert.strictEqual(input.getValue(), "a]52;c;eA==b2Jc d    e");
+		// Only the input's own cursor markers (`ESC _ octo:… BEL`) remain.
+		const drawn = input
+			.render(80)
+			.join("")
+			.replace(/\x1b_octo:[^\x07]*\x07/g, "");
+		assert.ok(!/[\x00-\x1f\x7f-\x9f]/.test(drawn), JSON.stringify(drawn));
+	});
+
 	describe("render", () => {
 		it("supports a custom prompt and styled placeholder", () => {
 			const input = new Input({

@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import type { ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DaemonShell } from "../src/app/daemon/DaemonShell.tsx";
 import { daemonLive } from "../src/app/daemon/live.ts";
@@ -98,6 +99,48 @@ describe("DaemonShell", () => {
 		expect(await screen.findByText("OpenAI")).toBeInTheDocument();
 		await waitFor(() => expect(requests.some((request) => request.url === "/api/config")).toBe(true));
 		expect(screen.queryByRole("textbox")).toBeNull();
+	});
+
+	it("saves a setting through the launch-only admin route with the bearer token and shows the host's answer", async () => {
+		location.hash = "#settings";
+		const writable: ConfigSnapshot = {
+			...config,
+			writable: true,
+			settings: [{ key: "defaultModel", source: "default" }],
+		};
+		const saved: ConfigSnapshot = {
+			...writable,
+			settings: [{ key: "defaultModel", value: "gpt-5", source: "global" }],
+		};
+		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string, init?: RequestInit) => {
+				calls.push({ url, init });
+				const body =
+					url === "/api/sessions"
+						? sessions
+						: url === "/api/repos"
+							? repos
+							: url === "/api/admin/config/settings"
+								? saved
+								: writable;
+				return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+			}),
+		);
+		render(<DaemonShell access="tok" />);
+		const input = await screen.findByLabelText("Value for defaultModel");
+		await userEvent.type(input, "gpt-5");
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		await screen.findByText(/Saved to global settings/);
+
+		const post = calls.find((call) => call.url === "/api/admin/config/settings")!;
+		expect(post.init?.method).toBe("POST");
+		expect(post.init?.headers).toMatchObject({ Authorization: "Bearer tok", "content-type": "application/json" });
+		expect(JSON.parse(post.init?.body as string)).toEqual({ key: "defaultModel", scope: "global", value: "gpt-5" });
+
+		await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Workspace" }), "r1");
+		await waitFor(() => expect(calls.some((call) => call.url === "/api/config?repoId=r1")).toBe(true));
 	});
 
 	it("shows a session that needs a restart, and says when a list was cut short", async () => {

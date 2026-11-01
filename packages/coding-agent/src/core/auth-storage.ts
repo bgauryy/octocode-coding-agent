@@ -3,15 +3,27 @@
  * Provider auth orchestration belongs to ModelRuntime and octocode-ai Models.
  */
 
-import { isActiveCredential, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore } from "@octocodeai/octocode-ai";
+import {
+	isActiveCredential,
+	type AuthOperationOptions,
+	type Credential,
+	type CredentialInfo,
+	type CredentialStore,
+} from "@octocodeai/octocode-ai";
 import { join } from "path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
 import { stripBom } from "../../../common/src/text.ts";
-import { type AuthStorageBackend, type AuthStorageData, FileAuthStorageBackend, InMemoryAuthStorageBackend } from "./auth-storage/backends.ts";
+import {
+	type AuthStorageBackend,
+	type AuthStorageData,
+	FileAuthStorageBackend,
+	InMemoryAuthStorageBackend,
+	type LockFailureState,
+} from "./auth-storage/backends.ts";
 import { detectKeychain, type KeychainBackend } from "./auth-storage/keychain.ts";
-import { resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { resolveConfigValue } from "./config-value.ts";
 import { readJsonFile } from "../../../common/src/json.ts";
 
 export {
@@ -34,6 +46,24 @@ type AuthFileReadState = {
 };
 
 let sharedAuthFileReadState: { authPath: string; readState: AuthFileReadState } | undefined;
+
+/** The credential an own key of `data` holds; a provider id such as `constructor` never reads an inherited property. */
+function ownCredential(data: AuthStorageData, provider: string): Credential | undefined {
+	return Object.hasOwn(data, provider) ? data[provider] : undefined;
+}
+
+/** What `auth.json` held for a provider when a guarded write failed; `unreadable` when it could not be read or parsed. */
+export type HeldCredential = { credential: Credential | undefined } | "unreadable";
+
+/** The `auth.json` entry was removed but its keychain entry could not be; `restored`: the entry was put back. */
+export class KeychainReleaseError extends Error {
+	readonly restored: boolean;
+	constructor(restored: boolean) {
+		super("The keychain entry could not be removed.");
+		this.name = "KeychainReleaseError";
+		this.restored = restored;
+	}
+}
 
 export interface AuthStorageOptions {
 	/** Keychain that holds keys referenced from auth.json; defaults to the platform keychain, detected on first use. */
@@ -82,12 +112,13 @@ export class AuthStorage implements CredentialStore {
 
 	/**
 	 * Removes the keychain entry behind `previous` when its key is our own keychain reference and `next` no longer
-	 * uses it. Failures are ignored: the credential change already succeeded and a leftover entry is harmless.
+	 * uses it. Failures are ignored unless `strict`: the credential change already succeeded and a leftover entry is harmless.
 	 */
 	private async releaseKeychainEntry(
 		provider: string,
 		previous: Credential | undefined,
 		next?: Credential,
+		strict = false,
 	): Promise<void> {
 		if (previous?.type !== "api_key" || !previous.key?.startsWith("!")) return;
 		if (next?.type === "api_key" && next.key === previous.key) return;
@@ -95,8 +126,9 @@ export class AuthStorage implements CredentialStore {
 		if (!keychain?.isOwnReference(previous.key, provider)) return;
 		try {
 			await keychain.remove(provider);
-		} catch {
+		} catch (error) {
 			// Leave the entry; logout must not fail because the keychain is locked or gone.
+			if (strict) throw error;
 		}
 	}
 
@@ -180,7 +212,7 @@ export class AuthStorage implements CredentialStore {
 	}
 
 	async read(provider: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
-		const credential = (await this.readLatestData(options))[provider];
+		const credential = ownCredential(await this.readLatestData(options), provider);
 		options?.signal?.throwIfAborted();
 		if (credential?.type !== "api_key") return credential;
 		if (credential.key === undefined) return credential;
@@ -192,40 +224,101 @@ export class AuthStorage implements CredentialStore {
 		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
 		options?: AuthOperationOptions,
 	): Promise<Credential | undefined> {
+		return this.modifyGuarded(provider, fn, options);
+	}
+
+	/**
+	 * `modify`, plus `onFailure`: when `fn`, the file write or a lock check fails, it runs with what the file holds for
+	 * `provider` before the lock is released, so undoing an outside write cannot interleave with another writer.
+	 */
+	async modifyGuarded(
+		provider: string,
+		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+		options?: AuthOperationOptions,
+		onFailure?: (held: HeldCredential) => Promise<void>,
+	): Promise<Credential | undefined> {
 		let latestData = this.readState.data;
 		let revision: string | undefined;
 		let previous: Credential | undefined;
-		const result = await this.storage.withLockAsync(async (content) => {
-			const currentData = this.parseStorageData(content);
-			previous = currentData[provider];
-			const next = await fn(currentData[provider]);
-			if (next === undefined) {
-				latestData = currentData;
-				revision = this.authPath ? getFileRevision(this.authPath) : undefined;
-				return { result: currentData[provider] };
+		const held = (state: LockFailureState): HeldCredential => {
+			if (state === "unreadable") return state;
+			try {
+				return { credential: ownCredential(this.parseStorageData(state.content), provider) };
+			} catch {
+				return "unreadable";
 			}
+		};
+		const result = await this.storage.withLockAsync(
+			async (content) => {
+				const currentData = this.parseStorageData(content);
+				previous = ownCredential(currentData, provider);
+				const next = await fn(previous);
+				if (next === undefined) {
+					latestData = currentData;
+					revision = this.authPath ? getFileRevision(this.authPath) : undefined;
+					return { result: previous };
+				}
 
-			const merged: AuthStorageData = { ...currentData, [provider]: next };
-			latestData = merged;
-			return { result: next, next: JSON.stringify(merged, null, 2) };
-		}, options);
+				const merged: AuthStorageData = { ...currentData, [provider]: next };
+				latestData = merged;
+				return { result: next, next: JSON.stringify(merged, null, 2) };
+			},
+			options,
+			onFailure && ((state) => onFailure(held(state))),
+		);
 		this.updateReadState(latestData, revision);
 		if (result !== previous) await this.releaseKeychainEntry(provider, previous, result);
 		return result;
 	}
 
-	async delete(provider: string, options?: AuthOperationOptions): Promise<void> {
+	/** Removes the entry under the lock and returns what it held. */
+	private async removeEntry(provider: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		let latestData = this.readState.data;
 		let previous: Credential | undefined;
 		await this.storage.withLockAsync(async (content) => {
 			const currentData = this.parseStorageData(content);
-			previous = currentData[provider];
+			previous = ownCredential(currentData, provider);
 			delete currentData[provider];
 			latestData = currentData;
 			return { result: undefined, next: JSON.stringify(currentData, null, 2) };
 		}, options);
 		this.updateReadState(latestData);
-		await this.releaseKeychainEntry(provider, previous);
+		return previous;
+	}
+
+	async delete(provider: string, options?: AuthOperationOptions): Promise<void> {
+		await this.releaseKeychainEntry(provider, await this.removeEntry(provider, options));
+	}
+
+	/**
+	 * `delete` that reports a keychain entry it could not remove, so a caller never says "cleared" while the secret
+	 * stays. The `auth.json` entry is put back first, so the credential still works and the clear can be retried;
+	 * `KeychainReleaseError.restored` says whether that worked.
+	 */
+	async deleteOrKeep(provider: string, options?: AuthOperationOptions): Promise<void> {
+		const previous = await this.removeEntry(provider, options);
+		try {
+			await this.releaseKeychainEntry(provider, previous, undefined, true);
+		} catch {
+			throw new KeychainReleaseError(await this.restoreEntry(provider, previous));
+		}
+	}
+
+	private async restoreEntry(provider: string, previous: Credential | undefined): Promise<boolean> {
+		if (!previous) return false;
+		try {
+			let latestData = this.readState.data;
+			await this.storage.withLockAsync(async (content) => {
+				const currentData = this.parseStorageData(content);
+				if (Object.hasOwn(currentData, provider)) return { result: undefined };
+				latestData = { ...currentData, [provider]: previous };
+				return { result: undefined, next: JSON.stringify(latestData, null, 2) };
+			});
+			this.updateReadState(latestData);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	/** List credential metadata without resolving configured key values. */
@@ -248,7 +341,7 @@ export function readStoredCredential(
 ): Credential | undefined {
 	try {
 		const data = readJsonFile(normalizePath(authPath)) as AuthStorageData;
-		return data[providerId];
+		return ownCredential(data, providerId);
 	} catch {
 		return undefined;
 	}

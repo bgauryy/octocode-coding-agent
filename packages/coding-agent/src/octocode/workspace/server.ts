@@ -4,10 +4,11 @@ import {
 	type ApplicationConnection,
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
-import { redactData } from "../../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { renderBacklogHtml } from "@octocodeai/octocode-webview";
 import {
 	WorkspaceCommandSchema,
+	BacklogCommandSchema,
 	BacklogMutationSchema,
 	WORKSPACE_ROUTES,
 	type WorkspaceServerEvent,
@@ -18,12 +19,14 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, WebSocket } from "ws";
 import { Value } from "typebox/value";
-import { USER_AUTHOR } from "../agentdb/author.ts";
+import { USER_AUTHOR } from "../agentdb/api.ts";
 import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
-import { BacklogError } from "../backlog/store.ts";
+import { BacklogError, TaskError } from "../backlog/store.ts";
+import { applyBacklogCommand } from "../backlog/web-commands.ts";
 import { handleApplicationDataRequest } from "./application-data.ts";
 import { pumpApplicationFrames } from "./application-stream.ts";
+import { handleDocsRequest } from "./docs.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 
@@ -135,7 +138,7 @@ export async function startWorkspaceWeb(
 			const supplied = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
 			const expected = Buffer.from(token);
 			if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
-				return reply(401, { error: "Reopen /backlog to connect to this board." });
+				return reply(401, { error: "Reopen /web to connect to this board." });
 			if (req.url === WORKSPACE_ROUTES.application && !workspace?.application)
 				return reply(503, { error: "Application controls are unavailable in this session." });
 			if (req.url === WORKSPACE_ROUTES.workspace && !workspace)
@@ -153,6 +156,7 @@ export async function startWorkspaceWeb(
 				return reply(200, { events, before: events.length === 100 ? events[0].id : undefined });
 			}
 			if (handleReportsRequest(req, requestUrl, backlog.repoRoot, reply)) return;
+			if (await handleDocsRequest(req, requestUrl, backlog.repoRoot, reply)) return;
 			if (
 				req.url !== WORKSPACE_ROUTES.backlogs &&
 				req.url !== WORKSPACE_ROUTES.workspace &&
@@ -196,6 +200,13 @@ export async function startWorkspaceWeb(
 				workspaceUpdates();
 				return reply(200, { receipt });
 			}
+			if (typeof input === "object" && input !== null && "command" in input) {
+				if (!Value.Check(BacklogCommandSchema, input)) return reply(400, { error: "Invalid backlog command" });
+				const result = applyBacklogCommand(backlog.store, input, backlog.session);
+				notifyChanged();
+				broadcast();
+				return reply(200, result);
+			}
 			if (!Value.Check(BacklogMutationSchema, input)) return reply(400, { error: "Invalid backlog fields" });
 			const actor = { ...backlog.actor, kind: "human" as const };
 			const { op, id, reason, ...fields } = input;
@@ -229,12 +240,16 @@ export async function startWorkspaceWeb(
 		};
 		void handle().catch((error: unknown) =>
 			reply(409, {
-				error: error instanceof Error ? error.message : "Backlog change failed",
+				// Application and agent commands fail with arbitrary text (provider, tool, git): redact it as the daemon does.
+				error: error instanceof Error ? redactSecrets(error.message) : "Backlog change failed",
 				...(error instanceof BacklogError && error.current ? { current: error.current } : {}),
+				...(error instanceof TaskError && error.task ? { task: error.task } : {}),
 			}),
 		);
 	});
 	server.on("upgrade", (req, socket, head) => {
+		// Node hands the socket over without its own error listener: a peer that resets must not end the session.
+		socket.on("error", () => socket.destroy());
 		if (
 			req.url !== WORKSPACE_ROUTES.live ||
 			req.headers.host !== origin.slice(7) ||
@@ -256,7 +271,7 @@ export async function startWorkspaceWeb(
 			});
 			client.on("message", (data, binary) => {
 				if (authenticated.has(client)) return client.close(1008, "Updates only");
-				if (binary) return client.close(1008, "Reopen /backlog");
+				if (binary) return client.close(1008, "Reopen /web");
 				// The default binaryType ("nodebuffer") delivers each message as one Buffer.
 				let supplied = (data as Buffer).toString();
 				let cursor: ApplicationCursor | undefined;
@@ -283,7 +298,7 @@ export async function startWorkspaceWeb(
 						cursor = value;
 					}
 				}
-				if (!authorized(supplied)) return client.close(1008, "Reopen /backlog");
+				if (!authorized(supplied)) return client.close(1008, "Reopen /web");
 				clearTimeout(timeout);
 				authenticated.add(client);
 				try {

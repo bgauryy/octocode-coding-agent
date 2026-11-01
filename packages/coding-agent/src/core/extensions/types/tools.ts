@@ -137,7 +137,13 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	label: string;
 	/** Description for LLM */
 	description: string;
-	/** Optional one-line snippet for the Available tools section in the default system prompt. Custom tools are omitted from that section when this is not provided. */
+	/**
+	 * One short line on what the tool is for, plus when to use it where that decides the choice between tools (how to
+	 * call it belongs in the description), listed as `- name: snippet` in the `<tools>` section of the system prompt, in
+	 * declaration order, with or without a custom prompt. Every native tool sets one; SDK and extension tools may. A tool
+	 * without one is not listed and the section is absent when no active tool has one. MCP tools are described in
+	 * `<mcps>`, so a snippet on one is ignored.
+	 */
 	promptSnippet?: string;
 	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
 	promptGuidelines?: string[];
@@ -150,8 +156,11 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	 * stub keeps its exact contract here. Never sent to the provider.
 	 */
 	validationParameters?: TSchema;
-	/** Text appended to this tool's validation failures, such as its typed signature. Never sent to the provider. */
-	validationHint?: () => string | undefined;
+	/**
+	 * Text appended to this tool's validation failures, such as its typed signature. `envelope` is true when every
+	 * problem is at the top level of the arguments. Never sent to the provider.
+	 */
+	validationHint?: (failure: { envelope: boolean }) => string | undefined;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
 	renderShell?: "default" | "self";
 

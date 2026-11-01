@@ -40,21 +40,50 @@ export interface Subcommand {
 	complete?(prefix: string): AutocompleteItem[] | null;
 }
 
-/** What to run instead of `/octocode <args>`; `commands` are the registered names, so the list cannot go stale. */
-export function legacyNativeCommandGuidance(args: string, commands: readonly string[] = []): string {
+/** A retired `/octocode` input, with its arguments. */
+const RETIRED_COMMAND = /^\/octocode(?:\s+(.*))?$/s;
+
+/**
+ * The retired `/octocode` forms and what replaced them: bare `/octocode [backlogs]` opened the web workspace, now `/web`,
+ * and `/octocode <command> ...` was the old namespace. `from` is the retired form after `/octocode`, `to` the command
+ * line to run instead; undefined when no single registered command replaces it.
+ */
+function legacyReplacement(args: string, commands: readonly string[]): { from: string; to: string } | undefined {
 	const line = args.trim();
 	const name = line.split(/\s+/, 1)[0] ?? "";
 	const rest = line.slice(name.length).trimStart();
-	if (name === "mcp" && /^restart(?:\s|$)/.test(rest))
-		return "/octocode mcp restart moved to /mcp reconnect octocode. Run the new command to continue.";
-	if (name === "external")
-		return `/octocode external moved to /agents external${rest ? ` ${rest}` : ""}. Run the new command to continue.`;
-	if (name === "mcp" || commands.includes(name))
-		return `/octocode ${name} moved to /${name}${rest ? ` ${rest}` : ""}. Run the new command to continue.`;
+	const withRest = (command: string) => (rest ? `${command} ${rest}` : command);
+	if ((name === "" || name === "backlogs") && commands.includes("web"))
+		return { from: line, to: line ? `web ${line}` : "web" };
+	if (name === "mcp" && /^restart(?:\s|$)/.test(rest)) return { from: "mcp restart", to: "mcp reconnect octocode" };
+	if (name === "external") return { from: name, to: withRest("agents external") };
+	// `/mcp` belongs to the MCP extension, so it is a replacement even when `commands` does not list it.
+	if (name === "mcp" || commands.includes(name)) return { from: name, to: withRest(name) };
+	return undefined;
+}
+
+/**
+ * What to run instead of a retired `/octocode` form. `commands` are the registered names, so the list cannot go stale.
+ */
+export function legacyNativeCommandGuidance(args: string, commands: readonly string[] = []): string {
+	const replacement = legacyReplacement(args, commands);
+	if (replacement)
+		return `/octocode${replacement.from ? ` ${replacement.from}` : ""} moved to /${replacement.to}. Run the new command to continue.`;
 	// `/mcp` belongs to the MCP extension, not to these subcommands.
 	const names = [...new Set([...commands, "mcp"])].sort().map((command) => `/${command}`);
 	const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
 	return `Commands now have direct names: ${list}.`;
+}
+
+/**
+ * For input in a retired `/octocode` form, the registered command line that replaced it (`web`, `web backlogs`,
+ * `permissions manual`), or null when no registered command does; undefined when `text` is not a retired form.
+ */
+export function retiredCommandReplacement(text: string, commands: readonly string[]): string | null | undefined {
+	const match = RETIRED_COMMAND.exec(text.trim());
+	if (!match) return undefined;
+	const to = legacyReplacement(match[1] ?? "", commands)?.to;
+	return to && commands.includes(to.split(" ", 1)[0]) ? to : null;
 }
 
 export class Subcommands {
@@ -95,39 +124,26 @@ export class Subcommands {
 				description: command.description,
 				...(command.argumentHint && { argumentHint: command.argumentHint }),
 				getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
-				handler: async (args, ctx) => {
-					if (name === "octocode" && this.retiredForm(command, args)) {
-						say(ctx, this.guidance(args), "warning");
-						return;
-					}
-					return command.dialog === "interaction"
+				handler: async (args, ctx) =>
+					command.dialog === "interaction"
 						? command.handler(args.trim(), ctx)
-						: withDialog(() => command.handler(args.trim(), ctx));
-				},
+						: withDialog(() => command.handler(args.trim(), ctx)),
 			});
 		}
-		// Reached when commands are not dispatched first (prompt templates off) or `/octocode` is not registered.
+		// No command is named `octocode`, so SDK and RPC input reaches this hook; the terminal reports it as unknown first.
 		api.on("input", async (event, ctx) => {
-			const match = /^\/octocode(?:\s+(.*))?$/s.exec(event.text.trim());
+			const match = RETIRED_COMMAND.exec(event.text.trim());
 			if (!match) return { action: "continue" };
-			// Bare /octocode is now the live board; only the retired namespaced form needs migration guidance.
-			if (!match[1]?.trim() && this.has("octocode")) return { action: "continue" };
 			say(ctx, this.guidance(match[1] ?? ""), "warning");
 			return { action: "handled" };
 		});
 	}
-	/** What to run instead of `/octocode <args>`, naming the registered direct commands. */
+	/** What to run instead of a retired `/octocode` form, naming the registered direct commands. */
 	private guidance(args: string): string {
 		return legacyNativeCommandGuidance(
 			args,
 			this.list().map(([name]) => name),
 		);
-	}
-	/** `/octocode <args>` is the retired namespaced form unless its first word is one the `/octocode` command offers itself. */
-	private retiredForm(command: Subcommand, args: string): boolean {
-		const word = args.trim().split(/\s+/, 1)[0] ?? "";
-		if (!word) return false;
-		return !(command.complete?.("") ?? []).some((item) => item.value === word);
 	}
 }
 

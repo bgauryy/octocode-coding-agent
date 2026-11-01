@@ -11,6 +11,20 @@ export const autocompleteBoundaryRegex = new RegExp(`(?:^|${autocompleteSeparato
 
 export const PUNCTUATION_REGEX = /[(){}[\]<>.,;:'"!?+\-=*/\\|&%^$#@~`]/;
 
+// C0 controls, DEL and C1 controls: code points a terminal may read as the start of a control sequence.
+const CONTROL_CHARACTER_REGEX = /[\x00-\x1f\x7f-\x9f]/;
+const CONTROL_CHARACTERS_REGEX = /[\x00-\x1f\x7f-\x9f]/g;
+
+/** Whether text holds a C0, DEL or C1 control character, so writing it to the terminal could start an escape sequence. */
+export function hasControlCharacter(text: string): boolean {
+	return CONTROL_CHARACTER_REGEX.test(text);
+}
+
+/** Remove C0, DEL and C1 control characters. */
+export function stripControlCharacters(text: string): string {
+	return text.replace(CONTROL_CHARACTERS_REGEX, "");
+}
+
 /**
  * Check if a character is whitespace.
  */

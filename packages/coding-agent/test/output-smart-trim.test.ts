@@ -57,7 +57,9 @@ describe("OutputAccumulator smart trim", () => {
 		const snapshot = accumulate(chunks);
 		const text = snapshot.content;
 		// The matched block and its marker are paid from the tail's share: 3 lines + 1 fewer tail lines.
-		expect(text).toContain("[... 19404 lines elided; 3 matched lines below, then the end of the output]\n");
+		expect(text).toContain(
+			"[... 19404 lines elided; 3 lines matching error, fail, panic, exception, traceback, fatal, assert below, then the end of the output]\n",
+		);
 		expect(text).toContain("\n  150: Traceback (most recent call last):\n");
 		expect(text).toContain("\n  1834: src/a.ts(3,4): error TS2322: Type 'string' is not assignable\n");
 		expect(text).toContain("\n  9000: FAILED tests/b.test.ts > does a thing\n");

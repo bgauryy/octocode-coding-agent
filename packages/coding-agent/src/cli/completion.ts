@@ -1,3 +1,4 @@
+import "../octocode/mcp-host/core-install.ts";
 import { shellCompletion as renderShellCompletion } from "../octocode/shared/shell-completion.ts";
 import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -8,6 +8,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
 import { setRegisteredThemes } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { disposeLoadedResources } from "./loaded-resources.ts";
 import { showTreeNavigationResult } from "./session-navigation.ts";
 
 /** Interactive-mode members used by session binding. */
@@ -205,6 +206,8 @@ export async function rebindCurrentSession(
 }
 
 export function renderCurrentSessionState(host: SessionBindingHost): void {
+	// Live rows subscribe to the outgoing session's event bus; stop them before dropping them.
+	disposeLoadedResources(host.loadedResourcesContainer);
 	host.loadedResourcesContainer.clear();
 	host.chatContainer.clear();
 	host.pendingMessagesContainer.clear();

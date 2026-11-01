@@ -257,7 +257,8 @@ describe("Token Statistics on Abort", () => {
 		// usage in the message_start event the way Anthropic does — usage only
 		// arrives at message_stop. Aborting mid-stream therefore loses input/output
 		// token counts. Non-streaming usage works (see total-tokens.test.ts).
-		// Re-enable once upstream sends usage in message_start.
+		// Re-enable once upstream sends usage in message_start; revalidation is
+		// tracked as backlog B375.
 		it.skip("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
 			await testTokensOnAbort(llm);
 		});

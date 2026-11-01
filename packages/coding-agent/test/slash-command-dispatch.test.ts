@@ -28,7 +28,7 @@ describe("built-in slash commands", () => {
 			expect(Object.keys(command)).not.toContain("aliases");
 			expect(getBuiltinCommand(command.name)).toBe(command);
 		}
-		for (const name of ["qui", "Settings", "sessions", "providers", "models", "thinking", "clear", "exit", "config"])
+		for (const name of ["qui", "Settings", "sessions", "providers", "models", "thinking", "exit", "config"])
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
@@ -47,20 +47,53 @@ describe("built-in slash commands", () => {
 			instance[method] = () => effects.push(method);
 		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
-		for (const removed of ["/models", "/thinking high", "/providers", "/clear", "/reset", "/exit", "/config", "/stats"])
+		for (const removed of ["/models", "/thinking high", "/providers", "/exit", "/config", "/stats"])
 			await instance.defaultEditor.onSubmit(removed);
 		expect(effects).toEqual([]);
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
 			"Unknown command /models. Did you mean /model?",
 			"Unknown command /thinking. Search commands with /help thinking.",
 			"Unknown command /providers. Search commands with /help providers.",
-			"Unknown command /clear. Search commands with /help clear.",
-			"Unknown command /reset. Search commands with /help reset.",
-			"Unknown command /exit. Did you mean /quit?",
+			"Unknown command /exit. Search commands with /help exit.",
 			"Unknown command /config. Search commands with /help config.",
 			"Unknown command /stats. Did you mean /status?",
 		]);
 		expect(instance.editor.setText).toHaveBeenLastCalledWith("/stats");
+	});
+
+	it("points retired names, typos and topic words at the owning command, and never at an unrelated short one", async () => {
+		const instance = mode();
+		const effects: string[] = [];
+		for (const method of ["handleClearCommand", "handleBugCommand", "shutdown"])
+			instance[method] = () => effects.push(method);
+		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
+		const web = { name: "web", description: "Open the web workspace" };
+		const skills = ["octocode-agentic-prompts", "octocode-research"].map((name) => ({ name, description: "Skill" }));
+		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, web, ...skills];
+		for (const text of ["/octocode", "/octocode backlogs", "/octocode model", "/wbe", "/workspace", "/dog"])
+			await instance.defaultEditor.onSubmit(text);
+		// Without `/web` registered, a 3-letter word two edits from `/new` is not a typo of it.
+		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
+		await instance.defaultEditor.onSubmit("/web");
+		expect(effects).toEqual([]);
+		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
+			"Unknown command /octocode. Did you mean /web?",
+			"Unknown command /octocode. Did you mean /web backlogs?",
+			"Unknown command /octocode. Did you mean /model?",
+			"Unknown command /wbe. Did you mean /web?",
+			"Unknown command /workspace. Did you mean /web?",
+			"Unknown command /dog. Search commands with /help dog.",
+			"Unknown command /web. Search commands with /help web.",
+		]);
+		expect(instance.editor.setText.mock.calls.map(([text]: [string]) => text)).toEqual([
+			"/octocode",
+			"/octocode backlogs",
+			"/octocode model",
+			"/wbe",
+			"/workspace",
+			"/dog",
+			"/web",
+		]);
 	});
 
 	it("dispatches /login to the provider manager and refuses unavailable native commands", async () => {
@@ -137,6 +170,10 @@ describe("built-in slash commands", () => {
 		await instance.defaultEditor.onSubmit("/fork");
 		await instance.defaultEditor.onSubmit("/clone");
 		expect(instance.handleClearCommand).toHaveBeenCalledOnce();
+		// /clear and /reset start over exactly like /new, including the optional name for the previous session.
+		await instance.defaultEditor.onSubmit("/clear");
+		await instance.defaultEditor.onSubmit("/reset old work");
+		expect(instance.handleClearCommand.mock.calls).toEqual([[undefined], [undefined], ["old work"]]);
 		expect(instance.handleCloneCommand).toHaveBeenCalledOnce();
 		expect(instance.showUserMessageSelector).toHaveBeenCalledOnce();
 	});

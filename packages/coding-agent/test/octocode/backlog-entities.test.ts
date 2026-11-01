@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { backlog } from "../../src/octocode/agentdb/api.ts";
 import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
@@ -107,7 +108,7 @@ describe("evidence links", () => {
 describe("backlog composition", () => {
 	it("captures a title, then enforces context and completion at the store", () => {
 		const item = store.add({ title: "Quick thought", createdBy: "user" });
-		expect(item).toMatchObject({ type: "task", dependsOn: [], goal: "", why: "" });
+		expect(item).toMatchObject({ type: "feature", dependsOn: [], goal: "", why: "" });
 		expect(() => store.update(item.ref, { state: "ongoing" }, actor)).toThrow(
 			/B1 needs goal \(the done criterion\) and why \(the reason for the work\)/,
 		);
@@ -227,7 +228,9 @@ describe("backlog composition", () => {
 	it("checks open descendants beyond an already completed child", () => {
 		const epic = add("Epic", { type: "epic" });
 		const child = add("Child", { parentId: epic.ref });
-		const grandchild = add("Grandchild", { parentId: child.ref });
+		const grandchild = add("Grandchild", { parentId: epic.ref });
+		// New writes cannot nest an item under an item; a row from before the depth rules can be one.
+		backlog.setParent(db.db, grandchild.rowId, child.rowId);
 		store.update(grandchild.ref, { state: "done", completion: result() }, actor);
 		store.update(child.ref, { state: "done", completion: result() }, actor);
 		store.update(grandchild.ref, { state: "todo", note: "New evidence" }, actor);

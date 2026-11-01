@@ -33,12 +33,12 @@ describe("linger front matter", () => {
 		expect(() => profile(`linger: ${value}`)).toThrow(/^linger must be a non-negative integer of seconds/);
 	});
 
-	it("is set for the bundled browser role, which lists MCP browser tools and clasify before the native browser", () => {
+	it("is set for the bundled browser role, which lists MCP browser tools and clasify and no native browser tool", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		expect(browser.linger).toBe(900);
 		const tools = allowed(browser.tools);
 		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "mcp__octocode__clasify"]);
-		expect(tools.indexOf("browser")).toBeGreaterThan(tools.indexOf("mcp__octocode__clasify"));
+		expect(tools).not.toContain("browser");
 	});
 
 	it("gives the browser role the page-awareness loop and the follow-up contract", () => {

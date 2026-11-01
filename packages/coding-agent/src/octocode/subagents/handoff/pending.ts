@@ -74,29 +74,15 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 			continue;
 		}
 		try {
-			const value: unknown = JSON.parse(await fsp.readFile(claim, "utf8"));
-			if (
-				!isRecord(value) ||
-				typeof value.content !== "string" ||
-				typeof value.wake !== "boolean" ||
-				!isRecord(value.details) ||
-				typeof value.details.id !== "string" ||
-				typeof value.details.summary !== "string" ||
-				!["done", "failed", "stopped"].includes(String(value.details.status)) ||
-				(value.reportId !== undefined && (typeof value.reportId !== "string" || !value.reportId))
-			)
-				throw new Error("Invalid pending subagent report");
-			if (value.details.structured !== undefined) {
-				try {
-					validateStoredStructuredResult(value.details.structured);
-				} catch {
-					// Preserve corrupt contract metadata for diagnosis without delivering a false typed result.
-					await fsp.rename(claim, `${file}.invalid`);
-					process.stderr.write("Quarantined a saved subagent report with invalid result schema metadata\n");
-					continue;
-				}
+			const report = parseReport(await fsp.readFile(claim, "utf8"));
+			if (typeof report === "string") {
+				// Moved aside, not renamed back: it would be read again at every take and never delivered. It keeps its bytes
+				// for diagnosis, and `.invalid` does not end in `.json`, so no take reads it again. Saves appear only by an
+				// atomic rename (`savePendingReport`), so a report still being written is never judged here.
+				await fsp.rename(claim, `${file}.invalid`);
+				process.stderr.write(`Quarantined a saved subagent report ${report}: ${file}.invalid\n`);
+				continue;
 			}
-			const report = value as unknown as Report;
 			if (report.reportId === undefined) {
 				report.reportId = crypto.randomUUID();
 				await atomicWriteFile(claim, JSON.stringify(report), undefined, { mode: 0o600 });
@@ -110,7 +96,7 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 			claims.set(late, { claim, file });
 			taken.push(late);
 		} catch {
-			// Unreadable: it stays where it was.
+			// Unreadable now (an I/O error, not bad content): it goes back for the next take.
 			try {
 				await fsp.rename(claim, file);
 			} catch {
@@ -119,6 +105,38 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 		}
 	}
 	return taken;
+}
+
+/**
+ * A saved report as `takePendingReports` delivers it, or why it cannot be one: text that is not JSON, a shape no
+ * Octocode saves, or result schema metadata that fails validation (a false typed result must not be delivered).
+ */
+function parseReport(text: string): Report | string {
+	let value: unknown;
+	try {
+		value = JSON.parse(text);
+	} catch {
+		return "that is not JSON";
+	}
+	if (
+		!isRecord(value) ||
+		typeof value.content !== "string" ||
+		typeof value.wake !== "boolean" ||
+		!isRecord(value.details) ||
+		typeof value.details.id !== "string" ||
+		typeof value.details.summary !== "string" ||
+		!["done", "failed", "stopped"].includes(String(value.details.status)) ||
+		(value.reportId !== undefined && (typeof value.reportId !== "string" || !value.reportId))
+	)
+		return "that is not a valid report";
+	if (value.details.structured !== undefined) {
+		try {
+			validateStoredStructuredResult(value.details.structured);
+		} catch {
+			return "with invalid result schema metadata";
+		}
+	}
+	return value as unknown as Report;
 }
 
 /** Return a scan's claims to their original session when that session ends during the read. */

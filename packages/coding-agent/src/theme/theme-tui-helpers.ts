@@ -1,6 +1,9 @@
 import {
 	type EditorTheme,
 	GLYPH,
+	getKeybindings,
+	type Keybinding,
+	type KeyId,
 	type MarkdownTheme,
 	type SelectListTheme,
 	type SettingsListTheme,
@@ -197,4 +200,42 @@ export function getSettingsListTheme(): SettingsListTheme {
 		cursor: theme.fg("accent", `${GLYPH.cursor} `),
 		hint: (text: string) => theme.fg("dim", text),
 	};
+}
+
+// Keybinding hints as every surface shows them: terminal components, tool renderers in core and native UI.
+
+/**
+ * Key text as every hint, chip and shortcut table shows it: lowercase (`shift+tab`, `ctrl+c`), with `option` for `alt`
+ * on macOS.
+ */
+export function formatKeyText(key: string): string {
+	return key
+		.split("/")
+		.map((k) =>
+			k
+				.split("+")
+				.map((part) => {
+					const lower = part.toLowerCase();
+					return process.platform === "darwin" && lower === "alt" ? "option" : lower;
+				})
+				.join("+"),
+		)
+		.join("/");
+}
+
+function formatKeys(keys: KeyId[]): string {
+	if (keys.length === 0) return "";
+	return formatKeyText(keys.join("/"));
+}
+
+export function keyText(keybinding: Keybinding): string {
+	return formatKeys(getKeybindings().getKeys(keybinding));
+}
+
+export function keyHint(keybinding: Keybinding, description: string): string {
+	return theme.fg("dim", keyText(keybinding)) + theme.fg("muted", ` ${description}`);
+}
+
+export function rawKeyHint(key: string, description: string): string {
+	return theme.fg("dim", formatKeyText(key)) + theme.fg("muted", ` ${description}`);
 }

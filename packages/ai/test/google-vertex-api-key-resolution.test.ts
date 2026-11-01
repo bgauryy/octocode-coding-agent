@@ -72,6 +72,30 @@ afterEach(() => {
 	}
 });
 
+describe("google-vertex location", () => {
+	it("refuses a location that is not a region id, so the bearer token never leaves the Google host", async () => {
+		const result = await streamGoogleVertex(model, context, {
+			project: "test-project",
+			location: "evil.example/#",
+		}).result();
+
+		expect(googleGenAiMock.constructorCalls).toHaveLength(0);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("GOOGLE_CLOUD_LOCATION");
+	});
+
+	it("accepts region ids and global", async () => {
+		for (const location of ["us-central1", "europe-west4", "global"]) {
+			await streamGoogleVertex(model, context, { project: "test-project", location }).result();
+		}
+		expect(googleGenAiMock.constructorCalls.map((call) => call.location)).toEqual([
+			"us-central1",
+			"europe-west4",
+			"global",
+		]);
+	});
+});
+
 describe("google-vertex api key resolution", () => {
 	it("falls back to ADC when options.apiKey is a placeholder marker", async () => {
 		const stream = streamGoogleVertex(model, context, {

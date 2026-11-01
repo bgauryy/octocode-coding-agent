@@ -42,14 +42,15 @@ describe("communication prompt contracts", () => {
 		}
 	});
 
-	it("uses the unified type/input contract and exact ids for cross-tree routing", () => {
+	it("uses the flat agent contract and exact ids for cross-tree routing", () => {
 		const fake = fakeHost();
 		registerCollab(fake.api, {} as Team);
 		const coordinate = fake.tools.get("coordinate");
 		const message = fake.tools.get("sendMessage");
 		expect(coordinate.promptGuidelines.join(" ")).toContain("`agent` type `coordinate`");
-		expect(coordinate.promptGuidelines.join(" ")).toContain("`input.action`");
-		expect(teamTask("Inspect", "parent-1", [])).toContain("`input.action` = `list`");
+		expect(coordinate.promptGuidelines.join(" ")).toContain("`action` list");
+		expect(coordinate.promptGuidelines.join(" ")).not.toContain("input.");
+		expect(teamTask("Inspect", "parent-1", [])).toContain("`action` `list`");
 		expect(message.parameters.properties.to.description).toContain("exact id across parent trees");
 		expect(message.parameters.properties.to.description).toContain('"all" reaches only your tree');
 	});

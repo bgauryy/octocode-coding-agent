@@ -131,6 +131,17 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Start a new session",
 		argumentHint: "<name-for-current-session>",
 	},
+	// User request (2026-11-01): the two names users reach for to start over; each runs the /new handler.
+	{
+		name: "clear",
+		description: "Start a new session (same as /new)",
+		argumentHint: "<name-for-current-session>",
+	},
+	{
+		name: "reset",
+		description: "Start a new session (same as /new)",
+		argumentHint: "<name-for-current-session>",
+	},
 	{ name: "compact", description: "Compact the session context", argumentHint: "<instructions>" },
 	{ name: "resume", description: "Browse and resume sessions", argumentHint: "<search>" },
 	{

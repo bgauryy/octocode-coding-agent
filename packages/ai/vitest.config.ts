@@ -5,6 +5,7 @@ const telemetrySrcIndex = fileURLToPath(new URL("../telemetry/src/index.ts", imp
 
 export default defineConfig({
 	test: {
+		globalSetup: [fileURLToPath(new URL("../../vitest.tmp.global.ts", import.meta.url))],
 		globals: true,
 		environment: "node",
 		setupFiles: ["./test/setup-cache-env.ts"],

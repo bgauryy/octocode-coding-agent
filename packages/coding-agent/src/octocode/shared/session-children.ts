@@ -1,5 +1,6 @@
 import path from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { agentCall } from "./agent-call.ts";
 import { fencedParts } from "./fence.ts";
 import { AGENT_RESULT_TYPE } from "./messages.ts";
 import { entryMessage } from "./util.ts";
@@ -56,6 +57,10 @@ export interface SessionChild {
 	headless?: boolean;
 	/** The `provider/id` (with any `:thinking`) it ran on; absent when it ran on the parent's model. */
 	model?: string;
+	/** Its latest run exited before its first model turn (`details.startup`), so no conversation may be saved. */
+	startupFailed?: true;
+	/** With `startupFailed`: the task it was started with (a resume of a child that never saved a conversation keeps the earlier one). */
+	task?: string;
 	/** The child's own words in its latest report as this session received it (the fenced body; a long one is cut). */
 	reportText?: string;
 	/** When that report arrived (epoch ms), when the entry recorded it. */
@@ -90,6 +95,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 	const children = new Map<string, SessionChild>();
 	const runs = new Map<string, { id?: string; startedAt?: number }>();
 	const retired = new Set<string>();
+	const tasks = new Map<string, string>();
 	const rememberRun = (id: string, details: Record<string, unknown>) => {
 		const run = {
 			id: text(details.runId),
@@ -128,6 +134,8 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		} else if (files.report && !children.has(child.id)) child.report = files.report;
 		const model = text(details.model);
 		if (model) child.model = model;
+		if (isRecord(details.startup) && details.startup.failed === true) child.startupFailed = true;
+		else delete child.startupFailed;
 	};
 	for (const entry of entries) {
 		const message = entryMessage(entry);
@@ -135,7 +143,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		if (message.role === "assistant" && Array.isArray(message.content)) {
 			for (const part of message.content)
 				if (isRecord(part) && part.type === "toolCall" && typeof part.id === "string" && isRecord(part.arguments))
-					inputs.set(part.id, isRecord(part.arguments.input) ? part.arguments.input : part.arguments);
+					inputs.set(part.id, part.name === "agent" ? agentCall(part.arguments).input : part.arguments);
 			continue;
 		}
 		const details = isRecord(message.details) ? message.details : undefined;
@@ -186,8 +194,14 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		if (input.isolate === true) child.isolated = true;
 		else delete child.isolated;
 		if (typeof input.headless === "boolean") child.headless = input.headless;
+		const task = text(input.task);
+		if (task && !(input.resume === id && tasks.has(id))) tasks.set(id, task);
 		update(child, details, reportOf(entry, message));
 		children.set(id, child);
+	}
+	for (const child of children.values()) {
+		const task = child.startupFailed ? tasks.get(child.id) : undefined;
+		if (task) child.task = task;
 	}
 	return [...children.values()];
 }

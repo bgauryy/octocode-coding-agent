@@ -1,7 +1,7 @@
-import type { AgentSessionEvent } from "../../agent-session.ts";
+import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import { compactionSummaryDisplay } from "../../messages.ts";
 import type { SessionEntry } from "../../session-manager.ts";
-import { record } from "../normalize.ts";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Every native event has an explicit portable owner; new event kinds require a routing decision. */
 export const APPLICATION_EVENT_ROUTES = {
@@ -40,26 +40,26 @@ export interface ActivityData {
 	failed?: boolean;
 }
 function pick(value: unknown, keys: readonly string[]): Record<string, unknown> {
-	const source = record(value);
+	const source = asRecord(value);
 	return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
 }
 function usage(value: unknown): Record<string, unknown> | undefined {
 	if (value === undefined) return undefined;
 	const data = pick(value, ["input", "output", "cacheRead", "cacheWrite", "totalTokens"]);
-	if (record(value).cost !== undefined)
-		data.cost = pick(record(value).cost, ["input", "output", "cacheRead", "cacheWrite", "total"]);
+	if (asRecord(value).cost !== undefined)
+		data.cost = pick(asRecord(value).cost, ["input", "output", "cacheRead", "cacheWrite", "total"]);
 	return data;
 }
 function summary(value: unknown): Record<string, unknown> {
 	return {
 		...pick(value, ["summary", "firstKeptEntryId", "fromId", "tokensBefore", "estimatedTokensAfter", "fromHook"]),
-		usage: usage(record(value).usage),
-		...(record(value).details !== undefined ? { privateDetailsStored: true } : {}),
+		usage: usage(asRecord(value).usage),
+		...(asRecord(value).details !== undefined ? { privateDetailsStored: true } : {}),
 	};
 }
 /** A compaction's data with its summary as a person reads it, not as written for the model. */
 function compaction(value: unknown): Record<string, unknown> {
-	const { summary: text, tokensBefore } = record(value);
+	const { summary: text, tokensBefore } = asRecord(value);
 	return {
 		...summary(value),
 		...(typeof text === "string"
@@ -112,7 +112,7 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 			};
 		case "custom": {
 			// Octocode records a refused or cancelled compaction as a note (`octocode/compaction/record.ts`); it is a failure.
-			const note = record(entry.data);
+			const note = asRecord(entry.data);
 			if (
 				entry.customType === "octocode-compaction-note" &&
 				(note.kind === "thrash-stop" || note.kind === "checkpoint-not-saved") &&
@@ -147,7 +147,7 @@ export function nativeActivity(event: AgentSessionEvent): ActivityData | undefin
 				text: "Turn ended",
 				data: {
 					role: event.message.role,
-					stopReason: record(event.message).stopReason,
+					stopReason: asRecord(event.message).stopReason,
 					toolResultCount: event.toolResults.length,
 					failedToolCount: event.toolResults.filter((result) => result.isError).length,
 				},

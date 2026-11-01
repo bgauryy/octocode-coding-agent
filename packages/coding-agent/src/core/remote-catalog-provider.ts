@@ -10,6 +10,7 @@ import {
 import { withOpenCodeEndpoint } from "@octocodeai/octocode-ai/providers/opencode-endpoints";
 import { withMiniMaxEndpoint } from "@octocodeai/octocode-ai/providers/minimax-endpoints";
 import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capabilities";
+import { hasControlCharacters, modelLabel } from "@octocodeai/octocode-ai/utils/model-text";
 import { VERSION } from "../config.ts";
 import { fetchWithRetry } from "../utils/management-http.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
@@ -50,10 +51,27 @@ function parseCatalog(providerId: string, value: unknown): AnyModel[] {
 				? Object.values(value)
 				: undefined;
 	if (!entries) throw new Error(`Invalid model catalog for provider "${providerId}"`);
-	return entries
-		.filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null && "id" in entry)
-		.filter(isSupportedModelType)
-		.map((model) => ({ ...model, provider: providerId }) as AnyModel);
+	return catalogModels(
+		providerId,
+		entries.filter(
+			(entry): entry is Record<string, unknown> =>
+				typeof entry === "object" && entry !== null && isSupportedModelType(entry),
+		),
+	);
+}
+
+/**
+ * Catalog entries as the registry may hold them, from the network or a list saved by an older client. An entry whose
+ * id is not a string free of controls is dropped: the id is a key sent back to the vendor, so it is never rewritten.
+ * The name becomes a one-line label without control sequences, or the id when it is missing, not a string or blank.
+ */
+function catalogModels(providerId: string, entries: readonly object[]): AnyModel[] {
+	return entries.flatMap((entry) => {
+		const { id, name } = entry as { id?: unknown; name?: unknown };
+		if (typeof id !== "string" || !id.trim() || hasControlCharacters(id)) return [];
+		const label = typeof name === "string" ? modelLabel(name) : "";
+		return [{ ...entry, provider: providerId, name: label || id } as AnyModel];
+	});
 }
 
 /** Read a successful remote catalog response. A missing or invalid Last-Modified header is 0. */
@@ -62,8 +80,15 @@ async function readCatalog(
 	response: Response,
 ): Promise<{ models: AnyModel[]; lastModified: number; etag: string | undefined }> {
 	const lastModified = Date.parse(response.headers.get("last-modified") ?? "");
+	let body: unknown;
+	try {
+		body = JSON.parse(await response.text());
+	} catch {
+		// A JSON parse error quotes the response body; the refresh error is drawn in the terminal.
+		throw new Error(`Invalid model catalog for provider "${providerId}"`);
+	}
 	return {
-		models: parseCatalog(providerId, await response.json()),
+		models: parseCatalog(providerId, body),
 		lastModified: Number.isNaN(lastModified) ? 0 : lastModified,
 		etag: response.headers.get("etag") ?? undefined,
 	};
@@ -125,7 +150,10 @@ export function withRemoteCatalog(
 		refreshModels: async (context) => {
 			await provider.refreshModels?.(context);
 			const stored = context.stored;
-			const restored = remoteModels(stored, localGeneratedAt).filter((model) => model.provider === provider.id);
+			const restored = catalogModels(
+				provider.id,
+				remoteModels(stored, localGeneratedAt).filter((model) => model.provider === provider.id),
+			);
 			if (
 				!(await context.publish({
 					update: () => {
@@ -215,7 +243,10 @@ export function withPersonalizedCatalog(
 		getAllModels,
 		refreshModels: async (context) => {
 			await provider.refreshModels?.(context);
-			const restored = (context.stored?.models ?? []).filter((model) => model.provider === provider.id);
+			const restored = catalogModels(
+				provider.id,
+				(context.stored?.models ?? []).filter((model) => model.provider === provider.id),
+			);
 			if (
 				!(await context.publish({
 					update: () => {

@@ -271,20 +271,24 @@ describe("estimateContextTokens", () => {
 		expect(estimate.tokens).toBe(150 + estimate.trailingTokens);
 	});
 
-	it("ignores usage that predates a later-timestamped message such as a compaction summary", () => {
+	it("trusts the last valid usage regardless of timestamps, leaving staleness to session structure", () => {
+		// A summary stamped later than the response after it (clock skew, imported session) must not discard that usage;
+		// estimateProjectedContextTokens and the compaction check drop usage captured before a compaction.
 		const summary: AgentMessage = {
 			role: "compactionSummary",
 			summary: "s".repeat(300),
 			tokensBefore: 90_000,
 			timestamp: 2_000,
 		};
-		const kept: AssistantMessage = { ...createAssistantMessage("kept", createMockUsage(90_000, 10)), timestamp: 1_000 };
+		const after: AssistantMessage = {
+			...createAssistantMessage("after", createMockUsage(25_000, 10)),
+			timestamp: 1_000,
+		};
 
-		const estimate = estimateContextTokens([summary, kept]);
+		const estimate = estimateContextTokens([summary, after]);
 
-		expect(estimate.lastUsageIndex).toBeNull();
-		expect(estimate.tokens).toBe(estimateTokens(summary) + estimateTokens(kept));
-		expect(estimate.tokens).toBeLessThan(1_000);
+		expect(estimate.lastUsageIndex).toBe(1);
+		expect(estimate.usageTokens).toBe(calculateContextTokens(after.usage));
 	});
 
 	it("sizes standard roles with the shared ratio and its image estimate", () => {

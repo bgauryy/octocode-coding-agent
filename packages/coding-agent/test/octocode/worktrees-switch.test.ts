@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext, ReplacedSessionContext } from "../../src/core/extensions/index.ts";
@@ -54,7 +56,9 @@ describe("/worktree switch", () => {
 		expect(newSession).toHaveBeenCalledTimes(1);
 		expect(newSession.mock.calls[0]?.[0]?.cwd).toBe(worktree("hotfix"));
 		expect(text()).toContain("Switched to worktree hotfix");
-		expect(text()).toContain("/resume returns to it");
+		// The two ways back: a fresh session in main, and the saved one through the all-folders list.
+		expect(text()).toContain("/worktree switch main");
+		expect(text()).toContain("/resume all");
 	});
 
 	it("works from inside another worktree", async () => {
@@ -190,6 +194,91 @@ describe("/worktree open", () => {
 	});
 });
 
+describe("/worktree switch main", () => {
+	const announce = (cwd: string) =>
+		vi.fn<NewSession>(async (options) => {
+			await options?.withSession?.(contextAt(cwd) as unknown as ReplacedSessionContext);
+			return { cancelled: false };
+		});
+
+	it.each(["a", "a/src"])("starts a fresh session in the main checkout from worktree folder %s", async (inside) => {
+		await made("a");
+		mkdirSync(path.join(worktree("a"), "src"), { recursive: true });
+		const newSession = announce(repo.root);
+		await worktreeCommand().handler(
+			"switch main",
+			contextAt(path.join(repo.root, ".octocode", "worktrees", inside), { newSession }),
+		);
+		expect(newSession).toHaveBeenCalledTimes(1);
+		expect(newSession.mock.calls[0]?.[0]?.cwd).toBe(repo.root);
+		expect(text()).toContain("Switched to the main checkout");
+		expect(text()).toContain("/resume all");
+	});
+
+	it("refuses when the session is already in the main checkout, subfolders included", async () => {
+		await made("a");
+		mkdirSync(path.join(repo.root, "src"));
+		const newSession = vi.fn<NewSession>(async () => ({ cancelled: false }));
+		await worktreeCommand().handler("switch main", contextAt(path.join(repo.root, "src"), { newSession }));
+		expect(newSession).not.toHaveBeenCalled();
+		expect(text()).toContain("already in the main checkout");
+	});
+
+	it("means the main checkout even when a worktree is named main", async () => {
+		await made("main");
+		const toMain = vi.fn<NewSession>(async () => ({ cancelled: false }));
+		await worktreeCommand().handler("switch main", contextAt(worktree("main"), { newSession: toMain }));
+		expect(toMain.mock.calls[0]?.[0]?.cwd).toBe(repo.root);
+
+		// From the main checkout it is already there: the worktree called main is not what the word names.
+		const stay = vi.fn<NewSession>(async () => ({ cancelled: false }));
+		await worktreeCommand().handler("switch main", contextAt(repo.root, { newSession: stay }));
+		expect(stay).not.toHaveBeenCalled();
+	});
+
+	it("is declined while a turn runs and says so when cancelled", async () => {
+		await made("a");
+		const busy = vi.fn<NewSession>(async () => ({ cancelled: false }));
+		await worktreeCommand().handler("switch main", contextAt(worktree("a"), { idle: false, newSession: busy }));
+		expect(busy).not.toHaveBeenCalled();
+		await worktreeCommand().handler(
+			"switch main",
+			contextAt(worktree("a"), { newSession: async () => ({ cancelled: true }) }),
+		);
+		expect(text()).toContain("turn is running");
+		expect(text()).toContain("Switch cancelled");
+	});
+});
+
+describe("/worktree name completion", () => {
+	it("completes open and switch names from the session folder, not the process directory", async () => {
+		await made("alpha");
+		await made("beta");
+		// The folder a session is in follows `switch` and `/resume`; `process.cwd()` stays where Octocode started.
+		const command = worktreeCommand({ cwd: () => worktree("beta") });
+		expect(command.complete?.("open ")?.map((item) => item.value)).toEqual(["alpha", "beta"]);
+		expect(command.complete?.("open al")?.map((item) => item.value)).toEqual(["alpha"]);
+		expect(command.complete?.("switch ")?.map((item) => item.value)).toEqual(["main", "alpha", "beta"]);
+		expect(command.complete?.("switch b")?.map((item) => item.value)).toEqual(["beta"]);
+		expect(command.complete?.("open alpha ")?.[0]?.value).toBe("window");
+	});
+
+	it("offers only main for switch, and nothing for open, until the session folder is known or outside a repository", () => {
+		expect(
+			worktreeCommand()
+				.complete?.("switch ")
+				?.map((item) => item.value),
+		).toEqual(["main"]);
+		expect(worktreeCommand().complete?.("open ")).toBeNull();
+		const outside = mkdtempSync(path.join(tmpdir(), "octocode-no-repo-"));
+		try {
+			expect(worktreeCommand({ cwd: () => outside }).complete?.("open ")).toBeNull();
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("/worktree completions and hint", () => {
 	const command = worktreeCommand();
 
@@ -198,7 +287,7 @@ describe("/worktree completions and hint", () => {
 		expect(values).toEqual(["list", "new", "open", "switch", "remove"]);
 		expect(command.complete?.("sw")?.map((item) => item.value)).toEqual(["switch"]);
 		expect(command.argumentHint).toContain("open <name> [pane [right|down]|window]");
-		expect(command.argumentHint).toContain("switch <name>");
+		expect(command.argumentHint).toContain("switch <name|main>");
 		expect(command.description.length).toBeLessThanOrEqual(50);
 	});
 

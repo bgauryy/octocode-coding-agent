@@ -136,12 +136,12 @@ export function formatProviderError(norm: NormalizedProviderError, prefix?: stri
 	return prefix !== undefined ? `${prefix} (${norm.status}): ${norm.body}` : `${norm.status}: ${norm.body}`;
 }
 
-export function truncateErrorText(text: string, maxChars: number): string {
+function truncateErrorText(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
 	return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
 }
 
-export function safeJsonStringify(value: unknown): string {
+function safeJsonStringify(value: unknown): string {
 	try {
 		const serialized = JSON.stringify(value);
 		return serialized === undefined ? String(value) : serialized;

@@ -285,4 +285,41 @@ describe("message hooks", () => {
 			await sending;
 		}
 	});
+
+	it("shows a send hook whether the message asks for a reply, wakes or interrupts, and a receive hook what it carried", async () => {
+		const { ctx, fire, cwd } = await setup({
+			PostMessageReceive: group(`cat >> received.jsonl; printf '\\n' >> received.jsonl`),
+		});
+		const seen: MessageEnvelope[] = [];
+		const dbFile = path.join(tmp(), "team.sqlite");
+		const team = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
+		const peer = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
+		teams.push(team, peer);
+		team.start(ctx);
+		peer.start(ctx);
+		team.join();
+		const receiver = peer.join().id;
+		team.setMessageHook(async (message) => void seen.push(message));
+		await team.send(receiver, "fyi");
+		await team.send(receiver, "look", { wake: true });
+		await team.send(receiver, "question", { replyRequired: true });
+		expect(seen.map(({ replyRequired, wake, interrupt }) => ({ replyRequired, wake, interrupt }))).toEqual([
+			{ replyRequired: false, wake: false, interrupt: false },
+			{ replyRequired: false, wake: true, interrupt: false },
+			{ replyRequired: true, wake: true, interrupt: false },
+		]);
+
+		const details = {
+			id: 9,
+			from: "agent-a",
+			to: "agent-b",
+			text: "look",
+			replyRequired: false,
+			wake: true,
+			interrupt: true,
+		};
+		const mail = { role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: { messages: [details] } };
+		await fire("context", { messages: [mail] }, ctx);
+		expect(recorded(cwd).map((record) => record.message)).toEqual([inbound({ ...details, id: "9" })]);
+	});
 });

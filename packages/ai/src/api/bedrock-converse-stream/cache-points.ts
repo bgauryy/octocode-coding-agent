@@ -11,7 +11,7 @@ import { supportsPromptCaching } from "./model-match.ts";
 import { longCacheTtl } from "./model-support.ts";
 
 /** Bedrock accepts at most four cache checkpoints per Claude request. */
-export const MAX_CACHE_POINTS = 4;
+const MAX_CACHE_POINTS = 4;
 
 /** A cache point for supported Claude models when caching is enabled; undefined otherwise. */
 export function getCachePoint(

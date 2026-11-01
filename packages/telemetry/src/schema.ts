@@ -1,5 +1,4 @@
 import type { SpanAttributes, TelemetryContext, TelemetrySpan } from "./context.ts";
-import type { TelemetryMetricDefinition } from "./metrics.ts";
 
 export type TelemetryAttributeType = "string" | "number" | "boolean" | "string[]" | "number[]" | "boolean[]";
 
@@ -20,6 +19,14 @@ export type TelemetryAttributeDefinition = TelemetryAttributeMetadata &
 	);
 
 export type TelemetryStartAttributeDefinition = TelemetryAttributeDefinition & { required: boolean };
+
+export type TelemetryMetricAttributeDefinition = TelemetryStartAttributeDefinition & { cardinality?: "low" };
+
+export type TelemetryMetricDefinition = {
+	description: string;
+	unit?: string;
+	attributes: Record<string, TelemetryMetricAttributeDefinition>;
+} & ({ kind: "counter" | "upDownCounter"; boundaries?: never } | { kind: "histogram"; boundaries?: readonly number[] });
 export type TelemetryEventAttributeDefinition = TelemetryAttributeDefinition & { required: boolean };
 
 export interface TelemetryEventDefinition {

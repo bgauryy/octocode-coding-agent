@@ -12,7 +12,8 @@ import {
 import type { FileGuard } from "../files/tool/guard.ts";
 import { readOnlyCommand } from "../permission/shell/read-only.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
-import { CHARS_PER_TOKEN, estimateTokens } from "../../core/compaction/tokens.ts";
+import { estimateTokens } from "../../core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { shortPath } from "../shared/format.ts";
 import { readPaths } from "../shared/home.ts";

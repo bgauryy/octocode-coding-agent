@@ -1,6 +1,7 @@
 import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
+import { plainText } from "./styled-line.ts";
 
 interface UserMessageItem {
 	id: string; // Entry ID in the session
@@ -51,7 +52,7 @@ class UserMessageList implements Component {
 			const isSelected = i === this.selectedIndex;
 
 			// Normalize message to single line
-			const normalizedMessage = message.text.replace(/\n/g, " ").trim();
+			const normalizedMessage = plainText(message.text);
 
 			// First line: cursor + message
 			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";

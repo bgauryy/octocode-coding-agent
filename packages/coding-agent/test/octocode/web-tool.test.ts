@@ -21,6 +21,7 @@ type ToolResult = {
 	details?: Record<string, unknown>;
 };
 type WebTool = {
+	parameters: { properties: Record<string, { description: string }> };
 	execute: (id: string, params: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult>;
 	renderCall: (...args: unknown[]) => { render(width: number): string[] };
 	renderResult: (...args: unknown[]) => { render(width: number): string[] };
@@ -329,7 +330,13 @@ describe("web tool", () => {
 		await expect(tool.execute("id", { url: "https://example.com", query: "different source" })).rejects.toThrow(
 			"Provide exactly one of url or query.",
 		);
-		await expect(tool.execute("id", { query: "   " })).rejects.toThrow("Provide url or query.");
+		await expect(tool.execute("id", { query: "   " })).rejects.toThrow(
+			"Provide url or query. url reads one page; query searches the web.",
+		);
+		// The schema is one flat object (a root union is refused or flattened by some providers): each field names its partner.
+		const { properties } = tool.parameters;
+		expect(properties.url.description).toContain("or query, not both");
+		expect(properties.query.description).toContain("or url, not both");
 		expect(fetch).not.toHaveBeenCalled();
 	});
 	beforeEach(() => {
@@ -848,7 +855,11 @@ describe("web images", () => {
 		);
 		// Guidelines are static, so a browser rule here would reach sessions without one.
 		expect(guidelines.join(" ")).not.toMatch(/browser/i);
-		expect(guidelines.join(" ")).toContain("Cite source URLs.");
+		// The policy's evidence rule owns citing; this line is only how to use a fetched result.
+		expect(guidelines.join(" ")).not.toContain("Cite source URLs.");
+		expect(guidelines.join(" ")).toContain("Read the source behind a search snippet");
+		// Reading a saved page by range is stated beside maxChars, where the file appears, not as a second rule.
+		expect(guidelines.join(" ")).not.toContain("Read saved output");
 	});
 });
 

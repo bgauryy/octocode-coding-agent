@@ -203,7 +203,7 @@ describe("unified agent", () => {
 		const update = vi.fn();
 		await fake.tools
 			.get("agent")!
-			.execute("id", { type: "task", input: {} }, new AbortController().signal, update, fakeCtx({ cwd: tmp() }));
+			.execute("id", { type: "task" }, new AbortController().signal, update, fakeCtx({ cwd: tmp() }));
 		expect(update).toHaveBeenCalledWith({ ...progress, details: { elapsed: 1, agentType: "task" } });
 	});
 
@@ -228,7 +228,7 @@ describe("unified agent", () => {
 		const signal = new AbortController().signal;
 		const result = await agent.execute(
 			"id",
-			{ type: "external", input: { action: "list" } },
+			{ type: "external", externalAction: "list" },
 			signal,
 			undefined,
 			fakeCtx({ cwd: tmp() }),
@@ -238,18 +238,18 @@ describe("unified agent", () => {
 		await expect(
 			agent.execute(
 				"id",
-				{ type: "external", input: { action: "list" }, skills: ["release"] },
+				{ type: "external", externalAction: "list", skills: ["release"] },
 				signal,
 				undefined,
 				fakeCtx({ cwd: tmp() }),
 			),
-		).rejects.toThrow("inside input");
+		).rejects.toThrow("agent type external does not take skills");
+		await expect(agent.execute("id", { type: "task" }, signal, undefined, fakeCtx({ cwd: tmp() }))).rejects.toThrow(
+			"Unknown agent type task",
+		);
 		await expect(
-			agent.execute("id", { type: "task", input: {} }, signal, undefined, fakeCtx({ cwd: tmp() })),
-		).rejects.toThrow("Invalid agent");
-		await expect(
-			agent.execute("id", { type: "external", input: { action: "spawn" } }, signal, undefined, fakeCtx({ cwd: tmp() })),
-		).rejects.toThrow("Invalid agent");
+			agent.execute("id", { type: "external", externalAction: "spawn" }, signal, undefined, fakeCtx({ cwd: tmp() })),
+		).rejects.toThrow("Invalid agent external call");
 		expect(execute).toHaveBeenCalledTimes(1);
 	});
 
@@ -269,8 +269,14 @@ describe("unified agent", () => {
 		});
 		modes.register(fake.api);
 		const agent = fake.tools.get("agent")!;
-		const call = (input: unknown) =>
-			agent.execute("id", { type: "task", input }, new AbortController().signal, undefined, fakeCtx({ cwd: tmp() }));
+		const call = (fields: Record<string, unknown>) =>
+			agent.execute(
+				"id",
+				{ type: "task", ...fields },
+				new AbortController().signal,
+				undefined,
+				fakeCtx({ cwd: tmp() }),
+			);
 		await call({ task: "a", background: "true" });
 		expect(execute).toHaveBeenLastCalledWith(
 			"id",
@@ -281,10 +287,10 @@ describe("unified agent", () => {
 		);
 		await call({ task: "b", background: null });
 		expect(execute).toHaveBeenLastCalledWith("id", { task: "b" }, expect.anything(), undefined, expect.anything());
-		await expect(call({ background: true })).rejects.toThrow(/Invalid agent task input[\s\S]*task/);
+		await expect(call({ background: true })).rejects.toThrow(/Invalid agent task call[\s\S]*task/);
 	});
 
-	it("gives a mode's renderers the mode input as context.args, also for an error result", () => {
+	it("gives a mode's renderers its own arguments as context.args, flat or from an old envelope, also for an error", () => {
 		const fake = fakeHost();
 		const modes = agentModes();
 		const seen: unknown[] = [];
@@ -300,11 +306,26 @@ describe("unified agent", () => {
 		});
 		modes.register(fake.api);
 		const agent = fake.tools.get("agent")!;
-		const args = { type: "message", input: { to: "inky" } };
-		agent.renderCall(args, {}, { args });
-		// A thrown error has no agentType in its details; the call's type still selects the mode's renderer.
-		agent.renderResult({ content: [{ type: "text", text: "boom" }], details: {}, isError: true }, {}, {}, { args });
-		expect(seen).toEqual([{ to: "inky" }, { to: "inky" }]);
+		// Sessions recorded before the flat fields hold the `{type, input}` envelope: they still render.
+		for (const args of [
+			{ type: "message", to: "inky" },
+			{ type: "message", input: { to: "inky" } },
+		]) {
+			agent.renderCall(args, {}, { args });
+			// A thrown error has no agentType in its details; the call's type still selects the mode's renderer.
+			agent.renderResult({ content: [{ type: "text", text: "boom" }], details: {}, isError: true }, {}, {}, { args });
+		}
+		expect(seen).toEqual([{ to: "inky" }, { to: "inky" }, { to: "inky" }, { to: "inky" }]);
+		// An old `models` call has no mode now: its result renders as its text.
+		const old = { type: "models", input: { query: "opus" } };
+		const row = agent.renderResult(
+			{ content: [{ type: "text", text: "listing" }], details: { agentType: "models" } },
+			{},
+			{},
+			{ args: old },
+		);
+		expect(row.render(80).join("\n")).toContain("listing");
+		expect(agent.renderCall(old, {}, { args: old }).render(80).join("\n")).toContain("Agent models");
 	});
 
 	it("lists the commands this session registered in /status, not a fixed set", async () => {
@@ -326,11 +347,8 @@ describe("unified agent", () => {
 		try {
 			const fake = fakeHost();
 			await octocode(fake.api);
-			expect(
-				fake.tools
-					.get("agent")
-					.parameters.anyOf.map((branch: { properties: { type: { const: string } } }) => branch.properties.type.const),
-			).toEqual(["coordinate", "message"]);
+			expect(fake.tools.get("agent").parameters.properties.type.enum).toEqual(["coordinate", "message"]);
+			expect(fake.tools.has("models")).toBe(false);
 			for (const old of ["externalAgent", "coordinate", "sendMessage", "read", "powershell"])
 				expect(fake.tools.has(old)).toBe(false);
 		} finally {
@@ -338,14 +356,33 @@ describe("unified agent", () => {
 		}
 	});
 
-	it("unwraps external input for the existing provenance policy", () => {
+	it("gives domain policy each type's tool name and own arguments, flat or from an old envelope", () => {
+		const op = (input: Record<string, unknown>) => agentOperation({ toolName: "agent", toolCallId: "id", input });
 		expect(
-			agentOperation({
-				toolName: "agent",
-				toolCallId: "id",
-				input: { type: "external", input: { action: "prompt", text: "data" } },
-			}),
-		).toEqual({ toolName: "externalAgent", toolCallId: "id", input: { action: "prompt", text: "data" } });
+			op({ type: "external", externalAction: "prompt", connection: "r", promptText: "data", reason: "ask" }),
+		).toEqual({
+			toolName: "externalAgent",
+			toolCallId: "id",
+			input: { action: "prompt", id: "r", text: "data", reason: "ask" },
+		});
+		expect(op({ type: "coordinate", action: "stop", subagent: "kid", joinGoal: "g" })).toMatchObject({
+			toolName: "coordinate",
+			input: { action: "stop", id: "kid", goal: "g" },
+		});
+		expect(op({ type: "task", task: "t", profile: "reviewer" })).toMatchObject({
+			toolName: "agent",
+			input: { task: "t", profile: "reviewer" },
+		});
+		expect(op({ type: "message", to: "parent", message: "m" })).toMatchObject({
+			toolName: "sendMessage",
+			input: { to: "parent", message: "m" },
+		});
+		expect(op({ type: "external", input: { action: "prompt", text: "data" } })).toMatchObject({
+			toolName: "externalAgent",
+			input: { action: "prompt", text: "data" },
+		});
+		// No mode: the call stays the public `agent` call.
+		expect(op({ type: "models" })).toMatchObject({ toolName: "agent" });
 	});
 });
 

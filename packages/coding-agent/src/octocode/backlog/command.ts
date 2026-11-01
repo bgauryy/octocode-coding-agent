@@ -7,11 +7,15 @@ import { doItPrompt } from "./actions.ts";
 import { showBoard } from "./board.ts";
 import { type Backlog, openBacklog } from "./context.ts";
 import { boardText, isState, itemLine } from "./format.ts";
+import { taskLine } from "./task-format.ts";
+import { TASK_STATES, isOpenTask } from "@octocodeai/octocode-contracts/backlogs";
 import { exportBacklog, exportBacklogHtml } from "./command/export-files.ts";
 import { type CommandDeps, createItemActions, detail } from "./command/item-actions.ts";
 import { refText } from "./row.ts";
 import { type Item, parseRef } from "./store.ts";
 import { STATES } from "@octocodeai/octocode-contracts/snapshot";
+
+const OPEN_TASKS = TASK_STATES.filter(isOpenTask);
 
 /** The `/backlog` subcommand. */
 export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand {
@@ -20,7 +24,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		say(ctx, `Opened the live backlog board at ${url}\nChanges are saved; keep this session open.`);
 	};
 
-	const { apply, handOff, move, remove, add, actions } = createItemActions(api, deps);
+	const { apply, handOff, move, remove, add, actions, tasks } = createItemActions(api, deps);
 
 	const doExport = (ctx: ExtensionCommandContext, backlog: Backlog) => {
 		try {
@@ -61,6 +65,10 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 					title: `Backlog — ${backlog.repoName}`,
 					self: backlog.session,
 					load: () => backlog.store.list().items,
+					tasks: {
+						load: () => backlog.store.tasks.list({ states: OPEN_TASKS }),
+						move: (task, state) => tasks.step(ctx, backlog, task, state),
+					},
 					move: (item, state) =>
 						state === "done" || item.state === "done"
 							? "Open the item actions to complete or reopen with a result/reason."
@@ -74,7 +82,10 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 			if (choice.action === "add") await add(ctx, backlog, "");
 			else if (choice.action === "export") doExport(ctx, backlog);
 			else if (choice.action === "html") await doHtml(ctx, backlog);
-			else {
+			else if (choice.action === "task") {
+				selected = choice.ref;
+				await tasks.actions(ctx, backlog, choice.ref);
+			} else {
 				selected = choice.ref;
 				const item = backlog.store.get(choice.ref);
 				if (choice.action === "do" && item) {
@@ -91,12 +102,15 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		const HTML = "Open as HTML";
 		for (;;) {
 			const items = backlog.store.list().items;
+			const open = backlog.store.tasks.list({ states: OPEN_TASKS });
 			const lines = items.map((item) => itemLine(item, backlog.session));
-			const choice = await ctx.ui.select(`Backlog — ${backlog.repoName}`, [ADD, ...lines, EXPORT, HTML]);
+			const taskLines = open.map((task) => `  ${taskLine(task)}`);
+			const choice = await ctx.ui.select(`Backlog — ${backlog.repoName}`, [ADD, ...lines, ...taskLines, EXPORT, HTML]);
 			if (choice === undefined) return;
 			if (choice === ADD) await add(ctx, backlog, "");
 			else if (choice === EXPORT) doExport(ctx, backlog);
 			else if (choice === HTML) await doHtml(ctx, backlog);
+			else if (taskLines.includes(choice)) await tasks.actions(ctx, backlog, open[taskLines.indexOf(choice)].ref);
 			else {
 				const item = items[lines.indexOf(choice)];
 				if (item && (await actions(ctx, backlog, item.ref))) return;
@@ -156,7 +170,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	const syntax = Object.entries(verbs).map(([name, verb]) => `${name}${verb.args ? ` ${verb.args}` : ""}`);
 	const usage = `[${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
 	return {
-		description: "Deprecated task board; use /octocode",
+		description: "Deprecated task board; use /web",
 		argumentHint: usage,
 		complete: (prefix) => {
 			const words = prefix.split(/\s+/);

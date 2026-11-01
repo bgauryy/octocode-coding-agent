@@ -1,4 +1,5 @@
 import type { ReportStatus } from "../instructions/report.ts";
+import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatCost, formatDuration, shortPath, toolCallCount } from "../shared/format.ts";
 import { USER_SENDER } from "../shared/messages.ts";
@@ -208,7 +209,11 @@ export async function runForeground(
 	} catch (error) {
 		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
-		throw note ? new Error(`${errorMessage(reason)}${note}`) : reason;
+		const text = `${errorMessage(reason)}${note}`;
+		// The result keeps the run's details, so the session records the child (its folder, a startup failure) for `resume`.
+		details.status = "failed";
+		if (!entry.stoppedBy) details.outcome = "failed";
+		throw new AgentToolExecutionError(text, { content: [{ type: "text", text }], details });
 	} finally {
 		signal?.removeEventListener("abort", abort);
 		runs.foreground.delete(identity.id);

@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import { agentCall } from "../shared/agent-call.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { tildePath } from "../shared/home.ts";
 import { stringOrEmpty } from "../shared/util.ts";
 import { type ChildFiles, childFiles } from "../shared/session-children.ts";
@@ -39,7 +40,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 	for (const entry of entries) {
 		if (!isRecord(entry)) continue;
 		if (entry.type === "custom_message") {
-			const details = isRecord(entry.details) ? entry.details : {};
+			const details = asRecord(entry.details);
 			const id = typeof details.id === "string" ? details.id : undefined;
 			if (!id) continue;
 			if (entry.customType === JOB_TYPE) {
@@ -69,8 +70,8 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 				...(log ? { log } : {}),
 			});
 		} else if (message.toolName === "agent" && details.status === "background" && typeof details.id === "string") {
-			// The agent tool's arguments are `{type, input}`; sessions recorded before it keep them flat.
-			const task = isRecord(input.input) ? input.input : input;
+			// Flat `agent` fields, or the `{type, input}` envelope older sessions recorded.
+			const task = agentCall(input).input;
 			const goal = typeof task.goal === "string" ? flatLine(task.goal) : "";
 			const files = childFiles(details.session);
 			// A start receipt has no current report; report.md may be left by an earlier continuation.

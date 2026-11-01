@@ -591,7 +591,7 @@ describe("F9: smaller items", () => {
 		});
 	});
 
-	it("makes /octocode fall back when the daemon never lists this session", async () => {
+	it("makes /web fall back when the daemon never lists this session", async () => {
 		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON: "1", OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5" });
 		const open = vi.fn(async () => {});
 		const opener = daemonOpener(

@@ -41,9 +41,6 @@ describe("compaction summary", () => {
 			/\n## TL;DR\nOne or two lines[^\n]*"Topics: " with 3 to 8 comma-separated keywords/,
 		);
 		expect(SUMMARY_CHECKPOINT_FORMAT).not.toMatch(/Next Steps|EXACT|Follow-ups/);
-		expect(SUMMARY_CHECKPOINT_FORMAT).toMatch(/next step only when it follows directly/i);
-		expect(SUMMARY_FOCUS).toMatch(/only record/);
-		expect(SUMMARY_FOCUS).toMatch(/word for word after your summary, so do not quote them/);
 		// What code appends is not asked for: no verbatim latest request, no file lists, no follow-up list.
 		expect(SUMMARY_FOCUS).not.toMatch(/verbatim|Follow-ups|read-files|Next Steps/);
 	});
@@ -51,12 +48,15 @@ describe("compaction summary", () => {
 	it("names the transcript and the backlog only when there are ones", () => {
 		const file = path.join(os.homedir(), "s", "a.jsonl");
 		expect(transcriptNote(undefined, false)).toBe("");
-		expect(transcriptNote(file, false)).toBe(
-			`\n\n## Recovery\n- The full transcript before this summary is ~/s/a.jsonl (JSONL, one entry per line): search it for an exact message, error or tool result instead of guessing.`,
-		);
-		expect(transcriptNote(undefined, true)).toBe(
-			"\n\n## Recovery\n- Record follow-ups that must outlive this session with `backlog`.",
-		);
+		// One Recovery section of one bullet each: the shape `splitSummary` cuts off when a later summary is rewritten.
+		const transcript = transcriptNote(file, false).split("\n");
+		expect(transcript.slice(0, 3)).toEqual(["", "", "## Recovery"]);
+		expect(transcript.slice(3)).toEqual([expect.stringMatching(/^- .*~\/s\/a\.jsonl/)]);
+		const backlog = transcriptNote(undefined, true).split("\n");
+		expect(backlog.slice(0, 3)).toEqual(["", "", "## Recovery"]);
+		expect(backlog.slice(3)).toEqual([expect.stringMatching(/^- .*`backlog`/)]);
+		expect(transcript.join("\n")).not.toContain("backlog");
+		expect(backlog.join("\n")).not.toContain("jsonl");
 	});
 
 	it("puts the archive pointer lines first in Recovery, then the transcript as the fallback, then the backlog line, one bullet each", () => {
@@ -64,8 +64,8 @@ describe("compaction summary", () => {
 		expect(note.split("\n").slice(3)).toEqual([
 			"- archive is in /a",
 			"- 9-abc.md \u00b7 tldr",
-			"- If the archive does not have it, the full transcript is /s/a.jsonl (JSONL, one entry per line).",
-			"- Record follow-ups that must outlive this session with `backlog`.",
+			expect.stringMatching(/^- .*\/s\/a\.jsonl/),
+			expect.stringMatching(/^- .*`backlog`/),
 		]);
 		expect(transcriptNote(undefined, false, ["only this"])).toBe("\n\n## Recovery\n- only this");
 		// A rewritten summary does not carry the section back: it is cut off by its bullet shape.

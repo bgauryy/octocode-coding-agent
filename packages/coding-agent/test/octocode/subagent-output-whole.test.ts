@@ -3,8 +3,9 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
-import type { ChildNotices, ChildProgress } from "../../src/octocode/subagents/events.ts";
-import { runSubagent } from "../../src/octocode/subagents/process.ts";
+import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
+import type { ChildNotices } from "../../src/octocode/subagents/notices.ts";
+import { runSubagent, STARTUP_RETRY_ENV } from "../../src/octocode/subagents/process.ts";
 import { noticeLines } from "../../src/octocode/subagents/render.ts";
 import { tmp } from "./helpers.ts";
 import { STARTUP_RETRY_DELAY_MS, StartupError, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
@@ -23,6 +24,7 @@ beforeAll(() => {
 		"OCTOCODE_AGENT_GOAL",
 		"OCTOCODE_AGENT_SCRATCH",
 		"OCTOCODE_TEAM_WORKSPACE",
+		STARTUP_RETRY_ENV,
 	])
 		delete process.env[key];
 	const bin = path.join(root, "bin");
@@ -120,9 +122,10 @@ describe("a crashed child's stderr", () => {
 	});
 });
 
-describe("a child that exits before its first model turn", () => {
-	const attempts = (scratch: string) => fs.readFileSync(path.join(scratch, "attempts"), "utf8").length;
+const attempts = (scratch: string) => fs.readFileSync(path.join(scratch, "attempts"), "utf8").length;
 
+// A bundled child (this stand-in is no `.ts` entry) gets the one retry: its code does not change under it.
+describe("a child that exits before its first model turn", () => {
 	it("is started once more after a module-load error, and the second start's report stands", async () => {
 		const scratch = tmp();
 		const started = Date.now();
@@ -188,6 +191,59 @@ describe("a child that exits before its first model turn", () => {
 		expect(attempts(scratch)).toBe(1);
 		expect(Date.now() - started).toBeLessThan(STARTUP_RETRY_DELAY_MS + 500);
 	});
+});
+
+describe("a child that runs the source tree and crashes while loading", () => {
+	/** Runs `task` with the stand-in started as a `.ts` entry, as a source parent starts `src/cli.ts`. */
+	async function fromSource(task: string, scratch: string) {
+		const entry = path.join(tmp(), "cli.ts");
+		fs.copyFileSync(FIXTURE, entry);
+		const bundle = process.argv[1];
+		process.argv[1] = entry;
+		try {
+			return await run(task, scratch);
+		} finally {
+			process.argv[1] = bundle!;
+		}
+	}
+
+	it("is started again with a doubling wait until the edit it met is saved whole", async () => {
+		const scratch = tmp();
+		const started = Date.now();
+		const { outcome, error } = await fromSource("startup until 3", scratch);
+		expect(error).toBeUndefined();
+		expect(outcome?.text).toBe("RECOVERED on start 3: startup until 3");
+		expect(attempts(scratch)).toBe(3);
+		// 1.5 s, then 3 s.
+		expect(Date.now() - started).toBeGreaterThanOrEqual(3 * STARTUP_RETRY_DELAY_MS - 100);
+	}, 30_000);
+
+	it(`gets only the one retry when ${STARTUP_RETRY_ENV}=0`, async () => {
+		const scratch = tmp();
+		process.env[STARTUP_RETRY_ENV] = "0";
+		try {
+			const { error } = await fromSource("startup until 3", scratch);
+			expect(error).toBeInstanceOf(StartupError);
+			expect(attempts(scratch)).toBe(2);
+		} finally {
+			delete process.env[STARTUP_RETRY_ENV];
+		}
+	}, 30_000);
+
+	it(`stops when the waits would pass ${STARTUP_RETRY_ENV}, with the last start's error`, async () => {
+		const scratch = tmp();
+		process.env[STARTUP_RETRY_ENV] = "4";
+		const started = Date.now();
+		try {
+			const { error } = await fromSource("startup crash", scratch);
+			expect(error).toBeInstanceOf(StartupError);
+			// 1.5 s, then the 2.5 s left of the budget: three starts in all.
+			expect(attempts(scratch)).toBe(3);
+			expect(Date.now() - started).toBeLessThan(4_000 + 3_000);
+		} finally {
+			delete process.env[STARTUP_RETRY_ENV];
+		}
+	}, 30_000);
 });
 
 describe("a crashed child's last progress", () => {

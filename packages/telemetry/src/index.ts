@@ -1,15 +1,7 @@
 export * from "./context.ts";
 export {
-	type HistogramOptions,
-	type InstrumentOptions,
 	type SchemaTelemetryCounter,
 	type SchemaTelemetryHistogram,
-	type TelemetryCounter,
-	type TelemetryHistogram,
-	type TelemetryMetricAttributeDefinition,
-	type TelemetryMetricDefinition,
-	type TelemetryMetrics,
-	type TelemetryUpDownCounter,
 	type TypedTelemetryMetrics,
 	createTypedMetrics,
 } from "./metrics.ts";

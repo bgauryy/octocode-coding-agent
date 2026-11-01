@@ -3,7 +3,7 @@
  * and the new pane's id comes back from `-P -F`, so callers learn where it started.
  */
 
-import { hasTmuxSession, tmuxExec } from "@octocodeai/octocode-tui";
+import { hasTmuxSession, paneTarget, tmuxExec } from "@octocodeai/octocode-tui/multiplexer";
 import { ENV_AGENT_DIR, ENV_SESSION_DIR } from "../../config.ts";
 
 export type TmuxLaunchRequest = {
@@ -119,7 +119,7 @@ export function buildTmuxLaunchArgs(request: TmuxLaunchRequest, target: string |
  * so the session named by the last field of `TMUX` (`socket,pid,session`) is the target instead.
  */
 function windowTarget(env: NodeJS.ProcessEnv): string | undefined {
-	if (env.TMUX_PANE) return undefined;
+	if (paneTarget(env)) return undefined;
 	const session = /,(\d+)$/u.exec(env.TMUX ?? "")?.[1];
 	return session === undefined ? undefined : `$${session}:`;
 }
@@ -131,7 +131,7 @@ export async function launchInTmux(
 ): Promise<TmuxLaunchResult> {
 	const env = dependencies.env ?? process.env;
 	if (!hasTmuxSession(env)) throw new Error("Not running inside tmux (TMUX is not set).");
-	const target = request.placement === "pane" ? env.TMUX_PANE : windowTarget(env);
+	const target = request.placement === "pane" ? paneTarget(env) : windowTarget(env);
 	if (request.placement === "pane" && !target) throw new Error("tmux pane launch needs TMUX_PANE.");
 	const args = buildTmuxLaunchArgs(request, target);
 	const run = dependencies.runner ?? runTmux;

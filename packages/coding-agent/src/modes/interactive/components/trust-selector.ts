@@ -7,6 +7,7 @@ import {
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
+import { plainText } from "./styled-line.ts";
 
 type TrustSelection = Pick<ProjectTrustOption, "trusted" | "updates">;
 
@@ -24,9 +25,9 @@ function formatDecision(trustPath: string | undefined, decision: ProjectTrustSto
 	}
 	const label = decision.decision ? "trusted" : "untrusted";
 	if (trustPath !== undefined && decision.path !== trustPath) {
-		return `${label} (inherited from ${decision.path})`;
+		return `${label} (inherited from ${plainText(decision.path)})`;
 	}
-	return `${label} (${decision.path})`;
+	return `${label} (${plainText(decision.path)})`;
 }
 
 export class TrustSelectorComponent extends Container {
@@ -52,7 +53,8 @@ export class TrustSelectorComponent extends Container {
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("accent", theme.bold("Project trust")), 1, 0));
-		this.addChild(new Text(theme.fg("muted", options.cwd), 1, 0));
+		// Folder names may hold terminal controls; this dialog decides trust, so it draws them inert.
+		this.addChild(new Text(theme.fg("muted", plainText(options.cwd)), 1, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
@@ -106,7 +108,8 @@ export class TrustSelectorComponent extends Container {
 			const isCurrent = this.isSavedOption(option);
 			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
 			const prefix = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
-			const label = isSelected ? theme.fg("accent", option.label) : theme.fg("text", option.label);
+			const text = plainText(option.label);
+			const label = isSelected ? theme.fg("accent", text) : theme.fg("text", text);
 			this.listContainer.addChild(new Text(`${prefix}${currentMarker}${label}`, 1, 0));
 		}
 	}

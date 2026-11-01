@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import fs from "node:fs";
 import { findAllEditOccurrences, normalizeToLF } from "../../../core/tools/edit-diff.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
@@ -39,6 +40,8 @@ interface Inspection {
 	lines?: readonly LineRange[];
 	/** An edit only: the file changed since the read, so each oldText must be re-validated against its current content. */
 	stale?: true;
+	/** When the file moved since the read: who last changed it, as a sentence with a leading space (`modifiedBy`). */
+	by?: string;
 }
 
 /**
@@ -56,8 +59,9 @@ export const LOCAL_FETCH_READER: Reader = {
 	range: (from, to) => `ranges=["${from}-${to}"]`,
 };
 /**
- * The reader while Octocode's local readers are unavailable (the MCP server is off or failed to start): `bash`, whose reads
- * of a file count when they are a plain `cat`, `head`, `tail -n +N` or `sed -n 'A,Bp'` (`files/bash-reads`).
+ * The reader while Octocode's local readers are unavailable (the MCP server is off or failed to start): `bash`. Its reads
+ * of a file count when they are a plain `cat`, `head`, `tail -n +N` or `sed -n 'A,Bp'` (`files/bash-reads`), as they do
+ * beside `localFetch`.
  */
 export const BASH_READER: Reader = {
 	name: "bash",
@@ -69,6 +73,7 @@ export function lostAnchor(
 	edits: ReadonlyArray<{ oldText: string; replaceAll?: boolean }>,
 	content: string,
 	reader: Reader,
+	by = "",
 ): string | undefined {
 	const normalized = normalizeToLF(content);
 	for (const [index, { oldText, replaceAll }] of edits.entries()) {
@@ -80,17 +85,20 @@ export function lostAnchor(
 				: normalized.split(anchor).length - 1;
 		if (replaceAll ? count > 0 : count === 1) continue;
 		const shown = JSON.stringify(oldText.length > 60 ? `${oldText.slice(0, 60)}…` : oldText);
-		return `${display} changed on disk since you last read it and edits[${index}] (oldText ${shown}) ${count === 0 ? "is no longer in it" : `now matches ${count} times`}. Read it again with \`${reader.name}\` before editing it.`;
+		return `${display} changed on disk since you last read it and edits[${index}] (oldText ${shown}) ${count === 0 ? "is no longer in it" : `now matches ${count} times`}. Read it again with \`${reader.name}\` before editing it.${by}`;
 	}
 	return undefined;
 }
 
-export function staleRefusal(display: string, reader: Reader): string {
-	return `${display} changed on disk since you last read it. Read it again with \`${reader.name}\` before modifying it.`;
+export function staleRefusal(display: string, reader: Reader, by = ""): string {
+	return `${display} changed on disk since you last read it. Read it again with \`${reader.name}\` before modifying it.${by}`;
 }
 
+const PLAIN_PRINT = "a plain `cat FILE` or `sed -n 'A,Bp' FILE` (no pipe or redirect)";
+
 function unreadRefusal(display: string, reader: Reader): string {
-	return `${display} already exists and was not read in this session. Read it with \`${reader.name}\` before modifying it.`;
+	const how = reader === BASH_READER ? ` (${PLAIN_PRINT} counts)` : `, or print it in \`bash\` with ${PLAIN_PRINT},`;
+	return `${display} already exists and was not read in this session. Read it with \`${reader.name}\`${how} before modifying it.`;
 }
 
 /**
@@ -109,6 +117,8 @@ function unseenRefusal(display: string, lines: readonly LineRange[], data: Buffe
  * What the bytes about to change say against what the guard knows (`inspection`, from `FileGuard.inspect`): `changed`
  * when they differ from what the read saw, and a refusal when a write or delete follows such a change, or a write
  * replaces lines the reads never showed. An edit over changes is not refused here: its anchors are re-validated.
+ * An edit of bytes that are not UTF-8 is refused: the edit engine decodes them as UTF-8, which would rewrite every byte
+ * it cannot decode (Latin-1 `é`, UTF-16) as U+FFFD, outside the edited text too.
  */
 export function judgeChange(
 	display: string,
@@ -119,8 +129,13 @@ export function judgeChange(
 	reader: Reader,
 ): { changed: boolean; refusal?: string } {
 	const { stale, expected, lines } = inspection;
+	if (mode === "edit" && data && !isUtf8(data))
+		return {
+			changed: false,
+			refusal: `${display} is not valid UTF-8, and an edit would rewrite the bytes it cannot decode. Replace it whole with a write, or change it from \`bash\` with a tool that keeps its encoding.`,
+		};
 	const changed = stale === true || (expected !== undefined && expected !== checked);
-	if (changed && mode !== "edit") return { changed, refusal: staleRefusal(display, reader) };
+	if (changed && mode !== "edit") return { changed, refusal: staleRefusal(display, reader, inspection.by) };
 	const unseen = lines && data ? unseenRefusal(display, lines, data, reader) : undefined;
 	return unseen ? { changed, refusal: unseen } : { changed };
 }
@@ -139,6 +154,18 @@ export class FileGuard {
 	reservedBy: ((file: string) => string | undefined) | undefined;
 	/** The reader refusals name: Octocode's MCP owner switches it to `BASH_READER` while its local readers are unavailable. */
 	reader: Reader = LOCAL_FETCH_READER;
+	/** Set by the team layer: who last changed `file` (a sentence), from the team's change log, if it can say. */
+	modifiedBy: ((file: string) => string | undefined) | undefined;
+
+	/** What names the file's last changer in a changed-on-disk refusal: a sentence with a leading space, or nothing. */
+	modifierNote(file: string): string {
+		try {
+			const text = this.modifiedBy?.(file);
+			return text ? ` ${text}` : "";
+		} catch {
+			return "";
+		}
+	}
 
 	/** A digest only when the current context contains a complete read of this source. */
 	wholeReadDigest(file: string): string | undefined {
@@ -275,8 +302,12 @@ export class FileGuard {
 		if (!current) return mode === "edit" || mode === "delete" ? { refusal: `${display} does not exist.` } : {};
 		if (this.#reread.has(real)) return { refusal: rereadRefusal(display, this.reader) };
 		const edit = mode === "edit";
-		if (this.#changed.has(real))
-			return edit ? { current, stale: true } : { refusal: staleRefusal(display, this.reader) };
+		if (this.#changed.has(real)) {
+			const by = this.modifierNote(file);
+			return edit
+				? { current, stale: true, ...(by ? { by } : {}) }
+				: { refusal: staleRefusal(display, this.reader, by) };
+		}
 		const seen = this.#seen.get(real);
 		if (!seen) return { refusal: unreadRefusal(display, this.reader) };
 		// ctime and inode also move on a same-size rewrite that restored the mtime, or a rename over the file. With a
@@ -286,10 +317,14 @@ export class FileGuard {
 			seen.ctimeMs !== current.ctimeMs ||
 			seen.size !== current.size ||
 			seen.ino !== current.ino;
+		const by = moved ? this.modifierNote(file) : "";
 		if (moved && (!seen.sha256 || seen.size !== current.size))
-			return edit ? { current, stale: true } : { refusal: staleRefusal(display, this.reader) };
+			return edit
+				? { current, stale: true, ...(by ? { by } : {}) }
+				: { refusal: staleRefusal(display, this.reader, by) };
 		return {
 			current,
+			...(by ? { by } : {}),
 			...(seen.sha256 ? { expected: seen.sha256 } : {}),
 			...(seen.partial && mode === "write" ? { lines: seen.lines ?? [] } : {}),
 		};

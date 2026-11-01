@@ -1,6 +1,7 @@
 import type { ModelAuth } from "../auth/types.ts";
 import type { Models, Provider } from "../models.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
+import { hasControlCharacters, modelLabel } from "../utils/model-text.ts";
 import { MODEL_DISCOVERY_SOURCES, type ModelDiscoverySource } from "./discovery-sources.ts";
 
 export { MODEL_DISCOVERY_SOURCES } from "./discovery-sources.ts";
@@ -71,12 +72,15 @@ export async function requestVendorModels(
 			const entry = object(raw);
 			if (options.chatGPT && entry.visibility !== "list") continue;
 			const rawId = options.chatGPT ? entry.slug : source.format === "google" ? entry.name : entry.id;
-			if (typeof rawId !== "string" || !rawId.trim()) throw new Error("Vendor model list contains an invalid model ID");
+			// An id is a key sent back to the vendor: one holding a terminal control is rejected, never rewritten.
+			if (typeof rawId !== "string" || !rawId.trim() || hasControlCharacters(rawId))
+				throw new Error("Vendor model list contains an invalid model ID");
 			const id = source.format === "google" ? rawId.replace(/^models\//, "") : rawId;
-			const name = entry.display_name ?? entry.displayName ?? entry.name;
+			const rawName = entry.display_name ?? entry.displayName ?? entry.name;
+			const name = typeof rawName === "string" ? modelLabel(rawName) : "";
 			found.set(id, {
 				id,
-				...(typeof name === "string" ? { name } : {}),
+				...(name ? { name } : {}),
 				...(positive(entry.inputTokenLimit) ? { inputTokenLimit: positive(entry.inputTokenLimit) } : {}),
 				...(positive(entry.outputTokenLimit) ? { outputTokenLimit: positive(entry.outputTokenLimit) } : {}),
 			});
@@ -113,23 +117,36 @@ function discoveryHeaders(
 	return providerHeadersToRecord(defaults, headers, auth.headers) ?? defaults;
 }
 
+/** Whether a credential resolved from `credentialSource` is a ChatGPT login, whose OpenAI model list is another route. */
+function isChatGPTLogin(providerId: string, credentialSource: string | undefined): boolean {
+	return providerId === "openai" && credentialSource === "OAuth";
+}
+
 /** A credential check answered by the provider's model list. */
 export type ListCredentialCheck = { ok: true; models: DiscoveredVendorModel[] } | { ok: false; detail: string };
 
 /**
  * Check a credential with the provider's model list instead of an inference request: free, and the list comes back
  * with it. Undefined when the provider has no list route, or only a public one (a public list proves no credential).
- * Failures carry the HTTP status, never the response body.
+ * Failures carry the HTTP status, never the response body. `credentialSource` is the source the auth resolved from
+ * (`ModelRegistry.getProviderAuth`), which says whether the list is the ChatGPT one.
  */
 export async function checkCredentialByList(
 	provider: Pick<Provider, "id" | "baseUrl" | "getModels" | "headers">,
 	auth: ModelAuth,
-	options: { signal?: AbortSignal; fetch?: typeof fetch; chatGPT?: boolean } = {},
+	options: { signal?: AbortSignal; fetch?: typeof fetch; credentialSource?: string } = {},
 ): Promise<ListCredentialCheck | undefined> {
 	const source = MODEL_DISCOVERY_SOURCES[provider.id];
 	if (!source?.path || source.public) return undefined;
 	try {
-		return { ok: true, models: await requestVendorModels(provider, auth, options) };
+		return {
+			ok: true,
+			models: await requestVendorModels(provider, auth, {
+				signal: options.signal,
+				fetch: options.fetch,
+				chatGPT: isChatGPTLogin(provider.id, options.credentialSource),
+			}),
+		};
 	} catch (error) {
 		options.signal?.throwIfAborted();
 		return { ok: false, detail: error instanceof Error ? error.message : "Vendor model list failed" };
@@ -162,7 +179,7 @@ export async function discoverProviderModels(
 		if (!resolved) return { ...result, status: "unconfigured" };
 		const listed = await requestVendorModels(provider, resolved.auth, {
 			...options,
-			chatGPT: providerId === "openai" && resolved.source === "OAuth",
+			chatGPT: isChatGPTLogin(providerId, resolved.source),
 		});
 		const ids = new Set(listed.map((model) => model.id));
 		return {

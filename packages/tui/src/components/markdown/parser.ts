@@ -1,21 +1,107 @@
-import { Marked, type Token, Tokenizer, type TokenizerExtension, type Tokens } from "marked";
+import {
+	Lexer,
+	Marked,
+	type MarkedOptions,
+	type Token,
+	Tokenizer,
+	type TokenizerExtension,
+	type Tokens,
+	type TokensList,
+} from "marked";
+import { indexStrikethrough, matchStrikethrough, type StrikethroughIndex } from "./strikethrough.ts";
 
-const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
+const LATEX_INLINE_OPENERS = ["$", "\\(", "\\["] as const;
+
+/**
+ * One inline run being lexed. Marked hands tokenizers and `start` functions suffixes of the run, one
+ * per position, so per-call scans to the end are quadratic; these caches make each scan once per run.
+ */
+interface InlineRun {
+	readonly source: string;
+	/** Strikethrough closers and blocks, built on the first `~~`. */
+	strikethrough?: StrikethroughIndex;
+	/** Per latex opener: the run position its last search started from, and what it found (-1: none). */
+	latexSearches?: Array<{ from: number; found: number }>;
+}
 
 class StrictStrikethroughTokenizer extends Tokenizer {
+	/** Inline runs in progress, innermost last. */
+	readonly runs: InlineRun[] = [];
+
+	/** The innermost run and the position of `suffix` in it; a fresh run when lexed without StrictStrikethroughLexer. */
+	locate(suffix: string): { run: InlineRun; offset: number } {
+		const run = this.runs.at(-1);
+		const offset = run ? run.source.length - suffix.length : -1;
+		if (!run || offset < 0 || !run.source.startsWith(suffix.slice(0, 3), offset)) {
+			return { run: { source: suffix }, offset: 0 };
+		}
+		return { run, offset };
+	}
+
+	/** Where the next inline latex opener starts in `suffix`, as the latex extension's `start` reports it. */
+	latexStart(suffix: string): number | undefined {
+		const { run, offset } = this.locate(suffix);
+		const searches = (run.latexSearches ??= LATEX_INLINE_OPENERS.map(() => ({ from: -1, found: -1 })));
+		let next = -1;
+		for (let i = 0; i < LATEX_INLINE_OPENERS.length; i++) {
+			const search = searches[i];
+			// A search from an earlier position stays valid until the position passes what it found.
+			if (search.from < 0 || offset < search.from || (search.found >= 0 && search.found < offset)) {
+				search.from = offset;
+				search.found = run.source.indexOf(LATEX_INLINE_OPENERS[i], offset);
+			}
+			if (search.found >= 0 && (next < 0 || search.found < next)) next = search.found;
+		}
+		return next < 0 ? undefined : next - offset;
+	}
+
 	override del(src: string): Tokens.Del | undefined {
-		const match = STRICT_STRIKETHROUGH_REGEX.exec(src);
+		if (!src.startsWith("~~")) return undefined;
+		const { run, offset } = this.locate(src);
+		run.strikethrough ??= indexStrikethrough(run.source);
+		const match = matchStrikethrough(run.source, run.strikethrough, offset);
 		if (!match) {
 			return undefined;
 		}
 
-		const text = match[2];
 		return {
 			type: "del",
-			raw: match[0],
-			text,
-			tokens: this.lexer.inlineTokens(text),
+			raw: match.raw,
+			text: match.text,
+			tokens: this.lexer.inlineTokens(match.text),
 		};
+	}
+}
+
+/** Tells the tokenizer which inline run it is reading, so `del` can map its suffix to a position. */
+class StrictStrikethroughLexer extends Lexer {
+	private readonly strikethrough: StrictStrikethroughTokenizer;
+
+	constructor(options: MarkedOptions, strikethrough: StrictStrikethroughTokenizer) {
+		super(options);
+		this.strikethrough = strikethrough;
+	}
+
+	override inlineTokens(src: string, tokens?: Token[]): Token[] {
+		this.strikethrough.runs.push({ source: src });
+		try {
+			return super.inlineTokens(src, tokens);
+		} finally {
+			this.strikethrough.runs.pop();
+		}
+	}
+}
+
+const inlineTokenizer = new StrictStrikethroughTokenizer();
+
+class StrictStrikethroughMarked extends Marked {
+	constructor() {
+		super();
+		this.setOptions({ tokenizer: inlineTokenizer });
+	}
+
+	override lexer(src: string, options?: MarkedOptions): TokensList {
+		return new StrictStrikethroughLexer(options ?? this.defaults, inlineTokenizer).lex(src);
 	}
 }
 
@@ -130,8 +216,7 @@ const LATEX_MARKDOWN_EXTENSIONS: readonly TokenizerExtension[] = [
 		name: "latex",
 		level: "inline",
 		start(source) {
-			const indices = [source.indexOf("$"), source.indexOf("\\("), source.indexOf("\\[")].filter((index) => index >= 0);
-			return indices.length > 0 ? Math.min(...indices) : undefined;
+			return inlineTokenizer.latexStart(source);
 		},
 		tokenizer: tokenizeInlineLatex,
 	},
@@ -162,8 +247,5 @@ export function trimPartialClosingFences(tokens: readonly Token[]): void {
 	token.text = token.text.slice(0, -lastLine.length).replace(/\n$/, "");
 }
 
-export const markdownParser = new Marked();
-markdownParser.setOptions({
-	tokenizer: new StrictStrikethroughTokenizer(),
-});
+export const markdownParser = new StrictStrikethroughMarked();
 markdownParser.use({ extensions: [...LATEX_MARKDOWN_EXTENSIONS] });

@@ -1,6 +1,16 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
-import { animationClock, Container, GLYPH, Markdown, type MarkdownTheme, MOTION, MouseRegion, Spacer, Text } from "@octocodeai/octocode-tui";
+import {
+	animationClock,
+	Container,
+	GLYPH,
+	Markdown,
+	type MarkdownTheme,
+	MOTION,
+	MouseRegion,
+	Spacer,
+	Text,
+} from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { ApplicationAssets } from "../../../core/application/assets.ts";

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { MutationReceipt } from "../render.ts";
 import { matchesResponsePath } from "./path.ts";
 import { knownUnsupported, noteUnsupported, saysUnsupported } from "./support.ts";
@@ -39,7 +39,7 @@ function rowOf(value: unknown): Record<string, unknown> | undefined {
 }
 
 function describe(row: Record<string, unknown>, path: string): DiagnosticFeedback {
-	const data = isRecord(row.data) ? row.data : {};
+	const data = asRecord(row.data);
 	const partial = data.isPartial === true || row.isPartial === true;
 	const reasons = Array.isArray(data.partialReasons) ? data.partialReasons : [];
 	if (reasons.includes("diagnosticsNotPublished")) return { path, state: "unpublished" };
@@ -52,12 +52,12 @@ function describe(row: Record<string, unknown>, path: string): DiagnosticFeedbac
 	if (!matches) return { path, state: "unsupported" };
 	const issues = matches.slice(0, MAX_ISSUES).map((item) => {
 		if (!isRecord(item)) return "Unknown diagnostic";
-		const range = isRecord(item.displayRange) ? item.displayRange : {};
+		const range = asRecord(item.displayRange);
 		const location = typeof range.startLine === "number" ? `:${range.startLine}` : "";
 		const code = typeof item.code === "string" || typeof item.code === "number" ? `${item.code} ` : "";
 		return `${code}${location} ${typeof item.message === "string" ? item.message : "Unknown diagnostic"}`.slice(0, 240);
 	});
-	const pagination = isRecord(data.pagination) ? data.pagination : {};
+	const pagination = asRecord(data.pagination);
 	const truncated = data.isTruncated === true || pagination.hasMore === true || matches.length > MAX_ISSUES;
 	return matches.length ? { path, state: "issues", issues, truncated } : { path, state: "observed-empty" };
 }
@@ -142,18 +142,13 @@ export async function inspectMutations(
 	return results;
 }
 
-/** The rows that carry a claim; a file type with no language server says nothing worth a line to the model. */
+/** Only the rows that report issues: an empty, unpublished, unsupported or superseded answer proves nothing about the edit, so it earns no line. */
 export function formatFeedback(feedback: readonly DiagnosticFeedback[]): string {
 	return feedback
-		.filter(({ state }) => state !== "unsupported" && state !== "unavailable")
-		.map(({ path, state, issues, truncated }) => {
-			const detail =
-				state === "issues"
-					? `diagnostics observed after edit (source version unverified): ${issues?.join("; ")}${truncated ? "; more results omitted" : ""}`
-					: state === "observed-empty"
-						? "no diagnostics observed after edit (source version unverified)"
-						: `diagnostics ${state}; no clean result available`;
-			return `${path}: ${detail}.`;
-		})
+		.filter(({ state }) => state === "issues")
+		.map(
+			({ path, issues, truncated }) =>
+				`${path}: diagnostics observed after edit (source version unverified): ${issues?.join("; ")}${truncated ? "; more results omitted" : ""}.`,
+		)
 		.join("\n");
 }

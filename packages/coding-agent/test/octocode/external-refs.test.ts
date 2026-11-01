@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExternalAgents, type ExternalFactories, type ExternalPolicy } from "../../src/octocode/external/manager.ts";
-import type { ExternalBackend } from "../../src/octocode/external/protocol.ts";
+import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
 import { registerExternal } from "../../src/octocode/external/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import type * as ReferenceResolver from "../../src/octocode/shared/references.ts";

@@ -220,7 +220,7 @@ export function handleBackspace(editor: EditorModel): void {
 		editor.pushUndoSnapshot();
 
 		// Delete grapheme before cursor (handles emojis, combining characters, etc.)
-		let line = editor.state.lines[editor.state.cursorLine] || "";
+		const line = editor.state.lines[editor.state.cursorLine] || "";
 		const beforeCursor = line.slice(0, editor.state.cursorCol);
 
 		// Find the last grapheme in the text before cursor
@@ -228,6 +228,8 @@ export function handleBackspace(editor: EditorModel): void {
 		const lastGrapheme = graphemes[graphemes.length - 1];
 		const graphemeLength = lastGrapheme ? lastGrapheme.segment.length : 1;
 		const isPastedSegmented = PASTE_MARKER_SINGLE.exec(lastGrapheme.segment);
+		let before = line.slice(0, editor.state.cursorCol - graphemeLength);
+		let after = line.slice(editor.state.cursorCol);
 
 		if (isPastedSegmented) {
 			// This contains the id part e.g 4 from [paste #4 +123 lines]
@@ -244,23 +246,21 @@ export function handleBackspace(editor: EditorModel): void {
 				editor.pastes.delete(id);
 			}
 
-			// Renumber markers with ids greater than the removed one.
-			editor.state.lines = editor.state.lines.map((line) =>
-				line.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup, suffixGroup) => {
+			// Renumber markers with ids greater than the removed one. The cursor line is renumbered on each side of the
+			// removed marker, so the cursor stays at its start when an earlier marker loses a digit (#10 becomes #9).
+			const renumber = (text: string): string =>
+				text.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup, suffixGroup) => {
 					const x = Number(idGroup);
 					if (x <= targetId) return fullMatch;
-					return `[paste #${x - 1}${suffixGroup}]`;
-				}),
-			);
+					return `[paste #${x - 1}${suffixGroup ?? ""}]`;
+				});
+			editor.state.lines = editor.state.lines.map(renumber);
+			before = renumber(before);
+			after = renumber(after);
 		}
 
-		line = editor.state.lines[editor.state.cursorLine] || "";
-
-		const before = line.slice(0, editor.state.cursorCol - graphemeLength);
-		const after = line.slice(editor.state.cursorCol);
-
 		editor.state.lines[editor.state.cursorLine] = before + after;
-		editor.setCursorCol(editor.state.cursorCol - graphemeLength);
+		editor.setCursorCol(before.length);
 	} else if (editor.state.cursorLine > 0) {
 		editor.pushUndoSnapshot();
 		mergeWithPreviousLine(editor);

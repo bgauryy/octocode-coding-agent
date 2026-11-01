@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -162,9 +163,8 @@ describe("installed MCP and skills through the native SDK", () => {
 						turns.push(context);
 						const names = getCurrentTools(context.messages).map((tool) => tool.name);
 						expect(names).toEqual(expect.arrayContaining(["file", "agent", "archive"]));
-						// Browsing defaults to the browser MCP server (docs/native-features.md); only the browser role keeps native `browser`.
-						if (role === "browser") expect(names).toContain("browser");
-						else expect(names).not.toContain("browser");
+						// Browsing defaults to the browser MCP server (docs/native-features.md); no role has a native `browser` tool.
+						expect(names).not.toContain("browser");
 						if (role === "browser") expect(names).not.toContain("bash");
 						const reader = names.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name));
 						expect(reader).toBeDefined();

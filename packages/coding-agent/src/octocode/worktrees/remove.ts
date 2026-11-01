@@ -1,4 +1,5 @@
 import { git, gitQuiet } from "../shared/git.ts";
+import { forgetWorktreeOrigin } from "../shared/trust/origin.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";
 import { entryAt, locateRepo, worktreePath } from "./repo.ts";
 import { dirtyCounts, insideWorktree, unmergedCount } from "./status.ts";
@@ -63,6 +64,7 @@ export async function removeWorktree(cwd: string, name: string, options: RemoveO
 		repo.main,
 		entry.prunable ? ["worktree", "prune"] : ["worktree", "remove", ...(options.force ? ["--force"] : []), target],
 	);
+	forgetWorktreeOrigin(target); // the trust record of a worktree that no longer exists
 	const branch = worktreeBranch(name);
 	if (entry.branch !== branch) return { removed: true, message: `Removed worktree "${name}".` };
 	const deleted = await gitQuiet(repo.main, ["branch", "-d", branch]);

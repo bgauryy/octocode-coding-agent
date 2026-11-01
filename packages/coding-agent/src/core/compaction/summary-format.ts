@@ -1,6 +1,20 @@
 /** The heading of a summary's closing label, and the line inside it that lists keywords (the archive index reads both). */
 export const TLDR_HEADING = "## TL;DR";
+/** The heading of a summary's first section: what the user is trying to accomplish. */
+export const GOAL_HEADING = "## Goal";
 const TOPICS_LABEL = "Topics:";
+
+/** The trimmed, non-empty lines of the section headed `heading`, up to the next heading or file-list tag; none when absent. */
+export function summarySection(summary: string, heading: string): string[] {
+	const lines = summary.split("\n");
+	const start = lines.findIndex((line) => line.trim() === heading);
+	if (start < 0) return [];
+	const end = lines.findIndex((line, index) => index > start && /^(?:## |<)/.test(line));
+	return lines
+		.slice(start + 1, end < 0 ? undefined : end)
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
 
 /**
  * The one statement of the checkpoint a compaction summary is written in. The standalone prompts (`summarization.ts`,
@@ -11,7 +25,7 @@ const TOPICS_LABEL = "Topics:";
  */
 export const SUMMARY_CHECKPOINT_FORMAT = `Write these sections, in this order, with the headings as given:
 
-## Goal
+${GOAL_HEADING}
 [What the user is trying to accomplish; several items when the session covers different tasks]
 
 ## Constraints & Preferences

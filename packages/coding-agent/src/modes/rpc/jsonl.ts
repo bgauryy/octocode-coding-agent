@@ -20,32 +20,32 @@ export function serializeJsonLine(value: unknown): string {
  */
 export function attachJsonlLineReader(stream: Readable, onLine: (line: string) => void): () => void {
 	const decoder = new StringDecoder("utf8");
-	let buffer = "";
+	// The unterminated tail, kept as pieces and searched only once each, so a record spread over many chunks is
+	// read in time linear in its length.
+	let pending: string[] = [];
 
 	const emitLine = (line: string) => {
 		onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
 	};
 
 	const onData = (chunk: string | Buffer) => {
-		buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
-
-		while (true) {
-			const newlineIndex = buffer.indexOf("\n");
-			if (newlineIndex === -1) {
-				return;
-			}
-
-			emitLine(buffer.slice(0, newlineIndex));
-			buffer = buffer.slice(newlineIndex + 1);
+		const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+		let start = 0;
+		for (let newlineIndex = text.indexOf("\n"); newlineIndex !== -1; newlineIndex = text.indexOf("\n", start)) {
+			pending.push(text.slice(start, newlineIndex));
+			const line = pending.join("");
+			pending = [];
+			start = newlineIndex + 1;
+			emitLine(line);
 		}
+		if (start < text.length) pending.push(text.slice(start));
 	};
 
 	const onEnd = () => {
-		buffer += decoder.end();
-		if (buffer.length > 0) {
-			emitLine(buffer);
-			buffer = "";
-		}
+		pending.push(decoder.end());
+		const rest = pending.join("");
+		pending = [];
+		if (rest.length > 0) emitLine(rest);
 	};
 
 	stream.on("data", onData);

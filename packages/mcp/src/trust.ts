@@ -1,17 +1,10 @@
-import { getAgentDir } from "../../coding-agent/src/config.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
-import { projectMcpConfigPaths } from "../../coding-agent/src/octocode/shared/home.ts";
-import { projectTrustNow, saveDecision } from "../../coding-agent/src/octocode/shared/trust.ts";
-import {
-	projectMcpFiles,
-	fingerprint,
-	projectConfigFiles,
-} from "../../coding-agent/src/octocode/shared/trust/files.ts";
-import { readStore, storeKey } from "../../coding-agent/src/octocode/shared/trust/store.ts";
+import { hostPaths, hostTrust } from "./host.ts";
+import type { McpContext, McpExtensionApi } from "./host/types.ts";
+import { projectMcpConfigPaths } from "./paths.ts";
 import { type LoadedMcpConfig, type McpServerEntry, loadMcpConfig, updateMcpServerConfig } from "./config.ts";
 import type { McpExtensionOptions } from "./state.ts";
 
-type TrustContext = Pick<ExtensionContext, "cwd" | "isProjectTrusted">;
+type TrustContext = Pick<McpContext, "cwd" | "isProjectTrusted">;
 
 /**
  * Whether project MCP definitions may load: the directory is trusted and the project's config files match the content
@@ -19,17 +12,17 @@ type TrustContext = Pick<ExtensionContext, "cwd" | "isProjectTrusted">;
  * alone is not enough: a server added or changed after trust waits for `/trust`.
  */
 export function projectMcpTrusted(ctx: TrustContext): boolean {
-	return ctx.isProjectTrusted() && projectTrustNow(ctx) === true;
+	return ctx.isProjectTrusted() && hostTrust().contentTrusted(ctx) === true;
 }
 
 /** Whether a trusted directory holds project MCP files that `projectMcpTrusted` refuses: new or changed since trust. */
 export const projectMcpChanged = (ctx: TrustContext, trusted: boolean): boolean =>
-	!trusted && ctx.isProjectTrusted() && projectMcpFiles(ctx.cwd).length > 0;
+	!trusted && ctx.isProjectTrusted() && hostTrust().projectMcpFiles(ctx.cwd).length > 0;
 
 /** Project MCP definitions load only under content-based trust (`projectMcpTrusted`). */
 export function loadTrustedMcpConfig(ctx: TrustContext, defaults: readonly McpServerEntry[] = []): LoadedMcpConfig {
 	const trusted = projectMcpTrusted(ctx);
-	const loaded = loadMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: trusted, defaults });
+	const loaded = loadMcpConfig({ agentDir: hostPaths().agentDir(), cwd: ctx.cwd, projectTrusted: trusted, defaults });
 	if (projectMcpChanged(ctx, trusted)) {
 		loaded.errors.push(
 			"Project MCP servers not loaded: their config is new or changed since you trusted it. Run /trust to review.",
@@ -47,17 +40,14 @@ function updateKeepingTrust(cwd: () => string): NonNullable<McpExtensionOptions[
 		const file = entry.override ?? entry.source;
 		const root = cwd();
 		const project = projectMcpConfigPaths(root).includes(file);
-		const before = project ? fingerprint(projectConfigFiles(root)) : undefined;
-		const stored = project ? readStore()[storeKey(root)] : undefined;
+		const finish = project ? hostTrust().beginTrustPreservingEdit(root, file) : undefined;
 		updateMcpServerConfig(file, entry.name, patch, { override: entry.override !== undefined });
-		if (before !== undefined && stored?.trusted && stored.sha === before) {
-			saveDecision(root, fingerprint(projectConfigFiles(root)), true);
-		}
+		finish?.();
 	};
 }
 
 /** The built-in MCP extension's options: project definitions load only under content-based trust. */
-export function trustedMcpOptions(api: ExtensionAPI): Pick<McpExtensionOptions, "loadConfig" | "updateConfig"> {
+export function trustedMcpOptions(api: McpExtensionApi): Pick<McpExtensionOptions, "loadConfig" | "updateConfig"> {
 	let cwd = process.cwd();
 	api.on("session_start", (_event, ctx) => {
 		cwd = ctx.cwd;

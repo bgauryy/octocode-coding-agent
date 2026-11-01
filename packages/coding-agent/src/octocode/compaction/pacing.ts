@@ -1,5 +1,6 @@
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import { charsToTokens, estimateTokens } from "../../core/compaction/index.ts";
+import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
+import { estimateTokens } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 
 /**

@@ -8,10 +8,11 @@ import {
 	type FilteringProxyOptions,
 	PROXY_ALL_LOOPBACK,
 	startFilteringProxy,
-} from "../../../../coding-agent/src/octocode/browser/proxy.ts";
-import { hostKey, portOf } from "../../../../coding-agent/src/octocode/browser/network.ts";
-import { browserMcpUrls } from "../../../../coding-agent/src/octocode/shared/browser-mcp.ts";
-import { browserMcpAsked } from "../../../../coding-agent/src/octocode/web/browser-mcp.ts";
+} from "../../../../common/src/browser-proxy.ts";
+import { hostKey, portOf } from "../../../../common/src/browser-network.ts";
+import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
+import { hostBrowser } from "../../host.ts";
+import { restrictWebRtc as restrictProfile } from "../../../../common/src/browser-webrtc.ts";
 import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
 import { BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -188,7 +189,7 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 			}
 			if (!isHttpUrl(url)) continue; // A file: or data: page is allowed to open; what it loads is still filtered.
 			const key = hostKey(url.hostname, portOf(url));
-			const asked = browserMcpAsked(key);
+			const asked = hostBrowser().mcpAsked(key);
 			if (asked ?? (await classifyHost(url, options.lookup)).kind !== "public") approved.add(key);
 		}
 	}
@@ -196,8 +197,7 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 	/** Chrome reads `webrtc.ip_handling_policy` from the profile: without it a page's WebRTC sends UDP past the proxy. */
 	async function restrictWebRtc(cwd: string, port: string): Promise<void> {
 		if (await running(port)) return; // Chrome would overwrite the file, and `open` reuses it.
-		const { restrictWebRtc: restrict } = await import("../../../../coding-agent/src/octocode/browser/launch.ts");
-		restrict(profileDir(cwd, port));
+		restrictProfile(profileDir(cwd, port));
 	}
 
 	return {
@@ -260,7 +260,6 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 			: { ...result, content: [...(result.content ?? []), { type: "text", text: notes.join("\n") }] };
 	}
 }
-
 
 /** Whether an `open` result says the launcher attached to a running browser instead of starting one. */
 function reusedBrowser(result: CallToolResult): boolean {

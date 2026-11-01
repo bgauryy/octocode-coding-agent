@@ -1,245 +1,269 @@
 import path from "node:path";
+import { RELATIVE_AFTER_CD, underDirectory } from "../bash-cwd.ts";
 import { bashSyntax, initializeBashSyntax } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
-import { readOnlyCommand } from "./read-only.ts";
+import { homeSpelling } from "../file-access.ts";
+import { destinations, gitDestinations, literalCommand, optionValues, withoutLocations } from "./destinations.ts";
+import {
+	ALL_OPERANDS,
+	changesGitConfig,
+	DESTINATION_ONLY,
+	FIND_ACTIONS,
+	gawkInPlace,
+	gitCommand,
+	GIT_MUTATING,
+	OPAQUE_WRITERS,
+	operandsOf,
+	OUTPUT_OPTION,
+	PACKAGE_CONFIG_WRITES,
+	PACKAGE_MANAGERS,
+	PACKAGE_MUTATING,
+	PACKAGE_RUNNERS,
+	scriptOf,
+	SHELL_PROGRAMS,
+	type Word,
+} from "./program-forms.ts";
+import { runInput, type RunInput } from "./input-runners.ts";
+import { inputMayWrite, readerWritingOptions, readOnlyCommand } from "./read-only.ts";
+import { sedFiles, sedInPlace, sedWrites } from "./sed-script.ts";
 import { base, wrappedCommand } from "./words.ts";
+
+/** The shell entry points the extension wires into the team gate: this file's mutation reads and the parsed command list. */
+export { parsedShell } from "./commands.ts";
 
 /**
  * What a shell command changes, as far as its parse shows: a policy for read-only roles and team reservations, not a
  * sandbox. It sees redirections, `tee`, in-place editors, file-moving programs, git and package-manager commands that
- * change the tree, and scripts passed to `sh -c`. It does not see what an interpreter (`node script.js`, `make`) does.
+ * change the tree, destinations named by options (`dd of=`, `curl -o`, `tar -C`, `git -C`, `git config`), commands
+ * `find -exec` runs, and scripts passed to `sh -c` or `eval`. It does not see what an interpreter (`node script.js`,
+ * `make`) does. A program name that is computed (`$X a b`, `$(…) a b`) is `uncertain`. `~` and `$HOME` spellings are
+ * kept as `~` paths.
  */
 interface ShellMutation {
 	/** Paths the command writes, moves or removes, as written (relative to the command's cwd). */
 	writes: string[];
+	/** Directories a change in `opaque` happens in (`.` for where the command runs, `git -C dir`'s repository): what the permission check classifies when no path is named. */
+	areas: string[];
 	/** Changes with no path to name (`git commit`, `sed -i`, `npm install`), one short description each. */
 	opaque: string[];
 	/** The command writes somewhere the parse could not resolve (`> $FILE`), or did not parse. */
 	uncertain: boolean;
+	/** The first reason for `uncertain` other than a `cd`: what the caller must change (`> $FILE`, a `$VAR` operand, a script the parse cannot read). */
+	uncertainBecause?: string;
+	/** `uncertain` because a relative path follows a `cd` the parse could not follow (a variable, `-`, `||`, a loop): the command can be written with absolute paths or without the `cd`. */
+	afterDirectoryChange?: true;
+	/** A relative write was also kept at the starting directory, because the `cd` before it is joined by `;` (or a newline) and may have failed; `&&` would settle it. */
+	afterUnjoinedCd?: true;
 	/** The parse gave up on (part of) the command: no parser, too large, timed out, or syntax it does not know. Its `writes` may be missing some. */
 	unparsed: boolean;
 }
 
-/** Programs that change every file operand: `rm a b`, `mv a b` (both are changed), `touch`, `mkdir`. */
-const ALL_OPERANDS = new Set([
-	"rm",
-	"rmdir",
-	"unlink",
-	"shred",
-	"mv",
-	"touch",
-	"mkdir",
-	"chmod",
-	"chown",
-	"chgrp",
-	"truncate",
-]);
-/** Programs that only change their destination: the last operand, or the `-t` / `--target-directory` value. */
-const DESTINATION_ONLY = new Set(["cp", "ln", "install"]);
-const GIT_MUTATING = new Set([
-	"add",
-	"am",
-	"apply",
-	"checkout",
-	"cherry-pick",
-	"clean",
-	"clone",
-	"commit",
-	"init",
-	"merge",
-	"mv",
-	"pull",
-	"push",
-	"rebase",
-	"reset",
-	"restore",
-	"revert",
-	"rm",
-	"switch",
-]);
-const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
-const PACKAGE_MUTATING = new Set([
-	"install",
-	"i",
-	"add",
-	"remove",
-	"rm",
-	"uninstall",
-	"update",
-	"upgrade",
-	"link",
-	"unlink",
-	"publish",
-	"ci",
-	"dedupe",
-	"prune",
-	"version",
-]);
-/** `git config` and `npm config` read with these; any other form of `git config` changes `.git/config` or `~/.gitconfig`. */
-const GIT_CONFIG_READS =
-	/^(?:-l|--list|--get(?:-all|-regexp|-urlmatch|-color(?:bool)?)?|--show-(?:origin|scope)|--name-only|--type=.*|-z|--null)$/;
-/** Config files and `package.json` fields these package-manager forms rewrite (`npm pkg set`, `npm config set`). */
-const PACKAGE_CONFIG_WRITES = new Map([
-	["pkg", new Set(["set", "delete", "fix"])],
-	["config", new Set(["set", "delete", "edit", "fix"])],
-]);
-/** Programs that rewrite files they are given and name no destination a parse could follow. */
-const OPAQUE_WRITERS = ["patch", "dd", "unzip", "wget", "rsync", "ed", "ex"];
-const SHELL_PROGRAMS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
-const FIND_ACTIONS = new Set([
-	"-delete",
-	"-exec",
-	"-execdir",
-	"-ok",
-	"-okdir",
-	"-fprint",
-	"-fprint0",
-	"-fprintf",
-	"-fls",
-]);
-
-type Word = string | undefined;
-
-/** Git options that take the next word as their value (`git -C dir`, `git -c k=v`); `--opt=value` forms carry it in one word. */
-const GIT_OPTION_VALUES = new Set([
-	"-C",
-	"-c",
-	"--git-dir",
-	"--work-tree",
-	"--namespace",
-	"--super-prefix",
-	"--config-env",
-]);
-
-/** The subcommand and its arguments after git's global options (`git -C . -c k=v --no-pager checkout -- f`). */
-function gitCommand(rest: Word[]): { sub: Word; after: Word[] } {
-	let at = 0;
-	while (at < rest.length && rest[at]?.startsWith("-") && rest[at] !== "--")
-		at += GIT_OPTION_VALUES.has(rest[at]!) ? 2 : 1;
-	const operands = operandsOf(rest.slice(at));
-	return { sub: operands[0], after: operands.slice(1) };
+/** Marks the command `uncertain`, keeping the first reason. */
+function unsure(found: ShellMutation, because: string): void {
+	found.uncertain = true;
+	found.uncertainBecause ??= because;
 }
 
-/** `gawk -i inplace` (also `-iinplace`, `--include=inplace`) rewrites its input files. */
-function gawkInPlace(words: Word[]): boolean {
-	return words.some(
-		(word, index) =>
-			(word === "-i" && /^inplace(?:\.awk)?$/.test(words[index + 1] ?? "")) ||
-			/^(?:-i|--include=)inplace(?:\.awk)?$/.test(word ?? ""),
-	);
+/**
+ * Records `file`, written by a command that runs in `dirs` (`BashCommand.dirs`): under each directory the command may
+ * be in, or as written when no `cd` came before. When a `cd` did (`moved`) but the parse could not follow it, a relative
+ * path names no known place and the result is `uncertain`.
+ */
+function place(
+	found: ShellMutation,
+	file: string,
+	dirs: string[] | undefined,
+	moved: boolean,
+	into: "writes" | "areas" = "writes",
+): void {
+	if (dirs) {
+		found[into].push(...dirs.map((dir) => (file === "." && dir !== "" ? dir : underDirectory(dir, file))));
+		if (dirs.length > 1 && dirs.some((dir) => underDirectory(dir, file) !== file)) found.afterUnjoinedCd = true;
+	} else if (moved && !path.isAbsolute(file) && !file.startsWith("~")) {
+		found.uncertain = true;
+		found.afterDirectoryChange = true;
+	} else found[into].push(file);
 }
 
-/** Whether `git config` (its words after `config`, and its operands) writes: any form but a read flag or a single key. */
-function changesGitConfig(rest: Word[], after: Word[]): boolean {
-	const subAt = rest.findIndex((word) => word === "config");
-	const flags = rest.slice(subAt + 1).filter((word) => word?.startsWith("-"));
-	if (flags.some((flag) => GIT_CONFIG_READS.test(flag ?? ""))) return false;
-	if (
-		flags.some((flag) =>
-			/^(?:--(?:unset|unset-all|add|replace-all|edit|remove-section|rename-section)|-e)$/.test(flag ?? ""),
-		)
-	)
-		return true;
-	// `git config key` reads; `git config key value` writes. A key or value that did not resolve is treated as a write.
-	return after.length >= 2 || after.includes(undefined);
-}
-
-/** The words that are not options (a `--` ends them); an unresolved word stays `undefined`. */
-function operandsOf(words: Word[]): Word[] {
-	const operands: Word[] = [];
-	let options = true;
-	for (const word of words) {
-		if (options && word === "--") options = false;
-		else if (!options || word === undefined || !word.startsWith("-")) operands.push(word);
-	}
-	return operands;
-}
-
-/** The script after `-c` (also `-lc`, `-ec`), when it is a plain literal. */
-function scriptOf(words: Word[]): Word {
-	const flag = words.findIndex((word) => word !== undefined && /^-[a-zA-Z]*c$/.test(word));
-	return flag >= 0 ? words[flag + 1] : undefined;
-}
-
-function merge(into: ShellMutation, other: ShellMutation): void {
-	into.writes.push(...other.writes);
+/** Folds the effect of a script a command runs (`sh -c`) into `into`: the script's relative paths are relative to where the command runs. */
+function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undefined, moved: boolean): void {
+	for (const file of other.writes) place(into, file, dirs, moved);
+	for (const area of other.areas) place(into, area, dirs, moved, "areas");
 	into.opaque.push(...other.opaque);
 	into.uncertain ||= other.uncertain;
+	if (other.uncertainBecause) into.uncertainBecause ??= other.uncertainBecause;
 	into.unparsed ||= other.unparsed;
+	if (other.afterDirectoryChange) into.afterDirectoryChange = true;
+	if (other.afterUnjoinedCd) into.afterUnjoinedCd = true;
 }
 
-function inspect(command: BashCommand, found: ShellMutation, depth: number): void {
-	const literals = command.tokens.map((word) => word.literal);
+/** The words `readerWritingOptions` reads: a `git` reader's subcommand first, then its words; another reader's words. */
+const readerWords = (name: string, sub: Word, rest: Word[]): string[] =>
+	(name === "git" ? [sub, ...rest] : rest).filter((word): word is string => word !== undefined);
+
+function inspect(command: BashCommand, found: ShellMutation, depth: number, moved: boolean): void {
+	const literals = command.tokens.map((word) => word.literal ?? homeSpelling(word.raw));
 	const executables = new Set<number>();
+	/** The input runner (`xargs`, `parallel`) in front of a command, by the command's index: its words come in part from input. */
+	const fed = new Map<number, RunInput>();
 	for (const index of bashCandidates(command, "deny").executables) {
 		// `sudo`, `env`, `exec` and the like run the command after their options: that command is what changes things.
 		const real = wrappedCommand(literals, index);
-		if (real === undefined) found.uncertain = true;
-		else executables.add(real);
+		if (real === undefined)
+			unsure(
+				found,
+				`\`${command.tokens[index]?.raw}\` runs a command the guard cannot read (an expansion after its options)`,
+			);
+		else {
+			executables.add(real);
+			const input = runInput(literals, index, real);
+			if (input?.programFromInput) {
+				found.opaque.push(`${input.runner} running its input`);
+				unsure(found, `\`${input.runner}\` runs a program named by its input, which the guard cannot read`);
+			} else if (input) fed.set(real, input);
+		}
 		executables.add(index);
 	}
 	for (const at of executables) {
 		const token = command.tokens[at];
-		if (token?.literal === undefined) continue;
-		const name = base(token.literal);
-		const rest: Word[] = command.tokens.slice(at + 1).map((word) => word.literal);
+		if (token === undefined) continue;
+		const program = literals[at];
+		// A computed program name (`$X`, `$(…)`, backticks) hides even which program runs: nothing about its writes is known.
+		if (program === undefined) {
+			unsure(found, `\`${token.raw}\` is a computed program name: the guard cannot tell which program runs`);
+			continue;
+		}
+		const name = base(program);
+		const rest: Word[] = literals.slice(at + 1);
 		const options = rest.filter((word) => word?.startsWith("-"));
-		const operands = operandsOf(rest);
+		const operands = operandsOf(PACKAGE_MANAGERS.has(name) ? withoutLocations(rest) : rest);
 		const { sub, after } = name === "git" ? gitCommand(rest) : { sub: operands[0], after: operands.slice(1) };
 		const take = (words: Word[]) => {
 			for (const word of words) {
-				if (word === undefined) found.uncertain = true;
-				else found.writes.push(word);
+				if (word === undefined)
+					unsure(
+						found,
+						`\`${command.tokens.find((token) => token.literal === undefined)?.raw ?? name}\` is an expansion, not a path (a variable, glob or substitution)`,
+					);
+				else place(found, word, command.dirs, moved);
 			}
 		};
-		const mutator = ALL_OPERANDS.has(name) || DESTINATION_ONLY.has(name) || name === "sed";
-		if (mutator && command.tokens.slice(0, at).some((word) => word.literal === "xargs")) {
-			found.opaque.push(`xargs ${name}`);
+		/** A change with no file to name: recorded as `description`, in the directories `where` names or where the command runs. */
+		const changes = (description: string, where: Word[] = []) => {
+			found.opaque.push(description);
+			for (const area of where.length > 0 ? where : ["."]) {
+				if (area === undefined) unsure(found, `\`${name}\` changes a directory named by an expansion`);
+				else place(found, area, command.dirs, moved, "areas");
+			}
+		};
+		const named = (name === "git" ? gitDestinations(rest, sub, after) : destinations(name, rest, operands)) ?? {
+			writes: [],
+			areas: [],
+		};
+		// Words read at run time may be operands or options (`-delete`, `-o f`): a program judged by its words cannot be judged.
+		const input = fed.get(at);
+		if (input && inputMayWrite(name, rest, input)) {
+			found.opaque.push(`${input.runner} ${name}`);
+			unsure(found, `\`${input.runner} ${name}\` takes operands and options from its input`);
 		} else if (ALL_OPERANDS.has(name)) {
-			take(operands);
+			take([...operands, ...(name === "mv" ? optionValues(rest, "t", ["--target-directory"]) : [])]);
 		} else if (DESTINATION_ONLY.has(name)) {
-			const target = rest.findIndex((word) => word === "-t" || word === "--target-directory");
-			take(target >= 0 ? [rest[target + 1]] : operands.length > 0 ? [operands.at(-1)] : []);
-		} else if (name === "sed" && options.some((word) => /^-[a-zA-Z]*i|^--in-place/.test(word ?? ""))) {
-			found.opaque.push("sed -i");
-			// The script is an operand unless `-e` gave it; an extra candidate path is harmless to both callers.
-			take(operands);
+			const target = optionValues(rest, "t", ["--target-directory"]);
+			// A hard link makes its source writable through the new name: the source is changed as much as the link.
+			const hard =
+				name === "link" || (name === "ln" && !options.some((word) => /^-[a-zA-Z]*s|^--sym/.test(word ?? "")));
+			if (hard) take([...operands, ...target]);
+			else take(target.length > 0 ? target : operands.length > 0 ? [operands.at(-1)] : []);
+		} else if (name === "sed") {
+			// With or without `-i` (BSD `-I`), the script's `w` commands and `s///w` flags write the files they name.
+			if (sedInPlace(rest)) {
+				changes("sed -i");
+				take(sedFiles(rest));
+			}
+			const script = sedWrites(rest);
+			take(script.writes);
+			if (script.unread) unsure(found, `sed's script ${script.unread}`);
 		} else if (name === "perl" && options.some((word) => /^-[a-zA-Z]*i/.test(word ?? ""))) {
-			found.opaque.push("perl -i");
+			changes("perl -i");
 		} else if (["awk", "gawk"].includes(name) && gawkInPlace(rest)) {
-			found.opaque.push(`${name} -i inplace`);
+			changes(`${name} -i inplace`);
 		} else if (OPAQUE_WRITERS.includes(name)) {
-			found.opaque.push(name);
+			take(named.writes);
+			changes(name, named.areas);
 		} else if (
 			name === "curl" &&
 			options.some((word) => /^-[a-zA-Z]*[oO]|^--(?:output|remote-name)/.test(word ?? ""))
 		) {
-			found.opaque.push("curl -o");
-		} else if (name === "tar" && rest.some((word) => /^(?:-[a-zA-Z]*x|x[a-zA-Z]*$|--extract)/.test(word ?? ""))) {
-			found.opaque.push("tar x");
+			take(named.writes);
+			changes("curl -o", named.areas);
+		} else if (name === "tar") {
+			// `tar -cf out.tar` names the archive it writes; `tar -x` changes the directory it extracts into.
+			take(named.writes);
+			if (rest.some((word) => /^(?:-[a-zA-Z]*x|x[a-zA-Z]*$|--extract)/.test(word ?? ""))) changes("tar x", named.areas);
 		} else if (name === "find" && rest.some((word) => FIND_ACTIONS.has(word ?? ""))) {
 			found.opaque.push("find with an action");
+			take(named.writes);
+			// `-exec cmd {} ;` runs `cmd` on what it finds: its writes are read like any command's, `{}` as each starting point.
+			for (const payload of named.payloads ?? []) {
+				if (payload[0] === undefined || depth >= 4) unsure(found, "`find -exec` runs a command the guard cannot read");
+				else inspect(literalCommand(payload, command.dirs), found, depth + 1, moved);
+			}
+		} else if (readerWritingOptions(name, readerWords(name, sub, rest)).length > 0) {
+			// A reader given an option that writes (`sort -o f`, `uniq in out`) or runs a program (`rg --pre x`).
+			const writing = readerWritingOptions(name, readerWords(name, sub, rest));
+			take(named.writes);
+			// git's only placed output is `--output` (`gitDestinations`); `git grep -oOvim` runs a pager whatever its `-o`.
+			const output = name === "git" ? /^--output(?:=|$)/ : OUTPUT_OPTION;
+			const runs = writing.find((option) => option !== "uniq OUTPUT" && !output.test(option));
+			if (runs) unsure(found, `\`${name} ${runs}\` writes or runs a program the guard cannot place`);
 		} else if (name === "git") {
-			if (
+			// `format-patch -o dir`, `archive -o f`: output options name what they write (`gitDestinations`).
+			if (sub !== "config") take(named.writes);
+			if (named.unknown) unsure(found, named.unknown);
+			if (sub === "config" && changesGitConfig(rest, after)) {
+				found.opaque.push("git config");
+				take(named.writes);
+			} else if (
 				sub !== undefined &&
 				(GIT_MUTATING.has(sub) || (sub === "stash" && !["list", "show"].includes(after[0] ?? "")))
 			)
-				found.opaque.push(`git ${sub}`);
-			else if (sub === "config" && changesGitConfig(rest, after)) found.opaque.push("git config");
+				changes(`git ${sub}`, named.areas);
 			else if (sub === "worktree" && ["add", "remove", "move", "prune"].includes(after[0] ?? ""))
-				found.opaque.push("git worktree");
+				changes("git worktree", named.areas);
+			// Without an output option or exactly `--stdout`, `format-patch` writes `NNNN-subject.patch` where it runs (`git -C`'s repository).
+			else if (sub === "format-patch" && named.writes.length === 0 && !named.unknown && !rest.includes("--stdout"))
+				changes("git format-patch", named.areas);
 		} else if (PACKAGE_MANAGERS.has(name)) {
-			if (sub === undefined && name === "yarn" && options.length === 0) found.opaque.push("yarn install");
-			else if (sub !== undefined && PACKAGE_MUTATING.has(sub)) found.opaque.push(`${name} ${sub}`);
-			else if (sub !== undefined && PACKAGE_CONFIG_WRITES.get(sub)?.has(after[0] ?? ""))
-				found.opaque.push(`${name} ${sub} ${after[0]}`);
+			const changed =
+				sub === undefined && name === "yarn" && options.length === 0
+					? "yarn install"
+					: sub !== undefined &&
+						  (PACKAGE_MUTATING.has(sub) || (sub === "global" && PACKAGE_MUTATING.has(after[0] ?? "")))
+						? `${name} ${sub}`
+						: sub !== undefined && PACKAGE_CONFIG_WRITES.get(sub)?.has(after[0] ?? "")
+							? `${name} ${sub} ${after[0]}`
+							: undefined;
+			if (changed) changes(changed, named.areas);
+			if (changed && named.unknown) unsure(found, named.unknown);
+			if (sub !== undefined && PACKAGE_RUNNERS.has(sub)) {
+				// `npm exec -- cp a b` runs `cp`: its writes are read like any command's.
+				const tail = rest.slice(rest.indexOf(sub) + 1);
+				const payload = tail[0] === "--" ? tail.slice(1) : tail;
+				if (payload[0] === undefined || payload[0].startsWith("-") || depth >= 4)
+					unsure(found, `\`${name} ${sub}\` runs a command the guard cannot read`);
+				else inspect(literalCommand(payload, command.dirs), found, depth + 1, moved);
+			}
 		} else if (SHELL_PROGRAMS.has(name) || name === "eval") {
 			const script = name === "eval" ? operands.join(" ") : scriptOf(rest);
 			if (script !== undefined && depth < 4 && !operands.includes(undefined))
-				merge(found, shellMutation(script, depth + 1));
-			else if (script !== undefined || name === "eval" || rest.includes("-c")) found.uncertain = true;
-			else if (operands.length === 0) found.opaque.push(`${name} reading a script from stdin`);
+				merge(found, shellMutation(script, depth + 1), command.dirs, moved);
+			else if (script !== undefined || name === "eval" || rest.includes("-c"))
+				unsure(found, `\`${name}\` runs a script the guard cannot read (an expansion, or nested too deep)`);
+			else if (operands.length === 0) {
+				found.opaque.push(`${name} reading a script from stdin`);
+				unsure(found, `\`${name}\` runs a script from its input, which the guard cannot read`);
+			}
 		}
 	}
 }
@@ -249,23 +273,30 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number): voi
  * one the parser cannot read at all is `uncertain` (a caller decides whether that matters).
  */
 export function shellMutation(command: string, depth = 0): ShellMutation {
-	const found: ShellMutation = { writes: [], opaque: [], uncertain: false, unparsed: false };
+	const found: ShellMutation = { writes: [], areas: [], opaque: [], uncertain: false, unparsed: false };
 	if (readOnlyCommand(command)) return found;
 	const syntax = bashSyntax(command);
 	found.unparsed = syntax.incomplete;
+	// A `cd` changes what a relative path names: `BashCommand.dirs` and `BashFileTarget.dirs` say where each part runs.
+	const moved = syntax.commands.some((part) => part.movesDirectory === true);
 	for (const target of syntax.targets) {
 		if (target.kind !== "write" || target.policyOnly) continue;
-		if (target.uncertain || target.path === undefined) found.uncertain = true;
-		else found.writes.push(target.path);
+		const followed = target.uncertain === RELATIVE_AFTER_CD && target.dirs !== undefined;
+		const home = target.uncertain === RELATIVE_AFTER_CD ? undefined : homeSpelling(target.raw);
+		if (home !== undefined) place(found, home, target.dirs, moved);
+		else if (target.path === undefined || (target.uncertain && !followed)) {
+			found.uncertain = true;
+			if (target.uncertain === RELATIVE_AFTER_CD) found.afterDirectoryChange = true;
+			else
+				unsure(
+					found,
+					`\`${target.raw}\` is not a plain path (${target.uncertain ?? "a variable, glob or substitution"})`,
+				);
+		} else place(found, target.path, target.dirs, moved);
 	}
-	for (const part of syntax.commands) inspect(part, found, depth);
-	// After a `cd` a relative operand names a path the cwd does not resolve (the parser already says so for redirects).
-	if (syntax.commands.some((part) => part.tokens[0]?.literal === "cd" || part.tokens[0]?.literal === "pushd")) {
-		const relative = found.writes.filter((file) => !path.isAbsolute(file));
-		if (relative.length > 0) found.uncertain = true;
-		found.writes = found.writes.filter((file) => path.isAbsolute(file));
-	}
+	for (const part of syntax.commands) inspect(part, found, depth, moved);
 	found.writes = [...new Set(found.writes)];
+	found.areas = [...new Set(found.areas)];
 	return found;
 }
 

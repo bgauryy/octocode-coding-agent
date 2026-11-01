@@ -175,6 +175,7 @@ export function App({
 							params={nav.params[current.name] ?? {}}
 							setParams={setParams}
 							ItemAction={editable ? live.ItemQuickAction : undefined}
+							controls={editable ? live.controls : undefined}
 						/>
 					)}
 				</main>
@@ -277,6 +278,7 @@ function ItemSheet({
 						) : undefined
 					}
 					activity={live && editable ? <live.ItemActivity item={item} /> : undefined}
+					tasks={live && editable && item.type !== "epic" ? <live.controls.ItemTasks item={item} /> : undefined}
 					reportHref={live ? reportLinkHref : undefined}
 				/>
 			) : (

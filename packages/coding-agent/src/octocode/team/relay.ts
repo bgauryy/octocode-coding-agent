@@ -40,6 +40,16 @@ export class Relays {
 		this.host = host;
 	}
 
+	/** Bumped by `reset`: a resume started before it no longer touches `resuming` when it settles. */
+	private generation = 0;
+
+	/** Forgets resumes in flight and the resume budget (session end): the next session starts with neither. */
+	reset(): void {
+		this.generation++;
+		this.resuming.clear();
+		this.resumed.clear();
+	}
+
 	/** Takes the waiting requests (synchronously, in the tick); resumes run in the background. */
 	take(db: TeamStore, now = Date.now()): void {
 		const me = this.host.id();
@@ -64,36 +74,31 @@ export class Relays {
 			const wakes = ours && resumable(target) && this.wakes(db, message, target);
 			// Left unclaimed: delivered to the target's inbox once it rejoins, or settled when its resume ends without it.
 			if (ours && resumable(target) && (this.resuming.has(target) || (!wakes && wanted.has(target)))) continue;
-			if (!db.refs.claimRelay(message.id, me)) continue;
-			if (!ours) this.fail(db, me, message, target, `${me} relays only messages from agents it started.`);
-			else if (reachable(target)) db.refs.deliverRelay(message.id, me, target, false);
-			else if (!resumable(target))
-				this.fail(
-					db,
-					me,
-					message,
-					target,
-					`no agent "${target}" is running, and your parent ${me} cannot resume one by that name (live in your session: ${[...tree].filter((id) => id !== message.from).join(", ") || "none"}). ${cited(me, target)}`,
-				);
-			else if (!wakes)
-				this.fail(
-					db,
-					me,
-					message,
-					target,
-					`${target} has finished, and a message that asks no question does not resume a finished agent. Send it with replyRequired if you need an answer. ${cited(me, target)}`,
-				);
-			else if (this.overBudget(target, now))
-				this.fail(
-					db,
-					me,
-					message,
-					target,
-					`${target} was already resumed ${RESUMES_PER_WINDOW} times by relay in the last ${RESUME_WINDOW_MS / 60_000} minutes. ${cited(me, target)}`,
-				);
-			else {
+			const refusal = !ours
+				? `${me} relays only messages from agents it started.`
+				: reachable(target)
+					? undefined
+					: !resumable(target)
+						? `no agent "${target}" is running, and your parent ${me} cannot resume one by that name (live in your session: ${[...tree].filter((id) => id !== message.from).join(", ") || "none"}). ${cited(me, target)}`
+						: !wakes
+							? `${target} has finished, and a message that asks no question does not resume a finished agent. Send it with replyRequired if you need an answer. ${cited(me, target)}`
+							: this.overBudget(target, now)
+								? `${target} was already resumed ${RESUMES_PER_WINDOW} times by relay in the last ${RESUME_WINDOW_MS / 60_000} minutes. ${cited(me, target)}`
+								: undefined;
+			const resuming = refusal === undefined && !reachable(target);
+			// The take and its settlement are one write: a failed write leaves the request for the next tick. A resumed target's
+			// delivery is recorded as handed over first, so the resumed run's inbox never hands it over a second time.
+			const taken = db.refs.takeRelay(message.id, me, () =>
+				refusal === undefined
+					? db.refs.deliverRelay(message.id, me, target, resuming)
+					: db.refs.failRelay(message.id, me, target, refusal),
+			);
+			if (taken && resuming) {
+				this.resumed.set(target, [...this.recent(target, now), now]);
 				this.resuming.set(target, undefined);
+				const generation = this.generation;
 				void this.resume(db, me, message, target).then((started) => {
+					if (generation !== this.generation) return;
 					if (!started) this.resuming.delete(target);
 					else if (this.resuming.has(target)) this.resuming.set(target, Date.now());
 				});
@@ -109,12 +114,14 @@ export class Relays {
 		return question?.from === target && question.replyRequired;
 	}
 
-	/** Counts a resume of `target` unless it is over the budget; whether it was. */
+	/** Relay resumes of `target` within the budget window before `now`. */
+	private recent(target: string, now: number): number[] {
+		return (this.resumed.get(target) ?? []).filter((at) => now - at < RESUME_WINDOW_MS);
+	}
+
+	/** Whether `target` was already resumed by relay as often as the budget allows. */
 	private overBudget(target: string, now: number): boolean {
-		const recent = (this.resumed.get(target) ?? []).filter((at) => now - at < RESUME_WINDOW_MS);
-		if (recent.length >= RESUMES_PER_WINDOW) return true;
-		this.resumed.set(target, [...recent, now]);
-		return false;
+		return this.recent(target, now).length >= RESUMES_PER_WINDOW;
 	}
 
 	private fail(db: TeamStore, me: string, message: Message, target: string, reason: string): void {
@@ -129,8 +136,6 @@ export class Relays {
 	private async resume(db: TeamStore, me: string, message: Message, target: string): Promise<boolean> {
 		const resumer = this.host.resumer();
 		try {
-			// Recorded as handed over first, so the resumed run's inbox never hands it over a second time.
-			db.refs.deliverRelay(message.id, me, target, true);
 			const receipt = await resumer?.(target, message.text, me, undefined, { message });
 			if (receipt) return true;
 			this.fail(

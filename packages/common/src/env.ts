@@ -3,8 +3,8 @@ import fs from "node:fs";
 
 /** Environment switches: one spelling rule for every `OCTOCODE_*` flag and number. */
 
-/** Set for a browser child with headless=false: Chrome uses a visible window and persistent profile. */
-export const BROWSER_VISIBLE_ENV = "OCTOCODE_BROWSER_VISIBLE";
+/** Set by the ACP broker (`1`) in the native worker it spawns: the broker, not the worker, owns that session's transcript identity. */
+export const ACP_WORKER_ENV = "OCTOCODE_INTERNAL_ACP_WORKER";
 
 /** Set in a subagent: the session id of the Octocode session that started it, whose backlog claims the subagent may update. */
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";

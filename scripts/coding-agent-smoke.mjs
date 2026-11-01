@@ -38,6 +38,10 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		if (!existsSync(profileDir) || !readdirSync(profileDir).some((name) => name.endsWith(".md"))) {
 			throw new Error("Installed Octocode package is missing bundled subagent profiles");
 		}
+		// The policy prompt is Markdown read at runtime (`getInstructionsDir`); without it every session fails to build its prompt.
+		if (!existsSync(join(packageDir, "dist/octocode/instructions/policy/work.md"))) {
+			throw new Error("Installed Octocode package is missing the bundled prompt instructions");
+		}
 		if (!existsSync(join(packageDir, "dist/octocode/native-skills/octocode-context-optimization/SKILL.md"))) {
 			throw new Error("Installed Octocode package is missing the bundled octocode-context-optimization skill");
 		}
@@ -57,7 +61,7 @@ import { octocodeLaunch } from ${JSON.stringify(pathToFileURL(join(packageDir, "
 import { runAcpMode } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/acp/server/acp-mode.js")).href)};
 import { AcpBackend } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/acp/client/client.js")).href)};
 import { getCliInvocation, getSubagentsDir${strictRuntime ? ", getBundledSkillsDir, getResearchCliInvocation" : ""} } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/config.js")).href)};
-for (const dependency of ["chrome-launcher", "@agentclientprotocol/sdk"]) {
+for (const dependency of ["@agentclientprotocol/sdk"]) {
 	assert.ok(existsSync(fileURLToPath(import.meta.resolve(dependency))), dependency);
 }
 assert.equal(typeof createAgentSession, "function");

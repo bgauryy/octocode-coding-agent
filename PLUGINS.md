@@ -96,14 +96,7 @@ Every profile accepts `type`, `command`, `timeout`, `failClosed` and `statusMess
 
 Octocode does not install plugins or read marketplaces. Plugins Claude Code or Codex already installed appear in `/plugins` as "installed in Claude Code" or "installed in Codex"; switching one on adds it to your settings with the right protocol, and its hooks and MCP servers still wait for review (step 3). For any other plugin, point Octocode at its directory on disk, then approve its executable parts.
 
-1. Add the plugin to the `plugins` array in `~/.octocode/octocodecode/settings.json`, or in `.octocode/settings.json` for a trusted project:
-
-   ```json
-   {
-   	"plugins": [{ "path": "/absolute/path/to/review-kit", "protocol": "claude" }]
-   }
-   ```
-
+1. Add the plugin to the `plugins` array in `~/.octocode/octocodecode/settings.json`, or in `.octocode/settings.json` for a trusted project, as an entry with an absolute `path` and a `protocol` (the [configuration example](packages/coding-agent/docs/plugins.md#configure-a-local-plugin) shows one).
    Use `"protocol": "codex"` for a `.codex-plugin/plugin.json` or a portable root `plugin.json`. The path must be absolute.
 
 2. Run `/reload`. Skills (`/skill:review-kit:<skill>`) and plain prompt commands (`/review-kit:<command>`) are available immediately.

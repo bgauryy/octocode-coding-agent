@@ -1,14 +1,13 @@
 /** `octocode mcp list` and `octocode mcp tools`: connect to each server and report its state and tools. */
 
-import { APP_NAME } from "../../../coding-agent/src/config.ts";
+import { hostIdentity } from "../host.ts";
 import { getMcpToolExposure, type LoadedMcpConfig } from "../config.ts";
 import { exposureOf } from "../exposure.ts";
 import { formatMcpTool, type McpToolListing } from "../inspection.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
 import { describeTransport, isEnabled } from "../server.ts";
 import { createConnection, type McpCommandOptions } from "./shared.ts";
-import { globalMcpConfigPath } from "../paths.ts";
-import { projectMcpConfigPath } from "../../../coding-agent/src/octocode/shared/home.ts";
+import { globalMcpConfigPath, projectMcpConfigPath } from "../paths.ts";
 
 interface ServerReport {
 	name: string;
@@ -107,7 +106,7 @@ export async function list(
 		log(`  ${report.transport}`);
 		log(`  source: ${report.source}`);
 		if (report.override) log(`  ${report.overrideScope ?? "project"} override: ${report.override}`);
-		if (report.state === "needs-auth") log(`  sign in with: ${APP_NAME} mcp login ${report.name}`);
+		if (report.state === "needs-auth") log(`  sign in with: ${hostIdentity().appName} mcp login ${report.name}`);
 		if (inspect && report.toolDetails?.length) {
 			for (const tool of report.toolDetails) log(`  ${formatMcpTool(tool, !!inspect.tool).split("\n").join("\n  ")}`);
 		} else if (report.tools.length > 0) {

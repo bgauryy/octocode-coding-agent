@@ -3,30 +3,71 @@ import {
 	type Focusable,
 	getKeybindings,
 	Input,
+	matchesKey,
 	truncateToWidth,
-	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { KeybindingsManager } from "../../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
+import { sessionTitle } from "../../../../core/session-manager/title.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { keyText } from "../keybinding-hints.ts";
-import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "../session-selector-search.ts";
+import {
+	filterAndSortSessions,
+	hasSessionName,
+	isTranscriptOnlyMatch,
+	type NameFilter,
+	type SortMode,
+} from "../session-selector-search.ts";
 import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./session-tree.ts";
 import { canonicalizePath } from "../../../../../../common/src/paths.ts";
-import { formatSessionDate, shortenPath } from "./utils.ts";
+import { checkoutLabel } from "../../../../core/worktree-path.ts";
+import type { SessionCounts } from "./header.ts";
+import { type GroupMode, groupNodes, listItems, scrollTop, visibleItems } from "./groups.ts";
+import { emptyMessage, renderGroupLabel, renderSearchBox } from "./list-chrome.ts";
+import { renderPreview } from "./preview.ts";
+import { renderSessionRow } from "./row.ts";
+import type { SessionExtras, SessionPickerPorts } from "./types.ts";
+import { folderColumn } from "./utils.ts";
+
+/** Lines of the picker that are not list rows: top border, title, search box (3) and footer. */
+const CHROME_LINES = 6;
+/** The list never gets fewer lines than one row and its group label. */
+const MIN_LIST_LINES = 4;
+
+const terminalRows = (): number => Math.max(1, (process.stdout.rows || 24) - 1);
 
 /**
- * Custom session list component with multi-line items and search
+ * Custom session list component: a search box over a window of two-line session rows, grouped by day or folder.
  */
 export class SessionList implements Component, Focusable {
 	public getSelectedSessionPath(): string | undefined {
 		const selected = this.filteredSessions[this.selectedIndex];
 		return selected?.session.path;
 	}
+
+	public getSelectedSession(): SessionInfo | undefined {
+		return this.filteredSessions[this.selectedIndex]?.session;
+	}
+
+	/** Where the selection stands, for the title: `(3 of 97)`. */
+	public getCounts(): SessionCounts {
+		const shown = this.filteredSessions.length;
+		return { position: shown === 0 ? 0 : this.selectedIndex + 1, shown, total: this.allSessions.length };
+	}
+
+	public setQuery(query: string): void {
+		this.searchInput.setValue(query);
+		this.filterSessions(query);
+	}
+
 	private allSessions: SessionInfo[] = [];
 	private filteredSessions: FlatSessionNode[] = [];
+	private groupLabels = new Map<number, string>();
+	private groupMode: GroupMode = "none";
 	private selectedIndex: number = 0;
 	private selectionTouched = false;
+	private top = 0;
+	private lastListLines = 0;
+	private previewOpen = false;
 	private searchInput: Input;
 	private showCwd = false;
 	private sortMode: SortMode = "threaded";
@@ -35,6 +76,11 @@ export class SessionList implements Component, Focusable {
 	private showPath = false;
 	private confirmingDeletePath: string | null = null;
 	private currentSessionCanonicalPath?: string;
+	private readonly ports: Pick<SessionPickerPorts, "extras" | "viewportRows">;
+	private extras: ReadonlyMap<string, SessionExtras> = new Map();
+	private byPath = new Map<string, SessionInfo>();
+	/** `main` / `worktree <name>` per folder, read once per picker: a render must not touch the disk for each row. */
+	private readonly checkoutLabels = new Map<string, string | undefined>();
 	public onSelect?: (sessionPath: string) => void;
 	public onCancel?: () => void;
 	public onExit: () => void = () => {};
@@ -42,11 +88,12 @@ export class SessionList implements Component, Focusable {
 	public onToggleSort?: () => void;
 	public onToggleNameFilter?: () => void;
 	public onTogglePath?: (showPath: boolean) => void;
+	public onPreviewChange?: (open: boolean) => void;
+	public onOpenActions?: (session: SessionInfo) => void;
 	public onDeleteConfirmationChange?: (path: string | null) => void;
 	public onDeleteSession?: (sessionPath: string) => Promise<void>;
 	public onRenameSession?: (sessionPath: string) => void;
 	public onError?: (message: string) => void;
-	private maxVisible: number = 10; // Max sessions visible (one line each)
 
 	// Focusable implementation - propagate to searchInput for IME cursor positioning
 	private _focused = false;
@@ -65,25 +112,25 @@ export class SessionList implements Component, Focusable {
 		nameFilter: NameFilter,
 		keybindings: KeybindingsManager,
 		currentSessionFilePath?: string,
+		ports: Pick<SessionPickerPorts, "extras" | "viewportRows"> = {},
 	) {
-		this.allSessions = sessions;
-		this.filteredSessions = [];
-		this.searchInput = new Input();
+		this.ports = ports;
+		this.searchInput = new Input({
+			prompt: "⌕ ",
+			placeholder: 're:<regex> · "exact phrase"',
+			placeholderStyle: (text) => theme.fg("dim", text),
+		});
 		this.showCwd = showCwd;
 		this.sortMode = sortMode;
 		this.nameFilter = nameFilter;
 		this.keybindings = keybindings;
 		this.currentSessionCanonicalPath = currentSessionFilePath && canonicalizePath(currentSessionFilePath);
-		this.filterSessions("");
+		this.setSessions(sessions, showCwd);
 
 		// Handle Enter in search input - select current item
 		this.searchInput.onSubmit = () => {
-			if (this.filteredSessions[this.selectedIndex]) {
-				const selected = this.filteredSessions[this.selectedIndex];
-				if (this.onSelect) {
-					this.onSelect(selected.session.path);
-				}
-			}
+			const selected = this.filteredSessions[this.selectedIndex];
+			if (selected) this.onSelect?.(selected.session.path);
 		};
 	}
 
@@ -101,6 +148,8 @@ export class SessionList implements Component, Focusable {
 		const selectedPath = this.selectionTouched ? this.getSelectedSessionPath() : undefined;
 		this.allSessions = sessions;
 		this.showCwd = showCwd;
+		this.byPath = new Map(sessions.map((session) => [canonicalizePath(session.path), session]));
+		this.extras = this.ports.extras?.(sessions.map((session) => session.id)) ?? new Map();
 		this.filterSessions(this.searchInput.getValue());
 		if (!this.selectionTouched) {
 			this.selectedIndex = 0;
@@ -115,21 +164,22 @@ export class SessionList implements Component, Focusable {
 		const nameFiltered =
 			this.nameFilter === "all" ? this.allSessions : this.allSessions.filter((session) => hasSessionName(session));
 
+		let nodes: FlatSessionNode[];
 		if (this.sortMode === "threaded" && !trimmed) {
 			// Threaded mode without search: show tree structure
-			const roots = buildSessionTree(nameFiltered);
-			this.filteredSessions = flattenSessionTree(roots);
+			nodes = flattenSessionTree(buildSessionTree(nameFiltered));
 		} else {
 			// Other modes or with search: flat list
 			const filtered = filterAndSortSessions(nameFiltered, query, this.sortMode, "all");
-			this.filteredSessions = filtered.map((session) => ({
-				session,
-				depth: 0,
-				isLast: true,
-				ancestorContinues: [],
-			}));
+			nodes = filtered.map((session) => ({ session, depth: 0, isLast: true, ancestorContinues: [] }));
 		}
+		// Only a list in recency order is divided; threads and relevance order are not.
+		this.groupMode = this.sortMode !== "recent" ? "none" : this.showCwd ? "folder" : "date";
+		const grouped = groupNodes(nodes, this.groupMode);
+		this.filteredSessions = grouped.nodes;
+		this.groupLabels = grouped.labels;
 		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredSessions.length - 1));
+		this.top = 0;
 	}
 
 	private setConfirmingDeletePath(path: string | null): void {
@@ -146,8 +196,17 @@ export class SessionList implements Component, Focusable {
 			this.onError?.("Cannot delete the currently active session");
 			return;
 		}
+		if (!selected.session.path) {
+			this.onError?.("This session has no file yet");
+			return;
+		}
 
 		this.setConfirmingDeletePath(selected.session.path);
+	}
+
+	private checkoutLabel(folder: string): string | undefined {
+		if (!this.checkoutLabels.has(folder)) this.checkoutLabels.set(folder, checkoutLabel(folder));
+		return this.checkoutLabels.get(folder);
 	}
 
 	private isCurrentSessionPath(path: string): boolean {
@@ -155,124 +214,73 @@ export class SessionList implements Component, Focusable {
 		return canonicalizePath(path) === this.currentSessionCanonicalPath;
 	}
 
+	private listLines(): number {
+		const rows = this.ports.viewportRows?.() ?? terminalRows();
+		return Math.max(MIN_LIST_LINES, rows - CHROME_LINES);
+	}
+
+	private parentTitle(session: SessionInfo): string | undefined {
+		if (!session.parentSessionPath) return undefined;
+		const parent = this.byPath.get(canonicalizePath(session.parentSessionPath));
+		return parent ? sessionTitle(parent, 80) || undefined : undefined;
+	}
+
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		const lines: string[] = [];
-
-		// Render search input
-		lines.push(...this.searchInput.render(width));
-		lines.push(""); // Blank line after search
+		const lines = renderSearchBox(this.searchInput, width);
 
 		if (this.filteredSessions.length === 0) {
-			let emptyMessage: string;
-			if (this.nameFilter === "named") {
-				const toggleKey = keyText("app.session.toggleNamedFilter");
-				if (this.showCwd) {
-					emptyMessage = `  No named sessions found. Press ${toggleKey} to show all.`;
-				} else {
-					emptyMessage = `  No named sessions in current folder. Press ${toggleKey} to show all, or Tab to view all.`;
-				}
-			} else if (this.showCwd) {
-				// "All" scope - no sessions anywhere that match filter
-				emptyMessage = "  No sessions found";
-			} else {
-				// "Current folder" scope - hint to try "all"
-				emptyMessage = "  No sessions in current folder. Press Tab to view all.";
-			}
-			lines.push(theme.fg("muted", truncateToWidth(emptyMessage, width, "…")));
+			lines.push(theme.fg("muted", truncateToWidth(emptyMessage(this.nameFilter, this.showCwd), width, "…")));
 			return lines;
 		}
 
-		// Calculate visible range with scrolling
-		const startIndex = Math.max(
-			0,
-			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredSessions.length - this.maxVisible),
-		);
-		const endIndex = Math.min(startIndex + this.maxVisible, this.filteredSessions.length);
+		const height = this.listLines();
+		this.lastListLines = height;
 
-		// Render visible sessions (one line each with tree structure)
-		for (let i = startIndex; i < endIndex; i++) {
-			const node = this.filteredSessions[i];
+		if (this.previewOpen) {
+			const session = this.filteredSessions[this.selectedIndex].session;
+			lines.push(...renderPreview(session, this.extras.get(session.id), width).slice(0, height));
+			return lines;
+		}
+
+		const items = listItems(this.filteredSessions.length, this.groupLabels);
+		this.top = scrollTop(items, this.top, this.selectedIndex, height);
+		const query = this.searchInput.getValue();
+		for (const item of visibleItems(items, this.top, height)) {
+			if ("label" in item) {
+				lines.push(renderGroupLabel(item.label, this.groupMode, (f) => this.checkoutLabel(f), width));
+				continue;
+			}
+			const node = this.filteredSessions[item.row];
 			const session = node.session;
-			const isSelected = i === this.selectedIndex;
-			const isConfirmingDelete = session.path === this.confirmingDeletePath;
-			const isCurrent = this.isCurrentSessionPath(session.path);
-
-			// Build tree prefix
-			const prefix = this.buildTreePrefix(node);
-
-			// Session display text (name or first message)
-			const hasName = !!session.name;
-			const displayText = session.name ?? session.firstMessage;
-			const normalizedMessage = displayText.replace(/[\x00-\x1f\x7f]/g, " ").trim();
-
-			// Right side: message count and age
-			const age = formatSessionDate(session.modified);
-			const msgCount = String(session.messageCount);
-			let rightPart = `${msgCount} ${age}`;
-			if (this.showCwd && session.cwd) {
-				rightPart = `${shortenPath(session.cwd)} ${rightPart}`;
-			}
-			if (this.showPath) {
-				rightPart = `${shortenPath(session.path)} ${rightPart}`;
-			}
-
-			// Cursor
-			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";
-
-			// Calculate available width for message
-			const prefixWidth = visibleWidth(prefix);
-			const rightWidth = visibleWidth(rightPart) + 2; // +2 for spacing
-			const availableForMsg = width - 2 - prefixWidth - rightWidth; // -2 for cursor
-
-			const truncatedMsg = truncateToWidth(normalizedMessage, Math.max(10, availableForMsg), "…");
-
-			// Style message
-			let messageColor: "error" | "warning" | "accent" | null = null;
-			if (isConfirmingDelete) {
-				messageColor = "error";
-			} else if (isCurrent) {
-				messageColor = "accent";
-			} else if (hasName) {
-				messageColor = "warning";
-			}
-			let styledMsg = messageColor ? theme.fg(messageColor, truncatedMsg) : truncatedMsg;
-			if (isSelected) {
-				styledMsg = theme.bold(styledMsg);
-			}
-
-			// Build line
-			const leftPart = cursor + theme.fg("dim", prefix) + styledMsg;
-			const leftWidth = visibleWidth(leftPart);
-			const spacing = Math.max(1, width - leftWidth - visibleWidth(rightPart));
-			const styledRight = theme.fg(isConfirmingDelete ? "error" : "dim", rightPart);
-
-			let line = leftPart + " ".repeat(spacing) + styledRight;
-			if (isSelected) {
-				line = theme.bg("selectedBg", line);
-			}
-			lines.push(truncateToWidth(line, width));
+			lines.push(
+				...renderSessionRow({
+					node,
+					width,
+					selected: item.row === this.selectedIndex,
+					current: this.isCurrentSessionPath(session.path),
+					confirmingDelete: session.path === this.confirmingDeletePath,
+					showPath: this.showPath,
+					...(this.showCwd && this.groupMode === "none" && session.cwd
+						? { folder: folderColumn(session.cwd, this.checkoutLabel(session.cwd), 40) }
+						: {}),
+					extras: this.extras.get(session.id),
+					transcriptMatch: isTranscriptOnlyMatch(session, query),
+					parentTitle: this.parentTitle(session),
+				}),
+			);
 		}
-
-		// Add scroll indicator if needed
-		if (startIndex > 0 || endIndex < this.filteredSessions.length) {
-			const scrollText = `  (${this.selectedIndex + 1}/${this.filteredSessions.length})`;
-			const scrollInfo = theme.fg("muted", truncateToWidth(scrollText, width, ""));
-			lines.push(scrollInfo);
-		}
-
 		return lines;
 	}
 
-	private buildTreePrefix(node: FlatSessionNode): string {
-		if (node.depth === 0) {
-			return "";
-		}
+	private setPreviewOpen(open: boolean): void {
+		this.previewOpen = open;
+		this.onPreviewChange?.(open);
+	}
 
-		const parts = node.ancestorContinues.map((continues) => (continues ? "│  " : "   "));
-		const branch = node.isLast ? "└─ " : "├─ ";
-		return parts.join("") + branch;
+	private move(to: number): void {
+		this.selectedIndex = Math.max(0, Math.min(this.filteredSessions.length - 1, to));
 	}
 
 	handleInput(keyData: string): void {
@@ -295,9 +303,7 @@ export class SessionList implements Component, Focusable {
 		}
 
 		if (kb.matches(keyData, "tui.input.tab")) {
-			if (this.onToggleScope) {
-				this.onToggleScope();
-			}
+			this.onToggleScope?.();
 			return;
 		}
 
@@ -333,6 +339,13 @@ export class SessionList implements Component, Focusable {
 			return;
 		}
 
+		// Host actions for the selected session
+		if (kb.matches(keyData, "app.session.actions")) {
+			const selected = this.getSelectedSession();
+			if (selected) this.onOpenActions?.(selected);
+			return;
+		}
+
 		// Ctrl+Backspace: non-invasive convenience alias for delete
 		// Only triggers deletion when the query is empty; otherwise it is forwarded to the input
 		if (kb.matches(keyData, "app.session.deleteNoninvasive")) {
@@ -346,38 +359,35 @@ export class SessionList implements Component, Focusable {
 			return;
 		}
 
+		// Space shows the preview; once a query is typed it is part of the query (`"exact phrase"`).
+		if (matchesKey(keyData, "space") && this.searchInput.getValue() === "") {
+			if (this.filteredSessions.length > 0) this.setPreviewOpen(!this.previewOpen);
+			return;
+		}
+		if (this.previewOpen && kb.matches(keyData, "tui.select.cancel")) {
+			this.setPreviewOpen(false);
+			return;
+		}
+
 		this.selectionTouched = true;
-		// Up arrow
+		const page = Math.max(1, Math.floor((this.lastListLines || this.listLines()) / 2));
 		if (kb.matches(keyData, "tui.select.up")) {
-			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-		}
-		// Down arrow
-		else if (kb.matches(keyData, "tui.select.down")) {
-			this.selectedIndex = Math.min(this.filteredSessions.length - 1, this.selectedIndex + 1);
-		}
-		// Page up - jump up by maxVisible items
-		else if (kb.matches(keyData, "tui.select.pageUp")) {
-			this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
-		}
-		// Page down - jump down by maxVisible items
-		else if (kb.matches(keyData, "tui.select.pageDown")) {
-			this.selectedIndex = Math.min(this.filteredSessions.length - 1, this.selectedIndex + this.maxVisible);
-		}
-		// Enter
-		else if (kb.matches(keyData, "tui.select.confirm")) {
+			this.move(this.selectedIndex - 1);
+		} else if (kb.matches(keyData, "tui.select.down")) {
+			this.move(this.selectedIndex + 1);
+		} else if (kb.matches(keyData, "tui.select.pageUp")) {
+			this.move(this.selectedIndex - page);
+		} else if (kb.matches(keyData, "tui.select.pageDown")) {
+			this.move(this.selectedIndex + page);
+		} else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selected = this.filteredSessions[this.selectedIndex];
 			if (selected && this.onSelect) {
 				this.onSelect(selected.session.path);
 			}
-		}
-		// Escape - cancel
-		else if (kb.matches(keyData, "tui.select.cancel")) {
-			if (this.onCancel) {
-				this.onCancel();
-			}
-		}
-		// Pass everything else to search input
-		else {
+		} else if (kb.matches(keyData, "tui.select.cancel")) {
+			this.onCancel?.();
+		} else {
+			// Everything else goes to the search box
 			this.searchInput.handleInput(keyData);
 			this.filterSessions(this.searchInput.getValue());
 		}

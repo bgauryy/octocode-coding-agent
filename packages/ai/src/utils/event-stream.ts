@@ -1,4 +1,4 @@
-import type { AssistantMessage, AssistantMessageEvent } from "../types.ts";
+import type { AssistantMessage, AssistantMessageEvent } from "../types/messages.ts";
 
 class FifoQueue<T> {
 	private incoming: T[] = [];

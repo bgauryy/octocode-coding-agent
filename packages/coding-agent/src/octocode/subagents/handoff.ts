@@ -3,12 +3,13 @@ import fs from "node:fs";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import type { ReadonlySessionManager } from "../../core/session-manager.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { parseJsonlLine } from "../../../../common/src/jsonl.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
-import { reportFilePath } from "./report.ts";
+import { shortPath } from "../shared/format.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
@@ -94,11 +95,9 @@ export class ReportQueue {
 			this.scanned.offset = from + end;
 			for (const line of buffer.subarray(0, end).toString("utf8").split("\n")) {
 				if (!line.includes(AGENT_RESULT_TYPE)) continue;
-				try {
-					this.receipt(JSON.parse(line));
-				} catch {
-					// A malformed line is not a receipt.
-				}
+				const parsed = parseJsonlLine(line);
+				// A malformed line is not a receipt.
+				if (parsed?.ok) this.receipt(parsed.value);
 			}
 		} catch {
 			// A not-yet-created or unreadable transcript is not a receipt.
@@ -339,7 +338,9 @@ export function noticeText(report: Report): string {
 	const { id, outcome, status } = report.details;
 	const result = outcome ?? (status === "done" ? "finished" : status);
 	// The pointer is the last such line, after anything the child wrote; only a scratch path is ever repeated.
-	const file = reportFilePath(report.content);
+	// The host's own report file: the report text is the child's, and may imitate a pointer line.
+	const saved = report.details.reportArtifact?.path;
+	const file = saved ? shortPath(saved) : undefined;
 	return `[Octocode notice] Background subagent ${id} ${result}. ${
 		file ? `Report saved at ${file}. ` : ""
 	}The full report follows when this turn ends.`;

@@ -168,7 +168,7 @@ describe("subagents", () => {
 			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B\nTo pass on a teammate's message, forward it instead of retyping it.",
 		);
 		expect(teamTask("Fix A", "main-1", [])).toMatch(
-			/none yet; `agent` type `coordinate`, `input.action` = `list` shows teammates that start later/,
+			/none yet; `agent` type `coordinate`, `action` `list` shows teammates that start later/,
 		);
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
@@ -236,6 +236,9 @@ describe("subagents", () => {
 			"anthropic/claude",
 			"--tools",
 			"read,grep,file,agent,archive,skill,mcp,mcp__*",
+			// A profile that does not name the browser server never starts it.
+			"--exclude-tools",
+			"mcp__browser__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -292,7 +295,7 @@ describe("subagents", () => {
 			"--tools",
 			["file", "agent", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
 			"--exclude-tools",
-			"browser,bash",
+			"browser,bash,mcp__browser__*",
 		]);
 	});
 
@@ -329,23 +332,25 @@ describe("subagents", () => {
 		expect(profile.prompt).toContain("headless");
 		expect(profile.prompt).toContain("persistent");
 		expect(buildAgentArgs(profile, undefined, SESSION)).toContain("builtin:mcp");
-		// Read-only roles drop the debugger; scoped implementer/reviewer roles omit graph schemas.
+		// Read-only roles drop the debugger.
 		for (const [name, excluded] of [
-			["researcher", "browser,debug"],
-			["reviewer", "browser,debug,graphBuild,graphQuery"],
-			["implementer", "browser,graphBuild,graphQuery"],
-		])
+			["researcher", "debug"],
+			["reviewer", "debug"],
+			["implementer", undefined],
+		] as const)
 			expect(profiles.get(name)?.excludeTools, name).toBe(excluded);
 	});
 
-	it("sets visible Chrome only for headless=false and clears inherited browser mode", () => {
+	it("carries the browser mode in the task, not the environment", () => {
 		const profile = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
-		const inherited = { PATH: "/usr/bin", OCTOCODE_BROWSER_VISIBLE: "1" };
+		const inherited = { PATH: "/usr/bin" };
 		expect(subagentProcessEnv({ ...profile, headless: false }, inherited)).toMatchObject({
 			OCTOCODE_SUBAGENT: "1",
-			OCTOCODE_BROWSER_VISIBLE: "1",
 			PATH: "/usr/bin",
 		});
+		expect(subagentProcessEnv({ ...profile, headless: false }, inherited)).not.toHaveProperty(
+			"OCTOCODE_BROWSER_VISIBLE",
+		);
 		expect(subagentProcessEnv(profile, inherited)).not.toHaveProperty("OCTOCODE_BROWSER_VISIBLE");
 		expect(subagentProcessEnv(undefined, inherited)).not.toHaveProperty("OCTOCODE_BROWSER_VISIBLE");
 		expect(profile.headless).toBe(true);
@@ -459,7 +464,7 @@ describe("subagents", () => {
 			{ id: undefined, view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
 			fakePermission(),
 		);
-		// index.ts adds it as `/octocode agents` with the `/agents` shortcut.
+		// index.ts adds it as the `/agents` command.
 		const subcommands = new Subcommands();
 		subcommands.add("agents", control.command);
 		subcommands.register(api);

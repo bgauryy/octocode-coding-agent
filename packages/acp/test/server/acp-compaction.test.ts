@@ -36,8 +36,7 @@ describe("ACP compaction", () => {
 				type: "compaction_end",
 				reason: "threshold",
 				aborted: false,
-				willRetry: false,
-				result: { summary: writtenSummary(), tokensBefore: 8000, firstKeptEntryId: "k" },
+				result: { summary: writtenSummary(), tokensBefore: 8000 },
 			},
 		]);
 		const call = updates.find((update) => update.sessionUpdate === "tool_call");
@@ -58,7 +57,6 @@ describe("ACP compaction", () => {
 				type: "compaction_end",
 				reason: "manual",
 				aborted: false,
-				willRetry: false,
 				result: undefined,
 				errorMessage: "Auto-compaction failed: model refused",
 			},
@@ -71,7 +69,7 @@ describe("ACP compaction", () => {
 	it("reports a cancelled compaction as failed, and one that never started as a started then failed call", async () => {
 		const aborted = await turn([
 			{ type: "compaction_start", reason: "manual" },
-			{ type: "compaction_end", reason: "manual", aborted: true, willRetry: false, result: undefined },
+			{ type: "compaction_end", reason: "manual", aborted: true, result: undefined },
 		]);
 		expect(toolText(aborted.find((update) => update.sessionUpdate === "tool_call_update")!)).toBe(
 			"Compaction cancelled.",
@@ -81,7 +79,6 @@ describe("ACP compaction", () => {
 				type: "compaction_end",
 				reason: "overflow",
 				aborted: false,
-				willRetry: false,
 				result: undefined,
 				errorMessage: "Context overflow recovery failed: no model is selected.",
 			},

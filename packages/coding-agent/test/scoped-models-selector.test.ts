@@ -123,4 +123,24 @@ describe("scoped models selector", () => {
 		expect(getMarkerStates(selector, models)).toEqual([true, true, true]);
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain("all enabled");
 	});
+
+	it("keeps the moved model selected when reordering a filtered list", async () => {
+		const models = [
+			{ id: "alpha-one", name: "Alpha One", enabled: true },
+			{ id: "beta-two", name: "Beta Two", enabled: true },
+			{ id: "alpha-three", name: "Alpha Three", enabled: true },
+		];
+		const selector = await createSelector(models);
+		const selectedRow = () =>
+			stripAnsi(selector.render(120).join("\n"))
+				.split("\n")
+				.find((line) => line.startsWith("→ "));
+
+		for (const character of "alpha") selector.handleInput(character);
+		selector.handleInput("\x1b[B");
+		expect(selectedRow()).toContain("alpha-three");
+
+		selector.handleInput("\x1b[1;3A"); // alt+up: move the selected model up
+		expect(selectedRow()).toContain("alpha-three");
+	});
 });

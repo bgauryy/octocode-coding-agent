@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { withFileLockSync } from "../../../../../common/src/file-write-lock.ts";
 import { globalPaths, workspacePaths } from "../home.ts";
 import { parseJson } from "../util.ts";
 import { readText, realPath } from "./files.ts";
@@ -10,35 +11,27 @@ interface StoredDecision {
 	trusted: boolean;
 }
 
-/** How long a save waits for another session's store lock, and when a lock is old enough to be a crashed holder's. */
-const STORE_LOCK_WAIT_MS = 2_000;
-const STORE_LOCK_STALE_MS = 10_000;
+/** A save waits about two seconds (100 × 20ms) for another session's store lock, then reports it busy. */
+const STORE_LOCK_ATTEMPTS = 100;
+/** Earlier builds made the lock a regular file; one this old was left by a crashed holder. */
+const LEGACY_LOCK_STALE_MS = 10_000;
 
 /**
- * Run `update` holding `<file>.lock` (created exclusively), so sessions that read, change and write the same file
- * never drop each other's change. A lock older than `STORE_LOCK_STALE_MS`, or still held after `STORE_LOCK_WAIT_MS`,
- * belongs to a crashed or stuck holder and is taken over.
+ * Run `update` holding `<file>.lock`, so sessions that read, change and write the same file never drop each other's
+ * change. A live holder is never broken: a waiter fails with `ELOCKED`. Call `assertHeld` right before writing; it throws
+ * when a stalled holder's lock was taken over (see `withFileLockSync`).
  */
-export function withFileLock(file: string, update: () => void): void {
+export function withFileLock(file: string, update: (assertHeld: () => void) => void): void {
 	const lock = `${file}.lock`;
-	const deadline = Date.now() + STORE_LOCK_WAIT_MS;
-	for (;;) {
+	const legacy = fs.statSync(lock, { throwIfNoEntry: false });
+	if (legacy?.isFile() && Date.now() - legacy.mtimeMs > LEGACY_LOCK_STALE_MS) {
 		try {
-			fs.closeSync(fs.openSync(lock, "wx", 0o600));
-			break;
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			const since = fs.statSync(lock, { throwIfNoEntry: false })?.mtimeMs;
-			if (since !== undefined && Date.now() - since < STORE_LOCK_STALE_MS && Date.now() < deadline)
-				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-			else fs.rmSync(lock, { force: true });
+			fs.unlinkSync(lock);
+		} catch {
+			// Another session cleared it (and may hold the lock directory now).
 		}
 	}
-	try {
-		update();
-	} finally {
-		fs.rmSync(lock, { force: true });
-	}
+	withFileLockSync(file, update, { lockfilePath: lock, attempts: STORE_LOCK_ATTEMPTS });
 }
 
 export const storePath = (home?: string) => globalPaths(process.env, home).trust;

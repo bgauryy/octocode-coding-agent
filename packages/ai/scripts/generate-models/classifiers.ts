@@ -1,6 +1,7 @@
 import { CLOUDFLARE_WORKERS_AI_REST_BASE_URL } from "../../src/api/cloudflare.ts";
 import { getOpenCodeBaseUrl } from "../../src/providers/opencode-endpoints.ts";
 import type { ClassifierModel } from "../../src/types.ts";
+import { fetchCatalog } from "./fetchers.ts";
 import { generatorOptions } from "./options.ts";
 import { withOpenAiLongContextPricing } from "./pricing.ts";
 import type { ModelsDevMetadata } from "./types.ts";
@@ -10,7 +11,7 @@ import type { ModelsDevMetadata } from "./types.ts";
 export async function loadModelsDevClassifierModels(): Promise<ClassifierModel<"typesafe-system-one">[]> {
 	try {
 		console.log("Fetching classifier models from models.dev API...");
-		const response = await fetch("https://models.dev/models.json?type=decision");
+		const response = await fetchCatalog("https://models.dev/models.json?type=decision");
 		if (!response.ok) throw new Error(`models.dev classifier API returned ${response.status}`);
 		const data = (await response.json()) as Record<string, ModelsDevMetadata>;
 		const metadata = data["typesafe/jev-latest"];

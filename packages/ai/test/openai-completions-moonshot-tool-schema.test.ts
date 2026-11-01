@@ -167,6 +167,29 @@ describe("sanitizeMoonshotToolParameters", () => {
 		expect((sanitized.properties as Record<string, unknown>).ecosystem).toEqual({ $ref: "#/$defs/name" });
 	});
 
+	it("inlines a $ref under propertyNames, which Moonshot rejects, and drops one it cannot resolve", () => {
+		// The shape of the Octocode MCP `clasify` assets field: a record whose key names come from shared definitions.
+		const sanitized = sanitizeMoonshotToolParameters({
+			type: "object",
+			$defs: { key: { $ref: "#/definitions/name" } },
+			definitions: { name: { pattern: "^[a-z]+$" } },
+			properties: {
+				assets: { type: "object", propertyNames: { $ref: "#/$defs/key", description: "Asset name" } },
+				other: { type: "object", propertyNames: { $ref: "#/$defs/missing" } },
+				loop: { type: "object", propertyNames: { $ref: "#/$defs/self" } },
+			},
+		});
+		const properties = sanitized.properties as Record<string, Record<string, unknown>>;
+		expect(properties.assets.propertyNames).toEqual({
+			pattern: "^[a-z]+$",
+			description: "Asset name",
+			type: "string",
+		});
+		expect(properties.other).toEqual({ type: "object" });
+		expect(properties.loop).toEqual({ type: "object" });
+		expect(JSON.stringify(sanitized)).not.toMatch(/"propertyNames":\{"\$ref"/);
+	});
+
 	it("converts boolean subschemas to MFJS object forms but leaves boolean keyword values alone", () => {
 		const sanitized = sanitizeMoonshotToolParameters({
 			type: "object",

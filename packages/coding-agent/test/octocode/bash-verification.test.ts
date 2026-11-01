@@ -62,6 +62,33 @@ describe("verification receipts", () => {
 		expect(verificationLine(longTail)).toContain("output tail incomplete; inspect full log");
 	});
 
+	it("agrees with the job report about an omitted line when the log has no final newline", () => {
+		const cwd = tmp();
+		const log = path.join(cwd, "job.log");
+		// 41 short lines, the last without a newline: the report keeps 40 and counts 1 earlier line.
+		fs.writeFileSync(log, Array.from({ length: 41 }, (_, index) => `line ${index}`).join("\n"));
+		const receipt = beginVerification("build", cwd, "tail-session");
+		const job = {
+			id: "bash-8",
+			command: "build",
+			cwd,
+			log,
+			pid: 1,
+			startedAt: receipt.startedAt,
+			verification: receipt,
+			done: Promise.resolve({ code: 0, signal: null, seconds: 1 }),
+		};
+		job.verification = finishVerification(receipt, { code: 0, signal: null, seconds: 1 }, job);
+		const report = jobReport(job, { code: 0, signal: null, seconds: 1 });
+		expect(report).toContain("[+1 earlier line in the log]");
+		expect(job.verification.output).toMatchObject({ complete: true, tailIncomplete: true });
+		expect(report).toContain("output tail incomplete; inspect full log");
+		// 40 lines with a final newline fit the tail whole.
+		fs.writeFileSync(log, Array.from({ length: 40 }, (_, index) => `line ${index}\n`).join(""));
+		const whole = finishVerification(receipt, { code: 0, signal: null, seconds: 1 }, job);
+		expect(whole.output).toMatchObject({ complete: true, tailIncomplete: false });
+	});
+
 	it("invalidates evidence if a file tool commit happens after launch", () => {
 		const receipt = beginVerification("tests", "/repo", "later-edit-session");
 		recordMutation("later-edit-session");

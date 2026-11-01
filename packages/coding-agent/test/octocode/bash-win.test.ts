@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLocalBashOperations } from "../../src/core/tools/bash/local-operations.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
-import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
-import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -20,6 +16,13 @@ vi.mock("../../src/utils/windows/winhelper.ts", () => ({
 		kill: () => tree.kill(),
 	},
 }));
+
+// The setup file already loaded these modules (through the MCP host ports); reload them under the mocks above.
+vi.resetModules();
+const { createLocalBashOperations } = await import("../../src/core/tools/bash/local-operations.ts");
+const { registerBashTool } = await import("../../src/octocode/files/bash.ts");
+const { BashJobs } = await import("../../src/octocode/files/bash-jobs.ts");
+const { Subcommands } = await import("../../src/octocode/shared/commands.ts");
 
 const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
 afterEach(() => {

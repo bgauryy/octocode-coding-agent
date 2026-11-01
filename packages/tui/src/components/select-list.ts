@@ -1,6 +1,8 @@
 import { getKeybindings } from "../keybindings.ts";
 import { GLYPH } from "../tokens/design.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
+import { stripTerminalSequences } from "../utils/ansi-codes.ts";
+import { stripControlCharacters } from "../utils/chars.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 
@@ -8,7 +10,16 @@ const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
 
-const normalizeToSingleLine = (text: string): string => text.replace(/[\r\n]+/g, " ").trim();
+// Bidi embeddings, overrides, isolates and marks: they reorder the text drawn after them.
+const BIDI_CONTROLS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/**
+ * Labels and descriptions come from untrusted sources (skill and prompt frontmatter, file names): draw them
+ * on one line without terminal sequences, control characters or bidi controls.
+ */
+const toDisplayLine = (text: string): string =>
+	stripControlCharacters(stripTerminalSequences(text.replace(/[\r\n\u2028\u2029]+/g, " "))).replace(BIDI_CONTROLS, "");
+const normalizeToSingleLine = (text: string): string => toDisplayLine(text).trim();
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 
 export interface SelectItem {
@@ -258,7 +269,7 @@ export class SelectList implements Component {
 	}
 
 	private getDisplayValue(item: SelectItem): string {
-		return item.label || item.value;
+		return toDisplayLine(item.label || item.value);
 	}
 
 	private notifySelectionChange(): void {

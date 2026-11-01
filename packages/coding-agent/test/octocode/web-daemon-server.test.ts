@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { DaemonHealthSchema, DaemonStatusSchema } from "@octocodeai/octocode-contracts/daemon";
 import { Value } from "typebox/value";
+import { mermaidScript } from "@octocodeai/octocode-webview";
 import { sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
@@ -79,6 +80,13 @@ describe("daemon HTTP rules (R1-R9)", () => {
 		const script = html.slice(html.indexOf("<script>") + "<script>".length, html.lastIndexOf("</script>"));
 		expect(csp).toContain(`'sha256-${createHash("sha256").update(script).digest("base64")}'`);
 		expect(html).toContain('data-daemon="true"');
+		// Attachment previews are page-made blob: URLs; the docs view runs the bundled Mermaid text as an inline script.
+		expect(csp).toMatch(/(^|; )img-src data: blob:(;|$)/);
+		expect(csp).toMatch(/(^|; )media-src blob:(;|$)/);
+		const mermaid = await mermaidScript();
+		expect(csp.match(/script-src[^;]*/)![0]).toContain(
+			`'sha256-${createHash("sha256").update(mermaid).digest("base64")}'`,
+		);
 		for (const route of ["/api/sessions", "/api/repos", "/api/config", "/s/x/api/backlogs", "/r/x/api/backlogs"]) {
 			const refused = await get(route);
 			expect(refused.status, route).toBe(401);
@@ -153,7 +161,11 @@ describe("daemon HTTP rules (R1-R9)", () => {
 
 	it("serves the configuration through the injected builder behind the token, and drains on request", async () => {
 		const { authed, drained } = await daemon();
-		expect(await (await authed("/api/config")).json()).toEqual({ protocolVersion: 1, providers: [] });
+		expect(await (await authed("/api/config")).json()).toEqual({
+			protocolVersion: 1,
+			providers: [],
+			writable: true,
+		});
 		expect((await authed("/api/config?repoId=unknown")).status).toBe(404);
 		expect((await authed("/api/admin/drain", { method: "POST" })).status).toBe(200);
 		expect(drained()).toBe(1);
@@ -235,6 +247,12 @@ describe("daemon with attached sessions and repositories", () => {
 			body: JSON.stringify({ op: "add", title: "nope" }),
 		});
 		expect(write.status).toBe(405);
+		const task = await authed(`${base}/api/backlogs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ command: "task.add", goal: "nope" }),
+		});
+		expect(task.status).toBe(405);
 		const history = await authed(`${base}/api/application/history?sessionId=sess-1&limit=5`);
 		expect(history.status).toBe(200);
 		expect((await authed(`${base}/api/application/history?sessionId=wrong`)).status).toBe(409);
@@ -391,6 +409,12 @@ describe("daemon with attached sessions and repositories", () => {
 		expect(sent.status).toBe(403);
 		expect((await sent.json()).error).toMatch(/view-only/);
 		expect(session.executed).toHaveLength(0);
+		const taskCommand = await viewed("/s/sess-1/api/backlogs", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ command: "task.add", goal: "nope" }),
+		});
+		expect(taskCommand.status).toBe(403);
 		expect((await viewed("/api/admin/drain", { method: "POST" })).status).toBe(403);
 		expect((await viewed("/api/admin/remote", { method: "POST" })).status).toBe(403);
 		const socket = new WebSocket(`ws://127.0.0.1:${server.port}/s/sess-1/api/backlogs/live`, {

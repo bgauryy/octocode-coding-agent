@@ -8,7 +8,7 @@ import { systemLines } from "../permission/effect.ts";
 import { changedOnDisk } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { timedTool } from "../shared/render/rows.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import type { Checkpoints } from "./checkpoint.ts";
 import { readView } from "./coverage.ts";
@@ -18,7 +18,7 @@ import { parsePatch } from "../shared/codex-patch/patch.ts";
 import { patchChanges, validateFileInput } from "../shared/file-input.ts";
 import { askReview } from "./review.ts";
 import { bashReads } from "./bash-reads.ts";
-import { BASH_READER, type FileGuard, returnedContent } from "./tool/guard.ts";
+import { type FileGuard, returnedContent } from "./tool/guard.ts";
 import { inspectQueryBatch, preparePatch } from "./tool/prepare.ts";
 import {
 	changePurpose,
@@ -38,7 +38,7 @@ import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./fe
  * Octocode's `file` tool: batched edit / write / delete queries, each with a
  * reason line. Edits and writes run through the engines of `tool/apply.ts` (exact replacement with a
  * whitespace/punctuation fallback, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
- * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch` (while that server is unavailable: printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
+ * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch` (or printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
  * tool, that changed on disk since then must be read again before a write or delete; an edit re-validates each oldText
  * against the current content and applies when each still matches exactly once. A file whose earlier read left the
  * context (compaction, a branch switch, a rewind that restored it) must be read again before
@@ -67,12 +67,13 @@ export function registerFileTool(
 			{
 				name: "file",
 				label: "File",
+				promptSnippet: "Create, edit, delete or patch files",
 				description:
-					"Create, edit or delete files; it does not read them. Pass queries (one object per change: type, path, plus edits or content) or a Codex-style patch string, not both; put all of one file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
-					"Read an existing file in this session before changing it (unread files are refused); edits need exact text that matches once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval. Inspect every outcome.",
-				promptSnippet: "Create, edit or delete files (guarded)",
+					"Applies a batch of file changes; it does not read files. Pass queries (one object per change: type, path, edits or content) or a Codex-style patch string, not both; put a file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
+					"Read an existing file before changing it; edits need exact text matching once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval.",
 				promptGuidelines: [
-					"Use file, not shell redirection or sed -i, for authored changes: it checkpoints each change for /rewind. Batch related files in one call. After a formatter or generator rewrites files, inspect its changes.",
+					"File changes made here are checkpointed for /rewind and respect peer reservations; shell redirection, sed -i, interpreters and heredocs do neither. Batch related files in one call, and inspect what a formatter or generator rewrote.",
+					"A call cut off by the output limit is not executed: write a very large file in parts (create it, then append with edits).",
 				],
 				parameters: Params,
 				prepareArguments: renameReasoning,
@@ -298,7 +299,9 @@ export function registerFileTool(
 						content: [
 							{
 								type: "text" as const,
-								text: `${report}${diagnostics.length ? `\n${formatFeedback(diagnostics)}` : ""}${parseFeedback.length ? `\n${formatParseFeedback(parseFeedback)}` : ""}`,
+								text: [report, formatFeedback(diagnostics), formatParseFeedback(parseFeedback)]
+									.filter(Boolean)
+									.join("\n"),
 							},
 						],
 						details: { outcomes, receipts, diagnostics, parseFeedback },
@@ -320,11 +323,11 @@ export function registerFileTool(
 		const view = readView(event.toolName, event.input, event.content, event.details);
 		for (const file of readPaths(event.toolName, event.input, ctx.cwd))
 			guard.record(file, known, view?.whole !== true, view?.lines);
-		// With Octocode's readers unavailable the model reads with bash; only its plain file printers count (`bashReads`).
-		if (guard.reader !== BASH_READER || event.toolName !== "bash") return;
+		// A plain file printer in bash counts as a read whichever reader is available (`bashReads`).
+		if (event.toolName !== "bash") return;
 		const { command, background } = event.input;
 		if (typeof command !== "string" || background === true) return;
-		const details = isRecord(event.details) ? event.details : {};
+		const details = asRecord(event.details);
 		const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
 		for (const read of bashReads(command, ctx.cwd, cut)) guard.record(read.file, undefined, !read.whole, read.lines);
 	});

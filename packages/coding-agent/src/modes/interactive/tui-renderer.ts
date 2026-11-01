@@ -8,7 +8,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../../../common/src/open-browser.ts";
-import { keyDisplayText } from "./components/keybinding-hints.ts";
+import { keyText } from "./components/keybinding-hints.ts";
 import { theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -35,7 +35,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			searchCurrentMatchStyle: (text) => theme.bold(theme.inverse(styleSearchMatch(text))),
 			searchNavigationButtonStyle: (text, hovered) => (hovered ? theme.underline(text) : text),
 			scrollToEndIndicator: () => {
-				const shortcut = keyDisplayText("tui.altScreen.bottom");
+				const shortcut = keyText("tui.altScreen.bottom");
 				const label = ` ↓ Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;
 				return theme.bg("selectedBg", theme.fg("text", label));
 			},

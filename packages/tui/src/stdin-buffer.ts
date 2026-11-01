@@ -76,6 +76,11 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	private pasteBuffer: string = "";
 	private pendingKittyPrintableCodepoint: number | undefined;
 
+	/** True between a bracketed paste's start marker and its end marker. */
+	get pasting(): boolean {
+		return this.pasteMode;
+	}
+
 	constructor(options: StdinBufferOptions = {}) {
 		super();
 		this.timeoutMs = options.timeout ?? DEFAULT_SEQUENCE_TIMEOUT_MS;
@@ -188,7 +193,11 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	}
 
 	private emitDataSequence(sequence: string): void {
-		const rawCodepoint = sequence.length === 1 ? sequence.codePointAt(0) : undefined;
+		const firstCodepoint = sequence.codePointAt(0);
+		const rawCodepoint =
+			firstCodepoint !== undefined && String.fromCodePoint(firstCodepoint).length === sequence.length
+				? firstCodepoint
+				: undefined;
 		if (rawCodepoint !== undefined && rawCodepoint === this.pendingKittyPrintableCodepoint) {
 			this.pendingKittyPrintableCodepoint = undefined;
 			return;

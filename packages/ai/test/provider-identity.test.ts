@@ -9,7 +9,7 @@ import { findEnvKeys } from "../src/env-api-keys.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Model, ToolResultMessage } from "../src/types.ts";
 import { getProviderCapabilities } from "../src/utils/provider-capabilities.ts";
-import { isOpenRouterModel, matchesHost } from "../src/utils/provider-host.ts";
+import { isOpenRouterModel, matchesDomain, matchesHost } from "../src/utils/provider-host.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 describe("sanitizeToolCallId", () => {
@@ -97,6 +97,34 @@ describe("host detection", () => {
 		expect(matchesHost("https://openrouter.ai/api/v1", "openrouter.ai")).toBe(true);
 		expect(matchesHost("https://proxy.example/openrouter.ai/v1", "openrouter.ai")).toBe(false);
 		expect(matchesHost("not a url", "openrouter.ai")).toBe(false);
+	});
+
+	it("matches a domain or its subdomains, not a path or a longer label", () => {
+		expect(matchesDomain("https://api.cerebras.ai/v1", "cerebras.ai")).toBe(true);
+		expect(matchesDomain("https://llm.chutes.ai/v1", "chutes.ai")).toBe(true);
+		expect(matchesDomain("https://api.moonshot.cn/v1", "api.moonshot.ai", "api.moonshot.cn")).toBe(true);
+		expect(matchesDomain("https://notcerebras.ai/v1", "cerebras.ai")).toBe(false);
+		expect(matchesDomain("https://proxy.example/api.x.ai/v1", "api.x.ai")).toBe(false);
+		expect(matchesDomain("not a url", "cerebras.ai")).toBe(false);
+	});
+
+	it("detects provider compat from the host, not from a provider named in a proxy path", () => {
+		const custom = (baseUrl: string): Model<"openai-completions"> => ({
+			api: "openai-completions",
+			baseUrl,
+			reasoning: false,
+			id: "m",
+			name: "m",
+			provider: "custom",
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 1000,
+			maxTokens: 100,
+		});
+		expect(getCompat(custom("https://api.deepseek.com")).maxTokensField).toBe("max_tokens");
+		expect(getCompat(custom("https://proxy.example/api.deepseek.com/v1")).maxTokensField).toBe(
+			getCompat(custom("https://example.invalid/v1")).maxTokensField,
+		);
 	});
 
 	it("recognizes OpenRouter by provider id or host, not by lookalike path", () => {

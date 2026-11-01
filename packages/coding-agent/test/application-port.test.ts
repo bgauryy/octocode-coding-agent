@@ -63,8 +63,9 @@ describe("application port", () => {
 			message: { role: "assistant", text: "", complete: false },
 		});
 		expect((await live.next()).value.event).toMatchObject({
+			// A whole-text update carries no fragment: redacting a fragment alone could miss a secret split across pieces.
 			type: "message.delta",
-			delta: "First",
+			delta: "",
 			text: "First",
 		});
 		service.dispose();
@@ -78,13 +79,10 @@ describe("application port", () => {
 				message: { role: "assistant", timestamp: 101 },
 				assistantMessageEvent: { type: "text_delta", delta: `${i}`.padEnd(5000, "x"), contentIndex: 0 },
 			});
-		const internals = service as unknown as { replay: unknown[]; replayChars: number };
-		const serialized = JSON.stringify(internals.replay).length;
-		expect(serialized).toBeLessThanOrEqual(262144);
-		expect(internals.replayChars).toBe(
-			internals.replay.reduce<number>((sum, frame) => sum + JSON.stringify(frame).length, 0),
-		);
-		expect(JSON.stringify(internals.replay.at(-1))).toContain('"delta":"39');
+		const replay = (service as unknown as { replay: { frames: { cursor: { sequence: number } }[] } }).replay.frames;
+		expect(JSON.stringify(replay).length).toBeLessThanOrEqual(262144);
+		expect(replay.length).toBeGreaterThan(1);
+		expect(replay.at(-1)).toMatchObject({ type: "event", event: { type: "message.delta" } });
 		service.dispose();
 	});
 	it("replays retained events and snapshots expired epochs", async () => {

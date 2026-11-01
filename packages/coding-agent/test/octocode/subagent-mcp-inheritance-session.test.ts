@@ -138,11 +138,9 @@ async function fixture(registered = false) {
 					fauxToolCall("agent", {
 						reason: "Delegate the check",
 						type: "task",
-						input: {
-							goal: "Use the added server",
-							task: "Report the servers you have.",
-							model: "fixture-local/fixture",
-						},
+						goal: "Use the added server",
+						task: "Report the servers you have.",
+						model: "fixture-local/fixture",
 					}),
 				],
 				{ stopReason: "toolUse" },
@@ -199,7 +197,7 @@ it("starts a child with the server the parent's mcp tool added, without writing 
 		// The child's first request carries the server's contract section and declares its tools.
 		expect(f.requests).toHaveLength(1);
 		const request = JSON.stringify(f.requests[0]);
-		expect(request).toContain("mcp_contract_echo");
+		expect(request).toContain('<mcp name=\\"echo\\" tools=\\"mcp__echo__*\\"');
 		expect(declaredTools(f.requests[0])).toContain("mcp__echo__shout");
 		// No second confirmation for the child, and nothing was persisted.
 		expect(f.confirmations).toHaveLength(1);

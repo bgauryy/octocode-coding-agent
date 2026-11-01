@@ -1,4 +1,4 @@
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 
 /** The thinking text kept while it streams: enough to hold its latest sentences. */
 const THOUGHT_TAIL = 2_000;
@@ -7,7 +7,9 @@ const THOUGHT_TAIL = 2_000;
  * The gist of thinking text: its last finished sentence or heading. While the text still streams (`complete` false), a
  * sentence counts once text follows it, so a live line changes per thought, not per token; undefined until one does.
  */
-export function thoughtGist(text: string, complete = false): string | undefined {
+export function thoughtGist(raw: string, complete = false): string | undefined {
+	// Shown on screen and stored in the shared team database, like a tool hint: no terminal controls, no secrets.
+	const text = sanitizeTerminalText(raw);
 	const units = text
 		.replace(/\*\*|__|`/g, "")
 		.split(/\n+|(?<=[.!?])\s+/)
@@ -15,7 +17,6 @@ export function thoughtGist(text: string, complete = false): string | undefined 
 		.filter(Boolean);
 	const finished = complete || /[.!?:]\s*$|\n\s*$/.test(text);
 	const gist = finished ? units.at(-1) : units.at(-2);
-	// Shown on screen and stored in the shared team database, like a tool hint.
 	return gist && redactSecrets(gist.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1"));
 }
 

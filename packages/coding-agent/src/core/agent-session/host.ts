@@ -12,7 +12,7 @@ import type { CustomMessage } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
-import type { SessionManager } from "../session-manager.ts";
+import type { SessionManager, SessionNameSource } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { AgentSessionEvent, ModelMutationOptions, PromptOptions } from "./types.ts";
 
@@ -87,7 +87,7 @@ export interface SessionPublic {
 	supportsThinking(): boolean;
 	setModel(model: Model<any>, options?: ModelMutationOptions): Promise<void>;
 	setThinkingLevel(level: ThinkingLevel, options?: ModelMutationOptions): void;
-	setSessionName(name: string): void;
+	setSessionName(name: string, source?: SessionNameSource): void;
 	prompt(text: string, options?: PromptOptions): Promise<void>;
 	sendCustomMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,

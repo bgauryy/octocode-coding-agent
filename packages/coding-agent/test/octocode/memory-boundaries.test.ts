@@ -69,6 +69,25 @@ describe("memory retrieval and write boundaries", () => {
 		}
 	});
 
+	it("refuses an update that moves a memory into a scope where it repeats one", () => {
+		const db = openAgentDb(path.join(tmp(), "agent.db"));
+		try {
+			const a = new MemoryStore(db, "repo-a");
+			const b = new MemoryStore(db, "repo-b");
+			const global = b.set({ title: "Prefers tabs for indentation", scope: "global", author: "test" }).memory;
+			const local = a.set({ title: "Prefers tabs for indentation", author: "test" }).memory;
+			expect(local.scope).toBe("project");
+			expect(() => a.set({ id: local.id, scope: "global", author: "test" })).toThrow(
+				new RegExp(`Similar memory M${global.id}`),
+			);
+			expect(a.get(local.id)?.scope).toBe("project");
+			// An update within the memory's own scope is not compared with itself.
+			expect(a.set({ id: local.id, body: "in every file", author: "test" }).memory.body).toBe("in every file");
+		} finally {
+			db.close();
+		}
+	});
+
 	it("warns once per failed session, and warns again after recovery", async () => {
 		const root = tmp();
 		const broken = path.join(root, "broken.db");

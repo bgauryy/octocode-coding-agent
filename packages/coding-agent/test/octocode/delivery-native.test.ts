@@ -8,6 +8,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { getApplicationPort } from "../../src/core/application/index.ts";
 import { Delivery } from "../../src/octocode/ui/delivery.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -17,7 +18,8 @@ const REPORT = "Unique background report: delivery-native";
 describe("Delivery with the native Octocode session queue", () => {
 	// These are the session operations the TUI uses for dequeue and Esc. Only the UI display is a double;
 	// registration, tool execution, queues, messages, settlement and transcript projection are real Octocode.
-	it.each(["delivered", "dequeue", "escape"] as const)(
+	// interrupt: the application "abort" command (webview, RPC) stops the run without clearing the agent's queue.
+	it.each(["delivered", "dequeue", "escape", "interrupt"] as const)(
 		"retains exactly one report after %s without an extra run",
 		async (action) => {
 			const cwd = tmp();
@@ -133,21 +135,24 @@ describe("Delivery with the native Octocode session queue", () => {
 				host.sendMessage(report, { deliverAs: "followUp", triggerTurn: true });
 				expect(delivery.pending).toBe(1);
 				expect(reports()).toHaveLength(0);
-				if (action !== "delivered") {
+				if (action === "dequeue" || action === "escape") {
 					// Custom messages are in Octocode's agent queue, not its separately tracked user-text queue.
 					expect(session.clearQueue()).toEqual({ steering: [], followUp: [] });
 				}
 				if (action === "escape") await session.abort();
+				else if (action === "interrupt") await getApplicationPort(session).invoke("abort");
 				else release();
 				await running;
 				await session.waitForIdle();
+				const stopped = action === "escape" || action === "interrupt";
 				expect(runs).toBe(1);
-				expect(turns).toEqual(action === "escape" ? [0] : action === "delivered" ? [0, 0, 1] : [0, 0]);
-				expect(delivery.pending).toBe(0);
-				expect(reports()).toHaveLength(1);
-				expect(reports()[0]).toMatchObject(report);
+				expect(turns).toEqual(stopped ? [0] : action === "delivered" ? [0, 0, 1] : [0, 0]);
+				// The interrupt left the report in the agent's queue: it still waits there and is not appended a second time.
+				expect(delivery.pending).toBe(action === "interrupt" ? 1 : 0);
+				expect(reports()).toHaveLength(action === "interrupt" ? 0 : 1);
+				if (action !== "interrupt") expect(reports()[0]).toMatchObject(report);
 				expect(ui.notes.filter((note) => note.message.includes("kept 1 queued message"))).toHaveLength(
-					action === "delivered" ? 0 : 1,
+					action === "dequeue" || action === "escape" ? 1 : 0,
 				);
 
 				faux.setResponses([
@@ -155,11 +160,18 @@ describe("Delivery with the native Octocode session queue", () => {
 						record(context);
 						return fauxAssistantMessage("Read the retained report");
 					},
+					(context) => {
+						record(context);
+						return fauxAssistantMessage("Read the queued report after the prompt");
+					},
 				]);
 				await session.prompt("Continue using the background report.");
 				expect(turns.at(-1)).toBe(1);
+				expect(Math.max(...turns)).toBe(1);
 				expect(runs).toBe(2);
+				expect(delivery.pending).toBe(0);
 				expect(reports()).toHaveLength(1);
+				expect(reports()[0]).toMatchObject(report);
 			} finally {
 				release();
 				await session.abort();

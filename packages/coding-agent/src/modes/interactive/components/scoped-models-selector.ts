@@ -13,7 +13,7 @@ import {
 import { getModelSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyDisplayText } from "./keybinding-hints.ts";
+import { keyText } from "./keybinding-hints.ts";
 import {
 	clearAll,
 	enableAll,
@@ -23,6 +23,7 @@ import {
 	move,
 	toggle,
 } from "./scoped-models-selector/enabled-ids.ts";
+import { plainText } from "./styled-line.ts";
 
 interface ModelItem {
 	fullId: string;
@@ -92,7 +93,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			new Text(theme.fg("accent", theme.bold("Model shortcuts — choose models for keyboard cycling")), 0, 0),
 		);
 		this.addChild(
-			new Text(theme.fg("muted", `Session-only. ${keyDisplayText("app.models.save")} to save to settings.`), 0, 0),
+			new Text(theme.fg("muted", `Session-only. ${keyText("app.models.save")} to save to settings.`), 0, 0),
 		);
 		this.addChild(new Spacer(1));
 
@@ -108,7 +109,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		// Footer hint
 		this.addChild(new Spacer(1));
 		if (config.refreshStatus) {
-			this.refreshStatusText = new Text(theme.fg("muted", `  ${config.refreshStatus}`), 0, 0);
+			this.refreshStatusText = new Text(theme.fg("muted", `  ${plainText(config.refreshStatus)}`), 0, 0);
 			this.addChild(this.refreshStatusText);
 		}
 		this.footerText = new Text(this.getFooterText(), 0, 0);
@@ -129,15 +130,21 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			this.allIds.push(fullId);
 		}
 		this.refresh();
-		const refreshedIndex = selectedId ? this.filteredItems.findIndex((item) => item.fullId === selectedId) : -1;
-		if (refreshedIndex >= 0) {
-			this.selectedIndex = refreshedIndex;
+		if (selectedId) this.select(selectedId);
+	}
+
+	/** Keep `fullId` selected after the list was rebuilt, when it is still listed. */
+	private select(fullId: string): void {
+		const index = this.filteredItems.findIndex((item) => item.fullId === fullId);
+		if (index >= 0 && index !== this.selectedIndex) {
+			this.selectedIndex = index;
 			this.updateList();
 		}
 	}
 
 	setRefreshStatus(message: string, kind: "muted" | "success" | "warning"): void {
-		this.refreshStatusText?.setText(theme.fg(kind, `  ${message}`));
+		// The message can carry a refresh error's text.
+		this.refreshStatusText?.setText(theme.fg(kind, `  ${plainText(message)}`));
 	}
 
 	private buildItems(): ModelItem[] {
@@ -156,12 +163,12 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			? "all enabled"
 			: `${enabledCount}/${this.allIds.length} enabled${unavailableCount ? ` · ${unavailableCount} unavailable` : ""}`;
 		const parts = [
-			`${keyDisplayText("tui.select.confirm")} toggle`,
-			`${keyDisplayText("app.models.enableAll")} all`,
-			`${keyDisplayText("app.models.clearAll")} clear`,
-			`${keyDisplayText("app.models.toggleProvider")} provider`,
-			`${keyDisplayText("app.models.reorderUp")}/${keyDisplayText("app.models.reorderDown")} reorder`,
-			`${keyDisplayText("app.models.save")} save`,
+			`${keyText("tui.select.confirm")} toggle`,
+			`${keyText("app.models.enableAll")} all`,
+			`${keyText("app.models.clearAll")} clear`,
+			`${keyText("app.models.toggleProvider")} provider`,
+			`${keyText("app.models.reorderUp")}/${keyText("app.models.reorderDown")} reorder`,
+			`${keyText("app.models.save")} save`,
 			countText,
 		];
 		return this.isDirty
@@ -205,10 +212,11 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			const item = this.filteredItems[i];
 			const isSelected = i === this.selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", "→ ") : "  ";
-			const id = item.model?.id ?? item.fullId;
+			// Model ids, names and providers can come from vendor model lists and the remote catalog.
+			const id = plainText(item.model?.id ?? item.fullId);
 			const styledId = item.model ? id : theme.strikethrough(id);
 			const modelText = isSelected ? theme.fg("accent", styledId) : styledId;
-			const providerBadge = theme.fg("muted", item.model ? ` [${item.model.provider}]` : " [unavailable]");
+			const providerBadge = theme.fg("muted", item.model ? ` [${plainText(item.model.provider)}]` : " [unavailable]");
 			const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
 			this.listContainer.addChild(new Text(`${prefix}${status}${modelText}${providerBadge}`, 0, 0));
 		}
@@ -225,7 +233,10 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			this.listContainer.addChild(new Spacer(1));
 			this.listContainer.addChild(
 				new Text(
-					theme.fg("muted", `  ${selected.model ? `Model Name: ${selected.model.name}` : "Model unavailable"}`),
+					theme.fg(
+						"muted",
+						`  ${selected.model ? `Model Name: ${plainText(String(selected.model.name))}` : "Model unavailable"}`,
+					),
 					0,
 					0,
 				),
@@ -264,8 +275,9 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 				if (newIndex >= 0 && newIndex < this.enabledIds.length) {
 					this.enabledIds = move(this.enabledIds, item.fullId, delta);
 					this.isDirty = true;
-					this.selectedIndex += delta;
 					this.refresh();
+					// A search hides some models, so the moved one need not be one row away: follow it by id.
+					this.select(item.fullId);
 					this.notifyChange();
 				}
 			}

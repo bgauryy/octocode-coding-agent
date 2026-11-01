@@ -7,6 +7,7 @@ import type { RepositoryDiff } from "../../octocode/files/repository-diff.ts";
  */
 
 import type { ContextUsage, ExtensionRunner, ReplacedSessionContext } from "../extensions/index.ts";
+import type { SessionNameSource } from "../session-manager.ts";
 import type { SessionStats } from "../session-stats.ts";
 import type { AgentSessionPromptingApi, AgentSessionRecoveryApi } from "./api-run.ts";
 import type { AgentSessionModelApi, AgentSessionStateApi, AgentSessionToolsApi } from "./api-state.ts";
@@ -41,9 +42,9 @@ export interface AgentSessionApi
 	reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
 
 	/**
-	 * Set a display name for the current session.
+	 * Set a display name for the current session; `source` defaults to `user`, which automatic titles never replace.
 	 */
-	setSessionName(name: string): void;
+	setSessionName(name: string, source?: SessionNameSource): void;
 
 	/**
 	 * Navigate to a different node in the session tree.
@@ -113,6 +114,9 @@ export interface AgentSessionApi
 	 * Check if extensions have handlers for a specific event type.
 	 */
 	hasExtensionHandlers(eventType: string): boolean;
+
+	/** Answer the dialog a run is blocked on (`awaiting.id`) for a client other than this mode's UI. */
+	answerDialog(id: string, answer: { choice?: string; text?: string }): { ok: true } | { ok: false; reason: string };
 
 	/**
 	 * Get the extension runner (for setting UI context and error handlers).

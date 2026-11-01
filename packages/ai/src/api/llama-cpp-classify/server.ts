@@ -29,7 +29,6 @@ function timeoutError(timeoutMs: number): HttpError {
 	return error;
 }
 
-
 export interface RequestContext {
 	model: ClassifierModel<ClassifierApi>;
 	root: string;

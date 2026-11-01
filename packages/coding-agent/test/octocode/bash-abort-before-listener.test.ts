@@ -1,18 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
-import type * as ProcessModule from "../../src/octocode/shared/process.ts";
+import type * as ProcessTreeModule from "../../src/utils/process-tree.ts";
 
 const abortDuringPrepare = vi.hoisted(() => ({ controller: undefined as AbortController | undefined }));
 
-// The window between the entry check and the abort listener: on Windows `prepareTree` is a real await there.
-vi.mock("../../src/octocode/shared/process.ts", async (importOriginal) => ({
-	...(await importOriginal<typeof ProcessModule>()),
+// The window between the entry check and the abort listener: on Windows `prepareTree` (awaited by `spawnShell`) is a
+// real await there.
+vi.mock("../../src/utils/process-tree.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof ProcessTreeModule>()),
 	prepareTree: async () => {
 		await Promise.resolve();
 		abortDuringPrepare.controller?.abort();
 	},
 }));
 
-import { foregroundOperations } from "../../src/octocode/files/bash-run.ts";
+// The setup file already loaded these modules (through the MCP host ports); reload them under the mocks above.
+vi.resetModules();
+const { foregroundOperations } = await import("../../src/octocode/files/bash-run.ts");
 import { tmp } from "./helpers.ts";
 
 describe("foreground bash abort", () => {

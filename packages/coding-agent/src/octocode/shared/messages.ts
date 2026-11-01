@@ -6,6 +6,12 @@ export interface MessageEnvelope {
 	text: string;
 	id?: string;
 	replyTo?: string;
+	/** The message asks for an answer; set when known (a send, or a received message that carries it). */
+	replyRequired?: boolean;
+	/** The message may start an idle recipient's turn; set when known. */
+	wake?: boolean;
+	/** The message stops the recipient's current step; set when known. */
+	interrupt?: boolean;
 }
 export const INTERNAL_MESSAGE_TYPE = "octocode-agent-message";
 export const EXTERNAL_MESSAGE_TYPE = "octocode-external-message";

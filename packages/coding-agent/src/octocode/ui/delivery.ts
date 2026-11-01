@@ -24,6 +24,15 @@ type Options = Parameters<Send>[1];
  * without a details object, `nextTurn` messages and `triggerTurn: false` messages are not queued this way and pass
  * through untracked.
  */
+function stillQueued(ctx: ExtensionContext, details: object): boolean {
+	try {
+		return ctx.isMessageQueued(details);
+	} catch {
+		// A replaced session's context refuses calls; its queue is gone.
+		return false;
+	}
+}
+
 export class Delivery {
 	private readonly waiting = new Map<object, { message: Message; accepted?: Promise<void> }>();
 	private running = false;
@@ -98,8 +107,14 @@ export class Delivery {
 		this.running = false;
 		this.ctx = ctx;
 		const generation = this.generation;
-		const dropped = [...this.waiting.values()];
-		this.waiting.clear();
+		const dropped: Array<{ message: Message; accepted?: Promise<void> }> = [];
+		for (const [details, entry] of this.waiting) {
+			// An interrupt that does not clear the agent's queue (the application or RPC abort) leaves the message there:
+			// the next run delivers it, so it stays counted and is not appended a second time.
+			if (stillQueued(ctx, details)) continue;
+			this.waiting.delete(details);
+			dropped.push(entry);
+		}
 		this.paint();
 		// Outside the TUI nothing clears the queue: an aborted run leaves the messages there for the next one.
 		if (dropped.length === 0 || ctx.mode !== "tui") return;

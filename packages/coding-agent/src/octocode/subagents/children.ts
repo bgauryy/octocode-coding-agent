@@ -38,13 +38,14 @@ export function describeChild(child: SessionChild): string {
  * The child `id` this session recorded, and the session its continuation reopens: the folder of its recorded transcript
  * and its id (Octocode reopens `<folder>/<timestamp>_<id>.jsonl` for `--session-dir <folder> --session-id <id>`). Throws the
  * refusal: an id the session never started (naming the ones it did), a child running now, one that ran isolated (its
- * worktree is gone), or one whose transcript is not saved.
+ * worktree is gone), or one whose transcript is not saved. A child that crashed while starting saved nothing: `restart`
+ * is the task it was given, which it runs again in its recorded session folder.
  */
 export function resumableChild(
 	entries: readonly unknown[],
 	id: string,
 	running: ReadonlySet<string>,
-): { child: SessionChild; session: ChildSession } {
+): { child: SessionChild; session: ChildSession; restart?: string } {
 	const children = sessionChildren(entries);
 	const child = children.find((candidate) => candidate.id === id);
 	if (!child)
@@ -56,6 +57,9 @@ export function resumableChild(
 		throw new Error(`${id} ran in an isolated worktree, which is gone; start a new agent with the context it needs.`);
 	// A run that never reported recorded only its folder: Octocode named the file in it.
 	const transcript = child.transcript ?? (child.folder ? childSessionFile({ dir: child.folder, id }) : undefined);
+	const folder = child.folder ?? (transcript ? path.dirname(transcript) : undefined);
+	if (child.startupFailed && child.task && folder && !(transcript && fs.existsSync(transcript)))
+		return { child, session: { dir: folder, id }, restart: child.task };
 	if (!transcript) throw new Error(`${id} has no saved transcript to continue.`);
 	if (!fs.existsSync(transcript))
 		throw new Error(
@@ -66,13 +70,18 @@ export function resumableChild(
 
 /**
  * The task a continued child runs: its recorded profile and browser mode, and its recorded model while that is still
- * among `available` (else the profile's or parent's routing applies), unless the call names its own.
+ * among `available` (else the profile's or parent's routing applies), unless the call names its own. A call naming
+ * another profile is refused: the saved conversation was built under the recorded profile's prompt, tools and approval.
  */
 export function resumedTask<T extends { profile?: string; headless?: boolean; model?: string }>(
 	params: T,
 	child: SessionChild,
 	available: readonly { provider: string; id: string }[],
 ): T {
+	if (params.profile && params.profile !== child.profile)
+		throw new Error(
+			`${child.id} ran as ${child.profile}, and a resume keeps that profile. Omit profile to continue it, or start a new agent as ${params.profile}.`,
+		);
 	const recorded = child.model?.replace(/:(?:off|minimal|low|medium|high|xhigh|max)$/, "");
 	const usable = recorded && available.some((model) => `${model.provider}/${model.id}` === recorded);
 	return {
@@ -81,4 +90,17 @@ export function resumedTask<T extends { profile?: string; headless?: boolean; mo
 		headless: params.headless ?? child.headless,
 		model: params.model ?? (usable ? child.model : undefined),
 	};
+}
+
+/**
+ * What a child is told, before its context is added: a new child its `task`; a resumed one a follow-up to its saved
+ * conversation (`prefix`); one that crashed while starting (`restart`, nothing saved) the task it was first given, with
+ * the new call's text after it when that differs.
+ */
+export function resumeText(resumed: { restart?: string } | undefined, task: string): { text: string; prefix: string } {
+	if (!resumed) return { text: task, prefix: "" };
+	const { restart } = resumed;
+	if (restart === undefined) return { text: task, prefix: "Follow-up from your parent:\n" };
+	const more = task.trim() && task.trim() !== restart.trim() ? `\n\nFollow-up from your parent:\n${task}` : "";
+	return { text: `${restart}${more}`, prefix: "" };
 }

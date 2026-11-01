@@ -1,9 +1,8 @@
 import { dirname, join } from "node:path";
 import type { TSchema } from "typebox";
-import { getAgentDir } from "../../coding-agent/src/config.ts";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
+import { hostPaths } from "./host.ts";
+import type { McpExtensionApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import type { ModelRegistry } from "../../coding-agent/src/core/model-registry.ts";
 import { openBrowser } from "../../common/src/open-browser.ts";
 import {
 	getMcpToolExposure,
@@ -30,7 +29,7 @@ import { DEFAULT_MCP_PRESENTATION, McpPresentation, type McpPresentationMode } f
 export interface McpExtensionOptions {
 	presets?: readonly McpServerPreset[];
 	/** Defaults to reading `mcp.json` from the agent directory and the trusted project. */
-	loadConfig?: (ctx: ExtensionContext, defaults: readonly McpServerEntry[]) => LoadedMcpConfig;
+	loadConfig?: (ctx: McpContext, defaults: readonly McpServerEntry[]) => LoadedMcpConfig;
 	/** Defaults to stdio and streamable HTTP transports built from the server config. */
 	createTransport?: McpTransportFactory;
 	/** Transient launch defaults; persisted configuration remains unchanged. */
@@ -62,7 +61,7 @@ const DEFAULT_STARTUP_WAIT_MS = 10_000;
  * configuration persistence, `/mcp` command and `mcp` tool.
  */
 export class McpExtensionState {
-	readonly api: ExtensionAPI;
+	readonly api: McpExtensionApi;
 	readonly options: McpExtensionOptions;
 	servers: McpServer[] = [];
 	/** Servers from `mcp.json`, which take precedence over registered servers of the same name. */
@@ -82,7 +81,7 @@ export class McpExtensionState {
 	projectTrusted = false;
 	credentials: McpOAuthCredentialStore | undefined;
 	/** The session's model registry, which resolves `auth.provider` tokens. */
-	modelRegistry: ModelRegistry | undefined;
+	modelRegistry: McpModelRegistry | undefined;
 	serverLog: McpServerLog | undefined;
 	readonly openUrl: (url: string) => void;
 	readonly updateConfig: (entry: McpServerEntry, patch: McpServerConfigPatch) => void;
@@ -105,11 +104,11 @@ export class McpExtensionState {
 	/** Tool names currently offered by each server. */
 	readonly serverTools = new Map<string, Set<string>>();
 	/** Last definition registered under each tool name, to re-register withdrawn tools as hidden. */
-	readonly definitions = new Map<string, ToolDefinition<TSchema, McpToolDetails>>();
+	readonly definitions = new Map<string, McpToolDefinition<TSchema, McpToolDetails>>();
 	/** Generated TypeScript files that tell the model what each server offers; see `presentation/index.ts`. */
 	readonly presentation: McpPresentation;
 	readonly registeredMetadata = new Map<string, unknown>();
-	readonly cachedDefinitions = new Map<string, ToolDefinition<TSchema, McpToolDetails>>();
+	readonly cachedDefinitions = new Map<string, McpToolDefinition<TSchema, McpToolDetails>>();
 
 	/**
 	 * Stored tokens of servers waiting for a sign-in, as they were when the sign-in was needed.
@@ -118,14 +117,14 @@ export class McpExtensionState {
 	readonly tokensAtSignIn = new Map<McpServerConnection, string>();
 	readonly preparedLaunches = new WeakMap<McpServerConnection, McpServerEntry>();
 
-	constructor(api: ExtensionAPI, options: McpExtensionOptions) {
+	constructor(api: McpExtensionApi, options: McpExtensionOptions) {
 		this.api = api;
 		this.options = options;
 		this.startupWaitMs = options.startupWaitMs ?? DEFAULT_STARTUP_WAIT_MS;
 		this.credentials = options.credentials;
 		this.presentation = new McpPresentation({
-			agentDir: getAgentDir,
-			dir: (name) => serverGeneratedDir(getAgentDir(), this.sessionCwd, this.findServer(name)?.entry.scope),
+			agentDir: () => hostPaths().agentDir(),
+			dir: (name) => serverGeneratedDir(hostPaths().agentDir(), this.sessionCwd, this.findServer(name)?.entry.scope),
 			mode: () =>
 				options.presentation ??
 				(typeof api.getSettings === "function" ? api.getSettings().mcpPresentation : undefined) ??
@@ -228,7 +227,7 @@ export class McpExtensionState {
 	}
 
 	getServerLog(): McpServerLog {
-		this.serverLog ??= new McpServerLog(this.options.logPath ?? join(getAgentDir(), "mcp.log"));
+		this.serverLog ??= new McpServerLog(this.options.logPath ?? join(hostPaths().agentDir(), "mcp.log"));
 		return this.serverLog;
 	}
 
@@ -242,7 +241,7 @@ export class McpExtensionState {
 
 	configLocations() {
 		return getMcpConfigLocations(
-			this.globalConfig ? dirname(this.globalConfig) : getAgentDir(),
+			this.globalConfig ? dirname(this.globalConfig) : hostPaths().agentDir(),
 			this.sessionCwd,
 			this.projectTrusted,
 		);

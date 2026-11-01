@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../shared/home.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 export const ROLE_PROMPT_FILE_ENV = "OCTOCODE_ROLE_PROMPT_FILE";
 

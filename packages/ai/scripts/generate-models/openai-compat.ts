@@ -11,7 +11,23 @@ import {
 
 /** OpenAI Completions and Responses compat: detected defaults, tool, transcript and prompt-cache metadata. */
 
-const OPENAI_COMPLETIONS_DEFAULT_COMPAT = {
+// The fields detection decides. The runtime detects session affinity and the tool schema flavor
+// itself (src/api/openai-completions/compat.ts), so generated metadata leaves them unset.
+type OpenAICompletionsResolvedCompat = Required<
+	Omit<
+		OpenAICompletionsCompat,
+		| "cacheControlFormat"
+		| "supportsThinkingTokenBudget"
+		| "thinkingTokenBudgetField"
+		| "sessionAffinityFormat"
+		| "vllmPriority"
+		| "toolSchemaFlavor"
+	>
+> & {
+	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
+};
+
+const OPENAI_COMPLETIONS_DEFAULT_COMPAT: OpenAICompletionsResolvedCompat = {
 	supportsStore: true,
 	supportsDeveloperRole: true,
 	supportsReasoningEffort: true,
@@ -34,14 +50,6 @@ const OPENAI_COMPLETIONS_DEFAULT_COMPAT = {
 	supportsMidConvoToolAdditions: false,
 	sendSessionAffinityHeaders: false,
 	supportsLongCacheRetention: true,
-} satisfies Required<
-	Omit<OpenAICompletionsCompat, "cacheControlFormat" | "supportsThinkingTokenBudget" | "thinkingTokenBudgetField">
-> & {
-	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
-};
-
-type OpenAICompletionsResolvedCompat = typeof OPENAI_COMPLETIONS_DEFAULT_COMPAT & {
-	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 };
 
 export function detectOpenAICompletionsCompat(model: Model<"openai-completions">): OpenAICompletionsResolvedCompat {
@@ -148,7 +156,7 @@ function isPlainEmptyObject(value: unknown): boolean {
 function openAICompletionsCompatDelta(compat: OpenAICompletionsResolvedCompat): OpenAICompletionsCompat {
 	const delta: OpenAICompletionsCompat = {};
 	for (const [key, value] of Object.entries(compat)) {
-		const defaultValue = OPENAI_COMPLETIONS_DEFAULT_COMPAT[key as keyof typeof OPENAI_COMPLETIONS_DEFAULT_COMPAT];
+		const defaultValue = OPENAI_COMPLETIONS_DEFAULT_COMPAT[key as keyof OpenAICompletionsResolvedCompat];
 		if (isPlainEmptyObject(value) && isPlainEmptyObject(defaultValue)) continue;
 		if (value !== defaultValue) {
 			(delta as Record<string, unknown>)[key] = value;

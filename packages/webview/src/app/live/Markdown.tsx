@@ -14,29 +14,54 @@ const ATTRIBUTES: Record<string, string> = {
 	rel: "rel",
 };
 
+/** How a reader of whole documents extends the renderer: fenced blocks of a language and plain text can be replaced. */
+export interface MarkdownHooks {
+	/** A node for a fenced block of `language`, or undefined to keep the ordinary code block. */
+	code?: (language: string, source: string, key: string) => ReactNode | undefined;
+	/** The nodes shown for text outside code and links. */
+	text?: (text: string) => ReactNode;
+}
+
 /**
  * Convert the sanitized fragment to React elements. The tag and attribute allowlists apply again here, so nothing the
  * sanitizer missed can reach the DOM; code blocks become components with their own controls.
  */
-function toReact(nodes: NodeListOf<ChildNode> | ChildNode[], path = ""): ReactNode[] {
+function toReact(
+	nodes: NodeListOf<ChildNode> | ChildNode[],
+	path = "",
+	hooks?: MarkdownHooks,
+	literal = false,
+): ReactNode[] {
 	const out: ReactNode[] = [];
 	for (const [i, node] of [...nodes].entries()) {
 		const key = `${path}${i}`;
 		if (node.nodeType === Node.TEXT_NODE) {
-			out.push(node.textContent);
+			out.push(
+				hooks?.text && !literal ? (
+					<Fragment key={key}>{hooks.text(node.textContent ?? "")}</Fragment>
+				) : (
+					node.textContent
+				),
+			);
 			continue;
 		}
 		if (!(node instanceof Element)) continue;
 		const tag = node.tagName.toLowerCase();
 		if (!TAGS.has(tag)) {
-			out.push(<Fragment key={key}>{toReact(node.childNodes, `${key}.`)}</Fragment>);
+			out.push(<Fragment key={key}>{toReact(node.childNodes, `${key}.`, hooks, literal)}</Fragment>);
 			continue;
 		}
 		const code = tag === "pre" ? node.querySelector(":scope > code") : null;
 		if (code) {
+			const language = codeLanguage(code);
+			const custom = language ? hooks?.code?.(language, code.textContent ?? "", key) : undefined;
+			if (custom !== undefined) {
+				out.push(custom);
+				continue;
+			}
 			out.push(
 				<CodeBlock key={key} language={codeLanguage(code)} source={code.textContent ?? ""}>
-					{toReact(code.childNodes, `${key}.`)}
+					{toReact(code.childNodes, `${key}.`, undefined, true)}
 				</CodeBlock>,
 			);
 			continue;
@@ -46,9 +71,25 @@ function toReact(nodes: NodeListOf<ChildNode> | ChildNode[], path = ""): ReactNo
 			const name = ATTRIBUTES[attribute.name];
 			if (name) props[name] = attribute.value;
 		}
-		out.push(createElement(tag, props, ...(tag === "br" || tag === "hr" ? [] : toReact(node.childNodes, `${key}.`))));
+		const inner = literal || tag === "a" || tag === "code";
+		out.push(
+			createElement(
+				tag,
+				props,
+				...(tag === "br" || tag === "hr" ? [] : toReact(node.childNodes, `${key}.`, hooks, inner)),
+			),
+		);
 	}
 	return out;
+}
+
+/** Sanitized Markdown as React elements; the text is shown as plain text when it cannot be parsed. */
+export function renderMarkdown(text: string, hooks?: MarkdownHooks): ReactNode[] {
+	try {
+		return toReact(sanitizeMarkdown(text).childNodes, "", hooks);
+	} catch {
+		return [text];
+	}
 }
 
 /** One short line with no Markdown syntax reads the same either way, so it skips the source and copy controls. */
@@ -60,13 +101,7 @@ function isPlainLine(text: string): boolean {
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
 	const [showSource, setShowSource] = useState(false);
 	const [copied, copy] = useCopy(text);
-	const content = useMemo(() => {
-		try {
-			return toReact(sanitizeMarkdown(text).childNodes);
-		} catch {
-			return [text];
-		}
-	}, [text]);
+	const content = useMemo(() => renderMarkdown(text), [text]);
 	if (isPlainLine(text))
 		return (
 			<div className="markdown-view">

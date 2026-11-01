@@ -66,7 +66,7 @@ async function headless(env: Record<string, string>) {
 	const home = path.join(root, "home");
 	fs.mkdirSync(cwd, { recursive: true });
 	fs.mkdirSync(home, { recursive: true });
-	// A Octocode-protected resource, so Octocode resolves project trust without /octocode trust.
+	// An Octocode-protected resource, so Octocode resolves project trust without /trust.
 	fs.mkdirSync(path.join(cwd, ".octocode"), { recursive: true });
 	fs.writeFileSync(path.join(cwd, ".octocode", "settings.json"), "{}");
 	fs.writeFileSync(path.join(cwd, "app.ts"), "export const answer = 41;\n");

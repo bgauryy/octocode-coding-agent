@@ -1,7 +1,7 @@
 /** Compact numbers, durations, clock times, paths, tokens and cost for the agents panel, the footer and `coordinate list`. */
 import os from "node:os";
 import path from "node:path";
-import { formatDuration } from "./duration.ts";
+import { formatDuration } from "../../utils/duration.ts";
 import { plural } from "./render/text.ts";
 import { DAY_MS, HOUR_MS, type UsageTotals } from "./util.ts";
 

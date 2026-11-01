@@ -229,3 +229,23 @@ it("stops after eight referenced payloads instead of following an unbounded chai
 	expect(reads.at(-1)).toBe("level-7");
 	expect(screen.getByText("Original preview")).toBeInTheDocument();
 });
+
+it("clears a failed load's alert when the message's full content changes revision", async () => {
+	const card = (revision: string) => {
+		const message: ApplicationMessage = {
+			id: "m",
+			role: "assistant",
+			text: "Preview",
+			complete: true,
+			full: { ...full, revision },
+		};
+		return <ResultCard event={{ id: -1, at: 1, type: "message", text: "Preview", sessionId: "s", message }} />;
+	};
+	fullValue = { id: "other", role: "assistant", text: "Wrong message", complete: true };
+	const view = render(card("one"), { wrapper: Wrapper });
+	await userEvent.click(screen.getByRole("button", { name: "Load full message" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Invalid full message content");
+	view.rerender(card("two"));
+	expect(screen.queryByRole("alert")).toBeNull();
+	expect(screen.getByRole("button", { name: "Load full message" })).toBeEnabled();
+});

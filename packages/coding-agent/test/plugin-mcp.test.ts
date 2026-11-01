@@ -220,7 +220,6 @@ it("activates reviewed plugin servers through the default built-in MCP owner", a
 	vi.stubEnv("HOME", f.root);
 	vi.stubEnv("OCTOCODE_HOME", path.join(f.root, "native"));
 	vi.stubEnv("OCTOCODE_MCP", "0");
-	vi.stubEnv("OCTOCODE_NO_LOCAL_LLM", "1");
 	const script = path.join(f.plugin, "server.mjs");
 	fs.writeFileSync(
 		script,

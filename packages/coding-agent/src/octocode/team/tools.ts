@@ -12,12 +12,14 @@ import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
 import { EDIT_RETENTION_MINUTES, unjoinedAgent } from "./edits.ts";
+import type { ShellParse } from "../shared/shell-commands.ts";
+import { interpreterRefusal } from "./interpreter.ts";
 import { lockAdvice } from "./lock-advice.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "./store/workspace.ts";
-import { checkGoal, GOAL_DESCRIPTION } from "./identity.ts";
+import { checkGoal } from "./identity.ts";
 import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
 import { teamNameToResume } from "./session/rejoin.ts";
@@ -26,6 +28,12 @@ import { registerMessageRenderer, registerSendMessageTool } from "./tools/messag
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
 const POWERSHELL_HELD =
 	"This PowerShell command was not run: the paths it writes cannot be checked against reservations, so while another agent holds one only read-only commands run. Use the file tool for edits.";
+const INTERPRETER_HELD = ({ name, cause }: { name: string; cause: string }): string =>
+	`This command runs ${name} on inline code, whose writes cannot be checked against reservations, so while another agent holds one only read-only commands run. Why this line is not the read-only form: ${cause}. ${
+		name === "node" || name === "nodejs"
+			? "To read with Node, put `--permission --no-experimental-sqlite --allow-fs-read=*` before `-e`: Node then refuses writes and child processes. "
+			: "Read files with the read tools. "
+	}Use the file tool for edits.`;
 const DEFAULT_CHANGES_LIMIT = 20;
 
 type StopAgent = (id: string, by: string) => string | undefined;
@@ -58,8 +66,10 @@ export function registerCollab(
 		shellWrites?: (command: string) => Promise<string[]>;
 		/** The paths a bash command that ran wrote, only those the parse names (not the guesses `shellWrites` also checks); recorded as changes. */
 		shellChanges?: (command: string) => Promise<string[]>;
-		/** Whether a shell command only reads (wired by `index.ts` from the permission layer); unset: none is. */
-		shellReadOnly?: (command: string) => boolean;
+		/** Whether a shell command (bash, or PowerShell when `shell` says so) only reads (wired by `index.ts` from the permission layer); unset: none is. */
+		shellReadOnly?: (command: string, shell?: "bash" | "powershell") => boolean;
+		/** The simple commands of a bash command line wherever they run (wired by `index.ts` from the permission layer's parser); unset: a tokenizer reads the line, and a parse that fails refuses any command naming an interpreter. */
+		shellCommands?: ShellParse;
 	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(api);
@@ -80,11 +90,20 @@ export function registerCollab(
 		const input: Record<string, unknown> = isRecord(event.input) ? { ...event.input } : {};
 		// No parse names the paths a PowerShell command writes: while another agent holds a reservation, only one that reads runs.
 		if (event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) {
-			if (options.shellReadOnly?.(optionalString(input.command) ?? "")) return undefined;
+			if (options.shellReadOnly?.(optionalString(input.command) ?? "", "powershell")) return undefined;
 			const reason = team.reservation(undefined, "");
 			return reason ? { block: true, reason: `${POWERSHELL_HELD} ${reason}` } : undefined;
 		}
 		const command = event.toolName === "bash" ? optionalString(input.command) : undefined;
+		// The same rule for inline interpreter code (`python3 -c`, `node -e`, a heredoc fed to `python -`): its writes are not named
+		// either, except for Node under `--permission`, whose runtime refuses them (`interpreterRefusal`).
+		// Runs only while a reservation is held: the parse is then worth its cost.
+		const held = command === undefined ? undefined : team.reservation(undefined, "");
+		if (command !== undefined && held && !options.shellReadOnly?.(command)) {
+			const parsed = options.shellCommands ? ((await options.shellCommands(command)) ?? null) : undefined;
+			const interpreter = interpreterRefusal(command, process.env, parsed);
+			if (interpreter) return { block: true, reason: `${INTERPRETER_HELD(interpreter)} ${held}` };
+		}
 		const files =
 			command !== undefined
 				? ((await options.shellWrites?.(command)) ?? [])
@@ -117,7 +136,7 @@ function registerCoordinateTool(
 			description:
 				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/tmp/` scratch are per worktree.",
 			promptGuidelines: [
-				"Other agents may be editing this repository. Before overlapping edits, use `agent` type `coordinate`: `input.action` list, lock your paths, then unlock when done. When a check fails in a file you did not change, `changes` shows who did. Resolve conflicts with the owner.",
+				"Other agents may be editing this repository. Before overlapping edits, use `agent` type `coordinate`: `action` list, lock your paths (the call's `reason` tells others what you will change), then unlock when done. When a check fails in a file you did not change, `changes` shows who did. Resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {
@@ -132,7 +151,7 @@ function registerCoordinateTool(
 					? { id: Type.Optional(Type.String({ description: "stop: id of the background subagent to end" })) }
 					: {}),
 				...(canStop
-					? { goal: Type.Optional(Type.String({ description: `join: your goal. ${GOAL_DESCRIPTION}` })) }
+					? { goal: Type.Optional(Type.String({ description: "join: your goal, in the form of a task goal" })) }
 					: {}),
 				paths: Type.Optional(
 					Type.Array(Type.String(), {
@@ -141,6 +160,7 @@ function registerCoordinateTool(
 				),
 				withinMinutes: Type.Optional(Type.Integer({ description: "changes: window in minutes (default 60)" })),
 				limit: Type.Optional(Type.Integer({ description: "changes: max files (default 20)" })),
+				// The unified `agent` tool passes its call `reason` here: the lock note others see.
 				reason: Type.Optional(Type.String({ description: "lock: what you will change there" })),
 			}),
 			async execute(_id, input, signal, _onUpdate, ctx) {
@@ -207,7 +227,7 @@ function registerCoordinateTool(
 				const { members, error } = team.snapshot();
 				if (error) throw new Error(error);
 				const working = members.filter((member) => member.status === "working").length;
-				return textResult(describeMembers(members, team.id, now), {
+				return textResult(describeMembers(members, team.id, now, undefined, team.openQuestions()), {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",
 				});
 			},
@@ -262,6 +282,12 @@ function registerTeamEvents(
 	});
 	api.on("agent_start", async () => team.onAgentStart());
 	api.on("agent_settled", async () => team.onAgentSettled());
+	// The loop reads queued steering right after `turn_end`: mail that arrived while the tools ran joins the next request
+	// instead of waiting for the tick. A final turn (no tools) is left to the tick, so waiting mail adds no model call.
+	api.on("turn_end", async (event) => {
+		if (event.toolResults.length > 0) team.deliverMail();
+		return undefined;
+	});
 	// Team mail is delivered when the model is called with it. Octocode emits `context` before every model call, whichever way
 	// a message entered the conversation (message_start reaches extensions only for steered and prompted messages).
 	api.on("context", async (event) => {

@@ -1,13 +1,15 @@
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
+import { type ChildState, newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";
 import {
-	type ChildState,
+	NOTICE_LOG_CHARS,
 	NOTICES_INLINE,
 	NOTICES_INLINE_CHARS,
-	newChildState,
 	noticeText,
-	reduceEvent,
-} from "../../src/octocode/subagents/events.ts";
+} from "../../src/octocode/subagents/notices.ts";
+import { savedNotices } from "../../src/octocode/subagents/process/stderr.ts";
 import { noticeLines } from "../../src/octocode/subagents/render.ts";
+import { tmp } from "./helpers.ts";
 
 const LIMITS = { idleMs: 1_000, busyMs: 5_000 };
 const notify = (notifyType: string, message: string) => ({
@@ -25,6 +27,20 @@ const feed = (state: ChildState, ...events: Array<Record<string, unknown>>) => {
 const log = (state: ChildState) => [...state.noticeLog.values()];
 
 describe("a child's notices reach the parent whole", () => {
+	it("bounds the log of a noisy child, and the saved file counts the distinct notices it did not keep", () => {
+		const state = newChildState();
+		const text = (n: number) => `w${String(n).padStart(4, "0")} ${"x".repeat(2_000)}`;
+		for (let n = 0; n < 3_000; n++) feed(state, notify("warning", text(n)));
+		feed(state, notify("warning", text(0)));
+		const saved = savedNotices(state, tmp("octocode-notices-"));
+		const lines = fs.readFileSync(saved!.file!, "utf8").trimEnd().split("\n");
+		const logged = Math.floor(NOTICE_LOG_CHARS / text(0).length);
+		expect(lines).toHaveLength(logged + 1);
+		expect(lines[0]).toBe(`warning (×2): ${text(0)}`);
+		expect(lines.at(-1)).toMatch(new RegExp(`^warning \\(×${3_000 - logged}\\): notice not kept`));
+		expect(saved!.kept.length + saved!.more).toBe(3_000);
+	});
+
 	it("keeps one long notice uncut, with its hidden characters shown", () => {
 		const state = newChildState();
 		feed(state, notify("error", `bad\u001b[31m ${"x".repeat(3_000)} the end`));

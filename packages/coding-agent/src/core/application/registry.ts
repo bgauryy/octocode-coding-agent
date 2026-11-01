@@ -1,10 +1,10 @@
-import type { AgentSession } from "../agent-session.ts";
 import { ApplicationService } from "./service.ts";
+import type { ApplicationSession } from "./session-port.ts";
 
-const services = new WeakMap<AgentSession, ApplicationService>();
+const services = new WeakMap<ApplicationSession, ApplicationService>();
 const registered = new Set<ApplicationService>();
 
-export function getApplicationPort(session: AgentSession): ApplicationService {
+export function getApplicationPort(session: ApplicationSession): ApplicationService {
 	let service = services.get(session);
 	if (!service) {
 		service = new ApplicationService(session, (disposed) => {
@@ -16,6 +16,11 @@ export function getApplicationPort(session: AgentSession): ApplicationService {
 		if (typeof session.subscribe === "function") service.start();
 	}
 	return service;
+}
+
+/** Close the session's port if one is open; never opens one (opening subscribes and projects the transcript). */
+export function disposeApplicationPort(session: ApplicationSession): void {
+	services.get(session)?.dispose();
 }
 
 export function getApplicationPortForSession(sessionId: string): ApplicationService | undefined {

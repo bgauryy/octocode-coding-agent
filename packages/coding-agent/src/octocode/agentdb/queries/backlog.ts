@@ -1,96 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { allRows, num, type Row } from "../rows.ts";
 
-/** A persisted item, including the joined sequence number of its origin. */
-export interface ItemRow<State extends string> {
-	id: number;
-	seq: number;
-	title: string;
-	goal: string;
-	body: string;
-	paths: string;
-	why: string;
-	evidence: string;
-	plan: string;
-	state: State;
-	priority: number;
-	tags: string;
-	assignee: string | null;
-	created_by: string;
-	source_session: string | null;
-	created_at: number;
-	updated_at: number;
-	started_at: number | null;
-	done_at: number | null;
-	from_item: number | null;
-	from_seq: number | null;
-	version: number;
-}
-
-/** Items with the number of the item each came from; filters and order use the `b.` alias. */
-const SELECT = "SELECT b.*, f.seq AS from_seq FROM backlog b LEFT JOIN backlog f ON f.id = b.from_item";
-
-const ORDER = `CASE b.state WHEN 'ongoing' THEN 0 WHEN 'todo' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END, b.priority, b.updated_at DESC, b.seq DESC`;
-
-const SEARCHED = ["title", "goal", "body", "paths", "why", "evidence", "plan"] as const;
-
-const likeEscape = (text: string) => text.replace(/[\\%_]/g, (char) => `\\${char}`);
-
-/** Which items a listing matches: `states` is never empty; `text` is a trimmed, non-empty search. */
-export interface ItemFilter {
-	repo: string;
-	states: readonly string[];
-	text?: string;
-	/** Row id of the item the matches came from. */
-	fromItem?: number;
-}
-
-/** The `WHERE` clause (aliased `b`) and its arguments for a filter. */
-function whereOf(filter: ItemFilter): { clause: string; args: Array<string | number> } {
-	const where = [`b.repo_key = ?`, `b.state IN (${filter.states.map(() => "?").join(", ")})`];
-	const args: Array<string | number> = [filter.repo, ...filter.states];
-	const text = filter.text;
-	if (text) {
-		// Every text field matches any substring (so `backlog/store` finds a path); a tag matches only whole (`ui` is not found in `build`), with or without `#`.
-		where.push(
-			`(${SEARCHED.map((column) => `b.${column} LIKE ? ESCAPE '\\'`).join(" OR ")} OR (' ' || b.tags || ' ') LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM backlog_completions c WHERE c.item = b.id AND c.payload LIKE ? ESCAPE '\\'))`,
-		);
-		const like = `%${likeEscape(text)}%`;
-		args.push(...SEARCHED.map(() => like), `% ${likeEscape(text.replace(/^#+/, ""))} %`, like);
-	}
-	if (filter.fromItem !== undefined) {
-		where.push("b.from_item = ?");
-		args.push(filter.fromItem);
-	}
-	return { clause: where.join(" AND "), args };
-}
-
-/** One item row by its number in the repository. */
-export function itemBySeq(db: DatabaseSync, repo: string, seq: number): ItemRow<string> | undefined {
-	return db.prepare(`${SELECT} WHERE b.repo_key = ? AND b.seq = ?`).get(repo, seq) as ItemRow<string> | undefined;
-}
-
-/** The rows of the items that came from `rowId`, in board order. */
-export function derivedFrom(db: DatabaseSync, rowId: number): ItemRow<string>[] {
-	return allRows<ItemRow<string>>(db.prepare(`${SELECT} WHERE b.from_item = ? ORDER BY ${ORDER}`), rowId);
-}
-
-/** How many items a filter matches, ignoring any limit. */
-export function countItems(db: DatabaseSync, filter: ItemFilter): number {
-	const { clause, args } = whereOf(filter);
-	return num((db.prepare(`SELECT COUNT(*) AS n FROM backlog b WHERE ${clause}`).get(...args) as { n: number }).n);
-}
-
-/** Matching rows, ongoing first, then by priority and most recently updated; a negative `limit` is every row. */
-export function listItems(db: DatabaseSync, filter: ItemFilter, limit: number, offset: number): ItemRow<string>[] {
-	const { clause, args } = whereOf(filter);
-	return allRows<ItemRow<string>>(
-		db.prepare(`${SELECT} WHERE ${clause} ORDER BY ${ORDER} LIMIT ? OFFSET ?`),
-		...args,
-		limit,
-		offset,
-	);
-}
+// Item rows and listings (one item, an origin's derived items, filtered pages) live beside this module.
+export * from "./backlog-items.ts";
 
 /** The item count of each state present in the repository. */
 export function stateCounts(db: DatabaseSync, repo: string): Array<{ state: string; n: number }> {
@@ -179,8 +91,34 @@ export function setParent(db: DatabaseSync, rowId: number, parentRowId: number |
 	db.prepare("UPDATE backlog SET parent_id = ? WHERE id = ?").run(parentRowId, rowId);
 }
 
-export function setType(db: DatabaseSync, rowId: number, type: string): void {
-	db.prepare("UPDATE backlog SET type = ? WHERE id = ?").run(type, rowId);
+/** A parent (`parent`, its row id or null for none) and type to write; an absent one keeps the stored value. */
+export interface EntityColumns {
+	parent?: { rowId: number | null };
+	type?: string;
+}
+
+/** Writes a new item's parent and type in one statement (an update writes them with `saveItem`). */
+export function setEntityColumns(db: DatabaseSync, rowId: number, c: EntityColumns): void {
+	db.prepare(
+		"UPDATE backlog SET parent_id = CASE WHEN ? THEN ? ELSE parent_id END, type = COALESCE(?, type) WHERE id = ?",
+	).run(c.parent ? 1 : 0, c.parent?.rowId ?? null, c.type ?? null, rowId);
+}
+
+/** The states of the items whose parent is the item `rowId` (an epic's children), in no particular order. */
+export function childStates(db: DatabaseSync, rowId: number): string[] {
+	return allRows<{ state: string }>(db.prepare("SELECT state FROM backlog WHERE parent_id = ?"), rowId).map(
+		(row) => row.state,
+	);
+}
+
+/** Whether an item still has the type `task`, which was renamed `feature` (an older build wrote it). */
+export function hasLegacyItemType(db: DatabaseSync): boolean {
+	return db.prepare("SELECT 1 FROM backlog WHERE type = 'task' LIMIT 1").get() !== undefined;
+}
+
+/** Rewrites every item of type `task` to `feature`; versions and update times stay, and no audit row is written (reads already show `feature`). */
+export function renameLegacyItemType(db: DatabaseSync): void {
+	db.exec("UPDATE backlog SET type = 'feature' WHERE type = 'task'");
 }
 
 /** Drops an item's dependency links (`dependsOn`) or all its other links. */
@@ -235,12 +173,14 @@ export interface NewItem {
 	sourceSession: string | null;
 	at: number;
 	fromItem: number | null;
+	/** The item type; a database made before the rename defaults the column to `task`, so it is always written. */
+	type: string;
 }
 
 export function insertItem(db: DatabaseSync, item: NewItem): void {
 	db.prepare(
-		`INSERT INTO backlog (repo_key, seq, title, goal, body, paths, why, evidence, plan, state, priority, tags, assignee, created_by, source_session, created_at, updated_at, started_at, done_at, from_item)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO backlog (repo_key, seq, title, goal, body, paths, why, evidence, plan, state, priority, tags, assignee, created_by, source_session, created_at, updated_at, started_at, done_at, from_item, type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	).run(
 		item.repo,
 		item.seq,
@@ -261,11 +201,12 @@ export function insertItem(db: DatabaseSync, item: NewItem): void {
 		null,
 		null,
 		item.fromItem,
+		item.type,
 	);
 }
 
-/** The fields an update rewrites; the version goes up by one. */
-export interface ItemChanges {
+/** The fields an update rewrites (parent and type only when given); the version goes up by one. */
+export interface ItemChanges extends EntityColumns {
 	title: string;
 	goal: string;
 	body: string;
@@ -285,7 +226,7 @@ export interface ItemChanges {
 
 export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void {
 	db.prepare(
-		"UPDATE backlog SET title = ?, goal = ?, body = ?, paths = ?, why = ?, evidence = ?, plan = ?, state = ?, priority = ?, tags = ?, assignee = ?, updated_at = ?, started_at = ?, done_at = ?, from_item = ?, version = version + 1 WHERE id = ?",
+		"UPDATE backlog SET title = ?, goal = ?, body = ?, paths = ?, why = ?, evidence = ?, plan = ?, state = ?, priority = ?, tags = ?, assignee = ?, updated_at = ?, started_at = ?, done_at = ?, from_item = ?, parent_id = CASE WHEN ? THEN ? ELSE parent_id END, type = COALESCE(?, type), version = version + 1 WHERE id = ?",
 	).run(
 		c.title,
 		c.goal,
@@ -302,6 +243,9 @@ export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void 
 		c.startedAt,
 		c.doneAt,
 		c.fromItem,
+		c.parent ? 1 : 0,
+		c.parent?.rowId ?? null,
+		c.type ?? null,
 		rowId,
 	);
 }

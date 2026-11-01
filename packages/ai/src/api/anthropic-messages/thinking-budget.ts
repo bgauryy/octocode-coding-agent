@@ -1,5 +1,5 @@
 /** Anthropic's smallest accepted `budget_tokens`. */
-export const ANTHROPIC_MIN_THINKING_BUDGET = 1024;
+const ANTHROPIC_MIN_THINKING_BUDGET = 1024;
 
 /** Tokens always left for the answer when the thinking budget shares `max_tokens`. */
 const ANSWER_TOKENS = 1024;

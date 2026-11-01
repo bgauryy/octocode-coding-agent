@@ -128,7 +128,7 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 	});
 
-	it("is stopped by /octocode jobs kill, with SIGTERM first so it can clean up", async () => {
+	it("is stopped by /jobs kill, with SIGTERM first so it can clean up", async () => {
 		const { api, tools, sent } = fakeHost();
 		const commands = new Subcommands();
 		const jobs = new BashJobs(tmp());

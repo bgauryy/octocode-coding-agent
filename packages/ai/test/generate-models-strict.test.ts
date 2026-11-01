@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -21,6 +21,8 @@ describe("strict model generation", () => {
 		for (const entry of ["package.json", "scripts", "src"]) {
 			cpSync(join(packageRoot, entry), join(isolatedPackageRoot, entry), { recursive: true });
 		}
+		// Workspace dependencies (such as @octocodeai/octocode-contracts) resolve from the repository; only ai is copied.
+		symlinkSync(join(packageRoot, "..", "..", "node_modules"), join(fixtureRoot, "node_modules"), "junction");
 		const preloadPath = join(fixtureRoot, "mock-models-dev.mjs");
 		const modelIds = [
 			"deepseek-v4-flash-0731",
@@ -67,7 +69,7 @@ describe("strict model generation", () => {
 
 		const result = spawnSync(
 			process.execPath,
-			["--import", pathToFileURL(preloadPath).href, "scripts/generate-models.ts", "--strict"],
+			["--conditions=source", "--import", pathToFileURL(preloadPath).href, "scripts/generate-models.ts", "--strict"],
 			{
 				cwd: isolatedPackageRoot,
 				encoding: "utf8",

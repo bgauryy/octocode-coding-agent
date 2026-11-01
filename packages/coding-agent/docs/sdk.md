@@ -68,11 +68,13 @@ After a runtime replacement, subscriptions belong to the old `AgentSession` and 
 
 `prompt()` handles extension commands and expands file-based prompt templates before ordinary user messages enter the agent. For an accepted agent run, it resolves after the run finishes, including automatic retries.
 
+Pass `images` to attach images. `attachImagePaths: true` (also an option of `steer()` and `followUp()`) attaches the image files the text names, as the terminal and /web do for typed input; see [attach images by path](models.md#attach-images-by-path).
+
 A prompt sent while the session is already streaming must specify whether it should steer the current run or follow it. Calling `prompt()` without that choice rejects rather than guessing.
 
-A steering message enters after the current assistant turn and its tool calls. A follow-up enters after the current run finishes its pending work. `steer()` and `followUp()` expose those behaviors directly and return `"queued"` if the input was queued (including after an extension transformed it), or `"handled"` if an extension consumed it.
+A steering message enters after the current assistant turn and its tool calls. A follow-up enters after the current run finishes its pending work. `steer()` and `followUp()` expose those behaviors directly and return `"queued"` if the input was queued (including after an extension transformed it), or `"handled"` if an extension consumed it. `isCustomMessageQueued(details)` reports whether a custom message sent with that exact `details` object (identity, not equality) still waits in either queue; extensions read the same answer as `ctx.isMessageQueued(details)`.
 
-`abort()` stops the active operation and waits for the session to become idle. Its default reason, `interrupted`, emits the observational `agent_interrupted` event for an active turn. Runtime owners can pass `replacement`, `shutdown` or `internal` for cancellation that should not emit it. The first cancellation reason wins for that run. `waitForIdle()` waits without aborting it.
+`abort()` stops the active operation and waits for the session to become idle. Its default reason, `interrupted`, emits the observational `agent_interrupted` event for an active turn. Runtime owners can pass `replacement`, `shutdown` or `internal` for cancellation that should not emit it. The first cancellation reason wins for that run. `abort()` leaves queued steering and follow-up messages in place, so the next run delivers them. `waitForIdle()` waits without aborting it.
 
 ## Subscribing to events
 

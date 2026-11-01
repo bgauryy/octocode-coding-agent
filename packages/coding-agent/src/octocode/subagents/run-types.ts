@@ -2,7 +2,8 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import type { ChildCacheMetrics } from "./cache-monitor.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import type { Ask } from "../team/asks.ts";
-import type { ChildNotices, Compactions } from "./events.ts";
+import type { Compactions } from "./events.ts";
+import type { ChildNotices } from "./notices.ts";
 import type { StructuredResultV1 } from "./result-schema.ts";
 import type { ReportArtifact } from "../shared/report-artifact.ts";
 
@@ -67,6 +68,8 @@ export interface RunDetails {
 	model?: string;
 	/** The profile's preferred model, unavailable here: the run fell back to the parent's model. */
 	fallback?: string;
+	/** The provider of `fallback` when it is configured but refused its credential recently. */
+	refusedBy?: string;
 	/** The latest completed report's outcome; absent while running or when that report names none. */
 	outcome?: ReportStatus;
 	/** Where that report named it: its first word (the contract's form) or a labelled last line; `/agents stats` counts both. */
@@ -116,6 +119,7 @@ export interface ResultDetails {
 	/** As in `RunDetails`: where it ran, shown when the report is expanded. */
 	model?: string;
 	fallback?: string;
+	refusedBy?: string;
 	/** Its compactions, warnings and errors, and saved conversation, as in `RunDetails`. */
 	compactions?: Compactions;
 	notices?: ChildNotices;

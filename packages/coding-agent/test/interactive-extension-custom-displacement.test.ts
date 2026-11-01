@@ -1,0 +1,266 @@
+import { afterEach, beforeAll, describe, expect, type Mock, test, vi } from "vitest";
+import { type Component, Container, type TUI } from "../../tui/src/tui.ts";
+import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
+import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { SessionManager } from "../src/core/session-manager.ts";
+import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { pickSession } from "../src/modes/interactive/interactive-mode/session-picker.ts";
+import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
+
+const PENDING = Symbol("pending");
+
+/** The promise's value, or PENDING when it has not settled shortly after. */
+async function settled<T>(promise: Promise<T>): Promise<T | typeof PENDING> {
+	return Promise.race([promise, new Promise<typeof PENDING>((resolve) => setTimeout(() => resolve(PENDING), 20))]);
+}
+
+beforeAll(() => initTheme("dark"));
+afterEach(() => vi.restoreAllMocks());
+
+/** A real main-screen renderer on a virtual terminal, with the editor in its slot. */
+function createHost(extra: object = {}) {
+	const terminal = new VirtualTerminal(80, 24);
+	const ui: TUI = new TuiMainScreen(terminal);
+	const keybindings = KeybindingsManager.create();
+	const editor = new CustomEditor(ui, getEditorTheme(), keybindings);
+	const editorContainer = new Container();
+	editorContainer.addChild(editor);
+	ui.addChild(editorContainer);
+	const host = createFakeHost({
+		ui,
+		editor,
+		editorContainer,
+		keybindings,
+		programStatus: { setBlocked: vi.fn() },
+		settingsManager: { getExternalEditorCommand: () => undefined },
+		extensionSelector: undefined,
+		extensionInput: undefined,
+		extensionEditor: undefined,
+		activeSelectorToken: undefined,
+		activeSelectorDispose: undefined,
+		toggleToolOutputExpansion: vi.fn(),
+		sessionManager: {
+			getCwd: () => "/work/s5d-repo",
+			getSessionDir: () => "/tmp/s5d-sessions",
+			getSessionFile: () => "/tmp/s5d-sessions/current.jsonl",
+			usesDefaultSessionDir: () => true,
+		},
+		...extra,
+	});
+	ui.start();
+	return { host, terminal, editor, editorContainer, ui };
+}
+
+/** A custom component showing `label`, with a dispose spy. */
+function view(label: string): Component & { dispose: Mock<() => void> } {
+	return { render: () => [label], invalidate: () => {}, dispose: vi.fn<() => void>() };
+}
+
+/** Open `component` with `ctx.ui.custom` semantics and wait until it holds the editor slot. */
+async function openCustom<T>(env: ReturnType<typeof createHost>, component: Component) {
+	let done: ((result: T) => void) | undefined;
+	const result = env.host.showExtensionCustom<T>((_tui, _theme, _keys, close) => {
+		done = close;
+		return component;
+	});
+	await vi.waitFor(() => expect(env.editorContainer.children).toEqual([component]));
+	return { result, done: (value: T) => done?.(value) };
+}
+
+async function screen(terminal: VirtualTerminal): Promise<string> {
+	await terminal.waitForRender();
+	return terminal.getViewport().join("\n");
+}
+
+describe("ctx.ui.custom components closed by whatever takes their place or resets the extension UI", () => {
+	test("an extension dialog taking its slot disposes it and resolves it undefined", async () => {
+		const env = createHost();
+		try {
+			const first = view("first custom view");
+			const custom = await openCustom<string>(env, first);
+			expect(await screen(env.terminal)).toContain("first custom view");
+
+			const answer = env.host.showExtensionSelector("Extension question", ["yes", "no"]);
+			const shown = await screen(env.terminal);
+			expect(shown).toContain("Extension question");
+			expect(shown).not.toContain("first custom view");
+
+			expect(await settled(custom.result)).toBeUndefined();
+			expect(first.dispose).toHaveBeenCalledTimes(1);
+			// A late done from the displaced component neither settles it again nor disposes it again.
+			custom.done("late");
+			expect(await custom.result).toBeUndefined();
+			expect(first.dispose).toHaveBeenCalledTimes(1);
+			expect(await settled(answer)).toBe(PENDING);
+			env.host.hideExtensionSelector();
+			expect(await settled(answer)).toBeUndefined();
+			expect(env.editorContainer.children).toEqual([env.editor]);
+		} finally {
+			env.ui.stop();
+		}
+	});
+
+	test("a built-in selector or another custom component taking its slot settles it; the newcomer stays open", async () => {
+		const env = createHost();
+		try {
+			const first = view("first custom view");
+			const firstOpen = await openCustom<string>(env, first);
+			const selectorDispose = vi.fn();
+			const selector = view("built-in selector");
+			env.host.showSelector(() => ({ component: selector, focus: selector, dispose: selectorDispose }));
+			expect(await settled(firstOpen.result)).toBeUndefined();
+			expect(first.dispose).toHaveBeenCalledTimes(1);
+			expect(await screen(env.terminal)).toContain("built-in selector");
+
+			const second = view("second custom view");
+			const secondOpen = await openCustom<string>(env, second);
+			expect(selectorDispose).toHaveBeenCalledTimes(1);
+			const third = view("third custom view");
+			const thirdOpen = await openCustom<string>(env, third);
+			expect(await settled(secondOpen.result)).toBeUndefined();
+			expect(second.dispose).toHaveBeenCalledTimes(1);
+			expect(await settled(thirdOpen.result)).toBe(PENDING);
+			expect(third.dispose).not.toHaveBeenCalled();
+
+			thirdOpen.done("picked");
+			expect(await thirdOpen.result).toBe("picked");
+			expect(third.dispose).toHaveBeenCalledTimes(1);
+			expect(env.editorContainer.children).toEqual([env.editor]);
+		} finally {
+			env.ui.stop();
+		}
+	});
+
+	test("a component closed normally leaves nothing behind for the next displacement to settle", async () => {
+		const env = createHost();
+		try {
+			const first = view("first custom view");
+			const firstOpen = await openCustom<string>(env, first);
+			firstOpen.done("one");
+			expect(await firstOpen.result).toBe("one");
+
+			const answer = env.host.showExtensionInput("Name?");
+			expect(await settled(answer)).toBe(PENDING);
+			expect(first.dispose).toHaveBeenCalledTimes(1);
+			env.host.hideExtensionInput();
+			expect(await settled(answer)).toBeUndefined();
+		} finally {
+			env.ui.stop();
+		}
+	});
+
+	test("a component whose factory calls done before returning is disposed once and leaves the editor in place", async () => {
+		const env = createHost();
+		try {
+			const early = view("early custom view");
+			const result = env.host.showExtensionCustom<string>((_tui, _theme, _keys, done) => {
+				done("at once");
+				return early;
+			});
+			expect(await result).toBe("at once");
+			await vi.waitFor(() => expect(early.dispose).toHaveBeenCalledTimes(1));
+			expect(env.editorContainer.children).toEqual([env.editor]);
+
+			const late = view("async custom view");
+			const asyncResult = env.host.showExtensionCustom<string>(async (_tui, _theme, _keys, done) => {
+				done("before ready");
+				return late;
+			});
+			expect(await asyncResult).toBe("before ready");
+			await vi.waitFor(() => expect(late.dispose).toHaveBeenCalledTimes(1));
+			expect(env.editorContainer.children).toEqual([env.editor]);
+			expect(await screen(env.terminal)).not.toContain("custom view");
+			expect(early.dispose).toHaveBeenCalledTimes(1);
+		} finally {
+			env.ui.stop();
+		}
+	});
+
+	test("an extension dialog displaced by a custom component answers undefined", async () => {
+		const env = createHost();
+		try {
+			const answer = env.host.showExtensionConfirm("Delete", "Really?");
+			const custom = view("custom over dialog");
+			const open = await openCustom<string>(env, custom);
+			expect(await settled(answer)).toBe(false);
+			expect(env.host.extensionSelector).toBeUndefined();
+			expect(await screen(env.terminal)).toContain("custom over dialog");
+			expect(await settled(open.result)).toBe(PENDING);
+			open.done("ok");
+			expect(await open.result).toBe("ok");
+		} finally {
+			env.ui.stop();
+		}
+	});
+
+	test("ctx.ui.pickSession displaced by an extension dialog resolves undefined and stops its listing", async () => {
+		let listSignal: AbortSignal | undefined;
+		vi.spyOn(SessionManager, "list").mockImplementation(((
+			_cwd: string,
+			_dir: string,
+			_onProgress: unknown,
+			signal?: AbortSignal,
+		) => {
+			listSignal = signal;
+			return new Promise(() => {});
+		}) as typeof SessionManager.list);
+		const env = createHost();
+		try {
+			const picked = pickSession(env.host, {});
+			await vi.waitFor(() => expect(listSignal).toBeDefined());
+			expect(listSignal?.aborted).toBe(false);
+
+			const answer = env.host.showExtensionSelector("Extension question", ["yes"]);
+			expect(await settled(picked)).toBeUndefined();
+			expect(listSignal?.aborted).toBe(true);
+			env.host.hideExtensionSelector();
+			expect(await settled(answer)).toBeUndefined();
+		} finally {
+			env.ui.stop();
+		}
+	});
+
+	test("the reset on reload or session replacement closes every custom overlay and the custom component in the slot", async () => {
+		const env = createHost({
+			editorComponentFactory: undefined,
+			activeStatusIndicator: undefined,
+			defaultWorkingMessage: "Working",
+			extensionWidgetsAbove: new Map(),
+			extensionWidgetsBelow: new Map(),
+			autocompleteProviderWrappers: [],
+			footerDataProvider: { clearExtensionStatuses: vi.fn() },
+			clearExtensionTerminalInputListeners: vi.fn(),
+			setExtensionFooter: vi.fn(),
+			setExtensionHeader: vi.fn(),
+			renderWidgets: vi.fn(),
+			setupAutocompleteProvider: vi.fn(),
+			updateTerminalTitle: vi.fn(),
+			setWorkingIndicator: vi.fn(),
+			setHiddenThinkingLabel: vi.fn(),
+		});
+		Object.assign(env.host, { defaultEditor: env.editor });
+		try {
+			const slot = view("slot custom view");
+			const slotOpen = await openCustom<string>(env, slot);
+			const lower = view("lower overlay");
+			const upper = view("upper overlay");
+			const lowerResult = env.host.showExtensionCustom<string>(() => lower, { overlay: true });
+			const upperResult = env.host.showExtensionCustom<string>(() => upper, { overlay: true });
+			await vi.waitFor(async () => expect(await screen(env.terminal)).toContain("upper overlay"));
+
+			env.host.resetExtensionUI();
+			for (const result of [slotOpen.result, lowerResult, upperResult]) {
+				expect(await settled(result)).toBeUndefined();
+			}
+			for (const component of [slot, lower, upper]) expect(component.dispose).toHaveBeenCalledTimes(1);
+			const shown = await screen(env.terminal);
+			expect(shown).not.toContain("overlay");
+			expect(shown).not.toContain("slot custom view");
+			expect(env.editorContainer.children).toEqual([env.editor]);
+		} finally {
+			env.ui.stop();
+		}
+	});
+});

@@ -114,6 +114,7 @@ export async function workspaceServerFixture() {
 	const url = new URL(web.url);
 	const token = url.hash.slice(8);
 	return {
+		db,
 		store,
 		session,
 		application,
@@ -152,9 +153,10 @@ export async function workspaceServerFixture() {
 		upgrade: (
 			headers: http.IncomingHttpHeaders = {},
 			route = "/api/backlogs/live",
-		): { client: MemorySocket | undefined; raw: { end: ReturnType<typeof vi.fn> } } => {
+		): { client: MemorySocket | undefined; raw: { end: ReturnType<typeof vi.fn>; on: ReturnType<typeof vi.fn> } } => {
 			upgrading = undefined;
-			const raw = { end: vi.fn() };
+			// The server listens for the raw socket's errors before it decides; the stub accepts the listener.
+			const raw = { end: vi.fn(), on: vi.fn() };
 			server.emit(
 				"upgrade",
 				{ url: route, headers: { host: url.host, origin: url.origin, ...headers } },

@@ -1,5 +1,7 @@
+import { browserEscalations } from "../permission/browser-escalation.ts";
+import type { ActionClass } from "../permission/mode.ts";
 import type { PermissionRequest } from "../permission/request.ts";
-import { browserMcpTool, browserMcpUrls } from "../shared/browser-mcp.ts";
+import { browserMcpTool, browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
 import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
 
 const VERDICT_TTL_MS = 60 * 60_000;
@@ -38,22 +40,29 @@ const CONTROL: Record<string, string> = {
 };
 
 /**
- * The permission a browser MCP call needs beyond the generic MCP class, or undefined when it needs none: a page the
+ * The permission a browser MCP call needs beyond the generic MCP class, or undefined when it needs none. A page the
  * agent asks Chrome to open at a private or local address, or under a name that does not resolve here (it may resolve
- * to one in Chrome), is a `net.private` ask with a per-host session grant, like the native browser and `web`; a
- * non-web URL (`file:`, `chrome:`, `data:`) asks the same way without a grant. Requests the opened page makes itself
- * are not checked here: the browser server's Chrome runs behind a filtering proxy that approves only these hosts
- * (`mcp/src/presets/browser/proxy.ts`).
+ * to one in Chrome), is a `net.private` ask with a per-host session grant, like `web`; a non-web URL (`file:`,
+ * `chrome:`, `data:`) asks the same way without a grant. Requests the opened page makes itself are not checked here:
+ * the browser server's Chrome runs behind a filtering proxy that approves only these hosts
+ * (`mcp/src/presets/browser/proxy.ts`). The `CONTROL` tools, the user's real profile or another program as the
+ * browser, and raw CDP on cookies or downloads are `browser.control`; files from outside the workspace (`cwd`'s)
+ * sent to a page are `upload.outside` (`permission/browser-escalation.ts`). A call that is several of these asks once,
+ * naming them all, with no session grant.
  */
 export async function browserMcpRequest(
 	toolName: string,
 	input: Record<string, unknown>,
 	lookup?: HostLookup,
+	cwd: string = process.cwd(),
 ): Promise<PermissionRequest | undefined> {
 	const tool = browserMcpTool(toolName);
 	if (tool === undefined) return undefined;
-	if (Object.hasOwn(CONTROL, tool))
-		return { action: "browser.control", title: CONTROL[tool], what: [`${toolName} ${JSON.stringify(input)}`] };
+	const escalations = browserEscalations(toolName, input, cwd);
+	const control = [
+		...(Object.hasOwn(CONTROL, tool) ? [`${toolName} ${JSON.stringify(input)}`] : []),
+		...escalations.control,
+	];
 	const risky: Array<{ key?: string; what: string }> = [];
 	for (const raw of browserMcpUrls(toolName, input)) {
 		let url: URL;
@@ -80,12 +89,28 @@ export async function browserMcpRequest(
 			}.`,
 		});
 	}
-	if (risky.length === 0) return undefined;
+	const classes: ActionClass[] = [
+		...(control.length > 0 ? ["browser.control" as const] : []),
+		...(escalations.outside.length > 0 ? ["upload.outside" as const] : []),
+		...(risky.length > 0 ? ["net.private" as const] : []),
+	];
+	const [action, ...also] = classes;
+	if (action === undefined) return undefined;
 	const keys = [...new Set(risky.map((entry) => entry.key))];
 	return {
-		action: "net.private",
-		title: "Open a private address in the browser?",
-		what: risky.map((entry) => entry.what),
-		...(keys.length === 1 && keys[0] ? { grant: { key: keys[0], label: keys[0] } } : {}),
+		action,
+		...(also.length > 0 ? { also } : {}),
+		title:
+			action === "browser.control"
+				? Object.hasOwn(CONTROL, tool)
+					? CONTROL[tool]
+					: "Take control of the browser?"
+				: action === "upload.outside"
+					? "Upload files from outside the workspace to the page?"
+					: "Open a private address in the browser?",
+		what: [...control, ...escalations.outside, ...risky.map((entry) => entry.what)],
+		...(action === "net.private" && also.length === 0 && keys.length === 1 && keys[0]
+			? { grant: { key: keys[0], label: keys[0] } }
+			: {}),
 	};
 }

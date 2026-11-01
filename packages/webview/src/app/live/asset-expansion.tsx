@@ -2,7 +2,8 @@ import type { ApplicationAsset } from "@octocodeai/octocode-contracts";
 import { useState } from "react";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
-import type { AssetLoader } from "./ContentBlocks.tsx";
+
+export type AssetLoader = (id: string, signal?: AbortSignal) => Promise<Blob>;
 
 /** Full message/tool payloads use the same schema validation as streamed content before entering a renderer. */
 export function useAssetExpansion<T extends { full?: ApplicationAsset }>(
@@ -10,26 +11,39 @@ export function useAssetExpansion<T extends { full?: ApplicationAsset }>(
 	loadAsset: AssetLoader,
 	decode: (value: unknown, previous?: T) => T,
 ) {
-	const key = asset && `${asset.id}:${asset.revision ?? ""}`;
-	const [loaded, setLoaded] = useState<{ key: string; value: T }>();
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState("");
+	const read = useAssetRead<T>(asset);
 	return {
 		available: asset !== undefined,
-		value: loaded?.key === key ? loaded?.value : undefined,
-		loading,
-		error,
-		async load() {
+		value: read.loaded?.value,
+		loading: read.loading,
+		error: read.error,
+		load: () => read.run((current) => expandAssetChain(current, loadAsset, decode)),
+	};
+}
+
+/**
+ * The result, progress and failure of reading one asset revision. Each is kept with the revision it belongs to, so
+ * when the asset changes the view shows that revision's state, not a previous revision's result or error.
+ */
+export function useAssetRead<T>(asset: ApplicationAsset | undefined) {
+	const key = asset && `${asset.id}:${asset.revision ?? ""}`;
+	const [loaded, setLoaded] = useState<{ key: string; value: T }>();
+	const [pending, setPending] = useState<string>();
+	const [failure, setFailure] = useState<{ key: string; message: string }>();
+	return {
+		loaded: loaded?.key === key ? loaded : undefined,
+		loading: key !== undefined && pending === key,
+		error: failure && failure.key === key ? failure.message : "",
+		async run(read: (asset: ApplicationAsset) => Promise<T>) {
 			if (!asset || !key) return;
-			setLoading(true);
-			setError("");
+			setPending(key);
+			setFailure(undefined);
 			try {
-				const value = await expandAssetChain(asset, loadAsset, decode);
-				setLoaded({ key, value });
+				setLoaded({ key, value: await read(asset) });
 			} catch (cause) {
-				setError(errorMessage(cause));
+				setFailure({ key, message: errorMessage(cause) });
 			} finally {
-				setLoading(false);
+				setPending((current) => (current === key ? undefined : current));
 			}
 		},
 	};

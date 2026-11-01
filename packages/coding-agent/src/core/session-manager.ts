@@ -8,14 +8,7 @@ import { buildContextEntries, buildSessionProjection } from "./session-manager/c
 import { findSessionFileById, listAllSessions, listSessions } from "./session-manager/listing.ts";
 import * as persistence from "./session-manager/persistence.ts";
 import type { SessionRepair } from "./session-manager/repair.ts";
-import {
-	createSessionState,
-	getBranchEntries,
-	getChildEntries,
-	getLatestSessionName,
-	getSessionEntries,
-	type SessionState,
-} from "./session-manager/state.ts";
+import * as sessionState from "./session-manager/state.ts";
 import {
 	findMostRecentSession,
 	forkSessionFile,
@@ -33,6 +26,7 @@ import type {
 	SessionHeader,
 	SessionInfo,
 	SessionListProgress,
+	SessionNameSource,
 	SessionProjection,
 	SessionTreeNode,
 	UsageEntry,
@@ -66,7 +60,7 @@ export * from "./session-manager/types.ts";
  */
 export class SessionManager implements SessionManagerApi {
 	/** Entry, label and leaf state shared with the `session-manager/` modules. */
-	private readonly state: SessionState;
+	private readonly state: sessionState.SessionState;
 	/** Set by `retire()` once the runtime replaced this manager. */
 	private retired = false;
 
@@ -78,7 +72,7 @@ export class SessionManager implements SessionManagerApi {
 		newSessionOptions?: NewSessionOptions,
 		preloadedFileEntries?: FileEntry[],
 	) {
-		this.state = createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist);
+		this.state = sessionState.createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist);
 		persistence.initializeSession(this.state, sessionFile, newSessionOptions, preloadedFileEntries);
 	}
 
@@ -193,12 +187,16 @@ export class SessionManager implements SessionManagerApi {
 		return appends.appendCustomEntry(this.state, customType, data);
 	}
 
-	appendSessionInfo(name: string): string {
-		return appends.appendSessionInfo(this.state, name);
+	appendSessionInfo(name: string, source?: SessionNameSource): string {
+		return appends.appendSessionInfo(this.state, name, source);
 	}
 
 	getSessionName(): string | undefined {
-		return getLatestSessionName(this.state);
+		return sessionState.getLatestSessionName(this.state);
+	}
+
+	getSessionNameSource(): SessionNameSource | undefined {
+		return sessionState.getLatestSessionNameSource(this.state);
 	}
 
 	appendCustomMessageEntry<T = unknown>(
@@ -232,7 +230,7 @@ export class SessionManager implements SessionManagerApi {
 	}
 
 	getChildren(parentId: string): SessionEntry[] {
-		return getChildEntries(this.state, parentId);
+		return sessionState.getChildEntries(this.state, parentId);
 	}
 
 	getLabel(id: string): string | undefined {
@@ -244,7 +242,7 @@ export class SessionManager implements SessionManagerApi {
 	}
 
 	getBranch(fromId?: string): SessionEntry[] {
-		return getBranchEntries(this.state, fromId);
+		return sessionState.getBranchEntries(this.state, fromId);
 	}
 
 	buildContextEntries(): SessionEntry[] {
@@ -269,7 +267,7 @@ export class SessionManager implements SessionManagerApi {
 	}
 
 	getEntries(): SessionEntry[] {
-		return getSessionEntries(this.state);
+		return sessionState.getSessionEntries(this.state);
 	}
 
 	getTree(): SessionTreeNode[] {

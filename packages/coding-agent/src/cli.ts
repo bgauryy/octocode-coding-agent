@@ -10,7 +10,7 @@ if (args[0] === "completion") {
 	const { runRemoteCli } = await import("./octocode/remote/cli.ts");
 	process.exitCode = await runRemoteCli(args.slice(1));
 } else if (args[0] === "__web-daemon") {
-	// The detached user-level web daemon (`/octocode` with OCTOCODE_WEB_DAEMON=1 starts it); not a user command.
+	// The detached user-level web daemon (`/web` with OCTOCODE_WEB_DAEMON=1 starts it); not a user command.
 	const { runWebDaemon } = await import("./octocode/web-daemon/main.ts");
 	await runWebDaemon();
 } else {

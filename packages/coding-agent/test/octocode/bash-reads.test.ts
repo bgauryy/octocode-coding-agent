@@ -39,6 +39,52 @@ describe("bashReads", () => {
 		expect(bashReads("sed -n '1,9000p' a.txt", CWD, true)).toEqual([{ file: abs("a.txt"), whole: false }]);
 	});
 
+	it("resolves files against literal cd steps before the printer", () => {
+		const cwd = tmp();
+		fs.mkdirSync(path.join(cwd, "sub", "deep"), { recursive: true });
+		const sub = path.join(cwd, "sub");
+		expect(bashReads("cd ./sub && cat a.txt", cwd)).toEqual([{ file: path.join(sub, "a.txt"), whole: true }]);
+		expect(bashReads("cd './sub' ; sed -n '2,3p' a.txt", cwd)).toEqual([
+			{ file: path.join(sub, "a.txt"), whole: false, lines: [2, 3] },
+		]);
+		expect(bashReads(`cd "${sub}" && head -n 4 a.txt`, "/elsewhere")).toEqual([
+			{ file: path.join(sub, "a.txt"), whole: false, lines: [1, 4] },
+		]);
+		expect(bashReads("cd ./sub && cd ./deep && cat a.txt", cwd)).toEqual([
+			{ file: path.join(sub, "deep", "a.txt"), whole: true },
+		]);
+		expect(bashReads("cd . && cat a.txt", cwd)).toEqual([{ file: path.join(cwd, "a.txt"), whole: true }]);
+		expect(bashReads("cd ./sub && cat /etc/hosts", cwd)).toEqual([{ file: "/etc/hosts", whole: true }]);
+		expect(bashReads("cd ./sub && cat a.txt", cwd, true)).toEqual([{ file: path.join(sub, "a.txt"), whole: false }]);
+	});
+
+	it.each([
+		"cd $DIR && cat a.txt",
+		"cd $(pwd) && cat a.txt",
+		"cd su* && cat a.txt",
+		"cd ~/sub && cat a.txt",
+		"cd - && cat a.txt",
+		"cd && cat a.txt",
+		"cd ./sub || cat a.txt",
+		"cd ./sub & cat a.txt",
+		"(cd ./sub && cat a.txt)",
+		"cd ./sub && cat a.txt | head",
+		"cd ./sub && ls && cat a.txt",
+		"cd ./missing; cat a.txt",
+		// A bare name goes through CDPATH, and `..` is followed on the spelling, not the real directories (symlinks).
+		"cd sub && cat a.txt",
+		"cd sub/deep && cat a.txt",
+		"cd 'sub' ; cat a.txt",
+		"cd .. && cat a.txt",
+		"cd ../sub && cat a.txt",
+		"cd ./sub/.. && cat a.txt",
+		"cd ./sub/../sub && cat a.txt",
+	])("credits nothing for the cd form %s", (command) => {
+		const cwd = tmp();
+		fs.mkdirSync(path.join(cwd, "sub"));
+		expect(bashReads(command, cwd)).toEqual([]);
+	});
+
 	it.each([
 		"cat a.txt | head -3",
 		"cat a.txt > b.txt",
@@ -67,7 +113,7 @@ describe("bashReads", () => {
 	});
 });
 
-describe("the file tool while Octocode's local readers are unavailable", () => {
+describe("the file tool and plain bash prints", () => {
 	function setup(reader = BASH_READER) {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
@@ -163,10 +209,43 @@ describe("the file tool while Octocode's local readers are unavailable", () => {
 		expect(await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] })).toMatchObject({ ok: true });
 	});
 
-	it("leaves bash out of the guard while the Octocode readers are available", async () => {
-		const { bash, change } = setup(LOCAL_FETCH_READER);
+	it("credits a bash print too while the Octocode readers are available", async () => {
+		const { file, bash, change } = setup(LOCAL_FETCH_READER);
+		await bash("sed -n '2,3p' a.txt");
+		expect(await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] })).toMatchObject({ ok: true });
+		expect(fs.readFileSync(file, "utf8")).toBe("one\n2\nthree\nfour\n");
+		// Only lines 2-3 were printed, so a whole-file write still names the rest and the localFetch range.
+		const refused = await change({ type: "write", content: "replaced\n" });
+		expect(refused.message).toMatch(/seen lines 2–3 of its 4 lines\. Read the rest with `localFetch`/);
 		await bash("cat a.txt");
-		const outcome = await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] });
-		expect(outcome.message).toMatch(/was not read in this session\. Read it with `localFetch`/);
+		expect(await change({ type: "write", content: "replaced\n" })).toMatchObject({ ok: true });
+	});
+
+	it("does not credit a pipe or a cut print as a whole read when the Octocode readers are available", async () => {
+		const { bash, change } = setup(LOCAL_FETCH_READER);
+		await bash("cat a.txt | head -2");
+		const unread = await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] });
+		expect(unread.message).toMatch(/was not read in this session/);
+		await bash("cat a.txt", { details: { truncation: { truncated: true } } });
+		expect(await change({ type: "write", content: "x" })).toMatchObject({ ok: false });
+	});
+
+	it("counts `cd DIR && cat rel` toward a write of that file only", async () => {
+		const { cwd, bash, change } = setup(LOCAL_FETCH_READER);
+		fs.mkdirSync(path.join(cwd, "sub"));
+		fs.writeFileSync(path.join(cwd, "sub", "b.txt"), "x\ny\n");
+		await bash("cd ./sub && cat b.txt");
+		expect(await change({ type: "write", path: "sub/b.txt", content: "z\n" })).toMatchObject({ ok: true });
+		// The same name at the workspace root was never printed.
+		fs.writeFileSync(path.join(cwd, "b.txt"), "other\n");
+		expect(await change({ type: "write", path: "b.txt", content: "z\n" })).toMatchObject({ ok: false });
+	});
+
+	it("refusal says what counts as a read, naming localFetch or a plain bash print", async () => {
+		const edit = { type: "edit", edits: [{ oldText: "two", newText: "2" }] };
+		const local = await setup(LOCAL_FETCH_READER).change(edit);
+		expect(local.message).toMatch(/Read it with `localFetch`, or print it in `bash` with a plain `cat FILE`/);
+		const bash = await setup().change(edit);
+		expect(bash.message).toMatch(/Read it with `bash` \(a plain `cat FILE` or `sed -n 'A,Bp' FILE`/);
 	});
 });

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isWithin } from "../shared/home/repo.ts";
 import { git } from "../shared/git.ts";
 import { canonical, locateRepo, worktreesFolder, type WorktreeEntry } from "./repo.ts";
@@ -13,6 +14,8 @@ export interface WorktreeStatus {
 	untracked: number;
 	/** Commits reachable from this worktree's HEAD and from no other branch. Not counted for the main worktree. */
 	unmerged: number;
+	/** Why git could not read this worktree's state (a corrupt index, say); the counts are then 0. */
+	error?: string;
 }
 
 /** Counts of changed and untracked files in the worktree at `dir`. */
@@ -48,8 +51,14 @@ export async function worktreeStatuses(cwd: string): Promise<{ main: string; sta
 			const name = path.dirname(real) === folder ? path.basename(real) : undefined;
 			const base = { entry, main: index === 0, ...(name ? { name } : {}) };
 			if (entry.prunable) return { ...base, dirty: 0, untracked: 0, unmerged: 0 };
-			const counts = await dirtyCounts(entry.path);
-			return { ...base, ...counts, unmerged: index === 0 ? 0 : await unmergedCount(entry) };
+			try {
+				const counts = await dirtyCounts(entry.path);
+				return { ...base, ...counts, unmerged: index === 0 ? 0 : await unmergedCount(entry) };
+			} catch (error) {
+				// One worktree git cannot read must not hide the others.
+				const reason = errorMessage(error).split("\n")[0]?.trim() || "git failed";
+				return { ...base, dirty: 0, untracked: 0, unmerged: 0, error: reason };
+			}
 		}),
 	);
 	const rank = (status: WorktreeStatus) => (status.main ? 0 : status.name ? 1 : 2);

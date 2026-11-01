@@ -1,14 +1,15 @@
 import type {
+	HistogramOptions,
 	SpanAttributes,
 	SpanLink,
 	SpanOptions,
 	SpanStatus,
 	TelemetryCarrier,
 	TelemetryContext,
+	TelemetryMetrics,
 	TelemetryPropagation,
 	TelemetrySpan,
 } from "../context.ts";
-import type { HistogramOptions, TelemetryMetrics } from "../metrics.ts";
 import { NOOP_TELEMETRY_CONTEXT } from "../noop.ts";
 
 export interface RecordedTelemetryEvent {
@@ -77,8 +78,29 @@ interface InMemoryParent {
 	span?: MutableRecordedTelemetrySpan;
 }
 
+/** The in-memory adapter's carrier keys: its recorder scope, span number and trace. */
+export const CARRIER_KEYS = {
+	scope: "octocode-memory-scope",
+	span: "octocode-memory-span",
+	trace: "octocode-memory-trace",
+} as const;
+/** Keys of carriers written before the rename; read (never written) so those carriers still extract. */
+const LEGACY_CARRIER_KEYS: Readonly<Record<keyof typeof CARRIER_KEYS, string>> = {
+	scope: "pi-memory-scope",
+	span: "pi-memory-span",
+	trace: "pi-memory-trace",
+};
+
+/** One identity field of a carrier: the current key, else the legacy one. */
+export function carrierField(
+	carrier: Readonly<TelemetryCarrier> | undefined,
+	field: keyof typeof CARRIER_KEYS,
+): unknown {
+	return carrier?.[CARRIER_KEYS[field]] ?? carrier?.[LEGACY_CARRIER_KEYS[field]];
+}
+
 export function carrierId(carrier: Readonly<TelemetryCarrier>): string {
-	return `${carrier["pi-memory-scope"]}:${carrier["pi-memory-span"]}`;
+	return `${carrier[CARRIER_KEYS.scope]}:${carrier[CARRIER_KEYS.span]}`;
 }
 
 // Identity survives settlement without exposing backend IDs on the generic context contract.
@@ -135,9 +157,9 @@ function createSpan(
 		id,
 		parentId: parent?.localId ?? null,
 		context: {
-			"pi-memory-scope": state.scope,
-			"pi-memory-span": String(id),
-			"pi-memory-trace": parent?.context["pi-memory-trace"] ?? `${state.scope}:${id}`,
+			[CARRIER_KEYS.scope]: state.scope,
+			[CARRIER_KEYS.span]: String(id),
+			[CARRIER_KEYS.trace]: parent?.context[CARRIER_KEYS.trace] ?? `${state.scope}:${id}`,
 		},
 		parentContext: parent ? { ...parent.context } : null,
 		links,

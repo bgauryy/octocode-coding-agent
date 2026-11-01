@@ -1,18 +1,15 @@
 import fs from "node:fs/promises";
-import path from "node:path";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { agentDbPath } from "../shared/home.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { processStartTime, sameProcess } from "../shared/process.ts";
 import type { BacklogWeb, OpenBacklogWeb } from "./context.ts";
 import { acquireRegistryLock } from "./shared-web-lock.ts";
-
-/** On-disk record that lets callers reuse the live server for the same session. */
-interface WorkspaceWebRecord {
-	url: string;
-	pid: number;
-	/** Seconds since the epoch when the owner process started, when known; `sameProcess` falls back to `processAlive` when missing. */
-	pid_started: string | undefined;
-}
+import {
+	readRecord,
+	registryPaths,
+	removeRecord,
+	type WorkspaceWebRecord,
+	writeRecord,
+} from "./shared-web-registry.ts";
 
 const STARTUP_TIMEOUT_MS = 5000;
 const CLOSE_TIMEOUT_MS = 3000;
@@ -25,55 +22,6 @@ const ownedServers = new Map<string, () => boolean>();
 function serverUp(url: string, token: string): Promise<boolean> {
 	const local = ownedServers.get(url);
 	return local ? Promise.resolve(local()) : probeBacklogs(url, token, PROBE_TIMEOUT_MS);
-}
-
-function registryDir(env: NodeJS.ProcessEnv): string {
-	return path.join(path.dirname(agentDbPath(env)), "workspace-web");
-}
-
-function registryHash(repoRoot: string, session: string): string {
-	return sha256(JSON.stringify([repoRoot, session]));
-}
-
-function registryEntryPath(dir: string, repoRoot: string, session: string): string {
-	return path.join(dir, `${registryHash(repoRoot, session)}.json`);
-}
-
-function registryLockPath(dir: string, repoRoot: string, session: string): string {
-	return path.join(dir, `.${registryHash(repoRoot, session)}.lock`);
-}
-
-async function readRecord(entryPath: string): Promise<WorkspaceWebRecord | undefined> {
-	try {
-		const text = await fs.readFile(entryPath, "utf8");
-		const parsed: unknown = JSON.parse(text);
-		if (
-			parsed &&
-			typeof (parsed as WorkspaceWebRecord).url === "string" &&
-			typeof (parsed as WorkspaceWebRecord).pid === "number" &&
-			((parsed as WorkspaceWebRecord).pid_started === undefined ||
-				typeof (parsed as WorkspaceWebRecord).pid_started === "string")
-		) {
-			return parsed as WorkspaceWebRecord;
-		}
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-			// A corrupt record is treated as absent; the next successful start will overwrite it.
-		}
-	}
-	return undefined;
-}
-
-async function writeRecord(entryPath: string, record: WorkspaceWebRecord): Promise<void> {
-	const dir = path.dirname(entryPath);
-	await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-	const tmp = `${entryPath}.tmp`;
-	await fs.writeFile(tmp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
-	await fs.rename(tmp, entryPath);
-}
-
-async function removeRecord(entryPath: string): Promise<void> {
-	await fs.unlink(entryPath).catch(() => undefined);
 }
 
 function extractAccessToken(url: string): string | undefined {
@@ -113,19 +61,36 @@ async function probeBacklogs(url: string, token: string, timeoutMs: number): Pro
 	}
 }
 
+/** Closes the server; rejects when its close rejects or does not finish within `timeoutMs` (it may still be running). */
 async function closeWithTimeout(close: () => Promise<void>, timeoutMs: number): Promise<void> {
-	return new Promise((resolve) => {
-		const timer = setTimeout(() => resolve(), timeoutMs);
-		close()
-			.then(() => {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(
+			() => reject(new Error(`Workspace web server did not close within ${timeoutMs}ms`)),
+			timeoutMs,
+		);
+		close().then(
+			() => {
 				clearTimeout(timer);
 				resolve();
-			})
-			.catch(() => {
+			},
+			(error: unknown) => {
 				clearTimeout(timer);
-				resolve();
-			});
+				reject(error instanceof Error ? error : new Error(String(error)));
+			},
+		);
 	});
+}
+
+/** Removes the record only when it still names `url`, under the registry lock; without the lock it is left alone. */
+async function removeOwnRecord(paths: { entry: string; lock: string }, url: string): Promise<void> {
+	const release = await acquireRegistryLock(paths.lock);
+	try {
+		const current = await readRecord(paths.entry);
+		release.assertHeld();
+		if (current?.url === url) await removeRecord(paths.entry);
+	} finally {
+		await release().catch(() => undefined);
+	}
 }
 
 async function startWithTimeout(start: () => Promise<BacklogWeb>, timeoutMs: number): Promise<BacklogWeb> {
@@ -168,14 +133,12 @@ async function startWithTimeout(start: () => Promise<BacklogWeb>, timeoutMs: num
  * registry entry and shuts the server down; every other process gets a no-op close.
  */
 export function sharedWorkspaceWeb(openWeb: OpenBacklogWeb, env: NodeJS.ProcessEnv = process.env): OpenBacklogWeb {
-	const dir = registryDir(env);
 	return async (ctx, backlog, changed) => {
-		await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-		const entryPath = registryEntryPath(dir, backlog.repoRoot, backlog.session);
-		const lockPath = registryLockPath(dir, backlog.repoRoot, backlog.session);
-		const release = await acquireRegistryLock(lockPath);
+		const paths = registryPaths(backlog.repoRoot, backlog.session, env);
+		await fs.mkdir(paths.dir, { recursive: true, mode: 0o700 });
+		const entryPath = paths.entry;
+		const release = await acquireRegistryLock(paths.lock);
 		let started: BacklogWeb | undefined;
-		let isOwner = false;
 		try {
 			const existing = await readRecord(entryPath);
 			if (existing && isLoopbackUrl(existing.url) && sameProcess(existing.pid, existing.pid_started)) {
@@ -192,41 +155,49 @@ export function sharedWorkspaceWeb(openWeb: OpenBacklogWeb, env: NodeJS.ProcessE
 			started = await startWithTimeout(() => openWeb(ctx, backlog, changed), STARTUP_TIMEOUT_MS);
 			const token = extractAccessToken(started.url);
 			if (!token || !isLoopbackUrl(started.url)) {
-				await closeWithTimeout(started.close, CLOSE_TIMEOUT_MS);
+				await closeWithTimeout(started.close, CLOSE_TIMEOUT_MS).catch(() => undefined);
 				throw new Error("Workspace web server returned an invalid local URL.");
 			}
 
-			isOwner = true;
 			const record: WorkspaceWebRecord = {
 				url: started.url,
 				pid: process.pid,
 				pid_started: processStartTime(process.pid),
 			};
+			release.assertHeld();
 			await writeRecord(entryPath, record);
 			const owned = started;
 			// A server that cannot say whether it is up (a fake, another implementation) is still probed over HTTP.
 			if (owned.isUp) ownedServers.set(owned.url, owned.isUp);
 
-			let closed = false;
+			// The server is closed first: while it may still run, its record stays, so nobody starts a second one beside it.
+			// A failed or timed-out close rejects and can be retried; a record left after a closed server is harmless (its
+			// probe fails, so the next start replaces it) and is reported, never removed without the registry lock.
+			let serverClosed = false;
+			let closing: Promise<void> | undefined;
+			const closeOwned = async () => {
+				if (!serverClosed) {
+					await closeWithTimeout(owned.close, CLOSE_TIMEOUT_MS);
+					serverClosed = true;
+					ownedServers.delete(owned.url);
+				}
+				try {
+					await removeOwnRecord(paths, owned.url);
+				} catch (error) {
+					throw new Error(
+						`The workspace web server closed, but its registry entry was left in place: ${errorMessage(error)}`,
+						{ cause: error },
+					);
+				}
+			};
 			return {
 				url: owned.url,
 				validate: () => serverUp(owned.url, token),
-				close: async () => {
-					if (closed) return;
-					closed = true;
-					ownedServers.delete(owned.url);
-					if (!isOwner) return;
-					const innerRelease = await acquireRegistryLock(lockPath).catch(() => undefined);
-					try {
-						const current = await readRecord(entryPath);
-						if (current && current.url === owned.url && extractAccessToken(current.url) === token) {
-							await removeRecord(entryPath);
-						}
-					} finally {
-						await innerRelease?.().catch(() => undefined);
-					}
-					await closeWithTimeout(owned.close, CLOSE_TIMEOUT_MS);
-				},
+				close: () =>
+					(closing ??= closeOwned().catch((error: unknown) => {
+						closing = undefined;
+						throw error;
+					})),
 			};
 		} catch (error) {
 			if (started) await closeWithTimeout(started.close, CLOSE_TIMEOUT_MS).catch(() => undefined);
@@ -235,23 +206,4 @@ export function sharedWorkspaceWeb(openWeb: OpenBacklogWeb, env: NodeJS.ProcessE
 			await release().catch(() => undefined);
 		}
 	};
-}
-
-/** Exposed for tests that need to read or seed the registry directly. */
-export function registryPathsForTest(
-	repoRoot: string,
-	session: string,
-	env?: NodeJS.ProcessEnv,
-): { dir: string; entry: string; lock: string } {
-	const dir = registryDir(env ?? process.env);
-	return { dir, entry: registryEntryPath(dir, repoRoot, session), lock: registryLockPath(dir, repoRoot, session) };
-}
-
-/** Exposed for tests that need to wait for the registry to settle on slow filesystems. */
-export async function readRegistryRecord(
-	repoRoot: string,
-	session: string,
-	env?: NodeJS.ProcessEnv,
-): Promise<WorkspaceWebRecord | undefined> {
-	return readRecord(registryEntryPath(registryDir(env ?? process.env), repoRoot, session));
 }

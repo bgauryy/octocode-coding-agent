@@ -47,6 +47,7 @@ export async function queueInteractiveMessage(
 	try {
 		await getApplicationPort(host.session).invoke("prompt", text, {
 			streamingBehavior: mode,
+			attachImagePaths: true,
 			preflightResult: () => {
 				accepted = true;
 			},
@@ -63,7 +64,7 @@ export async function queueInteractiveMessage(
 
 /** While compaction runs, executes extension commands at once and queues other input; returns whether it did. */
 export async function handleInputDuringCompaction(
-	host: Pick<InteractiveModeHost, "editor" | "isExtensionCommand" | "queueCompactionMessage" | "session">,
+	host: Pick<InteractiveModeHost, "editor" | "isExtensionCommand" | "queueCompactionMessage" | "session" | "showError">,
 	text: string,
 	mode: "steer" | "followUp",
 ): Promise<boolean> {
@@ -71,7 +72,13 @@ export async function handleInputDuringCompaction(
 	if (host.isExtensionCommand(text)) {
 		host.editor.addToHistory?.(text);
 		host.editor.setText("");
-		await getApplicationPort(host.session).invoke("prompt", text);
+		// Callers are editor key handlers that drop the promise; a command that could not start goes back to the editor.
+		try {
+			await getApplicationPort(host.session).invoke("prompt", text);
+		} catch (error) {
+			host.editor.setText([text, host.editor.getText()].filter((part) => part.trim()).join("\n\n"));
+			host.showError(`Command did not run; restored to editor: ${errorMessage(error)}`);
+		}
 	} else {
 		host.queueCompactionMessage(text, mode);
 	}
@@ -240,6 +247,7 @@ export async function flushCompactionQueue(host: MessageQueueHost, options?: { w
 					void getApplicationPort(host.session)
 						.invoke("prompt", message.text, {
 							streamingBehavior: message.mode,
+							attachImagePaths: true,
 							preflightResult: accept,
 						})
 						.then(
@@ -252,9 +260,9 @@ export async function flushCompactionQueue(host: MessageQueueHost, options?: { w
 				});
 				started = beganRun;
 			} else if (message.mode === "followUp") {
-				await getApplicationPort(host.session).invoke("followUp", message.text);
+				await getApplicationPort(host.session).invoke("followUp", message.text, undefined, { attachImagePaths: true });
 			} else {
-				await getApplicationPort(host.session).invoke("steer", message.text);
+				await getApplicationPort(host.session).invoke("steer", message.text, undefined, { attachImagePaths: true });
 			}
 			pending.delete(message);
 		}

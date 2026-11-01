@@ -2,8 +2,18 @@ import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octoc
 import { theme } from "../../../../theme/theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
 import type { NameFilter, SortMode } from "../session-selector-search.ts";
+import type { SessionScope } from "./types.ts";
 
-export type SessionScope = "current" | "all";
+export type { SessionScope };
+
+/** Where the selection stands: its position among the rows shown, how many are shown, how many sessions there are. */
+export interface SessionCounts {
+	position: number;
+	shown: number;
+	total: number;
+}
+
+const sep = () => theme.fg("muted", " · ");
 
 export class SessionSelectorHeader implements Component {
 	private scope: SessionScope;
@@ -17,6 +27,9 @@ export class SessionSelectorHeader implements Component {
 	private statusMessage: { type: "info" | "error"; message: string } | null = null;
 	private statusTimeout: ReturnType<typeof setTimeout> | null = null;
 	private showRenameHint = false;
+	private showActionsHint = false;
+	private previewOpen = false;
+	private counts: () => SessionCounts = () => ({ position: 0, shown: 0, total: 0 });
 
 	constructor(scope: SessionScope, sortMode: SortMode, nameFilter: NameFilter, requestRender: () => void) {
 		this.scope = scope;
@@ -55,6 +68,19 @@ export class SessionSelectorHeader implements Component {
 		this.showRenameHint = show;
 	}
 
+	setShowActionsHint(show: boolean): void {
+		this.showActionsHint = show;
+	}
+
+	setPreviewOpen(open: boolean): void {
+		this.previewOpen = open;
+	}
+
+	/** Where the title gets `(n of N)` from. */
+	setCounts(counts: () => SessionCounts): void {
+		this.counts = counts;
+	}
+
 	setConfirmingDeletePath(path: string | null): void {
 		this.confirmingDeletePath = path;
 	}
@@ -79,60 +105,57 @@ export class SessionSelectorHeader implements Component {
 
 	invalidate(): void {}
 
+	/** `Resume session (3 of 97) · ◉ This folder ○ All · Sort: Recent`, one line. */
 	render(width: number): string[] {
-		const title = this.scope === "current" ? "Resume Session (Current Folder)" : "Resume Session (All)";
-		const leftText = theme.bold(title);
-
-		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
-		const sortText = theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel);
-
-		const nameLabel = this.nameFilter === "all" ? "All" : "Named";
-		const nameText = theme.fg("muted", "Name: ") + theme.fg("accent", nameLabel);
+		const { position, shown, total } = this.counts();
+		const of = shown < total ? `${position} of ${shown} · ${total} total` : `${position} of ${total}`;
+		const count = total > 0 ? theme.fg("muted", ` (${of})`) : "";
+		const left = theme.bold("Resume session") + count;
 
 		let scopeText: string;
 		if (this.loading) {
 			const progressText = this.loadProgress ? `${this.loadProgress.loaded}/${this.loadProgress.total}` : "...";
-			scopeText = `${theme.fg("muted", "○ Current Folder | ")}${theme.fg("accent", `Loading ${progressText}`)}`;
+			const loadingScope = this.scope === "all" ? "○ This folder ◉ All" : "◉ This folder ○ All";
+			scopeText = `${theme.fg("muted", loadingScope)}${sep()}${theme.fg("accent", `Loading ${progressText}`)}`;
 		} else if (this.scope === "current") {
-			scopeText = `${theme.fg("accent", "◉ Current Folder")}${theme.fg("muted", " | ○ All")}`;
+			scopeText = `${theme.fg("accent", "◉ This folder")}${theme.fg("muted", " ○ All")}`;
 		} else {
-			scopeText = `${theme.fg("muted", "○ Current Folder | ")}${theme.fg("accent", "◉ All")}`;
+			scopeText = `${theme.fg("muted", "○ This folder ")}${theme.fg("accent", "◉ All")}`;
 		}
+		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
+		const parts = [scopeText];
+		if (this.nameFilter === "named") parts.push(theme.fg("accent", "Named only"));
+		parts.push(theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel));
+		return [truncateToWidth(`${left}${sep()}${parts.join(sep())}`, width, "…")];
+	}
 
-		const rightText = truncateToWidth(`${scopeText}  ${nameText}  ${sortText}`, width, "");
-		const availableLeft = Math.max(0, width - visibleWidth(rightText) - 1);
-		const left = truncateToWidth(leftText, availableLeft, "");
-		const spacing = Math.max(0, width - visibleWidth(left) - visibleWidth(rightText));
-
-		// Build hint lines - changes based on state (all branches truncate to width)
-		let hintLine1: string;
-		let hintLine2: string;
+	/** One line: the hints that fit, most useful first; a delete confirmation or status message replaces them. */
+	renderFooter(width: number): string[] {
 		if (this.confirmingDeletePath !== null) {
 			const confirmHint = `Delete session? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`;
-			hintLine1 = theme.fg("error", truncateToWidth(confirmHint, width, "…"));
-			hintLine2 = "";
-		} else if (this.statusMessage) {
-			const color = this.statusMessage.type === "error" ? "error" : "accent";
-			hintLine1 = theme.fg(color, truncateToWidth(this.statusMessage.message, width, "…"));
-			hintLine2 = "";
-		} else {
-			const pathState = this.showPath ? "(on)" : "(off)";
-			const sep = theme.fg("muted", " · ");
-			const hint1 = keyHint("tui.input.tab", "scope") + sep + theme.fg("muted", 're:<pattern> regex · "phrase" exact');
-			const hint2Parts = [
-				keyHint("app.session.toggleSort", "sort"),
-				keyHint("app.session.toggleNamedFilter", "named"),
-				keyHint("app.session.delete", "delete"),
-				keyHint("app.session.togglePath", `path ${pathState}`),
-			];
-			if (this.showRenameHint) {
-				hint2Parts.push(keyHint("app.session.rename", "rename"));
-			}
-			const hint2 = hint2Parts.join(sep);
-			hintLine1 = truncateToWidth(hint1, width, "…");
-			hintLine2 = truncateToWidth(hint2, width, "…");
+			return [theme.fg("error", truncateToWidth(confirmHint, width, "…"))];
 		}
-
-		return [`${left}${" ".repeat(spacing)}${rightText}`, hintLine1, hintLine2];
+		if (this.statusMessage) {
+			const color = this.statusMessage.type === "error" ? "error" : "accent";
+			return [theme.fg(color, truncateToWidth(this.statusMessage.message, width, "…"))];
+		}
+		const hints = [
+			keyHint("tui.select.confirm", "resume"),
+			theme.fg("dim", "space") + theme.fg("muted", this.previewOpen ? " close preview" : " preview"),
+			keyHint("tui.input.tab", "scope"),
+			...(this.showRenameHint ? [keyHint("app.session.rename", "rename")] : []),
+			keyHint("app.session.delete", "delete"),
+			...(this.showActionsHint ? [keyHint("app.session.actions", "actions")] : []),
+			keyHint("app.session.toggleSort", "sort"),
+			keyHint("app.session.toggleNamedFilter", "named"),
+			keyHint("app.session.togglePath", `path ${this.showPath ? "(on)" : "(off)"}`),
+			keyHint("tui.select.cancel", "close"),
+		];
+		const shown = [theme.fg("dim", "↑↓") + theme.fg("muted", " move")];
+		for (const hint of hints) {
+			if (visibleWidth([...shown, hint].join(sep())) > width) break;
+			shown.push(hint);
+		}
+		return [truncateToWidth(shown.join(sep()), width, "…")];
 	}
 }

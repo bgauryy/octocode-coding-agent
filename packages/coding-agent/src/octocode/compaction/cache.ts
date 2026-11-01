@@ -109,7 +109,7 @@ export class PromptCacheLifetimes {
 		if (learnedShort) this.shortOnly.add(key);
 		if (this.caching.has(key) && !learnedShort) return;
 		this.caching.add(key);
-		if (model.api !== "anthropic-messages" || this.refused.has(model.provider)) return;
+		if (this.refused.has(model.provider)) return;
 		const models = ctx.modelRegistry.getAll().filter((entry) => entry.provider === model.provider);
 		if (models.some((entry) => entry.headers !== undefined)) return;
 		const inferred = (entry: Model<Api>) =>

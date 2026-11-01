@@ -1,12 +1,11 @@
 /** `octocode mcp add` and `octocode mcp remove`: edit the global or project `mcp.json`. */
 
-import { APP_NAME } from "../../../coding-agent/src/config.ts";
+import { hostIdentity, hostTrust } from "../host.ts";
 import { globalMcpConfigPath } from "../paths.ts";
 import { validateMcpServerConfig } from "../servers.ts";
-import { ProjectTrustStore } from "../../../coding-agent/src/core/trust-manager.ts";
 import { addMcpServerConfig, loadMcpConfig, removeMcpServerConfig } from "../config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { HELP_HINT, type McpCommandOptions, parseOptions } from "./shared.ts";
+import { helpHint, type McpCommandOptions, parseOptions } from "./shared.ts";
 
 /** Parse `KEY=VALUE` pairs of a repeatable option into a record. */
 function parsePairs(option: string, pairs: string[] | undefined, error: (line: string) => void) {
@@ -30,7 +29,7 @@ export function add(
 	log: (line: string) => void,
 	error: (line: string) => void,
 ): number {
-	const usage = `Usage: ${APP_NAME} mcp add <server> [options] (--url <url> | -- <command> [args...])\n${HELP_HINT}`;
+	const usage = `Usage: ${hostIdentity().appName} mcp add <server> [options] (--url <url> | -- <command> [args...])\n${helpHint()}`;
 	const parsed = parseOptions(
 		args,
 		{
@@ -129,15 +128,17 @@ export function add(
 		return 1;
 	}
 	log(`${replaced ? "Replaced" : "Added"} ${scope} MCP server "${name}" in ${path}.`);
-	if (project && new ProjectTrustStore(options.agentDir).get(options.cwd) !== true) {
-		log(`The project is not trusted, so ${path} is ignored until you start ${APP_NAME} in the project and trust it.`);
+	if (project && !hostTrust().directoryTrusted(options.agentDir, options.cwd)) {
+		log(
+			`The project is not trusted, so ${path} is ignored until you start ${hostIdentity().appName} in the project and trust it.`,
+		);
 	}
 	// HTTP servers without an Authorization header may use OAuth.
 	const mayNeedSignIn =
 		"url" in validated &&
 		!Object.keys(validated.headers ?? {}).some((header) => header.toLowerCase() === "authorization");
 	log(
-		`Check it with: ${APP_NAME} mcp list${mayNeedSignIn ? `. If it requires sign-in: ${APP_NAME} mcp login ${name}` : ""}`,
+		`Check it with: ${hostIdentity().appName} mcp list${mayNeedSignIn ? `. If it requires sign-in: ${hostIdentity().appName} mcp login ${name}` : ""}`,
 	);
 	return 0;
 }
@@ -153,7 +154,7 @@ export function remove(
 	if (!parsed) return 1;
 	const [name, ...extra] = parsed.positional;
 	if (!name || extra.length > 0) {
-		error(`Usage: ${APP_NAME} mcp remove <server> [-l]\n${HELP_HINT}`);
+		error(`Usage: ${hostIdentity().appName} mcp remove <server> [-l]\n${helpHint()}`);
 		return 1;
 	}
 	const project = parsed.values.has("local");

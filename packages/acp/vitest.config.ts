@@ -9,7 +9,11 @@ export default mergeConfig(
 			globals: true,
 			environment: "node",
 			include: ["test/**/*.test.ts"],
-			setupFiles: [fileURLToPath(new URL("../coding-agent/test/octocode/setup-env.ts", import.meta.url))],
+			// The ACP tests run sessions with MCP servers, so the host ports are installed for all of them (see mcp-host.ts).
+			setupFiles: [
+				fileURLToPath(new URL("../coding-agent/test/octocode/setup-env.ts", import.meta.url)),
+				fileURLToPath(new URL("../coding-agent/test/mcp-host.ts", import.meta.url)),
+			],
 			testTimeout: 30000,
 			hookTimeout: 30000,
 			maxWorkers: 4,

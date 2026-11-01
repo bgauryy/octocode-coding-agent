@@ -200,9 +200,9 @@ it("accepts image-only prompts and queue commands, and rejects expired attachmen
 		await f.service.execute({ id: action, sessionId: f.session.sessionId, action, text: "", attachments: [asset.id] });
 	await Promise.resolve();
 	expect(f.calls).toEqual([
-		["", { images: [image] }],
-		["", [image]],
-		["", [image]],
+		["", { images: [image], attachImagePaths: true }],
+		["", [image], { attachImagePaths: true }],
+		["", [image], { attachImagePaths: true }],
 	]);
 	await expect(
 		f.service.execute({ id: "empty", sessionId: f.session.sessionId, action: "prompt", text: "" }),

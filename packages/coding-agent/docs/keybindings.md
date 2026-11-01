@@ -120,15 +120,17 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 
 ### Application
 
-| Keybinding id              | Default                               | Description                                                                                                   |
-| -------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `app.interrupt`            | `escape`                              | Cancel / abort                                                                                                |
-| `app.clear`                | `ctrl+c`                              | Clear editor (first) / exit (second)                                                                          |
-| `app.exit`                 | `ctrl+d`                              | Exit (when editor empty)                                                                                      |
-| `app.suspend`              | `ctrl+z` (None on Windows)            | Suspend to background                                                                                         |
-| `app.permission.cycle`     | `shift+tab`                           | Cycle the permission mode (full → workspace → manual) in native sessions; handled before other editor actions |
-| `app.editor.external`      | `ctrl+g`                              | Open in external editor (`externalEditor`, `$VISUAL`, `$EDITOR`, Notepad on Windows, or `nano` elsewhere)     |
-| `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows and WSL) | Paste files on macOS, images, or text from clipboard                                                          |
+| Keybinding id              | Default                               | Description                                                                                                                                                                                                                                                                                     |
+| -------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.interrupt`            | `escape`                              | Cancel / abort                                                                                                                                                                                                                                                                                  |
+| `app.clear`                | `ctrl+c`                              | Clear editor (first) / exit (second)                                                                                                                                                                                                                                                            |
+| `app.exit`                 | `ctrl+d`                              | Exit (when editor empty)                                                                                                                                                                                                                                                                        |
+| `app.suspend`              | `ctrl+z` (None on Windows)            | Suspend to background                                                                                                                                                                                                                                                                           |
+| `app.permission.cycle`     | `shift+tab`                           | Cycle the permission mode (full → workspace → manual) in native sessions; handled before other editor actions                                                                                                                                                                                   |
+| `app.editor.external`      | `ctrl+g`                              | Open in external editor (`externalEditor`, `$VISUAL`, `$EDITOR`, Notepad on Windows, or `nano` elsewhere); an editor that cannot start shows `External editor failed: <reason>` (an extension's editor dialog shows it under its hints and stays open); a non-zero editor exit cancels silently |
+| `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows and WSL) | Paste files on macOS, images, or text from clipboard                                                                                                                                                                                                                                            |
+
+`app.clipboard.pasteImage` inserts the path of a copied file, or saves a copied image to a temporary file and inserts its path; the image is attached when you send the message (see [attach images by path](models.md#attach-images-by-path)).
 
 On native Windows, `app.suspend` has no default because Windows terminals do not support Unix job control. If you assign it manually, Octocode shows a status message instead of suspending. WSL uses the normal `ctrl+z` and `fg` behavior.
 
@@ -145,6 +147,7 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 | `app.session.toggleNamedFilter` | `ctrl+n`         | Toggle named-only filter               |
 | `app.session.rename`            | `ctrl+r`         | Rename session                         |
 | `app.session.delete`            | `ctrl+d`         | Delete session                         |
+| `app.session.actions`           | `ctrl+o`         | Open the picker's action menu          |
 | `app.session.deleteNoninvasive` | `ctrl+backspace` | Delete session when query is empty     |
 
 ### Models and Thinking

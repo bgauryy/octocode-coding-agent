@@ -23,9 +23,30 @@ export interface ParsedPatch {
 	environment_id: string | null;
 	hunks: PatchHunk[];
 }
-const RUST_SPACE = "[\\u0009-\\u000d \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
-const trimEnd = (text: string) => text.replace(new RegExp(`${RUST_SPACE}+$`), "");
-const trim = (text: string) => trimEnd(text.replace(new RegExp(`^${RUST_SPACE}+`), ""));
+/** Rust's `char::is_whitespace` (Unicode White_Space), all in the BMP; JS `trim` differs (U+FEFF in, U+0085 out). */
+const isRustSpace = (code: number): boolean =>
+	(code >= 0x09 && code <= 0x0d) ||
+	code === 0x20 ||
+	code === 0x85 ||
+	code === 0xa0 ||
+	code === 0x1680 ||
+	(code >= 0x2000 && code <= 0x200a) ||
+	code === 0x2028 ||
+	code === 0x2029 ||
+	code === 0x202f ||
+	code === 0x205f ||
+	code === 0x3000;
+/** Scans instead of `\s+$`, which backtracks quadratically on a whitespace run followed by text. */
+const trimEnd = (text: string): string => {
+	let end = text.length;
+	while (end > 0 && isRustSpace(text.charCodeAt(end - 1))) end--;
+	return text.slice(0, end);
+};
+const trim = (text: string): string => {
+	let start = 0;
+	while (start < text.length && isRustSpace(text.charCodeAt(start))) start++;
+	return trimEnd(text.slice(start));
+};
 const chunk = (): PatchChunk => ({
 	context: null,
 	old: [],

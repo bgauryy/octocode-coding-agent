@@ -113,7 +113,9 @@ async function promptSize(options: { subagent: boolean; exclude?: string[]; read
 // User-requested typed hierarchy, references and structured completion add schema text on every call.
 // Budget that capability separately: retain the original ceilings for all other prompt content.
 // This makes future growth in either the existing tools or the new entity contract fail independently.
-const BACKLOG_ENTITIES_CEILING = 3_000;
+// 1_500 (2026-10-31, measured 1_451 main, 1_254 subagent; was 3_000 against 1_660 and 1_463): the entity fields lost the
+// link and completion property inventories (their descriptions name them) and `type` no longer lists the old `task`.
+const BACKLOG_ENTITIES_CEILING = 1_500;
 // Delegation guidance on parallel work, shared contracts, named skills and report acceptance (+~400 measured characters).
 // Children save far more: their skill descriptions and the Octocode docs block are dropped (outside this fake host).
 // 20_900 (B15, measured 20_701): commit 5630993 already measured 20_570; +37 for the bash read fallback that replaced the
@@ -180,7 +182,19 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 43_500 (2026-10-31, measured 43_352 without entity fields; Task J, B295): lossless text cuts (duplicated tool
 // mechanics, restated rationale, merged reviewer lines), -580 from 43_932. Lowered, not raised: the earlier
 // 43_800 ceiling was already exceeded by 132 when the cuts started.
-const MAIN_CEILING = 43_500;
+// 43_900 (2026-10-31, measured 43_800 without entity fields after concurrent edits by others, 43_684 for S2 alone;
+// user-requested task entity, S2 of B311): the `task` tool
+// (1_167 with its reason property, dropping the unobservable `version` and keeping `move`) and the backlog guidelines'
+// quick-work rule, against the entity-field cuts above. The 43_500 ceiling had about 1_200 of slack over the 42_288 measured
+// before the task tool, so the tool costs about +1_400 measured and the ceiling rises by 300.
+// 44_100 (2026-10-31, measured 43_992 without entity fields; B311 review fixes): the task tool is 1_202 after trimming
+// (was 1_383 with the persistence and quick-work guidance and a `why` property; the call's own `reason` is no longer
+// declared by the tool, so the registry adds it). The 43_900 ceiling is exceeded by 92 with the task tool alone, which the
+// user-requested task entity added; the ceiling rises by that measured overage plus 108 of headroom.
+// 34_300 (2026-10-31, measured 34_053 without entity fields; B338/B340/B343/B344): lowered to the measurement after
+// the graph tools were deleted, native tool text was re-authored, `agent` lost its input envelope, the `models` tool
+// (856) replaced its agent type, and the prompt sections moved to one registry.
+const MAIN_CEILING = 34_300;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -209,16 +223,28 @@ const MAIN_CEILING = 43_500;
 // completion fields. Read-only roles drop the 390-character testing rule (the reviewer keeps a shorter review form in its role: 18_794 -> 18_508 measured).
 // 32_900 (2026-10-31, measured 32_778 without entity fields; Task J, B295): the same cuts, -478 from 33_256 (33_100 was
 // already exceeded by 156 when the cuts started).
-const SPECIALIST_CEILING = 32_900;
+// 32_800 (2026-10-31, measured 32_648 without entity fields; user-requested task entity, S2 of B311): lowered from 32_900
+// to the measurement; the subagent `task` tool (1_060, no promote) replaces the 31_418 measured before it, which had 1_480
+// of slack under 32_900.
+// 33_200 (2026-10-31, measured 33_132 without entity fields; B311 review fixes): the subagent `task` tool is 1_202 (no
+// promote). Without it the specialist measures 31_930, 512 above the 31_418 recorded before the task tool, from edits by
+// other sessions to shared tools and policy (not the task entity); the tool's text was trimmed first and the ceiling now
+// follows the measurement instead of the 32_800 it exceeded by 332.
+// 23_400 (2026-10-31, measured 23_216 without entity fields; B338/B340/B343/B344): lowered to the measurement after the
+// same graph-tool removal and tool-text, agent and section changes.
+const SPECIALIST_CEILING = 23_400;
 
 describe("prompt size", () => {
 	it("main session", async () => {
 		const size = await promptSize({ subagent: false });
-		console.log(`main session: ${size.total} chars (prompt ${size.prompt}); ${JSON.stringify(size.perTool)}`);
+		console.log(
+			`main session: ${size.total} chars (prompt ${size.prompt}, entities ${size.backlogEntities}); ${JSON.stringify(size.perTool)}`,
+		);
 		expect(size.prompt).toBeGreaterThan(0);
-		// Browsing defaults to the browser MCP server; the native `browser` tool is opt-in. The graph tools are declared.
+		// Browsing defaults to the browser MCP server; the native `browser` tool is opt-in.
 		expect(size.perTool.browser).toBeUndefined();
-		expect(size.perTool.graphQuery).toBeGreaterThan(0);
+		expect(size.perTool.graphQuery).toBeUndefined();
+		expect(size.perTool.graphBuild).toBeUndefined();
 		expect(size.perTool.debug).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);
@@ -230,7 +256,9 @@ describe("prompt size", () => {
 
 	it("specialist with shared file and communication tools", async () => {
 		const size = await promptSize({ subagent: true, exclude: ["browser"] });
-		console.log(`specialist: ${size.total} chars (prompt ${size.prompt}); ${JSON.stringify(size.perTool)}`);
+		console.log(
+			`specialist: ${size.total} chars (prompt ${size.prompt}, entities ${size.backlogEntities}); ${JSON.stringify(size.perTool)}`,
+		);
 		expect(size.prompt).toBeGreaterThan(0);
 		expect(size.perTool.file).toBeGreaterThan(0);
 		expect(size.perTool.agent).toBeGreaterThan(0);
@@ -242,24 +270,11 @@ describe("prompt size", () => {
 		).toBeLessThan(SPECIALIST_CEILING);
 	});
 
-	it.each(["implementer", "reviewer"])("%s keeps its working tools without graph schemas", async (name) => {
+	it.each(["implementer", "reviewer"])("%s keeps its working tools", async (name) => {
 		const profile = loadProfiles(tmp(), tmp(), false, {}).get(name)!;
 		const exclude = profileExcludes(profile.excludeTools);
-		const baseline = await promptSize({
-			subagent: true,
-			readOnly: profile.readOnly,
-			exclude: exclude.filter((tool) => !["graphBuild", "graphQuery"].includes(tool)),
-		});
 		const scoped = await promptSize({ subagent: true, readOnly: profile.readOnly, exclude });
-		console.log(
-			`${name}: ${scoped.total} chars; avoids ${baseline.total - scoped.total} (${baseline.perTool.graphBuild + baseline.perTool.graphQuery} graph declarations)`,
-		);
-		expect(scoped.perTool.graphBuild).toBeUndefined();
-		expect(scoped.perTool.graphQuery).toBeUndefined();
-		// Everything the graph declarations cost is avoided; their size changes with the CLI's contract, so it is not a constant.
-		expect(scoped.total).toBeLessThanOrEqual(
-			baseline.total - baseline.perTool.graphBuild - baseline.perTool.graphQuery,
-		);
+		console.log(`${name}: ${scoped.total} chars`);
 		for (const tool of ["file", "bash", "agent", "archive", "skill"]) expect(scoped.perTool[tool]).toBeGreaterThan(0);
 	});
 

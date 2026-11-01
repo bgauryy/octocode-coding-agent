@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";

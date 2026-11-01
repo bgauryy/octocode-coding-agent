@@ -21,6 +21,37 @@ const object = (properties: Record<string, unknown>) => ({
 });
 const tool = (arg: unknown) => ({ name: "a", description: "Original.", inputSchema: object({ arg }) });
 
+it("restates a field the shared part leaves optional where one union branch only requires it (localFetch layout)", () => {
+	const inputSchema = {
+		type: "object",
+		properties: {
+			queries: {
+				type: "array",
+				items: {
+					type: "object",
+					required: ["path"],
+					properties: {
+						path: { type: "string" },
+						view: {},
+						matchString: { type: "array", items: { type: "string" }, description: "Search terms." },
+					},
+					anyOf: [
+						{ properties: { path: {}, view: { const: "content" } } },
+						{ required: ["matchString"], properties: { view: { const: "search" } } },
+					],
+				},
+			},
+		},
+		required: ["queries"],
+	};
+	const input = { server: "s", tools: [{ name: "fetch", description: "Read.", inputSchema }] };
+	const text = renderServer(input);
+	expect(text).toContain("matchString?: string[];");
+	expect(text).toMatch(/view\?: "search";\n\s*matchString: string\[\];/);
+	expect(text.match(/Search terms\./g)).toHaveLength(1);
+	expect(checkFidelity(input, text)).toEqual({ ok: true, problems: [] });
+});
+
 it("loads metadata and text from the same snapshot when another writer replaces the text mirror", () => {
 	const dir = tmp();
 	const input = { server: "s", tools: [tool({ type: "string" })] };
@@ -55,7 +86,8 @@ it("loads external compact overrides only at a loadout rebuild, including their 
 	const input = { server: "s", tools: [current] };
 	const presentation = new McpPresentation({ agentDir: () => agentDir, mode: () => "compact" });
 	presentation.sync("s", "s", undefined, [current]);
-	const before = presentation.section("s", ["a"]);
+	const describe = () => presentation.describe("s", ["a"], undefined, true).file;
+	const before = describe();
 	const overrides = { tools: { a: "Applied wording." }, triggers: { a: "Use the applied trigger." } };
 	writeGenerated(generatedDir(agentDir), "s", renderServer(input, overrides), {
 		...catalogHashes(input),
@@ -64,10 +96,10 @@ it("loads external compact overrides only at a loadout rebuild, including their 
 		generatedAt: "fixture",
 	});
 	presentation.sync("s", "s", undefined, [current]);
-	expect(presentation.section("s", ["a"])).toBe(before);
+	expect(describe()).toBe(before);
 	presentation.rebuild();
 	presentation.sync("s", "s", undefined, [current]);
-	expect(presentation.section("s", ["a"])).toContain("Applied wording.");
+	expect(describe()).toContain("Applied wording.");
 	expect(presentation.summary("s", "a")).toBe("Use the applied trigger.");
 	expect(readFileSync(join(generatedDir(agentDir), "s.txt"), "utf8")).toContain("Applied wording.");
 });
@@ -99,6 +131,7 @@ describe("compact schema fidelity", () => {
 		const input = { server: "s", tools: [current] };
 		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
 		presentation.sync("s", "s", undefined, [current]);
+		presentation.describe("s", ["a"], undefined, true);
 		expect(checkFidelity(input, renderServer(input)).ok).toBe(false);
 		expect(presentation.isThin("s", current)).toBe(false);
 	});

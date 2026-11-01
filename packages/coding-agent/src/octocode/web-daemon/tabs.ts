@@ -7,7 +7,7 @@ import {
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
-import { dbStamp } from "../agentdb/db.ts";
+import { dbStamp } from "../agentdb/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";

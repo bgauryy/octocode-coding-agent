@@ -16,7 +16,7 @@ import { canonicalPath, isWithin, repoKey } from "./home/repo.ts";
 
 type Relation = "this session" | "forked from" | "parent session" | "same repository";
 
-interface HistorySession {
+export interface HistorySession {
 	/** The session's folder name (its id as a folder name). */
 	id: string;
 	/** Its archive folder. */
@@ -161,7 +161,7 @@ const contextLine = (line: string, n: number): string =>
 		: `[a context line of ${line.length} characters, not a hit: read it with file and line ${n}]`;
 
 /** `lines` packed into pages of at most `PAGE_CHARS` (a longer line split across pages); each page's text, in order. */
-function paginate(blocks: ReadonlyArray<{ heading?: string; lines: string[] }>): string[] {
+export function paginate(blocks: ReadonlyArray<{ heading?: string; lines: string[] }>): string[] {
 	const pages: string[][] = [[]];
 	let size = 0;
 	const push = (text: string) => {

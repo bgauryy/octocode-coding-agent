@@ -1,3 +1,4 @@
+import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { memo } from "react";
 import type { ViewProps } from "../extension.ts";
@@ -5,25 +6,29 @@ import { type BacklogIndex, PRIORITY_TITLES } from "../model/backlog.ts";
 import { plural } from "../model/format.ts";
 import { CommentIcon, LinkIcon } from "../ui/icons.tsx";
 import { Avatar, Badge, PriorityIcon, RelativeTime } from "../ui/primitives.tsx";
+import { isEpic, shownState, taskTallyText } from "../model/hierarchy.ts";
 import { StaleBadge } from "./shared.tsx";
+import { RollupLine } from "./Tasks.tsx";
 
 /** The title link covers the card; quick actions sit above it as separate keyboard controls. */
 export const BoardCard = memo(function BoardCard({
 	item: it,
 	index,
 	ItemAction,
+	StateControl,
 }: {
 	item: SnapshotItem;
 	index: BacklogIndex;
 	ItemAction?: ViewProps["ItemAction"];
+	StateControl?: NonNullable<ViewProps["controls"]>["StateControl"];
 }) {
 	const comments = it.comments?.length ?? it.notes.filter((note) => note.kind === "note").length;
 	const childrenDone = it.children?.filter((ref) => index.byRef.get(ref)?.state === "done").length ?? 0;
 	return (
-		<article className={`card state-${it.state}`}>
+		<article className={`card state-${shownState(it)}`}>
 			<div className="card-top">
 				<span className="ref">{it.ref}</span>
-				{it.type && it.type !== "task" && <Badge>{it.type}</Badge>}
+				{it.type && it.type !== DEFAULT_ITEM_TYPE && <Badge>{it.type}</Badge>}
 				<span className={`card-priority priority-${it.priority}`}>
 					<PriorityIcon priority={it.priority} />
 					{PRIORITY_TITLES[it.priority] ?? it.priority}
@@ -35,6 +40,13 @@ export const BoardCard = memo(function BoardCard({
 				</a>
 			</h3>
 			{it.goal && <p className="card-goal">{it.goal}</p>}
+			{isEpic(it) ? (
+				<p className="muted card-tasks">
+					<RollupLine index={index} epic={it} />
+				</p>
+			) : taskTallyText(it.tasks) ? (
+				<p className="muted card-tasks">{taskTallyText(it.tasks)}</p>
+			) : null}
 			{(it.blockedBy?.length || it.needsReview || it.parentId || it.children?.length || it.state === "ongoing") && (
 				<div className="card-flags">
 					{it.blockedBy?.length ? <Badge tone="warning">Blocked by {it.blockedBy.join(", ")}</Badge> : null}
@@ -82,9 +94,11 @@ export const BoardCard = memo(function BoardCard({
 					)}
 				</span>
 			</div>
-			{ItemAction && it.state !== "done" && (
+			{((StateControl && !isEpic(it)) || (ItemAction && it.state !== "done")) && (
 				<div className="card-actions">
-					<ItemAction item={it} />
+					{/* An epic's state follows its items: only an item's own state is edited here. */}
+					{StateControl && !isEpic(it) && <StateControl item={it} />}
+					{ItemAction && it.state !== "done" && <ItemAction item={it} />}
 				</div>
 			)}
 		</article>

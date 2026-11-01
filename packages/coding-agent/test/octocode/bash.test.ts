@@ -15,8 +15,10 @@ import {
 	DEFAULT_BASH_TIMEOUT,
 	effectiveTimeout,
 	MAX_FOREGROUND_TIMEOUT,
+	orphanNotice,
 } from "../../src/octocode/files/bash/results.ts";
-import { jobReport, logTail } from "../../src/octocode/files/bash-jobs/report.ts";
+import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
+import { logTail } from "../../src/octocode/files/bash-jobs/tail.ts";
 import { prefixed, type ShellSettings, shellSettings } from "../../src/octocode/files/bash-jobs/shell.ts";
 
 const until = async (check: () => boolean, ms = 5_000) => {
@@ -72,15 +74,20 @@ describe("bash tool", () => {
 		expect(tool.promptGuidelines).not.toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
-		// Each result starts with a header and over-budget output is saved: no rule asks for `| tail -n 50` any more.
-		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Each result starts with"));
-		expect(guideline).toContain("exit code, time and output size");
+		// The result header carries exit code, time and size itself; the rule says only what trimmed output needs, and no rule asks for `| tail -n 50`.
+		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Output over the budget"));
+		expect(guideline).not.toContain("Each result starts with");
 		expect(guideline).toContain("maxOutputTokens");
 		expect(guideline).toContain("`set -o pipefail;` before an explicit pipe");
 		expect(tool.promptGuidelines.join("\n")).not.toContain("tail -n 50");
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
 		expect(tool.parameters.properties.timeout.description).toContain("moves to the background");
-		expect(tool.parameters.properties.background.description).toContain("long builds");
+		expect(tool.parameters.properties.timeout.description).toContain("Separately, a foreground call still running");
+		// When to background is stated once, in the tool description; the parameter says only what it does.
+		expect(tool.description).toContain("servers");
+		expect(tool.parameters.properties.background.description).toContain("return at once");
+		expect(tool.parameters.properties.background.description).toContain("false with a timeout");
+		expect(tool.parameters.properties.background.description).not.toContain("servers");
 		// Octocode's bash output, or a background start: codemode scripts get structuredContent only when this is declared.
 		const [foreground, background] = tool.outputSchema.anyOf;
 		expect(foreground.allOf).toHaveLength(2);
@@ -267,6 +274,7 @@ describe("bash tool", () => {
 			.execute("t1", { command: "sleep 0; seq 1 5000; sleep 30", timeout: 1 }, undefined, undefined, ctx)
 			.catch((error: Error) => error.message);
 		const moved = /full output: (.+?)\]/.exec(message)![1];
+		expect(path.isAbsolute(moved), "a read tool takes the path as printed: no ~").toBe(true);
 		expect(path.dirname(moved)).toBe(jobs.logDir());
 		expect(fs.readFileSync(moved, "utf8")).toContain("5000");
 	});
@@ -671,6 +679,14 @@ describe("bash tool", () => {
 		expect(jobs.jobs.size).toBe(9);
 		await jobs.stopAll("session end");
 		await Promise.all([...jobs.jobs.values()].map((job) => job.done));
+	});
+
+	it("cuts an orphan job's command without splitting a character in half", () => {
+		const notice = orphanNotice([
+			{ id: "bash-3", pid: 42, command: `${"a".repeat(79)}\u{1F600}tail`, log: "/tmp/job.log", stopped: true },
+		]);
+		expect(notice).toContain(`bash-3 · pid 42 · ${"a".repeat(79)}\n`);
+		expect(notice.isWellFormed()).toBe(true);
 	});
 
 	it("reports a finished job with its last lines and counts the earlier ones the log keeps", () => {

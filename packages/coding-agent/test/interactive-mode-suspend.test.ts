@@ -138,6 +138,8 @@ describe("InteractiveMode.handleCtrlZ", () => {
 		expect(setIntervalSpy).toHaveBeenCalledTimes(1);
 		expect(clearIntervalSpy).toHaveBeenCalledWith(keepAliveHandle);
 		expect(removeListenerSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+		// The resume handler goes too: a later, unrelated SIGCONT must not restart the TUI.
+		expect(removeListenerSpy).toHaveBeenCalledWith("SIGCONT", expect.any(Function));
 		expect(ui.start).not.toHaveBeenCalled();
 		expect(ui.requestRender).not.toHaveBeenCalled();
 	});

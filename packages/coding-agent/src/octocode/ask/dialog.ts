@@ -1,4 +1,10 @@
-import { Editor, type KeybindingsManager, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import {
+	Editor,
+	type KeybindingsManager,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
@@ -22,18 +28,21 @@ export function showAskDialog(
 	// The working line and the dialog notification name the question (the count first, so clipping keeps it).
 	const title = `${questions.length > 1 ? `${questions.length} questions: ` : ""}${questions[0]?.question ?? ""}`;
 	return titledDialog(title, () =>
-		ctx.ui.custom<AskResult>(
-			(tui, theme, keybindings, done) =>
-				new AskDialog(
-					questions,
-					keybindings,
-					theme,
-					new Editor(tui, editorTheme(theme)),
-					() => tui.requestRender(),
-					done,
-					signal,
-				),
-		),
+		ctx.ui
+			.custom<AskResult>(
+				(tui, theme, keybindings, done) =>
+					new AskDialog(
+						questions,
+						keybindings,
+						theme,
+						new Editor(tui, editorTheme(theme)),
+						() => tui.requestRender(),
+						done,
+						signal,
+					),
+			)
+			// Closed without an answer (another view took its place, or the UI was reset): a dismissal.
+			.then((result) => result ?? { answers: [], cancelled: true }),
 	);
 }
 

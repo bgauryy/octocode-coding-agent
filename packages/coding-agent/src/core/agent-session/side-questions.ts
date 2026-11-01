@@ -2,18 +2,32 @@ import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
 import { streamSimple } from "@octocodeai/octocode-ai/compat";
-import type { AgentSession } from "../agent-session.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import type { AgentSessionApi } from "./api.ts";
 import { completeSummarization, serializeConversation } from "../compaction/index.ts";
-import { CHARS_PER_TOKEN } from "../compaction/tokens.ts";
 import { convertToLlm } from "../messages.ts";
 import { createSessionUsageRecorder } from "../usage-totals.ts";
 import { getSummarizationRequestAuth } from "./request-auth.ts";
-import { buildSideQuestionPrompt, SIDE_QUESTION_SYSTEM_PROMPT } from "./side-question-prompt.ts";
+import {
+	buildSideQuestionPrompt,
+	SIDE_QUESTION_SYSTEM_PROMPT,
+	type SideQuestionExchange,
+} from "./side-question-prompt.ts";
 
-export interface SideQuestionExchange {
-	question: string;
-	answer: string;
-}
+/** The session members a side question reads: its model, transcript, settings and request plumbing. */
+type SideQuestionSession = Pick<
+	AgentSessionApi,
+	| "agent"
+	| "isCompacting"
+	| "model"
+	| "modelRuntime"
+	| "sessionId"
+	| "sessionManager"
+	| "settingsManager"
+	| "thinkingLevel"
+>;
+
+export type { SideQuestionExchange };
 export interface SideQuestionState {
 	exchanges: readonly SideQuestionExchange[];
 	question?: string;
@@ -29,8 +43,8 @@ export class SideQuestions {
 	private question?: string;
 	private error?: string;
 	private readonly listeners = new Set<() => void>();
-	private readonly session: AgentSession;
-	constructor(session: AgentSession) {
+	private readonly session: SideQuestionSession;
+	constructor(session: SideQuestionSession) {
 		this.session = session;
 	}
 	snapshot(): SideQuestionState {
@@ -171,8 +185,8 @@ export function completedMessages(messages: readonly AgentMessage[]): AgentMessa
 	);
 }
 
-const services = new WeakMap<AgentSession, SideQuestions>();
-export function sideQuestionsFor(session: AgentSession): SideQuestions {
+const services = new WeakMap<SideQuestionSession, SideQuestions>();
+export function sideQuestionsFor(session: SideQuestionSession): SideQuestions {
 	let service = services.get(session);
 	if (!service) {
 		service = new SideQuestions(session);
@@ -180,6 +194,6 @@ export function sideQuestionsFor(session: AgentSession): SideQuestions {
 	}
 	return service;
 }
-export function clearSideQuestions(session: AgentSession): void {
+export function clearSideQuestions(session: SideQuestionSession): void {
 	services.get(session)?.clear();
 }

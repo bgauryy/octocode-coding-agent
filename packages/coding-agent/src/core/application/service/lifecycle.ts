@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
-import type { AgentSessionEvent } from "../../agent-session.ts";
+import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import { queuePreview } from "./projection.ts";
 
 /** Translate engine lifecycle events; the application store owns their state. */

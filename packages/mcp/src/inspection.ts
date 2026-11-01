@@ -1,10 +1,15 @@
 import { existsSync } from "node:fs";
 import type { Tool } from "./client/index.ts";
-import { globalMcpConfigPath, globalMcpConfigPaths } from "./paths.ts";
-import { projectMcpConfigPaths, projectMcpConfigPath } from "../../coding-agent/src/octocode/shared/home.ts";
+import { globalMcpConfigPath, globalMcpConfigPaths, projectMcpConfigPaths, projectMcpConfigPath } from "./paths.ts";
+import type { McpServerEntry } from "./config.ts";
 import { type McpExposure } from "./servers.ts";
-import { isEnabled } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import { isEnabled, type McpServer } from "./server.ts";
+
+/** What `toolCatalog` reads of the extension state, so inspection does not depend on the state module. */
+interface McpToolCatalogSource {
+	findServer(name: string): McpServer | undefined;
+	toolExposure(entry: McpServerEntry, tool: string): McpExposure;
+}
 
 export type McpToolListing = Pick<Tool, "name" | "description" | "inputSchema" | "outputSchema"> & {
 	exposure: McpExposure;
@@ -57,7 +62,7 @@ export function formatMcpConfigLocations(locations: ReturnType<typeof getMcpConf
 	].join("\n");
 }
 
-export function toolCatalog(state: McpExtensionState, name: string): McpToolListing[] {
+export function toolCatalog(state: McpToolCatalogSource, name: string): McpToolListing[] {
 	const server = state.findServer(name);
 	if (server)
 		return server.connection?.state === "connected" && isEnabled(server)

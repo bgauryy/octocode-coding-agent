@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { AcpBackend } from "../../../acp/src/client/client.ts";
 import { acpModels, modelRefusal } from "../../../acp/src/client/session-config.ts";
+import { acpClientHost } from "../../src/octocode/external/acp-host.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/acp-config-agent.mjs", import.meta.url));
 const cancelled = async () => ({ outcome: { outcome: "cancelled" as const } });
@@ -15,6 +16,7 @@ async function connect(model?: string) {
 	const cwd = mkdtempSync(join(tmpdir(), "acp-config-"));
 	roots.push(cwd);
 	const backend = await AcpBackend.connect(
+		acpClientHost,
 		{ command: process.execPath, args: [fixture], vendor: "fixture", cwd, model, timeoutMs: 30_000 },
 		cancelled,
 	);

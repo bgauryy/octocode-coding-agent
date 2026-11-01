@@ -87,7 +87,7 @@ function summarizeUnion(union: ValidationError, errors: ValidationError[]): stri
 }
 
 /** Readable lines for validation errors: failing paths with allowed values, without per-alternative union noise. */
-export function summarizeValidationErrors(errors: ValidationError[]): string[] {
+function summarizeValidationErrors(errors: ValidationError[]): string[] {
 	const consumed = new Set<ValidationError>();
 	const unions = errors.filter(isUnion).sort((a, b) => a.schemaPath.length - b.schemaPath.length);
 	const replacement = new Map<ValidationError, string[]>();

@@ -1,5 +1,5 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { num, type Row } from "../agentdb/rows.ts";
+import { num, type Row } from "../agentdb/api.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 
@@ -27,12 +27,20 @@ export interface Message {
 	note?: string;
 }
 
-/** How a message is sent: whether it asks for a reply, which message it answers, and whether it interrupts. */
+/** How a message is sent: whether it asks for a reply, which message it answers, whether it interrupts, and whether it starts an idle recipient's turn without asking for a reply. */
 export interface SendOptions {
 	replyRequired?: boolean;
 	replyTo?: number;
 	interrupt?: boolean;
+	/** Starts an idle recipient's turn (paced on the recipient's side, `wake-pace.ts`) with no reply expected. */
+	wake?: boolean;
 }
+
+/**
+ * How a sent message meets one recipient: woken to act now, read at its next step, quietly on its next turn, or held for a
+ * recipient whose process runs but has not been seen for over a minute (`stalled`).
+ */
+export type DeliveryStatus = "wake" | "next-step" | "queued-quiet" | "stalled";
 
 /**
  * What a team message carries in Octocode's `details`: the messages it puts in front of the model, oldest first. A team
@@ -51,6 +59,15 @@ export interface DeadLetter {
 	text: string;
 	/** Set when it was a relay through the sender's parent (`recipients` is that parent): the agent it was for, and why it failed. */
 	relay?: { to: string; reason?: string };
+}
+
+/** A `replyRequired` message `recipient` read and has not answered: what `Member.pending` counts. */
+export interface OpenQuestion {
+	recipient: string;
+	id: number;
+	from: string;
+	text: string;
+	at: number;
 }
 
 export interface Lease {
@@ -73,6 +90,7 @@ export function toMember(row: Row): Member {
 	const started = optionalString(row.started);
 	const checkout = optionalString(row.checkout);
 	const tmuxPane = optionalString(row.tmux_pane);
+	const sessionId = optionalString(row.session_id);
 	return {
 		id: String(row.id),
 		role: String(row.role),
@@ -85,6 +103,7 @@ export function toMember(row: Row): Member {
 		...(model ? { model } : {}),
 		...(checkout ? { checkout } : {}),
 		...(tmuxPane ? { tmuxPane } : {}),
+		...(sessionId ? { sessionId } : {}),
 		joinedAt: num(row.joined_at),
 		updatedAt: num(row.seen_at),
 		toolCalls: num(row.tool_calls),
@@ -130,6 +149,14 @@ export function toAsk(row: Row): Ask {
 		...(answered ? { answer: { id: num(row.reply_id), at: num(row.reply_at), by: String(row.reply_by) } } : {}),
 	};
 }
+
+export const toOpenQuestion = (row: Row): OpenQuestion => ({
+	recipient: String(row.recipient),
+	id: num(row.id),
+	from: String(row.sender),
+	text: String(row.body),
+	at: num(row.created_at),
+});
 
 export function toLease(row: Row): Lease {
 	return {

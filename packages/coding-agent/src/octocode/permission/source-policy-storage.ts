@@ -4,7 +4,7 @@ import { atomicWriteFile, sha256 } from "../../../../common/src/atomic-file.ts";
 import { gitMarkerDir } from "../../utils/git-marker.ts";
 import { gitSync } from "../shared/git.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { PolicySource } from "./source-policy/rules.ts";
 import {
 	applyRuleUpdates,
@@ -57,7 +57,7 @@ export function stageSettingsWrite(
 	}
 	const existing = settings.permissions;
 	if (existing !== undefined && !isRecord(existing)) throw new Error(`Invalid permissions object at ${source.path}`);
-	const permissions = isRecord(existing) ? existing : {};
+	const permissions = asRecord(existing);
 	const arrays: SourceRuleArrays = { allow: [], deny: [], ask: [] };
 	for (const behavior of ["allow", "deny", "ask"] as const) {
 		const entries = permissions[behavior];

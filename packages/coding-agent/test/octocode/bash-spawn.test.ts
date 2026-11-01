@@ -2,7 +2,6 @@ import type * as importedModule1 from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import * as importedModule2 from "../../src/octocode/files/bash-jobs.ts";
 import { tmp } from "./helpers.ts";
 
 vi.mock("node:child_process", async (actual) => ({
@@ -13,7 +12,9 @@ vi.mock("node:child_process", async (actual) => ({
 		return child;
 	},
 }));
-const { BashJobs } = await Promise.resolve(importedModule2);
+// The setup file already loaded these modules (through the MCP host ports); reload them under the mocks above.
+vi.resetModules();
+const { BashJobs } = await import("../../src/octocode/files/bash-jobs.ts");
 
 describe("background bash spawn failure", () => {
 	it("refuses with the cause instead of reporting a job with no pid (which would suggest kill -- -0), and leaves no log", async () => {

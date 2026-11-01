@@ -6,7 +6,7 @@ import type { HookCommand, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 import { limitCodexContext } from "./context-limit.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 function codexContext(event: HookEvent, stdout: string, warn: (message: string) => void): string | undefined {
 	const value = parseJson(stdout);
@@ -21,7 +21,7 @@ function codexContext(event: HookEvent, stdout: string, warn: (message: string) 
 		return;
 	}
 	if (typeof value.systemMessage === "string" && value.systemMessage.trim()) warn(value.systemMessage);
-	const specific = isRecord(value.hookSpecificOutput) ? value.hookSpecificOutput : {};
+	const specific = asRecord(value.hookSpecificOutput);
 	return typeof specific.additionalContext === "string"
 		? visibleControls(specific.additionalContext.trim()) || undefined
 		: undefined;
@@ -31,7 +31,7 @@ function backgroundContext(stdout: string): string | undefined {
 	const whole = parseJson(stdout);
 	const value = isRecord(whole) ? whole : stdout.split(/\r?\n/).map(parseJson).findLast(isRecord);
 	if (!isRecord(value)) return;
-	const specific = isRecord(value.hookSpecificOutput) ? value.hookSpecificOutput : {};
+	const specific = asRecord(value.hookSpecificOutput);
 	const parts = [value.systemMessage, specific.additionalContext].filter(
 		(part): part is string => typeof part === "string" && Boolean(part.trim()),
 	);

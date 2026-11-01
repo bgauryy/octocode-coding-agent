@@ -1,7 +1,49 @@
 import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@octocodeai/octocode-ai";
+import type { HeldCredential } from "./auth-storage.ts";
 
-/** Rewrites a credential just before it is saved. */
-export type CredentialWriteTransform = (credential: Credential) => Promise<Credential>;
+/**
+ * Rewrites a credential just before it is saved, e.g. to move a key into a keychain. `previous` is what storage held.
+ * A transform that writes outside storage sets `rollback`, which undoes that write when the credential is not saved.
+ */
+export interface CredentialWriteTransform {
+	(credential: Credential, previous?: Credential): Promise<Credential>;
+	/**
+	 * Called once after a failed save, with the credential storage held before, while the storage lock is held. Must not
+	 * throw secrets. When it throws, the write fails with `CredentialWriteFailure` outcome `unknown`.
+	 */
+	rollback?: (previous: Credential | undefined) => Promise<void>;
+}
+
+/** A store that runs a compensation step before it releases its lock when a write fails (`AuthStorage`). */
+interface GuardedCredentialStore extends CredentialStore {
+	modifyGuarded(
+		providerId: string,
+		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+		options: AuthOperationOptions | undefined,
+		onFailure: (held: HeldCredential) => Promise<void>,
+	): Promise<Credential | undefined>;
+}
+
+const isGuarded = (store: CredentialStore): store is GuardedCredentialStore => "modifyGuarded" in store;
+
+/**
+ * What a failed transformed write left behind. `saved`: the file holds the new credential, so the outside write must
+ * stay. `unknown`: the file could not be read, or the outside write could not be undone, so either may have changed.
+ */
+export type CredentialWriteOutcome = "saved" | "unknown";
+
+/** A transformed write failed and its state is not "nothing changed". `message` is the original failure's. */
+export class CredentialWriteFailure extends Error {
+	readonly outcome: CredentialWriteOutcome;
+	constructor(outcome: CredentialWriteOutcome, cause: unknown) {
+		super(cause instanceof Error ? cause.message : "The credential could not be saved.", { cause });
+		this.name = "CredentialWriteFailure";
+		this.outcome = outcome;
+	}
+}
+
+const sameCredential = (a: Credential | undefined, b: Credential | undefined) =>
+	JSON.stringify(a) === JSON.stringify(b);
 
 /** Async credential store overlay for non-persistent runtime API keys. */
 export class RuntimeCredentials implements CredentialStore {
@@ -76,20 +118,62 @@ export class RuntimeCredentials implements CredentialStore {
 		const detach = () => options?.signal?.removeEventListener("abort", onAbort);
 		options?.signal?.addEventListener("abort", onAbort, { once: true });
 		if (options?.signal?.aborted) onAbort();
+		let before: Credential | undefined;
+		let written: Credential | undefined;
+		// Set before the transform runs: it may write outside storage and then fail or time out (G-K1).
+		let transformStarted = false;
+		let outcome = undefined as CredentialWriteOutcome | undefined;
+		let compensated = false;
+		const modifyFn = async (current: Credential | undefined) => {
+			const next = await fn(current);
+			controller.signal.throwIfAborted();
+			if (next === undefined) return undefined;
+			detach();
+			before = current;
+			transformStarted = true;
+			written = await transform(next, current);
+			return written;
+		};
+		/** Runs with the lock held: decides from the file as it is now whether the outside write stays. */
+		const compensate = async (held: HeldCredential) => {
+			compensated = true;
+			if (!transformStarted) return;
+			if (held === "unreadable") {
+				outcome = "unknown";
+				return;
+			}
+			// A reference equal to the earlier one reads the same whether or not the file was replaced; the save was
+			// reported as failed, so the outside write is undone.
+			if (written && sameCredential(held.credential, written) && !sameCredential(before, written)) {
+				outcome = "saved";
+				return;
+			}
+			try {
+				await transform.rollback?.(before);
+			} catch {
+				outcome = "unknown";
+			}
+		};
+		const modifyOptions = { ...options, signal: controller.signal };
 		try {
-			return await this.store.modify(
-				providerId,
-				async (current) => {
-					const next = await fn(current);
-					controller.signal.throwIfAborted();
-					if (next === undefined) return undefined;
-					detach();
-					return transform(next);
-				},
-				{ ...options, signal: controller.signal },
-			);
+			if (isGuarded(this.store)) return await this.store.modifyGuarded(providerId, modifyFn, modifyOptions, compensate);
+			return await this.store.modify(providerId, modifyFn, modifyOptions);
+		} catch (error) {
+			// A store without the lock-held hook (or a backend that ignores it): undo after the lock is gone.
+			if (transformStarted && !compensated) await compensate(await this.heldBy(providerId));
+			if (outcome) throw new CredentialWriteFailure(outcome, error);
+			throw error;
 		} finally {
 			detach();
+		}
+	}
+
+	/** Reads what storage holds for `providerId`, outside the lock the failed write held. */
+	private async heldBy(providerId: string): Promise<HeldCredential> {
+		try {
+			return { credential: await this.store.modify(providerId, async () => undefined) };
+		} catch {
+			return "unreadable";
 		}
 	}
 

@@ -1,6 +1,6 @@
 import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
-import { describeIgnoredKey, ignoredSettingsKeys } from "./ignored-keys.ts";
+import { describeIgnoredKey, ignoredSettingsKeys, removedToolWarnings } from "./ignored-keys.ts";
 import { migrateSettings } from "./load.ts";
 import { mergeScopedSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
@@ -64,6 +64,9 @@ export class SettingsPersistence {
 		const path = this.state.settingsPaths[scope];
 		for (const key of ignoredSettingsKeys(settings)) {
 			this.state.warnings.push({ scope, ...(path ? { path } : {}), message: describeIgnoredKey(key) });
+		}
+		for (const message of removedToolWarnings(settings)) {
+			this.state.warnings.push({ scope, ...(path ? { path } : {}), message });
 		}
 	}
 

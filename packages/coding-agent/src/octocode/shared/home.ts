@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
 import { CONFIG_DIR_NAME, getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
-import { projectMcpConfigPath as projectMcpFile, projectMcpConfigPaths as projectMcpFiles } from "../../../../common/src/mcp-paths.ts";
+import { projectMcpConfigPaths as projectMcpFiles } from "../../../../common/src/mcp-paths.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
@@ -28,9 +28,6 @@ export function octocodeHome(env: NodeJS.ProcessEnv = process.env, home = os.hom
 export function outputDir(name: string, env: NodeJS.ProcessEnv = process.env): string {
 	return privateDir(path.join(octocodeHome(env), name));
 }
-
-/** Owner-only mode for runtime files (logs, spilled output, checkpoint blobs): they can hold source and secrets. */
-export const PRIVATE_FILE_MODE = 0o600;
 
 /**
  * Creates `dir` (and missing parents) owner-only (0700), and tightens an existing `dir` to 0700: runtime state is
@@ -98,8 +95,6 @@ export const HOME_NAMES = {
 	trust: "pi-trust.json",
 	team: "team",
 	api: "api",
-	browser: "browser",
-	browserProfile: "browser-profile",
 	worktrees: "worktrees",
 	/** Durable agent state: `octocode.db` and `sessions/<id>/{output,bash,checkpoints}`. */
 	agentState: "agent",
@@ -340,9 +335,6 @@ export function claudeSettingsSources(
 			: []),
 	];
 }
-
-/** The project `mcp.json` that MCP commands write. */
-export const projectMcpConfigPath = (cwd: string): string => projectMcpFile(cwd, CONFIG_DIR_NAME);
 
 /** Project MCP files, lowest precedence first. All require project trust. */
 export const projectMcpConfigPaths = (cwd: string): string[] => projectMcpFiles(cwd, CONFIG_DIR_NAME);

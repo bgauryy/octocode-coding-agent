@@ -50,7 +50,7 @@ it("keeps another native SDK session's team usable after shutdown and reload", a
 	const stopHelper = vi.spyOn(windowsTree, "stopAll").mockImplementation(() => helper.stopAll());
 	const coordinate = async (session: typeof first, action: string) => {
 		const tool = session.agent.state.tools.find((tool) => tool.name === "agent")!;
-		return tool.execute("lifecycle-call", { type: "coordinate", input: { action } });
+		return tool.execute("lifecycle-call", { type: "coordinate", action });
 	};
 	try {
 		await coordinate(first, "join");

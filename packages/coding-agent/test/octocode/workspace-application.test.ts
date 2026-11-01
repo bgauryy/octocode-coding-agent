@@ -7,6 +7,7 @@ import { WebSocket } from "ws";
 import { ApplicationService } from "../../src/core/application/index.ts";
 import type { AgentSession, AgentSessionEvent } from "../../src/core/agent-session.ts";
 import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
+import { ApplicationStream } from "../../../webview/src/application-stream.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
@@ -189,22 +190,20 @@ describe("application server boundary", () => {
 			expect(frames.filter((f) => f.type === "event" && f.event.type === "message.completed")).toHaveLength(2),
 		);
 		expect(deltas().length).toBeLessThan(10);
-		// The last delta before the completion carries every token, in order.
+		// Deltas carry only appended text; a view folding the frames before the completion holds every token, in order.
 		const completed = frames.findIndex((f) => f.type === "event" && f.event.type === "message.completed");
-		const last = frames
-			.slice(0, completed)
-			.reverse()
-			.find((f) => f.type === "event" && f.event.type === "message.delta");
-		expect(last?.type === "event" && last.event.type === "message.delta" && last.event.text).toBe(
-			Array.from({ length: 100 }, (_, i) => "w" + i + " ").join(""),
-		);
+		const view = new ApplicationStream();
+		for (const frame of frames.slice(0, completed)) expect(view.accept(frame)).not.toBe("resync");
+		const streamed = view.snapshot?.messages.find((m) => m.role === "assistant" && !m.complete);
+		expect(streamed?.text).toBe(Array.from({ length: 100 }, (_, i) => "w" + i + " ").join(""));
+		for (const delta of deltas()) expect(delta.text).toBeUndefined();
 		for (let i = 1; i < frames.length; i++) {
 			const previous = frames[i - 1];
 			const current = frames[i];
 			if ((previous.type === "snapshot" || previous.type === "event") && current.type === "event") {
 				expect(current.fromSequence ?? current.cursor.sequence).toBe(previous.cursor.sequence + 1);
 				if (current.fromSequence !== undefined)
-					expect(current.event).toMatchObject({ type: "message.delta", text: expect.any(String) });
+					expect(current.event).toMatchObject({ type: "message.delta", block: { index: 0 } });
 			}
 		}
 	});

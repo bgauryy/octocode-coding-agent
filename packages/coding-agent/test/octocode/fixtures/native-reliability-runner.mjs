@@ -96,7 +96,10 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
       children.filter((entry) => entry.child.exitCode === null && entry.child.signalCode === null).length);
     return peer;
   }
-  const tool = (peer, input) => peer.command('tool', { tool: 'agent', input: { type: 'external', input } });
+  // The flat agent call names external fields as in src/octocode/shared/agent-call.ts (AGENT_FIELD_RENAMES).
+  const flat = { action: 'externalAction', id: 'connection', model: 'externalModel', text: 'promptText' };
+  const tool = (peer, input) => peer.command('tool', { tool: 'agent', input: { type: 'external',
+    ...Object.fromEntries(Object.entries(input).map(([key, value]) => [flat[key] ?? key, value])) } });
   const record = (id) => {
     const found = listInstances(apiDir(env)).find((entry) => entry.id === id);
     assert(found, `Exact instance missing: ${id}`); return found;

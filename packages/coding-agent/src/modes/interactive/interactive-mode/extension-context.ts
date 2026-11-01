@@ -14,6 +14,7 @@ import type {
 import { ThemedText } from "../components/themed-text.ts";
 import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { pickSession } from "./session-picker.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the extension UI context and shortcuts. */
@@ -83,6 +84,7 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 			host.restoreQueuedMessagesToEditor({ abort: true });
 		},
 		hasPendingMessages: () => host.session.pendingMessageCount > 0,
+		isMessageQueued: (details) => host.session.isCustomMessageQueued(details),
 		shutdown: () => {
 			host.shutdownRequested = true;
 		},
@@ -158,6 +160,7 @@ export function createExtensionUIContext(host: ExtensionContextHost): ExtensionU
 		setHeader: (factory) => host.setExtensionHeader(factory),
 		setTitle: (title) => host.ui.terminal.setTitle(title),
 		custom: (factory, options) => host.showExtensionCustom(factory, options),
+		pickSession: (options) => pickSession(host, options),
 		pasteToEditor: (text) => host.editor.handleInput(`\x1b[200~${text}\x1b[201~`),
 		setEditorText: (text) => host.editor.setText(text),
 		getEditorText: () => host.editor.getExpandedText?.() ?? host.editor.getText(),

@@ -2,7 +2,7 @@ import path from "node:path";
 import { envFlag } from "../../../../common/src/env.ts";
 import { octocodeHome, sessionDirName } from "../shared/home.ts";
 
-/** `1` makes every session accept the user-level web daemon and `/octocode` use it; unset or `0` keeps the per-session server. */
+/** `1` makes every session accept the user-level web daemon and `/web` use it; unset or `0` keeps the per-session server. */
 export const WEB_DAEMON_ENV = "OCTOCODE_WEB_DAEMON";
 /** Minutes without a browser tab or an attached session after which the daemon exits (decimals allowed; default 10). */
 export const WEB_DAEMON_IDLE_ENV = "OCTOCODE_WEB_DAEMON_IDLE_MINUTES";

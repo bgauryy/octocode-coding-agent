@@ -90,11 +90,6 @@ export function decorateEditor(editor: CustomEditor, theme: () => Paint, hint: (
 	const render = editor.render.bind(editor);
 	const handleMouse = editor.handleMouse.bind(editor);
 	const setIndicator = editor.setWorkingStatusIndicator.bind(editor);
-	const topBorder = Reflect.get(editor, "renderTopBorder").bind(editor) as (width: number, hidden: number) => string;
-	const bottomBorder = Reflect.get(editor, "renderBottomBorder").bind(editor) as (
-		width: number,
-		hidden: number,
-	) => string;
 	let working = false;
 	let boxed = false;
 	// Octocode assigns a colour for the thinking level and the `!` mode; keep it for the `!` mode and the working line.
@@ -112,21 +107,18 @@ export function decorateEditor(editor: CustomEditor, theme: () => Paint, hint: (
 		setIndicator(indicator);
 	};
 	const rule = (text: string) => editor.borderColor(text);
-	Reflect.set(editor, "renderTopBorder", (width: number, hidden: number) => {
-		if (!boxed || working || hidden > 0) return topBorder(width, hidden);
-		return labelledRule(width, promptLabel(editor.getText(), theme()), "", rule);
-	});
-	Reflect.set(editor, "renderBottomBorder", (width: number, hidden: number) => {
-		if (!boxed || hidden > 0) return bottomBorder(width, hidden);
-		return labelledRule(width, "", "", rule);
-	});
+	// Scroll markers and Octocode's working line (its own top border) stay as the editor draws them.
+	editor.borderDecorator = (edge, width, hidden, standard) => {
+		if (!boxed || hidden > 0 || (edge === "top" && working)) return standard();
+		return labelledRule(width, edge === "top" ? promptLabel(editor.getText(), theme()) : "", "", rule);
+	};
 	editor.render = (width: number): string[] => {
 		boxed = width >= BOX_MIN_WIDTH;
 		if (!boxed) return render(width);
 		const inner = width - BOX_INSET * 2;
 		const lines = render(inner);
-		const rows = Reflect.get(editor, "renderedVisibleLineCount");
-		if (typeof rows !== "number" || lines.length < rows + 2) return lines;
+		const rows = editor.visibleLineCount;
+		if (lines.length < rows + 2) return lines;
 		const hinted = editor.getText() === "" && hint();
 		const side = (row: string) =>
 			`${rule("│")} ${row}${" ".repeat(Math.max(0, inner - visibleWidth(row)))} ${rule("│")}`;
@@ -144,11 +136,13 @@ export function decorateEditor(editor: CustomEditor, theme: () => Paint, hint: (
 	return editor;
 }
 
+/** A `CustomEditor`, or another factory's editor with the same public surface (`visibleLineCount` marks a TUI `Editor`). */
 const isEditor = (component: Component): component is CustomEditor =>
 	component instanceof CustomEditor ||
-	["getText", "setWorkingStatusIndicator", "handleMouse", "renderTopBorder", "renderBottomBorder"].every(
-		(name) => typeof Reflect.get(component, name) === "function",
-	);
+	("visibleLineCount" in component &&
+		["getText", "setWorkingStatusIndicator", "handleMouse"].every(
+			(name) => typeof (component as unknown as Record<string, unknown>)[name] === "function",
+		));
 
 /**
  * The main editor in the TUI: `app.permission.cycle` (Shift+Tab by default) cycles the permission mode before any

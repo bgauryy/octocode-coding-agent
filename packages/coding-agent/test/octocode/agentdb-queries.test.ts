@@ -1,8 +1,9 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { agents, backlog, commands, leases, meta, sessions } from "../../src/octocode/agentdb/api.ts";
+import { agents, backlog, commands, leases, meta, sessionLinks, sessions } from "../../src/octocode/agentdb/api.ts";
 import { type AgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { tmp } from "./helpers.ts";
 
 let agent: AgentDb;
@@ -135,6 +136,7 @@ describe("backlog", () => {
 		sourceSession: null,
 		at: seq,
 		fromItem: null,
+		type: "feature",
 	});
 
 	it("numbers items per repository and matches a literal percent sign in a text search", () => {
@@ -158,5 +160,71 @@ describe("backlog", () => {
 		backlog.copyNotesToComments(agent.db);
 		expect(backlog.hasUncopiedNotes(agent.db)).toBe(false);
 		expect(backlog.commentsOf(agent.db, rowId).map((row) => row.text)).toEqual(["hello"]);
+	});
+});
+
+describe("session links", () => {
+	const READY = { why: "Users need this", goal: "Result can be checked", createdBy: "user" };
+	const claim = (store: BacklogStore, title: string, by: string, state: "ongoing" | "done" = "ongoing") => {
+		const actor = { id: by, kind: "agent" as const };
+		const item = store.add({ title, ...READY });
+		store.update(item.ref, { state: "ongoing" }, actor);
+		if (state === "done")
+			store.update(
+				item.ref,
+				{
+					state: "done",
+					completion: {
+						summary: "Done",
+						files: [],
+						verification: { status: "not_applicable", summary: "none" },
+						operationKey: `k-${item.ref}`,
+					},
+				},
+				actor,
+			);
+		return item;
+	};
+
+	it("shows the ongoing claims of a session, at most three, and the agent whose session_id matches", () => {
+		const store = new BacklogStore(() => agent, "repo");
+		const items = ["a", "b", "c", "d"].map((title) => claim(store, title, "s1"));
+		claim(store, "elsewhere", "s2");
+		agents.insert(agent.db, "w", "/w", member("inky-kraken", { sessionId: "s1" }));
+		// A name alone links nothing: only `session_id` does, and a subagent row carries none.
+		agents.insert(agent.db, "w", "/w", member("s2", { role: "general" }));
+
+		const links = sessionLinks.linksOf(agent.db, ["s1", "s2", "s3"]);
+		expect(links.get("s1")?.items).toHaveLength(sessionLinks.MAX_SESSION_ITEMS);
+		expect(links.get("s1")?.items.every((seq) => items.some((item) => item.seq === seq))).toBe(true);
+		expect(links.get("s1")?.agent).toBe("inky-kraken");
+		expect(links.get("s2")).toEqual({ items: [5] });
+		expect(links.has("s3")).toBe(false);
+	});
+
+	it("drops a done claim from the chip but still finds its session by item number, through claims and steps", () => {
+		const store = new BacklogStore(() => agent, "repo");
+		const done = claim(store, "finished", "s1", "done");
+		const open = claim(store, "held", "s2");
+		store.tasks.add({ goal: "a step", item: open.ref, state: "ongoing" }, { id: "s3", kind: "agent" });
+		claim(new BacklogStore(() => agent, "other-repo"), "other holder", "s9");
+
+		expect(sessionLinks.linksOf(agent.db, ["s1"]).has("s1")).toBe(false);
+		expect(sessionLinks.heldItem(agent.db, done.seq, "repo")).toEqual(["s1"]);
+		expect(sessionLinks.heldItem(agent.db, open.seq, "repo").sort()).toEqual(["s2", "s3"]);
+		expect(sessionLinks.heldItem(agent.db, open.seq, "other-repo")).toEqual([]);
+		expect(sessionLinks.heldItem(agent.db, 2, "repo").sort()).toEqual(["s2", "s3"]);
+		expect(sessionLinks.heldItem(agent.db, 1).sort()).toEqual(["s1", "s9"]);
+		expect(sessionLinks.heldItem(agent.db, 99, "repo")).toEqual([]);
+	});
+
+	it("records the session an agent runs, on insert and on refresh", () => {
+		agents.insert(agent.db, "w", "/w", member("a"));
+		expect(sessionLinks.linksOf(agent.db, ["s1"]).has("s1")).toBe(false);
+		agents.refresh(agent.db, member("a", { sessionId: "s1" }), "/w");
+		expect(sessionLinks.linksOf(agent.db, ["s1"]).get("s1")?.agent).toBe("a");
+		agents.refresh(agent.db, member("a", { sessionId: "s2" }), "/w");
+		expect(sessionLinks.linksOf(agent.db, ["s1"]).has("s1")).toBe(false);
+		expect(agents.inTeam(agent.db, "w")[0]?.session_id).toBe("s2");
 	});
 });

@@ -245,5 +245,8 @@ describe("validateToolArguments", () => {
 		};
 
 		expect(() => validateToolArguments(tool, toolCall)).toThrow('Invalid arguments for tool "echo": Unexpected token');
+		expect(() => validateToolArguments(tool, toolCall)).toThrow(
+			/valid JSON object\. If it is long, split it into several smaller calls/,
+		);
 	});
 });

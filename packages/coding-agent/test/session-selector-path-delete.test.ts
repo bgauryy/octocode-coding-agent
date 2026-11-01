@@ -211,9 +211,9 @@ describe("session selector path/delete interactions", () => {
 		await flushPromises();
 
 		expect(allLoadCalls).toBe(1);
-		const output = selector.render(120).join("\n");
-		expect(output).toContain("Resume Session (Current Folder)");
-		expect(output).not.toContain("Resume Session (All)");
+		const output = stripAnsi(selector.render(120).join("\n"));
+		expect(output).toContain("◉ This folder ○ All");
+		expect(output).not.toContain("○ This folder ◉ All");
 	});
 
 	it("does not start redundant All loads when toggling scopes while All is already loading", async () => {
@@ -283,7 +283,7 @@ describe("session selector path/delete interactions", () => {
 
 		const output = stripAnsi(selector.render(120).join("\n"));
 		expect(output).toContain("Parent");
-		expect(output).toContain("└─ Child");
+		expect(output).toMatch(/└─\s+Child/);
 	});
 
 	it("sorts threaded sessions by latest activity in their subtree", async () => {
@@ -317,7 +317,7 @@ describe("session selector path/delete interactions", () => {
 
 		const output = stripAnsi(selector.render(120).join("\n"));
 		const parentTwoIndex = output.indexOf("Parent two");
-		const childTwoIndex = output.indexOf("└─ Child two");
+		const childTwoIndex = output.search(/└─\s+Child two/);
 		const parentOneIndex = output.indexOf("Parent one");
 
 		expect(parentTwoIndex).toBeGreaterThanOrEqual(0);

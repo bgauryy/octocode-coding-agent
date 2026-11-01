@@ -43,7 +43,7 @@ type AutocompleteHost = Pick<
 	| "skillCommands"
 >;
 
-function getAutocompleteSourceTag(host: AutocompleteHost, sourceInfo?: SourceInfo): string | undefined {
+function getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
 	// Built-in extension commands are untagged, like built-in commands.
 	if (!sourceInfo || sourceInfo.source === "builtin") {
 		return undefined;
@@ -69,12 +69,8 @@ function getAutocompleteSourceTag(host: AutocompleteHost, sourceInfo?: SourceInf
 	return scopePrefix;
 }
 
-function prefixAutocompleteDescription(
-	host: AutocompleteHost,
-	description: string | undefined,
-	sourceInfo?: SourceInfo,
-): string | undefined {
-	const sourceTag = getAutocompleteSourceTag(host, sourceInfo);
+function prefixAutocompleteDescription(description: string | undefined, sourceInfo?: SourceInfo): string | undefined {
+	const sourceTag = getAutocompleteSourceTag(sourceInfo);
 	if (!sourceTag) {
 		return description;
 	}
@@ -191,7 +187,7 @@ export function getSlashCommands(
 		host.session.extensionRunner.getRegisteredCommands(),
 	).map(({ name, template }) => ({
 		name,
-		description: prefixAutocompleteDescription(host, template.description, template.sourceInfo),
+		description: prefixAutocompleteDescription(template.description, template.sourceInfo),
 		...(template.argumentHint && { argumentHint: template.argumentHint }),
 	}));
 
@@ -202,7 +198,7 @@ export function getSlashCommands(
 		.filter((cmd) => !builtinCommandNames.has(cmd.invocationName))
 		.map((cmd) => ({
 			name: cmd.invocationName,
-			description: prefixAutocompleteDescription(host, cmd.description, cmd.sourceInfo),
+			description: prefixAutocompleteDescription(cmd.description, cmd.sourceInfo),
 			...(cmd.argumentHint && { argumentHint: cmd.argumentHint }),
 			getArgumentCompletions: cmd.getArgumentCompletions,
 		}));
@@ -217,7 +213,7 @@ export function getSlashCommands(
 			host.skillCommands.set(name, skill.filePath);
 			skillCommandList.push({
 				name,
-				description: prefixAutocompleteDescription(host, skill.description, skill.sourceInfo),
+				description: prefixAutocompleteDescription(skill.description, skill.sourceInfo),
 			});
 		}
 	}

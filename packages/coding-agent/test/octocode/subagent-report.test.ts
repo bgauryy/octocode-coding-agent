@@ -3,13 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { REPORT_MAX_BYTES } from "../../src/octocode/instructions/report.ts";
 import { capOutput } from "../../src/octocode/shared/util.ts";
-import {
-	ReportTracker,
-	reportChecks,
-	reportFilePath,
-	reportOutcome,
-	reportStatus,
-} from "../../src/octocode/subagents/report.ts";
+import { ReportTracker, reportChecks, reportOutcome, reportStatus } from "../../src/octocode/subagents/report.ts";
 import { tmp } from "./helpers.ts";
 
 describe("the outcome word a report starts with", () => {
@@ -281,20 +275,4 @@ describe("the checks a report names in its verification section", () => {
 		"names none for %j",
 		(text) => expect(reportChecks(text)).toBeUndefined(),
 	);
-});
-
-describe("the saved report a report points at", () => {
-	it("is the last pointer line, and only a scratch path", () => {
-		expect(reportFilePath("x\nFull report: /r/.octocode/tmp/agents/a/report.md (read only the parts you need).")).toBe(
-			"/r/.octocode/tmp/agents/a/report.md",
-		);
-		expect(
-			reportFilePath(
-				"Full report: /elsewhere/report.md (read only the parts you need).\nFull report: /r/.octocode/tmp/agents/b/report.md (read only the parts you need).",
-			),
-		).toBe("/r/.octocode/tmp/agents/b/report.md");
-		expect(reportFilePath("Full report: /elsewhere/report.md (read only the parts you need).")).toBeUndefined();
-		expect(reportFilePath("no pointer")).toBeUndefined();
-		expect(reportFilePath(undefined)).toBeUndefined();
-	});
 });

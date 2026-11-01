@@ -1,5 +1,6 @@
 import { ELLIPSIS, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
+import { plainText } from "./styled-line.ts";
 
 /** Coordinator identity never competes with token totals for the last few footer columns. */
 export function coordinatorFooterLines(session: AgentSession, width: number): string[] {
@@ -12,7 +13,8 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 		thinking,
 	];
 	const identity = identityLabels.find((label) => visibleWidth(label) <= width) ?? thinking;
-	const selection = model ? `${model.provider}/${model.id}` : "No model selected · /login";
+	// Model ids and providers can come from vendor model lists and the remote catalog.
+	const selection = model ? plainText(`${model.provider}/${model.id}`) : "No model selected · /login";
 	const combined = `${identity} · ${selection}`;
 	const lines =
 		visibleWidth(combined) <= width
@@ -20,10 +22,10 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 			: [truncateToWidth(identity, width, ELLIPSIS), truncateToWidth(`Model · ${selection}`, width, ELLIPSIS)];
 	const routed = session.routedModel;
 	if (routed) {
-		const provider = routed.model.provider ? `${routed.model.provider}/` : "";
+		const provider = routed.model.provider ? `${plainText(routed.model.provider)}/` : "";
 		lines.push(
 			truncateToWidth(
-				`Latest route · ${provider}${routed.model.id} · thinking ${routed.thinkingLevel ?? "off"}`,
+				`Latest route · ${provider}${plainText(routed.model.id)} · thinking ${routed.thinkingLevel ?? "off"}`,
 				width,
 				ELLIPSIS,
 			),

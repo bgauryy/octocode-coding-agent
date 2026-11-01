@@ -11,7 +11,7 @@ import type { OAuthChallenge } from "./client/oauth/index.ts";
 import { McpCatalogCache } from "./catalog.ts";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
-import type { McpAuthProvider, McpOAuthSettings } from "./oauth.ts";
+import type { McpAuthProvider, McpOAuthCredentialStore, McpOAuthSettings } from "./oauth.ts";
 import {
 	createConnectionAuthProvider,
 	mcpOAuthSettings,
@@ -33,13 +33,23 @@ import {
 	stderrTail,
 	trackToolListChanges,
 } from "./runtime/client.ts";
-import { firstLine } from "./server.ts";
+import { firstLine } from "../../common/src/clip.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
-import type { McpRuntimeOptions } from "./runtime/types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpToolCaller } from "./tools.ts";
 
 export { createDefaultTransport, type McpTransportFactory } from "./runtime/transport.ts";
+
+interface McpRuntimeOptions {
+	entry: McpServerEntry;
+	cwd: string;
+	createTransport: McpTransportFactory;
+	credentials: McpOAuthCredentialStore;
+	providerToken?: (provider: string) => Promise<string | undefined>;
+	onTools: (connection: McpServerConnection) => void;
+	onChange?: (connection: McpServerConnection) => void;
+	log?: McpServerLog;
+}
 
 /** One configured server. Reconnects lazily when a call finds the connection gone. */
 export class McpServerConnection implements McpToolCaller {

@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -34,11 +35,20 @@ describe("configured Octocode skill roots", () => {
 		});
 	});
 
-	it.each(["/restricted", ""])("preserves explicit configured and inherited policy %j", (allowed) => {
+	it.each(["/restricted", ""])("preserves an explicit ALLOWED_PATHS in the entry's own env %j", (allowed) => {
 		const configured = entry({ ALLOWED_PATHS: allowed });
 		expect(prepareOctocodeSkillLaunch(configured, "/workspace", [], {})).toBe(configured);
-		const inherited = entry();
-		expect(prepareOctocodeSkillLaunch(inherited, "/workspace", [], { ALLOWED_PATHS: allowed })).toBe(inherited);
+	});
+
+	it("adds the inherited ALLOWED_PATHS to the automatic roots instead of replacing them", () => {
+		const extra = fs.mkdtempSync(path.join(tmp(), "extra-"));
+		const prepared = prepareOctocodeSkillLaunch(entry(), "/workspace", [], {
+			ALLOWED_PATHS: extra,
+			OCTOCODE_HOME: "/native/home",
+		});
+		const allowed = (prepared.config as unknown as { env: { ALLOWED_PATHS: string } }).env.ALLOWED_PATHS.split(",");
+		expect(allowed.slice(0, 2)).toEqual(["/workspace", "/native/home/agent/sessions"]);
+		expect(allowed).toContain(fs.realpathSync(extra));
 	});
 
 	it("leaves HTTP and unrelated local servers untouched", () => {

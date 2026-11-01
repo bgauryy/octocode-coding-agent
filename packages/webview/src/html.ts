@@ -1,11 +1,8 @@
 import { STATES, type Snapshot } from "@octocodeai/octocode-contracts/snapshot";
+import { pagePolicy } from "./csp.ts";
 import { OCTOCODE_FAVICON_DATA_URI } from "./favicon.generated.ts";
 import { OFFLINE_PAGE_JS, WORKSPACE_STATE_JS } from "./state.generated.ts";
 import { PAGE_CSS } from "./styles.ts";
-
-/** Offline and inert: only this page's own inline style and script may run; nothing loads, submits or connects. */
-const CSP =
-	"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
 
 /**
  * JSON that is safe inside a `<script type="application/json">` block: every `<` is escaped (so no text can write `</script>`
@@ -27,7 +24,7 @@ export function renderBacklogHtml(snapshot: Snapshot, live = false, daemon = fal
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="${CSP}${live ? "; connect-src 'self'" : ""}">
+<meta http-equiv="Content-Security-Policy" content="${pagePolicy({ scripts: ["'unsafe-inline'"], live })}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#6d28d9">

@@ -12,7 +12,7 @@ import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { handleSkillsCommand } from "./skills-command.ts";
-import { closeNames } from "../../../octocode/skill/catalog.ts";
+import { unknownCommandWarning } from "./command-suggestion.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
 type CommandDispatchHost = Pick<
@@ -238,6 +238,8 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			if (!(await runNativeCommand(host, name, args))) host.showWarning(`/${name} requires native features.`);
 			return;
 		case "new":
+		case "clear":
+		case "reset":
 			await host.handleClearCommand(args || undefined);
 			return;
 		case "compact":
@@ -261,17 +263,6 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 	}
 }
 
-/** A warning for a command-shaped `/name` that no command owns, naming the closest command when one is close. */
-function unknownCommandWarning(host: CommandDispatchHost, name: string): string | undefined {
-	if (!/^[a-z][a-z0-9-]*$/i.test(name)) return undefined;
-	const names = host.getSlashCommands(true).map((command) => command.name);
-	if (names.includes(name)) return undefined;
-	const [closest] = closeNames(name, names);
-	return closest
-		? `Unknown command /${name}. Did you mean /${closest}?`
-		: `Unknown command /${name}. Search commands with /help ${name}.`;
-}
-
 export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 	host.defaultEditor.onSubmit = async (text: string) => {
 		text = text.trim();
@@ -288,7 +279,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			}
 			return;
 		}
-		const unknown = parsed && unknownCommandWarning(host, parsed.name);
+		const unknown = parsed && unknownCommandWarning(text, parsed.name, host.getSlashCommands(true));
 		if (unknown) {
 			host.editor.setText(text);
 			host.showWarning(unknown);

@@ -73,8 +73,11 @@ interface WriteIo {
 	syncDirectory(dir: string): unknown;
 }
 
-/** Match writeFileSync for dangling links: create the missing target, keeping the link in place. */
-function writeTargetSync(file: string, hops = 40): string {
+/**
+ * The file a write to `file` lands on: symlinks resolved, including dangling ones (writeFileSync creates their missing
+ * target and keeps the link), else `file` in its real directory. The directory must exist.
+ */
+export function writeTargetSync(file: string, hops = 40): string {
 	try {
 		return fs.realpathSync(file);
 	} catch (error) {

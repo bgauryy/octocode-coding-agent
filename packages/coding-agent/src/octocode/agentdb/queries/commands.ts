@@ -23,22 +23,11 @@ export function recentWorkspace(db: DatabaseSync, repo: string, session: string)
 	);
 }
 
+/** The receipt of command `id` (an application command is stored as `application:<id>`), or undefined. */
 export function byId(db: DatabaseSync, repo: string, session: string, id: string): CommandRow | undefined {
 	return db
 		.prepare("SELECT * FROM workspace_commands WHERE repo_key = ? AND session_id = ? AND id = ?")
 		.get(repo, session, id) as CommandRow | undefined;
-}
-
-/** The receipt of application command `id` (stored as `application:<id>`), or undefined. */
-export function applicationById(
-	db: DatabaseSync,
-	repo: string,
-	session: string,
-	id: string,
-): Pick<CommandRow, "id" | "status" | "input" | "message"> | undefined {
-	return db
-		.prepare("SELECT id,status,input,message FROM workspace_commands WHERE repo_key=? AND session_id=? AND id=?")
-		.get(repo, session, id) as Pick<CommandRow, "id" | "status" | "input" | "message"> | undefined;
 }
 
 /** Records a web-workspace request as pending. */

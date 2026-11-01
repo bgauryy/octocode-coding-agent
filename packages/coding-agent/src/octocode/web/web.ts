@@ -4,11 +4,11 @@ import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";
 import { shortPath } from "../shared/format.ts";
-import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../shared/output-budget.ts";
+import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../../utils/output-budget.ts";
 import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { boundImagePart, capResultText, saveFullOutput, saveImageFile } from "../shared/spill.ts";
-import { capChars, cutText, textResult } from "../shared/util.ts";
+import { capChars, textResult } from "../shared/util.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { type FetchedImage, pageFetcher } from "./fetch.ts";
@@ -19,6 +19,7 @@ import { search } from "./search.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { cutText } from "../../../../common/src/text.ts";
 
 /** Default and largest page text a fetch returns (the shared result default and request maximum); `maxChars` picks a size in between. */
 const DEFAULT_FETCH_CHARS = RESULT_DEFAULT_BYTES;
@@ -134,22 +135,20 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 		timedTool({
 			name: "web",
 			label: "Web",
+			promptSnippet:
+				"Look up public web pages: documentation, release notes, advisories, or anything the repository cannot answer",
 			description:
-				"Search the public web with query, or read one http(s) URL with url; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it. Successful page fetches are cached for 15 minutes (images are not).",
-			promptSnippet: "Read a public URL or search the web",
+				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it. Successful page fetches are cached for 15 minutes (images are not).",
 			// The research policy routes GitHub and package lookups and, when this agent can browse, rendered pages; these lines
 			// own only how to use a result (guidelines are static, so they cannot depend on the selected tools).
-			promptGuidelines: [
-				"Read the source behind a search snippet before relying on its claim.",
-				"Cite source URLs. Read saved output by relevant ranges rather than fetching it again.",
-			],
+			promptGuidelines: ["Read the source behind a search snippet before relying on its claim."],
 			parameters: Type.Object({
-				url: Type.Optional(Type.String({ description: "Public http(s) page to read; omit query" })),
-				query: Type.Optional(Type.String({ description: "Search terms; omit url" })),
+				url: Type.Optional(Type.String({ description: "Public http(s) page to read; give this or query, not both" })),
+				query: Type.Optional(Type.String({ description: "Search terms; give this or url, not both" })),
 				maxResults: Type.Optional(Type.Integer({ description: "Search result limit (default 8, up to 20)" })),
 				maxChars: Type.Optional(
 					Type.Integer({
-						description: `Fetch preview size (default ${DEFAULT_FETCH_CHARS}, between 1,000 and ${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer fetched text is saved to a file`,
+						description: `Fetch preview size (default ${DEFAULT_FETCH_CHARS}, between 1,000 and ${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer fetched text is saved to a file: read it by line range instead of fetching again`,
 					}),
 				),
 			}),
@@ -209,7 +208,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 							size,
 						);
 					}
-					if (!query) throw new Error("Provide url or query.");
+					if (!query) throw new Error("Provide url or query. url reads one page; query searches the web.");
 					try {
 						const { provider, hits, failures } = await search(
 							query,

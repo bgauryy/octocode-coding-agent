@@ -71,7 +71,7 @@ export function AppHeader({
 				<p>
 					{live
 						? "Saved to this repository. Updates appear automatically while connected."
-						: "Run /backlog to open the live board. This export is read-only."}
+						: "Run /web backlogs to open the live board. This export is read-only."}
 				</p>
 				<dl className="stats">
 					{index.states.map((state) => (

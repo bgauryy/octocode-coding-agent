@@ -1,6 +1,7 @@
 /** The `/mcp` slash command: its subcommands, argument completions, and the TUI manager entry. */
 
-import type { ExtensionCommandContext } from "../../coding-agent/src/core/extensions/types.ts";
+import { firstLine } from "../../common/src/clip.ts";
+import type { McpCommandContext } from "./host/types.ts";
 import { say } from "./notice.ts";
 import type { McpExposure } from "./config.ts";
 import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
@@ -9,7 +10,7 @@ import { formatMcpConfigLocations, formatMcpTool } from "./inspection.ts";
 import { manage, signInWithUi, toolCatalog } from "./manager.ts";
 import { saveConfig, setExposure } from "./persistence.ts";
 import { formatStatus } from "./report.ts";
-import { describeState, firstLine, isEnabled, type McpServer } from "./server.ts";
+import { describeState, isEnabled, type McpServer } from "./server.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import { getMcpSessionStatus } from "./status.ts";
@@ -24,7 +25,7 @@ const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp e
 async function pickServer(
 	state: McpExtensionState,
 	name: string | undefined,
-	ctx: ExtensionCommandContext,
+	ctx: McpCommandContext,
 	options: { eligible: (server: McpServer) => boolean; preferred: (server: McpServer) => boolean; none: string },
 ): Promise<McpServer | undefined> {
 	if (name) {
@@ -55,7 +56,7 @@ const oauthPick = {
 	none: "No enabled MCP server uses OAuth. Only HTTP servers without an Authorization header do.",
 };
 
-async function loginCommand(state: McpExtensionState, server: McpServer, ctx: ExtensionCommandContext): Promise<void> {
+async function loginCommand(state: McpExtensionState, server: McpServer, ctx: McpCommandContext): Promise<void> {
 	const { name } = server.entry;
 	if (!ctx.hasUI) {
 		say(ctx, `Signing in to MCP server "${name}" requires interactive mode.`, "error");
@@ -141,7 +142,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 }
 
 /** `/mcp tools [server] [tool]`. */
-function showToolsCommand(state: McpExtensionState, name: string, extra: string[], ctx: ExtensionCommandContext): void {
+function showToolsCommand(state: McpExtensionState, name: string, extra: string[], ctx: McpCommandContext): void {
 	if (extra.length > 1) {
 		say(ctx, MCP_USAGE, "warning");
 		return;
@@ -185,7 +186,7 @@ async function configureCommand(
 	action: "enable" | "disable" | "exposure" | "assign",
 	name: string,
 	extra: string[],
-	ctx: ExtensionCommandContext,
+	ctx: McpCommandContext,
 ): Promise<void> {
 	const mode = action === "exposure" || action === "assign" ? extra.shift() : undefined;
 	const inProject = extra.length === 1 && (extra[0] === "--local" || extra[0] === "-l");
@@ -230,7 +231,7 @@ async function configureCommand(
 }
 
 /** `/mcp reconnect [server|all]`. */
-async function reconnectCommand(state: McpExtensionState, name: string, ctx: ExtensionCommandContext): Promise<void> {
+async function reconnectCommand(state: McpExtensionState, name: string, ctx: McpCommandContext): Promise<void> {
 	if (name === "all") {
 		const targets = state.servers
 			.filter((server) => server.connection)

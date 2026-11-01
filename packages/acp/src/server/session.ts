@@ -7,9 +7,8 @@ import {
 	type PromptResponse,
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
-import type { RpcClient, RpcEvent } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
-import type { RpcExtensionUIRequest } from "../../../coding-agent/src/modes/rpc/rpc-types.ts";
-import { AcpEventProjector } from "./events.ts";
+import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
+import { AcpEventProjector, type CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
 import { AcpStartup } from "./startup.ts";
 
@@ -18,19 +17,7 @@ function reportFailure(message: string): (error: unknown) => void {
 	return (error) => console.error(message, error);
 }
 
-export type AcpWorker = Pick<
-	RpcClient,
-	| "start"
-	| "stop"
-	| "getState"
-	| "persistSession"
-	| "prompt"
-	| "abort"
-	| "onEvent"
-	| "onClose"
-	| "onExtensionUIRequest"
-	| "respondToExtensionUIRequest"
-> & { onSessionIdentity: (listener: (id: string) => void) => () => void };
+export type AcpWorker = AcpWorkerClient & { onSessionIdentity: (listener: (id: string) => void) => () => void };
 
 interface Turn {
 	id: string;
@@ -45,7 +32,7 @@ interface Turn {
 	reject: (error: Error) => void;
 }
 
-function createTurn(): Turn {
+function createTurn(summaryText: CompactionText): Turn {
 	const completion = Promise.withResolvers<PromptResponse>();
 	void completion.promise.catch(() => {});
 	return {
@@ -53,7 +40,7 @@ function createTurn(): Turn {
 		id: randomUUID(),
 		done: completion.promise,
 		controller: new AbortController(),
-		projector: new AcpEventProjector(),
+		projector: new AcpEventProjector(summaryText),
 		accepted: false,
 		settled: false,
 		cancelled: false,
@@ -80,15 +67,18 @@ export class AcpSession {
 	private readonly client: AgentContext;
 	private readonly cancelTimeoutMs: number;
 	private readonly onTerminated: () => void;
+	private readonly summaryText: CompactionText;
 
 	constructor(
 		id: string,
 		worker: AcpWorker,
 		client: AgentContext,
 		cancelTimeoutMs: number,
+		summaryText: CompactionText,
 		onTerminated: () => void = () => {},
 	) {
 		this.id = id;
+		this.summaryText = summaryText;
 		this.worker = worker;
 		this.client = client;
 		this.cancelTimeoutMs = cancelTimeoutMs;
@@ -147,7 +137,7 @@ export class AcpSession {
 		if (this.starting || this.observed || this.workerBusy)
 			throw RequestError.invalidRequest(undefined, "Session is busy; nothing was sent.");
 		const input = convertPrompt(content);
-		const turn = createTurn();
+		const turn = createTurn(this.summaryText);
 		this.active = turn;
 		void this.worker.prompt(input.text, input.images, undefined, { waitForCompletion: true, dispatchId: turn.id }).then(
 			(disposition) => {
@@ -196,10 +186,11 @@ export class AcpSession {
 		void this.output.then(finish, finish);
 	}
 
-	private event(event: RpcEvent): void {
+	private event(event: AcpWorkerEvent): void {
 		if (event.type === "session_dispatch") {
 			this.workerBusy = event.active;
-			if (event.active) this.observed = this.active?.id === event.dispatchId ? this.active : createTurn();
+			if (event.active)
+				this.observed = this.active?.id === event.dispatchId ? this.active : createTurn(this.summaryText);
 			else if (this.observed) {
 				if (this.observed !== this.active) this.observed.accepted = true;
 				this.observed.settled = true;
@@ -293,7 +284,8 @@ export class AcpSession {
 		}
 	}
 
-	private async ui(request: RpcExtensionUIRequest): Promise<void> {
+	private async ui(request: AcpUiRequest): Promise<void> {
+		// The host forwards only dialogs; a UI notification (status, widget, title) has no one to answer it.
 		if (!["select", "confirm", "input", "editor"].includes(request.method)) return;
 		const turn = this.observed ?? this.active;
 		const permission = request.method === "select" ? request.permission : undefined;

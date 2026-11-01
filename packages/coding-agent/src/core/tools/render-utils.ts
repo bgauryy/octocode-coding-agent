@@ -1,8 +1,9 @@
 import { animationClock, getCapabilities, getImageDimensions, imageFallback, MOTION } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
-import { formatDuration } from "../../octocode/shared/duration.ts";
+import { formatDuration } from "../../utils/duration.ts";
 import type { ToolRenderContext } from "../extensions/types.ts";
 
 export function str(value: unknown): string | null {
@@ -46,10 +47,12 @@ const COLLAPSED_ARGS_CHARS = 100;
 /**
  * Generic tool call header: the title followed by the arguments. Collapsed, they are `key=value`
  * pairs on the title line, cut to {@link COLLAPSED_ARGS_CHARS}. Expanded, each is a `key: value`
- * line below the title, with strings shown raw and continuation lines indented.
+ * line below the title, with strings shown as written and continuation lines indented. The title, keys and values
+ * come from the model or an MCP server, so terminal controls (escape sequences, C1 introducers, bidi overrides) are
+ * stripped before the text is themed.
  */
 export function formatToolCallWithArgs(title: string, args: unknown, theme: Theme, expanded: boolean): string {
-	const header = theme.fg("toolTitle", theme.bold(title));
+	const header = theme.fg("toolTitle", theme.bold(sanitizeTerminalText(title)));
 	if (args == null) return header;
 	const entries =
 		typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : ([["args", args]] as [string, unknown][]);
@@ -57,11 +60,14 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 	if (expanded) {
 		const lines = entries.map(([key, value]) => {
 			const text = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? String(value));
-			return `  ${key}: ${replaceTabs(text).replace(/\r/g, "").split("\n").join("\n    ")}`;
+			const shown = sanitizeTerminalText(replaceTabs(text).replace(/\r/g, ""));
+			return `  ${sanitizeTerminalText(key)}: ${shown.split("\n").join("\n    ")}`;
 		});
 		return `${header}\n${theme.fg("muted", lines.join("\n"))}`;
 	}
-	const pairs = entries.map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`).join(" ");
+	const pairs = sanitizeTerminalText(
+		entries.map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`).join(" "),
+	);
 	const preview = pairs.length > COLLAPSED_ARGS_CHARS ? `${pairs.slice(0, COLLAPSED_ARGS_CHARS - 3)}...` : pairs;
 	return `${header} ${theme.fg("muted", preview)}`;
 }

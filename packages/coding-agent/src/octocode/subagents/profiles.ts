@@ -5,14 +5,16 @@ import path from "node:path";
 import { parseArgs } from "../../cli/args.ts";
 import { getSubagentsDir } from "../../config.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
-import { applyToolModifiers, SettingsManager } from "../../core/settings-manager.ts";
+import { selectsToolPrefix } from "../../core/agent-session/tool-selection.ts";
+import { applyToolModifiers, currentToolName, SettingsManager } from "../../core/settings-manager.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { Permission } from "../permission/ask.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { globalPaths, nativeAgentDir, projectAgentDirs } from "../shared/home.ts";
-import { LEGACY_CHANGE_TOOLS } from "../../core/tools/tool-names.ts";
+import { FILE_TOOL, LEGACY_CHANGE_TOOLS } from "../../core/tools/tool-names.ts";
 import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
+import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 
 export interface AgentProfile {
 	name: string;
@@ -169,10 +171,11 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 	};
 }
 
+/** A profile's comma-separated tool list; a renamed tool's old name (`task`) selects the current one for one release. */
 const toolList = (list: string | undefined): string[] =>
 	(list ?? "")
 		.split(",")
-		.map((name) => name.trim())
+		.map((name) => currentToolName(name.trim()))
 		.filter(Boolean);
 
 /** Octocode owns selector validation. Its matcher is private; only `*` is special in a tool-name pattern. */
@@ -271,7 +274,7 @@ export function profileTools(profile?: AgentProfile): string {
 /** Excluding our file tool also excludes the native tools it replaces, including when a pattern matches it. */
 export function profileExcludes(excludeTools: string | undefined): string[] {
 	const excluded = toolList(excludeTools);
-	return [...new Set(matchesTool(excluded, "file") ? [...excluded, ...LEGACY_CHANGE_TOOLS] : excluded)];
+	return [...new Set(matchesTool(excluded, FILE_TOOL) ? [...excluded, ...LEGACY_CHANGE_TOOLS] : excluded)];
 }
 
 export function profileSelectsTool(
@@ -286,6 +289,21 @@ export function profileSelectsTool(
 			? matchesTool(selected, name)
 			: applyToolModifiers(defaults, selected ?? []).includes(name))
 	);
+}
+
+/** The prefix of the browser MCP server's tools. */
+const BROWSER_MCP_PREFIX = `${mcpNamespace(BROWSER_SERVER)}__`;
+
+/** Whether the profile selects the browser MCP server's tools: the capability `headless` applies to. */
+export function profileSelectsBrowser(profile: AgentProfile | undefined): boolean {
+	// The server is not active by default, so only an entry naming it counts: a broad `mcp__*` does not.
+	const selected = selectedTools(profileTools(profile));
+	const relative = !selected || isRelative(selected);
+	return selectsToolPrefix(BROWSER_MCP_PREFIX, false, {
+		...(relative ? {} : { allowed: selected }),
+		excluded: profileExcludes(profile?.excludeTools),
+		modifiers: relative ? (selected ?? []) : [],
+	});
 }
 
 /** The workspace classes exposed by the child's native selection and Octocode's direct extension tools. */

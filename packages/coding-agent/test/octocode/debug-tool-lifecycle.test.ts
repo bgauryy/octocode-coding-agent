@@ -30,6 +30,50 @@ it("does not launch an adapter for an already cancelled call", async () => {
 	}
 });
 
+it("answers launch without an adapter with the adapter recipes and starts nothing", async () => {
+	const fake = fakeHost();
+	registerDebugTool(fake.api);
+	const tool = fake.tools.get("debug")!;
+	// The recipes are not in the declaration sent with every request; the launch help carries them.
+	for (const adapter of ["lldb-dap", "debugpy", "js-debug"]) expect(tool.description).toContain(adapter);
+	expect(tool.description).not.toContain("dapDebugServer.js");
+	const launch = vi.spyOn(DebugSession, "launch").mockRejectedValue(new Error("unexpected adapter launch"));
+	try {
+		const result = await tool.execute(
+			"help",
+			{ action: "launch" },
+			undefined,
+			undefined,
+			fakeCtx({ cwd: process.cwd() }),
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/^Nothing was launched\./);
+		for (const fact of [
+			'adapter "xcrun", adapterArgs ["lldb-dap"]',
+			'adapterArgs ["-m","debugpy.adapter"]',
+			"subProcess: false",
+			'"<js-debug>/src/dapDebugServer.js","0","127.0.0.1"], tcp true',
+			'outputCapture: "std"',
+			'exceptions ["all"] for ES modules',
+			"32 adapterArgs, 32 breakpoint files, 100 lines per file, 16 exception filters",
+		])
+			expect(text).toContain(fact);
+		expect(launch).not.toHaveBeenCalled();
+		// With an adapter but no launch arguments the call is refused and points back at the help.
+		await expect(
+			tool.execute(
+				"no-args",
+				{ action: "launch", adapter: "node" },
+				undefined,
+				undefined,
+				fakeCtx({ cwd: process.cwd() }),
+			),
+		).rejects.toThrow(/launch without adapter shows the recipes/);
+	} finally {
+		launch.mockRestore();
+	}
+});
+
 it("replaces a naturally ended session on the next launch", async () => {
 	const fake = fakeHost();
 	registerDebugTool(fake.api);
@@ -66,6 +110,7 @@ it.each(["session_shutdown", "session_before_switch", "session_before_fork"])(
 		let finish: (value: Awaited<ReturnType<typeof DebugSession.launch>>) => void = () => undefined;
 		let launchSignal: AbortSignal | undefined;
 		const close = vi.fn();
+		const terminate = vi.fn(async () => undefined);
 		const launch = vi.spyOn(DebugSession, "launch").mockImplementation((_input, signal) => {
 			launchSignal = signal;
 			return new Promise((resolve) => {
@@ -85,8 +130,10 @@ it.each(["session_shutdown", "session_before_switch", "session_before_fork"])(
 			await vi.waitFor(() => expect(launch).toHaveBeenCalledOnce());
 			await fake.emit(event, {}, ctx);
 			expect(launchSignal?.aborted).toBe(true);
-			finish({ session: { close } as unknown as DebugSession, breakpoints: [], exceptions: NO_EXCEPTIONS });
+			finish({ session: { close, terminate } as unknown as DebugSession, breakpoints: [], exceptions: NO_EXCEPTIONS });
 			await expect(running).rejects.toThrow("expired");
+			// The launched program may already run, so it is ended through the adapter before the adapter stops.
+			expect(terminate).toHaveBeenCalledOnce();
 			expect(close).toHaveBeenCalledOnce();
 		} finally {
 			launch.mockRestore();
@@ -100,6 +147,7 @@ it("terminate aborts an in-flight launch and rejects a concurrent second launch"
 	const ctx = fakeCtx({ cwd: process.cwd() });
 	let finish: (value: Awaited<ReturnType<typeof DebugSession.launch>>) => void = () => undefined;
 	const close = vi.fn();
+	const terminate = vi.fn(async () => undefined);
 	const launch = vi.spyOn(DebugSession, "launch").mockImplementation(
 		() =>
 			new Promise((resolve) => {
@@ -116,8 +164,9 @@ it("terminate aborts an in-flight launch and rejects a concurrent second launch"
 		);
 		const terminated = await tool.execute("terminate", { action: "terminate" }, undefined, undefined, ctx);
 		expect(terminated.content[0].text).toContain("cancelled");
-		finish({ session: { close } as unknown as DebugSession, breakpoints: [], exceptions: NO_EXCEPTIONS });
+		finish({ session: { close, terminate } as unknown as DebugSession, breakpoints: [], exceptions: NO_EXCEPTIONS });
 		await expect(running).rejects.toThrow("expired");
+		expect(terminate).toHaveBeenCalledOnce();
 		expect(close).toHaveBeenCalledOnce();
 	} finally {
 		launch.mockRestore();

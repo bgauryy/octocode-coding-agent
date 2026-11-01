@@ -65,8 +65,9 @@ const calls =
 	(...toolCalls: ReturnType<typeof fauxToolCall>[]) =>
 	() =>
 		fauxAssistantMessage(toolCalls, { stopReason: "toolUse" });
-const agentCall = (type: "task" | "coordinate" | "message", input: Parameters<typeof fauxToolCall>[1]) =>
-	nativeCall("agent", { type, input });
+/** The flat `agent` call: `type` and that type's fields at the top level. */
+const agentCall = (type: "task" | "coordinate" | "message", fields: Parameters<typeof fauxToolCall>[1]) =>
+	nativeCall("agent", { type, ...fields });
 const say = (text: string) => () => fauxAssistantMessage(text);
 type Reply = () => ReturnType<typeof fauxAssistantMessage>;
 
@@ -125,7 +126,7 @@ beforeAll(async () => {
 			hooks: { PreToolUse: entry("Bash"), PostToolUse: entry("Bash"), SessionStart: entry("startup") },
 		}),
 	);
-	// A Octocode-protected resource, so Octocode resolves project trust without /octocode trust.
+	// A Octocode-protected resource, so Octocode resolves project trust without /trust.
 	fs.mkdirSync(path.join(cwd, ".octocode"), { recursive: true });
 	fs.writeFileSync(path.join(cwd, ".octocode", "settings.json"), "{}");
 	fs.writeFileSync(path.join(cwd, "app.ts"), "export const answer = 41;\n");
@@ -201,9 +202,8 @@ describe("Native features through the SDK", () => {
 		const [turn] = await run("hello", [say("ready")]);
 		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "memory"])
 			expect(turn.tools).toContain(name);
-		// The bundled web profiles carry browser, so the main session leaves its schema out (it stays registered).
-		expect(turn.tools).not.toContain("browser");
-		expect(session.getAllTools().map((tool) => tool.name)).toContain("browser");
+		// Browsing is the browser MCP server's; no native `browser` tool is registered.
+		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("browser");
 		const commands = session.extensionRunner.getRegisteredCommands().map((command) => command.name);
 		for (const name of [
 			"status",
@@ -216,11 +216,12 @@ describe("Native features through the SDK", () => {
 			"rewind",
 			"api",
 			"mcp",
-			// Bare `/octocode` opens the live workspace (`remote/register.ts`); only its namespaced form is retired.
-			"octocode",
+			// `/web` opens the live workspace (`remote/register.ts`); `/octocode` is retired and never registered.
+			"web",
 		])
 			expect(commands).toContain(name);
 		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
+		expect(commands).not.toContain("octocode");
 		expect(session.systemPrompt).toContain("demo-skill");
 		expect(turn.context).toMatch(/Delegation/);
 		// The banner is the TUI header (none over RPC), never a session entry.
@@ -241,7 +242,12 @@ describe("Native features through the SDK", () => {
 		await session.prompt("/hooks");
 		expect(note(/^Hooks: /)).toMatch(/Hook files[\s\S]*settings\.json/);
 		const beforeRequests = turns.length;
-		// `/octocode` is the workspace command now; a retired namespaced form still gets migration guidance, not the board.
+		// `/octocode` is retired (the workspace command is `/web`): every form gets migration guidance and never reaches the model.
+		await session.prompt("/octocode");
+		expect(ui.notes.at(-1)).toMatchObject({
+			message: "/octocode moved to /web. Run the new command to continue.",
+			type: "warning",
+		});
 		await session.prompt("/octocode permissions manual");
 		expect(ui.notes.at(-1)).toMatchObject({
 			message: "/octocode permissions moved to /permissions manual. Run the new command to continue.",
@@ -367,7 +373,7 @@ describe("Native features through the SDK", () => {
 		peer.join("peer reviewer");
 		expect(peer.lock(["held.txt"], "review").ok).toBe(true);
 		const replies = [
-			calls(agentCall("coordinate", { action: "join", goal: "main" })),
+			calls(agentCall("coordinate", { action: "join", joinGoal: "main" })),
 			calls(agentCall("coordinate", { action: "lock", paths: ["held.txt", "mine.txt"] })),
 			calls(
 				nativeCall("file", {

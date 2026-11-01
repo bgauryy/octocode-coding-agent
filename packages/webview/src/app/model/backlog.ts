@@ -1,4 +1,4 @@
-import { PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
+import { type BacklogTask, DEFAULT_ITEM_TYPE, PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
 import type { Snapshot, SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
 import { median } from "./format.ts";
 
@@ -19,6 +19,8 @@ export interface BacklogIndex {
 	states: readonly State[];
 	items: readonly SnapshotItem[];
 	byRef: ReadonlyMap<string, SnapshotItem>;
+	/** Tasks that belong to a session and no item. */
+	sessionTasks: readonly BacklogTask[];
 }
 
 export function indexBacklog(snapshot: Snapshot): BacklogIndex {
@@ -29,6 +31,7 @@ export function indexBacklog(snapshot: Snapshot): BacklogIndex {
 		states: snapshot.states,
 		items: snapshot.items,
 		byRef: new Map(snapshot.items.map((it) => [it.ref, it])),
+		sessionTasks: snapshot.sessionTasks ?? [],
 	};
 }
 
@@ -57,7 +60,7 @@ function haystack(it: SnapshotItem): string {
 	if (text === undefined) {
 		text = [
 			it.ref,
-			it.type ?? "task",
+			it.type ?? DEFAULT_ITEM_TYPE,
 			it.parentId ?? "",
 			JSON.stringify(it.completions ?? []),
 			JSON.stringify(it.links ?? []),
@@ -102,7 +105,7 @@ export function filterBoard(index: BacklogIndex, filters: BoardFilters): Snapsho
 			(it) =>
 				matchesQuery(it, filters.q) &&
 				(!filters.p || it.priority === filters.p) &&
-				(!filters.type || (it.type ?? "task") === filters.type) &&
+				(!filters.type || (it.type ?? DEFAULT_ITEM_TYPE) === filters.type) &&
 				(!filters.tag || it.tags.includes(filters.tag)) &&
 				(!filters.assignee || it.assignee === filters.assignee) &&
 				(!filters.ready || isReadyToStart(it)),
@@ -194,8 +197,9 @@ export function buildTree(index: BacklogIndex): { roots: TreeNode[]; alone: Snap
 	];
 	for (const item of candidates) if (!visited.has(item.ref)) forest.push(node(item));
 	return {
-		roots: forest.filter((entry) => entry.children.length),
-		alone: forest.filter((entry) => !entry.children.length).map((entry) => entry.item),
+		// An epic is a root even while empty, so an item can be put under it.
+		roots: forest.filter((entry) => entry.children.length || entry.item.type === "epic"),
+		alone: forest.filter((entry) => !entry.children.length && entry.item.type !== "epic").map((entry) => entry.item),
 	};
 }
 export function attention(index: BacklogIndex): { claims: SnapshotItem[]; idle: SnapshotItem[] } {

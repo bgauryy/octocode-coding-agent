@@ -5,7 +5,7 @@ import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
 import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
-import { sessionFileRunningPid } from "../octocode/agentdb/liveness.ts";
+import { sessionFileRunningPid } from "../octocode/agentdb/api.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -29,6 +29,15 @@ function findLocalSessionByExactId(
 ): { type: "local"; path: string } | undefined {
 	const path = SessionManager.findById(cwd, sessionId, sessionDir);
 	return path ? { type: "local", path } : undefined;
+}
+
+/**
+ * The saved session with exactly this id in any project folder (the search `--session <id>` falls back to). `--session-id` and
+ * `--fork --session-id` must not reuse it: two files with one id share its output, checkpoint, parked-child and pending-report folders.
+ */
+async function findSessionFileAnywhere(sessionId: string, sessionDir?: string): Promise<string | undefined> {
+	const sessions = await SessionManager.listAll(sessionDir);
+	return sessions.find((session) => session.id === sessionId)?.path;
 }
 
 async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: string): Promise<ResolvedSession> {
@@ -187,9 +196,9 @@ export async function createSessionManager(
 
 	if (parsed.fork) {
 		if (parsed.sessionId) {
-			const existingTarget = findLocalSessionByExactId(parsed.sessionId, cwd, sessionDir);
+			const existingTarget = await findSessionFileAnywhere(parsed.sessionId, sessionDir);
 			if (existingTarget) {
-				console.error(chalk.red(`Session already exists with id '${parsed.sessionId}'`));
+				console.error(chalk.red(`Session already exists with id '${parsed.sessionId}': ${existingTarget}`));
 				process.exit(1);
 			}
 		}
@@ -261,6 +270,15 @@ export async function createSessionManager(
 		if (existingSession) {
 			await confirmSessionNotRunning(existingSession.path, parsed, settingsManager);
 			return SessionManager.open(existingSession.path, sessionDir);
+		}
+		const elsewhere = await findSessionFileAnywhere(parsed.sessionId, sessionDir);
+		if (elsewhere) {
+			console.error(
+				chalk.red(
+					`Error: Session id '${parsed.sessionId}' already exists in another project folder: ${elsewhere}. Use --session ${parsed.sessionId} to open or fork it here.`,
+				),
+			);
+			process.exit(1);
 		}
 		console.error(
 			chalk.yellow(

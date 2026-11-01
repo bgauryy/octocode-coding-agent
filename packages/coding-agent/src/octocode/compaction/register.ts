@@ -17,6 +17,7 @@ import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "../shared/turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
 import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { shellParserReady } from "../permission/shell/mutation.ts";
 import { clearStaleResults, prefixRewritten } from "./clearing.ts";
 import { COMPACT_TOOL, CompactRequests } from "./compact-tool.ts";
 import { noticeContextUsage } from "./context-notice.ts";
@@ -210,7 +211,9 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 	// running turn ends).
 	api.on("context", async (event, ctx) => {
 		// Before every request, in a run or at its start: when the cache was last used longer ago than its lifetime (an idle
-		// gap, or a long tool in the run), this request rewrites it anyway, so old results are cleared first.
+		// gap, or a long tool in the run), this request rewrites it anyway, so old results are cleared first. A bash result is
+		// cleared only when its command is read-only, which the bash parse must confirm: load it first.
+		await shellParserReady();
 		clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
 			rewrite: prefixRewritten(event.messages, ctx.model),
 			contextWindow: ctx.model?.contextWindow,

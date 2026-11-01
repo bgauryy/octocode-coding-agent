@@ -98,7 +98,8 @@ export async function captureParseBefore(
 	signal?: AbortSignal,
 ): Promise<Map<string, ParseObservation>> {
 	const observations = new Map<string, ParseObservation>();
-	for (const path of new Set(paths.slice(0, MAX_FILES))) {
+	// Distinct files: a batch that edits one file several times still checks the next ones, as `inspectMutations` does.
+	for (const path of [...new Set(paths)].slice(0, MAX_FILES)) {
 		const observed = await observe(path, ctx, signal);
 		if (observed) observations.set(path, observed);
 	}
@@ -148,13 +149,13 @@ export async function inspectParseAfter(
 	return feedback;
 }
 
-/** The rows that carry a claim; a file type the parser does not serve says nothing worth a line to the model. */
+/** Only a regression or an already-invalid file is worth a line; a clean parse, an unserved type or a superseded edit says nothing. */
 export function formatParseFeedback(feedback: readonly ParseFeedback[]): string {
 	return feedback
-		.filter(({ state }) => state !== "unsupported")
+		.filter(({ state }) => state === "possible-regression" || state === "already-invalid")
 		.map(
 			({ path, state }) =>
-				`${path}: ${state === "possible-regression" ? "possible parse regression observed after edit (source version unverified)" : state === "already-invalid" ? "parse errors already observed before this batch" : state === "observed-parsed" ? "parse completed after edit (source version unverified)" : `parse feedback ${state}; no parse claim available`}.`,
+				`${path}: ${state === "possible-regression" ? "possible parse regression observed after edit (source version unverified)" : "parse errors already observed before this batch"}.`,
 		)
 		.join("\n");
 }

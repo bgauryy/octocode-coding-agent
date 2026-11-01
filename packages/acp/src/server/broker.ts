@@ -9,12 +9,13 @@ import {
 	type McpServer,
 	type Stream,
 } from "@agentclientprotocol/sdk";
-import { VERSION } from "../../../coding-agent/src/config.ts";
+import type { AcpBrokerHost } from "../host.ts";
 import { AcpSession, type AcpWorker } from "./session.ts";
 import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay } from "./history.ts";
 
 export type { AcpWorker } from "./session.ts";
 interface AcpBrokerOptions {
+	host: AcpBrokerHost;
 	createWorker: (cwd: string, mcpServers: McpServer[], sessionPath?: string) => Promise<AcpWorker>;
 	maxSessions?: number;
 	cancelTimeoutMs?: number;
@@ -45,7 +46,7 @@ export class AcpBroker {
 				this.initialized = true;
 				return {
 					protocolVersion: PROTOCOL_VERSION,
-					agentInfo: { name: "octocode", version: VERSION },
+					agentInfo: { name: "octocode", version: this.options.host.version },
 					authMethods: [],
 					agentCapabilities: {
 						loadSession: true,
@@ -84,7 +85,12 @@ export class AcpBroker {
 			})
 			.onRequest(methods.agent.session.list, ({ params }) => {
 				this.ready();
-				return listHistory(params.cwd ?? undefined, params.cursor ?? undefined, this.options.sessionDir);
+				return listHistory(
+					this.options.host,
+					params.cwd ?? undefined,
+					params.cursor ?? undefined,
+					this.options.sessionDir,
+				);
 			})
 			.onRequest(methods.agent.session.prompt, ({ params }) => this.get(params.sessionId).prompt(params.prompt))
 			.onNotification(methods.agent.session.cancel, ({ params }) => this.get(params.sessionId, true).cancel())
@@ -126,7 +132,7 @@ export class AcpBroker {
 		if (this.restoring.has(id)) throw RequestError.invalidRequest(undefined, "Session is already restoring.");
 		this.restoring.add(id);
 		try {
-			const info = await findHistory(id, cwd, this.options.sessionDir);
+			const info = await findHistory(this.options.host, id, cwd, this.options.sessionDir);
 			const active = this.sessions.get(id);
 			if (active) {
 				if (active.isBusy()) throw RequestError.invalidRequest(undefined, "Session is busy; nothing was replaced.");
@@ -162,7 +168,8 @@ export class AcpBroker {
 		let session: AcpSession | undefined;
 		try {
 			const directory = await canonicalDirectory(cwd);
-			const replaySaved = replay && path && expectedId ? prepareHistoryReplay(path, expectedId, client) : undefined;
+			const replaySaved =
+				replay && path && expectedId ? prepareHistoryReplay(this.options.host, path, expectedId, client) : undefined;
 			const worker = await this.options.createWorker(directory, servers, path);
 			if (this.stopped) {
 				await worker.stop();
@@ -173,6 +180,7 @@ export class AcpBroker {
 				worker,
 				client,
 				this.options.cancelTimeoutMs ?? 5_000,
+				(summary, tokensBefore) => this.options.host.compactionSummaryText(summary, tokensBefore),
 				() => {
 					if (session && this.sessions.get(session.id) === session) this.sessions.delete(session.id);
 				},

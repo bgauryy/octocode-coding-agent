@@ -12,6 +12,16 @@ import type { SourceInfo } from "../../../core/source-info.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { StatusIndicator } from "../components/status-indicator.ts";
 
+/** A link in a status line: the status helper validates `url` (http or https) and draws it as an OSC 8 hyperlink. */
+export interface StatusLink {
+	url: string;
+	/** Shown instead of the URL; defaults to the URL. */
+	label?: string;
+}
+
+/** Status text: plain strings are shown without terminal controls; links are validated by the helper. */
+export type StatusText = string | readonly (string | StatusLink)[];
+
 /** Interface for components that can be expanded/collapsed */
 export interface Expandable {
 	setExpanded(expanded: boolean): void;

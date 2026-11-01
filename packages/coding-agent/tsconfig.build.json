@@ -10,6 +10,8 @@
 			"@octocodeai/octocode-ai": ["../ai/dist/index.d.ts"],
 			"@octocodeai/octocode-ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"],
 			"@octocodeai/octocode-tui": ["../tui/dist/index.d.ts"],
+			"@octocodeai/octocode-tui/ansi": ["../tui/dist/utils/ansi-codes.d.ts"],
+			"@octocodeai/octocode-tui/multiplexer": ["../tui/dist/multiplexer.d.ts"],
 			"@octocodeai/octocode-tui/*": ["../tui/dist/*.d.ts", "../tui/dist/components/*.d.ts"]
 		},
 		"rootDir": "./src"

@@ -143,10 +143,20 @@ function decorate(ctx: ExtensionContext): void {
 	paintIndicators(ctx);
 }
 
+/** A running tool row animates its own spinner: the working line then keeps its first frame, so two never spin at once. */
+let rowsAnimate = false;
+
 function paintIndicators(ctx: ExtensionContext): void {
-	const theme = ctx.ui.theme;
-	// Octocode's loader steps every 80 ms when no interval is given.
-	ctx.ui.setWorkingIndicator({ frames: spinnerFrames(theme) });
+	const frames = spinnerFrames(ctx.ui.theme);
+	// Octocode's loader steps every 80 ms when no interval is given; one frame is a still mark with no shimmer.
+	ctx.ui.setWorkingIndicator({ frames: rowsAnimate ? frames.slice(0, 1) : frames });
+}
+
+/** Hold (`true`) or restore the working line's own spinner; a no-op when it is already so. */
+export function setRowsAnimate(ctx: ExtensionContext, animate: boolean): void {
+	if (rowsAnimate === animate) return;
+	rowsAnimate = animate;
+	paintIndicators(ctx);
 }
 
 /** Streaming shorter than this is mostly one network chunk: a reply of a few tokens would read as thousands per second. */

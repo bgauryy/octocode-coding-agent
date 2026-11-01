@@ -1,7 +1,9 @@
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { SessionNotification, StopReason, ToolCallContent } from "@agentclientprotocol/sdk";
-import { compactionSummaryDisplay } from "../../../coding-agent/src/core/messages.ts";
-import type { RpcEvent } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
+import type { AcpWorkerEvent } from "../host.ts";
+
+/** A compaction summary as the Markdown a person reads (the host owns the summary format). */
+export type CompactionText = (summary: string, tokensBefore: number) => string;
 
 type Update = SessionNotification["update"];
 const MAX_TOOL_TEXT = 16_000;
@@ -62,19 +64,22 @@ function compactionResult(id: string, failed: boolean, text: string): Update {
 }
 
 /** A compaction already in the session's history: one finished tool call that carries the summary a person reads. */
-export function compactionReplay(id: string, summary: string, tokensBefore: number): Update[] {
+export function compactionReplay(id: string, text: string): Update[] {
 	return [
 		compactionCall(`compaction-${id}`, "Context compacted", "completed"),
-		compactionResult(`compaction-${id}`, false, compactionSummaryDisplay({ summary, tokensBefore })),
+		compactionResult(`compaction-${id}`, false, text),
 	];
 }
 
 /** A compaction's ending as text for its tool call: the summary a person reads, or why none was made. */
-function compactionEnd(event: Extract<RpcEvent, { type: "compaction_end" }>): { failed: boolean; text: string } {
+function compactionEnd(
+	event: Extract<AcpWorkerEvent, { type: "compaction_end" }>,
+	summaryText: CompactionText,
+): { failed: boolean; text: string } {
 	if (event.aborted) return { failed: true, text: "Compaction cancelled." };
 	if (event.result) {
 		const { summary, tokensBefore } = event.result;
-		return { failed: false, text: compactionSummaryDisplay({ summary, tokensBefore }) };
+		return { failed: false, text: summaryText(summary, tokensBefore) };
 	}
 	return { failed: true, text: event.errorMessage || "Compaction failed." };
 }
@@ -120,6 +125,11 @@ export class AcpEventProjector {
 	private reason: StopReason = "end_turn";
 	private failure: string | undefined;
 	private commandFailure: string | undefined;
+	private readonly summaryText: CompactionText;
+
+	constructor(summaryText: CompactionText) {
+		this.summaryText = summaryText;
+	}
 
 	get stopReason(): StopReason {
 		return this.reason;
@@ -129,7 +139,7 @@ export class AcpEventProjector {
 		return this.commandFailure ?? this.failure;
 	}
 
-	update(event: RpcEvent): Update[] {
+	update(event: AcpWorkerEvent): Update[] {
 		switch (event.type) {
 			case "extension_error":
 				if (event.event === "command") this.commandFailure = event.error;
@@ -139,7 +149,7 @@ export class AcpEventProjector {
 				return [];
 			case "message_update": {
 				const delta = event.assistantMessageEvent;
-				if (delta.type !== "text_delta") return [];
+				if (delta.type !== "text_delta" || delta.contentIndex === undefined || delta.delta === undefined) return [];
 				this.streamed.set(delta.contentIndex, (this.streamed.get(delta.contentIndex) ?? "") + delta.delta);
 				return chunk(delta.delta);
 			}
@@ -176,7 +186,7 @@ export class AcpEventProjector {
 				// A compaction that could not start (no model, nothing to summarize) ends without a start.
 				const { id, updates } = this.startCompaction(event.reason);
 				this.compaction = undefined;
-				const { failed, text } = compactionEnd(event);
+				const { failed, text } = compactionEnd(event, this.summaryText);
 				updates.push(compactionResult(id, failed, text));
 				return updates;
 			}

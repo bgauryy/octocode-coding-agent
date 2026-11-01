@@ -9,7 +9,7 @@ import {
 } from "../catalog.ts";
 import { HOOK_MAX_TIMEOUT_S, type HookSource, type HookHandler, type HookConfig } from "../contracts.ts";
 import { parseHttpHook } from "../http.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeSessionEndOverride, hookMatcher } from "../profiles.ts";
 
 export const emptyHooks = (): HookConfig =>
@@ -124,7 +124,7 @@ export function parseHooks(
 							protocol,
 							server: hook.server as string,
 							tool: hook.tool as string,
-							input: isRecord(hook.input) ? hook.input : {},
+							input: asRecord(hook.input),
 							timeoutMs:
 								(typeof hook.timeout === "number" && Number.isFinite(hook.timeout) && hook.timeout > 0
 									? Math.min(hook.timeout, maxTimeout)

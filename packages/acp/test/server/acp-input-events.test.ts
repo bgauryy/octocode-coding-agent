@@ -4,7 +4,8 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { describe, expect, it } from "vitest";
 import { AcpEventProjector, toolContent, toolTitle } from "../../src/server/events.ts";
 import { convertPrompt } from "../../src/server/input.ts";
-import type { JsonAgentSessionEvent } from "../../../coding-agent/src/modes/json-event.ts";
+import type { AcpWorkerEvent } from "../../src/host.ts";
+import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5m8AAAAASUVORK5CYII=";
 
@@ -63,10 +64,9 @@ function assistant(text: string, changes: Partial<AssistantMessage> = {}): Assis
 	return { ...fauxAssistantMessage(text), ...changes };
 }
 
-function delta(contentIndex: number, text: string): JsonAgentSessionEvent {
+function delta(contentIndex: number, text: string): AcpWorkerEvent {
 	return {
 		type: "message_update",
-		usage: assistant("").usage,
 		assistantMessageEvent: { type: "text_delta", contentIndex, delta: text },
 	};
 }
@@ -77,7 +77,7 @@ function textChunk(text: string) {
 
 describe("ACP event projection", () => {
 	it("shows visible external messages without exposing hidden extension context", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		const message = {
 			role: "custom" as const,
 			customType: "octocode-external",
@@ -97,13 +97,12 @@ describe("ACP event projection", () => {
 	});
 
 	it("reconciles streamed text independently for each block and hides all thinking", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		projector.update({ type: "message_start", message: assistant("") });
 		expect(projector.update(delta(0, "Hello"))).toEqual([textChunk("Hello")]);
 		expect(
 			projector.update({
 				type: "message_update",
-				usage: assistant("").usage,
 				assistantMessageEvent: { type: "thinking_delta", contentIndex: 1, delta: "private" },
 			}),
 		).toEqual([]);
@@ -123,14 +122,14 @@ describe("ACP event projection", () => {
 	});
 
 	it("emits complete nonstreamed text and resets tracking for the next assistant message", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		expect(projector.update({ type: "message_end", message: assistant("One") })).toEqual([textChunk("One")]);
 		projector.update({ type: "message_start", message: assistant("") });
 		expect(projector.update({ type: "message_end", message: assistant("Two") })).toEqual([textChunk("Two")]);
 	});
 
 	it("does not duplicate a final snapshot that diverges from streamed text", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		projector.update(delta(0, "Streamed"));
 		expect(projector.update({ type: "message_end", message: assistant("Rewritten final") })).toEqual([]);
 	});
@@ -141,32 +140,31 @@ describe("ACP event projection", () => {
 		["stop", "end_turn"],
 		["toolUse", "end_turn"],
 	] as const)("maps assistant stop reason %s to %s", (stopReason, expected) => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		projector.update({ type: "message_end", message: assistant("", { stopReason }) });
 		expect(projector.stopReason).toBe(expected);
 	});
 
 	it("retains generation failures until retry is scheduled, then accepts the retried result", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		projector.update({
 			type: "message_end",
 			message: assistant("", { stopReason: "error", errorMessage: "provider unavailable" }),
 		});
 		expect(projector.error).toBe("provider unavailable");
-		projector.update({ type: "agent_end", messages: [], willRetry: true });
+		projector.update({ type: "agent_end", willRetry: true });
 		expect(projector.error).toBeUndefined();
 		projector.update({ type: "message_start", message: assistant("") });
 		projector.update({ type: "message_end", message: assistant("Recovered") });
-		projector.update({ type: "agent_end", messages: [], willRetry: false });
+		projector.update({ type: "agent_end", willRetry: false });
 		expect(projector.error).toBeUndefined();
 		expect(projector.stopReason).toBe("end_turn");
 	});
 
 	it("preserves a command failure after its dispatched model work completes", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		projector.update({
 			type: "extension_error",
-			extensionPath: "command:rotate",
 			event: "command",
 			error: "ACP owns session selection",
 		});
@@ -176,7 +174,7 @@ describe("ACP event projection", () => {
 	});
 
 	it("projects tool status and bounded text without raw output or binary details", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		expect(
 			projector.update({
 				type: "tool_execution_start",
@@ -222,7 +220,7 @@ describe("ACP event projection", () => {
 	});
 
 	it("announces a tool that ended before a start event and marks success completed", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		expect(
 			projector.update({
 				type: "tool_execution_end",
@@ -238,7 +236,7 @@ describe("ACP event projection", () => {
 	});
 
 	it("titles a tool call with its reason on one line, as the terminal's reason row does", () => {
-		const projector = new AcpEventProjector();
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		const args = { command: "npm test", reason: "Run the focused\ntests\u0007 now" };
 		expect(projector.update({ type: "tool_execution_start", toolCallId: "c", toolName: "bash", args })).toEqual([
 			{ sessionUpdate: "tool_call", toolCallId: "c", title: "bash: Run the focused tests now", status: "in_progress" },

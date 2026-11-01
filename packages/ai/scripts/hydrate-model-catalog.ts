@@ -16,7 +16,6 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 type CatalogEntry = ModelCatalogEntry & Record<string, unknown>;
 
-
 function isCatalogEntry(value: unknown): value is CatalogEntry {
 	return (
 		isRecord(value) &&

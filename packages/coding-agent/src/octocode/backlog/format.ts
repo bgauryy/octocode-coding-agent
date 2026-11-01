@@ -3,7 +3,10 @@ import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import { type BacklogStore, type Item, priorityName } from "./store.ts";
 import { type Note, STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
-import type { WorkLink } from "@octocodeai/octocode-contracts/backlogs";
+import type { BacklogTask, TaskTally, WorkLink } from "@octocodeai/octocode-contracts/backlogs";
+import { taskBlock, taskLine } from "./task-format.ts";
+import { refuseExportSecrets } from "./export-secrets.ts";
+import type { ItemMarks } from "./marks.ts";
 
 export const STATE_TITLE: Record<State, string> = {
 	ongoing: "Ongoing",
@@ -24,10 +27,25 @@ function holder(item: Item, self?: string, parents?: ReadonlySet<string>): strin
 /** ` (from B12)` when the item came from another one. */
 const fromText = (item: Item): string => (item.from === undefined ? "" : ` (from ${refText(item.from)})`);
 
-/** `B14 [ongoing p1] Title #tag (from B12) (you)` */
-export function itemLine(item: Item, self?: string, parents?: ReadonlySet<string>): string {
+/** What the item waits on, or for a done item what needs a second look: ` (blocked by B5)`, ` (needs review: B5 open)`, ` (2 open steps)`. */
+function waitText(item: Item, marks: ItemMarks): string {
+	const open = item.state === "done" ? [...(marks.blockedBy ?? []), ...(marks.openBelow ?? [])] : [];
+	const waiting = item.state === "done" ? "" : marks.blockedBy ? ` (blocked by ${marks.blockedBy.join(", ")})` : "";
+	const review = open.length ? ` (needs review: ${open.join(", ")} open)` : "";
+	const steps = marks.openSteps ? ` (${marks.openSteps} open step${marks.openSteps === 1 ? "" : "s"})` : "";
+	return `${waiting}${review}${steps}`;
+}
+
+/**
+ * `B14 [ongoing p1 bug] Title #tag ⊂B3 (from B12) (blocked by B5) (2 open steps) (you)`: the type shows unless it is feature, the
+ * parent as `⊂B3`; `marks` (from `BacklogStore.marks`) add what the database says: open prerequisites, open steps, a stale claim.
+ */
+export function itemLine(item: Item, self?: string, parents?: ReadonlySet<string>, marks: ItemMarks = {}): string {
 	const tags = item.tags.map((tag) => ` #${tag}`).join("");
-	return `${item.ref} [${item.state} ${priorityName(item.priority)}] ${visibleControls(item.title)}${tags}${fromText(item)}${holder(item, self, parents)}`;
+	const type = item.type === "feature" ? "" : ` ${item.type}`;
+	const parent = item.parentId && !marks.hideParent ? ` ⊂${item.parentId}` : "";
+	const stale = marks.stale ? " (stale: holder ended)" : "";
+	return `${item.ref} [${item.state} ${priorityName(item.priority)}${type}] ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${stale}`;
 }
 
 const ago = (at: number, now: number) => formatAgo(now - at);
@@ -115,7 +133,17 @@ interface DetailOptions {
 	/** The item this one came from, and the items that came from it (all of them). */
 	origin?: Item;
 	derived?: readonly Item[];
+	/** The item's tasks, and for an epic the state derived from its items (shown when it differs from the stored one). */
+	tasks?: readonly BacklogTask[];
+	epicState?: State;
+	/** An epic's child items (any depth), listed with their state and a done count. */
+	children?: readonly Item[];
+	/** Marks by item ref for the item and the items listed with it. */
+	marks?: ReadonlyMap<string, ItemMarks>;
 }
+
+/** Child lines shown before the rest is summarised. */
+const CHILD_LINES = 40;
 
 /** The whole item: header, goal, where, why, evidence, plan, times, origin, body, derived items and its notes. */
 export function itemDetail(
@@ -129,15 +157,27 @@ export function itemDetail(
 	const meta = [...timeline(item, now, self, parents), options.version ? `version ${item.version}` : ""].filter(
 		Boolean,
 	);
-	const lines = [itemLine(item, self, parents), ...itemFields(item), meta.join(" · ")];
-	if (options.origin) lines.push(`From: ${itemLine(options.origin, self, parents)}`);
+	const line = (shown: Item, hideParent = false) =>
+		itemLine(shown, self, parents, { ...options.marks?.get(shown.ref), ...(hideParent ? { hideParent } : {}) });
+	const lines = [line(item), ...itemFields(item), meta.join(" · ")];
+	if (item.type === "epic" && options.epicState && options.epicState !== item.state)
+		lines.splice(1, 0, `State from its items: ${options.epicState}`);
+	if (options.origin) lines.push(`From: ${line(options.origin)}`);
 	if (item.body) lines.push("", visibleControls(item.body));
-	if (options.derived?.length)
+	if (options.children?.length) {
+		const shown = options.children.slice(0, CHILD_LINES);
+		const done = options.children.filter((child) => child.state === "done").length;
 		lines.push(
 			"",
-			`Derived items (${options.derived.length}):`,
-			...options.derived.map((child) => `- ${itemLine(child, self, parents)}`),
+			`Items (${done}/${options.children.length} done):`,
+			...shown.map((child) => `- ${line(child, child.parentId === item.ref)}`),
 		);
+		if (options.children.length > shown.length)
+			lines.push(`- … and ${options.children.length - shown.length} more: list parentId ${item.ref}`);
+	}
+	if (options.derived?.length)
+		lines.push("", `Derived items (${options.derived.length}):`, ...options.derived.map((child) => `- ${line(child)}`));
+	lines.push(...taskBlock(options.tasks ?? []));
 	if (notes.length > 0) {
 		const offset = options.noteOffset ?? 0;
 		const label =
@@ -151,32 +191,66 @@ export function itemDetail(
 	return lines.join("\n");
 }
 
-/** Every item grouped by state, for a headless `/backlog`. */
+/**
+ * Every item grouped by state, for a headless `/backlog`: an item lists its open tasks beneath it, an epic shows the state
+ * derived from its items, and this session's own tasks follow.
+ */
 export function boardText(store: BacklogStore, self?: string): string {
 	const { items } = store.list();
-	if (items.length === 0) return "The backlog is empty. Add an item: /backlog add <title>";
+	const open = store.tasks.list({ states: ["todo", "ongoing"] });
+	const own = open.filter((task) => task.owner.kind === "session" && task.owner.id === self);
+	if (items.length === 0 && own.length === 0) return "The backlog is empty. Add an item: /backlog add <title>";
+	const derived = (item: Item) => {
+		const shown = store.epicState(item);
+		return item.type === "epic" && shown !== item.state ? ` (items say ${shown})` : "";
+	};
 	const sections = BOARD_ORDER.flatMap((state) => {
 		const rows = items.filter((item) => item.state === state);
 		return rows.length === 0
 			? []
-			: [`${STATE_TITLE[state]} (${rows.length})`, ...rows.map((item) => `  ${itemLine(item, self)}`)];
+			: [
+					`${STATE_TITLE[state]} (${rows.length})`,
+					...rows.flatMap((item) => [
+						`  ${itemLine(item, self)}${derived(item)}`,
+						...open
+							.filter((task) => task.owner.kind === "item" && task.owner.ref === item.ref)
+							.map((task) => `    ${taskLine(task, { owner: false })}`),
+					]),
+				];
 	});
+	if (own.length > 0)
+		sections.push(`Session tasks (${own.length})`, ...own.map((task) => `  ${taskLine(task, { owner: false })}`));
 	return sections.join("\n");
 }
 
-/** Keep the web workspace discoverable even when there are no open items; append live backlog counts. */
-export function countsText(counts: Record<State, number>): string {
+/** How many open tasks this session tracks: its own, and those under the items it holds (ongoing, assigned to `self`). */
+export function openTaskCount(store: BacklogStore, self: string): number {
+	const { items, sessions } = store.tasks.counts();
+	const open = (tally?: TaskTally) => (tally ? tally.todo + tally.ongoing : 0);
+	const held = store.list({ states: ["ongoing"] }).items.filter((item) => item.assignee === self);
+	return open(sessions[self]) + held.reduce((sum, item) => sum + open(items[item.ref]), 0);
+}
+
+/** Keep the web workspace discoverable even when there are no open items; append live backlog counts and this session's open tasks. */
+export function countsText(counts: Record<State, number>, tasks = 0): string {
 	const parts = [
 		counts.ongoing ? `${counts.ongoing} ongoing` : "",
 		counts.todo ? `${counts.todo} todo` : "",
 		counts.backlog ? `${counts.backlog} to triage` : "",
+		tasks ? `${tasks} task${tasks === 1 ? "" : "s"}` : "",
 	].filter(Boolean);
-	return ["/octocode · backlogs & activity", ...parts].join(" · ");
+	return ["/web · backlogs & activity", ...parts].join(" · ");
 }
 
 /** Markdown snapshot of the whole board with every note, for `<repo>/.octocode/backlog.md`. Nothing reads it back. */
 export function exportMarkdown(store: BacklogStore, repoName: string, now: number): string {
 	const { items } = store.list();
+	const notes = new Map(items.map((item) => [item.ref, store.notes(item, -1)]));
+	refuseExportSecrets(
+		repoName,
+		items.map((item) => ({ ...item, notes: notes.get(item.ref)! })),
+		"/backlog export",
+	);
 	const lines = [
 		`<!-- Generated by Octocode (/backlog export) at ${new Date(now).toISOString()}. A snapshot: edits here are not read back. -->`,
 		`# Backlog — ${visibleControls(repoName)}`,
@@ -205,7 +279,7 @@ export function exportMarkdown(store: BacklogStore, repoName: string, now: numbe
 			];
 			lines.push(`  _${times.filter(Boolean).join(" · ")}_`);
 			for (const line of item.body ? visibleControls(item.body).split("\n") : []) lines.push(`  ${line}`.trimEnd());
-			for (const note of store.notes(item, -1)) {
+			for (const note of notes.get(item.ref)!) {
 				const heading = `${new Date(note.at).toISOString().slice(0, 16).replace("T", " ")} ${visibleControls(note.author)}${note.kind === "change" ? " ·" : ":"}`;
 				lines.push(...`  - ${heading} ${indented(note.text, "    ")}`.split("\n").map((line) => line.trimEnd()));
 			}

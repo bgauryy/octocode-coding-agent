@@ -3,9 +3,9 @@ import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tool
 import { splitBom } from "../../../../../common/src/text.ts";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
 import type { Permission } from "../../permission/ask.ts";
-import { runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
+import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
+import { canonicalPath, workspaceRoot } from "../../shared/home/repo.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { transformPatch, type ParsedPatch } from "../../shared/codex-patch/patch.ts";
 import { type FileGuard, judgeChange, lostAnchor, staleRefusal } from "./guard.ts";
@@ -92,8 +92,9 @@ export async function preparePatch(
 			const checked = await inspect(query);
 			if (!checked.data) throw new Error(`Cannot update missing file ${hunk.path}`);
 			if (checked.changed) {
-				const lost = lostAnchor(hunk.path, edits, checked.data.toString("utf8"), guard.reader);
-				if (lost || !edits.length) throw new Error(lost ?? staleRefusal(hunk.path, guard.reader));
+				const by = guard.modifierNote(source);
+				const lost = lostAnchor(hunk.path, edits, checked.data.toString("utf8"), guard.reader, by);
+				if (lost || !edits.length) throw new Error(lost ?? staleRefusal(hunk.path, guard.reader, by));
 			}
 			const content = transformPatch(checked.data.toString("utf8"), hunk.chunks);
 			if (hunk.move_path !== null) {
@@ -148,7 +149,7 @@ export async function inspectQueryBatch(
 		const state = stateFolderRefusal(real, query.path, "the file tool");
 		if (state) throw new Error(state);
 		const root = workspaceRoot(ctx.cwd);
-		outside ||= !root || !isWithin(real, root) || runsLater(real, root);
+		outside ||= !root || !changesOnlyWorkspace(real, root) || runsLater(real, root);
 		if (query.type === "edit" && !query.edits?.length) throw new Error("edit needs a non-empty edits array.");
 		if (query.type === "write" && query.content === undefined) throw new Error("write needs content.");
 		if (repeated) {
@@ -173,7 +174,13 @@ export async function inspectQueryBatch(
 		if (query.type === "edit") {
 			const resolved = data ? resolveAnchoredEdits(query, data, guard, file) : query;
 			if (judged.changed) {
-				const lost = lostAnchor(query.path, resolved.edits ?? [], data?.toString("utf8") ?? "", guard.reader);
+				const lost = lostAnchor(
+					query.path,
+					resolved.edits ?? [],
+					data?.toString("utf8") ?? "",
+					guard.reader,
+					inspection.by,
+				);
 				if (lost) throw new Error(lost);
 			}
 			const content = splitBom(data?.toString("utf8") ?? "").text;

@@ -337,8 +337,9 @@ describe("Tool Results with Images", () => {
 		// reports the text-derived diameter but never mentions the image's color).
 		// The image-only case above proves the image reaches the model, and the
 		// text-only path obviously works, so this is a multimodal-fusion quality
-		// issue in the model, not a transport bug. Re-enable when upstream model
-		// quality improves.
+		// issue in the model, not a transport bug (xiaomi-tool-result-payload.test.ts
+		// pins that the request carries both). Re-enable when upstream model quality
+		// improves; revalidation is tracked as backlog B375.
 		it.skip("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
 			await handleToolWithTextAndImageResult(llm);
 		});

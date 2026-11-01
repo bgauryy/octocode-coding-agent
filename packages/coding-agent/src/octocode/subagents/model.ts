@@ -140,9 +140,30 @@ const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhi
 
 /**
  * Which model a subagent runs on. `model` goes to `--model`; `fallback` names the profile's preferred model when it is
- * unavailable (the child then runs on the parent's model); `error` refuses an explicit request.
+ * unavailable (the child then runs on the parent's model), and `refusedBy` its provider when that provider is configured
+ * but refused its credential recently; `error` refuses an explicit request.
  */
-export type ModelRoute = { model?: string; fallback?: string } | { error: string };
+export type ModelRoute = { model?: string; fallback?: string; refusedBy?: string } | { error: string };
+
+/** Why a profile's preferred model was not used: `p/m unavailable`, or `p/m: p refused its credential`. */
+export const fallbackNote = (fallback: string, refusedBy?: string): string =>
+	refusedBy ? `${fallback}: ${refusedBy} refused its credential` : `${fallback} unavailable`;
+
+/** The model a run is on without its provider (`claude-haiku-5-5:low`), with why it is the parent's when the profile's preference was not used. */
+export function modelLabel(details: { model?: string; fallback?: string; refusedBy?: string }): string {
+	const model = details.model?.slice(details.model.lastIndexOf("/") + 1);
+	return details.fallback
+		? `${model ?? "parent model"} (${fallbackNote(details.fallback, details.refusedBy)})`
+		: (model ?? "");
+}
+
+/** The models a purpose or a preferred model may route to: those of a provider that refused its credential are skipped, except the parent's own. */
+export const usableModels = <T extends ModelRef>(
+	available: readonly T[],
+	parent: ModelRef | undefined,
+	refused: ((provider: string) => boolean) | undefined,
+): readonly T[] =>
+	refused ? available.filter((model) => model.provider === parent?.provider || !refused(model.provider)) : available;
 
 /** `provider/id` (plus any `:thinking` suffix) for a requested `provider/id` or bare id, or undefined when no available model matches. */
 export function resolveModel(
@@ -189,6 +210,11 @@ interface RouteInput {
 	available: readonly ModelRef[];
 	parent?: ModelRef | undefined;
 	catalog?: Catalog | undefined;
+	/**
+	 * Providers whose credential was just refused (`ProviderHealth.refused`): a purpose or a profile's preferred model
+	 * skips them; an explicit model and the parent's own provider (its session proves the credential) are kept.
+	 */
+	refused?: ((provider: string) => boolean) | undefined;
 }
 
 /** The listed model a route's `provider/id[:thinking]` names, or undefined without a route or a listed match. */
@@ -222,7 +248,12 @@ function tierRoute(
 }
 
 export function routeModel(input: RouteInput): ModelRoute {
-	const { explicit, preferred, available, parent } = input;
+	const { explicit, preferred, parent, refused } = input;
+	const usable = usableModels(input.available, parent, refused);
+	const all = input.available;
+	// Only an explicit model id is strict: it may name a refused provider on purpose.
+	const available = explicit && !tierOf(explicit) ? input.available : usable;
+	input = { ...input, available };
 	const parentProvider = parent?.provider;
 	// Pinned explicitly: without --model the child would start on Octocode's default, not the model the parent runs on now.
 	const parentModel = parent ? { model: `${parent.provider}/${parent.id}` } : {};
@@ -246,5 +277,11 @@ export function routeModel(input: RouteInput): ModelRoute {
 	const tier = tierOf(preferred);
 	if (tier) return tierRoute(tier, input, parentModel);
 	const model = resolveModel(preferred, available, parentProvider);
-	return model ? { model } : { ...parentModel, fallback: preferred };
+	if (model) return { model };
+	const skipped = refused ? resolveModel(preferred, all, parentProvider) : undefined;
+	return {
+		...parentModel,
+		fallback: preferred,
+		...(skipped ? { refusedBy: skipped.slice(0, skipped.indexOf("/")) } : {}),
+	};
 }

@@ -8,6 +8,12 @@ export interface ModelSettingsApi {
 	setDefaultProvider(provider: string): void;
 	setDefaultModel(modelId: string): void;
 	setDefaultModelAndProvider(provider: string, modelId: string): void;
+	/** Sets or (with undefined) removes `defaultProvider` or `defaultModel` in one file; a project write needs a trusted project. */
+	setDefaultSelection(
+		scope: "global" | "project",
+		field: "defaultProvider" | "defaultModel",
+		value: string | undefined,
+	): void;
 	/** The user's default model id per provider. */
 	getProviderModels(): Record<string, string>;
 	getSteeringMode(): "all" | "one-at-a-time";

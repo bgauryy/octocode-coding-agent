@@ -63,7 +63,7 @@ describe("/permissions and editor shortcut", () => {
 	it("starts in full; the editor shortcut cycles full → workspace → manual → full", async () => {
 		const { permission, cycle, ctx } = setup({ env: {} });
 		expect(permission.mode).toBe("full");
-		expect(ctx.ui.statuses.get("octocode-permission")).toBe("⏵⏵ permission: full · Shift+Tab");
+		expect(ctx.ui.statuses.get("octocode-permission")).toBe("⏵⏵ permission: full · shift+tab");
 		await cycle();
 		expect(permission.mode).toBe("workspace");
 		await cycle();

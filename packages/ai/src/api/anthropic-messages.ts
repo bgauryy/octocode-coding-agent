@@ -9,6 +9,7 @@ import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
+import { clampThinkingLevel } from "../models/model-helpers.ts";
 import { retryAfterMsFromError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { getCurrentTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 
@@ -228,9 +229,15 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 		toolChoice: options?.toolChoice,
 	} satisfies AnthropicOptions;
 	if (!options?.reasoning) {
+		// A model that cannot turn thinking off (`off: null`) thinks anyway; without an effort it would think at the
+		// default `high` and can spend a small `maxTokens` before writing any text. Ask for its least effort instead.
+		const lowest =
+			model.reasoning && model.thinkingLevelMap?.off === null ? clampThinkingLevel(model, "minimal") : "off";
+		const least = lowest === "off" ? undefined : mapThinkingLevelToEffort(model, lowest);
 		return stream(model, context, {
 			...base,
 			thinkingEnabled: false,
+			...(least ? { effort: least } : {}),
 		} satisfies AnthropicOptions);
 	}
 

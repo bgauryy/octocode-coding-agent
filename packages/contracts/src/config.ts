@@ -38,11 +38,18 @@ export const ProviderCredentialStatusSchema = Type.Object(
 		name: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 		/** True when at least one source is present. */
 		configured: Type.Boolean(),
+		/** `false` when the credential endpoint would refuse this provider id, so the page offers no Set, Replace or Clear. */
+		editable: Type.Optional(Type.Boolean()),
 		sources: Type.Array(CredentialSourceStatusSchema, { maxItems: 16 }),
 	},
 	{ additionalProperties: false },
 );
 export type ProviderCredentialStatus = Static<typeof ProviderCredentialStatusSchema>;
+
+/** The settings the page shows and may change, in page order. Each is a string; a workspace value replaces the global one. */
+export const CONFIG_SETTING_KEYS = ["defaultProvider", "defaultModel"] as const;
+export const ConfigSettingKeySchema = StringEnum(CONFIG_SETTING_KEYS);
+export type ConfigSettingKey = Static<typeof ConfigSettingKeySchema>;
 
 export const SETTING_SOURCES = ["global", "workspace", "default"] as const;
 export const SettingSourceSchema = StringEnum(SETTING_SOURCES);
@@ -60,6 +67,57 @@ export const ConfigSettingSchema = Type.Object(
 );
 export type ConfigSetting = Static<typeof ConfigSettingSchema>;
 
+/** The files a setting can be written to. `default` is a source, never a target. */
+export const CONFIG_SETTING_SCOPES = ["global", "workspace"] as const;
+export const ConfigSettingScopeSchema = StringEnum(CONFIG_SETTING_SCOPES);
+export type ConfigSettingScope = Static<typeof ConfigSettingScopeSchema>;
+
+/**
+ * `POST /api/admin/config/settings`: set or clear one allow-listed setting in one file. `value: null` removes the key
+ * from that file, so the other scope (or the default) applies again. A `workspace` write names the repository the
+ * daemon indexed (`repoId`, never a path) and needs the workspace to be trusted.
+ */
+export const ConfigSettingCommandSchema = Type.Object(
+	{
+		key: ConfigSettingKeySchema,
+		scope: ConfigSettingScopeSchema,
+		/** No control characters, so a value cannot break a line of a log or a settings file. */
+		value: Type.Union([
+			Type.String({ minLength: 1, maxLength: 256, pattern: "^[^\\u0000-\\u001f\\u007f]+$" }),
+			Type.Null(),
+		]),
+		repoId: Type.Optional(Type.String({ pattern: "^[\\w.-]{1,128}$" })),
+	},
+	{ additionalProperties: false },
+);
+export type ConfigSettingCommand = Static<typeof ConfigSettingCommandSchema>;
+
+/** The longest key the page accepts. */
+export const MAX_CREDENTIAL_KEY_LENGTH = 8192;
+
+/** The same provider ids the OS keychain accepts (account names), so a key can be stored under any id the page sends. */
+export const ProviderIdSchema = Type.String({ pattern: "^[a-z0-9][a-z0-9._-]*$", minLength: 1, maxLength: 128 });
+
+/**
+ * `POST /api/admin/config/credentials`: set or replace one provider's API key, or clear the provider's stored
+ * credential. This is the only schema that carries a secret (`key`); it travels in this request body and nowhere else,
+ * and no reply, event, log line or audit row repeats it. Without an OS keychain the key is stored as plain text in
+ * `auth.json` only when `acknowledgePlaintext` is true.
+ */
+export const ConfigCredentialCommandSchema = Type.Union([
+	Type.Object(
+		{
+			action: Type.Literal("set"),
+			provider: ProviderIdSchema,
+			key: Type.String({ minLength: 1, maxLength: MAX_CREDENTIAL_KEY_LENGTH, pattern: "^[^\\u0000-\\u001f\\u007f]+$" }),
+			acknowledgePlaintext: Type.Optional(Type.Boolean()),
+		},
+		{ additionalProperties: false },
+	),
+	Type.Object({ action: Type.Literal("clear"), provider: ProviderIdSchema }, { additionalProperties: false }),
+]);
+export type ConfigCredentialCommand = Static<typeof ConfigCredentialCommandSchema>;
+
 /** A settings file that could not be read. The text is fixed; parser messages can quote file content. */
 export const SettingsFileErrorSchema = Type.Object(
 	{ scope: StringEnum(["global", "workspace"] as const), message: Type.String({ maxLength: 200 }) },
@@ -73,7 +131,7 @@ export const ConfigWorkspaceSchema = Type.Object(
 );
 export type ConfigWorkspace = Static<typeof ConfigWorkspaceSchema>;
 
-/** The read-only configuration page's model. It never carries a secret, a key value or `!` reference text. */
+/** The configuration page's model. It never carries a secret, a key value or `!` reference text. */
 export const ConfigSnapshotSchema = Type.Object(
 	{
 		protocolVersion: Type.Literal(CONFIG_PROTOCOL_VERSION),
@@ -87,6 +145,8 @@ export const ConfigSnapshotSchema = Type.Object(
 		/** Present when a settings file is invalid; its values are then not shown. */
 		settingsErrors: Type.Optional(Type.Array(SettingsFileErrorSchema, { maxItems: 4 })),
 		workspace: Type.Optional(ConfigWorkspaceSchema),
+		/** True when this connection may change settings: the launch capability only, never a published link. */
+		writable: Type.Optional(Type.Boolean()),
 	},
 	{ additionalProperties: false },
 );

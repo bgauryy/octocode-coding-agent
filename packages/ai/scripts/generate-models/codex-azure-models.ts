@@ -2,6 +2,7 @@ import type { Api, Model, ModelCost, OpenAICompletionsCompat } from "../../src/t
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import { OPENAI_STANDARD_COSTS } from "./constants.ts";
 import { withOpenAiLongContextPricing } from "./pricing.ts";
+import { getModelKey, modelsDevReasoningOptions } from "./thinking-levels.ts";
 
 /** OpenAI Codex models, Mistral and OpenRouter aliases, and Azure clones of OpenAI and DeepSeek models. */
 
@@ -229,6 +230,13 @@ export function addAzureModels(allModels: Model<any>[]): void {
 			},
 			contextWindow: AZURE_CONTEXT_WINDOW_OVERRIDES[model.id] ?? model.contextWindow,
 		}));
+	// Reasoning options are recorded per provider, and thinking-level maps are derived from them after
+	// cloning, so a clone must carry its source's options; otherwise o-series clones accept "none" and
+	// "minimal", which the deployment rejects.
+	for (const model of azureOpenAiModels) {
+		const reasoningOptions = modelsDevReasoningOptions.get(getModelKey({ provider: "openai", id: model.id }));
+		if (reasoningOptions) modelsDevReasoningOptions.set(getModelKey(model), reasoningOptions);
+	}
 	allModels.push(...azureOpenAiModels);
 
 	// Azure resells DeepSeek at its own rates. US data zone, checked 2026-09-16.

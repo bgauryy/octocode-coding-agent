@@ -5,7 +5,7 @@
 
 import fs from "node:fs";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpExtensionApi } from "./host/types.ts";
 import { type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
 import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -57,7 +57,7 @@ export function parseMcpSessionServers(text: string): { servers: Record<string, 
  * In a subagent, registers the servers its parent's `mcp` tool added. Without the file, or when it cannot be read,
  * the child runs with its configured servers only.
  */
-export function registerInheritedMcpServers(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
+export function registerInheritedMcpServers(api: McpExtensionApi, env: NodeJS.ProcessEnv = process.env): void {
 	const file = env[MCP_SESSION_SERVERS_FILE_ENV];
 	if (!file || !envFlag(env, SUBAGENT_ENV)) return;
 	try {

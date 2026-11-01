@@ -14,7 +14,7 @@
  */
 
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
+import { describeResponseFields, pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
 
 // Muse Code CLI client id.
 const CLIENT_ID = "1031625952748946";
@@ -67,7 +67,7 @@ async function startDeviceAuthorization(signal: AbortSignal): Promise<DeviceAuth
 	const userCode = json?.user_code;
 	const verificationUri = trustedHttpUrl(json?.verification_uri_complete) ?? trustedHttpUrl(json?.verification_uri);
 	if (typeof deviceCode !== "string" || !deviceCode || typeof userCode !== "string" || !userCode || !verificationUri) {
-		throw new Error(`Invalid Meta device authorization response: ${JSON.stringify(json)}`);
+		throw new Error(`Invalid Meta device authorization response: ${describeResponseFields(json)}`);
 	}
 	return {
 		deviceCode,

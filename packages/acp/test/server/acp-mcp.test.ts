@@ -7,6 +7,7 @@ import { McpClient, StdioTransport, StreamableHttpTransport } from "../../../mcp
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadExtensions } from "../../../coding-agent/src/core/extensions/loader.ts";
 import { createDefaultTransport } from "../../../mcp/src/runtime/transport.ts";
+import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 import { type AcpMcpServers, prepareAcpMcpServers } from "../../src/server/mcp.ts";
 
 describe("ACP session MCP servers", () => {
@@ -32,7 +33,7 @@ describe("ACP session MCP servers", () => {
 		...changes,
 	});
 	async function prepare(servers: McpServer[]) {
-		const entry = await prepareAcpMcpServers(servers, workspace);
+		const entry = await prepareAcpMcpServers(servers, workspace, acpServerHost);
 		prepared.push(entry);
 		return entry;
 	}

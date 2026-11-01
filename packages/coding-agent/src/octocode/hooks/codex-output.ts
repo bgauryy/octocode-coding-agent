@@ -1,4 +1,4 @@
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export function usesCodexSpecificDecision(specific: Record<string, unknown>): boolean {
 	return ["permissionDecision", "permissionDecisionReason", "updatedInput"].some((key) => specific[key] != null);
@@ -66,7 +66,7 @@ export function validateCodexOutput(event: string, json: Record<string, unknown>
 		if (error) return error;
 		if (json.continue === false || json.stopReason != null || json.suppressOutput === true)
 			return "Codex PermissionRequest: unsupported universal control";
-		const specific = isRecord(json.hookSpecificOutput) ? json.hookSpecificOutput : {};
+		const specific = asRecord(json.hookSpecificOutput);
 		const decision = specific.decision;
 		if (decision == null) return undefined;
 		if (
@@ -131,7 +131,7 @@ function validateCodexToolOutput(
 			: ["additionalContext", "updatedMCPToolOutput"],
 	);
 	if (error) return error;
-	const specific = isRecord(json.hookSpecificOutput) ? json.hookSpecificOutput : {};
+	const specific = asRecord(json.hookSpecificOutput);
 	if (json.suppressOutput === true) return invalid("unsupported suppressOutput");
 	if (event === "PostToolUse") {
 		if (specific.updatedMCPToolOutput != null) return invalid("unsupported updatedMCPToolOutput");

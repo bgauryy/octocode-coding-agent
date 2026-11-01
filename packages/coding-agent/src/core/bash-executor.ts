@@ -12,7 +12,7 @@ import { shortPath } from "../octocode/shared/format.ts";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../utils/ansi.ts";
 import { moveOutputFile } from "../utils/output-files.ts";
 import { sanitizeBinaryOutput } from "../utils/shell.ts";
-import { type BashOperations } from "./tools/bash.ts";
+import type { BashOperations, BashResult } from "./tools/bash/types.ts";
 import { bashBudget } from "./tools/bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./tools/bash/header.ts";
 import { OutputAccumulator } from "./tools/output-accumulator.ts";
@@ -32,27 +32,7 @@ interface BashExecutorOptions {
 	outputDir?: string;
 }
 
-export interface BashResult {
-	/** Combined stdout + stderr output (sanitized; trimmed to the budget when `truncated`) */
-	output: string;
-	/** Process exit code (undefined if killed/cancelled) */
-	exitCode: number | undefined;
-	/** Whether the command was cancelled via signal */
-	cancelled: boolean;
-	/** Whether the output was truncated */
-	truncated: boolean;
-	/** Path to the file containing full output (if output exceeded the budget) */
-	fullOutputPath?: string;
-	/**
-	 * The result's first line for the model and the terminal, e.g. `[exit 0 · 4.2s · 312 lines · 18 KB]`; a trimmed
-	 * result adds what was kept and where the full output is. Absent from results an extension supplies.
-	 */
-	header?: string;
-	/** Lines and bytes of the whole output, and the run time in seconds. */
-	totalLines?: number;
-	totalBytes?: number;
-	wallTimeSeconds?: number;
-}
+export type { BashResult } from "./tools/bash/types.ts";
 
 // ============================================================================
 // Implementation

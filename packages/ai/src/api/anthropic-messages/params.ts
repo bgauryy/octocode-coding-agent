@@ -54,9 +54,8 @@ function getBetaFeatures(
 	if (isOAuthToken) features.push("claude-code-20250219", "oauth-2025-04-20");
 	if (shouldUseFineGrainedToolStreamingBeta(model, context)) features.push(FINE_GRAINED_TOOL_STREAMING_BETA);
 	if (
-		model.reasoning &&
-		options?.thinkingEnabled === true &&
-		(options.interleavedThinking ?? true) &&
+		thinksForRequest(model, options) &&
+		(options?.interleavedThinking ?? true) &&
 		model.compat?.forceAdaptiveThinking !== true
 	) {
 		features.push(INTERLEAVED_THINKING_BETA);
@@ -125,6 +124,7 @@ export function buildParams(
 			: undefined;
 	const thinkingDisabled =
 		model.reasoning && options?.thinkingEnabled === false && model.thinkingLevelMap?.off !== null;
+	const thinks = thinksForRequest(model, options);
 	// Effort cannot change between messages while thinking is disabled, so "off" sends no effort markers.
 	const effortMessages = model.compat?.supportsMidConvoEffort === true && !thinkingDisabled;
 	const converted = convertMessages(
@@ -172,7 +172,7 @@ export function buildParams(
 	// Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
 	if (
 		options?.temperature !== undefined &&
-		!options?.thinkingEnabled &&
+		!thinks &&
 		model.compat?.supportsMidConvoEffort !== true &&
 		compat.supportsTemperature
 	) {
@@ -214,21 +214,22 @@ export function buildParams(
 			block_binding: { prefix_mismatch_behavior: "drop_block" },
 		};
 		params.output_config = { effort: "high" };
-	} else if (model.reasoning && options?.thinkingEnabled) {
+	} else if (thinks) {
 		// Default to "summarized" so Opus 4.7 and Mythos Preview behave like
 		// older Claude 4 models (whose API default is also "summarized").
-		const display: AnthropicThinkingDisplay = options.thinkingDisplay ?? "summarized";
+		const display: AnthropicThinkingDisplay = options?.thinkingDisplay ?? "summarized";
 		if (model.compat?.forceAdaptiveThinking === true) {
-			// Adaptive thinking: Claude decides when and how much to think.
+			// Adaptive thinking: Claude decides when and how much to think. A model that cannot turn
+			// thinking off still gets the requested (least) effort here instead of the model default.
 			params.thinking = { type: "adaptive", display };
-			if (options.effort) {
+			if (options?.effort) {
 				params.output_config = { effort: options.effort };
 			}
 		} else {
 			// Budget-based thinking for older models
 			params.thinking = {
 				type: "enabled",
-				budget_tokens: options.thinkingBudgetTokens || 1024,
+				budget_tokens: options?.thinkingBudgetTokens || 1024,
 				display,
 			};
 		}
@@ -255,6 +256,13 @@ export function buildParams(
 	}
 
 	return { params, hasPreferredStrictTools, providerThinkingLevel: effortMessages ? activeEffort : undefined };
+}
+
+/** Whether the request thinks: requested, or forced because the model cannot turn thinking off (`off: null`). */
+function thinksForRequest(model: Model<"anthropic-messages">, options: AnthropicOptions | undefined): boolean {
+	if (!model.reasoning) return false;
+	if (options?.thinkingEnabled === true) return true;
+	return options?.thinkingEnabled === false && model.thinkingLevelMap?.off === null;
 }
 
 function shouldUseFineGrainedToolStreamingBeta(

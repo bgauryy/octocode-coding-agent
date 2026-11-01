@@ -7,8 +7,8 @@ import { messageText } from "../team/routing.ts";
 import type { ResumeRequest } from "../team/session/send.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
-import { askSpawn, profileSelectsTool } from "./profiles.ts";
-import { readParked, writeParked, type ParkedWorker } from "./parked.ts";
+import { askSpawn, profileSelectsBrowser } from "./profiles.ts";
+import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { childSession, childSessionFile } from "./process/session.ts";
 
@@ -51,13 +51,15 @@ function withoutServers(identity: Run["identity"]): Run["identity"] {
 function sameProfile(current: AgentProfile | undefined, saved: AgentProfile): boolean {
 	if (!current) return false;
 	if (JSON.stringify(current) === JSON.stringify(saved)) return true;
-	if (typeof saved.headless !== "boolean" || !profileSelectsTool(current, "browser", [])) return false;
+	if (typeof saved.headless !== "boolean" || !profileSelectsBrowser(current)) return false;
 	const { headless: _currentHeadless, ...currentBase } = current;
 	const { headless: _savedHeadless, ...savedBase } = saved;
 	return JSON.stringify(currentBase) === JSON.stringify(savedBase);
 }
 
 export class Lingering {
+	/** Every session's live follow-up windows, for what must not remove a folder they work in. */
+	static readonly parkedChildren = allParked;
 	private readonly entries = new Map<string, LingeringRun>();
 	private readonly resuming = new Set<string>();
 	private readonly generations = new Map<string, number>();

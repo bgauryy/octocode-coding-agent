@@ -1,6 +1,7 @@
 import { methods, type AgentContext } from "@agentclientprotocol/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { AcpSession } from "../../src/server/session.ts";
+import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 import { assistant, deferred, FakeWorker, harness } from "./acp-test-harness.ts";
 
 describe("ACP session lifecycle", () => {
@@ -11,7 +12,13 @@ describe("ACP session lifecycle", () => {
 			.mockImplementationOnce(() => flushed.promise)
 			.mockResolvedValue(undefined);
 		const worker = new FakeWorker();
-		const session = new AcpSession("session", worker, { notify } as unknown as AgentContext, 5000);
+		const session = new AcpSession(
+			"session",
+			worker,
+			{ notify } as unknown as AgentContext,
+			5000,
+			acpServerHost.compactionSummaryText,
+		);
 		try {
 			worker.emit({ type: "session_dispatch", active: true, dispatchId: "external" });
 			worker.emit({ type: "message_end", message: assistant("external reply", "aborted") });
@@ -47,7 +54,13 @@ describe("ACP session lifecycle", () => {
 			.mockImplementationOnce(() => firstWrite.promise)
 			.mockImplementationOnce(() => secondWrite.promise);
 		const worker = new FakeWorker();
-		const session = new AcpSession("session", worker, { notify } as unknown as AgentContext, 5000);
+		const session = new AcpSession(
+			"session",
+			worker,
+			{ notify } as unknown as AgentContext,
+			5000,
+			acpServerHost.compactionSummaryText,
+		);
 		try {
 			worker.emit({ type: "session_dispatch", active: true, dispatchId: "first" });
 			worker.finish("first reply");

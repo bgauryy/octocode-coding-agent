@@ -5,7 +5,7 @@ import { ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOption
 import { webDaemonEnabled } from "./paths.ts";
 
 /**
- * The running daemon with this session attached to it, for a command that needs both (`/octocode`, `/remote`): starts
+ * The running daemon with this session attached to it, for a command that needs both (`/web`, `/remote`): starts
  * or reuses the daemon and waits until it lists this session. Undefined with `OCTOCODE_WEB_DAEMON` off; throws when
  * the daemon cannot be reached or this session cannot attach.
  */
@@ -24,7 +24,7 @@ export async function attachedDaemon(
 }
 
 /**
- * `/octocode` with `OCTOCODE_WEB_DAEMON=1`: makes sure this session accepts the daemon, starts or reuses the daemon,
+ * `/web` with `OCTOCODE_WEB_DAEMON=1`: makes sure this session accepts the daemon, starts or reuses the daemon,
  * and opens the page on this session. The URL fragment carries the launch token and the requested view. Returns false when the flag is off. Throws when
  * the daemon cannot be reached or this session cannot attach, so the caller falls back to the per-session server.
  */

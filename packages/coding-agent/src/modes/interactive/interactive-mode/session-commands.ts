@@ -211,29 +211,27 @@ export async function handleImportCommand(host: SessionCommandsHost, text: strin
 		return;
 	}
 
+	host.clearStatusIndicator();
+	const runImport = async (cwdOverride?: string) => {
+		const result = await (cwdOverride === undefined
+			? host.runtimeHost.importFromJsonl(inputPath)
+			: host.runtimeHost.importFromJsonl(inputPath, cwdOverride));
+		host.showStatus(result.cancelled ? "Import cancelled" : `Session imported from: ${inputPath}`);
+	};
+	// The retry in a chosen folder fails the same way as the first attempt.
 	try {
-		host.clearStatusIndicator();
-		const result = await host.runtimeHost.importFromJsonl(inputPath);
-		if (result.cancelled) {
-			host.showStatus("Import cancelled");
-			return;
-		}
-		host.showStatus(`Session imported from: ${inputPath}`);
-	} catch (error: unknown) {
-		if (error instanceof MissingSessionCwdError) {
+		try {
+			await runImport();
+		} catch (error: unknown) {
+			if (!(error instanceof MissingSessionCwdError)) throw error;
 			const selectedCwd = await host.promptForMissingSessionCwd(error);
 			if (!selectedCwd) {
 				host.showStatus("Import cancelled");
 				return;
 			}
-			const result = await host.runtimeHost.importFromJsonl(inputPath, selectedCwd);
-			if (result.cancelled) {
-				host.showStatus("Import cancelled");
-				return;
-			}
-			host.showStatus(`Session imported from: ${inputPath}`);
-			return;
+			await runImport(selectedCwd);
 		}
+	} catch (error: unknown) {
 		if (error instanceof SessionImportFileNotFoundError || error instanceof SessionImportInvalidError) {
 			host.showError(`Failed to import session: ${error.message}`);
 			return;

@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, toToolDeclaration } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";

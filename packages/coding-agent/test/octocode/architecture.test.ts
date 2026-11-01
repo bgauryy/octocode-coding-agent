@@ -35,11 +35,12 @@ function importsOf(file: string): string[] {
 }
 
 /**
- * The layering: each domain may depend only on the domains listed. `shared` is the leaf; the root modules
- * (`index.ts` wires everything, `prompt.ts` and `skills.ts` sit beside it) may use any domain.
+ * The layering: each domain may depend only on the domains listed. `shared` is the leaf within `octocode/` (it still
+ * uses host modules under `core/` and `modes/`); the root modules (`index.ts` wires everything) may use any domain.
  */
 const ALLOWED: Record<string, string[]> = {
 	shared: [],
+	"mcp-host": ["shared", "skill", "web"],
 	llama: ["shared"],
 	ollama: ["shared"],
 	api: ["shared"],
@@ -50,7 +51,6 @@ const ALLOWED: Record<string, string[]> = {
 	hooks: ["shared"],
 	plugins: ["shared", "hooks"],
 	web: ["shared", "permission"],
-	browser: ["shared", "web", "permission"],
 	compaction: ["shared", "files", "permission"],
 	ui: ["shared", "permission"],
 	subagents: ["shared", "team", "permission", "instructions", "backlog"],
@@ -68,7 +68,6 @@ const ALLOWED: Record<string, string[]> = {
 	skill: ["shared"],
 	"context-optimization": ["shared"],
 	"native-skills": [],
-	graph: ["shared"],
 	"terminal-launch": [],
 	worktrees: ["shared", "terminal-launch"],
 };
@@ -82,6 +81,8 @@ describe("source layout", () => {
 			.sort();
 		const unclassified = folders.filter((folder) => !Object.hasOwn(ALLOWED, folder));
 		expect(unclassified, "Declare each new domain and its permitted dependencies in ALLOWED.").toEqual([]);
+		const removed = Object.keys(ALLOWED).filter((domain) => !folders.includes(domain));
+		expect(removed, "Drop a removed domain from ALLOWED.").toEqual([]);
 	});
 
 	it("lets each domain depend only on the domains below it", () => {
@@ -135,7 +136,6 @@ describe("source layout", () => {
 			[/instanceof Error \? [^:]+: String\(/, "shared/util.ts"],
 			[/createHash\(['"]sha256['"]\)/, "../../common/src/atomic-file.ts"],
 			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "../../common/src/env.ts"],
-			[/signal\.reason instanceof Error \?/, "browser/abort.ts"],
 		];
 		const copies = files.flatMap((file) => {
 			const relative = path.relative(sourceRoot, file).split(path.sep).join("/");

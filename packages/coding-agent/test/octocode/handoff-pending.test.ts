@@ -6,6 +6,7 @@ import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { tempSibling } from "../../../common/src/atomic-file.ts";
 import {
 	type Report,
 	releasePendingReports,
@@ -85,21 +86,60 @@ describe("pending reports", () => {
 		}
 	});
 
+	// B397 (user decision 2026-11-01): a malformed report is moved aside to `.invalid` instead of being renamed back,
+	// so the takes at every start, every second after it and after every turn stop re-reading it.
 	it.each([
 		{ content: "broken report", wake: true, reportId: "broken" },
 		{ ...report("broken"), reportId: "" },
-	])("leaves malformed persisted reports unclaimed without blocking valid reports: %j", async (invalid) => {
+		"{not json",
+	])("moves a malformed persisted report aside to .invalid without blocking valid reports: %j", async (invalid) => {
 		const dir = tmp();
-		fs.writeFileSync(path.join(dir, "0-malformed.json"), JSON.stringify(invalid));
+		const text = typeof invalid === "string" ? invalid : JSON.stringify(invalid);
+		fs.writeFileSync(path.join(dir, "0-malformed.json"), text);
 		savePendingReport(dir, "valid", report("valid"));
-		const recovered = await takePendingReports(dir);
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		try {
+			const recovered = await takePendingReports(dir);
 			expect(recovered).toHaveLength(1);
 			expect(recovered[0]?.details.id).toBe("valid");
-			expect(files(dir)).toContain("0-malformed.json");
-		} finally {
+			expect(files(dir)).toContain("0-malformed.json.invalid");
+			expect(files(dir)).not.toContain("0-malformed.json");
+			expect(stderr).toHaveBeenCalledWith(expect.stringContaining("Quarantined a saved subagent report"));
 			await releasePendingReports(recovered);
+			// The next take reads only the valid report; the quarantined file keeps its bytes for diagnosis.
+			const again = await takePendingReports(dir);
+			expect(again.map((taken) => taken.details.id)).toEqual(["valid"]);
+			await releasePendingReports(again);
+			expect(fs.readFileSync(path.join(dir, "0-malformed.json.invalid"), "utf8")).toBe(text);
+		} finally {
+			stderr.mockRestore();
 		}
+	});
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"gives an unreadable report back instead of quarantining it, so a transient I/O error loses nothing",
+		async () => {
+			const dir = tmp();
+			const file = savePendingReport(dir, "locked", report("locked"))!;
+			fs.chmodSync(file, 0o000);
+			try {
+				expect(await takePendingReports(dir)).toEqual([]);
+				expect(files(dir)).toEqual([path.basename(file)]);
+			} finally {
+				fs.chmodSync(file, 0o600);
+			}
+			const [taken] = await takePendingReports(dir);
+			expect(taken?.details.id).toBe("locked");
+			await releasePendingReports([taken]);
+		},
+	);
+
+	it("neither takes nor quarantines a report still being written: saves become visible only by an atomic rename", async () => {
+		const dir = tmp();
+		const writing = tempSibling(path.join(dir, "1-general-a.json"));
+		fs.writeFileSync(writing, '{"content":"Background subagent general-a fin');
+		expect(await takePendingReports(dir)).toEqual([]);
+		expect(files(dir)).toEqual([path.basename(writing)]);
 	});
 
 	it("does not retry a queued acceptance without a transcript receipt", async () => {

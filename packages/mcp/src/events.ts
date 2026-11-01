@@ -2,21 +2,22 @@
 
 import { isDeepStrictEqual } from "node:util";
 import { presetEntries } from "./preset.ts";
-import { getAgentDir } from "../../coding-agent/src/config.ts";
-import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
+import { hostPaths } from "./host.ts";
+import type { McpContext } from "./host/types.ts";
 import { type McpServerEntry, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
 import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { reportProblems } from "./report.ts";
+import { say } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isSelected } from "./exposure.ts";
 import {
-	MCP_CONTRACT_SECTION_PREFIX,
 	MCP_STATUS_SECTION,
+	MCPS_SECTION,
 	type McpServerListing,
-	renderContractSections,
-	renderStatusSection,
+	renderMcpStatusSection,
+	renderMcpsSection,
 } from "./section.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isEnabled, type McpServer } from "./server.ts";
@@ -24,36 +25,65 @@ import type { McpExtensionState } from "./state.ts";
 import { hideTools, registerTools } from "./tool-registry.ts";
 
 /**
- * The servers the prompt describes: enabled servers this session's selection reaches, with their tools as the active
- * tool set declares them. A thin declared tool is described by the server's frozen generated file; the file stays while
- * the server reconnects, so a state change does not resend it.
+ * The servers the prompt describes: enabled servers this session's selection reaches. Each block's content is what
+ * `McpPresentation.describe` fixed when the prompt first described the server's catalog, so a reconnect, a failure or
+ * a dropped connection changes only the state, which `mcp_status` carries.
  */
 function serverListings(state: McpExtensionState): McpServerListing[] {
 	const active = new Set(state.api.getActiveTools());
-	return state.servers.flatMap((server) => {
-		if (!isEnabled(server) || server.unselected) return [];
-		const declared = [...(state.serverTools.get(server.entry.name) ?? [])].filter(
-			(name) => active.has(name) && state.definitions.get(name)?.exposure === "direct",
-		);
-		const thin = declared.filter((name) => state.definitions.get(name)?.validationParameters);
-		const file = state.presentation.section(
+	const listed = state.servers.filter((server) => isEnabled(server) && !server.unselected);
+	// A server that leaves the list gets a fresh description if it comes back.
+	state.presentation.retainDescribed(new Set(listed.map((server) => server.entry.name)));
+	return listed.flatMap((server) => {
+		const declared = [...(state.serverTools.get(server.entry.name) ?? [])]
+			.filter((name) => active.has(name) && state.definitions.get(name)?.exposure === "direct")
+			.map((name) => state.toolOwners.get(name)?.split("\0")[1] ?? name);
+		const connectionState = server.connection?.isStopped ? "stopped" : (server.connection?.state ?? "connecting");
+		const described = state.presentation.describe(
 			server.entry.name,
-			thin.map((name) => state.toolOwners.get(name)?.split("\0")[1] ?? name),
+			declared,
+			server.connection?.instructions,
+			connectionState === "connected",
 		);
+		const undeclared = [...described.tools].filter((tool) => !declared.includes(tool));
 		return [
 			{
 				entry: server.entry,
-				state: server.connection?.isStopped ? "stopped" : (server.connection?.state ?? "connecting"),
-				...(server.connection?.instructions ? { instructions: server.connection.instructions } : {}),
-				declared: declared.length > 0,
-				...(file ? { file } : {}),
+				state: connectionState,
+				...(described.instructions ? { instructions: described.instructions } : {}),
+				declared: described.tools.size > 0,
+				...(described.file ? { file: described.file } : {}),
+				...(undeclared.length > 0 ? { undeclared } : {}),
 			},
 		];
 	});
 }
 
-function defaultLoadConfig(ctx: ExtensionContext, defaults: readonly McpServerEntry[]): LoadedMcpConfig {
-	return loadMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted(), defaults });
+/**
+ * Write the `mcps` base section and the `mcp_status` section for one request. Describing comes first: a thin
+ * declaration needs the block that describes it (`McpPresentation.isThin`), so connected servers re-register after.
+ */
+function describeServers(
+	state: McpExtensionState,
+	options: { baseSections: Record<string, string>; sections: Record<string, string> },
+): void {
+	const listings = serverListings(state);
+	for (const connection of state.connections()) if (connection.state === "connected") registerTools(state, connection);
+	const mcps = renderMcpsSection(listings);
+	if (mcps) options.baseSections[MCPS_SECTION] = mcps;
+	else delete options.baseSections[MCPS_SECTION];
+	const status = renderMcpStatusSection(listings, { canManage: state.api.getActiveTools().includes("mcp") });
+	if (status) options.sections[MCP_STATUS_SECTION] = status;
+	else delete options.sections[MCP_STATUS_SECTION];
+}
+
+function defaultLoadConfig(ctx: McpContext, defaults: readonly McpServerEntry[]): LoadedMcpConfig {
+	return loadMcpConfig({
+		agentDir: hostPaths().agentDir(),
+		cwd: ctx.cwd,
+		projectTrusted: ctx.isProjectTrusted(),
+		defaults,
+	});
 }
 
 export function registerSessionEvents(state: McpExtensionState): void {
@@ -144,10 +174,10 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			if (connection.state === "connected") registerTools(state, connection);
 	});
 
-	// Every prompt describes the servers as they are when it starts: each server's contract is a base section (cached
-	// with the tools, ahead of project context) and servers that are not connected are named in `mcp_status`. Octocode appends
-	// a section to the conversation when it changed, for example after a server connected. The first prompt waits for
-	// servers whose tools are declared to the model (`waitForDirectServers`).
+	// Every prompt describes the servers: the `mcps` base section (cached with the tools, ahead of project context) holds
+	// each server's block, fixed once its catalog is described, and the volatile `mcp_status` section names servers that
+	// are not ready. A connection change therefore patches only `mcp_status`. The first prompt waits for servers whose
+	// tools are declared to the model (`waitForDirectServers`).
 	api.on("before_agent_start", async (event, ctx) => {
 		if (!ctx.signal?.aborted && !state.session.signal.aborted) {
 			const changed = state.servers.filter((server) => {
@@ -164,23 +194,22 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			await waitForServers(state, changed, ctx.signal);
 		}
 		await waitForDirectServers(state, ctx);
-		for (const connection of state.connections())
-			if (connection.state === "connected") registerTools(state, connection);
+		// Launch warnings (an allowed folder that was refused, say): tell the user, never the model.
+		for (const preset of state.options.presets ?? [])
+			for (const warning of preset.takeWarnings?.() ?? []) say(ctx, warning, "warning");
 		// A new or changed catalog whose tools keep the server's own wording: tell the user, never the model.
 		for (const { server, tools } of state.presentation.takeUnoptimized())
 			ctx.ui.notify(
 				`MCP server "${server}": ${tools.length} tool description${tools.length === 1 ? "" : "s"} not yet rewritten for its compact file (${tools.join(", ")}). The octocode-context-optimization skill rewrites them.`,
 				"info",
 			);
-		const { sections, baseSections } = event.systemPromptOptions;
-		const listings = serverListings(state);
-		const status = renderStatusSection(listings);
-		if (status) sections[MCP_STATUS_SECTION] = status;
-		else delete sections[MCP_STATUS_SECTION];
-		const contracts = renderContractSections(listings);
-		for (const name of Object.keys(baseSections))
-			if (name.startsWith(MCP_CONTRACT_SECTION_PREFIX) && !(name in contracts)) delete baseSections[name];
-		Object.assign(baseSections, contracts);
+		describeServers(state, event.systemPromptOptions);
+	});
+
+	// Within a run, every later request describes the servers again, so a server that connects mid-run gets its block
+	// (and thin declarations) on the next turn, and a state change patches only `mcp_status`.
+	api.on("turn_prompt", (event) => {
+		describeServers(state, event.systemPromptOptions);
 	});
 
 	// An MCP call waits only for its server, including a pending reconnect. Readiness can be pending while the display

@@ -1,4 +1,5 @@
 import { compare, valid } from "semver";
+import { isOfflineModeEnabled } from "./env-flag.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getOctocodeUserAgent } from "./user-agent.ts";
 
@@ -52,7 +53,7 @@ export async function getLatestOctocodeRelease(
 	currentVersion: string,
 	options: { timeoutMs?: number; retry?: boolean } = {},
 ): Promise<LatestOctocodeRelease | undefined> {
-	if (process.env.OCTOCODE_OFFLINE) return undefined;
+	if (isOfflineModeEnabled()) return undefined;
 
 	const response = await fetchWithRetry(
 		LATEST_VERSION_URL,

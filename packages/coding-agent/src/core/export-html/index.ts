@@ -1,6 +1,6 @@
 import type { AgentState } from "@octocodeai/octocode-agent-core";
 import { OCTOCODE_FAVICON_DATA_URI } from "@octocodeai/octocode-webview";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { basename, join } from "path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme.ts";
@@ -9,6 +9,8 @@ import { compactionSummaryDisplay } from "../messages.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import type { SessionEntry } from "../session-manager.ts";
 import { SessionManager } from "../session-manager.ts";
+import { writeSessionExport } from "../export-target.ts";
+import { readTemplateScript } from "./template-script.ts";
 
 /**
  * Interface for rendering custom tools to HTML.
@@ -154,7 +156,7 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 	const templateDir = getExportTemplateDir();
 	const template = readFileSync(join(templateDir, "template.html"), "utf-8");
 	const templateCss = readFileSync(join(templateDir, "template.css"), "utf-8");
-	const templateJs = readFileSync(join(templateDir, "template.js"), "utf-8");
+	const templateJs = readTemplateScript(templateDir);
 	const markedJs = readFileSync(join(templateDir, "vendor", "marked.min.js"), "utf-8");
 	const hljsJs = readFileSync(join(templateDir, "vendor", "highlight.min.js"), "utf-8");
 
@@ -172,7 +174,7 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 	).toString("base64");
 
 	// Function replacers insert each value verbatim: a string replacement would read `$$`, `$&` and `$'` in the
-	// inlined scripts as patterns (template.js writes the cost as `$${totalCost...}`).
+	// inlined scripts as patterns (the page script writes the cost as `$${totalCost...}`).
 	// Build the CSS with theme variables injected
 	const css = templateCss
 		.replace("{{THEME_VARS}}", () => themeVars)
@@ -292,7 +294,7 @@ export async function exportSessionToHtml(
 		outputPath = `${APP_NAME}-session-${sessionBasename}.html`;
 	}
 
-	writeFileSync(outputPath, html, "utf8");
+	writeSessionExport(outputPath, html, sessionFile);
 	return outputPath;
 }
 
@@ -326,6 +328,6 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 		outputPath = `${APP_NAME}-session-${inputBasename}.html`;
 	}
 
-	writeFileSync(outputPath, html, "utf8");
+	writeSessionExport(outputPath, html, resolvedInputPath);
 	return outputPath;
 }

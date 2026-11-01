@@ -9,7 +9,7 @@ import {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AgentSession } from "../src/core/agent-session.ts";
-import { redactJsonValue, redactUrl } from "../src/core/bug-report.ts";
+import { type BugReportBundle, bugReportFiles, redactJsonValue, redactUrl } from "../src/core/bug-report.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { reportBug } from "../src/modes/interactive/bug-report.ts";
 import { ExtensionEditorComponent } from "../src/modes/interactive/components/extension-editor.ts";
@@ -92,6 +92,30 @@ describe("bug report redaction", () => {
 		expect(redactUrl("https://api.example/v1?api-key=abc&model=x")).toBe(
 			"https://api.example/v1?api-key=%3Credacted%3E&model=x",
 		);
+	});
+
+	it("redacts credential-looking text in every uploaded or exported file", () => {
+		const token = "sk-ant-api03-FAKEfakeFAKEfakeFAKEfake0123";
+		const bundle = {
+			metadata: { id: "r1", hint: `request failed with ${token}` },
+			diagnostics: {
+				assistant: [{ errorMessage: `401 invalid x-api-key ${token}`, diagnostics: [{ body: `key=${token}` }] }],
+				crashes: [],
+			},
+			sessionJsonl: `${JSON.stringify({ type: "message", message: { role: "user", content: `use ${token}` } })}\n`,
+			summary: `The user pasted ${token}`,
+		} as unknown as BugReportBundle;
+
+		const files = bugReportFiles(bundle);
+		expect(files.map((file) => file.name)).toEqual(["report.json", "diagnostics.json", "session.jsonl", "summary.md"]);
+		for (const file of files) {
+			expect(file.data, file.name).not.toContain(token);
+			expect(file.data, file.name).toContain("[redacted]");
+		}
+		// The JSON files stay parseable after redaction.
+		JSON.parse(files[0].data);
+		JSON.parse(files[1].data);
+		JSON.parse(files[2].data.trim());
 	});
 
 	it("redacts nested secret values without hiding token counts", () => {

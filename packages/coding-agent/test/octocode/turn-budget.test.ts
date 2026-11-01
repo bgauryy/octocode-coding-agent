@@ -9,7 +9,7 @@ import {
 	RESULT_DEFAULT_BYTES,
 	TEXT_MAX_CHARS,
 	TURN_MAX_CHARS,
-} from "../../src/octocode/shared/output-budget.ts";
+} from "../../src/utils/output-budget.ts";
 import { capResultText } from "../../src/octocode/shared/spill.ts";
 import { budgetToolResult, registerTurnBudget, TurnBudget } from "../../src/octocode/shared/turn-budget.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

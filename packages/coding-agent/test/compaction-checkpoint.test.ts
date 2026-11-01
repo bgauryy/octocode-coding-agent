@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { finalizeCompactionResult } from "../src/core/compaction/checkpoint.ts";
-import { CHARS_PER_TOKEN } from "../src/core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 
 const directories: string[] = [];

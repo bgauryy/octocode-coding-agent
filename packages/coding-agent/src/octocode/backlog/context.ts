@@ -1,8 +1,9 @@
 import type { ExtensionContext, ExtensionCommandContext } from "../../core/extensions/index.ts";
-import { sharedAgentDb } from "../agentdb/db.ts";
+import { sharedAgentDb } from "../agentdb/api.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { type Actor, BacklogStore } from "./store.ts";
+import { scheduleHistoryArchive } from "./retention.ts";
 
 export interface BacklogOptions {
 	isSubagent: boolean;
@@ -27,7 +28,11 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 	const env = options.env ?? process.env;
 	const store = new BacklogStore(() => sharedAgentDb(env), repo.key);
 	const session = ctx.sessionManager.getSessionId();
-	if (!options.isSubagent) return { store, actor: { id: session }, session, repoName: repo.name, repoRoot: repo.root };
+	if (!options.isSubagent) {
+		// Daily history housekeeping (the parent session runs it; its subagents share the database).
+		scheduleHistoryArchive(() => sharedAgentDb(env));
+		return { store, actor: { id: session }, session, repoName: repo.name, repoRoot: repo.root };
+	}
 	const id = options.agentId?.() || session;
 	// A subagent never claims: it may update only what the session that started it holds (named by the parent, not inferred).
 	const parent = env[PARENT_SESSION_ENV];

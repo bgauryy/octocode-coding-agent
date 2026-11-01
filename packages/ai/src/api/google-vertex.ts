@@ -155,5 +155,11 @@ function resolveLocation(options?: GoogleVertexOptions): string {
 	if (!location) {
 		throw new Error("Vertex AI requires a location. Set GOOGLE_CLOUD_LOCATION or pass location in options.");
 	}
+	// The SDK builds the request host from it (`https://${location}-aiplatform.googleapis.com`): only a region id keeps the bearer token on Google's host.
+	if (!/^[a-z0-9-]+$/.test(location)) {
+		throw new Error(
+			"Vertex AI location must be a region id such as us-central1 or global. Check GOOGLE_CLOUD_LOCATION.",
+		);
+	}
 	return location;
 }

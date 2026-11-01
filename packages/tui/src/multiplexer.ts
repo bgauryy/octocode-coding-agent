@@ -38,8 +38,19 @@ export function resetMultiplexerCache(): void {
 	for (const cache of Object.values(caches)) cache.clear();
 }
 
+/** The pane `env` runs in (`TMUX_PANE`, which tmux sets in every pane), or undefined when it names none. */
+export function paneTarget(env: NodeJS.ProcessEnv = process.env): string | undefined {
+	return env.TMUX_PANE || undefined;
+}
+
+/** `-t <pane>` for a tmux command that acts on this pane's session; nothing without a pane. */
+function paneTargetArgs(env: NodeJS.ProcessEnv): string[] {
+	const pane = paneTarget(env);
+	return pane ? ["-t", pane] : [];
+}
+
 function cacheKey(env: NodeJS.ProcessEnv): string {
-	return `${env.TMUX ?? ""}\0${env.TMUX_PANE ?? ""}`;
+	return `${env.TMUX ?? ""}\0${paneTarget(env) ?? ""}`;
 }
 
 function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -119,8 +130,7 @@ function memo<T>(cache: Map<string, T>, env: NodeJS.ProcessEnv, compute: () => T
  */
 export function tmuxPaneAllowsPassthrough(env: NodeJS.ProcessEnv = process.env): boolean {
 	return memo(caches.passthrough, env, () => {
-		const target = env.TMUX_PANE ? ["-t", env.TMUX_PANE] : [];
-		const out = runTmux(["show-options", "-Apqv", ...target, "allow-passthrough"], QUERY_TIMEOUT_MS, env);
+		const out = runTmux(["show-options", "-Apqv", ...paneTargetArgs(env), "allow-passthrough"], QUERY_TIMEOUT_MS, env);
 		if (out === undefined) return false;
 		const value = out.trim().toLowerCase();
 		return value === "" || value === "on" || value === "all";
@@ -159,9 +169,8 @@ export function tmuxClientTerminalNames(env: NodeJS.ProcessEnv = process.env): r
  * attaches later is new here. Resolves undefined when tmux cannot answer.
  */
 export function tmuxPaneClients(env: NodeJS.ProcessEnv = process.env): Promise<readonly string[] | undefined> {
-	const target = env.TMUX_PANE ? ["-t", env.TMUX_PANE] : [];
-	return tmuxQueryAsync(["list-clients", ...target, "-F", "#{client_pid} #{client_created}"], env).then((out) =>
-		out?.split("\n").filter((line) => line.trim() !== ""),
+	return tmuxQueryAsync(["list-clients", ...paneTargetArgs(env), "-F", "#{client_pid} #{client_created}"], env).then(
+		(out) => out?.split("\n").filter((line) => line.trim() !== ""),
 	);
 }
 

@@ -5,7 +5,7 @@ import type {
 	ApplicationMessage,
 	ApplicationTool,
 } from "@octocodeai/octocode-contracts";
-import type { AgentSessionEvent } from "../agent-session.ts";
+import type { AgentSessionEvent } from "../agent-session/types.ts";
 import { stoppedToolText } from "./interrupted-tools.ts";
 import { toolHint } from "../../octocode/shared/util.ts";
 import { ApplicationAssets } from "./assets.ts";
@@ -16,10 +16,15 @@ import {
 	normalizeApplicationContent,
 	normalizeApplicationMessage,
 	normalizeToolData,
-	record,
 } from "./normalize.ts";
-import { keepEnds, OUTPUT_CHARS, toolResultText } from "./service/projection.ts";
-import { sameMessage, transcriptHistory } from "./transcript-history.ts";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
+import { keepEnds, OUTPUT_CHARS } from "@octocodeai/octocode-contracts";
+import { toolResultText } from "./service/projection.ts";
+import { streamHint, type StreamHint } from "./service/wire.ts";
+import { messageDelta, TranscriptStream, unchangedDisplay } from "./transcript-stream.ts";
+import { ToolCallStream } from "./transcript-toolcalls.ts";
+import { spillTool, spillToolData } from "./transcript-tools.ts";
+import { sameMessage, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
 
 type MessageEvent = Extract<AgentSessionEvent, { type: "message_start" | "message_end" | "message_update" }>;
@@ -31,6 +36,8 @@ type ToolEvent = Extract<
 /** Ordered, interface-independent conversation state. Only snapshots are windowed; history remains queryable. */
 export class ApplicationTranscript {
 	readonly assets = new ApplicationAssets();
+	private readonly stream = new TranscriptStream(this.assets);
+	private readonly toolCalls = new ToolCallStream();
 	private readonly messageEntries: ApplicationCollection<ApplicationMessage>;
 	private readonly toolEntries: ApplicationCollection<ApplicationTool>;
 	constructor(state: ApplicationStateStore) {
@@ -93,7 +100,7 @@ export class ApplicationTranscript {
 		this.batch(() => {
 			for (const [id, source] of this.sources) {
 				const previous = this.messages.get(id)!;
-				const value = previous.complete ? source : { ...record(source), stopReason: "pending" };
+				const value = previous.complete ? source : { ...asRecord(source), stopReason: "pending" };
 				this.putMessage(id, {
 					...this.normalize(value, id),
 					complete: previous.complete,
@@ -109,7 +116,7 @@ export class ApplicationTranscript {
 	}
 
 	normalize(value: unknown, id?: string): ApplicationMessage {
-		const source = record(value);
+		const source = asRecord(value);
 		id ??= this.identities.get(source);
 		if (!id) {
 			const identity = [source.role, source.timestamp, source.toolCallId, this.nextMessage++];
@@ -134,7 +141,7 @@ export class ApplicationTranscript {
 	}
 	/** A display failure does not rewrite the model's outcome or discard the original session message. */
 	unavailable(value: unknown, id?: string): ApplicationMessage {
-		const source = record(value);
+		const source = asRecord(value);
 		return this.normalize(
 			{
 				role: typeof source.role === "string" ? source.role.slice(0, 128) : "custom",
@@ -152,7 +159,12 @@ export class ApplicationTranscript {
 		);
 	}
 
-	message(event: MessageEvent, publish: (event: ApplicationEvent) => void | boolean): void {
+	/** `release` receives an unchanged update that ends a streamed block, which only serialized views need. */
+	message(
+		event: MessageEvent,
+		publish: (event: ApplicationEvent, hint?: StreamHint) => void | boolean,
+		release?: (event: ApplicationEvent, hint: StreamHint) => void,
+	): void {
 		const source = event.message;
 		let id = this.identities.get(source) ?? (source.role === "assistant" ? this.activeMessage : undefined);
 		id ??= this.normalize(source).id;
@@ -172,6 +184,35 @@ export class ApplicationTranscript {
 			if (publish({ type: "message.started", message: started }) === false) return;
 		}
 		const complete = event.type === "message_end";
+		const update = event.type === "message_update" ? event.assistantMessageEvent : undefined;
+		const hint = update && streamHint(source, update);
+		const extended = hint && this.stream.extend(previous, source, hint);
+		// Keeping the display publishes nothing, as an unchanged whole normalize would not.
+		if (update?.type === "toolcall_delta" && previous && !previous.complete && this.toolCalls.skip(id, source, update))
+			return void this.sources.set(id, source);
+		const message = extended ?? this.display(event, id, previous);
+		this.putMessage(id, message);
+		this.sources.set(id, source);
+		if (source.role === "assistant") this.activeMessage = complete ? undefined : id;
+		if (complete) {
+			this.stream.forget(id);
+			this.toolCalls.forget(id);
+		} else if (!extended) {
+			if (hint) this.stream.record(message, hint);
+			this.toolCalls.record(id, source);
+		}
+		if (complete) this.restoreTools(message, source);
+		if (!update || !hint) return void publish({ type: complete ? "message.completed" : "message.started", message });
+		const delta = messageDelta(message, update);
+		if (!extended && unchangedDisplay(previous, message, update))
+			return hint.ended === undefined ? undefined : release?.(delta, hint);
+		publish(delta, hint);
+	}
+
+	/** The whole message normalized as `event` leaves it. */
+	private display(event: MessageEvent, id: string, previous?: ApplicationMessage): ApplicationMessage {
+		const source = event.message;
+		const complete = event.type === "message_end";
 		const message = this.normalize(complete ? source : { ...source, stopReason: "pending" }, id);
 		message.complete = complete;
 		if (!complete) message.status = "streaming";
@@ -179,39 +220,19 @@ export class ApplicationTranscript {
 		// Legacy emitters can deliver text deltas without a partial message body.
 		if (
 			event.type === "message_update" &&
-			!Array.isArray(record(source).content) &&
+			!Array.isArray(asRecord(source).content) &&
 			event.assistantMessageEvent.type === "text_delta"
 		) {
 			const text = (previous?.text ?? "") + event.assistantMessageEvent.delta;
 			Object.assign(message, this.normalize({ ...source, content: text, stopReason: "pending" }, id));
 		}
-		this.putMessage(id, message);
-		this.sources.set(id, source);
-		if (source.role === "assistant") this.activeMessage = complete ? undefined : id;
-		if (complete) this.restoreTools(message, source);
-		if (event.type === "message_update") {
-			if (
-				event.assistantMessageEvent.type !== "text_delta" &&
-				JSON.stringify(previous?.content) === JSON.stringify(message.content) &&
-				JSON.stringify(previous?.full) === JSON.stringify(message.full) &&
-				previous?.text === message.text
-			)
-				return;
-			publish({
-				type: "message.delta",
-				messageId: id,
-				delta: event.assistantMessageEvent.type === "text_delta" ? event.assistantMessageEvent.delta.slice(-64000) : "",
-				text: message.text,
-				content: message.content,
-				full: message.full,
-			});
-		} else publish({ type: complete ? "message.completed" : "message.started", message });
+		return message;
 	}
 
 	private restoreTools(message: ApplicationMessage, value: unknown): void {
-		const source = record(value);
+		const source = asRecord(value);
 		const calls = Array.isArray(source.content)
-			? source.content.filter((block) => record(block).type === "toolCall")
+			? source.content.filter((block) => asRecord(block).type === "toolCall")
 			: [];
 		for (const block of normalizeApplicationContent(calls, message.id, this.assets))
 			if (block.type === "toolCall") {
@@ -245,7 +266,7 @@ export class ApplicationTranscript {
 	private toolData(value: unknown, id: string, owner: string, streaming = false): Partial<ApplicationTool> {
 		this.toolSources.set(id, { value, owner, streaming });
 		const projected = this.projected(owner, value);
-		const source = projected === undefined ? value : { ...record(value), content: projected };
+		const source = projected === undefined ? value : { ...asRecord(value), content: projected };
 		const data = {
 			...normalizeToolData(source, `tool:${id}`, this.assets, streaming),
 			text: projected === undefined ? toolResultText(value) : keepEnds(projected, OUTPUT_CHARS),
@@ -258,28 +279,7 @@ export class ApplicationTranscript {
 				undefined,
 				streaming ? `tool:${id}:projection` : undefined,
 			);
-		if (JSON.stringify(data).length > 60000) {
-			data.full = this.assets.put(
-				JSON.stringify(data),
-				"application/json",
-				"utf8",
-				undefined,
-				streaming ? `tool:${id}:full` : undefined,
-			);
-			data.content = [
-				{
-					id: `tool:${id}:full`,
-					type: "unsupported",
-					providerType: "large-tool-result",
-					text: "Full tool result available",
-				},
-			];
-			data.text = "[Full tool result available]";
-			delete data.usage;
-			delete data.details;
-			delete data.structuredContent;
-		}
-		return data;
+		return spillToolData(data, id, this.assets, streaming);
 	}
 	tool(event: ToolEvent): ApplicationEvent {
 		return {
@@ -317,7 +317,7 @@ export class ApplicationTranscript {
 		if (storedArguments === undefined && previous?.full && event.full) {
 			const full = this.assets.get(previous.full.id);
 			if (full?.encoding === "utf8" && full.asset.mimeType === "application/json")
-				storedArguments = record(JSON.parse(full.data)).arguments;
+				storedArguments = asRecord(JSON.parse(full.data)).arguments;
 		}
 		const { type, failed, ...data } = event;
 		const tool: ApplicationTool = {
@@ -329,28 +329,7 @@ export class ApplicationTranscript {
 			notRun: event.notRun,
 			status: type === "tool.completed" ? (failed ? "failed" : "completed") : "running",
 		};
-		if (JSON.stringify(tool).length > 60000) {
-			tool.full = this.assets.put(
-				JSON.stringify(tool),
-				"application/json",
-				"utf8",
-				undefined,
-				type === "tool.completed" ? undefined : `tool:${tool.toolCallId}:state`,
-			);
-			tool.arguments = undefined;
-			tool.details = undefined;
-			tool.structuredContent = undefined;
-			tool.usage = undefined;
-			tool.content = [
-				{
-					id: `tool:${tool.toolCallId}:full`,
-					type: "unsupported",
-					providerType: "large-tool-result",
-					text: "Full tool data available",
-				},
-			];
-			tool.text = "[Full tool data available]";
-		}
+		spillTool(tool, this.assets, type === "tool.completed");
 		this.putTool(event.toolCallId, tool);
 		return { ...tool, type: event.type, ...(event.failed === undefined ? {} : { failed: event.failed }) };
 	}
@@ -366,21 +345,16 @@ export class ApplicationTranscript {
 		if (previous.length !== next.length || !previous.every((message, index) => sameMessage(message, next[index])))
 			return false;
 		for (const [index, message] of next.entries()) {
-			const id = this.identities.get(record(previous[index]));
+			const id = this.identities.get(asRecord(previous[index]));
 			if (id === undefined || message === previous[index]) continue;
-			this.identities.set(record(message), id);
+			this.identities.set(asRecord(message), id);
 			if (this.sources.has(id)) this.sources.set(id, message);
 		}
 		return true;
 	}
 
 	window(): { messages: ApplicationMessage[]; tools: ApplicationTool[] } {
-		const tail = <T>(values: Iterable<T>, bytes: number): T[] => {
-			const result = [...values].slice(-50);
-			while (result.length > 1 && JSON.stringify(result).length > bytes) result.shift();
-			return result;
-		};
-		return cloneDisplay({ messages: tail(this.messages.values(), 100000), tools: tail(this.tools.values(), 50000) });
+		return transcriptWindow(this.messages.values(), this.tools.values());
 	}
 	clear(): void {
 		this.assets.clear();
@@ -388,6 +362,8 @@ export class ApplicationTranscript {
 		this.toolEntries.clear();
 		this.sources.clear();
 		this.toolSources.clear();
+		this.stream.clear();
+		this.toolCalls.clear();
 		this.identities = new WeakMap();
 		this.activeMessage = undefined;
 		this.nextOrder = 0;

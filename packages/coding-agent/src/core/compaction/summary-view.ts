@@ -1,4 +1,4 @@
-import { charsToTokens } from "./tokens.ts";
+import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 
 /**
  * Reading a compaction summary back. Octocode's compaction writes the summary (`octocode/compaction/summary.ts`) as the

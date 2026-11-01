@@ -1,6 +1,12 @@
 import type { SessionNotification } from "@agentclientprotocol/sdk";
-import { redactData, redactSecretFragments, redactSecrets, secretContinuesAfterLine, unfinishedPrivateKey } from "../../../common/src/sanitize.ts";
-import { cutText } from "../../../coding-agent/src/octocode/shared/util.ts";
+import {
+	redactData,
+	redactSecretFragments,
+	redactSecrets,
+	secretContinuesAfterLine,
+	unfinishedPrivateKey,
+} from "../../../common/src/sanitize.ts";
+import { cutText } from "../../../common/src/text.ts";
 
 export const ACP_TEXT_BYTES = 64 * 1024;
 export const ACP_TEXT_POINTER = "[ACP text is captured in redacted text_stream records.]";

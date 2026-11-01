@@ -1,0 +1,357 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+	contentText,
+	createFauxCore,
+	fauxAssistantMessage,
+	getCurrentSystemMessage,
+	getCurrentTools,
+	type TranscriptContext,
+} from "@octocodeai/octocode-ai";
+import { parseArgs } from "../../../src/cli/args.ts";
+import type { ExtensionFactory } from "../../../src/core/extensions/index.ts";
+import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
+import { createAgentSession } from "../../../src/core/sdk.ts";
+import { SessionManager } from "../../../src/core/session-manager.ts";
+import {
+	captureSkillResourceSnapshot,
+	readSkillResourceSnapshot,
+	type SkillResourceSnapshot,
+} from "../../../src/core/skill-resource-snapshot.ts";
+import { SettingsManager } from "../../../src/core/settings-manager.ts";
+import { writeRolePrompt } from "../../../src/octocode/instructions/role.ts";
+import { withIdentity } from "../../../src/octocode/instructions/task.ts";
+import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
+import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.ts";
+import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
+import { taskSkillPlan, taskSkillText } from "../../../src/octocode/subagents/task-skills.ts";
+import { childTaskInput } from "../../../src/octocode/subagents/task-text.ts";
+
+export const PACKAGE_DIR = fileURLToPath(new URL("../../..", import.meta.url)).replace(/\/$/, "");
+
+/** The task text the main session and each child receive; fixed so the output does not depend on a prompt. */
+const MAIN_REQUEST = "[The user's first message]";
+const CHILD_TASK = "[The parent's task: objective, scope, known facts and acceptance checks]";
+const CHILD_GOAL = "[the goal the parent named for this child]";
+
+/** The AGENTS.md every captured agent finds in its working directory, so the `project_context` section is visible. */
+const PROJECT_INSTRUCTIONS = "# Example project\n\nRun `yarn test` before reporting. Keep source files short.\n";
+
+export interface CapturedTool {
+	name: string;
+	description: string;
+	parameters: unknown;
+}
+
+/** The first model request one agent receives, with machine-specific values replaced by fixed ones. */
+export interface AgentContext {
+	/** The folder name under `rendered/`. */
+	name: string;
+	kind: "main" | "child";
+	/** The bundled role a child runs; none for the main session and the generic child. */
+	role?: string;
+	/** Named system prompt sections in order (each wrapped in its tag), then any text outside a section. */
+	sections: Array<{ name: string; text: string }>;
+	tools: CapturedTool[];
+	messages: Array<{ role: string; text: string }>;
+}
+
+interface Fixture {
+	root: string;
+	cwd: string;
+	home: string;
+	agentDir: string;
+	octocodeHome: string;
+	scratch: string;
+	replacements: Array<[string, string]>;
+}
+
+function fixture(): Fixture {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-context-"));
+	const dir = (name: string) => {
+		const made = path.join(root, name);
+		fs.mkdirSync(made, { recursive: true });
+		return made;
+	};
+	const cwd = dir("project");
+	const home = dir("home");
+	const agentDir = dir("agent");
+	const octocodeHome = dir("octocode-home");
+	const scratch = path.join(cwd, ".octocode", "tmp", "agents", "child-example");
+	fs.mkdirSync(scratch, { recursive: true });
+	fs.writeFileSync(path.join(cwd, "AGENTS.md"), PROJECT_INSTRUCTIONS);
+	fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(root)]: true }));
+	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {} }));
+	const both = (target: string, shown: string): Array<[string, string]> => [
+		[target, shown],
+		[fs.realpathSync(target), shown],
+	];
+	// Longest first, so a folder inside another is replaced before its parent.
+	const replacements = [
+		...both(cwd, "/workspace/project"),
+		...both(agentDir, "~/.octocode/agent"),
+		...both(octocodeHome, "~/.octocode/home"),
+		...both(home, "~"),
+		...both(root, "/tmp/octocode-context"),
+		[PACKAGE_DIR, "<octocode package>"] as [string, string],
+	].sort((a, b) => b[0].length - a[0].length);
+	return { root, cwd, home, agentDir, octocodeHome, scratch, replacements };
+}
+
+/** The environment of a fresh Octocode process: nothing of the developer's own OCTOCODE_* settings or session. */
+function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = {};
+	for (const [key, value] of Object.entries(process.env)) if (!key.startsWith("OCTOCODE_")) env[key] = value;
+	return {
+		...env,
+		HOME: fx.home,
+		OCTOCODE_CODING_AGENT_DIR: fx.agentDir,
+		OCTOCODE_HOME: fx.octocodeHome,
+		// A headless session denies every ask: the user exported workspace.
+		OCTOCODE_PERMISSION: "workspace",
+		OCTOCODE_MODELS_DEV: "0",
+	};
+}
+
+/** Runs `run` with `env` as the whole process environment, then puts the original back. */
+async function withEnv<T>(env: NodeJS.ProcessEnv, run: () => Promise<T>): Promise<T> {
+	const saved = { ...process.env };
+	const replace = (next: NodeJS.ProcessEnv) => {
+		for (const key of Object.keys(process.env)) delete process.env[key];
+		Object.assign(process.env, next);
+	};
+	replace(env);
+	try {
+		return await run();
+	} finally {
+		replace(saved);
+	}
+}
+
+/** How a session is built: the main session takes the defaults, a child what its command line says. */
+interface SessionShape {
+	noExtensions?: boolean;
+	extensions?: string[];
+	noMcp?: boolean;
+	noSkills?: boolean;
+	tools?: string[];
+	excludeTools?: string[];
+	skillResourceSnapshot?: SkillResourceSnapshot;
+}
+
+/** A real session on a scripted model; returns the system message, tools and messages of its first request. */
+async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
+	const faux = createFauxCore({
+		provider: "faux",
+		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
+	});
+	const provider: ExtensionFactory = (api) => {
+		api.registerProvider("faux", {
+			name: "Faux",
+			api: faux.api,
+			baseUrl: "http://127.0.0.1:0",
+			apiKey: "test",
+			models: faux.models.map((model) => ({
+				...model,
+				promptCache: { short: 300, long: 3600 },
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			})),
+			streamSimple: faux.streamSimple,
+		} as never);
+	};
+	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
+	// The options the CLI's runtime factory (`main/runtime-factory.ts`) passes for these flags.
+	const resourceLoader = new DefaultResourceLoader({
+		cwd: fx.cwd,
+		agentDir: fx.agentDir,
+		settingsManager,
+		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		noExtensions: shape.noExtensions,
+		additionalExtensionPaths: shape.extensions,
+		disabledBuiltinExtensions: shape.noMcp ? ["mcp"] : undefined,
+		noSkills: shape.noSkills,
+		skillResourceSnapshot: shape.skillResourceSnapshot,
+		noPromptTemplates: true,
+		noThemes: true,
+	});
+	await resourceLoader.reload();
+	const { session } = await createAgentSession({
+		cwd: fx.cwd,
+		agentDir: fx.agentDir,
+		resourceLoader,
+		settingsManager,
+		sessionManager: SessionManager.inMemory(fx.cwd),
+		...(shape.tools ? { tools: shape.tools } : {}),
+		...(shape.excludeTools ? { excludeTools: shape.excludeTools } : {}),
+	});
+	try {
+		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
+		let captured: TranscriptContext | undefined;
+		faux.setResponses([
+			(context: TranscriptContext) => {
+				captured ??= context;
+				return fauxAssistantMessage("ready");
+			},
+		]);
+		await session.prompt(request);
+		if (!captured) throw new Error("The scripted model received no request");
+		return captured;
+	} finally {
+		session.dispose?.();
+	}
+}
+
+function normalizer(fx: Fixture) {
+	return (text: string): string => {
+		let result = text;
+		for (const [from, to] of fx.replacements) result = result.split(from).join(to);
+		// The `environment` section: the machine and the day.
+		return result
+			.replace(/^Platform: .*$/gm, "Platform: <platform> <arch>")
+			.replace(/^Shell: .*$/gm, "Shell: <shell>")
+			.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>");
+	};
+}
+
+function describeRequest(
+	name: string,
+	kind: AgentContext["kind"],
+	role: string | undefined,
+	context: TranscriptContext,
+	normalize: (text: string) => string,
+): AgentContext {
+	const system = getCurrentSystemMessage(context.messages);
+	const sections = Object.entries(system?.sections ?? {}).map(([sectionName, text]) => ({
+		name: sectionName,
+		text: normalize(String(text)),
+	}));
+	const loose = system ? contentText(system.content) : "";
+	if (loose) sections.unshift({ name: "(system text outside a section)", text: normalize(loose) });
+	return {
+		name,
+		kind,
+		...(role ? { role } : {}),
+		sections,
+		tools: getCurrentTools(context.messages).map((tool) => ({
+			name: tool.name,
+			description: normalize(tool.description ?? ""),
+			parameters: JSON.parse(normalize(JSON.stringify(tool.parameters ?? null))) as unknown,
+		})),
+		// The system messages are the prompt and tool deltas shown above; these are the conversation.
+		messages: context.messages
+			.filter((message) => message.role !== "system")
+			.map((message) => {
+				const content = (message as { content?: unknown }).content;
+				const text = Array.isArray(content)
+					? content
+							.map((part: { type?: string; text?: string }) =>
+								part.type === "text" ? (part.text ?? "") : `[${part.type}]`,
+							)
+							.join("\n")
+					: String(content ?? "");
+				return { role: message.role, text: normalize(text) };
+			}),
+	};
+}
+
+/** The main session as the user starts it: native tools, the Octocode MCP server, bundled skills and a project AGENTS.md. */
+async function captureMain(): Promise<AgentContext> {
+	const fx = fixture();
+	try {
+		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, {}, MAIN_REQUEST));
+		return describeRequest("main", "main", undefined, context, normalizer(fx));
+	} finally {
+		fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	}
+}
+
+/**
+ * A child as `subagents/tool.ts` starts it: the identity and role prompt reach it through its environment
+ * (`subagentProcessEnv`), the tools, extensions and skills through its command line (`buildAgentArgs`), the skills
+ * through the snapshot file the parent wrote, and the task through `childTaskInput` and `withIdentity`.
+ */
+async function captureChild(name: string, roleName: string | undefined): Promise<AgentContext> {
+	const fx = fixture();
+	try {
+		const profiles = loadProfiles(fx.cwd, fx.home, false, {});
+		const profile: AgentProfile | undefined = roleName ? profiles.get(roleName) : undefined;
+		if (roleName && !profile) throw new Error(`Bundled role ${roleName} not found`);
+		const skillPlan = taskSkillPlan(profile, undefined);
+		// What the parent hands over: its skill catalog (a lean child gets none, and reads them inlined in its task).
+		const snapshot = await withEnv(baseEnv(fx), async () => {
+			const parent = new DefaultResourceLoader({
+				cwd: fx.cwd,
+				agentDir: fx.agentDir,
+				settingsManager: SettingsManager.inMemory({}),
+				noExtensions: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			});
+			await parent.reload();
+			return captureSkillResourceSnapshot(parent.getSkills(), skillPlan.names, []);
+		});
+		const snapshotFile = path.join(fx.octocodeHome, "skills-snapshot.json");
+		fs.writeFileSync(snapshotFile, JSON.stringify(snapshot), { mode: 0o600 });
+		const identity: Identity = {
+			id: "child-example",
+			role: profile?.name ?? GENERAL_PROFILE,
+			goal: CHILD_GOAL,
+			parentId: "parent-example",
+			parentSession: "parent-session-example",
+			scratch: fx.scratch,
+			skillsInTask: skillPlan.inTask,
+			permission: { mode: "workspace", grants: [] },
+		};
+		const rolePromptFile = profile?.prompt ? writeRolePrompt(profile.prompt, fx.octocodeHome) : undefined;
+		const env = subagentProcessEnv(profile, baseEnv(fx), identity, undefined, rolePromptFile, snapshotFile);
+		const skillText = skillPlan.inTask ? taskSkillText(snapshot, skillPlan.inline) : "";
+		const task = withIdentity(
+			childTaskInput(CHILD_TASK, { referenced: "", browserMode: profile?.headless, skillText }),
+			identity,
+		);
+		const parsed = parseArgs(
+			buildAgentArgs(profile, undefined, { dir: path.join(fx.scratch, "session"), id: identity.id }, []),
+		);
+		const shape: SessionShape = {
+			noExtensions: parsed.noExtensions,
+			extensions: parsed.extensions,
+			noMcp: parsed.noMcp,
+			noSkills: parsed.noSkills,
+			tools: parsed.tools,
+			excludeTools: parsed.excludeTools,
+			// `main.ts` adopts the file only in a subagent that was handed one.
+			skillResourceSnapshot: readSkillResourceSnapshot(snapshotFile),
+		};
+		const context = await withEnv(env, () => firstRequest(fx, shape, task));
+		return describeRequest(name, "child", roleName, context, normalizer(fx));
+	} finally {
+		fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	}
+}
+
+/** The agents whose context is captured, in the order of the index. */
+export const AGENTS: Array<{ name: string; role?: string; kind: AgentContext["kind"]; about: string }> = [
+	{
+		name: "main",
+		kind: "main",
+		about: "The session the user talks to: native tools, the Octocode MCP server, skills and project AGENTS.md.",
+	},
+	{ name: "general", kind: "child", about: "A subagent started without a role." },
+	...["researcher", "implementer", "reviewer", "browser", "lean"].map((role) => ({
+		name: role,
+		role,
+		kind: "child" as const,
+		about: `A subagent started with the bundled \`${role}\` role.`,
+	})),
+];
+
+/** Starts every agent in turn (the process environment is swapped for each) and returns what its first request holds. */
+export async function captureAll(): Promise<AgentContext[]> {
+	const contexts: AgentContext[] = [];
+	for (const agent of AGENTS)
+		contexts.push(agent.kind === "main" ? await captureMain() : await captureChild(agent.name, agent.role));
+	return contexts;
+}

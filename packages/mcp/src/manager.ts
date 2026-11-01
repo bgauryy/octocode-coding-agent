@@ -1,7 +1,8 @@
 /** The `/mcp` manager in the TUI: server list, server actions, tools, exposure and sign-in screens. */
 
 import type { SelectItem } from "@octocodeai/octocode-tui";
-import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
+import { firstLine } from "../../common/src/clip.ts";
+import type { McpContext } from "./host/types.ts";
 import type { McpExposure } from "./config.ts";
 import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
@@ -15,7 +16,6 @@ import {
 	describeState,
 	describeTransport,
 	EXPOSURE_DESCRIPTIONS,
-	firstLine,
 	isEnabled,
 	type McpServer,
 } from "./server.ts";
@@ -197,7 +197,7 @@ export function signInWithUi(state: McpExtensionState, ui: McpUi, server: McpSer
 /** Keep the subscribed menu usable while a connection opens or closes. */
 function runInBackground(
 	state: McpExtensionState,
-	ctx: ExtensionContext,
+	ctx: McpContext,
 	server: McpServer,
 	operation: () => Promise<string | undefined>,
 ): void {
@@ -215,7 +215,7 @@ function runInBackground(
 async function runAction(
 	state: McpExtensionState,
 	ui: McpUi,
-	ctx: ExtensionContext,
+	ctx: McpContext,
 	server: McpServer,
 	action: string,
 ): Promise<void> {
@@ -256,7 +256,7 @@ async function runAction(
 	state.emitChange();
 }
 
-export async function manage(state: McpExtensionState, ui: McpUi, ctx: ExtensionContext): Promise<void> {
+export async function manage(state: McpExtensionState, ui: McpUi, ctx: McpContext): Promise<void> {
 	for (;;) {
 		const name = await ui.menu(() => serversMenu(state), state.subscribe);
 		if (!name) return;

@@ -50,7 +50,6 @@ export function assertExactModelIds(label: string, expected: Iterable<string>, a
 	throw new Error(`${label} model IDs do not match (${describeSetDifference(expectedIds, actualIds)})`);
 }
 
-
 function isModalityList(value: unknown): value is ("text" | "image")[] {
 	return Array.isArray(value) && value.length > 0 && value.every((entry) => entry === "text" || entry === "image");
 }

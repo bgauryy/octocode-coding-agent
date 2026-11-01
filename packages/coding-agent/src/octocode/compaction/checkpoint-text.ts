@@ -38,7 +38,7 @@ function savedReference(text: string, save: SaveText): string {
 	return `[Complete text saved at ${file}; search it and read only relevant bounded line ranges for the original content.]`;
 }
 
-/** Keep whole messages or a reference to their complete persisted text, including inherited messages; inline and cut when `save` is null. */
+/** Keep whole messages, or a reference to their complete persisted text (inherited messages included) and the newest that fit whole; inline and cut when `save` is null. */
 export function userMessagesSection(
 	earlier: readonly string[],
 	omittedBefore: number,
@@ -66,7 +66,14 @@ export function userMessagesSection(
 		return kept.length === 0 ? "" : render(kept, omitted, "");
 	}
 	const reference = savedReference(whole, save);
-	const section = render([reference], omittedBefore);
+	// The newest messages that fit whole also stay inline after the reference, so the latest request survives word for word.
+	const newest: string[] = [];
+	for (const message of [...all].reverse()) {
+		if (message.length > budget.perMessage) break;
+		if (render([reference, message, ...newest], omittedBefore).length > budget.total) break;
+		newest.unshift(message);
+	}
+	const section = render([reference, ...newest], omittedBefore);
 	if (section.length > budget.total)
 		throw new CheckpointPersistenceError("The user-message budget cannot hold a complete-text reference.");
 	return section;

@@ -1,16 +1,4 @@
-/** Characters of tool output a frame carries. */
-export const OUTPUT_CHARS = 16_000;
-const HEAD_CHARS = 4_000;
-/**
- * Long output keeps its start (results often open with a summary: a page title, a match count) and its end (where
- * commands report failures), joined by a marker that says how much was left out.
- */
-export function keepEnds(text: string, max: number): string {
-	if (text.length <= max) return text;
-	const marker = (omitted: number) => `\n… [${omitted} characters omitted] …\n`;
-	const tail = max - HEAD_CHARS - marker(text.length).length;
-	return `${text.slice(0, HEAD_CHARS)}${marker(text.length - HEAD_CHARS - tail)}${text.slice(-tail)}`;
-}
+import { keepEnds, OUTPUT_CHARS } from "@octocodeai/octocode-contracts";
 
 /** Text blocks of a tool result (or its string content), shortened to what a frame carries. */
 export function toolResultText(value: unknown): string {

@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { readOnlyCommand } from "../../src/octocode/permission/shell/read-only.ts";
 
 describe("readOnlyCommand", () => {
+	// The bash parse must agree with the quick reading; without the parser nothing is read-only.
+	beforeAll(() => shellParserReady());
+
 	it.each([
 		"cat src/a.ts",
 		"ls -la && pwd",

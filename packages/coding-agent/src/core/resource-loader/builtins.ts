@@ -1,3 +1,5 @@
+import "../../octocode/mcp-host/core-install.ts";
+import "../../octocode/mcp-host/render-install.ts";
 import type { InlineExtension } from "../extensions/types.ts";
 import { type BuiltinExtension, isBuiltinExtension } from "./extension-sets.ts";
 import llamaExtension from "../../octocode/llama/index.ts";

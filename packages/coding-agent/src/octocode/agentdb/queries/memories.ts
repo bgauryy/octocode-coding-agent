@@ -91,10 +91,25 @@ export function newest(db: DatabaseSync, repoKey: string, scope: ScopeFilter, li
 		.all(...where.params, limit);
 }
 
+/**
+ * Memories of `scope` that were never handed to the model or were last updated before `before`, oldest update first:
+ * what `/memory review` offers to edit or delete.
+ */
+export function forReview(db: DatabaseSync, repoKey: string, scope: ScopeFilter, before: number, limit: number): Row[] {
+	const where = scopeSql(repoKey, scope);
+	return db
+		.prepare(
+			`SELECT m.* FROM memories m WHERE ${where.sql} AND (m.use_count = 0 OR m.updated_at < ?) ORDER BY m.updated_at ASC, m.id ASC LIMIT ?`,
+		)
+		.all(...where.params, before, limit);
+}
+
 export interface NewMemory {
 	scope: string;
 	repoKey: string | null;
+	/** One of the kinds the `kind` column's CHECK allows; a newer kind goes in `extendedKind` with `kind` set to `fact`. */
 	kind: string;
+	extendedKind: string | null;
 	title: string;
 	body: string;
 	keywords: string;
@@ -108,12 +123,13 @@ export interface NewMemory {
 export function insert(db: DatabaseSync, memory: NewMemory): number {
 	const result = db
 		.prepare(
-			"INSERT INTO memories (scope, repo_key, kind, title, body, keywords, pinned, author, source_session, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO memories (scope, repo_key, kind, extended_kind, title, body, keywords, pinned, author, source_session, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		)
 		.run(
 			memory.scope,
 			memory.repoKey,
 			memory.kind,
+			memory.extendedKind,
 			memory.title,
 			memory.body,
 			memory.keywords,
@@ -129,11 +145,12 @@ export function insert(db: DatabaseSync, memory: NewMemory): number {
 /** Rewrites memory `id` (its creation time and source session stay). */
 export function update(db: DatabaseSync, id: number, memory: Omit<NewMemory, "sourceSession">): void {
 	db.prepare(
-		"UPDATE memories SET scope = ?, repo_key = ?, kind = ?, title = ?, body = ?, keywords = ?, pinned = ?, author = ?, updated_at = ? WHERE id = ?",
+		"UPDATE memories SET scope = ?, repo_key = ?, kind = ?, extended_kind = ?, title = ?, body = ?, keywords = ?, pinned = ?, author = ?, updated_at = ? WHERE id = ?",
 	).run(
 		memory.scope,
 		memory.repoKey,
 		memory.kind,
+		memory.extendedKind,
 		memory.title,
 		memory.body,
 		memory.keywords,

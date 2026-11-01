@@ -84,8 +84,9 @@ const dialogs = new Queue(() => {
 
 /**
  * Run one user interaction (every select, confirm and input of one `askUser` call, one file review, one confirm) while
- * no other interaction shows. Octocode's TUI shows one dialog at a time: a second dialog replaces the first without
- * resolving it, which leaves that call waiting for an answer nobody can give. Interactions queue in call order; one
+ * no other interaction shows. Octocode's TUI shows one dialog at a time: a second dialog replaces the first, which then
+ * resolves as cancelled (undefined or false), so an unqueued interaction would read a dismissal the user never gave.
+ * Interactions queue in call order; one
  * nested in another (an interaction that opens a follow-up) runs at once. Aborting a queued interaction runs it at
  * once, so its own aborted dialog returns without showing.
  */

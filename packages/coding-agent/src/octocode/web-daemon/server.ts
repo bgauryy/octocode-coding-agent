@@ -11,8 +11,10 @@ import {
 } from "@octocodeai/octocode-contracts/daemon";
 import { DAEMON_ROUTES, WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { MERMAID_SCRIPT_HASH, pagePolicy } from "@octocodeai/octocode-webview";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { daemonPage, type DaemonPage } from "./build.ts";
+import { type ConfigRoutes, handleConfigRequest } from "./config-routes.ts";
 import { bearerOf, replier, tokenAccess, type DaemonTokens, type Reply } from "./http-util.ts";
 import { RemotePublisher } from "./remote/publisher.ts";
 import { handleRemoteRequest } from "./remote/routes.ts";
@@ -32,8 +34,14 @@ export interface DaemonServerOptions {
 	page?: DaemonPage;
 	/** Called on each sign of use (a tab, an attached session, an authenticated request) so the idle timer restarts. */
 	onActivity: () => void;
-	/** Builds the read-only configuration answer for `GET /api/config`; the caller validates its shape. */
-	config: (repo: { root?: string } | undefined) => Promise<unknown>;
+	/** Builds the configuration answer for `GET /api/config`; the caller validates its shape. */
+	config: ConfigRoutes["config"];
+	/** Applies a validated `POST /api/admin/config/settings` change to the settings files. */
+	writeSetting?: ConfigRoutes["writeSetting"];
+	/** Applies a validated `POST /api/admin/config/credentials` change; the command carries a key, so it is never logged. */
+	writeCredential?: ConfigRoutes["writeCredential"];
+	/** Records a credential request refused before it reached `writeCredential`; see `ConfigRoutes.auditRefused`. */
+	auditRefused?: ConfigRoutes["auditRefused"];
 	/** Asked by `POST /api/admin/drain`. */
 	onDrain: () => void;
 }
@@ -139,16 +147,12 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		draining: state.draining,
 	});
 
-	const csp = [
-		"default-src 'none'",
-		`script-src '${page.scriptHash}'`,
-		"style-src 'unsafe-inline'",
-		"img-src data:",
-		"connect-src 'self'",
-		"base-uri 'none'",
-		"form-action 'none'",
-		"frame-ancestors 'none'",
-	].join("; ");
+	// The page's own script and the Mermaid text its docs view runs inline; the rest of the policy is the page's own.
+	const csp = pagePolicy({
+		scripts: [`'${page.scriptHash}'`, `'${MERMAID_SCRIPT_HASH}'`],
+		live: true,
+		header: true,
+	});
 
 	const handle = async (req: http.IncomingMessage, res: http.ServerResponse, reply: Reply) => {
 		if (req.headers.host !== host || (req.headers.origin !== undefined && req.headers.origin !== origin))
@@ -169,7 +173,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		}
 		const access = tokenAccess(bearerOf(req), tokens);
 		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.health) return reply(200, access ? status() : health());
-		if (!access) return reply(401, { error: "Reopen /octocode to connect to the Octocode web workspace." });
+		if (!access) return reply(401, { error: "Reopen /web to connect to the Octocode web workspace." });
 		// A view link reads what the page reads and changes nothing: no command, no board write, no admin call.
 		if (access === "view" && req.method !== "GET")
 			return reply(403, { error: "This link is view-only. Open the workspace from a terminal to act." });
@@ -194,16 +198,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			if (!Value.Check(DaemonReposSchema, body)) return reply(500, { error: "Repository list is invalid" });
 			return reply(200, body);
 		}
-		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.config) {
-			const repoParam = url.searchParams.get("repoId");
-			const repo = repoParam ? catalog.resolve(repoParam) : undefined;
-			if (repoParam && !repo) return reply(404, { error: "Unknown repository" });
-			try {
-				return reply(200, await options.config(repo));
-			} catch (error) {
-				return reply(500, { error: redactSecrets(errorMessage(error)).slice(0, 500) });
-			}
-		}
+		if (await handleConfigRequest(req, url, access, { catalog, ...options }, reply)) return;
 		// Links carry capabilities: only the launch token may issue or revoke them.
 		if (url.pathname === DAEMON_ROUTES.remote) {
 			if (await handleRemoteRequest(req, reply, remote)) return;
@@ -219,7 +214,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		const scopedUrl = new URL(origin + scope.rest + url.search);
 		if (scope.kind === "session") {
 			const session = registry.get(scope.id);
-			if (!session) return reply(404, { error: "That session is not attached. Open /octocode in a running session." });
+			if (!session) return reply(404, { error: "That session is not attached. Open /web in a running session." });
 			const repo = catalog.resolve(repoId(session.record.repo.key));
 			if (!repo) return reply(404, { error: "Unknown repository" });
 			if (

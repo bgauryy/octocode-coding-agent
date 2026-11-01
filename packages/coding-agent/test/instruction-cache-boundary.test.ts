@@ -26,17 +26,17 @@ describe("instruction cache boundary", () => {
 		expect(findInstructionCacheBoundary(system({ ...base, environment: "e", octocode: "o" }))).toBe("environment");
 	});
 
-	it("leaves base sections such as MCP server contracts in the first block", () => {
+	it("leaves base sections such as the MCP server blocks in the first block", () => {
 		const sections = {
 			preamble: "p",
 			tools: "t",
 			rules: "r",
 			docs: "d",
-			mcp_contract_docs: "f",
+			mcps: "f",
 			project_context: "pc",
 		};
 		expect(findInstructionCacheBoundary(system({ ...sections, cwd: "c" }))).toBe("project_context");
-		expect(findInstructionCacheBoundary(system({ preamble: "p", mcp_contract_docs: "f", cwd: "c" }))).toBe("cwd");
+		expect(findInstructionCacheBoundary(system({ preamble: "p", mcps: "f", cwd: "c" }))).toBe("cwd");
 	});
 
 	it("gives byte-identical first blocks to sessions that differ only in cwd and date", () => {
@@ -47,7 +47,7 @@ describe("instruction cache boundary", () => {
 				contextFiles: [],
 				skills: [],
 				environment: `Date: ${date}`,
-				baseSections: { mcp_contract_docs: "docs file" },
+				baseSections: { mcps: "docs file" },
 				sections: { octocode: "Policy." },
 			});
 			const boundary = findInstructionCacheBoundary(system(sections));

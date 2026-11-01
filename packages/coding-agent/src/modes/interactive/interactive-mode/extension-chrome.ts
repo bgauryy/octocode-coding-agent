@@ -9,6 +9,7 @@ import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provi
 import { keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { getEditorTheme, type Theme, theme } from "../../../theme/theme.ts";
+import { closeExtensionOverlays } from "./extension-dialogs.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
@@ -163,7 +164,8 @@ export function resetExtensionUI(host: ExtensionChromeHost): void {
 	if (host.extensionEditor) {
 		host.hideExtensionEditor();
 	}
-	host.ui.hideOverlay();
+	// Custom overlays are answered and disposed; a custom component in the editor slot is, by setCustomEditorComponent below.
+	if (!closeExtensionOverlays(host)) host.ui.hideOverlay();
 	host.clearExtensionTerminalInputListeners();
 	host.setExtensionFooter(undefined);
 	host.setExtensionHeader(undefined);

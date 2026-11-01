@@ -151,6 +151,11 @@ export class HuggingFaceSearch extends Container implements Focusable {
 		}
 	}
 
+	/** Close as cancelled: stop the pending search and answer undefined, unless it was already answered. */
+	dispose(): void {
+		this.close(undefined);
+	}
+
 	private close(model: string | undefined): void {
 		if (this.closed) return;
 		this.closed = true;

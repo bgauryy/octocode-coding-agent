@@ -14,7 +14,9 @@ describe("CLI value completion", () => {
 		const fake = fakeHost();
 		await octocode(fake.api);
 		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp"]));
-		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual(["file,browser"]);
+		expect(completeCli(["--exclude-tools", "file,deb"])).toEqual(["file,debug"]);
+		// The native `browser` tool is retired: browsing is the built-in browser MCP server, so nothing completes it.
+		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual([]);
 	});
 	it("follows nested commands and does not suggest flags in free text or after --", () => {
 		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["direct", "hidden"]);

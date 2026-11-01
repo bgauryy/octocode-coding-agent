@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Text, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
+import { setCapabilityOverrides, Text, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createToolHtmlRenderer } from "../../src/core/export-html/tool-renderer.ts";
@@ -100,6 +100,9 @@ describe("the reason line of a native tool row", () => {
 
 	it("is the theme's `toolReason` color in italics, a color of its own in every bundled theme", () => {
 		const seen = new Set<string>();
+		// The themes define truecolor values; a terminal without truecolor hints gets 256 colours, which may round two of
+		// them to one palette entry, so the comparison pins truecolor.
+		setCapabilityOverrides({ trueColor: true });
 		for (const name of ["dark", "light", "octocode-dark", "octocode-light"]) {
 			initTheme(name);
 			const found = row("bash", { command: "ls", reason: "list the folder" })
@@ -112,6 +115,7 @@ describe("the reason line of a native tool row", () => {
 			seen.add(expected);
 		}
 		expect(seen.size).toBe(4);
+		setCapabilityOverrides({});
 		initTheme("dark");
 	});
 

@@ -1,4 +1,5 @@
 import { decodePastedControlKeys } from "../../bracketed-paste.ts";
+import { stripControlCharacters } from "../../utils/chars.ts";
 
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
@@ -50,9 +51,14 @@ export class BracketedPasteBuffer {
 	}
 }
 
-/** Pasted text for a single-line input: tmux-encoded control keys decoded, line breaks dropped, tabs expanded. */
+/**
+ * Pasted text for a single-line input: tmux-encoded control keys decoded, line breaks dropped, tabs expanded, and
+ * other control characters removed, as typed input rejects them; left in, they would reach the terminal on render.
+ */
 export function singleLinePaste(text: string): string {
-	return decodePastedControlKeys(text)
-		.replace(/\r\n|\r|\n/g, "")
-		.replace(/\t/g, "    ");
+	return stripControlCharacters(
+		decodePastedControlKeys(text)
+			.replace(/\r\n|\r|\n/g, "")
+			.replace(/\t/g, "    "),
+	);
 }

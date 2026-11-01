@@ -1,6 +1,7 @@
 /** Gemini thinking wire format chosen from the model ID; free of the Google SDK so capabilities resolve without it. */
 import type { Model } from "../../types.ts";
-import type { GoogleApiType } from "./thinking.ts";
+
+export type GoogleApiType = "google-generative-ai" | "google-vertex";
 
 /**
  * Whether this model uses Gemini's discrete `thinkingLevel` control instead of

@@ -127,7 +127,10 @@ describe("team across the worktrees of one repository", () => {
 	});
 
 	it("records a main session's tmux pane and shows its pid and pane to agents in other worktrees", () => {
-		const ctx = { isIdle: () => true } as unknown as ExtensionContext;
+		const ctx = {
+			sessionManager: { getSessionId: () => "sess-team" },
+			isIdle: () => true,
+		} as unknown as ExtensionContext;
 		const inTmux = { TMUX: "/tmp/tmux-1/default,1,0", TMUX_PANE: "%7" };
 		// Joined now, so the roster does not leave it out as stale.
 		const row = newMember(inTmux, ctx, "main-aaaaaa", undefined, Date.now());

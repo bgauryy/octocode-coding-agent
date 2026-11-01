@@ -192,4 +192,19 @@ describe("session selector search", () => {
 			expect(result.map((session) => session.id)).toEqual(["named"]);
 		});
 	});
+
+	it("finds a quick catalog row, which has no transcript text, by its first prompt in every sort", () => {
+		const sessions: SessionInfo[] = [
+			makeSession({
+				id: "quick",
+				modified: new Date("2026-01-02T00:00:00.000Z"),
+				firstMessage: "deploy the docs site",
+				allMessagesText: "",
+			}),
+			makeSession({ id: "other", modified: new Date("2026-01-01T00:00:00.000Z"), allMessagesText: "" }),
+		];
+		for (const sort of ["recent", "relevance", "threaded"] as const) {
+			expect(filterAndSortSessions(sessions, '"deploy the docs"', sort).map((s) => s.id)).toEqual(["quick"]);
+		}
+	});
 });

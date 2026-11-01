@@ -5,7 +5,7 @@ import {
 	type McpToolDefinitionOptions,
 } from "../../tool-definition.ts";
 import { toToolResult } from "../octocode/tools.ts";
-import { timedTool } from "../../../../coding-agent/src/octocode/shared/render/rows.ts";
+import { hostRender } from "../../host.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { presentBrowserResult } from "./presentation.ts";
 import { normalizeBrowserArguments } from "./presentation-options.ts";
@@ -46,7 +46,7 @@ export function defineBrowserTool(options: McpToolDefinitionOptions) {
 	const label = tool.title?.trim() || `browser ${tool.name}`;
 	// The filter rewrites the package's launcher `args`; a user's own `browser` server with another `open` contract is left alone.
 	const launcherArgs = tool.name !== "open" || Object.hasOwn(tool.inputSchema?.properties ?? {}, "args");
-	return timedTool(
+	return hostRender().timedTool(
 		createMcpToolDefinition({
 			...options,
 			presentation: {

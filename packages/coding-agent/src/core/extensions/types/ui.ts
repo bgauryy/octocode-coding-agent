@@ -12,6 +12,8 @@ import type {
 import type { Theme } from "../../../theme/theme.ts";
 import type { ReadonlyFooterDataProvider, StatusTone } from "../../footer-data-provider.ts";
 import type { KeybindingsManager } from "../../keybindings.ts";
+import type { SessionInfo } from "../../session-manager.ts";
+import type { SessionPickerOptions } from "../../session-picker.ts";
 
 // ============================================================================
 // UI Context
@@ -143,7 +145,11 @@ export interface ExtensionUIContext {
 	/** Set the terminal window/tab title. */
 	setTitle(title: string): void;
 
-	/** Show a custom component with keyboard focus. */
+	/**
+	 * Show a custom component with keyboard focus. Resolves with the result passed to `done`, or undefined when the
+	 * component is closed without one: another dialog or view took its place, the extension UI was reset (reload or
+	 * session replacement), or the mode has no custom UI. The component is disposed when it closes.
+	 */
 	custom<T>(
 		factory: (
 			tui: TUI,
@@ -158,7 +164,13 @@ export interface ExtensionUIContext {
 			/** Called with the overlay handle after the overlay is shown. Use to control visibility. */
 			onHandle?: (handle: OverlayHandle) => void;
 		},
-	): Promise<T>;
+	): Promise<T | undefined>;
+
+	/**
+	 * Pick a saved session in the session selector. Resolves with the chosen session, or undefined when cancelled.
+	 * Only the interactive terminal implements it; elsewhere it is undefined.
+	 */
+	pickSession?(options: SessionPickerOptions): Promise<SessionInfo | undefined>;
 
 	/** Paste text into the editor, triggering paste handling (collapse for large content). */
 	pasteToEditor(text: string): void;

@@ -12,13 +12,8 @@ import { randomUUID } from "node:crypto";
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import { afterEach, vi } from "vitest";
 import { AcpBroker, type AcpWorker } from "../../src/server/broker.ts";
-import type { PromptDisposition } from "../../../coding-agent/src/core/agent-session.ts";
-import type { RpcEvent } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
-import type {
-	RpcExtensionUIRequest,
-	RpcExtensionUIResponse,
-	RpcSessionState,
-} from "../../../coding-agent/src/modes/rpc/rpc-types.ts";
+import type { AcpUiRequest, AcpUiResponse, AcpWorkerEvent, AcpWorkerState } from "../../src/host.ts";
+import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 
 export const usage = {
 	input: 0,
@@ -50,32 +45,24 @@ export function deferred<T>() {
 type Worker = AcpWorker;
 export class FakeWorker implements Worker {
 	private identities = new Set<(id: string) => void>();
-	private events = new Set<(event: RpcEvent) => void>();
+	private events = new Set<(event: AcpWorkerEvent) => void>();
 	private closes = new Set<(error: Error) => void>();
-	private requests = new Set<(request: RpcExtensionUIRequest) => void>();
+	private requests = new Set<(request: AcpUiRequest) => void>();
 	private sessionId = randomUUID();
 	start = vi.fn(async () => {});
 	stop = vi.fn(async () => {
 		this.fail(new Error("Worker stopped"));
 	});
-	getState = vi.fn(async (): Promise<RpcSessionState> => ({
+	getState = vi.fn(async (): Promise<AcpWorkerState> => ({
 		sessionId: this.sessionId,
 		sessionFile: "/tmp/acp-fixture-session.jsonl",
-		thinkingLevel: "off",
-		isStreaming: false,
-		isCompacting: false,
-		steeringMode: "all",
-		followUpMode: "all",
-		autoCompactionEnabled: false,
-		messageCount: 0,
-		pendingMessageCount: 0,
 	}));
 	persistSession = vi.fn(async () => {});
-	prompt = vi.fn(async (_message: string, _images?: ImageContent[]): Promise<PromptDisposition> => "started");
+	prompt = vi.fn(async (_message: string, _images?: ImageContent[]): Promise<string> => "started");
 	abort = vi.fn(async () => {
 		this.emit({ type: "agent_settled", aborted: true });
 	});
-	respondToExtensionUIRequest = vi.fn(async (_response: RpcExtensionUIResponse) => {});
+	respondToExtensionUIRequest = vi.fn(async (_response: AcpUiResponse) => {});
 	onSessionIdentity(listener: (id: string) => void) {
 		this.identities.add(listener);
 		return () => this.identities.delete(listener);
@@ -83,7 +70,7 @@ export class FakeWorker implements Worker {
 	identify(id: string) {
 		for (const listener of this.identities) listener(id);
 	}
-	onEvent(listener: (event: RpcEvent) => void) {
+	onEvent(listener: (event: AcpWorkerEvent) => void) {
 		this.events.add(listener);
 		return () => this.events.delete(listener);
 	}
@@ -91,17 +78,17 @@ export class FakeWorker implements Worker {
 		this.closes.add(listener);
 		return () => this.closes.delete(listener);
 	}
-	onExtensionUIRequest(listener: (request: RpcExtensionUIRequest) => void) {
+	onExtensionUIRequest(listener: (request: AcpUiRequest) => void) {
 		this.requests.add(listener);
 		return () => this.requests.delete(listener);
 	}
-	emit(event: RpcEvent) {
+	emit(event: AcpWorkerEvent) {
 		for (const listener of Array.from(this.events)) listener(event);
 	}
 	fail(error = new Error("Worker crashed")) {
 		for (const listener of Array.from(this.closes)) listener(error);
 	}
-	ask(request: RpcExtensionUIRequest) {
+	ask(request: AcpUiRequest) {
 		for (const listener of Array.from(this.requests)) listener(request);
 	}
 	finish(text = "done") {
@@ -142,6 +129,7 @@ export function harness(
 	});
 	const toClient = new TransformStream<AnyMessage, AnyMessage>();
 	const broker = new AcpBroker({
+		host: acpServerHost,
 		createWorker,
 		maxSessions: options.maxSessions,
 		cancelTimeoutMs: options.cancelTimeoutMs,

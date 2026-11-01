@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openAdapter, type AdapterInput, type AdapterLink } from "./adapter.ts";
 import { exceptionInfo } from "./exception-info.ts";
 import { handshake, type HandshakeResult } from "./handshake.ts";
@@ -151,7 +151,7 @@ export class DebugSession {
 	#reverse: ReverseRequestHandler = (command, args) => {
 		if (command !== "startDebugging" || this.#state === "ended") return undefined;
 		if (this.#children.size >= MAX_CHILDREN) return Promise.reject(new Error("Too many child debug sessions"));
-		const configuration = isRecord(args.configuration) ? args.configuration : {};
+		const configuration = asRecord(args.configuration);
 		void this.#adopt(args.request === "attach" ? "attach" : "launch", configuration);
 		return Promise.resolve({});
 	};
@@ -217,7 +217,7 @@ export class DebugSession {
 					const top = objects(body(trace).stackFrames)[0];
 					if (top && generation === this.#generation && typeof top.id === "number") {
 						this.#frames.add(top.id);
-						const source = isRecord(top.source) ? top.source : {};
+						const source = asRecord(top.source);
 						status.frame = { id: top.id, name: top.name, source: source.path ?? source.name, line: top.line };
 					}
 				} catch (error) {

@@ -127,10 +127,9 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 		timedTool({
 			name: COMPACT_TOOL,
 			label: "Compact",
+			promptSnippet: "At a task boundary when the context is over half full, or when the user asks",
 			description:
-				"Summarize older turns to free context, after this reply ends; the task then resumes from the summary. Use at a task " +
-				"boundary when the context is over half full, or when the user asks. End your reply after calling it.",
-			promptSnippet: "Compact the context after this reply",
+				"Summarize older turns to free context once this reply ends; the task then resumes from the summary, so end your reply after calling it.",
 			parameters: Type.Object({
 				// No schema bound (tool schemas carry none, `schema-shape.test`): the length is applied in `execute`.
 				focus: Type.Optional(Type.String({ description: "What the summary must keep" })),

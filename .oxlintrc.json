@@ -54,7 +54,7 @@
 		"typescript/restrict-template-expressions": "error",
 		"import/no-duplicates": "error",
 		"import/no-self-import": "error",
-		"import/no-cycle": "error",
+		"import/no-cycle": ["error", { "ignoreTypes": false }],
 		"unicorn/no-useless-spread": "error",
 		"unicorn/no-useless-fallback-in-spread": "error",
 		"no-control-regex": "off",
@@ -80,8 +80,7 @@
 		{
 			"files": [
 				"packages/coding-agent/src/octocode/agentdb/**",
-				"packages/coding-agent/src/octocode/team/peer-leases.ts",
-				"packages/coding-agent/src/octocode/shared/util.ts"
+				"packages/coding-agent/src/octocode/team/peer-leases.ts"
 			],
 			"rules": {
 				"no-restricted-imports": "off"
@@ -114,16 +113,22 @@
 			}
 		},
 		{
-			"files": [
-				"packages/coding-agent/src/core/agent-session.ts",
-				"packages/coding-agent/src/core/export-html/template.js",
-				"packages/tui/src/terminal.ts",
-				"packages/tui/src/tui.ts",
-				"scripts/generate-coding-agent-install-lock.mjs",
-				"scripts/profile-coding-agent-node.mjs"
-			],
+			"files": ["packages/coding-agent/src/core/export-html/script/*.js"],
+			"rules": {
+				"no-unused-vars": "off",
+				"prefer-const": "off"
+			}
+		},
+		{
+			"files": [],
 			"rules": {
 				"max-lines": "off"
+			}
+		},
+		{
+			"files": [],
+			"rules": {
+				"import/no-cycle": "error"
 			}
 		}
 	]

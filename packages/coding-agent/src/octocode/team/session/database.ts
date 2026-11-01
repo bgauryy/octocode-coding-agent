@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
-import { AgentDbError } from "../../agentdb/schema.ts";
+import { AgentDbError } from "../../agentdb/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";
 import type { Ask } from "../asks.ts";
+import type { OpenQuestion } from "../model.ts";
 import { TeamStore } from "../store.ts";
 import type { TeamView } from "../ticker.ts";
 
@@ -111,6 +112,15 @@ export class TeamDatabase {
 	asks(child: string, parent: string, since: number): Ask[] {
 		try {
 			return this.existing()?.asks(child, parent, since) ?? [];
+		} catch {
+			return [];
+		}
+	}
+
+	/** The team's read, unanswered questions for `coordinate list`; none when the database cannot be read (the snapshot says why). */
+	openQuestions(): OpenQuestion[] {
+		try {
+			return this.existing()?.refs.openQuestions() ?? [];
 		} catch {
 			return [];
 		}

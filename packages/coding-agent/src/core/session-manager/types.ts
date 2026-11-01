@@ -117,10 +117,18 @@ export interface LabelEntry extends SessionEntryBase {
 	label: string | undefined;
 }
 
+/**
+ * Who named a session: `user` (`/rename`, `--name`, a picker rename, the SDK), `auto` (a title generated from the
+ * first prompt) or `goal` (a subagent named after its goal). Only a user name is never replaced automatically.
+ */
+export type SessionNameSource = "user" | "auto" | "goal";
+
 /** Session metadata entry (e.g., user-defined display name). */
 export interface SessionInfoEntry extends SessionEntryBase {
 	type: "session_info";
 	name?: string;
+	/** Absent for user names, so entries written before sources existed keep their meaning. */
+	source?: Exclude<SessionNameSource, "user">;
 }
 
 /**
@@ -209,8 +217,10 @@ export interface SessionInfo {
 	id: string;
 	/** Working directory where the session was started. Empty string for old sessions. */
 	cwd: string;
-	/** User-defined display name from session_info entries. */
+	/** Display name from the latest session_info entry. */
 	name?: string;
+	/** Who gave `name`; absent means the user (or no name). */
+	nameSource?: Exclude<SessionNameSource, "user">;
 	/** Path to the parent session (if this session was forked). */
 	parentSessionPath?: string;
 	created: Date;

@@ -3,6 +3,7 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { currentMutationRevision, mutationEpoch } from "../feedback/revisions.ts";
 import type { BashJob, JobExit, VerificationReceipt } from "../bash-jobs/types.ts";
+import { logTail, TAIL_BYTES } from "../bash-jobs/tail.ts";
 import type { BashDetails } from "../render.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
@@ -88,9 +89,8 @@ export function finishVerification(
 	let tailIncomplete = (logRotations ?? 0) > 0;
 	if (job && logAvailable) {
 		try {
-			const size = fs.statSync(job.log).size;
-			if (size > 4 * 1024) tailIncomplete = true;
-			else tailIncomplete ||= fs.readFileSync(job.log, "utf8").split("\n").length > 41;
+			// Incomplete exactly when the report's tail leaves lines out; the size check spares counting a large log.
+			tailIncomplete ||= fs.statSync(job.log).size > TAIL_BYTES || logTail(job.log).earlier > 0;
 		} catch {
 			logAvailable = false;
 		}

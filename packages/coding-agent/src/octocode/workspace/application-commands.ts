@@ -4,8 +4,7 @@ import {
 	type ApplicationReceipt,
 } from "@octocodeai/octocode-contracts";
 import type { ApplicationReceiptStore } from "../../core/application/index.ts";
-import { commands } from "../agentdb/api.ts";
-import type { AgentDb } from "../agentdb/db.ts";
+import { type AgentDb, commands } from "../agentdb/api.ts";
 import { redactSecrets, storedSecret } from "../../../../common/src/sanitize.ts";
 
 export class ApplicationCommands implements ApplicationReceiptStore {
@@ -24,7 +23,7 @@ export class ApplicationCommands implements ApplicationReceiptStore {
 		if (this.session && this.session !== command.sessionId) throw new Error("Receipt store belongs to another session");
 		this.session = command.sessionId;
 		return this.db.transaction(() => {
-			const previous = commands.applicationById(this.db.db, this.repo, command.sessionId, `application:${command.id}`);
+			const previous = commands.byId(this.db.db, this.repo, command.sessionId, `application:${command.id}`);
 			if (previous) {
 				if (previous.input !== input) throw new Error("Request ID already used with another command");
 				return {

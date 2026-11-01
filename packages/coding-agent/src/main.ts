@@ -27,6 +27,7 @@ import { collectSettingsDiagnostics, deduplicateDiagnostics } from "./core/setti
 import { SettingsManager } from "./core/settings-manager.ts";
 import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
+import "./octocode/mcp-host/core-install.ts";
 import { loadMcpCommand } from "../../mcp/src/cli.lazy.ts";
 import { runAuthCommand } from "./main/auth-command.ts";
 import { runModelDiscoveryCommand } from "./main/model-discovery.ts";
@@ -49,7 +50,7 @@ import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./theme/theme.ts";
 import { validateThemeJson } from "./theme/theme-schema.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
-import { isTruthyEnvFlag } from "./utils/env-flag.ts";
+import { isOfflineModeEnabled, isTruthyEnvFlag, OFFLINE_ENV } from "./utils/env-flag.ts";
 import { normalizePath } from "../../common/src/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
@@ -85,9 +86,9 @@ export async function main(args: string[], options?: MainOptions) {
 		console.log(`Migration checks completed for ${getAgentDir()} and the current project's .octocode/.`);
 		return;
 	}
-	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.OCTOCODE_OFFLINE);
+	const offlineMode = args.includes("--offline") || isOfflineModeEnabled();
 	if (offlineMode) {
-		process.env.OCTOCODE_OFFLINE = "1";
+		process.env[OFFLINE_ENV] = "1";
 		process.env.OCTOCODE_SKIP_VERSION_CHECK = "1";
 	}
 
@@ -164,8 +165,7 @@ export async function main(args: string[], options?: MainOptions) {
 			throw new Error(
 				"ACP workers require file-based extensions; inline extension factories cannot cross process boundaries.",
 			);
-		const { acpWorkerArguments, runAcpMode } = await import("../../acp/src/server/acp-mode.ts");
-		await runAcpMode(acpWorkerArguments(args, parsed));
+		await (await import("./main/acp-host.ts")).runAcpMain(args, parsed);
 		return;
 	}
 

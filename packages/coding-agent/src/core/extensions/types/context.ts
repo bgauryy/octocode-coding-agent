@@ -72,6 +72,8 @@ export interface ExtensionContext {
 	abort(reason?: "interrupted" | "internal"): void;
 	/** Whether there are queued messages waiting */
 	hasPendingMessages(): boolean;
+	/** Whether a custom message sent with this exact `details` object (identity, not equality) still waits in the agent's queue. */
+	isMessageQueued(details: object): boolean;
 	/** Gracefully shutdown Octocode and exit. Available in all contexts. */
 	shutdown(): void;
 	/** Get current context usage for the active model. */

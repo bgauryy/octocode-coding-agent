@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpDiagnostics, AcpOutput } from "../../src/client/output.ts";
+import { acpClientHost } from "../../../coding-agent/src/octocode/external/acp-host.ts";
 
 const chunk = (text: string): SessionNotification => ({
 	sessionId: "session",
@@ -27,7 +28,7 @@ describe("bounded ACP evidence capture", () => {
 	});
 
 	it("archives aggregate update overflow while retaining the answer and terminal response", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk("first\n"));
 		for (let index = 0; index < 3; index++) output.append(tool(`${index}:` + "evidence".repeat(80_000)));
 		output.append(chunk("final answer"));
@@ -58,7 +59,7 @@ describe("bounded ACP evidence capture", () => {
 	});
 
 	it("bounds text by UTF-8 bytes without breaking characters and preserves its end", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(chunk("start\n" + "𐐀".repeat(30_000)));
 		output.append(chunk("\nfinal answer"));
 		const result = output.reply({ stopReason: "end_turn" });
@@ -73,7 +74,7 @@ describe("bounded ACP evidence capture", () => {
 		const blocked = join(home, "not-a-directory");
 		writeFileSync(blocked, "occupied");
 		vi.stubEnv("OCTOCODE_HOME", blocked);
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		output.append(tool("x".repeat(2 * 1024 * 1024)));
 		const result = output.reply({ stopReason: "cancelled" });
 		expect(result.stopReason).toBe("cancelled");
@@ -87,7 +88,7 @@ describe("bounded ACP evidence capture", () => {
 	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
 		"names the errno code when the archive cannot be extended",
 		() => {
-			const output = new AcpOutput();
+			const output = new AcpOutput(acpClientHost.saveOutput);
 			output.append(tool("x".repeat(2 * 1024 * 1024)));
 			// The first overflow created the archive; make it read-only so the next append fails.
 			for (const entry of readdirSync(home, { recursive: true, withFileTypes: true }))
@@ -99,7 +100,7 @@ describe("bounded ACP evidence capture", () => {
 	);
 
 	it("bounds artifact growth and marks omitted evidence while preserving the terminal outcome", () => {
-		const output = new AcpOutput();
+		const output = new AcpOutput(acpClientHost.saveOutput);
 		for (let index = 0; index < 3; index++) output.append(tool("x".repeat(12 * 1024 * 1024)));
 		const result = output.reply({ stopReason: "refusal" });
 		const overflow = result.updates?.find((entry) => (entry as Overflow).type === "output_truncated") as Overflow;
@@ -111,7 +112,7 @@ describe("bounded ACP evidence capture", () => {
 	});
 
 	it("bounds stderr over many chunks and saves redacted evidence with the latest diagnostics", () => {
-		const diagnostics = new AcpDiagnostics();
+		const diagnostics = new AcpDiagnostics(acpClientHost.saveOutput);
 		diagnostics.append(`sk-${"a".repeat(30)}\n`);
 		for (let index = 0; index < 100; index++) diagnostics.append("x".repeat(1000));
 		diagnostics.append("\nfinal diagnostic");

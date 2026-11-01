@@ -1,80 +1,5 @@
-/** Commands that only run the rest of the line (after their own options and leading operands) as another command. */
-const WRAPPERS = new Set([
-	"sudo",
-	"doas",
-	"command",
-	"exec",
-	"nohup",
-	"time",
-	"env",
-	"xargs",
-	"timeout",
-	"nice",
-	"ionice",
-	"stdbuf",
-	"caffeinate",
-	"chrt",
-	"taskset",
-]);
-/** Wrapper options that take the next word as their value (`sudo -u root rm …`: `root` is not the command). */
-const OPTION_ARGS: Record<string, ReadonlySet<string>> = {
-	sudo: new Set([
-		"-u",
-		"-g",
-		"-h",
-		"-p",
-		"-C",
-		"-D",
-		"-R",
-		"-r",
-		"-T",
-		"-t",
-		"-U",
-		"--user",
-		"--group",
-		"--host",
-		"--prompt",
-		"--close-from",
-		"--chdir",
-		"--chroot",
-		"--role",
-		"--type",
-		"--command-timeout",
-		"--other-user",
-	]),
-	doas: new Set(["-u", "-C"]),
-	env: new Set(["-u", "--unset", "-C", "--chdir"]),
-	xargs: new Set([
-		"-I",
-		"-J",
-		"-L",
-		"-n",
-		"-P",
-		"-s",
-		"-d",
-		"-E",
-		"-a",
-		"-R",
-		"-S",
-		"--max-args",
-		"--max-lines",
-		"--max-procs",
-		"--max-chars",
-		"--delimiter",
-		"--eof",
-		"--arg-file",
-		"--replace",
-		"--process-slot-var",
-	]),
-	timeout: new Set(["-k", "-s", "--kill-after", "--signal"]),
-	nice: new Set(["-n", "--adjustment"]),
-	ionice: new Set(["-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid"]),
-	stdbuf: new Set(["-i", "-o", "-e", "--input", "--output", "--error"]),
-	caffeinate: new Set(["-t", "-w"]),
-	chrt: new Set(["-T", "-P", "-D", "--sched-runtime", "--sched-period", "--sched-deadline"]),
-};
-/** Operands a wrapper takes before the command it runs (`timeout 5 rm …`, `chrt 10 rm …`, `taskset 0x3 rm …`). */
-const LEADING_OPERANDS: Record<string, number> = { timeout: 1, chrt: 1, taskset: 1 };
+import { LEADING_OPERANDS, optionWidth, WRAPPERS } from "./wrapper-options.ts";
+
 export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 /** Programs whose operands are the paths they remove. */
 export const REMOVERS = new Set(["rm", "rmdir", "unlink", "shred"]);
@@ -98,10 +23,69 @@ export const unhide = (text: string): string =>
 	text.replace(HIDDEN, (char) => String.fromCharCode(char.charCodeAt(0) - HIDDEN_BASE));
 export const base = (token: string): string => token.slice(token.lastIndexOf("/") + 1);
 
+/** Single-character escapes of bash's ANSI-C quoting (`$'…'`). */
+const ANSI_C: Record<string, string> = {
+	a: "\x07",
+	b: "\b",
+	e: "\x1b",
+	E: "\x1b",
+	f: "\f",
+	n: "\n",
+	r: "\r",
+	t: "\t",
+	v: "\v",
+	"\\": "\\",
+	"'": "'",
+	'"': '"',
+	"?": "?",
+};
+
 /**
- * The command with quotes removed (their content kept as one word, with operators neutralised) and each heredoc
- * replaced by a `\u0002<index>` word whose body is pushed onto `bodies`: what is left is what the shell splits into
- * commands.
+ * The text bash makes of an ANSI-C quoted body (between `$'` and `'`): its letter, octal (`\101`) and hex (`\x41`)
+ * escapes decoded, an unknown escape kept with its backslash, cut at a NUL as bash cuts it. Undefined for `\c`, `\u` and
+ * `\U`, whose result depends on the bash version or the locale.
+ */
+export function ansiC(body: string): string | undefined {
+	let out = "";
+	for (let at = 0; at < body.length; at++) {
+		if (body[at] !== "\\" || at + 1 >= body.length) {
+			out += body[at];
+			continue;
+		}
+		const next = body[++at];
+		const number =
+			/^[0-7]{1,3}/.exec(body.slice(at)) ?? (next === "x" ? /^[0-9a-fA-F]{1,2}/.exec(body.slice(at + 1)) : null);
+		if (ANSI_C[next] !== undefined) out += ANSI_C[next];
+		else if ("cuU".includes(next)) return undefined;
+		else if (number) {
+			out += String.fromCharCode(Number.parseInt(number[0], next === "x" ? 16 : 8) & 0xff);
+			at += number[0].length - (next === "x" ? 0 : 1);
+		} else out += `\\${next}`;
+	}
+	const nul = out.indexOf("\0");
+	return nul < 0 ? out : out.slice(0, nul);
+}
+
+/** Index of the `'` closing the ANSI-C quoted string whose body starts at `start` (a `\'` inside does not close it). */
+function ansiCEnd(command: string, start: number): number {
+	for (let at = start; at < command.length; at++) {
+		if (command[at] === "\\") at++;
+		else if (command[at] === "'") return at;
+	}
+	return command.length;
+}
+
+/**
+ * Whether a `#` at `index` starts a comment: it begins a word (bash reads `a#b`, `$#` and `\ #` as words). After `<` or
+ * `>` it is not taken as one: bash then reports a missing redirect target and runs nothing, so keeping the text is safe.
+ */
+const commentAt = (command: string, index: number): boolean =>
+	index === 0 || (/[\s;&|()]/.test(command[index - 1]) && command[index - 2] !== "\\");
+
+/**
+ * The command with quotes removed (their content kept as one word, with operators neutralised, ANSI-C `$'…'` escapes
+ * decoded, `$"…"` read as `"…"`), comments dropped and each heredoc replaced by a `\u0002<index>` word whose body is
+ * pushed onto `bodies`: what is left is what the shell splits into commands.
  */
 export function mask(command: string, bodies: string[]): string {
 	let out = "";
@@ -143,6 +127,23 @@ export function mask(command: string, bodies: string[]): string {
 			const next = command[index + 1] ?? "";
 			out += next === "\n" ? " " : hide(next);
 			index += 2;
+			continue;
+		}
+		if (char === "#" && commentAt(command, index)) {
+			const end = command.indexOf("\n", index);
+			index = end < 0 ? command.length : end;
+			continue;
+		}
+		if (char === "$" && command[index + 1] === "'") {
+			const stop = ansiCEnd(command, index + 2);
+			const body = command.slice(index + 2, stop);
+			out += hide(ansiC(body) ?? body) || hide(" ");
+			index = stop + 1;
+			continue;
+		}
+		// `$"…"` is a double-quoted string translated by the locale's message catalog: without one, it is `"…"`.
+		if (char === "$" && command[index + 1] === '"') {
+			index++;
 			continue;
 		}
 		if (char === "'") {
@@ -219,8 +220,12 @@ function substitutionsIn(text: string): string[] {
 	return found;
 }
 
-/** A simple command's words, past wrappers (their options, option values and leading operands) and `VAR=value`. */
-export function words(segment: string): string[] {
+/**
+ * A simple command's words, past wrappers (their options, option values and leading operands) and `VAR=value`. With
+ * `strict`, a wrapper option `wrapper-options.ts` does not know stops the walk there, so the first word is that option
+ * rather than a guess at the command (for checks that must not mistake a writer for a reader).
+ */
+export function words(segment: string, strict = false): string[] {
 	const tokens = segment.trim().split(/\s+/).filter(Boolean);
 	let wrapper: string | undefined;
 	let operands = 0;
@@ -233,8 +238,9 @@ export function words(segment: string): string[] {
 		} else if (/^\w+=/.test(token)) {
 			tokens.shift();
 		} else if (token.startsWith("-") && tokens.length > 1) {
-			tokens.shift();
-			if (wrapper && OPTION_ARGS[wrapper]?.has(token)) tokens.shift();
+			const width = wrapper ? optionWidth(wrapper, token) : 1;
+			if (width === undefined && strict) break;
+			tokens.splice(0, width ?? 1);
 		} else if (operands > 0 && tokens.length > 1) {
 			operands--;
 			tokens.shift();
@@ -243,34 +249,77 @@ export function words(segment: string): string[] {
 	return tokens;
 }
 
+/** What `env -S`/`--split-string` was given: the string env splits into a command and arguments (undefined when unresolved), and the index after it. */
+export interface EnvSplit {
+	value: string | undefined;
+	end: number;
+}
+
+/** `env`'s split-string option at `at`: `-S x`, `-Sx`, a cluster ending in it (`-iS x`), `--split-string x`, `--split-string=x` or a prefix of that name. */
+function envSplit(literals: ReadonlyArray<string | undefined>, at: number): EnvSplit | undefined {
+	const token = literals[at] ?? "";
+	if (token.startsWith("--")) {
+		const name = token.split("=")[0];
+		if (name.length < 4 || !"--split-string".startsWith(name)) return undefined;
+		return token.includes("=")
+			? { value: token.slice(name.length + 1), end: at + 1 }
+			: { value: literals[at + 1], end: at + 2 };
+	}
+	const cluster = /^-[^uC-]*S/.exec(token)?.[0];
+	if (cluster === undefined) return undefined;
+	return token.length > cluster.length
+		? { value: token.slice(cluster.length), end: at + 1 }
+		: { value: literals[at + 1], end: at + 2 };
+}
+
 /**
  * The index of the command a wrapper line really runs, given the literal words and the index of the first one: past
- * wrappers (`sudo -u root`, `env -i A=1`, `exec`, `nohup`, `time`), their options, option values and leading operands.
- * Undefined when an unresolved word (`$CMD`) stands where the command should be; `literals.length` when nothing follows.
+ * wrappers (`sudo -u root`, `env -i A=1`, `exec -a name`, `nohup`, `time`), their options, option values and leading operands.
+ * Undefined when an unresolved word (`$CMD`) stands where the command should be, or when `env -S` splits a string into the
+ * command (`splitString` reads that); `literals.length` when nothing follows.
  */
 export function wrappedCommand(literals: ReadonlyArray<string | undefined>, start: number): number | undefined {
+	return scanWrapped(literals, start).at;
+}
+
+/** The `env -S` string a wrapper line runs as its command, when `wrappedCommand` stopped there. */
+export function splitString(literals: ReadonlyArray<string | undefined>, start: number): EnvSplit | undefined {
+	return scanWrapped(literals, start).split;
+}
+
+function scanWrapped(
+	literals: ReadonlyArray<string | undefined>,
+	start: number,
+): { at: number | undefined; split?: EnvSplit } {
 	let at = start;
 	let wrapper: string | undefined;
 	let operands = 0;
 	while (at < literals.length) {
 		const token = literals[at];
-		if (token === undefined) return wrapper === undefined ? at : undefined;
+		if (token === undefined) return { at: wrapper === undefined ? at : undefined };
+		const split = wrapper === "env" && token.startsWith("-") ? envSplit(literals, at) : undefined;
+		if (split) return { at: undefined, split };
 		if (WRAPPERS.has(base(token))) {
 			wrapper = base(token);
 			operands = LEADING_OPERANDS[wrapper] ?? 0;
 			// `command -v rm` only looks a command up.
-			if (wrapper === "command" && ["-v", "-V"].includes(literals[at + 1] ?? "")) return at;
+			if (wrapper === "command" && ["-v", "-V"].includes(literals[at + 1] ?? "")) return { at };
 			at++;
 		} else if (wrapper === undefined) break;
 		else if (/^\w+=/.test(token)) at++;
 		else if (token.startsWith("-") && at + 1 < literals.length) {
-			at += OPTION_ARGS[wrapper]?.has(token) ? 2 : 1;
+			// An option the table does not know may take the next word as its value: the command is not known.
+			const width = optionWidth(wrapper, token);
+			if (width === undefined) return { at: undefined };
+			at += width;
 		} else if (operands > 0 && at + 1 < literals.length) {
 			operands--;
 			at++;
 		} else break;
 	}
-	return at;
+	// A wrapped "command" with spaces in it is a script string (`watch 'cp a b'`), not a program name.
+	if (wrapper !== undefined && /\s/.test(literals[at] ?? "")) return { at: undefined };
+	return { at };
 }
 
 /** For a shell command: the script it runs from `-c`, or whether it reads its script from standard input. */

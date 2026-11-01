@@ -1,10 +1,21 @@
 import { countRefs, resolveLocalRef } from "./schema-refs.ts";
-import { NOTE_KEYS, SHAPE_KEYS, UNSUPPORTED_SHAPE } from "./schema-keywords.ts";
+import { SHAPE_KEYS, UNSUPPORTED_SHAPE } from "./schema-keywords.ts";
+import { createNotes } from "./schema-notes.ts";
+import {
+	identifier,
+	isHoistableUnion,
+	isNode,
+	isShapeless,
+	isSimple,
+	type Node,
+	oneLine,
+	shapeOnly,
+} from "./schema-nodes.ts";
 import type { JsonSchema } from "./types.ts";
 
-type Node = { [key: string]: unknown };
-
 const MAX_DEPTH = 400;
+/** Branches of a union at least this long are candidates for a server-level alias when repeated. */
+const HOISTED_BRANCHES_MIN_CHARS = 200;
 
 export interface SchemaToTsOptions {
 	/** Prefix for aliases, so tools sharing `$defs` ids (`0`, `4`) never collide. */
@@ -29,26 +40,7 @@ export interface SchemaToTsOptions {
 	hoisted?: ReadonlyMap<string, string>;
 }
 
-/**
- * Constraints left out of the text: validation enforces them and its error names the one a call breaks. A `pattern` or
- * `maxLength` rarely helps a model compose a valid value; a minimum of 1 for a string, list or object only says "not
- * empty"; the bound zod emits for `.int()` or an API's largest id limits nothing a caller would send.
- */
-function isValidationOnly(key: string, value: unknown): boolean {
-	if (key === "pattern" || key === "maxLength") return true;
-	if (key === "minLength" || key === "minItems" || key === "minProperties") return value === 1;
-	return (key === "maximum" || key === "minimum") && Math.abs(Number(value)) >= 1e9;
-}
-
-const isNode = (value: unknown): value is Node => typeof value === "object" && value !== null && !Array.isArray(value);
-const identifier = (key: string) => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key));
-export const oneLine = (text: unknown) =>
-	(typeof text === "string" ? text : "")
-		.trim()
-		.replace(/\s*\n\s*/g, " ")
-		.replace(/\*\//g, "*\\/");
-export const isShapeless = (schema: unknown): boolean =>
-	schema === true || (isNode(schema) && !SHAPE_KEYS.some((key) => key in schema));
+export { isShapeless };
 
 /**
  * Renders a JSON Schema (draft-04, draft-07 or 2020-12, including zod v3 `zod-to-json-schema` and zod v4
@@ -62,6 +54,17 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 	/** Fields a variant restates as required with type only; the shared field carries their doc. */
 	const restated = new WeakSet<object>();
 	let depth = 0;
+	// While > 0, types are written without the server-level aliases: the text a repeat is recognised by.
+	let raw = 0;
+	const aliased = () => (raw ? undefined : options.hoisted);
+	const unaliased = <T>(compute: () => T): T => {
+		raw++;
+		try {
+			return compute();
+		} finally {
+			raw--;
+		}
+	};
 
 	// A pointer other than a definition (`#`, `#/properties/a`) gets a `$` name, which no definition name produces.
 	const aliasName = (id: string) =>
@@ -83,22 +86,7 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		}
 		return current;
 	};
-	const notes = (schema: unknown): string[] => {
-		const node = deref(schema);
-		if (!isNode(node)) return [];
-		const out: string[] = [];
-		for (const key of NOTE_KEYS) {
-			const value = node[key];
-			if (value === undefined || value === false) continue;
-			if (isValidationOnly(key, value)) continue;
-			if (key === "default") out.push(`default ${JSON.stringify(value)}`);
-			else if (value === true) out.push(key);
-			else out.push(`${key} ${typeof value === "string" ? value : JSON.stringify(value)}`);
-		}
-		if (Array.isArray(node.allOf)) for (const part of node.allOf) if (isShapeless(part)) out.push(...notes(part));
-		if (Array.isArray(node.examples) && node.examples.length) out.push(`e.g. ${JSON.stringify(node.examples[0])}`);
-		return out;
-	};
+	const { notes, alternativesNote } = createNotes(deref);
 	const docText = (schema: unknown, path: string) => {
 		const node = deref(schema);
 		const description = options.fieldDocs?.[path] ?? (isNode(node) ? node.description : undefined);
@@ -111,28 +99,6 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		const description = oneLine(isNode(node) ? node.description : undefined);
 		return description ? `/** ${description} */ ${type}` : type;
 	};
-	/**
-	 * What alternatives without a shape require (`{ required: [...] }`, a `format`), as a comment after the type: they
-	 * add no TypeScript type but still constrain the value. Empty when there are none or one of them allows anything.
-	 */
-	const alternativesNote = (schema: Node, alternatives: unknown[]): string => {
-		const shapeless = alternatives.filter(isShapeless);
-		const texts = shapeless.map((alternative) => {
-			const node = isNode(alternative) ? alternative : {};
-			const required = Array.isArray(node.required) ? node.required.map(String) : [];
-			return [oneLine(node.description), required.length ? `${required.join(" + ")} required` : "", ...notes(node)]
-				.filter(Boolean)
-				.join(", ");
-		});
-		if (!texts.length || texts.some((text) => !text)) return "";
-		const kind =
-			shapeless.length < alternatives.length
-				? "or"
-				: Array.isArray(schema.anyOf)
-					? "at least one of"
-					: "exactly one of";
-		return ` /* ${kind}: ${oneLine(texts.join(" | "))} */`;
-	};
 
 	function render(schema: unknown, indent: string, path: string, parent?: Node): string {
 		if (++depth > MAX_DEPTH) {
@@ -140,7 +106,10 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 			return "unknown /* schema too deep */";
 		}
 		try {
-			return renderNode(schema, indent, path, parent);
+			const text = renderNode(schema, indent, path, parent);
+			if (!(options.onObject || options.hoisted) || !isNode(schema) || !isHoistableUnion(text)) return text;
+			options.onObject?.("value", text, schema);
+			return aliased()?.get(text) ?? text;
 		} finally {
 			depth--;
 		}
@@ -265,38 +234,71 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 					objectBranches.length > 0 &&
 					objectBranches.every((node) => requiredOf(node).has(key))),
 		);
+		// A shapeless shared field a branch types (`operation: unknown` beside `operation: "resolve"`) is a placeholder: the
+		// branches carry its type and doc, so it records none of its own.
+		const placeholders = new Set(
+			Object.keys(sharedProperties).filter(
+				(key) =>
+					isShapeless(sharedProperties[key]) &&
+					branches.some((node) => isNode(node) && isNode(node.properties) && !isShapeless(node.properties[key])),
+			),
+		);
 		const base = renderObject(
 			{ type: "object", properties: sharedProperties, required: requiredEverywhere },
 			indent,
 			path,
 			parent,
+			placeholders,
 		);
+		// What a nested union's own fields restate (`mainGoal?: unknown`) is read against these shared fields.
+		const inheritable: Node = {
+			properties: {
+				...(isNode(parent?.properties) ? parent.properties : {}),
+				...Object.fromEntries(Object.entries(sharedProperties).filter(([, value]) => !isShapeless(value))),
+			},
+		};
 		const sharedRequired = new Set(requiredEverywhere);
-		const variants = [
-			...new Set(
-				branches.map((node, index) => {
-					if (!isNode(node) || node.anyOf || node.oneOf || !isNode(node.properties))
-						return described(live[index], render(live[index], indent, path, parent));
-					const branchRequired = requiredOf(node);
-					const own: Node = {};
-					for (const [key, value] of Object.entries(node.properties)) {
-						if (!isShapeless(value)) own[key] = value;
-						// A placeholder this branch alone requires: show the parent's field as required here.
-						// Type only: the shared field above already carries its doc and constraints.
-						else if (branchRequired.has(key) && !sharedRequired.has(key) && key in sharedProperties) {
-							const typed = shapeOnly(deref(sharedProperties[key]));
+		const variantsAt = (at: string) =>
+			[
+				...new Set(
+					branches.map((node, index) => {
+						if (!isNode(node) || node.anyOf || node.oneOf || !isNode(node.properties))
+							return described(live[index], render(live[index], at, path, inheritable));
+						const branchRequired = requiredOf(node);
+						const own: Node = {};
+						for (const [key, value] of Object.entries(node.properties)) if (!isShapeless(value)) own[key] = value;
+						// A key this branch alone requires, as a placeholder or only in its `required` (`{ required: [matchString] }`):
+						// show the parent's field as required here. Type only: the shared field above already carries its doc.
+						for (const key of branchRequired) {
+							if (key in own || sharedRequired.has(key) || !(key in sharedProperties)) continue;
+							// A bare `$ref` stays one, so the restated field names the shared alias instead of writing the type again.
+							const typed = shapeOnly(sharedProperties[key]);
 							if (isNode(typed)) restated.add(typed);
 							own[key] = typed;
 						}
-					}
-					if (!Object.keys(own).length) return "";
-					// The parent's `required` also binds keys that only the branches define.
-					const required = Object.keys(own).filter((key) => branchRequired.has(key) || parentRequired.has(key));
-					return described(node, renderObject({ type: "object", properties: own, required }, indent, path));
-				}),
-			),
-		].filter(Boolean);
-		return variants.length ? `${base} & (${variants.join(" | ")})` : base;
+						if (!Object.keys(own).length) return "";
+						// The parent's `required` also binds keys that only the branches define.
+						const required = Object.keys(own).filter((key) => branchRequired.has(key) || parentRequired.has(key));
+						return described(node, renderObject({ type: "object", properties: own, required }, at, path));
+					}),
+				),
+			].filter(Boolean);
+		if (!(options.onObject || options.hoisted)) {
+			const variants = variantsAt(indent);
+			return variants.length ? `${base} & (${variants.join(" | ")})` : base;
+		}
+		// The branches several tools repeat (`ghGetFileContent` and `localFetch` differ only in their leading fields) become
+		// one alias, found by their text at top level without other aliases.
+		const topLevel = unaliased(() => variantsAt("")).join(" | ");
+		if (!topLevel) return base;
+		if (topLevel.length >= HOISTED_BRANCHES_MIN_CHARS)
+			options.onObject?.(`${path.split(".").pop() || "input"}Variants`, topLevel, schema);
+		const alias = aliased()?.get(topLevel);
+		if (alias) return `${base} & ${alias}`;
+		const variants = options.hoisted
+			? variantsAt(indent)
+			: variantsAt("").map((text) => text.replace(/\n/g, `\n${indent}`));
+		return `${base} & (${variants.join(" | ")})`;
 	}
 
 	function renderIntersection(schema: Node, parts: unknown[], indent: string, path: string, parent?: Node): string {
@@ -327,7 +329,13 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		return itemDoc.length ? `${wrapped} /* each: ${itemDoc.join("; ")} */` : wrapped;
 	}
 
-	function renderObject(schema: Node, indent: string, path: string, parent?: Node): string {
+	function renderObject(
+		schema: Node,
+		indent: string,
+		path: string,
+		parent?: Node,
+		placeholders?: ReadonlySet<string>,
+	): string {
 		const properties = isNode(schema.properties) ? schema.properties : {};
 		const required = new Set(Array.isArray(schema.required) ? (schema.required as unknown[]).map(String) : []);
 		const extra = schema.additionalProperties;
@@ -337,13 +345,19 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		const inner = `${indent}\t`;
 		let out = "{\n";
 		for (const key of keys) {
-			let property = properties[key];
-			const inherited = parent && isNode(parent.properties) ? parent.properties[key] : undefined;
-			if (isShapeless(property) && inherited !== undefined)
-				property = { ...(isNode(inherited) ? inherited : {}), ...(isNode(property) ? property : {}) };
+			const property = properties[key];
 			const fieldPath = path ? `${path}.${key}` : key;
+			const inherited = isNode(parent?.properties) ? parent.properties[key] : undefined;
+			if (isShapeless(property) && inherited !== undefined && !isShapeless(inherited)) {
+				// "As on the parent": an optional field adds nothing to the intersection; a required one says so, untyped.
+				if (!required.has(key)) continue;
+				options.onField?.(fieldPath, true);
+				out += `${inner}${identifier(key)}: unknown;\n`;
+				continue;
+			}
 			const doc = docText(property, fieldPath);
-			if (!isNode(property) || !restated.has(property)) options.onDoc?.(key, doc);
+			const placeholder = !doc && placeholders?.has(key);
+			if (!placeholder && (!isNode(property) || !restated.has(property))) options.onDoc?.(key, doc);
 			options.onField?.(fieldPath, required.has(key));
 			const shown = doc && options.sharedDocs?.get(key) !== doc ? `/** ${doc} */ ` : "";
 			out += `${inner}${shown}${identifier(key)}${required.has(key) ? "" : "?"}: ${fieldType(property, inner, fieldPath, key)};\n`;
@@ -356,21 +370,13 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 	function fieldType(property: unknown, indent: string, path: string, key: string): string {
 		if (!options.onObject && !options.hoisted) return render(property, indent, path);
 		const node = deref(property);
-		if (!isNode(node) || !isNode(node.properties) || node.anyOf || node.oneOf || node.allOf)
+		if (!isNode(node) || !(isNode(node.properties) || isNode(node.additionalProperties)))
 			return render(property, indent, path);
-		const topLevel = render(property, "", path);
+		const topLevel = unaliased(() => render(property, "", path));
 		options.onObject?.(key, topLevel, property as object);
-		return options.hoisted?.get(topLevel) ?? render(property, indent, path);
+		return aliased()?.get(topLevel) ?? render(property, indent, path);
 	}
 
 	const type = render(root, "", "");
 	return { type, aliases: [...aliases].map(([id, body]) => `type ${aliasName(id)} = ${body || "unknown"};`) };
-}
-
-const isSimple = (text: string) => !/[{\n]/.test(text) && text.length <= 60;
-
-/** A schema node with only the keywords that give it a shape: no description, constraints or examples. */
-function shapeOnly(schema: unknown): unknown {
-	if (!isNode(schema)) return schema;
-	return Object.fromEntries(Object.entries(schema).filter(([key]) => SHAPE_KEYS.includes(key) || key === "required"));
 }

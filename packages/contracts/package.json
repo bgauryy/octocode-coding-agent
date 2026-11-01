@@ -35,6 +35,11 @@
 			"types": "./dist/protocol.d.ts",
 			"import": "./dist/protocol.js"
 		},
+		"./docs": {
+			"source": "./src/docs.ts",
+			"types": "./dist/docs.d.ts",
+			"import": "./dist/docs.js"
+		},
 		"./daemon": {
 			"source": "./src/daemon.ts",
 			"types": "./dist/daemon.d.ts",
@@ -49,6 +54,11 @@
 			"source": "./src/schema.ts",
 			"types": "./dist/schema.d.ts",
 			"import": "./dist/schema.js"
+		},
+		"./external": {
+			"source": "./src/external.ts",
+			"types": "./dist/external.d.ts",
+			"import": "./dist/external.js"
 		},
 		"./guards": {
 			"source": "./src/guards.ts",

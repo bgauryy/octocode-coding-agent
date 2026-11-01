@@ -1,24 +1,26 @@
-import {
-	type Component,
-	Container,
-	type Focusable,
-	getKeybindings,
-	Input,
-	Spacer,
-	Text,
-} from "@octocodeai/octocode-tui";
+import { type Component, Container, type Focusable, getKeybindings, Input, Spacer } from "@octocodeai/octocode-tui";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
-import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
+import type { SessionInfo } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyText } from "./keybinding-hints.ts";
-import { type SessionScope, SessionSelectorHeader } from "./session-selector/header.ts";
+import { SessionSelectorHeader } from "./session-selector/header.ts";
+import { SessionLoads, type SessionsLoader } from "./session-selector/loads.ts";
+import { type ActionsMenu, actionsMenuFor, renamePanel } from "./session-selector/panels.ts";
 import { SessionList } from "./session-selector/session-list.ts";
+import type { SessionPickerPorts, SessionScope } from "./session-selector/types.ts";
 import { deleteSessionFile } from "./session-selector/utils.ts";
 import type { NameFilter, SortMode } from "./session-selector-search.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
-type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
+interface SessionSelectorOptions extends SessionPickerPorts {
+	renameSession?: (sessionPath: string, currentName: string | undefined) => Promise<void>;
+	showRenameHint?: boolean;
+	keybindings?: KeybindingsManager;
+	/** Scope, query and sort the picker opens with (default: this folder, empty, threaded). */
+	initialScope?: SessionScope;
+	initialQuery?: string;
+	initialSort?: SortMode;
+}
 
 /**
  * Component that renders a session selector
@@ -34,29 +36,29 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			this.renameInput.handleInput(data);
 			return;
 		}
+		if (this.mode === "actions") {
+			this.actionsMenu?.handleInput(data);
+			return;
+		}
 
 		this.sessionList.handleInput(data);
 	}
 
-	private canRename = true;
 	private sessionList: SessionList;
 	private header: SessionSelectorHeader;
 	private keybindings: KeybindingsManager;
 	private scope: SessionScope = "current";
 	private sortMode: SortMode = "threaded";
 	private nameFilter: NameFilter = "all";
-	private currentSessions: SessionInfo[] | null = null;
-	private allSessions: SessionInfo[] | null = null;
-	private currentSessionsLoader: SessionsLoader;
-	private allSessionsLoader: SessionsLoader;
+	private readonly loads: SessionLoads;
 	private requestRender: () => void;
 	private renameSession?: (sessionPath: string, currentName: string | undefined) => Promise<void>;
-	private currentLoad: AbortController | null = null;
-	private allLoad: AbortController | null = null;
 
-	private mode: "list" | "rename" = "list";
+	private mode: "list" | "rename" | "actions" = "list";
 	private renameInput = new Input();
 	private renameTargetPath: string | null = null;
+	private actionsMenu: ActionsMenu | null = null;
+	private readonly ports: SessionPickerPorts;
 
 	// Focusable implementation - propagate to sessionList for IME cursor positioning
 	private _focused = false;
@@ -72,18 +74,20 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		}
 	}
 
+	/** Border, title, content, hints: the list is the only content that fills the terminal. */
 	private buildBaseLayout(content: Component, options?: { showHeader?: boolean }): void {
 		this.clear();
-		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
-		this.addChild(new Spacer(1));
 		if (options?.showHeader ?? true) {
 			this.addChild(this.header);
+			this.addChild(content);
+			this.addChild({ render: (width) => this.header.renderFooter(width), invalidate: () => {} });
+		} else {
 			this.addChild(new Spacer(1));
+			this.addChild(content);
+			this.addChild(new Spacer(1));
+			this.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
 		}
-		this.addChild(content);
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
 	}
 
 	constructor(
@@ -93,33 +97,49 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		onCancel: () => void,
 		onExit: () => void,
 		requestRender: () => void,
-		options?: {
-			renameSession?: (sessionPath: string, currentName: string | undefined) => Promise<void>;
-			showRenameHint?: boolean;
-			keybindings?: KeybindingsManager;
-		},
+		options?: SessionSelectorOptions,
 		currentSessionFilePath?: string,
 	) {
 		super();
+		this.ports = options ?? {};
+		this.scope = options?.initialScope ?? "current";
+		this.sortMode = options?.initialSort ?? "threaded";
 		this.keybindings = options?.keybindings ?? KeybindingsManager.create();
-		this.currentSessionsLoader = currentSessionsLoader;
-		this.allSessionsLoader = allSessionsLoader;
 		this.requestRender = requestRender;
 		this.header = new SessionSelectorHeader(this.scope, this.sortMode, this.nameFilter, this.requestRender);
 		const renameSession = options?.renameSession;
 		this.renameSession = renameSession;
-		this.canRename = !!renameSession;
-		this.header.setShowRenameHint(options?.showRenameHint ?? this.canRename);
+		this.header.setShowRenameHint(options?.showRenameHint ?? !!renameSession);
+		this.header.setShowActionsHint(!!options?.actions?.length);
 
 		// Create session list (starts empty, will be populated after load)
 		this.sessionList = new SessionList(
 			[],
-			false,
+			this.scope === "all",
 			this.sortMode,
 			this.nameFilter,
 			this.keybindings,
 			currentSessionFilePath,
+			{ extras: options?.extras, viewportRows: options?.viewportRows },
 		);
+		if (options?.initialQuery) this.sessionList.setQuery(options.initialQuery);
+		this.loads = new SessionLoads(
+			{
+				header: this.header,
+				list: this.sessionList,
+				scope: () => this.scope,
+				requestRender: () => this.requestRender(),
+			},
+			{ current: currentSessionsLoader, all: allSessionsLoader },
+			this.ports,
+		);
+		this.header.setCounts(() => this.sessionList.getCounts());
+		this.header.setSortMode(this.sortMode);
+		this.sessionList.onPreviewChange = (open) => {
+			this.header.setPreviewOpen(open);
+			this.requestRender();
+		};
+		this.sessionList.onOpenActions = (session) => this.enterActionsMode(session);
 
 		this.buildBaseLayout(this.sessionList);
 
@@ -127,31 +147,24 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			void this.confirmRename(value);
 		};
 
-		// Ensure header status timeouts are cleared when leaving the selector
-		const clearStatusMessage = () => this.header.setStatusMessage(null);
-		this.sessionList.onSelect = (sessionPath) => {
-			clearStatusMessage();
-			this.cancelLoads();
-			onSelect(sessionPath);
-		};
-		this.sessionList.onCancel = () => {
-			clearStatusMessage();
-			this.cancelLoads();
-			onCancel();
-		};
-		this.sessionList.onExit = () => {
-			clearStatusMessage();
-			this.cancelLoads();
-			onExit();
-		};
+		// Leaving the selector stops its loads and header status timer
+		const leaving =
+			<A extends unknown[]>(next: (...args: A) => void) =>
+			(...args: A) => {
+				this.dispose();
+				next(...args);
+			};
+		this.sessionList.onSelect = leaving(onSelect);
+		this.sessionList.onCancel = leaving(onCancel);
+		this.sessionList.onExit = leaving(onExit);
 		this.sessionList.onToggleScope = () => this.toggleScope();
 		this.sessionList.onToggleSort = () => this.toggleSortMode();
 		this.sessionList.onToggleNameFilter = () => this.toggleNameFilter();
 		this.sessionList.onRenameSession = (sessionPath) => {
 			if (!renameSession) return;
-			if (this.scope === "current" ? this.currentLoad : this.allLoad) return;
+			if (this.loads.isLoading(this.scope)) return;
 
-			const sessions = this.scope === "all" ? (this.allSessions ?? []) : (this.currentSessions ?? []);
+			const sessions = this.loads.sessionsFor(this.scope) ?? [];
 			const session = sessions.find((s) => s.path === sessionPath);
 			this.enterRenameMode(sessionPath, session?.name);
 		};
@@ -175,43 +188,28 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			const result = await deleteSessionFile(sessionPath);
 
 			if (result.ok) {
-				if (this.currentSessions) {
-					this.currentSessions = this.currentSessions.filter((s) => s.path !== sessionPath);
-				}
-				if (this.allSessions) {
-					this.allSessions = this.allSessions.filter((s) => s.path !== sessionPath);
-				}
-
-				const sessions = this.scope === "all" ? (this.allSessions ?? []) : (this.currentSessions ?? []);
-				const showCwd = this.scope === "all";
-				this.sessionList.setSessions(sessions, showCwd);
+				this.loads.remove(sessionPath);
+				this.sessionList.setSessions(this.loads.sessionsFor(this.scope) ?? [], this.scope === "all");
 
 				const msg = result.method === "trash" ? "Session moved to trash" : "Session deleted";
 				this.header.setStatusMessage({ type: "info", message: msg }, 2000);
-				await this.refreshSessionsAfterMutation();
+				await this.loads.refresh();
 			} else {
-				const errorMessage = result.error ?? "Unknown error";
-				this.header.setStatusMessage({ type: "error", message: `Failed to delete: ${errorMessage}` }, 3000);
+				const reason = result.error ?? "Unknown error";
+				this.header.setStatusMessage({ type: "error", message: `Failed to delete: ${reason}` }, 3000);
 			}
 
 			this.requestRender();
 		};
 
-		// Start loading current sessions immediately
-		void this.loadScope("current");
+		// Start loading immediately
+		void this.loads.load(this.scope);
 	}
 
-	private cancelLoads(): void {
-		if (this.currentLoad) {
-			this.currentLoad.abort();
-			this.currentLoad = null;
-			this.currentSessions = null;
-		}
-		if (this.allLoad) {
-			this.allLoad.abort();
-			this.allLoad = null;
-			this.allSessions = null;
-		}
+	/** Stops session listing and the header's status timer; the host calls it when another view replaces the picker. */
+	dispose(): void {
+		this.header.setStatusMessage(null);
+		this.loads.cancel();
 	}
 
 	private enterRenameMode(sessionPath: string, currentName: string | undefined): void {
@@ -220,20 +218,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.renameInput.setValue(currentName ?? "");
 		this.renameInput.focused = true;
 
-		const panel = new Container();
-		panel.addChild(new Text(theme.bold("Rename Session"), 1, 0));
-		panel.addChild(new Spacer(1));
-		panel.addChild(this.renameInput);
-		panel.addChild(new Spacer(1));
-		panel.addChild(
-			new Text(
-				theme.fg("muted", `${keyText("tui.select.confirm")} to save · ${keyText("tui.select.cancel")} to cancel`),
-				1,
-				0,
-			),
-		);
-
-		this.buildBaseLayout(panel, { showHeader: false });
+		this.buildBaseLayout(renamePanel(this.renameInput), { showHeader: false });
 		this.requestRender();
 	}
 
@@ -246,96 +231,46 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.requestRender();
 	}
 
+	private enterActionsMode(session: SessionInfo): void {
+		const actions = this.ports.actions;
+		if (!actions?.length || this.mode !== "list") return;
+		this.mode = "actions";
+		this.actionsMenu = actionsMenuFor(
+			session,
+			actions,
+			() => this.exitActionsMode(),
+			(label, err) => {
+				this.header.setStatusMessage({ type: "error", message: `${label}: ${errorMessage(err)}` }, 3000);
+				this.requestRender();
+			},
+		);
+		this.buildBaseLayout(this.actionsMenu, { showHeader: false });
+		this.requestRender();
+	}
+
+	private exitActionsMode(): void {
+		this.mode = "list";
+		this.actionsMenu = null;
+		this.buildBaseLayout(this.sessionList);
+		this.requestRender();
+	}
+
 	private async confirmRename(value: string): Promise<void> {
 		const next = value.trim();
 		if (!next) return;
 		const target = this.renameTargetPath;
-		if (!target) {
-			this.exitRenameMode();
-			return;
-		}
-
-		// Find current name for callback
 		const renameSession = this.renameSession;
-		if (!renameSession) {
-			this.exitRenameMode();
-			return;
-		}
+		if (!target || !renameSession) return this.exitRenameMode();
 
 		try {
 			await renameSession(target, next);
-			await this.refreshSessionsAfterMutation();
-		} finally {
-			this.exitRenameMode();
-		}
-	}
-
-	private async loadScope(scope: SessionScope): Promise<void> {
-		if (scope === "current" ? this.currentLoad : this.allLoad) return;
-
-		const showCwd = scope === "all";
-		const controller = new AbortController();
-		if (scope === "current") {
-			this.currentLoad = controller;
-		} else {
-			this.allLoad = controller;
-		}
-		this.header.setScope(scope);
-		this.header.setLoading(true);
-		this.requestRender();
-
-		const isActive = () => (scope === "current" ? this.currentLoad : this.allLoad) === controller;
-		const onProgress: SessionListProgress = (loaded, total, partialSessions) => {
-			if (!isActive()) return;
-			if (partialSessions) {
-				const sessions = [...partialSessions];
-				if (scope === "current") {
-					this.currentSessions = sessions;
-				} else {
-					this.allSessions = sessions;
-				}
-				if (scope === this.scope) this.sessionList.setSessions(sessions, showCwd);
-			}
-			if (scope !== this.scope) return;
-			this.header.setProgress(loaded, total);
-			this.requestRender();
-		};
-
-		try {
-			const sessions = await (scope === "current"
-				? this.currentSessionsLoader(onProgress, controller.signal)
-				: this.allSessionsLoader(onProgress, controller.signal));
-			if (!isActive()) return;
-
-			if (scope === "current") {
-				this.currentSessions = sessions;
-				this.currentLoad = null;
-			} else {
-				this.allSessions = sessions;
-				this.allLoad = null;
-			}
-
-			if (scope !== this.scope) return;
-			this.header.setLoading(false);
-			this.sessionList.setSessions(sessions, showCwd);
-			this.requestRender();
 		} catch (err) {
-			if (!isActive()) return;
-			if (scope === "current") {
-				this.currentLoad = null;
-				this.currentSessions = null;
-			} else {
-				this.allLoad = null;
-				this.allSessions = null;
-			}
-			if (scope !== this.scope) return;
-
-			const message = errorMessage(err);
-			this.header.setLoading(false);
-			this.header.setStatusMessage({ type: "error", message: `Failed to load sessions: ${message}` }, 4000);
-			this.sessionList.setSessions([], showCwd);
-			this.requestRender();
+			// The submit handler does not await this; a rejection would end the process as an uncaught crash.
+			this.header.setStatusMessage({ type: "error", message: `Failed to rename: ${errorMessage(err)}` }, 4000);
+			return this.exitRenameMode();
 		}
+		this.exitRenameMode();
+		await this.loads.refresh();
 	}
 
 	private toggleSortMode(): void {
@@ -353,22 +288,15 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.requestRender();
 	}
 
-	private async refreshSessionsAfterMutation(): Promise<void> {
-		this.cancelLoads();
-		this.currentSessions = null;
-		this.allSessions = null;
-		await this.loadScope(this.scope);
-	}
-
 	private toggleScope(): void {
 		this.scope = this.scope === "current" ? "all" : "current";
-		const sessions = this.scope === "current" ? this.currentSessions : this.allSessions;
-		const loading = (this.scope === "current" ? this.currentLoad : this.allLoad) !== null;
+		const sessions = this.loads.sessionsFor(this.scope);
+		const loading = this.loads.isLoading(this.scope);
 		this.header.setScope(this.scope);
 		this.header.setLoading(loading);
 		this.sessionList.setSessions(sessions ?? [], this.scope === "all");
 		this.requestRender();
-		if (sessions === null && !loading) void this.loadScope(this.scope);
+		if (sessions === null && !loading) void this.loads.load(this.scope);
 	}
 
 	getSessionList(): SessionList {

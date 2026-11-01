@@ -24,10 +24,11 @@ class ReasonLine implements Component {
 }
 
 /**
- * The reason row for a tool call's arguments. Native tools and the `mcp` tool require a `reason`; models add one to MCP calls too (the MCP
- * tool definition drops it before the server sees it, but the row shows the call as the model made it). Extension
- * tools define their own arguments, so a `reason` there may mean something else: no row. None either when the call
- * gives no reason or one too short to say more than the title (`Edit`).
+ * The reason row for a tool call's arguments, shared by the terminal tool view and the HTML export. Native tools and
+ * the `mcp` tool require a `reason`; models add one to MCP calls too (the MCP tool definition drops it before the
+ * server sees it, but the row shows the call as the model made it). Extension tools define their own arguments, so a
+ * `reason` there may mean something else: no row. None either when the call gives no reason or one too short to say
+ * more than the title (`Edit`).
  */
 export function reasonRow(toolName: string, args: unknown): Component | undefined {
 	const reason = takesCallReason(toolName) || isMcpToolName(toolName) ? callReason(args) : undefined;

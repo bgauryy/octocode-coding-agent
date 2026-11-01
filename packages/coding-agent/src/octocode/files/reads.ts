@@ -4,7 +4,7 @@ import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { partText } from "../shared/util.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
 import { type LineRange, mergeRanges, type ReadView, readView } from "./coverage.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Which files the model's context shows, read from session messages: the base of the file guard's memory across a
@@ -153,7 +153,7 @@ export function seenFiles(
 	for (const { id, message } of messages) {
 		if (isRecord(message) && message.role === "custom" && message.customType === RESTORED_FILES_TYPE) {
 			const at = typeof message.timestamp === "number" ? message.timestamp : undefined;
-			const details = isRecord(message.details) ? message.details : {};
+			const details = asRecord(message.details);
 			const restored = Array.isArray(details.files) ? details.files : [];
 			const cut = new Set(Array.isArray(details.partial) ? details.partial : []);
 			const worked = new Map(

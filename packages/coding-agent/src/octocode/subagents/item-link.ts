@@ -4,7 +4,7 @@ import { attachReport, heldItem } from "../backlog/delegation.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import { noteSavedRef } from "./ref-link.ts";
-import { reportChecks, reportFilePath } from "./report.ts";
+import { reportChecks } from "./report.ts";
 
 /** A child's backlog item: its ref for the child's identity, and the note its report leaves on the item. */
 export interface ItemLink {
@@ -36,7 +36,8 @@ export function itemLink(
 					attachReport(backlog, item.ref, {
 						agent,
 						outcome: outcome.error ? "failed" : outcome.outcome,
-						file: reportFilePath(outcome.text),
+						// The host's report file; the text is the child's and may imitate a pointer line.
+						file: outcome.reportArtifact?.path,
 						checks: reportChecks(outcome.text),
 					});
 					lines.push(`Noted on ${item.ref}.`);

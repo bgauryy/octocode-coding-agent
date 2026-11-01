@@ -8,8 +8,10 @@
  * JSON declaration, so the generated file never stands in for a contract it does not carry.
  *
  * Two copies of a server's file exist per session. The `latest` one follows the server (validation hints read it). The
- * `frozen` one is taken when the server first appears and renewed only when the loadout is rebuilt (`rebuild`), so the
- * system prompt and the declarations built from it never change mid-run.
+ * `described` one is what the system prompt's block says of the server (`describe`): taken when the prompt first
+ * describes the server's catalog, kept while the server reconnects, fails or drops, and renewed only when the loadout is
+ * rebuilt (`rebuild`) or the server goes away (`forget`). Thin declarations follow it, so the block and the declarations
+ * built from it never change mid-run.
  */
 
 import { isDeepStrictEqual } from "node:util";
@@ -27,8 +29,9 @@ import {
 } from "../compact/index.ts";
 import { firstSentence } from "./declaration.ts";
 
-export type McpPresentationMode = "compact" | "json";
-export const DEFAULT_MCP_PRESENTATION: McpPresentationMode = "compact";
+import { DEFAULT_MCP_PRESENTATION, type McpPresentationMode } from "./mode.ts";
+
+export { DEFAULT_MCP_PRESENTATION, type McpPresentationMode };
 
 export interface McpPresentationOptions {
 	agentDir: () => string;
@@ -53,6 +56,22 @@ interface GeneratedServer {
 	toolNames: Readonly<Record<string, string>>;
 }
 
+/** What the prompt's block describes of one server. */
+export interface DescribedServer {
+	/** The file restricted to the thin tools the block describes; undefined without one (`json`, or no faithful block). */
+	file: string | undefined;
+	/** The server's instructions when the block was described. */
+	instructions: string | undefined;
+	/** The server's tool names the block describes: the ones declared when it was described. */
+	tools: ReadonlySet<string>;
+}
+
+interface Described extends DescribedServer {
+	generated: GeneratedServer | undefined;
+	/** Described before the server's catalog was known; the first connected description replaces it once. */
+	pending: boolean;
+}
+
 const sameCatalog = (
 	generated: GeneratedServer,
 	instructions: string | undefined,
@@ -67,7 +86,7 @@ const sameCatalog = (
 export class McpPresentation {
 	readonly #options: McpPresentationOptions;
 	readonly #latest = new Map<string, GeneratedServer>();
-	readonly #frozen = new Map<string, GeneratedServer>();
+	readonly #frozen = new Map<string, Described>();
 	/** Tools without rewritten descriptions, by server, for servers whose file was rendered in this session. */
 	readonly #unoptimized = new Map<string, string[]>();
 
@@ -93,8 +112,9 @@ export class McpPresentation {
 		tools: readonly McpTool[],
 		names: ReadonlyMap<string, string> = new Map(),
 	): void {
+		// A dropped connection withdraws its catalog; what the prompt describes stays until `forget` or `rebuild`.
 		if (!this.enabled || tools.length === 0) {
-			this.forget(name);
+			this.#latest.delete(name);
 			return;
 		}
 		const toolNames = Object.fromEntries(
@@ -148,16 +168,22 @@ export class McpPresentation {
 				toolNames,
 			};
 			this.#latest.set(name, generated);
-			if (!this.#frozen.has(name)) this.#frozen.set(name, generated);
 		} catch {
-			this.forget(name);
+			this.#latest.delete(name);
 		}
 	}
 
-	/** Drop a server's files from this session, for a server that goes away. */
+	/**
+	 * Drop a server's latest file, for a server whose tools are hidden (stopped or disabled). What the prompt describes
+	 * stays while the prompt lists the server (`retainDescribed`), so a stop changes only the status section.
+	 */
 	forget(name: string): void {
 		this.#latest.delete(name);
-		this.#frozen.delete(name);
+	}
+
+	/** Drop the descriptions of servers the prompt no longer lists (disabled, removed, unselected). */
+	retainDescribed(names: ReadonlySet<string>): void {
+		for (const name of this.#frozen.keys()) if (!names.has(name)) this.#frozen.delete(name);
 	}
 
 	/** Forget every file, for a session that starts. */
@@ -167,7 +193,7 @@ export class McpPresentation {
 		this.#unoptimized.clear();
 	}
 
-	/** Renew the frozen files from the latest ones: the loadout is being rebuilt, so the prompt is rebuilt anyway. */
+	/** Renew every description from the latest files: the loadout is being rebuilt, so the prompt is rebuilt anyway. */
 	rebuild(): void {
 		const previous = [...this.#latest];
 		this.#latest.clear();
@@ -182,11 +208,40 @@ export class McpPresentation {
 			);
 	}
 
-	/** Whether the tool is declared as a thin stub: the frozen file describes exactly this tool. */
+	/**
+	 * What the prompt describes of the server, fixed by the first call: `tools` are the server's tool names declared now,
+	 * `ready` whether its catalog is known (the server is connected). A description taken before the catalog was known
+	 * is replaced once by the first ready one, so a server that connects late gets its contract once; after that the
+	 * description stays while the server reconnects, fails or drops, until `rebuild` or `forget`.
+	 */
+	describe(name: string, tools: readonly string[], instructions: string | undefined, ready: boolean): DescribedServer {
+		const known = this.#frozen.get(name);
+		if (known && !(known.pending && ready)) return known;
+		const generated = this.enabled ? this.#latest.get(name) : undefined;
+		const thin = generated ? tools.filter((tool) => generated.blocks.has(tool)) : [];
+		const described: Described = {
+			generated,
+			file:
+				generated && thin.length > 0
+					? selectTools(
+							generated.text,
+							thin.map((tool) => generated.functions.get(tool) ?? tool),
+						).trimEnd()
+					: undefined,
+			instructions,
+			tools: new Set(tools),
+			pending: !ready,
+		};
+		this.#frozen.set(name, described);
+		return described;
+	}
+
+	/** Whether the tool is declared as a thin stub: the prompt's block describes exactly this tool with its file. */
 	isThin(name: string, tool: McpTool): boolean {
 		const frozen = this.#frozen.get(name);
-		if (!this.enabled || !frozen?.blocks.has(tool.name)) return false;
-		const described = frozen.tools.get(tool.name);
+		if (!this.enabled || !frozen?.file || !frozen.tools.has(tool.name) || !frozen.generated?.blocks.has(tool.name))
+			return false;
+		const described = frozen.generated.tools.get(tool.name);
 		return described === tool || isDeepStrictEqual(described, tool);
 	}
 
@@ -196,7 +251,7 @@ export class McpPresentation {
 	 * sentence of the server's description.
 	 */
 	summary(name: string, tool: string): string | undefined {
-		const overrides = this.#frozen.get(name)?.overrides;
+		const overrides = this.#frozen.get(name)?.generated?.overrides;
 		const trigger = overrides?.triggers?.[tool]?.trim();
 		if (trigger) return trigger;
 		const description = overrides?.tools?.[tool];
@@ -216,15 +271,5 @@ export class McpPresentation {
 	/** The latest TypeScript block of one tool, for validation failures. */
 	signature(name: string, tool: string): string | undefined {
 		return this.#latest.get(name)?.blocks.get(tool);
-	}
-
-	/** The frozen file restricted to the named tools, for the system prompt. */
-	section(name: string, tools: readonly string[]): string | undefined {
-		const frozen = this.#frozen.get(name);
-		if (!frozen || tools.length === 0) return undefined;
-		return selectTools(
-			frozen.text,
-			tools.map((tool) => frozen.functions.get(tool) ?? tool),
-		).trimEnd();
 	}
 }

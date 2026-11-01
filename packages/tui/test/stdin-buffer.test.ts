@@ -424,6 +424,16 @@ describe("StdinBuffer", () => {
 			assert.deepStrictEqual(emittedSequences, ["\x1b[64;3u", "@"]);
 		});
 
+		it("should drop raw duplicate astral character after matching Kitty printable sequence", () => {
+			processInput("\x1b[128512u\u{1F600}");
+			assert.deepStrictEqual(emittedSequences, ["\x1b[128512u"]);
+		});
+
+		it("should emit astral characters whole, never as lone surrogates", () => {
+			processInput("a\u{1F600}b\u{20BB7}");
+			assert.deepStrictEqual(emittedSequences, ["a", "\u{1F600}", "b", "\u{20BB7}"]);
+		});
+
 		it("should handle rapid typing simulation with Kitty protocol", () => {
 			// Simulates typing "hi" quickly with releases interleaved
 			processInput("\x1b[104u\x1b[104;1:3u\x1b[105u\x1b[105;1:3u");

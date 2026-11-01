@@ -17,7 +17,7 @@ import type {
 } from "../extensions/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
-import type { SessionEntry, SessionManager } from "../session-manager.ts";
+import type { SessionEntry, SessionManager, SessionNameSource } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { SourceInfo } from "../source-info.ts";
 
@@ -45,7 +45,7 @@ export type AgentSessionEvent =
 	  }
 	| { type: "compaction_start"; reason: "manual" | "threshold" | "overflow" }
 	| { type: "entry_appended"; entry: SessionEntry }
-	| { type: "session_info_changed"; name: string | undefined }
+	| { type: "session_info_changed"; name: string | undefined; source?: SessionNameSource }
 	| { type: "session_context_changed" }
 	| { type: "thinking_level_changed"; level: ThinkingLevel }
 	| {
@@ -163,6 +163,8 @@ export type ReleasedQueuedInput =
 	/** No run is active, so the message cannot wait in the queue: it left the queue and the caller sends it. */
 	| { outcome: "idle"; mode: "steer" | "followUp"; text: string; images: ImageContent[]; source: InputSource };
 export type QueuedInputDisposition = "handled" | "queued";
+/** Options for `steer()` and `followUp()`. */
+export type QueuedInputOptions = Pick<PromptOptions, "source" | "attachImagePaths">;
 export type PromptDisposition = QueuedInputDisposition | "started";
 
 /** Options for AgentSession.prompt() */
@@ -175,6 +177,11 @@ export interface PromptOptions {
 	streamingBehavior?: "steer" | "followUp";
 	/** Source of input for extension input event handlers. Defaults to "interactive". */
 	source?: InputSource;
+	/**
+	 * Attach the image files the text names (absolute, `~/`, `./`, quoted or escaped paths, `file://` URLs) as images.
+	 * Set by the terminal and /web for text the user typed; command lines are not scanned. Default: false.
+	 */
+	attachImagePaths?: boolean;
 	/** Internal hook used by RPC mode to observe how an accepted prompt was dispatched. Not called if the prompt is rejected. */
 	preflightResult?: (disposition: PromptDisposition) => void;
 }

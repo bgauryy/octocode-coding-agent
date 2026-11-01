@@ -11,6 +11,7 @@ import {
 	Text,
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme, theme } from "../../../theme/theme.ts";
+import { plainText } from "./styled-line.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,
@@ -56,13 +57,12 @@ export class SelectSubmenu extends Container {
 		this.onCancelCb = onCancel;
 		this.onSelectionChangeCb = onSelectionChange;
 
-		// Title
-		this.addChild(new Text(theme.bold(theme.fg("accent", title)), 0, 0));
+		// Title and description: a step's title can name a model from a vendor list (per-model thinking).
+		this.addChild(new Text(theme.bold(theme.fg("accent", plainText(title))), 0, 0));
 
-		// Description
 		if (description) {
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("muted", description), 0, 0));
+			this.addChild(new Text(theme.fg("muted", plainText(description)), 0, 0));
 		}
 
 		// Search input
@@ -86,8 +86,8 @@ export class SelectSubmenu extends Container {
 		// Hint
 		this.addChild(new Spacer(1));
 		const hint = submenuOptions?.searchable
-			? "  Type to filter \u00b7 Enter to select \u00b7 Esc to go back"
-			: "  Enter to select \u00b7 Esc to go back";
+			? "  Type to filter \u00b7 enter to select \u00b7 esc to go back"
+			: "  enter to select \u00b7 esc to go back";
 		this.addChild(new Text(theme.fg("dim", hint), 0, 0));
 	}
 

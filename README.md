@@ -53,6 +53,7 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 - [Feature architecture and flows](docs/FEATURES.md)
 - [Documentation index](packages/coding-agent/docs/index.md)
 - [Agent guide and runtime references](packages/coding-agent/README.md)
+- [How to: short recipes for common tasks](packages/coding-agent/docs/how-to.md)
 - [Native features and extension migration](packages/coding-agent/docs/native-features.md)
 - [Configuration locations and controls](CONFIGURATIONS.md)
 - [Running Octocode inside tmux](packages/coding-agent/docs/tmux.md)
@@ -83,9 +84,9 @@ yarn run check
 ./test.sh
 ```
 
-`check` runs TypeScript, browser imports, workspace bundle freshness and package-boundary checks without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
+`check` runs TypeScript, Oxlint, the format check, browser imports, workspace bundle and favicon freshness, and the package and database boundary checks without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files, [scripts/README.md](scripts/README.md) for what each repository script does, and the [coding-agent suite rules](packages/coding-agent/test/suite/README.md) for harness-based session tests. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
 
-Run `yarn dlx knip@6.42.1` from the root to inspect unused files, exports and dependencies across all workspaces. [knip.jsonc](knip.jsonc) identifies public APIs, dynamically loaded entrypoints, copied vendor assets and external system commands. Verify findings against those consumers before removing code; the analyzer does not establish whether an external SDK consumer uses a public export.
+Run `yarn run check:unused` (Knip) from the root to inspect unused files, exports and dependencies across all workspaces. [knip.jsonc](knip.jsonc) identifies public APIs, dynamically loaded entrypoints, copied vendor assets and external system commands. Verify findings against those consumers before removing code; the analyzer does not establish whether an external SDK consumer uses a public export.
 
 ## License
 

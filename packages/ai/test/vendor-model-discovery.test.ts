@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { builtinModels, builtinProviders } from "../src/providers/all.ts";
-import { discoverProviderModels, MODEL_DISCOVERY_SOURCES, requestVendorModels } from "../src/providers/discovery.ts";
+import {
+	checkCredentialByList,
+	discoverProviderModels,
+	MODEL_DISCOVERY_SOURCES,
+	requestVendorModels,
+} from "../src/providers/discovery.ts";
 
 const configured = () => builtinModels({ authContext: { env: async () => "key", fileExists: async () => false } });
 
@@ -135,5 +140,56 @@ describe("vendor model discovery", () => {
 			{ fetch, chatGPT: true },
 		);
 		expect(rows).toEqual([{ id: "visible", name: "Visible" }]);
+	});
+
+	it("rejects a vendor list whose model ID carries a terminal control or bidi override", async () => {
+		for (const id of ["evil\u001b]0;pwned\u0007", "gpt\u202e4o", "model\u009b2J", "two\nlines", "zero\u200bwidth"]) {
+			const fetch = vi.fn(async () => Response.json({ data: [{ id: "clean" }, { id }] }));
+			const result = await discoverProviderModels(configured(), "deepseek", { fetch });
+			expect(result).toMatchObject({ status: "error", note: "Vendor model list contains an invalid model ID" });
+			expect(JSON.stringify(result)).not.toContain(id);
+		}
+	});
+
+	it("keeps vendor ID punctuation and strips control sequences from display names", async () => {
+		const ids = [
+			"openai/gpt-4o:free",
+			"anthropic.claude-3-5-sonnet-20240620-v1:0",
+			"claude-3-5-sonnet@20240620",
+			"accounts/fireworks/models/llama-v3p1-70b-instruct",
+			"qwen2.5-coder:7b-instruct-q4_K_M",
+			"Meta Llama 3 70B",
+		];
+		const fetch = vi.fn(async () =>
+			Response.json({
+				data: [
+					...ids.map((id) => ({ id })),
+					{ id: "linked", display_name: "\u001b]8;;https://attacker.example\u0007Click\u001b]8;;\u0007 me\u001b[31m" },
+					{ id: "reordered", name: "\u202eevil\n\tname\u001b]0;title" },
+					{ id: "blank", name: "\u001b[2J\u200b" },
+				],
+			}),
+		);
+		const rows = await requestVendorModels(configured().getProvider("deepseek")!, { apiKey: "key" }, { fetch });
+		expect(rows).toEqual([
+			...ids.map((id) => ({ id })),
+			{ id: "linked", name: "Click me" },
+			{ id: "reordered", name: "evil name" },
+			{ id: "blank" },
+		]);
+	});
+
+	it("checks an OpenAI credential against the ChatGPT list only when it resolved from OAuth", async () => {
+		const fetch = vi.fn(async () =>
+			Response.json({ models: [{ slug: "chatgpt-row", visibility: "list" }], data: [{ id: "api-row" }] }),
+		);
+		const provider = configured().getProvider("openai")!;
+		const ids = async (credentialSource?: string) => {
+			const check = await checkCredentialByList(provider, { apiKey: "token" }, { fetch, credentialSource });
+			return check?.ok ? check.models.map((model) => model.id) : check;
+		};
+		expect(await ids("OAuth")).toEqual(["chatgpt-row"]);
+		expect(await ids("OPENAI_API_KEY")).toEqual(["api-row"]);
+		expect(await ids()).toEqual(["api-row"]);
 	});
 });

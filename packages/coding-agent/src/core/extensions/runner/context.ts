@@ -25,7 +25,7 @@ export const noOpUIContext: ExtensionUIContext = {
 	setFooter: () => {},
 	setHeader: () => {},
 	setTitle: () => {},
-	custom: async () => undefined as never,
+	custom: async () => undefined,
 	pasteToEditor: () => {},
 	setEditorText: () => {},
 	getEditorText: () => "",
@@ -110,6 +110,10 @@ export function createExtensionContext(host: RunnerHost): ExtensionContext {
 		hasPendingMessages: () => {
 			host.assertActive();
 			return host.bindings.hasPendingMessagesFn();
+		},
+		isMessageQueued: (details) => {
+			host.assertActive();
+			return host.bindings.isMessageQueuedFn(details);
 		},
 		shutdown: () => {
 			host.assertActive();

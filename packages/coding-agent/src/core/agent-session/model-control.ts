@@ -131,7 +131,9 @@ export class SessionModelControl {
 	 * restores it. Tree navigation can leave the latest `model_change` on another branch; responses
 	 * cannot record a virtual selection because they name physical models. Responses do record a
 	 * physical selection unless the branch holds a virtual one; checking a physical selection against
-	 * responses would record it on every prompt while `prepareRequest` redirects to another model.
+	 * responses would record it on every prompt while `prepareRequest` redirects to another model, so a
+	 * physical one is checked against the branch's last `model_change`: a session reopened with another
+	 * model (a subagent resume, `--session X --model Y`) records it once, with its first prompt.
 	 */
 	recordSelection(): void {
 		const { session } = this.host;
@@ -141,7 +143,12 @@ export class SessionModelControl {
 		const recorded = getBranchSelection(session.sessionManager.getBranch(), getModel);
 		if (!recorded || (recorded.provider === model.provider && recorded.modelId === model.id)) return;
 		const recordedModel = getModel(recorded.provider, recorded.modelId);
-		if (!isVirtualModel(model) && !(recordedModel && isVirtualModel(recordedModel))) return;
+		if (!isVirtualModel(model) && !(recordedModel && isVirtualModel(recordedModel))) {
+			const branch = session.sessionManager.getBranch();
+			const change = branch.findLast((entry) => entry.type === "model_change");
+			if (change?.type !== "model_change" || (change.provider === model.provider && change.modelId === model.id))
+				return;
+		}
 		this.recordModel(model);
 	}
 

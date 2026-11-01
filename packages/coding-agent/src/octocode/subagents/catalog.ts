@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag } from "../../../../common/src/env.ts";
 import { globalPaths, privateDir } from "../shared/home.ts";
 import { DAY_MS, finiteNumber, HOUR_MS } from "../shared/util.ts";
@@ -55,7 +55,7 @@ function field<K extends keyof CatalogModel>(key: K, value: CatalogModel[K] | un
 }
 
 function entry(raw: Record<string, unknown>): CatalogModel {
-	const limit = isRecord(raw.limit) ? raw.limit : {};
+	const limit = asRecord(raw.limit);
 	const cost = isRecord(raw.cost) ? raw.cost : undefined;
 	const input =
 		isRecord(raw.modalities) && Array.isArray(raw.modalities.input)
@@ -84,7 +84,7 @@ function entry(raw: Record<string, unknown>): CatalogModel {
 export function indexCatalog(api: unknown, fetchedAt: number): Catalog {
 	const listed: Array<[string, string, CatalogModel]> = [];
 	const bare = new Map<string, { model: CatalogModel; lab: boolean }>();
-	for (const [provider, raw] of Object.entries(isRecord(api) ? api : {})) {
+	for (const [provider, raw] of Object.entries(asRecord(api))) {
 		if (!isRecord(raw) || !isRecord(raw.models)) continue;
 		for (const [id, value] of Object.entries(raw.models)) {
 			if (!isRecord(value)) continue;
@@ -101,7 +101,7 @@ export function indexCatalog(api: unknown, fetchedAt: number): Catalog {
 	for (const [provider, id, model] of listed) {
 		if (JSON.stringify(model) !== JSON.stringify(bare.get(id)!.model)) models[`${provider}/${id}`] = model;
 	}
-	return { fetchedAt, models, providers: Object.keys(isRecord(api) ? api : {}) };
+	return { fetchedAt, models, providers: Object.keys(asRecord(api)) };
 }
 
 /**

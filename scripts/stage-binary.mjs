@@ -9,6 +9,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyInstructions } from "./copy-instructions.mjs";
 import { stageCodingAgentSkills } from "./stage-coding-agent-skills.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,11 +39,12 @@ export function stageBinary(outDir, platform = currentPlatform()) {
 	for (const file of readdirSync(from("dist", "theme")).filter((name) => name.endsWith(".json")))
 		copy(from("dist", "theme", file), join(outDir, "theme", file));
 	copy(from("dist", "modes", "interactive", "assets"), join(outDir, "assets"));
-	// The whole folder: template.html, template.css, template.js and vendor/ are all read at export time.
+	// The whole folder: template.html, template.css, script/ and vendor/ are all read at export time.
 	copy(from("dist", "core", "export-html"), join(outDir, "export-html"));
 	copy(from("docs"), join(outDir, "docs"));
 	copy(from("examples"), join(outDir, "examples"));
-	copy(from("src", "octocode", "instructions", "roles"), join(outDir, "roles"));
+	// Prompt Markdown (policy, roles, ...): `getInstructionsDir` reads `instructions/` next to the executable.
+	copyInstructions(from("src", "octocode", "instructions"), join(outDir, "instructions"));
 	copy(from("src", "octocode", "native-skills"), join(outDir, "native-skills"));
 	const skills = stageCodingAgentSkills(packageDir, join(outDir, "skills"));
 	// The selected architecture's native terminal helpers.

@@ -1,8 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { TextDecoder } from "node:util";
 import { APPLICATION_IMAGE_MIME_TYPES } from "@octocodeai/octocode-contracts";
 import { formatSize } from "../../core/tools/index.ts";
-import { untilAborted } from "../shared/util.ts";
 import { type InlineImageType, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 import {
 	CrossHostRedirect,
@@ -10,8 +8,11 @@ import {
 	NetworkError,
 	type PublicFetchInit,
 	publicFetch,
+	TruncatedBodyError,
 } from "../../../../common/src/web-guard.ts";
+import { decodeBody } from "./charset.ts";
 import { describeHtml, RENDER_ADVICE } from "./html.ts";
+import { untilAborted } from "../../../../common/src/abort.ts";
 
 export const USER_AGENT =
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -64,6 +65,8 @@ export function language(locale = systemLocale()): string {
 
 const REDIRECT_NOTE = "The target is server-supplied and not verified; fetch it with web if you trust it.";
 const UNREAD_NOTE = "; web cannot read it. Download it with bash (curl -o) if you need the file.";
+/** Leads a page whose compressed body ended early; such a page is not cached, so the next fetch tries again. */
+const CUT_NOTE = `[Incomplete: ${new TruncatedBodyError().message}; only the part that arrived is shown`;
 /**
  * Content types an image is read from; SVG is not one: it is XML text, shown as its source and never rendered. The
  * application's image types, plus `image/jpg`, which is not a registered type but is what some servers send for a JPEG.
@@ -113,7 +116,7 @@ export function pageFetcher(): PageFetcher {
 				return { kind: "notice", reason: "redirect", text: `${error.message}\n${REDIRECT_NOTE}` };
 			throw error;
 		}
-		if (typeof text !== "string") return text;
+		if (typeof text !== "string" || text.startsWith(CUT_NOTE)) return text;
 		uncache(url);
 		const bytes = Buffer.byteLength(text);
 		cache.set(url, { at: Date.now(), text, bytes });
@@ -235,10 +238,11 @@ async function fetchImage(response: Response, url: string, type: string): Promis
 			`${where} is ${type}, ${formatSize(declared)}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`,
 		);
 	}
-	const { bytes, truncated } = await readBytesCapped(response).catch((error: unknown) => {
+	const { bytes, truncated, cut } = await readBytesCapped(response).catch((error: unknown) => {
 		throw describeFetchError(error, url, 1);
 	});
 	if (truncated) return unsupported(`${where} is ${type}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`);
+	if (cut) return unsupported(`${where} is ${type}, and its body was cut short in transit${UNREAD_NOTE}`);
 	const mimeType = sniffImageType(bytes);
 	if (!mimeType)
 		return unsupported(
@@ -277,24 +281,31 @@ async function fetchResource(
 		return unsupported(`${response.url} is ${mediaType(type)}, not text${UNREAD_NOTE}`);
 	}
 	// The timeout covers the body too: a slow stream reports like a slow connect, not as a bare abort.
-	const { text: body, truncated } = await readCapped(response, type).catch((error: unknown) => {
+	const {
+		text: body,
+		truncated,
+		cut,
+	} = await readCapped(response, type).catch((error: unknown) => {
 		throw describeFetchError(error, url, 1);
 	});
 	if (!response.ok) throw httpError(response, url);
 	const json = type.includes("json");
+	const raw = json ? " and is shown raw, not pretty-printed" : "";
 	// First, so the note survives the web tool's character cap. Cut JSON does not parse, so it is shown raw.
-	const cut = truncated
-		? `[Truncated: the response is over ${MAX_BODY_MB} MB; only the first ${MAX_BODY_MB} MB was read${json ? " and is shown raw, not pretty-printed" : ""}. Download it with bash (curl -o) for the whole body.]\n\n`
-		: "";
-	if (type.includes("html")) return cut + describeHtml(body, response.url || url);
-	if (json && !truncated) {
+	const note = truncated
+		? `[Truncated: the response is over ${MAX_BODY_MB} MB; only the first ${MAX_BODY_MB} MB was read${raw}. Download it with bash (curl -o) for the whole body.]\n\n`
+		: cut
+			? `${CUT_NOTE}${raw}. Fetch it again, or download it with bash (curl -o), for the whole body.]\n\n`
+			: "";
+	if (type.includes("html")) return note + describeHtml(body, response.url || url);
+	if (json && !note) {
 		try {
 			return JSON.stringify(JSON.parse(body), null, 2);
 		} catch {
 			return body;
 		}
 	}
-	return cut + body;
+	return note + body;
 }
 
 export function isBinaryType(contentType: string): boolean {
@@ -311,25 +322,34 @@ export function isBinaryType(contentType: string): boolean {
 	);
 }
 
-/** The body decoded (see `decodeBody`), at most MAX_BODY_BYTES (5 MiB) of it; `truncated` when there was more. */
+/**
+ * The body decoded (see `decodeBody`), at most MAX_BODY_BYTES (5 MiB) of it; `truncated` when there was more, `cut`
+ * when a compressed body ended early (the text is the part that arrived).
+ */
 export async function readCapped(
 	response: Response,
 	contentType: string,
-): Promise<{ text: string; truncated: boolean }> {
-	const { bytes, truncated } = await readBytesCapped(response);
-	return { text: decodeBody(bytes, contentType, truncated), truncated };
+): Promise<{ text: string; truncated: boolean; cut: boolean }> {
+	const { bytes, truncated, cut } = await readBytesCapped(response);
+	return { text: decodeBody(bytes, contentType, truncated || cut), truncated, cut };
 }
 
-/** The body's bytes, at most MAX_BODY_BYTES (5 MiB) of them; `truncated` when there was more. */
-async function readBytesCapped(response: Response): Promise<{ bytes: Buffer; truncated: boolean }> {
+/** The body's bytes, at most MAX_BODY_BYTES (5 MiB) of them; `truncated` when there was more, `cut` as in `readCapped`. */
+async function readBytesCapped(response: Response): Promise<{ bytes: Buffer; truncated: boolean; cut: boolean }> {
 	const reader = response.body?.getReader();
-	if (!reader) return { bytes: Buffer.alloc(0), truncated: false };
+	if (!reader) return { bytes: Buffer.alloc(0), truncated: false, cut: false };
 	const chunks: Uint8Array[] = [];
 	let size = 0;
 	let truncated = false;
+	let cut = false;
 	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
+		const next = await reader.read().catch((error: unknown) => {
+			if (error instanceof TruncatedBodyError) return undefined;
+			throw error;
+		});
+		cut = next === undefined;
+		if (!next || next.done) break;
+		const { value } = next;
 		chunks.push(value);
 		size += value.byteLength;
 		if (size > MAX_BODY_BYTES) {
@@ -338,50 +358,7 @@ async function readBytesCapped(response: Response): Promise<{ bytes: Buffer; tru
 		}
 	}
 	await reader.cancel().catch(() => undefined);
-	return { bytes: Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES), truncated };
-}
-
-/**
- * Text in the body's charset: a byte-order mark, else Content-Type's charset, else (HTML) a `<meta>` charset in the
- * first bytes, else UTF-8; an unknown label falls back to UTF-8. A cut body ends at the last whole character.
- */
-export function decodeBody(bytes: Uint8Array, contentType: string, cut = false): string {
-	const label =
-		bomCharset(bytes) ??
-		charsetParameter(contentType) ??
-		(contentType.includes("html") ? metaCharset(bytes) : undefined);
-	let decoder: TextDecoder;
-	try {
-		decoder = new TextDecoder(label ?? "utf-8");
-	} catch {
-		decoder = new TextDecoder("utf-8");
-	}
-	// Streaming keeps an incomplete trailing sequence back instead of turning it into U+FFFD.
-	return decoder.decode(bytes, { stream: cut });
-}
-
-function bomCharset(bytes: Uint8Array): string | undefined {
-	if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return "utf-8";
-	if (bytes[0] === 0xfe && bytes[1] === 0xff) return "utf-16be";
-	if (bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
-	return undefined;
-}
-
-function charsetParameter(value: string): string | undefined {
-	return /;\s*charset\s*=\s*["']?([^"';\s]+)/i.exec(value)?.[1];
-}
-
-/** Bytes an HTML charset declaration must appear in (the HTML spec's prescan window). */
-const META_PRESCAN_BYTES = 1024;
-
-/** `<meta charset=…>` or `<meta http-equiv=content-type content="…; charset=…">` early in the document. */
-function metaCharset(bytes: Uint8Array): string | undefined {
-	const head = Buffer.from(bytes.subarray(0, META_PRESCAN_BYTES)).toString("latin1");
-	for (const [tag] of head.matchAll(/<meta\b[^>]*>/gi)) {
-		const direct = /\bcharset\s*=\s*["']?([^"'\s/>;]+)/i.exec(tag)?.[1];
-		if (direct) return direct;
-	}
-	return undefined;
+	return { bytes: Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES), truncated, cut };
 }
 
 export function combineSignals(signal?: AbortSignal): AbortSignal {

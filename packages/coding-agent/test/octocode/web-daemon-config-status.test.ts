@@ -86,6 +86,24 @@ describe("credential sources", () => {
 		expect(fs.existsSync(marker)).toBe(false);
 	});
 
+	it("marks a provider the credential endpoint would refuse as not editable, and no other", async () => {
+		writeAuth({
+			MyProvider: { type: "api_key", key: "x" },
+			"my provider": { type: "api_key", key: "x" },
+			constructor: { type: "api_key", key: "x" },
+		});
+		const snapshot = await buildConfigSnapshot({ agentDir, keychain: null });
+		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);
+		expect(provider(snapshot, "MyProvider").editable).toBe(false);
+		expect(provider(snapshot, "my provider").editable).toBe(false);
+		// Every id the endpoint's schema accepts stays editable (the field is absent), built-in ones included.
+		expect(snapshot.providers.filter((row) => row.editable === false).map((row) => row.provider)).toEqual([
+			"MyProvider",
+			"my provider",
+		]);
+		expect(provider(snapshot, "constructor").editable).toBeUndefined();
+	});
+
 	it("recognises a platform keychain reference without running it", async () => {
 		writeAuth({
 			openai: { type: "api_key", key: "!/usr/bin/security find-generic-password -s octocode -a openai -w" },

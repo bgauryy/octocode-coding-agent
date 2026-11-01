@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
+import { jsonlLines } from "../../../../common/src/jsonl.ts";
+import { privateDir } from "../shared/home.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 /** The checkpoint store on disk: the append-only journal and fork inheritance (the sessions sweep handles retention). */
 
@@ -55,16 +57,10 @@ export function readJournal(dir: string): { entries: CheckpointEntry[]; dirty: b
 	const index = new Map<string, number>();
 	let lines = 0;
 	let dirty = text.length > 0 && !text.endsWith("\n");
-	for (const line of text.split("\n")) {
-		if (!line.trim()) continue;
+	// An unreadable or invalid line is dropped and the journal marked for rewrite, so it is gone after the next save.
+	for (const line of jsonlLines(text)) {
 		lines++;
-		let entry: unknown;
-		try {
-			entry = JSON.parse(line);
-		} catch {
-			dirty = true;
-			continue;
-		}
+		const entry = line.ok ? line.value : undefined;
 		if (!isEntry(entry)) {
 			dirty = true;
 			continue;

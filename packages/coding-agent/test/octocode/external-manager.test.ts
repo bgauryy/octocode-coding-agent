@@ -11,12 +11,8 @@ import {
 	type ExternalFactories,
 	type ExternalPolicy,
 } from "../../src/octocode/external/manager.ts";
-import type {
-	ExternalBackend,
-	ExternalInfo,
-	ExternalParams,
-	ExternalReply,
-} from "../../src/octocode/external/protocol.ts";
+import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
+import type { ExternalInfo, ExternalParams } from "../../src/octocode/external/protocol.ts";
 import { externalFailure, registerExternal } from "../../src/octocode/external/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { withDialog } from "../../src/octocode/shared/locks.ts";

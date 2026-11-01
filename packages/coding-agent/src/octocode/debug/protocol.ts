@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { Socket } from "node:net";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const MAX_HEADER = 1024;
 const MAX_BODY = 1024 * 1024;
@@ -17,7 +17,7 @@ export type ReverseRequestHandler = (
 ) => Promise<Record<string, unknown>> | undefined;
 
 export function body(message: DapMessage): Record<string, unknown> {
-	return isRecord(message.body) ? message.body : {};
+	return asRecord(message.body);
 }
 
 export function objects(value: unknown): Record<string, unknown>[] {
@@ -72,10 +72,11 @@ export class DapProtocol {
 		const listeners = this.#events.get(event) ?? [];
 		listeners.push(listener);
 		this.#events.set(event, listeners);
+		// The current list: another unsubscribe may have replaced the one this call pushed to.
 		return () =>
 			this.#events.set(
 				event,
-				listeners.filter((item) => item !== listener),
+				(this.#events.get(event) ?? []).filter((item) => item !== listener),
 			);
 	}
 
@@ -196,7 +197,7 @@ export class DapProtocol {
 		} else if (message.type === "event" && typeof message.event === "string") {
 			for (const listener of this.#events.get(message.event) ?? []) listener(message);
 		} else if (message.type === "request" && typeof message.seq === "number") {
-			const handled = this.#reverse?.(String(message.command), isRecord(message.arguments) ? message.arguments : {});
+			const handled = this.#reverse?.(String(message.command), asRecord(message.arguments));
 			if (!handled) return this.#reply(message, { error: "Reverse requests are unsupported" });
 			handled.then(
 				(result) => this.#reply(message, { body: result }),

@@ -11,5 +11,5 @@
 export { type Worktree, recordWorktreePid, worktreesDir } from "./worktree-base.ts";
 export { createWorktree } from "./worktree-create.ts";
 export { finishWorktree, isolationReport } from "./worktree-finish.ts";
-export { mergeAgent, pendingRefs } from "./worktree-merge.ts";
+export { mergeAgent, pendingRefs, reservedChanges } from "./worktree-merge.ts";
 export { describePrune, pruneWorktrees } from "./worktree-prune.ts";

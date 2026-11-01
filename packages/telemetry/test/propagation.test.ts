@@ -77,7 +77,7 @@ describe("propagation and links", () => {
 		const original = telemetry.inject(target);
 		const injected = telemetry.inject(target);
 		if (!injected) throw new Error("Expected carrier");
-		injected["pi-memory-span"] = "999";
+		injected["octocode-memory-span"] = "999";
 		expect(telemetry.inject(target)).toEqual(original);
 		await telemetry.startSpan(
 			{ name: "linked", links: [{ context: target, attributes: { tags: ["original"] } }] },
@@ -85,8 +85,8 @@ describe("propagation and links", () => {
 		);
 		const [first, linked] = telemetry.getSpans();
 		if (!first || !linked?.links[0]) throw new Error("Expected spans and link");
-		(first.context as TelemetryCarrier)["pi-memory-span"] = "123";
-		(linked.links[0].context as TelemetryCarrier)["pi-memory-span"] = "456";
+		(first.context as TelemetryCarrier)["octocode-memory-span"] = "123";
+		(linked.links[0].context as TelemetryCarrier)["octocode-memory-span"] = "456";
 		(linked.links[0].attributes as SpanAttributes).tags = ["mutated"];
 		expect(telemetry.getSpans()[1]?.links).toEqual([{ context: original, attributes: { tags: ["original"] } }]);
 	});
@@ -129,11 +129,31 @@ describe("propagation and links", () => {
 	it("treats recognized carrier identifiers as opaque strings", async () => {
 		const telemetry = new InMemoryTelemetryContext();
 		const carrier = {
-			"pi-memory-scope": "external-recorder",
-			"pi-memory-span": "external-span",
-			"pi-memory-trace": "external-trace",
+			"octocode-memory-scope": "external-recorder",
+			"octocode-memory-span": "external-span",
+			"octocode-memory-trace": "external-trace",
 		};
 		await telemetry.extract(carrier).startSpan({ name: "receiver" }, () => {});
 		expect(telemetry.getSpans()[0]?.parentContext).toEqual(carrier);
+	});
+
+	it("still extracts a carrier written with the legacy pi-memory keys, and re-injects it with the current ones", async () => {
+		const telemetry = new InMemoryTelemetryContext();
+		const parent = telemetry.extract({
+			"pi-memory-scope": "older-recorder",
+			"pi-memory-span": "7",
+			"pi-memory-trace": "older-trace",
+		});
+		const current = {
+			"octocode-memory-scope": "older-recorder",
+			"octocode-memory-span": "7",
+			"octocode-memory-trace": "older-trace",
+		};
+		expect(telemetry.inject(parent)).toEqual(current);
+		await parent.startSpan({ name: "receiver" }, () => {});
+		const [span] = telemetry.getSpans();
+		expect(span?.parentContext).toEqual(current);
+		expect(span?.context["octocode-memory-trace"]).toBe("older-trace");
+		expect(Object.keys(span?.context ?? {}).some((key) => key.startsWith("pi-"))).toBe(false);
 	});
 });

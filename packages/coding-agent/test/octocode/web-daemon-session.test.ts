@@ -62,7 +62,7 @@ describe("session attach registration", () => {
 	});
 });
 
-describe("/octocode with the daemon", () => {
+describe("/web with the daemon", () => {
 	const command = (open: any, daemon?: any) => webCommand(open, daemon);
 
 	it("opens the per-session server exactly as before when no daemon is given or it is off", async () => {

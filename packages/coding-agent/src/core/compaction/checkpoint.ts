@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
+import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { buildSessionProjection, type CompactionEntry, type SessionEntry } from "../session-manager.ts";
 import type { CompactionResult } from "./types.ts";
 import { clipWithMarker } from "./inline.ts";
-import { CHARS_PER_TOKEN, charsToTokens, estimateProjectedContextTokens } from "./tokens.ts";
+import { estimateProjectedContextTokens } from "./tokens.ts";
 
 export class CheckpointPersistenceError extends Error {}
 

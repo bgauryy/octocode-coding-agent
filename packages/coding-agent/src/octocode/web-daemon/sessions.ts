@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AttachRecord, DaemonSession, DaemonUnavailableSession } from "@octocodeai/octocode-contracts/daemon";
-import { runningPid } from "../agentdb/liveness.ts";
-import { sharedAgentDb } from "../agentdb/db.ts";
-import { sessions } from "../agentdb/api.ts";
+import { runningPid, sessions, sharedAgentDb } from "../agentdb/api.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { AttachClient } from "./attach-client.ts";
 import { webDaemonPaths } from "./paths.ts";

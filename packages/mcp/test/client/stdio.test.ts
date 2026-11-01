@@ -171,6 +171,51 @@ describe("StdioTransport", () => {
 	);
 
 	it.skipIf(process.platform === "win32")(
+		"kills a server that ignores SIGTERM after its launcher already exited, before close resolves",
+		async () => {
+			// Like `npx` starting a server that ignores SIGTERM: the launcher exits, the server keeps the pipes.
+			const transport = new StdioTransport({
+				command: "/bin/sh",
+				args: ["-c", "trap '' HUP TERM; sleep 60 & echo server $! >&2; exit 0"],
+				closeTimeoutMs: 100,
+			});
+			const closed = new Promise<void>((resolve) => transport.onClose(resolve));
+			await transport.start();
+			let server: number | undefined;
+			for (let i = 0; i < 200 && server === undefined; i++) {
+				const match = /server (\d+)/.exec(transport.stderr);
+				if (match) server = Number(match[1]);
+				else await new Promise((resolve) => setTimeout(resolve, 10));
+			}
+			expect(server).toBeTypeOf("number");
+			const alive = () => {
+				try {
+					process.kill(server!, 0);
+					return true;
+				} catch {
+					return false;
+				}
+			};
+			try {
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				const startedAt = Date.now();
+				await transport.close();
+				expect(Date.now() - startedAt).toBeLessThan(5_000);
+				// close() resolves only after the transport closed, so callers can rely on the server being gone.
+				let closeEmitted = false;
+				void closed.then(() => (closeEmitted = true));
+				await Promise.resolve();
+				expect(closeEmitted).toBe(true);
+				for (let i = 0; i < 100 && alive(); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+				expect(alive()).toBe(false);
+			} finally {
+				if (alive()) process.kill(server!, "SIGKILL");
+			}
+		},
+		10_000,
+	);
+
+	it.skipIf(process.platform === "win32")(
 		"kills a server that ignores shutdown, including its children",
 		async () => {
 			const transport = new StdioTransport({

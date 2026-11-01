@@ -111,6 +111,7 @@ export function getContextUsage(message: { role: string }): Usage | undefined {
 
 function getLastAssistantUsageInfo(
 	messages: readonly { role: string; timestamp: number }[],
+	staleByTimestamp: boolean,
 ): { usage: Usage; index: number } | undefined {
 	let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
 	let usageInfo: { usage: Usage; index: number } | undefined;
@@ -119,7 +120,7 @@ function getLastAssistantUsageInfo(
 		const message = messages[i];
 		// A newer prefix message was inserted after this response (for example, a
 		// compaction summary), so its usage cannot describe the current prefix.
-		if (message.role === "assistant" && message.timestamp >= latestPrefixTimestamp) {
+		if (message.role === "assistant" && (!staleByTimestamp || message.timestamp >= latestPrefixTimestamp)) {
 			const usage = getContextUsage(message);
 			if (usage) usageInfo = { usage, index: i };
 		}
@@ -129,6 +130,16 @@ function getLastAssistantUsageInfo(
 	return usageInfo;
 }
 
+export interface ContextEstimateOptions {
+	/**
+	 * How to tell that an assistant usage no longer describes the current prefix. `timestamp` (default) ignores usage
+	 * older than a message before it, such as an inserted compaction summary. `none` trusts the last valid usage: for
+	 * hosts that already drop stale usage from session structure (compaction and context-edit entries), where wall-clock
+	 * timestamps from imported sessions or other machines would discard valid usage.
+	 */
+	staleUsage?: "timestamp" | "none";
+}
+
 /**
  * Estimate context tokens from the last applicable assistant usage plus an estimate of what follows it; without usage,
  * estimate every message. Hosts with custom message roles pass their own `estimateMessage`.
@@ -136,8 +147,9 @@ function getLastAssistantUsageInfo(
 export function estimateContextTokensWith<M extends { role: string; timestamp: number }>(
 	messages: readonly M[],
 	estimateMessage: (message: M) => number,
+	options: ContextEstimateOptions = {},
 ): ContextUsageEstimate {
-	const usageInfo = getLastAssistantUsageInfo(messages);
+	const usageInfo = getLastAssistantUsageInfo(messages, (options.staleUsage ?? "timestamp") === "timestamp");
 	if (usageInfo) {
 		const usageTokens = calculateContextTokens(usageInfo.usage);
 		let trailingTokens = 0;

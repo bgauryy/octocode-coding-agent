@@ -109,7 +109,7 @@ it("reports parser regressions and LSP issues after native file edits through li
 
 		const typeError = await edit("= 1;", '= "one";');
 		expect(typeError).toMatch(/diagnostics observed after edit[^"]*2322/);
-		expect(typeError).toContain("parse completed after edit");
+		expect(typeError).not.toContain("parse completed");
 
 		const syntaxError = await edit('= "one";', '= "one";\nexport function broken( {\n');
 		expect(syntaxError).toContain("possible parse regression observed after edit");

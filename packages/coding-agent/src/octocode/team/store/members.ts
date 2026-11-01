@@ -16,6 +16,8 @@ const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
  * place a member is dropped.
  */
 function retire(db: Db, id: string, now: number): void {
+	// Its open questions close too, unless a live parent may still resume it with the answer (a lingering subagent).
+	deliveries.closeAsksOf(db, id, now);
 	agents.remove(db, id);
 	leases.releaseByOwner(db, id);
 	deliveries.deadLetterOf(db, id, now);
@@ -56,12 +58,15 @@ export function resumeMembers(db: Db, team: string, since: number, now: number):
 /**
  * The visible members of `team` (`TeamStore.list`), those of every worktree: the agent rows are read first, then the
  * live leases (`readLeases`), whose paths each member holds are added as its `locks` (relative to its own checkout).
+ * With `stalled`, only the hidden ones whose process runs but who have not been seen for `STALE_MS`, without locks: a
+ * name still reaches them (`resolveTarget`).
  */
-export function listMembers(db: Db, team: string, now: number, readLeases: () => Lease[]): Member[] {
+export function listMembers(db: Db, team: string, now: number, readLeases: () => Lease[], stalled = false): Member[] {
 	const live = agents
 		.inTeam(db, team)
 		.map(toMember)
-		.filter((member) => !stale(member.updatedAt, now) && sameProcess(member.pid, member.started, now));
+		.filter((member) => stale(member.updatedAt, now) === stalled && sameProcess(member.pid, member.started, now));
+	if (stalled) return live;
 	const held = readLeases();
 	return live.map((member) => {
 		const locks = held

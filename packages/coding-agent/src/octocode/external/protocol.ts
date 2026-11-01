@@ -10,20 +10,35 @@ export const promptTimeoutValid = (ms: number): boolean =>
 
 export const ExternalParamsSchema = Type.Object(
 	{
-		action: StringEnum(["list", "connect", "prompt", "cancel", "disconnect"] as const),
-		id: Type.Optional(Type.String()),
-		transport: Type.Optional(StringEnum(["acp", "octocode"] as const)),
-		vendor: Type.Optional(Type.String()),
-		command: Type.Optional(Type.String()),
+		action: StringEnum(["list", "connect", "prompt", "cancel", "disconnect"] as const, {
+			description:
+				"list also shows running instances and installed ACP agents; prompt waits for the reply; cancel stops the prompt in flight",
+		}),
+		id: Type.Optional(Type.String({ description: "prompt/cancel/disconnect: connection id" })),
+		transport: Type.Optional(
+			StringEnum(["acp", "octocode"] as const, {
+				description: "connect: acp (agent command) or octocode (running instance)",
+			}),
+		),
+		vendor: Type.Optional(Type.String({ description: "connect acp: the agent's real vendor" })),
+		command: Type.Optional(Type.String({ description: "connect acp: executable" })),
 		args: Type.Optional(Type.Array(Type.String())),
-		instanceId: Type.Optional(Type.String()),
-		cwd: Type.Optional(Type.String()),
-		sessionId: Type.Optional(Type.String()),
-		model: Type.Optional(Type.String()),
-		text: Type.Optional(Type.String()),
+		instanceId: Type.Optional(Type.String({ description: "connect octocode: instance id from list" })),
+		cwd: Type.Optional(Type.String({ description: "connect: workspace (octocode: the instance's absolute path)" })),
+		sessionId: Type.Optional(Type.String({ description: "connect acp: session to resume" })),
+		model: Type.Optional(Type.String({ description: "connect acp: model option" })),
+		text: Type.Optional(Type.String({ description: "prompt: the whole message; the peer sees nothing else" })),
 		// No `maxItems`: schemas carry shape only; `resolveReferences` refuses more than MAX_HANDOFF_REFERENCES at runtime.
-		refs: Type.Optional(Type.Array(Type.String())),
-		timeoutMs: Type.Optional(Type.Integer()),
+		refs: Type.Optional(
+			Type.Array(Type.String(), {
+				description: "prompt: msg#N or report:<agent-id>, appended to text before approval",
+			}),
+		),
+		timeoutMs: Type.Optional(
+			Type.Integer({
+				description: `connect acp, prompt: ms, ${PROMPT_TIMEOUT_MS.min} to ${PROMPT_TIMEOUT_MS.max}`,
+			}),
+		),
 	},
 	{ additionalProperties: false },
 );
@@ -78,32 +93,4 @@ export interface ExternalInfo {
 	busy: boolean;
 	/** The model the external agent reports it runs on, when its protocol says. */
 	model?: string;
-}
-
-/** The model an external agent runs on and the ids its model option accepts, when its protocol reports them. */
-export interface ExternalModels {
-	current?: string;
-	available: string[];
-}
-
-export interface ExternalReply {
-	text: string;
-	stopReason?: string;
-	updates?: unknown[];
-	/** The reply's message id on the remote Octocode instance, when the transport reports one. */
-	remoteMessageId?: string;
-}
-
-export interface ExternalBackend {
-	readonly sessionId: string;
-	readonly cwd: string;
-	/** Explicit liveness lets a transport retain a connection after an uncertain prompt failure. */
-	readonly isClosed?: boolean;
-	/** Remote work may remain active after the local prompt waiter times out. */
-	readonly isBusy?: boolean;
-	/** The agent's current model and the ids it accepts; it can change while the connection is open. */
-	readonly models?: ExternalModels;
-	prompt(text: string, options: { timeoutMs: number; signal?: AbortSignal; key?: string }): Promise<ExternalReply>;
-	cancel(): Promise<void>;
-	close(): Promise<void>;
 }

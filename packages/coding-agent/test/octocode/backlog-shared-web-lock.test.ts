@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Backlog, BacklogWeb } from "../../src/octocode/backlog/context.ts";
-import { registryPathsForTest, sharedWorkspaceWeb } from "../../src/octocode/backlog/shared-web.ts";
+import { sharedWorkspaceWeb } from "../../src/octocode/backlog/shared-web.ts";
+import { registryPaths } from "../../src/octocode/backlog/shared-web-registry.ts";
 import { acquireRegistryLock } from "../../src/octocode/backlog/shared-web-lock.ts";
 
 const childScript = fileURLToPath(new URL("./backlog-shared-lock-child.ts", import.meta.url));
@@ -116,7 +117,7 @@ describe("registry lock recovery after a crashed owner", () => {
 			repoRoot: dir,
 		};
 		const env = { ...process.env, OCTOCODE_AGENT_DB: path.join(dir, "db") };
-		const { lock } = registryPathsForTest(dir, "session-crash", env);
+		const { lock } = registryPaths(dir, "session-crash", env);
 		fs.mkdirSync(path.dirname(lock), { recursive: true });
 		const child = await lockedChild(lock);
 		child.kill("SIGKILL");

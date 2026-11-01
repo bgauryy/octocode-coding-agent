@@ -250,6 +250,8 @@ export function installAgentNextTurnRefresh(host: AgentHooksHost): void {
 				...runOptions.toolGuidelines,
 			},
 		});
+		// Producers whose sections change during a run (MCP blocks and status) update them for this turn.
+		await session.extensionRunner.emit({ type: "turn_prompt", systemPromptOptions: options });
 		const updateMessage = tools.preparePromptAndToolLoadout(options, nextContext.messages);
 		// Keep session.systemPrompt and ctx.getSystemPrompt() in step with what the provider sees.
 		tools.runSystemPromptOptions = options;

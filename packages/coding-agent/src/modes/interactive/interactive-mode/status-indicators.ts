@@ -3,7 +3,8 @@
  * label, extension footer status, and the transient status lines in the chat.
  */
 
-import { Spacer } from "@octocodeai/octocode-tui";
+import { hyperlink, Spacer } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
@@ -13,6 +14,7 @@ import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import type { StatusLink, StatusText } from "./types.ts";
 
 /** Interactive-mode members used by the status indicators. */
 type StatusIndicatorsHost = Pick<
@@ -28,7 +30,6 @@ type StatusIndicatorsHost = Pick<
 	| "footerDataProvider"
 	| "hiddenThinkingLabel"
 	| "idleStatus"
-	| "lastStatusMessage"
 	| "lastStatusSpacer"
 	| "lastStatusText"
 	| "managedToolStatusStarted"
@@ -165,17 +166,33 @@ export function showManagedToolStatus(host: StatusIndicatorsHost, status: ToolSt
 /** The message each status line shows; the coalesced last line updates its entry in place. */
 const statusLineMessages = new WeakMap<ThemedText, { message: string }>();
 
+/** A link drawn as OSC 8 only when it is an http(s) URL without controls or spaces; otherwise its label as text. */
+function statusLink(link: StatusLink): string {
+	const label = sanitizeTerminalText(link.label ?? link.url);
+	if (!/^https?:\/\/\S+$/u.test(link.url) || sanitizeTerminalText(link.url) !== link.url || !URL.canParse(link.url)) {
+		return label;
+	}
+	return hyperlink(label, link.url);
+}
+
+/** Status text as drawn: callers' text never reaches the terminal as a control sequence; only validated links do. */
+function formatStatusText(text: StatusText): string {
+	if (typeof text === "string") return sanitizeTerminalText(text);
+	return text.map((part) => (typeof part === "string" ? sanitizeTerminalText(part) : statusLink(part))).join("");
+}
+
 /**
- * Show a status message in the chat.
+ * Show a status message in the chat. Status text often carries tool or account data (gh output, user names), so plain
+ * text is sanitized; a link goes in as a `StatusLink` part, never as a caller-built escape sequence.
  *
  * If multiple status messages are emitted back-to-back (without anything else being added to the chat),
  * we update the previous status line instead of appending new ones to avoid log spam.
  */
-export function showStatus(host: StatusIndicatorsHost, message: string): void {
+export function showStatus(host: StatusIndicatorsHost, status: StatusText): void {
+	const message = formatStatusText(status);
 	const children = host.chatContainer.children;
 	const last = children.length > 0 ? children[children.length - 1] : undefined;
 	const secondLast = children.length > 1 ? children[children.length - 2] : undefined;
-	host.lastStatusMessage = message;
 
 	const lastLine = host.lastStatusText && statusLineMessages.get(host.lastStatusText);
 	if (last && secondLast && last === host.lastStatusText && secondLast === host.lastStatusSpacer && lastLine) {

@@ -22,7 +22,7 @@ import { tmp } from "./helpers.ts";
 describe("file input shape", () => {
 	it("teaches the queries and patch forms when a call has neither, or both", () => {
 		const taught =
-			/file takes either queries \(an array, one object per change: \{type, path, reason, edits\|content\}\) or patch .*not both\. Wrap a single change as queries:\[\{\.\.\.\}\]\./;
+			/file takes either queries \(an array, one object per change: \{type, path, edits\|content\}\) or patch .*not both\. Set reason once on the call\. Wrap a single change as queries:\[\{\.\.\.\}\]\./;
 		// The flat form a small model tries first: one change's fields at the top level.
 		expect(() => validateFileInput({ type: "write", path: "a.txt", content: "x", reason: "r" })).toThrow(taught);
 		expect(() => validateFileInput({ patch: "*** Begin Patch\n*** End Patch", queries: [] })).toThrow(taught);

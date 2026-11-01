@@ -91,14 +91,14 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 			} catch {
 				loaded = parseSourcePolicy({ permissions: null }, source);
 			}
-			next.rules.push(
-				...loaded.rules.filter(
-					(rule) => trusted || source.path === allSources[0].path || localAllowed[index] || rule.behavior !== "allow",
-				),
-			);
+			// What allows (allow rules, `acceptEdits`, extra directories) loads only from the user's own settings, an
+			// untracked local file or a trusted project; what restricts loads from any source.
+			const allowances = trusted || source.path === allSources[0].path || localAllowed[index];
+			next.rules.push(...loaded.rules.filter((rule) => allowances || rule.behavior !== "allow"));
 			next.errors.push(...loaded.errors);
-			if (loaded.defaultMode) next.defaultMode = loaded.defaultMode;
-			if (trusted || source.path === allSources[0].path || localAllowed[index])
+			if (loaded.defaultMode && (allowances || loaded.defaultMode !== "acceptEdits"))
+				next.defaultMode = loaded.defaultMode;
+			if (allowances)
 				next.additionalDirectories = [...(next.additionalDirectories ?? []), ...(loaded.additionalDirectories ?? [])];
 		}
 		return { fingerprint, next, id, contents };

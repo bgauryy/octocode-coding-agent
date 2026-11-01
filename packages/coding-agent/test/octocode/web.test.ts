@@ -3,7 +3,8 @@ import type { AddressInfo, LookupFunction } from "node:net";
 import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as importedModule3 from "../../src/octocode/web/fetch.ts";
-import { decodeBody, isBinaryType, type PageFetcher, pageFetcher, readCapped } from "../../src/octocode/web/fetch.ts";
+import { decodeBody } from "../../src/octocode/web/charset.ts";
+import { isBinaryType, type PageFetcher, pageFetcher, readCapped } from "../../src/octocode/web/fetch.ts";
 import { classifyHost, type HostLookup, isBlockedIp, publicFetch } from "../../../common/src/web-guard.ts";
 import * as importedModule1 from "../../src/octocode/web/html.ts";
 import { collapseLinkRuns, describeHtml, htmlToText, mainContent } from "../../src/octocode/web/html.ts";
@@ -288,6 +289,26 @@ describe("web private-address guard", () => {
 		expect(decodeBody(Buffer.from([0xff, 0xfe, 0x68, 0x00, 0x69, 0x00]), "text/plain; charset=utf-8")).toBe("hi");
 	});
 
+	it("shows the part of a cut compressed page that arrived, says so, and fetches it again next time", async () => {
+		const text = Array.from({ length: 4000 }, (_, index) => `line ${index} ${(index * 7919) % 10007}`).join("\n");
+		const packed = zlib.gzipSync(text);
+		let hits = 0;
+		const port = await serve((_request, response) => {
+			hits += 1;
+			response
+				.writeHead(200, { "content-type": "text/plain", "content-encoding": "gzip" })
+				.end(packed.subarray(0, Math.floor(packed.length / 2)));
+		});
+		const url = `http://127.0.0.1:${port}/cut`;
+		const page = asText(await fetchUrl(url, undefined, { private: true }));
+		expect(page).toMatch(/^\[Incomplete: content truncated: compressed stream ended early; only the part that arrived/);
+		const shown = page.slice(page.indexOf("]\n\n") + 3);
+		expect(shown.length).toBeGreaterThan(0);
+		expect(text.startsWith(shown)).toBe(true);
+		await fetchUrl(url, undefined, { private: true });
+		expect(hits).toBe(2);
+	});
+
 	it("shares one fetch between callers asking for the same page at once", async () => {
 		let hits = 0;
 		const port = await serve((_request, response) => {
@@ -331,11 +352,11 @@ describe("web private-address guard", () => {
 	it("caps a body at 5 MiB (readCapped) and reports that it cut it", async () => {
 		const MB = 1024 * 1024;
 		const small = await readCapped(new Response("hello"), "text/plain");
-		expect(small).toEqual({ text: "hello", truncated: false });
+		expect(small).toEqual({ text: "hello", truncated: false, cut: false });
 		const big = await readCapped(new Response("a".repeat(6 * MB)), "text/plain");
 		expect(big.truncated).toBe(true);
 		expect(big.text).toHaveLength(5 * MB);
-		expect(await readCapped(new Response(null), "")).toEqual({ text: "", truncated: false });
+		expect(await readCapped(new Response(null), "")).toEqual({ text: "", truncated: false, cut: false });
 	});
 
 	it("says when a body over 5 MB was cut, and shows cut JSON raw", async () => {

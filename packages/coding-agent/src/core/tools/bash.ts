@@ -2,7 +2,9 @@ import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Static, Type } from "typebox";
 import { getShellEnv } from "../../utils/shell.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
-import { type BashOperations, createLocalBashOperations } from "./bash/local-operations.ts";
+import { createLocalBashOperations } from "./bash/local-operations.ts";
+import { bashSchema } from "./bash/schema.ts";
+import type { BashOperations } from "./bash/types.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -10,31 +12,18 @@ import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "./bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./bash/header.ts";
 import { BashExecutionError, type BashToolDetails } from "./bash/outcome.ts";
 
-export { type BashOperations, createLocalBashOperations } from "./bash/local-operations.ts";
+export { createLocalBashOperations } from "./bash/local-operations.ts";
+export { type BashToolInput, maxOutputTokensParameter } from "./bash/schema.ts";
+export type { BashOperations } from "./bash/types.ts";
 export { type BashToolDetails } from "./bash/outcome.ts";
 
 /** Output limit of `structuredContent.output`, which programmatic callers such as programmatic tool callers receive. */
 const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 
-/** The per-call output budget; the native `bash` tool declares the same parameter. */
-export const maxOutputTokensParameter = Type.Optional(
-	Type.Number({
-		description: "Output token budget for this result (about 4 bytes each, at least 100)",
-	}),
-);
-
-const bashSchema = Type.Object({
-	command: Type.String({ description: "Shell command to execute" }),
-	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
-	maxOutputTokens: maxOutputTokensParameter,
-});
-
 export const bashToolSystemPromptContribution = {
 	snippet: "Execute bash commands (ls, grep, find, etc.)",
 	guidelines: [],
 } as const;
-
-export type BashToolInput = Static<typeof bashSchema>;
 
 /**
  * Result for programmatic callers such as programmatic tool callers. A non-zero exit code is an error result for the model, but scripts still resolve to this value.

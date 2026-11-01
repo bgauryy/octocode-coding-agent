@@ -1,15 +1,19 @@
 import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import type { BacklogTask, TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
-import { STATE_TITLE, BOARD_ORDER } from "./format.ts";
+import { type BoardData, type BoardRow, boardLayout, epicItems } from "./board-model.ts";
+import { BOARD_ORDER } from "./format.ts";
 import { refText } from "./row.ts";
 import { type Item, priorityName } from "./store.ts";
+import { taskLine } from "./task-format.ts";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 
 /** What the user picked on the board; the command runs it and reopens the board unless it handed work to the agent. */
 type BoardChoice =
 	| { action: "open" | "do"; ref: string }
+	| { action: "task"; ref: string }
 	| { action: "add" }
 	| { action: "export" }
 	| { action: "html" };
@@ -22,24 +26,18 @@ interface BoardSource {
 	move(item: Item, state: State): string | undefined;
 	/** Who "you" is, to mark items this session holds. */
 	self: string;
+	/** The repository's open tasks (re-read with the items) and a task's move to a neighbouring state; without it the board shows no tasks. */
+	tasks?: { load(): BacklogTask[]; move(task: BacklogTask, state: TaskState): string | undefined };
 }
 
-const DONE_SHOWN = 5;
-
-/** Items in board order: grouped by state, Done cut to the most recent few. */
-export function boardRows(items: Item[]): Item[] {
-	return BOARD_ORDER.flatMap((state) => {
-		const group = items.filter((item) => item.state === state);
-		return state === "done"
-			? group.sort((a, b) => (b.doneAt ?? b.updatedAt) - (a.doneAt ?? a.updatedAt)).slice(0, DONE_SHOWN)
-			: group;
-	});
-}
+/** The order ←/→ step a task through; `dropped` is chosen from the task's actions. */
+const TASK_FLOW: readonly TaskState[] = ["todo", "ongoing", "done"];
 
 /**
- * The board: a section per state (backlog, todo, ongoing, done, top to bottom) with counts, ↑↓ select, ←→ move the
- * selected item to the section above/below,
- * Enter item actions, `a` add, `d` do it now, `e` export, `h` open as HTML, Esc close.
+ * The board: epics, then a section per state (backlog, todo, ongoing, done, top to bottom) with counts and open-task counts,
+ * then this session's tasks. ↑↓ select an epic, an item or a task (the selected item shows its tasks, the selected epic its
+ * items), ←→ move the selected item or task to the neighbouring state, Enter item or task actions, `a` add, `d` do it now,
+ * `e` export, `h` open as HTML, Esc close. Everything is read when the board opens and after a change, never per frame.
  */
 export function showBoard(
 	ctx: ExtensionContext,
@@ -47,12 +45,16 @@ export function showBoard(
 	selectRef?: string,
 ): Promise<BoardChoice | undefined> {
 	return ctx.ui.custom<BoardChoice | undefined>((tui, theme, keybindings, done) => {
-		let items = source.load();
-		let rows = boardRows(items);
-		let cursor = Math.max(
-			0,
-			rows.findIndex((item) => item.ref === selectRef),
-		);
+		const read = (): BoardData => ({
+			items: source.load(),
+			tasks: source.tasks?.load() ?? [],
+			session: source.self,
+		});
+		let data = read();
+		let selected = selectRef;
+		let layout = boardLayout(data, selected);
+		if (!layout.rows.some((row) => row.key === selected)) selected = layout.rows[0]?.key;
+		layout = boardLayout(data, selected);
 		let flash: string | undefined;
 		let cache: string[] | undefined;
 		let cacheWidth = 0;
@@ -61,57 +63,100 @@ export function showBoard(
 			cache = undefined;
 			tui.requestRender();
 		};
-		const reload = (ref?: string) => {
-			items = source.load();
-			rows = boardRows(items);
-			const at = ref ? rows.findIndex((item) => item.ref === ref) : -1;
-			cursor = at >= 0 ? at : Math.min(cursor, Math.max(0, rows.length - 1));
+		const select = (key: string | undefined) => {
+			selected = key;
+			layout = boardLayout(data, selected);
+		};
+		const at = () => layout.rows.findIndex((row) => row.key === selected);
+		/** Re-read, keeping the selection by key; a row that vanished (a finished task) leaves the cursor at the same place. */
+		const reload = () => {
+			const index = at();
+			data = read();
+			layout = boardLayout(data, selected);
+			if (at() < 0) select(layout.rows[Math.min(Math.max(0, index), layout.rows.length - 1)]?.key);
+		};
+		const step = (by: number) => {
+			const { rows } = layout;
+			if (rows.length > 0) select(rows[(Math.max(0, at()) + by + rows.length) % rows.length]?.key);
 		};
 
-		function handleInput(data: string): void {
-			const current = rows[cursor];
+		function handleInput(input: string): void {
+			const current = layout.rows[at()];
 			flash = undefined;
-			if (keybindings.matches(data, "tui.select.cancel") || keybindings.matches(data, "app.backlog.close")) {
+			if (keybindings.matches(input, "tui.select.cancel") || keybindings.matches(input, "app.backlog.close")) {
 				done(undefined);
 				return;
 			}
-			if (keybindings.matches(data, "tui.select.up"))
-				cursor = rows.length ? (cursor + rows.length - 1) % rows.length : 0;
-			else if (keybindings.matches(data, "tui.select.down")) cursor = rows.length ? (cursor + 1) % rows.length : 0;
+			if (keybindings.matches(input, "tui.select.up")) step(-1);
+			else if (keybindings.matches(input, "tui.select.down")) step(1);
 			else if (
-				keybindings.matches(data, "app.backlog.previousState") ||
-				keybindings.matches(data, "app.backlog.nextState")
+				keybindings.matches(input, "app.backlog.previousState") ||
+				keybindings.matches(input, "app.backlog.nextState")
 			) {
 				if (!current) return;
-				// → steps toward done, ← back toward backlog: the same order the sections are drawn in.
-				const next =
-					BOARD_ORDER[
-						BOARD_ORDER.indexOf(current.state) + (keybindings.matches(data, "app.backlog.nextState") ? 1 : -1)
-					];
-				if (!next) return;
-				flash = source.move(current, next);
-				reload(current.ref);
-			} else if (keybindings.matches(data, "tui.select.confirm")) {
+				const forward = keybindings.matches(input, "app.backlog.nextState");
+				if (current.kind === "task") {
+					// → steps toward done, ← back toward todo; a dropped task steps like a todo one.
+					const next = TASK_FLOW[Math.max(0, TASK_FLOW.indexOf(current.task.state)) + (forward ? 1 : -1)];
+					if (!next || !source.tasks) return;
+					flash = source.tasks.move(current.task, next);
+				} else if (current.item.type === "epic") {
+					// The row shows the state its items give it; stepping the stored one would move it the wrong way.
+					flash = `${current.item.ref} is an epic: its state follows its items.`;
+				} else {
+					// → steps toward done, ← back toward backlog: the same order the sections are drawn in.
+					const next = BOARD_ORDER[BOARD_ORDER.indexOf(current.item.state) + (forward ? 1 : -1)];
+					if (!next) return;
+					flash = source.move(current.item, next);
+				}
+				reload();
+			} else if (keybindings.matches(input, "tui.select.confirm")) {
 				if (current) {
-					done({ action: "open", ref: current.ref });
+					done({ action: current.kind === "task" ? "task" : "open", ref: current.key });
 					return;
 				}
-			} else if (keybindings.matches(data, "app.backlog.add")) {
+			} else if (keybindings.matches(input, "app.backlog.add")) {
 				done({ action: "add" });
 				return;
-			} else if (keybindings.matches(data, "app.backlog.export")) {
+			} else if (keybindings.matches(input, "app.backlog.export")) {
 				done({ action: "export" });
 				return;
-			} else if (keybindings.matches(data, "app.backlog.html")) {
+			} else if (keybindings.matches(input, "app.backlog.html")) {
 				done({ action: "html" });
 				return;
-			} else if (keybindings.matches(data, "app.backlog.do")) {
-				if (current) {
-					done({ action: "do", ref: current.ref });
+			} else if (keybindings.matches(input, "app.backlog.do")) {
+				if (current?.kind === "item") {
+					done({ action: "do", ref: current.key });
 					return;
 				}
 			} else return;
 			refresh();
+		}
+
+		/** One selectable row as text: the part that takes the selection colour, the dim rest, and the indent. */
+		function rowText(row: BoardRow): { text: string; dim: string; indent: string } {
+			if (row.kind === "task") return { text: taskLine(row.task, { owner: false }), dim: "", indent: "     " };
+			const { item } = row;
+			const tags = item.tags.length ? ` ${item.tags.map((tag) => `#${tag}`).join(" ")}` : "";
+			const from = item.from === undefined ? "" : ` ←${refText(item.from)}`;
+			const parent = item.parentId && item.type !== "epic" ? ` ⊂${item.parentId}` : "";
+			const tasks = row.tasks > 0 ? ` · ${row.tasks} open task${row.tasks === 1 ? "" : "s"}` : "";
+			const children = item.type === "epic" ? epicItems(item, data.items) : [];
+			const epic =
+				item.type === "epic"
+					? ` · epic ${row.shown} · ${children.filter((child) => child.state === "done").length}/${children.length} done`
+					: "";
+			const holder =
+				item.state === "ongoing" && item.assignee
+					? item.assignee === source.self
+						? " (you)"
+						: ` (@${sanitizeTerminalText(item.assignee)})`
+					: "";
+			return {
+				text: `${item.ref} ${priorityName(item.priority)} ${sanitizeTerminalText(item.title)}`,
+				dim: `${tags}${from}${parent}${epic}${tasks}${holder}`,
+				indent: "   ",
+			};
 		}
 
 		function render(width: number): string[] {
@@ -122,34 +167,31 @@ export function showBoard(
 			const helpLines = wrapTextWithAnsi(help, Math.max(1, w - 1)).slice(0, Math.max(1, Math.floor(height / 4)));
 			const lines: string[] = [];
 			const push = (text: string) => lines.push(truncateToWidth(text, w, "…"));
-			const count = (state: State) => items.filter((item) => item.state === state).length;
+			const { counts } = layout;
+			const open = data.tasks.length;
+			const tasks = open ? `  ·  ${open} open task${open === 1 ? "" : "s"}` : "";
 			push(theme.fg("accent", "─".repeat(w)));
 			push(
-				` ${theme.bold(sanitizeTerminalText(source.title))}  ${theme.fg("muted", `▶${count("ongoing")} ☐${count("todo")} ⧗${count("backlog")} ✓${count("done")}`)}`,
+				` ${theme.bold(sanitizeTerminalText(source.title))}  ${theme.fg("muted", `▶${counts.ongoing} ☐${counts.todo} ⧗${counts.backlog} ✓${counts.done}${tasks}`)}`,
 			);
 			const listed: string[] = [];
 			let selectedLine = 0;
-			for (const state of BOARD_ORDER) {
-				const group = rows.filter((item) => item.state === state);
-				const total = count(state);
-				listed.push("");
-				listed.push(
-					` ${theme.fg("accent", theme.bold(`${STATE_TITLE[state]} (${total})`))}${state === "done" && total > group.length ? theme.fg("dim", ` · latest ${group.length}`) : ""}`,
-				);
-				if (group.length === 0) listed.push(theme.fg("dim", "   (none)"));
-				for (const item of group) {
-					const selected = rows[cursor] === item;
-					if (selected) selectedLine = listed.length;
-					const owner =
-						item.state === "ongoing" && item.assignee
-							? item.assignee === source.self
-								? " (you)"
-								: ` (@${sanitizeTerminalText(item.assignee)})`
-							: "";
-					const tags = item.tags.length ? ` ${item.tags.map((tag) => `#${tag}`).join(" ")}` : "";
-					const from = item.from === undefined ? "" : ` ←${refText(item.from)}`;
-					const text = `${item.ref} ${priorityName(item.priority)} ${sanitizeTerminalText(item.title)}${theme.fg("dim", `${tags}${from}${owner}`)}`;
-					listed.push(selected ? `${theme.fg("accent", " › ")}${theme.fg("accent", text)}` : `   ${text}`);
+			for (const entry of layout.entries) {
+				if (entry.kind === "heading") {
+					listed.push("");
+					listed.push(
+						` ${theme.fg("accent", theme.bold(entry.title))}${entry.note ? theme.fg("dim", ` · ${entry.note}`) : ""}`,
+					);
+				} else if (entry.kind === "empty") listed.push(theme.fg("dim", "   (none)"));
+				else if (entry.kind === "context") listed.push(theme.fg("dim", `      ${sanitizeTerminalText(entry.text)}`));
+				else {
+					const { text, dim, indent } = rowText(entry.row);
+					if (entry.row.key === selected) {
+						selectedLine = listed.length;
+						listed.push(
+							`${indent.slice(0, -3)}${theme.fg("accent", " › ")}${theme.fg("accent", text)}${theme.fg("dim", dim)}`,
+						);
+					} else listed.push(`${indent}${text}${theme.fg("dim", dim)}`);
 				}
 			}
 			// Keep the selection on screen when the board is taller than the terminal.

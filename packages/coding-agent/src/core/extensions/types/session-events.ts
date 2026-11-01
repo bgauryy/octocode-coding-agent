@@ -2,7 +2,7 @@
 
 import type { CompactionPreparation } from "../../compaction/index.ts";
 import type { RegisteredMcpServer } from "../../../../../mcp/src/servers.ts";
-import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "../../session-manager.ts";
+import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionNameSource } from "../../session-manager.ts";
 import type { ExtensionMode } from "./context.ts";
 import type { ExtensionUIContext } from "./ui.ts";
 
@@ -78,6 +78,8 @@ export interface SessionInfoChangedEvent {
 	type: "session_info_changed";
 	/** Current normalized session name. Undefined when the name is cleared. */
 	name: string | undefined;
+	/** Who gave the name (user, generated title, subagent goal). Undefined when the name is cleared. */
+	source?: SessionNameSource;
 }
 
 /** Fired before switching to another session (can be cancelled) */

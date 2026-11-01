@@ -1,4 +1,5 @@
 import { formatBytes } from "../../utils/bytes.ts";
+import { FAILURE_WORDS } from "./output-trim.ts";
 
 /**
  * Shared truncation utilities for tool outputs.
@@ -78,7 +79,7 @@ export function formatElisionMarker(
 			: `start of line ${lastLine} elided`;
 	const matched =
 		matchedLines > 0
-			? `; ${matchedLines} matched ${matchedLines === 1 ? "line" : "lines"} below, then the end of the output`
+			? `; ${matchedLines} ${matchedLines === 1 ? "line" : "lines"} matching ${FAILURE_WORDS} below, then the end of the output`
 			: "";
 	return `[... ${what}${matched}${fullOutputPath ? `; full output: ${fullOutputPath}` : ""}]`;
 }

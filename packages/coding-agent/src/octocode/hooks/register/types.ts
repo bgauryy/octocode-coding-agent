@@ -32,7 +32,7 @@ interface HookNotice {
 	type: string;
 }
 
-/** What `/hooks` and `/octocode` show about hooks. */
+/** What `/hooks` and `/status` show about hooks. */
 export interface HooksView {
 	suspend?(): Promise<void>;
 	hasFilePermissionRequest(input: Record<string, unknown>, cwd: string): boolean;
@@ -52,7 +52,7 @@ export interface HooksView {
 		  }
 		| undefined
 	>;
-	/** One line for the `/octocode` status. */
+	/** One line for the `/status` report. */
 	summary(): string;
 	/** On/off, the loaded commands per event, the files read (✓ = exists) and any config errors. */
 	report(cwd: string): string;

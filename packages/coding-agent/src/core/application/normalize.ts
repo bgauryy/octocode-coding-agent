@@ -1,17 +1,15 @@
 import {
-	applicationContentText,
+	applicationMessageText,
+	previewText,
 	type ApplicationContentBlock,
 	type ApplicationMessage,
 	type ApplicationTool,
 	type ContentAnnotation,
 } from "@octocodeai/octocode-contracts";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
-import { keepEnds, OUTPUT_CHARS } from "./service/projection.ts";
 
-export function record(value: unknown): Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
 const string = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 /** Public display values must not retain references to provider objects mutated by later stream chunks. */
 export function cloneDisplay<T>(value: T): T {
@@ -23,17 +21,16 @@ function preview(
 	assets: ApplicationAssets,
 	slot?: string,
 ): { text: string; full?: ReturnType<ApplicationAssets["put"]> } {
-	if (text.length <= 4000) return { text };
-	return {
-		text: `${text.slice(0, 2000)}\n… [Full content available]\n${text.slice(-1900)}`,
-		full: assets.put(text, "text/plain", "utf8", undefined, slot),
-	};
+	const shown = previewText(text);
+	return shown.previewed
+		? { text: shown.text, full: assets.put(text, "text/plain", "utf8", undefined, slot) }
+		: { text };
 }
 
-function annotations(value: unknown): ContentAnnotation[] | undefined {
+export function annotations(value: unknown): ContentAnnotation[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	return value.flatMap((item) => {
-		const source = record(item);
+		const source = asRecord(item);
 		if (typeof source.type !== "string") return [];
 		const annotation: ContentAnnotation = { type: source.type };
 		for (const key of ["title", "url", "text", "fileId"] as const)
@@ -53,17 +50,19 @@ export function normalizeApplicationContent(
 ): ApplicationContentBlock[] {
 	const blocks = typeof value === "string" ? [{ type: "text", text: value }] : Array.isArray(value) ? value : [];
 	return blocks.map((value, index): ApplicationContentBlock => {
-		const block = record(value);
+		const block = asRecord(value);
 		const id = `${owner}:${index}`;
 		const slot = streaming ? id : undefined;
 		switch (block.type) {
-			case "text":
+			case "text": {
+				const marks = annotations(block.annotations);
 				return {
 					id,
 					type: "text",
 					...preview(string(block.text) ?? "", assets, slot),
-					...(annotations(block.annotations) ? { annotations: annotations(block.annotations) } : {}),
+					...(marks ? { annotations: marks } : {}),
 				};
+			}
 			case "thinking":
 				return {
 					id,
@@ -127,7 +126,7 @@ export function normalizeApplicationContent(
 }
 
 export function normalizeApplicationMessage(value: unknown, id: string, assets: ApplicationAssets): ApplicationMessage {
-	const source = record(value);
+	const source = asRecord(value);
 	const bashContent =
 		source.role === "bashExecution"
 			? [
@@ -166,7 +165,7 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 		id,
 		role: string(source.role) ?? "custom",
 		content,
-		text: keepEnds(applicationContentText(content), OUTPUT_CHARS),
+		text: applicationMessageText(content),
 		complete,
 		status: !complete
 			? "streaming"
@@ -180,6 +179,33 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 						? "interrupted"
 						: "completed",
 	};
+	applyMessageFields(source, message);
+	const serialized = JSON.stringify(message);
+	if (serialized.length > 60000) {
+		return {
+			id,
+			role: message.role,
+			complete,
+			status: message.status,
+			display: message.display,
+			text: "[Full message available]",
+			content: [
+				{ id: `${id}:full`, type: "unsupported", providerType: "large-message", text: "Full message available" },
+			],
+			full: assets.put(
+				serialized,
+				"application/json",
+				"utf8",
+				undefined,
+				source.stopReason === "pending" ? `${id}:full` : undefined,
+			),
+		};
+	}
+	return message;
+}
+
+/** Copy the fields a message shows besides its content and status from its source. */
+export function applyMessageFields(source: Record<string, unknown>, message: ApplicationMessage): void {
 	for (const key of [
 		"provider",
 		"model",
@@ -192,7 +218,7 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 		if (typeof source[key] === "string") message[key] = source[key];
 	for (const key of ["timestamp", "durationMs"] as const)
 		if (typeof source[key] === "number" && Number.isFinite(source[key])) message[key] = source[key];
-	if (source.usage && typeof source.usage === "object") message.usage = cloneDisplay(record(source.usage));
+	if (source.usage && typeof source.usage === "object") message.usage = cloneDisplay(asRecord(source.usage));
 	if (source.details !== undefined) message.details = cloneDisplay(source.details);
 	const detailKeys =
 		source.role === "bashExecution"
@@ -216,27 +242,6 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 		);
 	if (source.role === "custom" || source.role === "system")
 		message.display = source.role === "custom" && source.display === true;
-	if (JSON.stringify(message).length > 60000) {
-		return {
-			id,
-			role: message.role,
-			complete,
-			status: message.status,
-			display: message.display,
-			text: "[Full message available]",
-			content: [
-				{ id: `${id}:full`, type: "unsupported", providerType: "large-message", text: "Full message available" },
-			],
-			full: assets.put(
-				JSON.stringify(message),
-				"application/json",
-				"utf8",
-				undefined,
-				source.stopReason === "pending" ? `${id}:full` : undefined,
-			),
-		};
-	}
-	return message;
 }
 
 /** Keep structured output readable without putting unbounded JSON in every streamed frame. */
@@ -246,13 +251,13 @@ export function normalizeToolData(
 	assets: ApplicationAssets,
 	streaming = false,
 ): Partial<ApplicationTool> {
-	const source = record(value);
+	const source = asRecord(value);
 	const data: Partial<ApplicationTool> = {
 		content: normalizeApplicationContent(source.content, id, assets, streaming),
 	};
 	for (const key of ["structuredContent", "details"] as const)
 		if (source[key] !== undefined) data[key] = cloneDisplay(source[key]);
-	if (source.usage && typeof source.usage === "object") data.usage = cloneDisplay(record(source.usage));
+	if (source.usage && typeof source.usage === "object") data.usage = cloneDisplay(asRecord(source.usage));
 	if (typeof source.durationMs === "number") data.durationMs = source.durationMs;
 	if (JSON.stringify({ structuredContent: data.structuredContent, details: data.details }).length > 8000) {
 		data.full = assets.put(

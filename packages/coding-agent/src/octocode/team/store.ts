@@ -1,5 +1,14 @@
-import { type Db, agents, deliveries, leases } from "../agentdb/api.ts";
-import { type AgentDb, dbStamp, openAgentDb, sharedAgentDb } from "../agentdb/db.ts";
+import {
+	type AgentDb,
+	type Db,
+	agents,
+	dbStamp,
+	deliveries,
+	history,
+	leases,
+	openAgentDb,
+	sharedAgentDb,
+} from "../agentdb/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
@@ -8,7 +17,6 @@ import type { DeadLetter, Lease, LeaseRequest, Message, SendOptions } from "./mo
 import {
 	BUSY_MS,
 	INBOX_BATCH_SIZE,
-	isBusy,
 	LEASE_MS,
 	MESSAGE_RETENTION_MS,
 	PRUNE_INTERVAL_MS,
@@ -141,7 +149,7 @@ export class TeamStore {
 		try {
 			this.quick(() => this.prune());
 		} catch (error) {
-			if (!isBusy(error)) throw error;
+			if (!history.isBusy(error)) throw error;
 		}
 	}
 
@@ -221,10 +229,10 @@ export class TeamStore {
 	/**
 	 * Visible agents of this team (every worktree of the repository), oldest first, with unanswered-message counts and held
 	 * paths (relative to the member's own `checkout`). A stale one (silent for `STALE_MS`) or one whose process is gone is
-	 * left out; nothing is removed here, `sweep` and `remove` do that.
+	 * left out (`stalled`: only the stale ones whose process runs); nothing is removed here, `sweep` and `remove` do that.
 	 */
-	list(now = Date.now()): Member[] {
-		return listMembers(this.db, this.team, now, () => teamLeases(this.db, this.team, now));
+	list(now = Date.now(), stalled = false): Member[] {
+		return listMembers(this.db, this.team, now, () => teamLeases(this.db, this.team, now), stalled);
 	}
 
 	/** Ids of this team's agents that can still read mail: every one whose process runs, stale (stalled) ones included. */
@@ -239,7 +247,8 @@ export class TeamStore {
 	 * completes the delivery it answers. Recipients that left or whose process ended are refused and returned in
 	 * `departed`; with none left, nothing is stored and `id` is undefined.
 	 * `wake` (a question, or a sender outside the team) lets it start an idle recipient's turn; otherwise only the
-	 * answer to a question that recipient asked, and still awaited, wakes it. `sign` makes the recipient's `proof` once the
+	 * answer to a question that recipient asked, and still awaited, wakes it. `woken` returns the recipients given that
+	 * wake (an interrupt included), so a sender can be told how its message meets each of them. `sign` makes the recipient's `proof` once the
 	 * message has its id (see `userProof`); it returns undefined for a recipient the caller cannot sign for.
 	 */
 	send(
@@ -248,7 +257,7 @@ export class TeamStore {
 		body: string,
 		options: SendOptions & { replyRequired: boolean; wake?: boolean; sign?: SignProof },
 		now = Date.now(),
-	): { id: number | undefined; departed: string[] } {
+	): { id: number | undefined; departed: string[]; woken: string[] } {
 		// Read in the same IMMEDIATE transaction as the insert: no recipient can leave in between.
 		return this.transaction(() => insertMessage(this.db, this.team, this.reachable(), from, to, body, options, now));
 	}

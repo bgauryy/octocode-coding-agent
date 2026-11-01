@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { charsToTokens } from "../compaction/tokens.ts";
+import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry } from "../session-manager.ts";
 
 /** Streaming warming never continues past this long after the real request that started it. */

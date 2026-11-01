@@ -46,6 +46,7 @@ export default function llamaExtension(api: ExtensionAPI): void {
 	const provider = createLlamaProvider();
 	api.registerProvider(provider.provider);
 
+	let lastUnread = "";
 	const syncCatalog = async (
 		ctx: ExtensionCommandContext,
 		client: LlamaClient,
@@ -63,6 +64,11 @@ export default function llamaExtension(api: ExtensionAPI): void {
 		if (result.aborted) throw new Error("Model catalog refresh timed out.");
 		const refreshError = result.errors.get(LLAMA_PROVIDER_ID);
 		if (refreshError) throw refreshError;
+		const unread = [...provider.unreadTemplates()].map(([id, why]) => `${id} (${why})`).join("; ");
+		// Said once per change, since /llama re-reads the catalog after every action.
+		if (unread && unread !== lastUnread)
+			say(ctx, `Could not read the chat template of ${unread}; listed without thinking support.`, "warning");
+		lastUnread = unread;
 		return current;
 	};
 
@@ -85,16 +91,31 @@ export default function llamaExtension(api: ExtensionAPI): void {
 			replace = choice === "Unload all and load";
 		}
 
+		// A restore can take as long as any load, so it shows progress and the user can stop it.
 		const restoreLoaded = async (): Promise<void> => {
 			say(ctx, "Restoring previously loaded models");
-			for (const model of loaded) await client.loadAndWait(model.id, () => {});
+			for (const model of loaded) {
+				const restored = await runWithProgress(ui, {
+					title: "Restoring model",
+					model: model.id,
+					initialMessage: "Starting…",
+					cancelTitle: "Stop restoring?",
+					cancelMessage: model.id,
+					run: (signal, update) => client.loadAndWait(model.id, update, signal),
+					cancel: () => client.unload(model.id),
+				});
+				if (restored.cancelled) break;
+			}
 			await syncCatalog(ctx, client);
 		};
-		if (replace) {
-			for (const model of loaded) await client.unloadAndWait(model.id);
-		}
 
 		try {
+			if (replace) {
+				for (const model of loaded) {
+					ui.showStatus("Unloading model", model.id);
+					await client.unloadAndWait(model.id);
+				}
+			}
 			const result = await runWithProgress(ui, {
 				title: "Loading model",
 				model: target.id,
@@ -130,6 +151,7 @@ export default function llamaExtension(api: ExtensionAPI): void {
 		model: LlamaModelInfo,
 	): Promise<void> => {
 		if (!(await ui.confirm("Unload model?", model.id))) return;
+		ui.showStatus("Unloading model", model.id);
 		await client.unloadAndWait(model.id);
 		await syncCatalog(ctx, client);
 		say(ctx, `Unloaded ${model.id}`);

@@ -405,7 +405,7 @@ describe("Permission modes over a session", () => {
 				options: { triggerTurn: false },
 			},
 		]);
-		expect(ctx.ui.statuses.get("octocode-permission")).toBe("⏸ permission: manual · Shift+Tab");
+		expect(ctx.ui.statuses.get("octocode-permission")).toBe("⏸ permission: manual · shift+tab");
 	});
 });
 

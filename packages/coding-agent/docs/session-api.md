@@ -21,7 +21,7 @@ Replace `<instance-id>` with an ID from `list`. Installed builds use `octocode-a
 
 `/api` shows status inside an interactive session. `/api on` starts the API, `/api on http` also enables loopback HTTP on an available port, and `/api off` stops it. Subagents do not expose their own API.
 
-`OCTOCODE_API=1` enables a private Unix socket on Unix-like systems; Windows uses loopback HTTP on an available port. `OCTOCODE_API_HTTP=0` enables HTTP on an available port, even without `OCTOCODE_API=1`. A numeric value selects a port from 0 to 65535. See [environment variables](environment-variables.md) and the [configuration map](../../../CONFIGURATIONS.md) for configuration and discovery storage.
+`OCTOCODE_API=1` enables a private Unix socket on Unix-like systems; Windows uses loopback HTTP on an available port. `OCTOCODE_API_HTTP=0` enables HTTP on an available port, even without `OCTOCODE_API=1`. A numeric value selects a port from 0 to 65535. The HTTP server drops a request whose headers or body take longer than 10 seconds and accepts at most 64 connections at once (`API_HTTP_LIMITS` in `src/octocode/api/server.ts`). See [environment variables](environment-variables.md) and the [configuration map](../../../CONFIGURATIONS.md) for configuration and discovery storage.
 
 An **instance ID** identifies a running API endpoint. `status.sessionId` identifies its current conversation. They are different IDs. Prefer explicit `--to` in scripts; if omitted, the CLI selects the only instance or the unique instance in the current directory and rejects ambiguity.
 

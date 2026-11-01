@@ -199,6 +199,8 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 			const stale = readDaemonRecord(paths.record);
 			if (stale && !recordProcessAlive(stale)) removeRecord(paths.record);
 		}
+		// A launcher that stalled past the lock's stale limit no longer excludes others: it must not spawn beside them.
+		release.assertHeld();
 		const invocation = options.invocation ?? getCliInvocation();
 		const { env: childEnv, cwd } = daemonSpawnOptions(env);
 		let failed: Error | undefined;

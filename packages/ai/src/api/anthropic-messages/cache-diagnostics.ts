@@ -9,10 +9,10 @@ import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
 
 /** Set to `on` to ask the Anthropic API why a request could not reuse the previous request's cached prefix. */
-export const CACHE_DIAGNOSTICS_ENV = "OCTOCODE_CACHE_DIAGNOSTICS";
+const CACHE_DIAGNOSTICS_ENV = "OCTOCODE_CACHE_DIAGNOSTICS";
 
 /** Assistant-message diagnostic type that carries the API's miss reason in `details.reason`. */
-export const CACHE_MISS_DIAGNOSTIC_TYPE = "cache_miss";
+const CACHE_MISS_DIAGNOSTIC_TYPE = "cache_miss";
 
 /**
  * Cache diagnostics exist on the Claude API only (not Bedrock or Vertex), so the request field goes to

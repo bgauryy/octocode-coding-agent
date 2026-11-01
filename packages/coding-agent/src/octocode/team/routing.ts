@@ -5,13 +5,14 @@ import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/f
 import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
-import { cutText, firstLine } from "../shared/util.ts";
+import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
-import type { DeadLetter, Lease, Message } from "./model.ts";
+import type { DeadLetter, Lease, Message, OpenQuestion } from "./model.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { cutText } from "../../../../common/src/text.ts";
 
 /** Pure text and routing helpers for the team: recipients, what `coordinate list` prints, which paths a call edits. */
 
@@ -164,7 +165,8 @@ export function sessionTree(members: Member[], id: string): Set<string> {
 
 /**
  * Who a message goes to: an id, a role held by one agent, `parent`, or `all` (every other agent in the session tree of
- * `scope`, the sender by default). Returns the recipients or an error text.
+ * `scope`, the sender by default). Returns the recipients or an error text. `stalled` (`TeamStore.list` with `stalled`:
+ * process running, not seen for `STALE_MS`) are reached by id or as `parent`, never by role or `all`.
  */
 export function resolveTarget(
 	members: Member[],
@@ -172,7 +174,11 @@ export function resolveTarget(
 	to: string,
 	parentId?: string,
 	scope = from,
+	stalled: readonly Member[] = [],
 ): Member[] | string {
+	const wanted = to === "parent" ? parentId : to;
+	const named = [...members, ...stalled].find((member) => member.id !== from && member.id === wanted);
+	if (named && to !== "all") return [named];
 	const others = members.filter((member) => member.id !== from);
 	if (to === "all") {
 		const tree = sessionTree(members, scope);
@@ -181,9 +187,6 @@ export function resolveTarget(
 			? reached
 			: "No other agents are in your session tree (the top session and every subagent under it).";
 	}
-	const wanted = to === "parent" ? parentId : to;
-	const exact = others.find((member) => member.id === wanted);
-	if (exact) return [exact];
 	const byRole = others.filter((member) => member.role === wanted);
 	if (byRole.length === 1) return byRole;
 	const known = others.map((member) => member.id).join(", ") || "none";
@@ -194,13 +197,15 @@ export function resolveTarget(
 
 /**
  * The `coordinate list` text: one block per agent with join and last-seen times, unanswered messages and reserved paths.
- * `asks` (by agent id; `/agents` passes it) adds each subagent's questions to its parent.
+ * `asks` (by agent id; `/agents` passes it) adds each subagent's questions to its parent. `questions` (`Team.openQuestions`)
+ * names each unanswered message by id and sender; without it only their count is shown.
  */
 export function describeMembers(
 	members: Member[],
 	selfId: string | undefined,
 	now = Date.now(),
 	asks?: ReadonlyMap<string, readonly Ask[]>,
+	questions?: readonly OpenQuestion[],
 ): string {
 	if (members.length === 0) return "No agents have joined in this repository.";
 	const here = members.find((member) => member.id === selfId)?.checkout;
@@ -221,9 +226,7 @@ export function describeMembers(
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
 					`  pid ${member.pid}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}`,
 					`  ${firstLine(doing)}`,
-					...(member.pending
-						? [`  ${member.pending} message${member.pending === 1 ? "" : "s"} awaiting its reply`]
-						: []),
+					...awaiting(member, now, questions),
 					...(asked ? [`  ${asked} to its parent`] : []),
 					...(member.locks?.length
 						? [
@@ -234,6 +237,25 @@ export function describeMembers(
 			})
 			.join("\n"),
 	);
+}
+
+/** Questions shown per member in `coordinate list`; the rest are counted. */
+const QUESTIONS_SHOWN = 5;
+
+/** `member`'s unanswered questions: a count line, then `#id from sender (age): first line` for the oldest few. */
+function awaiting(member: Member, now: number, questions: readonly OpenQuestion[] | undefined): string[] {
+	if (!member.pending) return [];
+	const head = `  ${member.pending} message${member.pending === 1 ? "" : "s"} awaiting its reply`;
+	const mine = questions?.filter((question) => question.recipient === member.id) ?? [];
+	if (mine.length === 0) return [head];
+	const shown = mine
+		.slice(0, QUESTIONS_SHOWN)
+		.map(
+			(question) =>
+				`    #${question.id} from ${question.from} (${formatAgo(now - question.at)}): ${cutText(firstLine(question.text), 80, { chars: true })}`,
+		);
+	const more = mine.length > QUESTIONS_SHOWN ? [`    (${mine.length - QUESTIONS_SHOWN} more)`] : [];
+	return [`${head}:`, ...shown, ...more];
 }
 
 /** How long a lease has been held, for refusals: `locked 12m ago`. */

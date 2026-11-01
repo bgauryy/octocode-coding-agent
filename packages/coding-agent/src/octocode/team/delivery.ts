@@ -4,7 +4,9 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
 import type { Message } from "./model.ts";
+import { outside } from "./routing.ts";
 import type { TeamStore } from "./store.ts";
+import { WakePace } from "./wake-pace.ts";
 
 /** Consecutive failed ticks (about 30s) before the agent hears that the team database is unavailable. */
 const FAILED_TICKS_NOTICE = 30;
@@ -40,9 +42,12 @@ export class Delivery {
 
 	private readonly host: DeliveryHost;
 	private readonly mail: Mail;
-	constructor(host: DeliveryHost, mail: Mail) {
+	/** How often peers may start this agent's turns while it is idle (`wake-pace.ts`). */
+	private readonly pace: WakePace;
+	constructor(host: DeliveryHost, mail: Mail, pace = new WakePace()) {
 		this.host = host;
 		this.mail = mail;
+		this.pace = pace;
 	}
 
 	/** Two-phase delivery: hand what is waiting to Octocode (the inbox records it once the model sees it), then the heartbeat. */
@@ -80,6 +85,7 @@ export class Delivery {
 		this.inbox.reset(db, id);
 		this.wakeHandedAt = undefined;
 		this.wakeReported = false;
+		this.pace.reset();
 	}
 
 	private deliverNow(db: TeamStore): void {
@@ -92,19 +98,51 @@ export class Delivery {
 		// An idle subagent without a UI has had its last turn: mail and relay requests wait, and become dead letters when it leaves.
 		if (!headlessIdle) {
 			this.host.relays(db);
-			this.inbox.deliver(db, id, (batch, onRejected) => this.handOver(batch, onRejected), ctx?.isIdle() ?? false);
+			this.inbox.deliver(
+				db,
+				id,
+				(batch, onRejected) => this.handOver(db, id, batch, onRejected),
+				ctx?.isIdle() ?? false,
+			);
 		}
 		this.checkWake();
 		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id);
 	}
 
-	/** Hands a batch to Octocode; notes when it should wake an idle agent, to tell whether Octocode started that turn (`checkWake`). */
-	private handOver(batch: Message[], onRejected: () => void): boolean {
+	/**
+	 * Hands a batch to Octocode; notes when it should wake an idle agent, to tell whether Octocode started that turn (`checkWake`).
+	 * An idle agent whose batch is woken only by peers' messages waits while `WakePace` does not allow another peer-started turn:
+	 * refusing keeps the mail in the inbox, which offers it again on the next tick together with whatever arrived meanwhile.
+	 */
+	private handOver(db: TeamStore, me: string, batch: Message[], onRejected: () => void): boolean {
 		const ctx = this.host.ctx();
-		const handed = this.mail.deliver(batch, this.host.parentId(), ctx, onRejected);
-		if (handed && this.wakeHandedAt === undefined && ctx?.isIdle() && batch.some((message) => message.wake))
-			this.wakeHandedAt = Date.now();
+		const idle = ctx?.isIdle() === true;
+		const waking = batch.filter((message) => message.wake);
+		const paced = idle ? waking.filter((message) => this.paced(db, me, message)) : [];
+		if (paced.length > 0 && paced.length === waking.length && !this.pace.allows()) return false;
+		// Octocode can refuse the handoff after accepting the call (no model, a turn it cannot start): that turn never ran.
+		let counted: number | undefined;
+		const rejected = () => {
+			if (counted !== undefined) this.pace.undo(counted);
+			onRejected();
+		};
+		const handed = this.mail.deliver(batch, this.host.parentId(), ctx, rejected);
+		if (handed && idle && waking.length > 0) {
+			if (this.wakeHandedAt === undefined) this.wakeHandedAt = Date.now();
+			if (paced.length > 0) counted = this.pace.record();
+		}
 		return handed;
+	}
+
+	/**
+	 * Whether waking this agent is a peer's choice, and so paced: not the user's or an API client's message, not an interrupt,
+	 * and not the answer to a question this agent asked and still waits on.
+	 */
+	private paced(db: TeamStore, me: string, message: Message): boolean {
+		if (!message.wake || message.interrupt || outside(message.from)) return false;
+		if (message.replyTo === undefined) return true;
+		const asked = db.replyTarget(message.replyTo);
+		return !(asked?.from === me && asked.replyRequired);
 	}
 
 	/**

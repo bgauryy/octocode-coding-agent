@@ -98,7 +98,7 @@ describe("session selector rename", () => {
 		// Rename mode layout
 		const output = selector.render(120).join("\n");
 		expect(output).toContain("Rename Session");
-		expect(output).not.toContain("Resume Session");
+		expect(output).not.toContain("Resume session");
 
 		// Type and submit
 		selector.handleInput("X");
@@ -107,5 +107,41 @@ describe("session selector rename", () => {
 
 		expect(renameSession).toHaveBeenCalledTimes(1);
 		expect(renameSession).toHaveBeenCalledWith(sessions[0].path, "XOld");
+	});
+
+	it("reports a failed rename in the picker instead of rejecting unhandled", async () => {
+		const sessions = [makeSession({ id: "a", name: "Old" })];
+		const renameSession = vi.fn(async () => {
+			throw new Error("EACCES: permission denied");
+		});
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			const selector = new SessionSelectorComponent(
+				async () => sessions,
+				async () => [],
+				() => {},
+				() => {},
+				() => {},
+				() => {},
+				{ renameSession, showRenameHint: true, keybindings: new KeybindingsManager() },
+			);
+			await flushPromises();
+
+			selector.getSessionList().handleInput(CTRL_R);
+			selector.handleInput("X");
+			selector.handleInput("\r");
+			await flushPromises();
+			await flushPromises();
+
+			expect(renameSession).toHaveBeenCalledTimes(1);
+			expect(unhandled).toEqual([]);
+			const output = selector.render(120).join("\n");
+			expect(output).toContain("Resume session");
+			expect(output).toContain("Failed to rename: EACCES: permission denied");
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
 	});
 });

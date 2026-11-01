@@ -244,6 +244,7 @@ describe("InteractiveMode compaction events", () => {
 
 		expect(fakeThis.session.prompt).toHaveBeenCalledWith("change direction", {
 			streamingBehavior: "steer",
+			attachImagePaths: true,
 			preflightResult: expect.any(Function),
 		});
 		expect(fakeThis.compactionQueuedMessages).toEqual([]);
@@ -271,7 +272,7 @@ describe("queued message recovery", () => {
 			throw new Error("input failed");
 		});
 		await flush(ui, true);
-		expect(ui.session.steer).toHaveBeenCalledWith("first");
+		expect(ui.session.steer).toHaveBeenCalledWith("first", undefined, { attachImagePaths: true });
 		expect(ui.session.clearQueue).not.toHaveBeenCalled();
 		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["second", "newer"]);
 	});

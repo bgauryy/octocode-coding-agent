@@ -145,6 +145,7 @@ export interface RunnerBindings {
 	waitForIdleFn: () => Promise<void>;
 	abortFn: (reason?: "interrupted" | "internal") => void;
 	hasPendingMessagesFn: () => boolean;
+	isMessageQueuedFn: (details: object) => boolean;
 	getContextUsageFn: () => ContextUsage | undefined;
 	compactFn: (options?: CompactOptions) => void;
 	getSystemPromptFn: () => string;

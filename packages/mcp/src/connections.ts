@@ -1,6 +1,6 @@
 /** Connection lifecycle of the configured servers: start, wait, sign in, reconnect, enable and disable. */
 
-import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpContext } from "./host/types.ts";
 import { hasDirectTools } from "./exposure.ts";
 import { McpSignInCancelledError, type McpSignInPrompt, signInMcpServer } from "./oauth.ts";
 import { saveConfig } from "./persistence.ts";
@@ -141,7 +141,7 @@ function isLive(state: McpExtensionState, server: McpServer): boolean {
  * and every session with the same servers starts from the same cached prefix, but not indefinitely: a slow or hanging
  * server must not hold up the prompt.
  */
-export async function waitForDirectServers(state: McpExtensionState, ctx: ExtensionContext): Promise<void> {
+export async function waitForDirectServers(state: McpExtensionState, ctx: McpContext): Promise<void> {
 	if (state.waitedForStartup) return;
 	state.waitedForStartup = true;
 	const ready = state.servers.flatMap((server) =>

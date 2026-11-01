@@ -1,6 +1,6 @@
 import type { ExtensionAPI, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import type { CompactionEntry } from "../../core/session-manager.ts";
-import { TLDR_HEADING } from "../../core/compaction/summary-format.ts";
+import { GOAL_HEADING, summarySection as section, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import {
 	archiveFolder,
 	archiveSearch,
@@ -13,7 +13,7 @@ import {
 } from "../shared/archive.ts";
 import { isStaleSessionError, stringList } from "../shared/util.ts";
 import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * The archive of compacted history (`shared/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized
@@ -34,18 +34,6 @@ interface SummaryLabel {
 
 const bullet = (line: string): string => line.replace(/^\s*(?:[-*]\s+)?/, "").trim();
 
-/** The lines of the section headed `heading` in `body`, up to the next heading or file-list tag; none when it is absent. */
-function section(body: string, heading: string): string[] {
-	const lines = body.split("\n");
-	const start = lines.findIndex((line) => line.trim() === heading);
-	if (start < 0) return [];
-	const end = lines.findIndex((line, index) => index > start && /^(?:## |<)/.test(line));
-	return lines
-		.slice(start + 1, end < 0 ? undefined : end)
-		.map((line) => line.trim())
-		.filter(Boolean);
-}
-
 /** The TL;DR, its topics and the goal of a summary's model-written part (`splitSummary(…).body`). */
 export function summaryLabel(body: string): SummaryLabel {
 	const lines = section(body, TLDR_HEADING);
@@ -54,7 +42,7 @@ export function summaryLabel(body: string): SummaryLabel {
 		.filter((line) => line !== topics)
 		.map(bullet)
 		.join(" ");
-	const goal = section(body, "## Goal").map(bullet)[0];
+	const goal = section(body, GOAL_HEADING).map(bullet)[0];
 	return {
 		topics: (topics ?? "")
 			.replace(/^topics:\s*/i, "")
@@ -129,7 +117,7 @@ export class ArchiveCapture {
 			first = Math.min(first, time);
 			last = Math.max(last, time);
 		}
-		const details = isRecord(entry.details) ? entry.details : {};
+		const details = asRecord(entry.details);
 		const tldr = label.tldr ?? label.goal ?? firstUserLine(pending.messages) ?? "(no text)";
 		const from = isoTime(first);
 		const to = isoTime(last);

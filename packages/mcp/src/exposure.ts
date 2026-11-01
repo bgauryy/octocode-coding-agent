@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpExtensionApi } from "./host/types.ts";
 import { DEFAULT_MCP_EXPOSURE, type McpExposure } from "./servers.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import type { McpServerEntry } from "./config.ts";
@@ -21,7 +21,7 @@ export function isDefaultActive(entry: McpServerEntry): boolean {
 const serverToolPrefix = (server: string): string => `${mcpNamespace(server)}__`;
 
 /** Whether the session's tool selection can declare the server's tools; a server it cannot is not started for it. */
-export function isSelected(api: Pick<ExtensionAPI, "selectsTools">, entry: McpServerEntry): boolean {
+export function isSelected(api: Pick<McpExtensionApi, "selectsTools">, entry: McpServerEntry): boolean {
 	return (
 		typeof api.selectsTools !== "function" || api.selectsTools(serverToolPrefix(entry.name), isDefaultActive(entry))
 	);

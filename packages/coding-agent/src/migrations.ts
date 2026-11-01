@@ -3,9 +3,12 @@
  */
 
 import chalk from "chalk";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "fs";
+import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";
+import { join } from "path";
 import { CONFIG_DIR_NAME, getAgentDir, getBinDir } from "./config.ts";
+import { FileAuthStorageBackend } from "./core/auth-storage/backends.ts";
+import { getDefaultSessionDirPath } from "./core/session-manager/storage.ts";
 import { migrateKeybindingsConfig } from "./core/keybindings.ts";
 import { stripBom } from "../../common/src/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -16,7 +19,9 @@ const MIGRATION_GUIDE_URL =
 const EXTENSIONS_DOC_URL = "https://github.com/bgauryy/octocodecode/blob/main/packages/coding-agent/docs/extensions.md";
 
 /**
- * Migrate legacy credentials, preserving providers already present in auth.json.
+ * Migrate legacy credentials, preserving providers already present in auth.json. auth.json is merged under the lock
+ * every running session takes to write it, and written atomically, so a concurrent login or token refresh is neither
+ * lost nor torn; while another process holds the lock, the migration fails before retiring any source.
  *
  * @returns Array of provider names that were migrated
  */
@@ -26,13 +31,8 @@ function migrateAuthToAuthJson(): string[] {
 	const oauthPath = join(agentDir, "oauth.json");
 	const settingsPath = join(agentDir, "settings.json");
 
-	const migrated: Record<string, unknown> = existsSync(authPath)
-		? readJsonFile(authPath)
-		: {};
-	if (typeof migrated !== "object" || migrated === null || Array.isArray(migrated)) {
-		throw new Error(`Cannot migrate credentials: ${authPath} must contain an object.`);
-	}
-	const providers: string[] = [];
+	/** Legacy credentials by provider, oauth.json first; each is migrated only where auth.json has no entry. */
+	const legacy: [string, Record<string, unknown>][] = [];
 	let oauthRead = false;
 	let settingsWithKeys: Record<string, unknown> | undefined;
 
@@ -41,9 +41,8 @@ function migrateAuthToAuthJson(): string[] {
 		try {
 			const oauth = readJsonFile<Record<string, unknown>>(oauthPath);
 			for (const [provider, cred] of Object.entries(oauth)) {
-				if (Object.hasOwn(migrated, provider) || typeof cred !== "object" || cred === null) continue;
-				migrated[provider] = { type: "oauth", ...cred };
-				providers.push(provider);
+				if (typeof cred !== "object" || cred === null) continue;
+				legacy.push([provider, { type: "oauth", ...cred }]);
 			}
 			oauthRead = true;
 		} catch {
@@ -58,10 +57,7 @@ function migrateAuthToAuthJson(): string[] {
 			const settings = JSON.parse(stripBom(content));
 			if (settings.apiKeys && typeof settings.apiKeys === "object") {
 				for (const [provider, key] of Object.entries(settings.apiKeys)) {
-					if (!Object.hasOwn(migrated, provider) && typeof key === "string") {
-						migrated[provider] = { type: "api_key", key };
-						providers.push(provider);
-					}
+					if (typeof key === "string") legacy.push([provider, { type: "api_key", key }]);
 				}
 				settingsWithKeys = settings;
 			}
@@ -70,15 +66,27 @@ function migrateAuthToAuthJson(): string[] {
 		}
 	}
 
-	if (providers.length > 0) {
-		mkdirSync(dirname(authPath), { recursive: true });
-		writeFileSync(authPath, JSON.stringify(migrated, null, 2), { mode: 0o600 });
+	const providers: string[] = [];
+	if (legacy.length > 0) {
+		new FileAuthStorageBackend(authPath).withLock((current) => {
+			const migrated: unknown = current?.trim() ? JSON.parse(stripBom(current)) : {};
+			if (typeof migrated !== "object" || migrated === null || Array.isArray(migrated)) {
+				throw new Error(`Cannot migrate credentials: ${authPath} must contain an object.`);
+			}
+			const merged = migrated as Record<string, unknown>;
+			for (const [provider, credential] of legacy) {
+				if (Object.hasOwn(merged, provider)) continue;
+				merged[provider] = credential;
+				providers.push(provider);
+			}
+			return { result: undefined, next: providers.length > 0 ? JSON.stringify(merged, null, 2) : undefined };
+		});
 	}
 	// Retire source credentials only after the destination has been saved successfully.
 	if (oauthRead && !existsSync(`${oauthPath}.migrated`)) renameSync(oauthPath, `${oauthPath}.migrated`);
 	if (settingsWithKeys) {
 		delete settingsWithKeys.apiKeys;
-		writeFileSync(settingsPath, JSON.stringify(settingsWithKeys, null, 2));
+		atomicWriteFileSync(settingsPath, JSON.stringify(settingsWithKeys, null, 2));
 	}
 
 	return providers;
@@ -118,9 +126,8 @@ function migrateSessionsFromAgentRoot(): void {
 
 			const cwd: string = header.cwd;
 
-			// Compute the correct session directory (same encoding as session-manager.ts)
-			const safePath = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-			const correctDir = join(agentDir, "sessions", safePath);
+			// The folder the session listing reads for this cwd (its own encoding, on the resolved path).
+			const correctDir = getDefaultSessionDirPath(cwd, agentDir);
 
 			// Create directory if needed
 			if (!existsSync(correctDir)) {
@@ -171,7 +178,7 @@ function migrateKeybindingsConfigFile(): void {
 		}
 		const { config, migrated } = migrateKeybindingsConfig(parsed as Record<string, unknown>);
 		if (!migrated) return;
-		writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+		atomicWriteFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 	} catch {
 		// Ignore malformed files during migration
 	}

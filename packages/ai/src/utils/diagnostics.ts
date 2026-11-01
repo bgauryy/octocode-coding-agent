@@ -1,4 +1,4 @@
-import type { JsonObject } from "../types.ts";
+import type { JsonObject } from "../types/json.ts";
 
 export interface DiagnosticErrorInfo {
 	name?: string;

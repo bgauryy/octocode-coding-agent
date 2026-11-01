@@ -5,10 +5,8 @@
 import { access, readFile, stat } from "node:fs/promises";
 import type { ImageContent } from "@octocodeai/octocode-ai";
 import chalk from "chalk";
-import { resolve } from "path";
-import { resolveReadPath } from "../core/tools/path-utils.ts";
+import { openImageFile, resolveUserFilePath } from "../core/image-files.ts";
 import { processImage } from "../utils/image-process.ts";
-import { detectSupportedImageMimeTypeFromFile } from "@octocodeai/octocode-ai/utils/mime";
 import { stripBom } from "../../../common/src/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -30,7 +28,7 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 
 	for (const fileArg of fileArgs) {
 		// Expand and resolve path (handles ~ expansion and macOS screenshot Unicode spaces)
-		const absolutePath = resolve(resolveReadPath(fileArg, process.cwd()));
+		const absolutePath = resolveUserFilePath(fileArg, process.cwd());
 
 		// Check if file exists
 		try {
@@ -47,12 +45,11 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 			continue;
 		}
 
-		const mimeType = await detectSupportedImageMimeTypeFromFile(absolutePath);
+		const image = await openImageFile(absolutePath);
 
-		if (mimeType) {
+		if (image) {
 			// Handle image file
-			const content = await readFile(absolutePath);
-			const processed = await processImage(content, mimeType, { autoResizeImages });
+			const processed = await processImage(await image.read(), image.mimeType, { autoResizeImages });
 
 			if (!processed.ok) {
 				text += `<file name="${absolutePath}">${processed.message}</file>\n`;

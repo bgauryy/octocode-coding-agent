@@ -1,5 +1,5 @@
 import type { Model } from "../../src/types.ts";
-import { fetchNvidiaNimModelIds } from "./fetchers.ts";
+import { fetchCatalog, fetchNvidiaNimModelIds } from "./fetchers.ts";
 import { addModelsDevFirstPartyModels } from "./models-dev-first-party.ts";
 import { addModelsDevGatewayModels } from "./models-dev-gateways.ts";
 import { addModelsDevHostedModels } from "./models-dev-hosted.ts";
@@ -12,7 +12,7 @@ import type { ModelsDevCatalog } from "./types.ts";
 export async function loadModelsDevData(): Promise<Model<any>[]> {
 	try {
 		console.log("Fetching models from models.dev API...");
-		const response = await fetch("https://models.dev/api.json");
+		const response = await fetchCatalog("https://models.dev/api.json");
 		if (!response.ok) throw new Error(`models.dev API returned ${response.status}`);
 		const data = (await response.json()) as ModelsDevCatalog;
 

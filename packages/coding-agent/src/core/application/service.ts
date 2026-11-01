@@ -20,7 +20,8 @@ import {
 	type ApplicationOperationArgs,
 	type ApplicationOperationResult,
 } from "@octocodeai/octocode-contracts";
-import type { AgentSession, AgentSessionEvent, AgentSessionEventListener } from "../agent-session.ts";
+import type { AgentSessionEvent, AgentSessionEventListener } from "../agent-session/types.ts";
+import { type ApplicationOperations, type ApplicationSession, invokeOperation } from "./session-port.ts";
 import { commandImages, dispatchCommand, invokeCommand } from "./service/commands.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
@@ -28,23 +29,24 @@ import { lifecycleEvent } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
 import { ApplicationActivities } from "./service/activities.ts";
-import { ApplicationDelivery } from "./service/delivery.ts";
+import { ApplicationDelivery, type ListenerErrorHandler } from "./service/delivery.ts";
 import { ContextSource } from "./service/context-source.ts";
 import { cloneDisplay } from "./normalize.ts";
 import {
-	appendReplayFrame,
 	createApplicationFrame,
 	createFrameQueue,
+	ReplayBuffer,
 	type ApplicationFramePayload,
 } from "./service/frames.ts";
+import { ApplicationWire, type StreamHint } from "./service/wire.ts";
 import type { ApplicationReceiptStore, ToolOutputProjector } from "./service/types.ts";
 
 export type { ApplicationReceiptStore, ToolOutputProjector } from "./service/types.ts";
 
-type Method = ApplicationOperation<AgentSession>;
-type Args<K extends Method> = ApplicationOperationArgs<AgentSession, K>;
-type Result<K extends Method> = ApplicationOperationResult<AgentSession, K>;
-export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, AgentSession> {
+type Method = ApplicationOperation<ApplicationOperations>;
+type Args<K extends Method> = ApplicationOperationArgs<ApplicationOperations, K>;
+type Result<K extends Method> = ApplicationOperationResult<ApplicationOperations, K>;
+export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, ApplicationOperations> {
 	private readonly state = createApplicationState();
 	private readonly transcript = new ApplicationTranscript(this.state);
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
@@ -64,15 +66,10 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			});
 		};
 	}
-	private clearReplay(): void {
-		this.replay = [];
-		this.replaySizes = [];
-		this.replayChars = 0;
-	}
 	private invalidateReplay(): void {
 		this.epoch = randomUUID();
 		this.sequence = 0;
-		this.clearReplay();
+		this.replay.clear();
 		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "overflow" }));
 		this.delivery.notify();
@@ -90,14 +87,13 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private unsubscribe?: () => void;
 	private closes = new Set<() => void>();
 	private sinks = new Set<(frame: ApplicationFrame) => void>();
-	private replay: ApplicationFrame[] = [];
-	private replaySizes: number[] = [];
-	private replayChars = 0;
+	private readonly replay = new ReplayBuffer();
+	private readonly wire = new ApplicationWire();
 	private disposed = false;
 
-	private readonly session: AgentSession;
+	private readonly session: ApplicationSession;
 	private readonly onDispose?: (service: ApplicationService) => void;
-	constructor(session: AgentSession, onDispose?: (service: ApplicationService) => void) {
+	constructor(session: ApplicationSession, onDispose?: (service: ApplicationService) => void) {
 		this.onDispose = onDispose;
 		this.session = session;
 		this.state.setState({ sessionId: session.sessionId, model: applicationModel(session) });
@@ -167,7 +163,8 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.source.reset(this.session);
 		this.epoch = randomUUID();
 		this.sequence = 0;
-		this.clearReplay();
+		this.replay.clear();
+		this.wire.clear();
 		this.transcript.clear();
 		this.activities.clear();
 		this.state.setState(
@@ -203,19 +200,27 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			if (sessionId === this.sessionId) this.publish(event);
 		});
 	}
-	private publish(event: ApplicationEvent): void {
-		if (this.disposed) return;
+	/** False once publishing closed the service. */
+	private publish(event: ApplicationEvent, hint?: StreamHint): boolean {
+		if (this.disposed) return false;
 		this.checkSession();
 		acceptApplicationEvent(this.state, event);
 		if (event.type === "tool.started" || event.type === "tool.progress" || event.type === "tool.completed") {
 			event = this.transcript.acceptTool(event);
 		}
+		this.emit(event, hint);
+		this.delivery.notify(event);
+		return !this.disposed;
+	}
+	// A streamed delta that releases nothing yet becomes no frame and uses no sequence.
+	private emit(event: ApplicationEvent, hint?: StreamHint): void {
+		const wired = this.wire.event(event, hint);
+		if (!wired) return;
 		this.sequence++;
-		const frame = this.frame({ type: "event", event });
-		this.replayChars = appendReplayFrame(this.replay, this.replaySizes, this.replayChars, frame);
+		const frame = this.frame({ type: "event", event: wired });
+		this.replay.push(frame);
 		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(frame);
-		this.delivery.notify(event);
 	}
 	private snapshot(): ApplicationSnapshot {
 		return applicationSnapshot(this.state.getState(), this.transcript, this.activities);
@@ -226,10 +231,10 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.attach();
 		return this.snapshot();
 	}
-	subscribeState(listener: (snapshot: ApplicationSnapshot) => void): () => void {
+	subscribeState(listener: (snapshot: ApplicationSnapshot) => void, onError?: ListenerErrorHandler): () => void {
 		this.assertOpen();
 		this.attach();
-		return this.delivery.subscribeState(listener);
+		return this.delivery.subscribeState(listener, onError);
 	}
 	connect(options: { sessionId?: string; cursor?: ApplicationCursor } = {}): ApplicationConnection {
 		this.attach();
@@ -250,11 +255,11 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			cursor.sessionId === this.currentSession &&
 			cursor.epoch === this.epoch &&
 			cursor.sequence <= this.sequence &&
-			cursor.sequence >= (this.replay[0]?.cursor.sequence ?? this.sequence + 1) - 1
+			cursor.sequence >= (this.replay.frames[0]?.cursor.sequence ?? this.sequence + 1) - 1
 		) {
 			push({ ...this.frame({ type: "resumed" }), cursor: { ...cursor } });
-			for (const frame of this.replay) if (frame.cursor.sequence > cursor.sequence) push(frame);
-		} else push(this.frame({ type: "snapshot", snapshot: this.snapshot() }));
+			for (const frame of this.replay.frames) if (frame.cursor.sequence > cursor.sequence) push(frame);
+		} else push(this.frame({ type: "snapshot", snapshot: this.wire.snapshot(this.snapshot()) }));
 		this.sinks.add(push);
 		this.closes.add(close);
 		return {
@@ -268,9 +273,9 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		};
 	}
 	/** The same semantic events consumed by remote interfaces, delivered synchronously for terminal rendering. */
-	subscribe(listener: (event: ApplicationEvent) => void): () => void {
+	subscribe(listener: (event: ApplicationEvent) => void, onError?: ListenerErrorHandler): () => void {
 		this.attach();
-		return this.delivery.subscribe(listener);
+		return this.delivery.subscribe(listener, onError);
 	}
 	normalizeMessage(message: unknown, id?: string): ApplicationMessage {
 		this.assertOpen();
@@ -302,14 +307,13 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			if (!this.disposed) this.checkSession();
 		});
 	}
-	subscribeNative(listener: AgentSessionEventListener): () => void {
+	subscribeNative(listener: AgentSessionEventListener, onError?: ListenerErrorHandler): () => void {
 		this.attach();
-		return this.delivery.subscribeNative(listener);
+		return this.delivery.subscribeNative(listener, onError);
 	}
 	invoke<K extends Method>(operation: K, ...args: Args<K>): Result<K> {
 		if (this.disposed) throw new Error("Application service is closed");
-		const method = this.session[operation] as (...parameters: Args<K>) => Result<K>;
-		return method.apply(this.session, args);
+		return invokeOperation(this.session, operation, args);
 	}
 	async execute(command: ApplicationCommand): Promise<ApplicationReceipt> {
 		this.attach();
@@ -332,10 +336,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		const receiptStore = this.receiptStore;
 		const recorded = receiptStore?.begin(command);
 		if (recorded && !recorded.fresh) return recorded.receipt;
-		const receipt: ApplicationReceipt = recorded?.receipt ?? {
-			id: command.id,
-			status: "accepted",
-		};
+		const receipt: ApplicationReceipt = recorded?.receipt ?? { id: command.id, status: "accepted" };
 		this.state.setState(({ receipts }) => ({
 			receipts: new Map(receipts).set(command.id, { fingerprint, receipt: { ...receipt } }),
 		}));
@@ -352,6 +353,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 				return invokeCommand(command, images, this.session);
 			},
 			publishDomain: (event) => this.publishDomain(event),
+			reportFailure: (error) => this.delivery.reportFailure(error),
 		});
 		return { ...receipt };
 	}
@@ -361,10 +363,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			case "message_start":
 			case "message_end":
 			case "message_update":
-				this.transcript.message(event, (value) => {
-					this.publish(value);
-					return !this.disposed;
-				});
+				this.transcript.message(event, this.publish.bind(this), this.emit.bind(this));
 				break;
 			case "tool_execution_start":
 			case "tool_execution_update":
@@ -390,7 +389,8 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.activities.clear();
 		this.state.setState(initialApplicationState(this.sessionId));
 		this.sinks.clear();
-		this.clearReplay();
+		this.replay.clear();
+		this.wire.clear();
 		this.source.clear();
 		this.receiptStore = undefined;
 		this.onDispose?.(this);

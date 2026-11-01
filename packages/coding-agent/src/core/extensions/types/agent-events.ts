@@ -216,6 +216,16 @@ export interface TurnStartEvent {
 	timestamp: number;
 }
 
+/**
+ * Fired before each later request of a run, with the prompt options for that turn (the run's options from
+ * `before_agent_start` and the current tools). Handlers may update sections whose content changed during the run, such
+ * as MCP server blocks and status; Octocode sends what differs as a section patch.
+ */
+export interface TurnPromptEvent {
+	type: "turn_prompt";
+	systemPromptOptions: NormalizedBuildSystemPromptOptions;
+}
+
 /** Fired at the end of each turn */
 export interface TurnEndEvent extends BoundaryState {
 	type: "turn_end";

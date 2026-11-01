@@ -11,10 +11,10 @@ Each request has two instruction blocks followed by the history. By default both
 ```mermaid
 flowchart TB
     subgraph L1["Instruction block 1: same for every session with the same tools and MCP servers"]
-        T["tool declarations"] --> P["preamble · tools · rules · docs"] --> M["mcp_contract_#lt;server#gt;"]
+        T["tool declarations"] --> P["preamble · tools · rules · docs"] --> M["mcps"]
     end
     subgraph L2["Instruction block 2: project, session and role"]
-        A["addendum · project_context · skills"] --> CW["cwd · environment"] --> POL["octocode_* policy · role · planning · mcp_status"]
+        A["addendum · project_context · skills"] --> CW["cwd · environment"] --> POL["octocode_* policy · role · planning"]
     end
     subgraph L3["History"]
         CS["compaction summary"] --> H["messages, tool calls and results"] --> U["section updates · memory · restored files"]
@@ -37,24 +37,24 @@ flowchart TB
     class BP1,BP2,BP3 bp
 ```
 
-| Content                 | Source                                                                                      | Changes when                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Tool declarations       | Built-in and extension tools in their given order, then MCP tools sorted by server and name | A tool or MCP server is added or removed        |
-| `preamble`              | Built-in text, or `SYSTEM.md` / a custom prompt                                             | The custom prompt changes                       |
-| `tools`, `rules`        | Snippets and guidelines of the declared tools                                               | The tool selection changes                      |
-| `docs`                  | Paths of Octocode's own documentation; empty for subagents                                  | Rarely                                          |
-| `mcp_contract_<server>` | Each selected server's optimized TypeScript file: its instructions and typed tools          | The server's catalog changes                    |
-| `addendum`              | `APPEND_SYSTEM.md`                                                                          | The file changes, then `/reload`                |
-| `project_context`       | One `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` per directory from the root to `cwd`   | A file changes, then `/reload`                  |
-| `skills`                | Names, optimized descriptions and paths; bodies load on demand                              | A skill is added or removed                     |
-| `cwd`, `environment`    | Working directory; platform, shell and local date                                           | A new day                                       |
-| `octocode_*` policy     | `octocode/instructions/policy.ts`, adapted to the tools and to main or child agent          | The tool set or profile list changes            |
-| `role`, `planning`      | The subagent's profile; the plan-mode constraint                                            | `/plan` enters or leaves                        |
-| `mcp_status`            | Selected MCP servers that are not connected                                                 | A server connects                               |
-| Memory                  | Pinned and query-matched notes, at most 2,400 characters, hidden from the transcript view   | Each prompt; already injected notes are skipped |
-| Child task              | Identity, goal, scratch folder and teammates of a subagent                                  | Once, as the child's first message              |
+| Content              | Source                                                                                                                                                                                         | Changes when                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Tool declarations    | Built-in and extension tools in their given order, then MCP tools sorted by server and name                                                                                                    | A tool or MCP server is added or removed                                |
+| `preamble`           | Built-in text, or `SYSTEM.md` / a custom prompt                                                                                                                                                | The custom prompt changes                                               |
+| `tools`, `rules`     | `tools`: one `- name: trigger` line (the tool's `promptSnippet`) per declared tool that is not an MCP tool; `rules`: their guidelines                                                          | The tool selection changes                                              |
+| `docs`               | The root of Octocode's own documentation; empty for subagents                                                                                                                                  | Rarely                                                                  |
+| `mcps`               | One block per enabled MCP server: name, purpose, `mcp__<server>__*` prefix and, when its tools are declared, its optimized TypeScript file (instructions and typed tools); no connection state | A server first connects, is added or removed, or the loadout is rebuilt |
+| `addendum`           | `APPEND_SYSTEM.md`                                                                                                                                                                             | The file changes, then `/reload`                                        |
+| `project_context`    | One `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` per directory from the root to `cwd`                                                                                                      | A file changes, then `/reload`                                          |
+| `skills`             | Names, optimized descriptions and paths; bodies load on demand                                                                                                                                 | A skill is added or removed                                             |
+| `cwd`, `environment` | Working directory; platform, shell and local date                                                                                                                                              | A new day                                                               |
+| `octocode_*` policy  | `octocode/instructions/policy.ts`, adapted to the tools and to main or child agent                                                                                                             | The tool set or profile list changes                                    |
+| `role`, `planning`   | The subagent's profile; the plan-mode constraint (after `environment`)                                                                                                                         | `/plan` enters or leaves                                                |
+| `mcp_status`         | Last section: one line per MCP server that is not ready, or whose tools are partly undeclared                                                                                                  | A server connects, fails, drops, stops or reconnects                    |
+| Memory               | Pinned and query-matched notes, at most 2,400 characters, hidden from the transcript view                                                                                                      | Each prompt; already injected notes are skipped                         |
+| Child task           | Identity, goal, scratch folder and teammates of a subagent                                                                                                                                     | Once, as the child's first message                                      |
 
-Block 2 starts at the first of `addendum`, `project_context`, `skills`, `cwd` or `environment` present; `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block. An isolated subagent names the main checkout in its prompt, so sibling children share both blocks. The breakpoints shown are Anthropic's; [adapter behavior](../packages/coding-agent/docs/prompt-caching.md#behavior-and-accounting) covers other providers and [retention per layer](../packages/coding-agent/docs/prompt-caching.md#retention-per-layer) the settings. Raw `mcp.json`, commands, environment values and tokens never reach the model; server instructions and tool descriptions do.
+Every section's order, cache tier and `SYSTEM.md` behavior is declared once in `packages/coding-agent/src/core/system-prompt-spec.ts`: the policy and `role` sections precede `environment`, and `planning` and `mcp_status` follow it. Block 2 starts at the first section outside the base tier present (`addendum`, `project_context`, `skills`, `cwd`, policy, `role`, `environment`, `planning` or `mcp_status`); `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block. An isolated subagent names the main checkout in its prompt, so sibling children share both blocks. The breakpoints shown are Anthropic's; [adapter behavior](../packages/coding-agent/docs/prompt-caching.md#behavior-and-accounting) covers other providers and [retention per layer](../packages/coding-agent/docs/prompt-caching.md#retention-per-layer) the settings. Raw `mcp.json`, commands, environment values and tokens never reach the model; server instructions and tool descriptions do.
 
 ## How a change reaches the model
 
@@ -63,7 +63,7 @@ Before each prompt, `before_agent_start` handlers (MCP, Octocode policy, plannin
 ```mermaid
 flowchart LR
     Q{"What changed?"}
-    Q -->|"section text: date, plan, role, mcp_status"| SU["Section patch in the history"]
+    Q -->|"section text: date, plan, role"| SU["Section patch in the history"]
     Q -->|"tool added or removed"| TA{"Provider loads tools<br/>mid-conversation?"}
     Q -->|"model switched"| MS["Full cache miss"]
     Q -->|"idle longer than the history TTL"| IG["History rewritten"]
@@ -218,7 +218,7 @@ flowchart LR
     end
     subgraph CTX["Agent context"]
         SL["skills listing<br/>block 2"]
-        CT["mcp_contract_#lt;server#gt; + thin declarations<br/>block 1"]
+        CT["mcps + thin declarations<br/>block 1"]
     end
     SK -->|"startup, /reload, skill change"| SJ
     SK --> MJ
@@ -244,4 +244,4 @@ flowchart LR
 - **Rewritten by the internal skill.** New or changed entries without a rewrite are reported to the user once. The bundled `octocode-context-optimization` skill rewrites them with fidelity checks: `octocode context` for skills ([optimized descriptions](../packages/coding-agent/docs/skills.md#optimized-descriptions)) and `octocode mcp compact` for servers ([compact presentation](../packages/coding-agent/docs/mcp-reference.md#compact-presentation)).
 - **Stable within a session.** Sessions read the stored text at start and `/reload`, so a rewrite never changes a cached prompt mid-run. Subagents read the same store.
 
-An MCP server reaches an agent only when the agent's tool selection names it. A server with `defaultActive: false`, such as the built-in `browser`, starts only for agents whose selection names `mcp__<server>__*`; a selected server that has not connected yet is named in `mcp_status`. File locations and precedence are in the [MCP reference](../packages/coding-agent/docs/mcp-reference.md#configuration-and-precedence); `/mcp config` shows what the current session resolved.
+An MCP server reaches an agent only when the agent's tool selection names it. A server with `defaultActive: false`, such as the built-in `browser`, starts only for agents whose selection names `mcp__<server>__*`; a selected server that has not connected yet appears in `mcps` as one line with its state. File locations and precedence are in the [MCP reference](../packages/coding-agent/docs/mcp-reference.md#configuration-and-precedence); `/mcp config` shows what the current session resolved.

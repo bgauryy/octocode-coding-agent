@@ -5,7 +5,7 @@ import { CLEAR_AT_LEAST_TOKENS, KEEP_RECENT_RESULTS } from "../../src/octocode/c
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, contextReads } from "../../src/octocode/files/reads.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

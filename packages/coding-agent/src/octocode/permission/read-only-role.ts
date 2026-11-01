@@ -8,6 +8,8 @@ import { readOnlyCommand } from "./shell/read-only.ts";
 import { shellMutation } from "./shell/mutation.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 import { shellPath } from "./file-access.ts";
+import { browserEscalations } from "./browser-escalation.ts";
+import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
 
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to
@@ -17,7 +19,9 @@ import { shellPath } from "./file-access.ts";
  * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
  * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
  * refuses what the parse shows as a change inside the workspace (`shell/mutation.ts`); it is not a sandbox, so a
- * program that writes by itself (`node script.js`) is not seen.
+ * program that writes by itself (`node script.js`) is not seen. A browser MCP call that leaves the isolated browser
+ * (the real profile, another program as the browser, cookie or download CDP, an upload from outside the workspace;
+ * `browser-escalation.ts`) is refused too, though the profile may grant `browser.control` for the package's own tools.
  */
 
 /** Whether this process is a read-only subagent: the parent set the flag from the profile; a session that merely inherits it is not one. */
@@ -75,6 +79,12 @@ export function readOnlyRoleRefusal(
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
 	if (event.toolName === "debug" && input.action !== "terminate")
 		return refusal("Debugging (the adapter can execute code)");
+	if (browserMcpTool(event.toolName) !== undefined) {
+		const { control, outside } = browserEscalations(event.toolName, input, cwd);
+		const first =
+			control[0] ?? (outside[0] === undefined ? undefined : `Uploading ${outside[0]} from outside the workspace`);
+		return first === undefined ? undefined : refusal(first);
+	}
 	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {
 		const files = mutatedPaths(event.toolName, input);
 		if (event.toolName === "file" && files.length === 0 && (input.patch !== undefined || input.queries !== undefined))
@@ -85,15 +95,28 @@ export function readOnlyRoleRefusal(
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
 	const command = optionalString(input.command) ?? "";
 	if (event.toolName === "powershell" || input.type === "powershell")
-		return readOnlyCommand(command) ? undefined : refusal("This PowerShell command (its effects cannot be parsed)");
+		return readOnlyCommand(command, "powershell")
+			? undefined
+			: refusal("This PowerShell command (its effects cannot be parsed)");
 	const effect = shellMutation(command);
 	const root = workspaceRoot(cwd) ?? path.resolve(cwd);
 	const changed = effect.writes.find((file) => {
 		const target = canonicalPath(shellPath(cwd, file));
 		return isWithin(target, canonicalPath(root)) && !mayWrite(target, cwd, env);
 	});
-	if (changed !== undefined) return refusal(`Changing ${changed} from the shell`);
-	if (effect.opaque.length > 0) return refusal(`\`${effect.opaque[0]}\``);
-	if (effect.uncertain) return refusal("A shell command that writes to a path it does not spell out");
+	if (changed !== undefined)
+		return refusal(
+			`Changing ${changed} from the shell${effect.afterUnjoinedCd && !path.isAbsolute(changed) ? " (a `cd` joined by `;` or a newline may have failed, leaving it here: join it with `&&`)" : ""}`,
+		);
+	if (effect.opaque.length > 0)
+		return refusal(`\`${effect.opaque[0]}\` (it changes files or repository state without naming a path)`);
+	if (effect.afterDirectoryChange)
+		return refusal(
+			"A write to a relative path after a `cd` the guard cannot follow (it follows only `cd /abs/dir` or `cd ./dir` joined by `&&`: not a bare name, `..`, a variable, `cd -`, `||` or a loop); write with absolute paths or use `cd /absolute/dir && …`",
+		);
+	if (effect.uncertain)
+		return refusal(
+			`A shell write whose target the guard cannot resolve${effect.uncertainBecause ? `: ${effect.uncertainBecause}` : ""}; spell the path out`,
+		);
 	return undefined;
 }

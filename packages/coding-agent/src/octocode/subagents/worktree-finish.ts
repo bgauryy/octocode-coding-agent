@@ -3,8 +3,10 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
 import { REF_PREFIX, type Worktree, type WorktreeResult } from "./worktree-base.ts";
 import {
+	PLAIN_DIFF,
 	recoverWorktreeBase,
 	rejectChangedFilters,
+	rejectNestedRepositories,
 	saveWorkerRef,
 	validateSnapshot,
 	workerDeltaCommit,
@@ -63,12 +65,13 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 	const base = worktree.base || (await recoverWorktreeBase(worktree.repo, head));
 	await validateSnapshot(worktree.repo, base, worktree.snapshot, head);
 	if (head === (worktree.snapshot ?? base)) return {};
+	await rejectNestedRepositories(worktree.repo, worktree.snapshot ?? base, head);
 	const delta = worktree.snapshot
 		? await workerDeltaCommit(worktree.repo, base, worktree.snapshot, head, worktree.agentId)
 		: head;
 	if (delta === base) return {};
 	const ref = await saveWorkerRef(worktree.repo, `${REF_PREFIX}${worktree.agentId}`, delta);
-	return { ref, stat: await git(worktree.repo, ["diff", "--stat", base, delta]) };
+	return { ref, stat: await git(worktree.repo, ["diff", ...PLAIN_DIFF, "--stat", base, delta]) };
 }
 
 async function removeWorktree(worktree: Pick<Worktree, "repo" | "path">): Promise<void> {

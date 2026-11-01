@@ -13,7 +13,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyDisplayText } from "./keybinding-hints.ts";
+import { keyText } from "./keybinding-hints.ts";
 
 const THINKING_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,
@@ -77,7 +77,7 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 		this.addChild(new Text("Thinking Level", 0, 0));
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(`${keyDisplayText("app.thinking.cycle")} cycles thinking levels in-session`, 0, 0));
+		this.addChild(new Text(`${keyText("app.thinking.cycle")} cycles thinking levels in-session`, 0, 0));
 		this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
@@ -94,7 +94,7 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 			new Text(
 				theme.fg(
 					"dim",
-					`  ${keyDisplayText("tui.select.confirm")} to select · ${keyDisplayText("app.thinking.save")} to set as default · ${keyDisplayText("tui.select.cancel")} to cancel`,
+					`  ${keyText("tui.select.confirm")} to select · ${keyText("app.thinking.save")} to set as default · ${keyText("tui.select.cancel")} to cancel`,
 				),
 				0,
 				0,

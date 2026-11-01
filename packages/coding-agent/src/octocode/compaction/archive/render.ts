@@ -1,5 +1,5 @@
 import type { SessionEntry } from "../../../core/session-manager.ts";
-import { fence, inlineCode, oneLine } from "../../shared/archive/text.ts";
+import { fence, inlineCode, MESSAGE_LINES, oneLine, templateLine } from "../../shared/archive/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contentText, stringOrEmpty } from "../../shared/util.ts";
 
@@ -26,12 +26,12 @@ function contentBlocks(content: unknown): string[] {
 			case "text":
 				return typeof part.text === "string" && part.text !== "" ? [fence(part.text)] : [];
 			case "image":
-				return ["[image omitted]"];
+				return [templateLine(MESSAGE_LINES.image)];
 			case "thinking":
 				return [];
 			case "toolCall":
 				return [
-					`Tool call ${inlineCode(String(part.name))} (id ${inlineCode(String(part.id))}):`,
+					templateLine(MESSAGE_LINES.toolCall, inlineCode(String(part.name)), inlineCode(String(part.id))),
 					fence(JSON.stringify(part.arguments ?? {}, null, 2), "json"),
 				];
 			default:
@@ -48,17 +48,23 @@ function messageBlocks(message: Record<string, unknown>): string[] {
 		case "custom":
 			return [
 				...contentBlocks(message.content),
-				...(typeof message.errorMessage === "string" ? ["Error:", fence(message.errorMessage)] : []),
+				...(typeof message.errorMessage === "string"
+					? [templateLine(MESSAGE_LINES.error), fence(message.errorMessage)]
+					: []),
 			];
 		case "toolResult":
 			return [
-				`Tool ${inlineCode(stringOrEmpty(message.toolName))} · call ${inlineCode(stringOrEmpty(message.toolCallId))}${message.isError === true ? " · error" : ""}`,
+				templateLine(
+					message.isError === true ? MESSAGE_LINES.toolResultError : MESSAGE_LINES.toolResult,
+					inlineCode(stringOrEmpty(message.toolName)),
+					inlineCode(stringOrEmpty(message.toolCallId)),
+				),
 				...contentBlocks(message.content),
 			];
 		case "bashExecution": {
 			const exit = message.cancelled === true ? "cancelled" : `exit ${oneLine(String(message.exitCode))}`;
 			return [
-				`Command (${exit}):`,
+				templateLine(MESSAGE_LINES.command, exit),
 				fence(stringOrEmpty(message.command), "sh"),
 				...(stringOrEmpty(message.output) ? [fence(stringOrEmpty(message.output))] : []),
 			];

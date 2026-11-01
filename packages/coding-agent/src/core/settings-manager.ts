@@ -45,6 +45,7 @@ export {
 } from "./settings-manager/storage.ts";
 export {
 	applyToolModifiers,
+	currentToolName,
 	DEFAULT_TOOL_NAMES,
 	getToolListError,
 	isToolModifier,

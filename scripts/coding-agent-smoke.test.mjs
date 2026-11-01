@@ -23,7 +23,7 @@ function createFixture(t, { importUndeclared = false } = {}) {
 	const repoRoot = join(root, "repo");
 	mkdirSync(repoRoot, { recursive: true });
 	writeFileSync(join(repoRoot, "package.json"), '{"name":"fixture","private":true}\n');
-	for (const name of ["octocode-mcp", "chrome-launcher", "@agentclientprotocol/sdk"]) {
+	for (const name of ["octocode-mcp", "@agentclientprotocol/sdk"]) {
 		writePackage(
 			join(repoRoot, "packages", name.replaceAll("/", "-")),
 			{
@@ -62,7 +62,7 @@ function createFixture(t, { importUndeclared = false } = {}) {
 			},
 			files: ["dist"],
 			bin: { octocode: "dist/bundle/cli.js", "octocode-api": "dist/bundle/octocode-api.js" },
-			dependencies: { "octocode-mcp": "1.0.0", "chrome-launcher": "1.0.0", "@agentclientprotocol/sdk": "1.0.0" },
+			dependencies: { "octocode-mcp": "1.0.0", "@agentclientprotocol/sdk": "1.0.0" },
 		},
 		{
 			"dist/index.js": `${importUndeclared ? 'import "@octocodeai/undeclared";' : ""}
@@ -94,6 +94,7 @@ export function getCliInvocation() {
 			"dist/octocode/native-skills/octocode-context-optimization/SKILL.md":
 				"---\nname: octocode-context-optimization\ndescription: Test\n---\n",
 			"dist/octocode/instructions/roles/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
+			"dist/octocode/instructions/policy/work.md": "# Work and verification\n",
 		},
 	);
 	const artifactSet = produceArtifactSet({ build: false, outDir: join(root, "artifacts"), repoRoot, source: null });
@@ -122,6 +123,12 @@ test("rejects a package missing its bundled subagent profiles", (t) => {
 	const directory = createFixture(t);
 	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/instructions/roles"), { recursive: true });
 	assert.throws(() => smokeTestCodingAgent(directory), /missing bundled subagent profiles/);
+});
+
+test("rejects a package missing the bundled prompt instructions", (t) => {
+	const directory = createFixture(t);
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/instructions/policy"), { recursive: true });
+	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled prompt instructions/);
 });
 
 test("rejects a package missing the bundled octocode-context-optimization skill", (t) => {

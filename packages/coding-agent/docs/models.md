@@ -14,7 +14,7 @@ For a built-in provider, start with `/login`, then choose a model with `/model`.
 | An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                   |
 | A provider with a custom protocol or authentication flow | Build or install a provider extension                     |
 
-Use `/model` to inspect the models available to this installation. Octocode starts with its bundled catalog. Set `OCTOCODE_MODEL_CATALOG_URL` to a compatible catalog service to enable remote catalog overlays; the fork does not default to Pi's service. Cached catalog data remains available offline. `octocode update --models` refreshes from the configured service.
+Use `/model` to inspect the models available to this installation. Octocode starts with its bundled catalog. Set `OCTOCODE_MODEL_CATALOG_URL` to a compatible catalog service to enable remote catalog overlays; the fork does not default to Pi's service. Cached catalog data remains available offline. `octocode update --models` refreshes from the configured service. A catalog entry whose ID holds a control character (an escape sequence, a C0 or C1 control, a bidi override or a zero-width character) is dropped, including from data cached by an older version; control sequences are removed from names, and a missing or blank name shows the ID. A catalog response that is not valid JSON is reported without quoting its body.
 
 ## Authenticate
 
@@ -46,9 +46,15 @@ Octocode integrates directly with the llama.cpp router. The router discovers GGU
 
 Open `/llama` to inspect loaded models, download models and manage the connection. See the [command reference](commands.md#bundled-extension-commands) for availability.
 
+Loading a model in place of the loaded ones unloads them first, with a status line for each unload; an unload that has not finished after 60 seconds is reported with the model's state. When that load fails or is stopped, `/llama` restores the previously loaded models in a progress view that Esc can stop (`Stop restoring?`). Live updates from the router stop when it sends more than 1 MiB without ending an event; `/llama` then keeps polling the model catalog, which stays authoritative.
+
+Thinking support comes from each loaded model's chat template. When the router cannot return one model's template (it unloaded the model between listing it and the request), the other models are still listed, that model is listed without thinking support until a later refresh reads it, and `/llama` names it in a warning.
+
+When a dialog, selector or session reset takes the place of `/llama`, the view closes; a load, download or restore already running continues and finishes without it.
+
 For Ollama, LM Studio, vLLM, SGLang, and other compatible servers, [configure a compatible endpoint](#configure-a-compatible-endpoint) in `models.json`.
 
-To let the main agent offload individual prompts to Ollama while another model drives the session, run `freellama serve` and use the native [`ollama` tool](native-features.md#tool-selection-and-migration).
+To let the main agent offload individual prompts to Ollama while another model drives the session, run `freellama serve` and enable the native [`ollama` tool](native-features.md#tool-selection-and-migration) with `octocode --tools +ollama` or the `defaultTools` setting.
 
 ## Configure a compatible endpoint
 
@@ -82,6 +88,10 @@ To route a built-in provider through a proxy, set only its `baseUrl`. Its models
 ```
 
 [Models Configuration](models-configuration.md) lists every field.
+
+### Attach images by path
+
+In the terminal and in /web, a message that names an existing PNG, JPEG, GIF, WebP or BMP file (recognized by its contents, not its extension) sends that file as an image with the text, which stays as you typed it. A path can be absolute, start with `~/`, `./` or `../` (relative to the session folder), be a `file://` URL, sit in single or double quotes when it contains spaces (as macOS pastes screenshot paths), have backslash-escaped spaces (as drag and drop inserts them), or fill a line on its own. Each file is attached once, up to 8 images per message or the model's lower `images.maxPerMessage`. A file over 20 MB or one that cannot be read is not attached, and a short note follows the message; a path that names no image file stays plain text. Attached images are resized like `@file` images, show with the message in the transcript, and work for queued steering and follow-up messages. A text-only model receives the message as text. Command lines (skill commands, prompt templates), messages extensions send and SDK `prompt()` calls are not scanned; SDK hosts pass `images`, or `attachImagePaths: true` for text a person typed.
 
 ### Describe model input and caching
 
@@ -172,16 +182,9 @@ Compatibility settings should describe verified differences in the endpoint's re
 
 ## Use classifier models
 
-Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Octocode includes TypeSafe's Jev model from these providers, Cloudflare's Clef and Clef Flash models from Workers AI, and OpenAI's GPT-6 Luna through the [Decisions API](https://developers.openai.com/api/docs/guides/decisions):
+Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Octocode includes TypeSafe's Jev model from these providers, Cloudflare's Clef and Clef Flash models from Workers AI, and OpenAI's GPT-6 Luna through the [Decisions API](https://developers.openai.com/api/docs/guides/decisions).
 
-| Provider                | Model IDs                                                          | Authentication                                   |
-| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------ |
-| `typesafe`              | `jev-latest`                                                       | `TYPESAFE_API_KEY`                               |
-| `openrouter`            | `typesafe/jev-1.13`, `~typesafe/jev-latest`                        | `OPENROUTER_API_KEY` or `/login`                 |
-| `cloudflare-workers-ai` | `typesafe/jev`, `@cf/cloudflare/clef`, `@cf/cloudflare/clef-flash` | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
-| `vercel-ai-gateway`     | `typesafe-ai/jev`                                                  | `AI_GATEWAY_API_KEY`                             |
-| `opencode`              | `jev-1.13`, `jev-1.13-free`                                        | `OPENCODE_API_KEY`                               |
-| `openai`                | `gpt-6-luna`                                                       | `OPENAI_API_KEY`                                 |
+The [provider library's classifier table](../../ai/docs/classification.md) lists each provider's model IDs and the credential it reads. In Octocode, OpenRouter can also be connected with `/login`.
 
 Chat models on a llama.cpp router are also listed as classifier models.
 

@@ -90,36 +90,40 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 				host.autoCompactionEscapeHandler = undefined;
 			}
 			host.clearStatusIndicator("compaction");
-			if (event.aborted) {
-				if (event.reason === "manual") {
-					host.showError("Compaction cancelled");
-				} else {
-					host.showStatus("Auto-compaction cancelled");
+			try {
+				if (event.aborted) {
+					if (event.reason === "manual") {
+						host.showError("Compaction cancelled");
+					} else {
+						host.showStatus("Auto-compaction cancelled");
+					}
+				} else if (event.result) {
+					const entries = host.sessionManager.buildContextEntries();
+					if (entries[0]?.type !== "compaction") {
+						throw new Error("Completed compaction is missing from the session context");
+					}
+					host.chatContainer.clear();
+					// The latest compaction is prepended for model context; append it below at its chronological position.
+					host.renderSessionEntries(entries.slice(1));
+					host.addMessageToChat(
+						createCompactionSummaryMessage(event.result.summary, event.result.tokensBefore, new Date().toISOString()),
+					);
+					if (event.result.usage) {
+						host.addCompactionCostNotice({
+							type: "compaction_cost",
+							kind: "compaction",
+							usage: event.result.usage,
+						});
+					}
+				} else if (event.errorMessage) {
+					// A failed automatic compaction is drawn like a failed manual one: the same notice, not bare red text.
+					host.showError(event.errorMessage);
 				}
-			} else if (event.result) {
-				const entries = host.sessionManager.buildContextEntries();
-				if (entries[0]?.type !== "compaction") {
-					throw new Error("Completed compaction is missing from the session context");
-				}
-				host.chatContainer.clear();
-				// The latest compaction is prepended for model context; append it below at its chronological position.
-				host.renderSessionEntries(entries.slice(1));
-				host.addMessageToChat(
-					createCompactionSummaryMessage(event.result.summary, event.result.tokensBefore, new Date().toISOString()),
-				);
-				if (event.result.usage) {
-					host.addCompactionCostNotice({
-						type: "compaction_cost",
-						kind: "compaction",
-						usage: event.result.usage,
-					});
-				}
-			} else if (event.errorMessage) {
-				// A failed automatic compaction is drawn like a failed manual one: the same notice, not bare red text.
-				host.showError(event.errorMessage);
+			} finally {
+				// Messages held for the compaction are sent even when redrawing it failed; the failure still reaches the caller.
+				void host.flushCompactionQueue({ willRetry: event.willRetry });
+				host.ui.requestRender();
 			}
-			void host.flushCompactionQueue({ willRetry: event.willRetry });
-			host.ui.requestRender();
 			break;
 		}
 

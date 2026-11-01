@@ -3,28 +3,36 @@ import path from "node:path";
 import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
-import { runningPid } from "../agentdb/liveness.ts";
+import type { SessionExtras } from "../../core/session-picker.ts";
+import { runningPid } from "../agentdb/api.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { formatCost } from "../shared/format.ts";
 import { sessionDir, sessionsRoot } from "../shared/home.ts";
 import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
-import { type SessionExtra, type SessionIndex, shownLine } from "./store.ts";
-import { isWithin } from "../shared/home/repo.ts";
+import { listingScope, quickList } from "./catalog.ts";
+import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
+import { isWithin, repoKey } from "../shared/home/repo.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-
-/** Most sessions listed. */
-const LIST_LIMIT = 30;
-
-const ACTIONS = { resume: "Resume", details: "Details", rename: "Rename", forget: "Forget Octocode data" } as const;
 
 /** Random tail of a session id (Octocode's UUIDv7 ids share their leading timestamp digits). */
 const shortId = (id: string): string => id.replace(/[^\w]/g, "").slice(-6);
+
+/** An item as the backlog shows it. */
+const itemRef = (seq: number): string => `B${seq}`;
+
+/** `B12` (any case) as the whole query: the item whose holders `/resume` lists. */
+function itemOf(query: string): number | undefined {
+	const match = /^b(\d{1,9})$/i.exec(query.trim());
+	return match ? Number(match[1]) : undefined;
+}
 
 /** A session as listed: Octocode's view of it, with what the extras table adds (cost, branch, files, liveness). */
 interface ListedSession {
 	info: SessionInfo;
 	extra: SessionExtra | undefined;
+	/** The backlog items it holds and the team agent it runs as. */
+	links?: SessionLinks;
 	/** The first message of the session it was forked from. */
 	parentPrompt?: string;
 }
@@ -48,6 +56,8 @@ function sessionLine(row: ListedSession, current: string | undefined, all: boole
 		parts.push(formatCost({ cost: extra.cost, unpriced: extra.unpriced === 1 }));
 	if (extra && extra.files_changed > 0)
 		parts.push(`${extra.files_changed} file${extra.files_changed === 1 ? "" : "s"}`);
+	if (row.links?.items.length) parts.push(row.links.items.map(itemRef).join(" "));
+	if (row.links?.agent) parts.push(shownLine(row.links.agent, 40));
 	parts.push(`${info.messageCount} message${info.messageCount === 1 ? "" : "s"}`, shortId(info.id));
 	return `${parts.join(" · ")}${info.id === current ? " (current)" : ""}`;
 }
@@ -93,16 +103,24 @@ async function listSessions(
 	index: SessionIndex | undefined,
 	all: boolean,
 	query: string,
+	only?: ReadonlySet<string>,
 ): Promise<ListedSession[]> {
+	const { sessionDir } = listingScope(ctx.sessionManager, ctx.cwd, all);
 	const infos = all
-		? await SessionManager.listAll()
+		? await (sessionDir ? SessionManager.listAll(sessionDir) : SessionManager.listAll())
 		: await SessionManager.list(ctx.cwd, ctx.sessionManager.getSessionDir());
 	if (!infos.some((info) => info.id === ctx.sessionManager.getSessionId())) infos.push(currentInfo(ctx));
-	const extras = index?.extras(infos.map((info) => info.id)) ?? new Map<string, SessionExtra>();
+	const shown = only ? infos.filter((info) => only.has(info.id)) : infos;
+	const ids = shown.map((info) => info.id);
+	const extras = index?.extras(ids) ?? new Map<string, SessionExtra>();
+	const links = index?.links(ids) ?? new Map<string, SessionLinks>();
 	const needle = query.toLowerCase();
 	const firstByPath = new Map(infos.map((info) => [path.resolve(info.path), info.firstMessage]));
-	return infos
-		.map((info) => ({ info, extra: extras.get(info.id) }))
+	return shown
+		.map((info) => {
+			const linked = links.get(info.id);
+			return { info, extra: extras.get(info.id), ...(linked ? { links: linked } : {}) };
+		})
 		.filter(
 			({ info, extra }) =>
 				!needle ||
@@ -111,7 +129,6 @@ async function listSessions(
 				),
 		)
 		.sort((a, b) => b.info.modified.getTime() - a.info.modified.getTime())
-		.slice(0, LIST_LIMIT)
 		.map((row) => {
 			const parentPrompt = row.info.parentSessionPath
 				? firstByPath.get(path.resolve(row.info.parentSessionPath))
@@ -127,15 +144,66 @@ interface SessionsCommandOptions {
 	current: () => string | undefined;
 }
 
-/** `/resume [all|<query>]`: list, then resume, inspect, rename or forget one. */
+/** A row's extras as the picker shows them: what the session table and the backlog and team links say. */
+function pickerExtras(extra: SessionExtra | undefined, links: SessionLinks | undefined): SessionExtras {
+	return {
+		...(extra
+			? {
+					live: runningPid(extra.pid, extra.pid_started) !== undefined,
+					...(extra.branch ? { branch: shownLine(extra.branch, 40) } : {}),
+					...(extra.cost > 0 || extra.unpriced === 1
+						? { cost: formatCost({ cost: extra.cost, unpriced: extra.unpriced === 1 }) }
+						: {}),
+					...(extra.files_changed > 0 ? { files: extra.files_changed } : {}),
+				}
+			: {}),
+		...(links?.items.length ? { items: links.items.map(itemRef) } : {}),
+		...(links?.agent ? { agent: shownLine(links.agent, 40) } : {}),
+	};
+}
+
+/** The extras of each of `ids` that has any. */
+function pickerExtrasOf(index: SessionIndex | undefined, ids: readonly string[]): Map<string, SessionExtras> {
+	const extras = index?.extras(ids) ?? new Map<string, SessionExtra>();
+	const links = index?.links(ids) ?? new Map<string, SessionLinks>();
+	return new Map(
+		ids.flatMap((id) => (extras.has(id) || links.has(id) ? [[id, pickerExtras(extras.get(id), links.get(id))]] : [])),
+	);
+}
+
+/** Open the host's session picker (interactive mode): Enter resumes, ctrl+r renames, ctrl+o lists the details and forget actions. */
+async function pick(
+	pickSession: NonNullable<ExtensionCommandContext["ui"]["pickSession"]>,
+	ctx: ExtensionCommandContext,
+	index: SessionIndex | undefined,
+	start: { all: boolean; query: string; current: string | undefined; only?: ReadonlySet<string> },
+): Promise<void> {
+	const { current } = start;
+	const row = (info: SessionInfo): ListedSession => ({ info, extra: index?.get(info.id) });
+	const picked = await pickSession({
+		initialScope: start.all ? "all" : "current",
+		initialQuery: start.query,
+		...(start.only ? { onlySessions: start.only } : {}),
+		quickList: (scope) =>
+			index ? quickList(index, listingScope(ctx.sessionManager, ctx.cwd, scope === "all")) : Promise.resolve([]),
+		extras: (ids) => pickerExtrasOf(index, ids),
+		actions: [
+			{ label: "Details", run: (s) => say(ctx, details(row(s), current)) },
+			{ label: "Forget Octocode data", run: (s) => forget(ctx, index, row(s), current) },
+		],
+	});
+	if (picked) await resume(ctx, row(picked), current);
+}
+
+/** `/resume [all|<query>]`: the session picker, or a text list without a UI. */
 export function registerSessionsCommand(
-	api: ExtensionAPI,
+	_api: ExtensionAPI,
 	commands: Subcommands,
 	options: SessionsCommandOptions,
 ): void {
 	commands.add("resume", {
 		description: "Resume a recent session of this directory",
-		argumentHint: "[all|<query>]",
+		argumentHint: "[all] [<query>|B<n>]",
 		complete: (prefix) => wordCompletions(["all"], prefix),
 		handler: async (args, ctx) => {
 			// Without the agent database the list still works; it only lacks cost, branch, files and liveness.
@@ -145,12 +213,25 @@ export function registerSessionsCommand(
 			} catch {
 				index = undefined;
 			}
-			const all = args === "all";
-			const query = all ? "" : args.trim();
+			const words = args.trim().split(/\s+/);
+			const all = words[0] === "all";
+			const query = (all ? words.slice(1) : words).join(" ");
 			const current = options.current();
+			// `B12` alone lists the sessions that held or hold that item: the repository's in this folder's list, any in `all`.
+			const seq = itemOf(query);
+			const only = seq !== undefined && index ? index.heldItem(seq, all ? undefined : repoKey(ctx.cwd).key) : undefined;
+			if (seq !== undefined && only?.size === 0)
+				return say(ctx, `No session has held ${itemRef(seq)}.${all ? "" : " Try /resume all."}`);
+			if (ctx.hasUI && ctx.ui.pickSession)
+				return pick(ctx.ui.pickSession, ctx, index, {
+					all,
+					query: only ? "" : query,
+					current,
+					...(only ? { only } : {}),
+				});
 			let rows: ListedSession[];
 			try {
-				rows = await listSessions(ctx, index, all, query);
+				rows = await listSessions(ctx, index, all, only ? "" : query, only);
 			} catch (error) {
 				return say(ctx, `Octocode could not list its sessions: ${errorMessage(error)}`, "warning");
 			}
@@ -158,35 +239,14 @@ export function registerSessionsCommand(
 				? "all directories"
 				: `${shownLine(path.basename(ctx.cwd) || ctx.cwd, 60)}${query ? ` matching "${shownLine(query, 60)}"` : ""}`;
 			if (rows.length === 0) return say(ctx, `No saved sessions for ${scope}.${all ? "" : " Try /resume all."}`);
-			const lines = uniqueLines(rows.map((row) => sessionLine(row, current, all)));
-			if (!ctx.hasUI)
-				return say(
-					ctx,
-					[`Sessions (${scope}), newest first:`, ...lines.map((line, i) => `${line}\n    ${rows[i].info.id}`)].join(
-						"\n",
-					),
-				);
-			const picked = await ctx.ui.select(`Sessions — ${scope} (${GLYPH.live} running)`, lines);
-			const row = picked === undefined ? undefined : rows[lines.indexOf(picked)];
-			if (!row) return;
-			// Octocode owns session names and can only rename the session it has open.
-			const actions = Object.values(ACTIONS).filter((action) => action !== ACTIONS.rename || row.info.id === current);
-			const action = await ctx.ui.select(title(row), actions);
-			if (action === ACTIONS.resume) return resume(ctx, row, current);
-			if (action === ACTIONS.details) return say(ctx, details(row, current));
-			if (action === ACTIONS.rename) return rename(api, ctx, row, current);
-			if (action === ACTIONS.forget) return forget(ctx, index, row, current);
+			return say(
+				ctx,
+				[
+					`Sessions (${scope}), newest first:`,
+					...rows.map((row) => `${sessionLine(row, current, all)}\n    ${row.info.id}`),
+				].join("\n"),
+			);
 		},
-	});
-}
-
-/** `select` returns the chosen text, so every line must differ: a repeat (same id tail) gets ` #2`, ` #3`, … */
-function uniqueLines(lines: string[]): string[] {
-	const seen = new Map<string, number>();
-	return lines.map((line) => {
-		const count = (seen.get(line) ?? 0) + 1;
-		seen.set(line, count);
-		return count === 1 ? line : `${line} #${count}`;
 	});
 }
 
@@ -201,19 +261,6 @@ async function resume(ctx: ExtensionCommandContext, row: ListedSession, current:
 	)
 		return;
 	await ctx.switchSession(row.info.path);
-}
-
-async function rename(
-	api: ExtensionAPI,
-	ctx: ExtensionCommandContext,
-	row: ListedSession,
-	current: string | undefined,
-): Promise<void> {
-	if (row.info.id !== current) return;
-	const name = shownLine((await ctx.ui.input("New session name", row.info.name ?? "")) ?? "", 200);
-	if (!name) return;
-	api.setSessionName(name);
-	notify(ctx.ui, `Renamed to "${name}".`, "info");
 }
 
 /** The folder `forget` may delete: a session's own, strictly inside the sessions folder; undefined for an id that names anything else. */

@@ -9,7 +9,7 @@ import { tmp } from "./helpers.ts";
 /** One session file's custom entries, as the host persists `appendEntry` calls. */
 const asEntries = (log: Array<{ customType: string; data: unknown }>) =>
 	log.map((entry, index) => ({ type: "custom" as const, id: `e${index}`, parentId: null, timestamp: "", ...entry }));
-const ctx = () => ({ cwd: tmp(), isIdle: () => true }) as never;
+const ctx = () => ({ cwd: tmp(), sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true }) as never;
 const started: Team[] = [];
 const team = (env: NodeJS.ProcessEnv) => {
 	const host = fakeHost();
@@ -79,7 +79,10 @@ describe("resuming a session rejoins the team", () => {
 			unpriced: false,
 		});
 		const resumed = team({ OCTOCODE_AGENT_DB: file });
-		resumed.team.start({ cwd, isIdle: () => true } as never, "inky-kraken");
+		resumed.team.start(
+			{ cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never,
+			"inky-kraken",
+		);
 		const id = resumed.team.id;
 		expect(id).toBeDefined();
 		expect(id).not.toBe("inky-kraken");
@@ -91,6 +94,24 @@ describe("resuming a session rejoins the team", () => {
 		child.team.start(ctx(), "inky-kraken");
 		expect(child.team.id).toBe("zesty-eel");
 		expect(child.entries).toEqual([]);
+	});
+
+	it("records the session a main agent runs, follows a switch to another session, and leaves a subagent's row without one", () => {
+		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
+		const cwd = tmp();
+		const session = (id: string) => ({ cwd, sessionManager: { getSessionId: () => id }, isIdle: () => true }) as never;
+		const main = team(env);
+		main.team.start(session("sess-a"));
+		const id = main.team.join("ship it").id;
+		const sessionOf = (name: string) => main.team.members().find((member) => member.id === name)?.sessionId;
+		expect(sessionOf(id)).toBe("sess-a");
+		// /resume switches the session in this process: the team is left and joined again for the new one.
+		main.team.start(session("sess-b"), id);
+		expect(sessionOf(id)).toBe("sess-b");
+
+		const child = team({ ...env, OCTOCODE_AGENT_ID: "zesty-eel", OCTOCODE_PARENT_ID: id });
+		child.team.start(session("zesty-eel"));
+		expect(main.team.members().find((member) => member.id === "zesty-eel")).not.toHaveProperty("sessionId");
 	});
 
 	it("a session with no recorded name still joins only on its first team action", () => {

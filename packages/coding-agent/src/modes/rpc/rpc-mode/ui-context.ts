@@ -189,7 +189,7 @@ export const createExtensionUIContext = (
 
 	async custom() {
 		// Custom UI not supported in RPC mode
-		return undefined as never;
+		return undefined;
 	},
 
 	pasteToEditor(text: string): void {

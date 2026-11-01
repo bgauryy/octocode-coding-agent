@@ -3,16 +3,11 @@ import { visibleControls } from "../../common/src/sanitize.ts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
 import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
-import type {
-	ExtensionContext,
-	ToolDefinition,
-	ToolNamespace,
-	ToolRenderers,
-} from "../../coding-agent/src/core/extensions/types.ts";
-import { formatToolCallWithArgs, getTextOutput, replaceTabs } from "../../coding-agent/src/core/tools/render-utils.ts";
-import { keyHint } from "../../coding-agent/src/modes/interactive/components/keybinding-hints.ts";
+import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
+import { hostRender, hostUi } from "./host.ts";
 import type { McpExposure } from "./config.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
+import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
 import {
 	type McpToolCaller,
 	type McpToolDetails,
@@ -43,12 +38,12 @@ interface PreparedMcpCall {
 	review?: (result: CallToolResult) => CallToolResult;
 }
 
-interface McpToolPresentation extends ToolRenderers {
+interface McpToolPresentation extends McpToolRenderers {
 	label?: string;
 	outputSchema?: TSchema;
 	/** Rewrites the arguments just before the server call (the model-facing schema is unchanged) and may review the raw result. */
-	prepareCall?: (args: Record<string, unknown>, ctx: ExtensionContext) => PreparedMcpCall | Promise<PreparedMcpCall>;
-	convertResult: (result: CallToolResult, ctx: ExtensionContext) => Promise<AgentToolResult<McpToolDetails>>;
+	prepareCall?: (args: Record<string, unknown>, ctx: McpContext) => PreparedMcpCall | Promise<PreparedMcpCall>;
+	convertResult: (result: CallToolResult, ctx: McpContext) => Promise<AgentToolResult<McpToolDetails>>;
 }
 
 export interface McpToolDefinitionOptions {
@@ -59,7 +54,7 @@ export interface McpToolDefinitionOptions {
 	exposure: McpExposure;
 	/** False keeps the tool out of the default tool selection: only a selection that names it activates it. */
 	defaultActive?: boolean;
-	namespace: ToolNamespace;
+	namespace: McpToolNamespace;
 	timeoutMs: number;
 	getClient: () => Promise<McpToolCaller>;
 	/**
@@ -70,7 +65,7 @@ export interface McpToolDefinitionOptions {
 	compact?: { signature: () => string | undefined; summary?: string };
 }
 
-export function createMcpToolDefinition(options: McpToolDefinitionOptions): ToolDefinition<TSchema, McpToolDetails> {
+export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpToolDefinition<TSchema, McpToolDetails> {
 	const { server, tool } = options;
 	const title = tool.title;
 	const label = options.presentation?.label ?? `${server}/${tool.name}`;
@@ -88,12 +83,23 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): Tool
 				? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
 				: description,
 		parameters: compact ? thinParameters(inputSchema) : inputSchema,
-		...(compact
+		...(compact ? { validationParameters: inputSchema } : {}),
+		// Shown after a failed validation: a failure at the top level names the one accepted call shape; any other
+		// names the working next step for an over-long `queries` batch, and a compact tool adds its typed signature.
+		...(compact || queriesCap(tool.inputSchema) !== undefined
 			? {
-					validationParameters: inputSchema,
-					validationHint: () => {
-						const block = compact.signature();
-						return block ? `Expected signature (TypeScript):\n${block}` : undefined;
+					validationHint: ({ envelope }) => {
+						const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
+						if (shape) return shape;
+						const cap = queriesCap(tool.inputSchema);
+						const block = compact?.signature();
+						const hints = [
+							cap === undefined
+								? ""
+								: `If queries has more than ${cap} items: send at most ${cap} per call and put the rest in another call in the same turn.`,
+							block ? `Expected signature (TypeScript):\n${block}` : "",
+						].filter(Boolean);
+						return hints.length ? hints.join("\n\n") : undefined;
 					},
 				}
 			: {}),
@@ -131,20 +137,21 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): Tool
 }
 
 /** Renderers of calls to an MCP tool, labeled `server/tool`, also used before the tool is registered. */
-export function createMcpToolRenderers(label: string): ToolRenderers {
+export function createMcpToolRenderers(label: string): McpToolRenderers {
 	return {
 		renderCall(args, theme, context) {
 			const component = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			component.setText(formatToolCallWithArgs(label, args, theme, context.expanded));
+			component.setText(hostRender().formatToolCallWithArgs(label, args, theme, context.expanded));
 			return component;
 		},
 		renderResult(result, options, theme, context) {
 			const component = (context.lastComponent as Container | undefined) ?? new Container();
 			component.clear();
-			const output = getTextOutput(result, context.showImages).trim();
+			const output = hostRender().getTextOutput(result, context.showImages).trim();
 			if (!output) return component;
 			const color = context.isError ? "error" : "toolOutput";
-			const styled = replaceTabs(output)
+			const styled = output
+				.replace(/\t/g, "   ")
 				.split("\n")
 				.map((line) => theme.fg(color, line))
 				.join("\n");
@@ -159,7 +166,7 @@ export function createMcpToolRenderers(label: string): ToolRenderers {
 						maxVisualLines: OUTPUT_PREVIEW_LINES,
 						keep: "start",
 						formatHint: (hidden) =>
-							`${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+							`${theme.fg("muted", `... (${hidden} more lines,`)} ${hostUi().keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
 					}),
 				);
 				const fullOutputPath = (result.details as McpToolDetails | undefined)?.fullOutputPath;

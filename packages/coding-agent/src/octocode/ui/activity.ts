@@ -1,11 +1,13 @@
+import { agentCall } from "../shared/agent-call.ts";
 import { fileChanges } from "../shared/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { setRunClock } from "../../modes/interactive/components/status-indicator.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
+import { setRowsAnimate } from "./chrome.ts";
 import { clipColumns, queryTarget } from "../shared/render/text.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { Thought } from "../shared/thought.ts";
 import { firstLine, toolHint } from "../shared/util.ts";
 
@@ -36,9 +38,9 @@ export function shortToolName(name: string): string {
 	return name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "");
 }
 
-/** Text for the working line and the shared team database: one line, URL credentials dropped, secrets redacted. */
+/** Text for the working line and the shared team database: no terminal controls, one line, no URL credentials or secrets. */
 function safeText(text: string): string {
-	return redactSecrets(firstLine(text).replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1"));
+	return redactSecrets(firstLine(sanitizeTerminalText(text)).replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1"));
 }
 
 /**
@@ -46,13 +48,12 @@ function safeText(text: string): string {
  * Octocode tools take `{queries: [...]}`) with the count of the others, else the top-level argument `toolHint` picks.
  */
 export function callTarget(name: string, args: unknown): { hint: string; more: number } {
-	const envelope = isRecord(args) ? args : {};
-	const input = name === "agent" && isRecord(envelope.input) ? envelope.input : envelope;
+	const input = name === "agent" ? agentCall(args).input : asRecord(args);
 	if (shortToolName(name) === "agent" && typeof input.goal === "string") return { hint: safeText(input.goal), more: 0 };
 	const queries =
 		name === "file" ? fileChanges(input) : Array.isArray(input.queries) ? input.queries.filter(isRecord) : [];
 	if (queries.length > 0) return { hint: safeText(queryTarget(queries[0])), more: queries.length - 1 };
-	return { hint: toolHint(args), more: 0 };
+	return { hint: safeText(toolHint(args)), more: 0 };
 }
 
 /** `head` then `detail` clipped to the columns LINE_MAX leaves, then `tail`; `sep` joins head and a non-empty detail. */
@@ -140,7 +141,8 @@ export class Activity {
 	}
 
 	toolStart(id: string, name: string, args: unknown, now: number): void {
-		this.tools.set(id, { name: shortToolName(name), ...callTarget(name, args), startedAt: now });
+		// A truncated reply's calls start too, under whatever name the model wrote.
+		this.tools.set(id, { name: shortToolName(safeText(name)), ...callTarget(name, args), startedAt: now });
 	}
 
 	toolEnd(id: string, now: number): void {
@@ -264,6 +266,11 @@ export class Activity {
 		return "Waiting for model";
 	}
 
+	/** Whether a tool call is running: its row animates a spinner of its own. */
+	toolsRunning(): boolean {
+		return this.tools.size > 0;
+	}
+
 	/** Whether a run is under way (the working line shows). */
 	ticking(): boolean {
 		return this.phase !== "idle";
@@ -308,6 +315,7 @@ export function registerActivity(
 		// Only the TUI draws a working line (its indicator counts the run's time itself): RPC's setWorkingMessage is a no-op.
 		if (!options.workingLine || !ctx?.hasUI || ctx.mode !== "tui") return;
 		const working = activity.ticking() ? activity.working(dialogsWaiting()) : undefined;
+		setRowsAnimate(ctx, activity.toolsRunning());
 		if (working !== shown) {
 			shown = working;
 			try {

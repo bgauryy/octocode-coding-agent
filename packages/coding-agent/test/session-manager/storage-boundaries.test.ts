@@ -144,6 +144,26 @@ describe("session storage boundaries", () => {
 		expect(() => manager.appendMessage({ role: "user", content: "retry", timestamp: 3 })).toThrow(/recover|reload/);
 		expect(manager.getLeafId()).toBe(root);
 	});
+	it("keeps the leaf where it was when a branch summary cannot be saved", () => {
+		const manager = SessionManager.create(dir, dir);
+		const root = manager.appendMessage({ role: "user", content: "original", timestamp: 1 });
+		const leaf = manager.appendMessage({ role: "user", content: "other branch", timestamp: 2 });
+		const before = manager.getEntries();
+		const context = manager.buildSessionContext();
+		const append = vi.spyOn(fs, "appendFileSync").mockImplementation(() => {
+			throw new Error("append failure");
+		});
+		syncBuiltinESMExports();
+		try {
+			expect(() => manager.branchWithSummary(root, "left the other branch")).toThrow("append failure");
+		} finally {
+			append.mockRestore();
+			syncBuiltinESMExports();
+		}
+		expect(manager.getLeafId()).toBe(leaf);
+		expect(manager.getEntries()).toEqual(before);
+		expect(manager.buildSessionContext()).toEqual(context);
+	});
 	it("refuses legacy migration when it would overwrite an incomplete final record", () => {
 		const file = join(dir, "legacy-partial.jsonl");
 		const bytes =

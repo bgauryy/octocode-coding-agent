@@ -369,10 +369,10 @@ describe("the footer counter and the activity events", () => {
 			events.push(event);
 			return undefined;
 		});
-		expect(ctx.ui.statuses.get("octocode-permission")).toContain("permission: full · Shift+Tab");
+		expect(ctx.ui.statuses.get("octocode-permission")).toContain("permission: full · shift+tab");
 		await permission.check(ctx, { action: "shell", title: "Run?", what: ["ls"], cwd });
 		await permission.check(ctx, { action: "browser.control", title: "Script?", what: ["evaluate"], cwd });
-		expect(ctx.ui.statuses.get("octocode-permission")).toContain("full · 2 actions · 1 ⚠ · Shift+Tab");
+		expect(ctx.ui.statuses.get("octocode-permission")).toContain("full · 2 actions · 1 ⚠ · shift+tab");
 		expect(events).toEqual([
 			expect.objectContaining({ action: "shell", warn: false }),
 			expect.objectContaining({ action: "browser.control", warn: true }),

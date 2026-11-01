@@ -22,22 +22,32 @@ export function parseForkLaunch(args: string): Pick<TmuxLaunchRequest, "placemen
 	return undefined;
 }
 
-/** Handles `/fork`'s launch arguments; anything else shows the usage line. */
-export async function handleForkLaunchCommand(host: ForkLaunchHost, args: string): Promise<void> {
+/**
+ * Handles `/fork`'s launch arguments; anything else shows the usage line. The tmux gate, the variables forwarded to the
+ * new pane and the launch itself all read one `env`, so an injected environment drives all three.
+ */
+export async function handleForkLaunchCommand(
+	host: ForkLaunchHost,
+	args: string,
+	env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
 	const where = parseForkLaunch(args);
 	if (!where) return host.showWarning(FORK_LAUNCH_USAGE);
-	if (!hasTmuxSession()) return host.showError("/fork pane and /fork window need Octocode to run inside tmux.");
+	if (!hasTmuxSession(env)) return host.showError("/fork pane and /fork window need Octocode to run inside tmux.");
 	const sessionFile = host.sessionManager.getSessionFile();
 	if (!sessionFile || !existsSync(sessionFile)) return host.showStatus("Nothing to fork yet");
 
 	const { command, prefix } = getCliInvocation();
 	try {
-		const result = await launchInTmux({
-			...where,
-			command: [command, ...prefix, "--fork", sessionFile, "--session-dir", host.sessionManager.getSessionDir()],
-			cwd: host.sessionManager.getCwd(),
-			env: forwardedLaunchEnv(process.env),
-		});
+		const result = await launchInTmux(
+			{
+				...where,
+				command: [command, ...prefix, "--fork", sessionFile, "--session-dir", host.sessionManager.getSessionDir()],
+				cwd: host.sessionManager.getCwd(),
+				env: forwardedLaunchEnv(env),
+			},
+			{ env },
+		);
 		host.showStatus(`Opened fork in tmux ${result.placement} ${result.id}`);
 	} catch (error: unknown) {
 		host.showError(`Could not open the fork in tmux: ${errorMessage(error)}`);

@@ -3,7 +3,11 @@
  * `--no-session` session). The marker says what was left out, so the model does not mistake the cut for the whole.
  */
 
-/** `text` within `max` characters: its head and tail around a marker naming how much was omitted. Unchanged when it fits. */
+/**
+ * `text` within `max` characters: its head and tail around a marker naming how much was omitted. Unchanged when it fits.
+ * Not a duplicate of `clipText` or `truncateToWidth`, which keep only a head and end in `…`: this keeps both ends of a
+ * text whose start and end both matter, and core cannot import the Octocode helpers.
+ */
 export function clipWithMarker(text: string, max: number): string {
 	if (text.length <= max) return text;
 	const marker = (omitted: number) =>

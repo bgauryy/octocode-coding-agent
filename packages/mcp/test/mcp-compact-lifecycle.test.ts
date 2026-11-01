@@ -175,6 +175,7 @@ describe("triggers", () => {
 			{ name: "b", description: "Source b.", inputSchema: { type: "object" } },
 			{ name: "c", description: "Source c. More.", inputSchema: { type: "object" } },
 		]);
+		presentation.describe("s", ["a", "b", "c"], undefined, true);
 		expect(presentation.summary("s", "a")).toBe("Use for a.");
 		expect(presentation.summary("s", "b")).toBe("Rewritten b.");
 		expect(presentation.summary("s", "c")).toBeUndefined();

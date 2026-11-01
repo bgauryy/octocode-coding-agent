@@ -1,6 +1,9 @@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
+import { plainText, styledLine } from "../styled-line.ts";
 import type { ToolCallInfo } from "./types.ts";
+
+export { plainText };
 
 /** Get searchable text content from a node */
 export function getSearchableText(node: SessionTreeNode): string {
@@ -71,7 +74,7 @@ export function getEntryDisplayText(
 	const entry = node.entry;
 	let result: string;
 
-	const normalize = (s: string) => s.replace(/[\n\t]/g, " ").trim();
+	const normalize = plainText;
 
 	switch (entry.type) {
 		case "message": {
@@ -153,7 +156,9 @@ export function getEntryDisplayText(
 			result = "";
 	}
 
-	return isSelected ? theme.bold(result) : result;
+	// Names, ids and types come from the model, tools and extensions too: keep the theme's colours, drop every other control.
+	const line = styledLine(result);
+	return isSelected ? theme.bold(line) : line;
 }
 
 export function formatLabelTimestamp(timestamp: string): string {

@@ -5,7 +5,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { APP_NAME } from "../../../coding-agent/src/config.ts";
+import { hostIdentity } from "../host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
 	catalogHash,
@@ -30,14 +30,15 @@ import { findMcpPreset } from "../preset.ts";
 import { isEnabled } from "../server.ts";
 import { readCatalogFile, readLiveCatalog } from "./compact-catalog.ts";
 import { sizeReport } from "./compact-report.ts";
-import { HELP_HINT, type McpCommandOptions, parseOptions } from "./shared.ts";
+import { helpHint, type McpCommandOptions, parseOptions } from "./shared.ts";
 
-export const COMPACT_USAGE = `${APP_NAME} mcp compact show <server> [--catalog <file>] [--plain] [--refresh]
-  ${APP_NAME} mcp compact catalog <server> [--catalog <file>] [--out <file>]
-  ${APP_NAME} mcp compact check <server> --overrides <file> [--catalog <file>]
-  ${APP_NAME} mcp compact apply <server> --overrides <file> [--optimized-by <model>] [--catalog <file>]
-  ${APP_NAME} mcp compact preset <server> --overrides <file> [--catalog <file>]
-  ${APP_NAME} mcp compact list [--offline] [--json]`;
+export const compactUsage =
+	(): string => `${hostIdentity().appName} mcp compact show <server> [--catalog <file>] [--plain] [--refresh]
+  ${hostIdentity().appName} mcp compact catalog <server> [--catalog <file>] [--out <file>]
+  ${hostIdentity().appName} mcp compact check <server> --overrides <file> [--catalog <file>]
+  ${hostIdentity().appName} mcp compact apply <server> --overrides <file> [--optimized-by <model>] [--catalog <file>]
+  ${hostIdentity().appName} mcp compact preset <server> --overrides <file> [--catalog <file>]
+  ${hostIdentity().appName} mcp compact list [--offline] [--json]`;
 
 interface CompactContext {
 	loaded: LoadedMcpConfig;
@@ -84,7 +85,7 @@ async function catalogOf(
 
 function overridesOf(context: CompactContext, file: string | true | undefined): DescriptionOverrides | undefined {
 	if (typeof file !== "string") {
-		context.error(`--overrides <file> is required (use {} for none).\n${HELP_HINT}`);
+		context.error(`--overrides <file> is required (use {} for none).\n${helpHint()}`);
 		return undefined;
 	}
 	try {
@@ -303,7 +304,7 @@ async function list(context: CompactContext, args: string[]): Promise<number> {
 }
 
 function usage(context: CompactContext): number {
-	context.error(`Usage: ${COMPACT_USAGE}`);
+	context.error(`Usage: ${compactUsage()}`);
 	return 1;
 }
 

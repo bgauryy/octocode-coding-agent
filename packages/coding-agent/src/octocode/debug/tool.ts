@@ -13,6 +13,24 @@ const MAX_ADAPTER_ARGS = 32;
 const MAX_BREAKPOINT_SOURCES = 32;
 const MAX_LINES = 100;
 const MAX_EXCEPTION_FILTERS = 16;
+/** How long a session switch, fork or shutdown waits for the adapter to end the debuggee before stopping the adapter. */
+const END_WAIT_MS = 2_000;
+
+/** Asks the adapter to end the debuggee (DAP terminate, else disconnect{terminateDebuggee}) within END_WAIT_MS, then stops it. */
+async function endSession(session: DebugSession): Promise<void> {
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		await Promise.race([
+			session.terminate(),
+			new Promise((resolve) => {
+				timer = setTimeout(resolve, END_WAIT_MS);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+		session.close();
+	}
+}
 
 /**
  * The limits the schema leaves out: Octocode tool schemas describe shape only (a refused bound echoes every argument
@@ -43,20 +61,32 @@ function checkDebugInput(params: {
 		throw new Error("variablesReference: a positive reference from scopes or variables");
 }
 
-// Sent with every request: keep it to what decides a call. docs/debugging.md holds the detail.
-const DESCRIPTION = `Debug a program when logs and test output cannot explain a failure: line breakpoints, exception stops and stepping; no attach, evaluation or conditional breakpoints. launch runs the program (needs permission) through a DAP adapter: lldb-dap ("xcrun" ["lldb-dap"], or "lldb-dap"; launch {program, args, cwd}); "python3" ["-m","debugpy.adapter"] (launch {program} or {module, args}, console "internalConsole", subProcess false); js-debug for Node, TypeScript and vitest: "node" ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"] with tcp true (launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exceptions ["all"] for ES modules). Actions that run the program wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, reason, frame, exception, exitCode and output. At a stop, pass the latest generation to scopes with frame.id, then variables; a resume replaces them. While running, call output again, pause or terminate; after ended, launch again.`;
+// Sent with every request: keep it to what decides a call. The adapter recipes are rare, so `launch` without an adapter
+// returns them (`LAUNCH_HELP`) instead; docs/debugging.md holds the detail.
+const DESCRIPTION = `Source-level debugger over DAP: line breakpoints, exception stops and stepping; no attach, evaluation or conditional breakpoints. launch without adapter returns the adapter recipes (lldb-dap, debugpy, js-debug) and runs nothing; launch with one runs the program (needs permission). Actions that run the program wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, frame and output. At a stop, pass the latest generation to scopes with frame.id, then variables; a resume replaces them. While running, call output again, pause or terminate; after ended, launch again.`;
+
+/** What `launch` without an adapter returns: how to launch each supported adapter, and the limits a launch is checked against. */
+const LAUNCH_HELP = [
+	"Nothing was launched. Call launch again with adapter, adapterArgs and launch; adapter is one executable (no shell), every further word goes in adapterArgs; breakpoints go in launch or later in the breakpoints action.",
+	'- C, C++, Swift, Rust (lldb-dap): adapter "xcrun", adapterArgs ["lldb-dap"] (or adapter "lldb-dap"); launch {program, args, cwd}.',
+	'- Python (debugpy installed): adapter "python3", adapterArgs ["-m","debugpy.adapter"]; launch {program, console: "internalConsole", subProcess: false}, or {module, args} in place of program.',
+	'- Node, TypeScript and vitest (js-debug): adapter "node", adapterArgs ["<js-debug>/src/dapDebugServer.js","0","127.0.0.1"], tcp true; launch {type: "pwa-node", program, args, cwd, outputCapture: "std"}; exceptions ["all"] for ES modules.',
+	"The result returns state, generation, reason, frame, exception, exitCode and output, and lists each breakpoint the adapter verified and the exception filters it offers.",
+	`Limits: ${MAX_ADAPTER_ARGS} adapterArgs, ${MAX_BREAKPOINT_SOURCES} breakpoint files, ${MAX_LINES} lines per file, ${MAX_EXCEPTION_FILTERS} exception filters.`,
+].join("\n");
 
 /** Opt-in native debugger. The shared tool-call permission gate must authorize launch before execute. */
 export function registerDebugTool(api: ExtensionAPI): void {
 	let session: DebugSession | undefined;
 	let pending: AbortController | undefined;
 	let epoch = 0;
-	const close = () => {
+	const close = async () => {
 		epoch++;
 		pending?.abort();
 		pending = undefined;
-		session?.close();
+		const old = session;
 		session = undefined;
+		if (old) await endSession(old);
 	};
 	api.registerTool(
 		timedTool(
@@ -64,8 +94,9 @@ export function registerDebugTool(api: ExtensionAPI): void {
 				name: "debug",
 				label: "Debugger",
 				defaultActive: true,
+				promptSnippet:
+					"When logs and test output cannot explain a failure and you need to stop at a line and inspect state",
 				description: DESCRIPTION,
-				promptSnippet: "Debug a program: breakpoints, stepping, stack, variables",
 				parameters: Type.Object({
 					action: StringEnum([
 						"launch",
@@ -82,28 +113,39 @@ export function registerDebugTool(api: ExtensionAPI): void {
 						"terminate",
 					] as const),
 					adapter: Type.Optional(Type.String({ description: "launch: one executable, no shell" })),
-					adapterArgs: Type.Optional(Type.Array(Type.String())),
+					adapterArgs: Type.Optional(Type.Array(Type.String(), { description: "launch: arguments for adapter" })),
 					launch: Type.Optional(
-						Type.Unsafe<Record<string, unknown>>({ type: "object", description: "launch: adapter config" }),
+						Type.Unsafe<Record<string, unknown>>({
+							type: "object",
+							description: "launch: DAP launch arguments for the program",
+						}),
 					),
 					tcp: Type.Optional(Type.Boolean({ description: "launch: adapter prints a loopback port" })),
 					exceptions: Type.Optional(Type.Array(Type.String(), { description: "launch: filter ids to stop on" })),
 					breakpoints: Type.Optional(
 						Type.Array(
 							Type.Object({
-								source: Type.String(),
+								source: Type.String({ description: "absolute path" }),
 								lines: Type.Array(Type.Integer()),
 							}),
 							{ description: `launch: at most ${MAX_BREAKPOINT_SOURCES} files` },
 						),
 					),
 					source: Type.Optional(Type.String({ description: "breakpoints: absolute path" })),
-					lines: Type.Optional(Type.Array(Type.Integer(), { description: "breakpoints: all lines; [] clears" })),
+					lines: Type.Optional(
+						Type.Array(Type.Integer(), {
+							description: "breakpoints: all lines for source (1-based, at most 100); [] clears",
+						}),
+					),
 					generation: Type.Optional(
 						Type.Integer({ description: "stack, scopes, variables and steps: from the latest stopped result" }),
 					),
-					threadId: Type.Optional(Type.Integer()),
-					frameId: Type.Optional(Type.Integer({ description: "scopes" })),
+					threadId: Type.Optional(
+						Type.Integer({
+							description: "pause, stack, steps: defaults to the stopped thread; stack without one lists threads",
+						}),
+					),
+					frameId: Type.Optional(Type.Integer({ description: "scopes: frame id from the stop result or stack" })),
 					variablesReference: Type.Optional(Type.Integer({ description: "variables: from scopes or variables" })),
 				}),
 				async execute(_id, params, signal, _onUpdate, ctx) {
@@ -111,7 +153,7 @@ export function registerDebugTool(api: ExtensionAPI): void {
 					checkDebugInput(params);
 					if (params.action === "terminate") {
 						if (pending) {
-							close();
+							await close();
 							return { content: [{ type: "text" as const, text: "Pending debug launch cancelled" }], details: {} };
 						}
 						if (!session) return { content: [{ type: "text" as const, text: "No active debug session" }], details: {} };
@@ -122,13 +164,16 @@ export function registerDebugTool(api: ExtensionAPI): void {
 						return { content: [{ type: "text" as const, text }], details: {} };
 					}
 					if (params.action === "launch") {
+						// The permission gate lets this through without asking: it starts nothing (`permission/gate/classify.ts`).
+						if (!params.adapter) return { content: [{ type: "text" as const, text: LAUNCH_HELP }], details: {} };
 						if (session?.state === "ended") {
 							session.close();
 							session = undefined;
 						}
 						if (session || pending)
 							throw new Error("A debug session is already active or starting; terminate it first");
-						if (!params.adapter || !params.launch) throw new Error("adapter and launch arguments are required");
+						if (!params.launch)
+							throw new Error("launch arguments are required; launch without adapter shows the recipes");
 						const generation = epoch;
 						const controller = new AbortController();
 						pending = controller;
@@ -153,7 +198,8 @@ export function registerDebugTool(api: ExtensionAPI): void {
 							if (pending === controller) pending = undefined;
 						}
 						if (generation !== epoch || signal?.aborted || controller.signal.aborted) {
-							result.session.close();
+							// The program may already run: end it as a session switch would.
+							await endSession(result.session);
 							throw new Error("Debug launch expired before activation");
 						}
 						session = result.session;

@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { adoptSkillResourceSnapshot } from "../../../core/skill-resource-snapshot.ts";
 import { serializeMcpSessionServers } from "../../../../../mcp/src/session-servers.ts";
-import { PRIVATE_FILE_MODE, privateDir, sessionOutputDir } from "../../shared/home.ts";
+import { privateDir, sessionOutputDir } from "../../shared/home.ts";
 import type { Identity } from "./env.ts";
 import { childSession, reportDir } from "./session.ts";
+import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 
 /** Private files passed to a child by path; the caller removes them when the child exits. */
 export interface ChildResourceFiles {

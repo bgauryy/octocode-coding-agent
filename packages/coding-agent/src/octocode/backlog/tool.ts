@@ -1,4 +1,10 @@
-import { EntityFields, type EntityInput } from "@octocodeai/octocode-contracts/backlogs";
+import {
+	type Completion,
+	EntityFields,
+	type EntityInput,
+	ITEM_TYPES,
+	itemTypeInput,
+} from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
@@ -8,76 +14,12 @@ import { storedText, visibleControls } from "../../../../common/src/sanitize.ts"
 import { contentText, textResult } from "../shared/util.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
-import { entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
-import { COMPLETION_GUIDANCE, type Item, PRIORITIES } from "./store.ts";
-import { clip, plural } from "../shared/render/text.ts";
+import { entityFields, type LinkArgument, linkInput, withLegacyType } from "./tool-schema.ts";
+import { type Item, PRIORITIES } from "./store.ts";
+import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-text.ts";
+import { clip } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
-
-const DEFAULT_LIST_LIMIT = 20;
-const MAX_LIST_LIMIT = 200;
-const DEFAULT_LIST_STATES: State[] = ["ongoing", "todo"];
-
-interface BacklogToolDetails {
-	item?: Item;
-	/** list: items shown and matched. */
-	shown?: number;
-	total?: number;
-	/** remove: the removed item's ref. */
-	removed?: string;
-}
-
-/** The `⎿` line: `B12 → done`, `Added B3`, `Removed B1`, `3 items`. */
-function backlogSummary(op: unknown, details: BacklogToolDetails, text: string): string {
-	const item = details.item;
-	if (op === "list" && details.total !== undefined)
-		return details.total === 0
-			? "No items"
-			: details.total > (details.shown ?? 0)
-				? `${details.shown} of ${plural(details.total, "item")}`
-				: plural(details.total, "item");
-	if (op === "remove" && details.removed) return `Removed ${details.removed}`;
-	if (item && op === "add") return `Added ${item.ref} · ${item.state}`;
-	if (item && op === "update") return `${item.ref} → ${item.state}`;
-	if (item) return `${item.ref} · ${item.state} · ${item.title}`;
-	return text.split("\n", 1)[0] ?? "";
-}
-
-/**
- * What the model reads about `backlog`: the description says what it is, `op` owns the operations, the guidelines only
- * when to use it. The write rules (who may change what) live in `writes.ts`; this tool checks the shape of a call.
- */
-function backlogPrompt(subagent: boolean): {
-	description: string;
-	ops: string;
-	promptSnippet: string;
-	promptGuidelines: string[];
-} {
-	const description =
-		// The same text for every role, so parent and child declare identical bytes; a role's limits are stated when it hits them.
-		"Repository work: backlog proposed, todo accepted, ongoing claimed, done completed. " +
-		"An item another running session holds takes only notes. " +
-		"Claiming (ongoing) needs why and goal; done needs completion.";
-	const ops =
-		"list/get: read; follow Next for more. " +
-		(subagent
-			? "add: propose; update: ongoing/done or notes"
-			: "add: propose; update: edit, claim (ongoing) or add notes; remove: only duplicates or user-requested items without history");
-	return {
-		description,
-		ops,
-		promptSnippet: subagent
-			? "Record progress on claimed items; propose follow-ups"
-			: "Propose, claim and close repository tasks",
-		promptGuidelines: subagent
-			? [
-					"If your task names a backlog item, note progress on it and close it after verifying its goal. Propose, never do, follow-ups and unfixed failures (trigger, evidence, fix) with from and links.",
-				]
-			: [
-					"Add an item when the user asks to track something, work outlives this turn, or you leave a follow-up or failure (from; trigger, evidence, fix). Claim it before starting or delegating; before reporting, update items you touched.",
-					`Give every item why, paths and links. Close only after verifying the goal; ${COMPLETION_GUIDANCE} Questions and one-step tasks need no item.`,
-				],
-	};
-}
+import { DEFAULT_LIST_LIMIT, listFields, type ListParams, MAX_LIST_LIMIT, runList } from "./tool-list.ts";
 
 /** The states a subagent may set: claiming and closing items its parent holds. */
 const SUBAGENT_STATES = ["ongoing", "done"] as const;
@@ -91,12 +33,17 @@ export function registerBacklogTool(
 	const parameters = Type.Object(
 		{
 			...entityFields(subagent),
+			...listFields,
 			op: StringEnum(
 				subagent ? (["list", "get", "add", "update"] as const) : (["list", "get", "add", "update", "remove"] as const),
 				{ description: ops },
 			),
 			id: Type.Optional(Type.String({ description: `${subagent ? "get/update" : "get/update/remove"}: item id` })),
-			title: Type.Optional(Type.String({ description: `${subagent ? "add" : "add/update"}: one-line summary` })),
+			title: Type.Optional(
+				Type.String({
+					description: `${subagent ? "add" : "add/update"}: one-line summary; list: words in the title`,
+				}),
+			),
 			goal: Type.Optional(
 				Type.String({
 					description: subagent
@@ -104,12 +51,22 @@ export function registerBacklogTool(
 						: "add/update: Definition of Done, checkable; add needs it",
 				}),
 			),
-			paths: Type.Optional(Type.Array(Type.String(), { description: "files, dirs or components affected" })),
-			why: Type.Optional(Type.String({ description: "why it matters" })),
-			evidence: Type.Optional(
-				Type.Array(Type.String(), { description: "observations with source (path:line, command)" }),
+			paths: Type.Optional(
+				Type.Array(Type.String(), {
+					description: `${subagent ? "add" : "add/update"}: files, dirs or components affected; list: any as path prefix`,
+				}),
 			),
-			plan: Type.Optional(Type.String({ description: "approach and steps; blast radius, before -> after" })),
+			why: Type.Optional(Type.String({ description: `${subagent ? "add" : "add/update"}: why it matters` })),
+			evidence: Type.Optional(
+				Type.Array(Type.String(), {
+					description: `${subagent ? "add" : "add/update"}: observations with source (path:line, command)`,
+				}),
+			),
+			plan: Type.Optional(
+				Type.String({
+					description: `${subagent ? "add" : "add/update"}: approach and steps; blast radius, before -> after`,
+				}),
+			),
 			state: Type.Optional(
 				subagent
 					? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
@@ -117,15 +74,17 @@ export function registerBacklogTool(
 			),
 			priority: Type.Optional(
 				StringEnum(PRIORITIES, {
-					description: `${subagent ? "add" : "add/update"}: p0 urgent … p3 someday (default p2)`,
+					description: `${subagent ? "add" : "add/update"}: p0 urgent … p3 someday (default p2); list: this or more urgent`,
 				}),
 			),
 			tags: Type.Optional(
-				Type.Array(Type.String(), { description: `${subagent ? "add" : "add/update"}: short labels` }),
+				Type.Array(Type.String(), {
+					description: `${subagent ? "add" : "add/update"}: short labels; list: any of these`,
+				}),
 			),
 			from: Type.Optional(
 				Type.String({
-					description: `Origin ID; list filters derived items${subagent ? "" : '; update "" clears'}`,
+					description: `Origin ID${subagent ? "" : '; update "" clears'}; list: items derived from it`,
 				}),
 			),
 			note: Type.Optional(
@@ -153,6 +112,8 @@ export function registerBacklogTool(
 				label: "Backlog",
 				...prompt,
 				parameters,
+				// One release still takes the old item type `task`: it is mapped in `execute`, which says so.
+				validationParameters: withLegacyType(parameters),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
 					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
@@ -161,13 +122,19 @@ export function registerBacklogTool(
 						(key) => !Object.hasOwn(parameters.properties, key) && !Object.hasOwn(EntityFields, key),
 					);
 					if (unknown.length) throw new Error(`Unknown backlog fields: ${unknown.join(", ")}.`);
+					const legacy = rest.type === undefined ? undefined : itemTypeInput(rest.type);
+					if (rest.type !== undefined && !legacy)
+						throw new Error(`Unknown item type ${visibleControls(rest.type)}: use ${ITEM_TYPES.join(", ")}.`);
 					const backlog = openBacklog(ctx, options);
 					const result = run(backlog, {
 						...rest,
+						...(legacy ? { type: legacy.type } : {}),
 						...(links !== undefined ? { links: linkInput(links, backlog.store.repo) } : {}),
 					});
 					if (params.op !== "list" && params.op !== "get") options.changed?.(ctx);
-					return result;
+					if (!legacy?.legacy) return result;
+					const notice = `\nNote: type ${legacy.legacy} is now ${legacy.type}; use ${legacy.type}.`;
+					return { ...result, content: [{ type: "text" as const, text: contentText(result.content) + notice }] };
 				},
 				renderCall(args, theme, context) {
 					const target = [
@@ -200,25 +167,17 @@ export function registerBacklogTool(
 		),
 	);
 
-	type Params = EntityInput & {
-		op: "list" | "get" | "add" | "update" | "remove";
-		id?: string;
-		title?: string;
-		goal?: string;
-		paths?: string[];
-		why?: string;
-		evidence?: string[];
-		plan?: string;
-		state?: State;
-		priority?: string;
-		tags?: string[];
-		from?: string;
-		note?: string;
-		query?: string;
-		states?: State[];
-		limit?: number;
-		offset?: number;
-	};
+	type Params = EntityInput &
+		Omit<ListParams, keyof EntityInput> & {
+			op: "list" | "get" | "add" | "update" | "remove";
+			id?: string;
+			goal?: string;
+			why?: string;
+			evidence?: string[];
+			plan?: string;
+			state?: State;
+			note?: string;
+		};
 
 	/** The descriptive fields a call sets, only those it names. */
 	const text = ({ paths, why, evidence, plan }: Params) => ({
@@ -228,31 +187,21 @@ export function registerBacklogTool(
 		...(plan !== undefined ? { plan } : {}),
 	});
 
-	function run({ store, actor, session }: Backlog, params: Params) {
+	function run(backlog: Backlog, given: Params) {
+		if (given.op === "list") return runList(backlog, given);
+		const { store, actor, session } = backlog;
+		// The description tells every role that a claim needs why and goal. A subagent's items have both, set by the
+		// parent, which `updateItem` keeps: drop the child's copies here and say so, rather than refuse a claim the
+		// description asked for. Only beside a state, note or completion: alone they change nothing a child may change,
+		// and the store's refusal says what it may.
+		const beside = given.state !== undefined || given.note !== undefined || given.completion !== undefined;
+		const held = actor.owners && beside && given.op === "update" && given.id ? store.get(given.id) : undefined;
+		const kept = (["goal", "why"] as const).filter((key) => given[key] !== undefined && held?.[key].trim());
+		const params: Params = kept.length
+			? { ...given, ...Object.fromEntries(kept.map((key) => [key, undefined])) }
+			: given;
 		const priority =
 			params.priority === undefined ? undefined : PRIORITIES.indexOf(params.priority as (typeof PRIORITIES)[number]);
-		if (params.op === "list") {
-			const states = params.states?.length ? params.states : DEFAULT_LIST_STATES;
-			const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIST_LIMIT)));
-			const offset = Math.max(0, Math.floor(params.offset ?? 0));
-			const filters = {
-				...(params.query ? { query: params.query } : {}),
-				...(params.from ? { from: params.from } : {}),
-			};
-			const { items, total } = store.list({ states, ...filters, limit, offset });
-			const lines = items.map((item) => itemLine(item, actor.id, actor.owners));
-			if (lines.length === 0)
-				lines.push(
-					`No ${states.join("/")} items${params.query ? ` matching "${visibleControls(params.query)}"` : ""}${params.from ? ` from ${visibleControls(params.from)}` : ""}.`,
-				);
-			if (total > offset + items.length)
-				lines.push(
-					`Next: backlog ${JSON.stringify({ op: "list", states, ...filters, limit, offset: offset + items.length })}`,
-				);
-			const triage = states.includes("backlog") ? 0 : store.counts().backlog;
-			if (triage > 0) lines.push(`${triage} proposed item(s) await triage (list with states: ["backlog"]).`);
-			return textResult(lines.join("\n"), { shown: items.length, total });
-		}
 		if (params.op === "add") {
 			if (!params.title?.trim()) throw new Error("add needs a title.");
 			if (!params.why?.trim())
@@ -285,13 +234,19 @@ export function registerBacklogTool(
 			const notes = store.notes(item, limit, offset);
 			const total = store.noteCount(item);
 			const origin = item.from === undefined ? undefined : store.get(item.from);
+			const derived = store.derived(item);
+			const children = item.type === "epic" ? store.list({ parentId: item.ref }).items : [];
 			const detail = itemDetail(item, notes, total, Date.now(), {
 				self: actor.id,
 				version: true,
 				noteOffset: offset,
 				...(actor.owners ? { parents: actor.owners } : {}),
 				...(origin ? { origin } : {}),
-				derived: store.derived(item),
+				derived,
+				children,
+				marks: store.marks([item, ...(origin ? [origin] : []), ...derived, ...children], actor.id, actor.owners),
+				tasks: store.tasks.list({ item: item.ref }),
+				epicState: store.epicState(item),
 			});
 			const next =
 				offset + notes.length < total
@@ -329,6 +284,10 @@ export function registerBacklogTool(
 		// The goal is the done criterion an agent's items always have (`store.add`): an update may change it, not blank it.
 		if (params.goal !== undefined && !storedText(params.goal))
 			throw new Error("update cannot clear the goal: give the new done criterion, a check someone else can run.");
+		const before = store.get(params.id);
+		const reopened = params.state !== undefined && params.state !== "done" && before?.state === "done";
+		const key = params.completion?.operationKey;
+		const replayed = key === undefined ? undefined : before?.completions.find((c) => c.operationKey === key);
 		const item = store.update(
 			params.id,
 			{
@@ -344,8 +303,24 @@ export function registerBacklogTool(
 			},
 			actor,
 		);
-		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}`, { item });
+		// The store accepted a retry of a recorded completion (same key, content and actor) without writing anything.
+		if (replayed)
+			return textResult(`${replayText(item, replayed)}\n${itemLine(item, actor.id, actor.owners)}`, { item });
+		const note = kept.length ? `\n(${kept.join("/")} kept: your parent owns ${kept.length > 1 ? "them" : "it"}.)` : "";
+		// Reopening is allowed (a regression turns up after the fact); the done items that waited on this one are named.
+		const review = reopened ? store.reviewNeeded(item) : [];
+		const flagged = review.length ? `\nNeeds review (done): ${review.join(", ")}.` : "";
+		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${flagged}`, { item });
 	}
+}
+
+/** An operationKey names one completion: its replay says it was applied before, and whether the item moved on since. */
+function replayText(item: Item, done: Completion): string {
+	const head = `Completion ${visibleControls(done.operationKey)} of ${item.ref} was already recorded (${new Date(done.at).toISOString()}); nothing was written.`;
+	if (item.state !== "done")
+		return `${head} ${item.ref} has changed since: it is now ${item.state}. Close it with a new operationKey.`;
+	const latest = item.completions.at(-1);
+	return latest && latest.id !== done.id ? `${head} A later completion (${latest.id}) replaced it.` : head;
 }
 
 function entities(p: EntityInput): EntityInput {

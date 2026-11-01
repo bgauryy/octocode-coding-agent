@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	archiveFolder,
 	archiveSearch,
@@ -11,6 +11,7 @@ import {
 	readSegments,
 	renderLibrary,
 	type Segment,
+	segmentFile,
 	segmentLine,
 	segmentPath,
 	writeSegment,
@@ -211,6 +212,24 @@ describe("archive segments", () => {
 		fs.rmSync(segmentPath(3)!);
 		const again = nextSegment();
 		expect(writeSegment(segment({ entry: "e4" }), "c").n).toBe(again);
+	});
+
+	it("keeps the claim of a write that failed, so the next write takes the following number", () => {
+		const folder = archiveFolder();
+		// The disk fills after the number was claimed: the segment's rename fails.
+		const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => {
+			throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+		});
+		try {
+			expect(() => writeSegment(segment({ entry: "e1" }), "a")).toThrow(/no space/);
+		} finally {
+			rename.mockRestore();
+		}
+		expect(fs.existsSync(path.join(folder, ".1.claim"))).toBe(true);
+		expect(fs.existsSync(path.join(folder, segmentFile(1, "e1")))).toBe(false);
+		expect(fs.readdirSync(folder).filter((name) => name.includes(".tmp"))).toEqual([]);
+		expect(nextSegment()).toBe(2);
+		expect(writeSegment(segment({ entry: "e2" }), "b").n).toBe(2);
 	});
 
 	it("reads a multi-byte character that straddles a read chunk intact", () => {

@@ -1,6 +1,5 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { resolvePath } from "../../../common/src/paths.ts";
+import { writeSessionExport } from "./export-target.ts";
 import { CURRENT_SESSION_VERSION, type SessionHeader, type SessionManager } from "./session-manager.ts";
 
 type TrailingEntries = (parentId: string | null, timestamp: string) => readonly object[];
@@ -38,8 +37,10 @@ export function exportSessionToJsonl(
 		outputPath ?? `session-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`,
 		process.cwd(),
 	);
-	const dir = dirname(filePath);
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-	writeFileSync(filePath, serializeSessionBranch(sessionManager, createTrailingEntries));
+	writeSessionExport(
+		filePath,
+		serializeSessionBranch(sessionManager, createTrailingEntries),
+		sessionManager.getSessionFile(),
+	);
 	return filePath;
 }

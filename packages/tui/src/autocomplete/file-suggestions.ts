@@ -1,6 +1,7 @@
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join } from "path";
+import { hasControlCharacter } from "../utils/chars.ts";
 import { buildCompletionValue, parsePathPrefix, toDisplayPath } from "./path-prefix.ts";
 import type { AutocompleteItem } from "./types.ts";
 
@@ -114,6 +115,8 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 			if (!entry.name.toLowerCase().startsWith(searchPrefix.toLowerCase())) {
 				continue;
 			}
+			// A name with a control character cannot be typed, and its label would write the escape to the terminal.
+			if (hasControlCharacter(entry.name)) continue;
 
 			// Check if entry is a directory (or a symlink pointing to a directory)
 			let isDirectory = entry.isDirectory();

@@ -2,10 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { builtInCompactionSettings } from "../src/core/compaction/settings.ts";
 import {
-	CHARS_PER_TOKEN,
-	charsToTokens,
 	estimateProjectedContextTokens,
 	estimateTokens,
 	estimateUndeclaredToolTokens,

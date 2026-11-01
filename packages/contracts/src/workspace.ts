@@ -1,7 +1,7 @@
 import type { Static } from "typebox";
 import type { ApplicationPort } from "./application.ts";
-import type { WorkspaceCommandSchema } from "./protocol.ts";
 import type { Member, Traffic } from "./team.ts";
+import type { WorkspaceCommandSchema } from "./workspace-command.ts";
 
 export interface WorkspaceEvent {
 	id: number;

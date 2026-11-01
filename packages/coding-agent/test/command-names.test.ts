@@ -40,9 +40,10 @@ it("gives each command one name, refuses aliases and keeps colliding extensions,
 		expect(Object.keys(qualified)).not.toContain("invocationAliases");
 		await harness.session.prompt(`/${qualified.invocationName} status`);
 		expect(extension).toHaveBeenCalledWith("status", expect.anything());
-		// `/clear` is no longer a built-in spelling, so an extension may own it.
-		expect(runner.getCommand("clear")?.handler).toBe(extension);
-		await harness.session.prompt("/clear now");
+		// `/clear` is a built-in (it runs the /new handler), so an extension's /clear stays reachable under a qualified name.
+		const clear = commands.find((command) => command.name === "clear" && command.handler === extension)!;
+		expect(clear.invocationName).toMatch(/^clear:\d+$/);
+		await harness.session.prompt(`/${clear.invocationName} now`);
 		expect(extension).toHaveBeenCalledWith("now", expect.anything());
 		await expect(harness.session.prompt("/permissions")).rejects.toThrow("native features");
 		const sourceInfo = { path: "/test/resource", source: "test", scope: "temporary", origin: "top-level" } as const;
@@ -73,6 +74,7 @@ it("gives each command one name, refuses aliases and keeps colliding extensions,
 		).toBe("peers");
 		expect(runner.getCommandDiagnostics().map((diagnostic) => diagnostic.message)).toEqual([
 			`Command /agents conflicts with another command; available as /${qualified.invocationName}.`,
+			`Command /clear conflicts with another command; available as /${clear.invocationName}.`,
 		]);
 	} finally {
 		harness.cleanup();

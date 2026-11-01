@@ -63,14 +63,6 @@ describe("profile selectors against native Octocode tool exposure", () => {
 		});
 	}
 
-	for (const name of ["implementer", "reviewer", "researcher"]) {
-		cases.push({
-			name: `${name} with graph defaults`,
-			fields: loadProfiles(tmp(), tmp(), false, {}).get(name)!,
-			defaults: ["file", "bash", "graphBuild", "graphQuery"],
-		});
-	}
-
 	it.each(cases)("$name", async ({ fields, defaults }) => {
 		const cwd = tmp();
 		const agentDir = path.join(cwd, "agent");
@@ -128,7 +120,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				expect(active.has("powershell")).toBe(false);
 				expect(active.has("bash")).toBe(false);
 				expect(active.has("file")).toBe(true);
-				expect(active.has("browser")).toBe(true);
+				expect(active.has("browser")).toBe(false);
 			}
 			if (
 				(fields.tools === "-bash" || fields.tools === undefined) &&
@@ -137,13 +129,6 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			) {
 				expect([...active]).toEqual(expect.arrayContaining(["agent", "archive"]));
 				expect(active.has("bash")).toBe(false);
-			}
-			if (defaults?.includes("graphQuery")) {
-				for (const tool of ["graphBuild", "graphQuery"])
-					expect(active.has(tool), `${fields.name} ${tool}`).toBe(fields.name === "researcher");
-				expect(active.has("bash")).toBe(true);
-				// This fixture disables the MCP runtime; its selector still permits management.
-				expect(profileSelectsTool(profile, "mcp", defaults)).toBe(true);
 			}
 			const nativeReach = [
 				...(active.has("file") ? ["file.workspace"] : []),
@@ -211,39 +196,47 @@ describe("the spawn grant for a session", () => {
 	});
 });
 
-describe("bundled roles and graph tools", () => {
+describe("bundled roles", () => {
 	it("preserves broad general defaults and the explicit lean escape", () => {
-		const defaults = ["bash", "file", "graphBuild", "graphQuery"];
+		const defaults = ["bash", "file"];
 		for (const tool of defaults) expect(profileSelectsTool(undefined, tool, defaults), tool).toBe(true);
 		const lean = loadProfiles(tmp(), tmp(), false, {}).get("lean");
 		expect(lean?.lean).toBe(true);
 		for (const tool of ["bash", "file"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
-		for (const tool of ["agent", "graphBuild", "graphQuery"])
-			expect(profileSelectsTool(lean, tool, defaults), tool).toBe(false);
+		expect(profileSelectsTool(lean, "agent", defaults)).toBe(false);
 	});
 
-	it("retains graph tools for broad research, while scoped profiles omit their schemas", () => {
+	it("keeps read-only roles read-only and the implementer unrestricted", () => {
 		const roles = loadProfiles(tmp(), tmp(), false, {});
-		for (const name of ["researcher", "reviewer", "implementer"]) {
-			const profile = roles.get(name);
-			expect(profile?.readOnly, name).toBe(name === "implementer" ? undefined : true);
-			for (const tool of ["graphBuild", "graphQuery"])
-				expect(profileSelectsTool(profile, tool, ["graphBuild", "graphQuery"]), `${name} ${tool}`).toBe(
-					name === "researcher",
-				);
-		}
+		for (const name of ["researcher", "reviewer", "implementer"])
+			expect(roles.get(name)?.readOnly, name).toBe(name === "implementer" ? undefined : true);
 	});
 
-	it("allows trusted profile overrides to opt back into graph tools", () => {
+	it("lets a trusted profile override restore tools a bundled role excludes", () => {
 		const cwd = tmp();
 		const dir = path.join(cwd, ".octocode", "agents");
 		fs.mkdirSync(dir, { recursive: true });
 		fs.writeFileSync(
 			path.join(dir, "reviewer.md"),
-			"---\nname: reviewer\nexcludeTools: browser,debug\nreadOnly: true\n---\nReview with graph evidence.",
+			"---\nname: reviewer\nexcludeTools: browser\nreadOnly: true\n---\nReview with a debugger.",
 		);
 		const profile = loadProfiles(cwd, tmp(), true, {}).get("reviewer");
-		for (const tool of ["graphBuild", "graphQuery", "file", "agent", ...LOCAL_RESEARCH_TOOLS])
-			expect(profileSelectsTool(profile, tool, ["graphBuild", "graphQuery"]), tool).toBe(true);
+		for (const tool of ["debug", "file", "agent", ...LOCAL_RESEARCH_TOOLS])
+			expect(profileSelectsTool(profile, tool, ["debug"]), tool).toBe(true);
+	});
+
+	it("treats the removed graph tool names in saved profiles and defaults as unknown tools, not errors", () => {
+		const stale = ["graphBuild", "graphQuery"];
+		const profile = parseProfile("stale", `---\nexcludeTools: ${stale.join(",")}\n---\nTask`);
+		for (const tool of ["bash", "file"])
+			expect(profileSelectsTool(profile, tool, ["bash", "file", ...stale]), tool).toBe(true);
+	});
+
+	it("reads the old name `task` in a saved profile's tools and excludeTools as `steps`, for one release", () => {
+		const selects = parseProfile("old", "---\ntools: bash,task\n---\nTask");
+		expect(profileSelectsTool(selects, "steps", ["bash"])).toBe(true);
+		const excludes = parseProfile("old", "---\nexcludeTools: task\n---\nTask");
+		expect(profileSelectsTool(excludes, "steps", ["bash", "steps"])).toBe(false);
+		expect(profileSelectsTool(excludes, "bash", ["bash", "steps"])).toBe(true);
 	});
 });

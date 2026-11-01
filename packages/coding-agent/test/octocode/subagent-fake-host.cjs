@@ -78,12 +78,16 @@ function saveSession() {
 	return file;
 }
 
+/** What Octocode prints once it loaded and took the prompt; a crash while loading prints none of it and saves no conversation. */
+function promptTaken() {
+	emit({ type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+	emit({ type: "agent_start" });
+	emit({ type: "message_end", message: { role: "user", content: task } });
+}
+
 async function run() {
-	if (!task.startsWith("rejected") && !task.startsWith("handled")) {
-		emit({ type: "response", command: "prompt", success: true, data: { disposition: "started" } });
-		emit({ type: "agent_start" });
-		emit({ type: "message_end", message: { role: "user", content: task } });
-	}
+	const loadCrash = task.startsWith("startup") && !task.startsWith("startup after tool");
+	if (!task.startsWith("rejected") && !task.startsWith("handled") && !loadCrash) promptTaken();
 	await scenario();
 	if (end === "settle") emit({ type: "agent_settled" });
 	// Anything else leaves the process alive (waiting for stdin to close) or lets it drain.
@@ -429,7 +433,13 @@ async function scenario() {
 		};
 		if (task.startsWith("startup flaky")) {
 			if (attempts === 1) syntax();
+			promptTaken();
 			emit(say("RECOVERED"));
+		} else if (task.startsWith("startup until")) {
+			// `startup until <n>`: crashes while loading on its first n-1 starts, then reports the task it was given.
+			if (attempts < Number(task.split(/\s+/)[2])) syntax();
+			promptTaken();
+			emit(say(`RECOVERED on start ${attempts}: ${task.split("\n\n## You")[0]}`));
 		} else if (task.startsWith("startup crash")) syntax();
 		else if (task.startsWith("startup plain")) {
 			process.stderr.write("No API key for provider\n");

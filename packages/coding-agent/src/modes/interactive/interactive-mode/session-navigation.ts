@@ -9,7 +9,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import type { ExtensionCommandContext } from "../../../core/extensions/index.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { SessionManager } from "../../../core/session-manager.ts";
-import { sessionFileRunningPid } from "../../../octocode/agentdb/liveness.ts";
+import { sessionFileRunningPid } from "../../../octocode/agentdb/api.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
 import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts";
@@ -302,7 +302,7 @@ export function showSessionSelector(host: SessionNavigationHost): void {
 
 			host.sessionManager.getSessionFile(),
 		);
-		return { component: selector, focus: selector };
+		return { component: selector, focus: selector, dispose: () => selector.dispose() };
 	});
 }
 
@@ -328,34 +328,29 @@ export async function handleResumeSession(
 		return { cancelled: true };
 	}
 	host.clearStatusIndicator();
-	try {
+	const resume = async (cwdOverride?: string) => {
 		const result = await host.runtimeHost.switchSession(sessionPath, {
+			...(cwdOverride ? { cwdOverride } : {}),
 			withSession: options?.withSession,
 			projectTrustContextFactory: (cwd) => host.createProjectTrustContext(cwd),
 		});
-		if (result.cancelled) {
-			return result;
-		}
-		host.showStatus("Resumed session");
+		if (!result.cancelled) host.showStatus(cwdOverride ? "Resumed session in current cwd" : "Resumed session");
 		return result;
-	} catch (error: unknown) {
-		if (error instanceof MissingSessionCwdError) {
+	};
+	// The session picker drops this promise, so the retry in a chosen folder fails the same way as the first attempt.
+	try {
+		try {
+			return await resume();
+		} catch (error: unknown) {
+			if (!(error instanceof MissingSessionCwdError)) throw error;
 			const selectedCwd = await host.promptForMissingSessionCwd(error);
 			if (!selectedCwd) {
 				host.showStatus("Resume cancelled");
 				return { cancelled: true };
 			}
-			const result = await host.runtimeHost.switchSession(sessionPath, {
-				cwdOverride: selectedCwd,
-				withSession: options?.withSession,
-				projectTrustContextFactory: (cwd) => host.createProjectTrustContext(cwd),
-			});
-			if (result.cancelled) {
-				return result;
-			}
-			host.showStatus("Resumed session in current cwd");
-			return result;
+			return await resume(selectedCwd);
 		}
+	} catch (error: unknown) {
 		return host.handleFatalRuntimeError("Failed to resume session", error);
 	}
 }

@@ -1,5 +1,6 @@
 import { parse as partialParse } from "partial-json";
 import type { ToolCall } from "../types.ts";
+import { describeJsonStructure } from "./json-structure.ts";
 
 const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
 
@@ -150,6 +151,9 @@ function describeParseFailure(error: unknown, json: string, trailing: string | u
 		const cut = trailing.length > MAX_QUOTED_TRAILING_CHARS;
 		const quoted = JSON.stringify(trailing.slice(0, MAX_QUOTED_TRAILING_CHARS));
 		message = `Tool arguments are a complete JSON object followed by unexpected text: ${quoted}${cut ? " (cut)" : ""}. Send exactly one JSON object and nothing after it.`;
+	} else {
+		const structure = describeJsonStructure(json);
+		if (structure) message = `${message}\n${structure}`;
 	}
 	// The echo keeps only the start of long text, but a malformed ending is what a model must see to correct it.
 	let tail = "";
@@ -176,11 +180,14 @@ function parseObject(json: string): ToolCall["arguments"] {
  * finished, text that is not a valid JSON object means the model sent malformed arguments. In that
  * case `arguments` is `{}` and `argumentsError` describes the problem, including the text the
  * model sent (its start and, when long, its end), so tool validation can report it back to the model.
+ * `rawArguments` keeps the whole text, because that message echoes only a bounded part of it.
  *
  * One repair is accepted: a complete object followed only by extra closing braces or brackets, such
  * as a nested call that closes its envelope twice. Any other text after the object is an error.
  */
-export function parseToolCallArguments(json: string | undefined): Pick<ToolCall, "arguments" | "argumentsError"> {
+export function parseToolCallArguments(
+	json: string | undefined,
+): Pick<ToolCall, "arguments" | "argumentsError" | "rawArguments"> {
 	if (!json?.trim()) return { arguments: {} };
 	try {
 		return { arguments: parseObject(json) };
@@ -191,10 +198,10 @@ export function parseToolCallArguments(json: string | undefined): Pick<ToolCall,
 				return { arguments: parseObject(split.object) };
 			} catch {
 				// The object itself is malformed, so the original error is the one to report.
-				return { arguments: {}, argumentsError: describeParseFailure(error, json, undefined) };
+				return { arguments: {}, argumentsError: describeParseFailure(error, json, undefined), rawArguments: json };
 			}
 		}
-		return { arguments: {}, argumentsError: describeParseFailure(error, json, split?.trailing) };
+		return { arguments: {}, argumentsError: describeParseFailure(error, json, split?.trailing), rawArguments: json };
 	}
 }
 

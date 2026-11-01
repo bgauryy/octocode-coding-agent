@@ -9,10 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import type { Backlog, BacklogWeb } from "../../src/octocode/backlog/context.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { readRegistryRecord, registryPathsForTest, sharedWorkspaceWeb } from "../../src/octocode/backlog/shared-web.ts";
+import { sharedWorkspaceWeb } from "../../src/octocode/backlog/shared-web.ts";
+import { readRecord, registryPaths } from "../../src/octocode/backlog/shared-web-registry.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 
 const childScript = fileURLToPath(new URL("./backlog-shared-web-child.ts", import.meta.url));
+const registryPathsForTest = registryPaths;
+const readRegistryRecord = (repoRoot: string, session: string, env?: NodeJS.ProcessEnv) =>
+	readRecord(registryPaths(repoRoot, session, env).entry);
 
 function fakeBacklog(repoRoot: string): Backlog {
 	return {

@@ -6,6 +6,7 @@ import type {
 	SessionContext,
 	SessionEntry,
 	SessionHeader,
+	SessionNameSource,
 	SessionProjection,
 	SessionTreeNode,
 	UsageEntry,
@@ -83,11 +84,14 @@ export interface SessionManagerApi {
 	/** Append a custom entry (for extensions) as child of current leaf, then advance leaf. Returns entry id. */
 	appendCustomEntry(customType: string, data?: unknown): string;
 
-	/** Append a session info entry (e.g., display name). Returns entry id. */
-	appendSessionInfo(name: string): string;
+	/** Append a session info entry (e.g., display name); `source` defaults to `user`. Returns entry id. */
+	appendSessionInfo(name: string, source?: SessionNameSource): string;
 
 	/** Get the current session name from the latest session_info entry, if any. */
 	getSessionName(): string | undefined;
+
+	/** Who gave the current session name; undefined when there is no name. */
+	getSessionNameSource(): SessionNameSource | undefined;
 
 	/**
 	 * Append a custom message entry (for extensions) that participates in LLM context.
@@ -238,4 +242,5 @@ export type ReadonlySessionManager = Pick<
 	| "getEntryCount"
 	| "getTree"
 	| "getSessionName"
+	| "getSessionNameSource"
 >;

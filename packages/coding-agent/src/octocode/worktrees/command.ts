@@ -7,38 +7,57 @@ import { type Subcommand, type Subcommands, say, wordCompletions } from "../shar
 import { gitQuiet } from "../shared/git.ts";
 import { listTmuxPanes, type TmuxPane } from "../terminal-launch/tmux.ts";
 import { describeWorktree, ensureWorktree } from "./create.ts";
-import { agentLabel, innermostWorktree, paneLabel, placeOccupants } from "./occupants.ts";
+import { worktreeNames } from "./names.ts";
+import {
+	agentLabel,
+	innermostWorktree,
+	paneLabel,
+	parkedLabel,
+	placeOccupants,
+	type ParkedResident,
+} from "./occupants.ts";
 import { type OpenDependencies, type OpenPlacement, openInTmux, parsePlacement } from "./open.ts";
 import { removeWorktree } from "./remove.ts";
 import { canonical } from "./repo.ts";
 import { worktreeStatuses, type WorktreeStatus } from "./status.ts";
-import { switchToWorktree } from "./switch.ts";
+import { MAIN_CHECKOUT, switchToWorktree } from "./switch.ts";
 import { existingWorktree } from "./target.ts";
 
 const USAGE =
-	"Usage: /worktree [list | new <name> | open <name> [pane [right|down]|window] | switch <name> | remove <name> [--force]]";
+	"Usage: /worktree [list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | remove <name> [--force]]";
 
 /** The tmux launch dependencies (`open.ts`) plus the team's live agents. */
 export interface WorktreeCommandDependencies extends OpenDependencies {
 	/** Live agents of this repository's team, every worktree included; `list` shows each under its worktree. */
 	members?: () => Member[];
+	/** Follow-up windows that sessions hold open for finished children: `remove` keeps a worktree they work in. */
+	parked?: () => ParkedResident[];
+	/** The session's folder, for completing names: the process directory does not follow `switch` or `/resume`. */
+	cwd?: () => string | undefined;
 }
+
+/** Line breaks in a path or git message, shown as `\n` and `\r` so each worktree stays on its own line. */
+const oneLine = (text: string): string => text.replace(/\r|\n/gu, (brk) => (brk === "\r" ? "\\r" : "\\n"));
 
 /** `name · branch · state · path` for one worktree. */
 function listLine(status: WorktreeStatus, main: string, current: boolean): string {
 	const { entry } = status;
 	const state = entry.prunable
 		? ["folder missing (git worktree prune)"]
-		: [
-				status.dirty > 0 ? `${status.dirty} changed` : "",
-				status.untracked > 0 ? `${status.untracked} untracked` : "",
-				status.unmerged > 0 ? `${status.unmerged} commit${status.unmerged === 1 ? "" : "s"} not on another branch` : "",
-			].filter(Boolean);
+		: status.error
+			? [`unreadable: ${oneLine(status.error)}`]
+			: [
+					status.dirty > 0 ? `${status.dirty} changed` : "",
+					status.untracked > 0 ? `${status.untracked} untracked` : "",
+					status.unmerged > 0
+						? `${status.unmerged} commit${status.unmerged === 1 ? "" : "s"} not on another branch`
+						: "",
+				].filter(Boolean);
 	const label = status.main ? "main" : (status.name ?? "other");
 	const branch = entry.branch ? `branch ${entry.branch}` : "detached";
 	const where = path.relative(main, entry.path) || ".";
 	const here = current ? " · current" : "";
-	return `  ${label} · ${branch} · ${state.length > 0 ? state.join(", ") : "clean"} · ${where.startsWith("..") ? entry.path : where}${here}`;
+	return `  ${label} · ${branch} · ${state.length > 0 ? state.join(", ") : "clean"} · ${oneLine(where.startsWith("..") ? entry.path : where)}${here}`;
 }
 
 /** The team's live agents and tmux panes, sorted into the worktree `roots` each works in. */
@@ -59,9 +78,11 @@ function occupantsText(
 	agents: readonly Member[],
 	tmuxPanes: readonly TmuxPane[],
 	panes: readonly TmuxPane[],
+	parked: readonly ParkedResident[] = [],
 ): string | undefined {
 	const parts = [
 		agents.length > 0 ? `agents: ${agents.map((member) => agentLabel(member, panes)).join("; ")}` : "",
+		parked.length > 0 ? `reachable finished agents: ${parked.map(parkedLabel).join("; ")}` : "",
 		tmuxPanes.length > 0 ? `tmux: ${tmuxPanes.map(paneLabel).join("; ")}` : "",
 	].filter(Boolean);
 	return parts.length > 0 ? parts.join(" · ") : undefined;
@@ -133,7 +154,11 @@ async function remove(rest: string[], ctx: ExtensionCommandContext, deps: Worktr
 		occupants: async (target, roots) => {
 			const { panes, byRoot } = await whoIsWhere(roots, deps, true);
 			const here = byRoot.get(roots.find((root) => canonical(root) === canonical(target)) ?? target);
-			return occupantsText(here?.agents ?? [], here?.panes ?? [], panes);
+			const parked = (deps.parked?.() ?? []).filter((child) => {
+				const root = innermostWorktree(roots, child.workspace);
+				return root !== undefined && canonical(root) === canonical(target);
+			});
+			return occupantsText(here?.agents ?? [], here?.panes ?? [], panes, parked);
 		},
 	});
 	say(ctx, result.message, result.removed ? "info" : "warning");
@@ -152,19 +177,30 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 	return {
 		description: "List, create, open, switch and remove worktrees",
 		argumentHint:
-			"[list | new <name> | open <name> [pane [right|down]|window] | switch <name> | remove <name> [--force]]",
+			"[list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | remove <name> [--force]]",
 		complete: (prefix) => {
 			const placing = /^open\s+\S+\s+(.*)$/su.exec(prefix);
 			if (placing) return wordCompletions(PLACEMENTS, placing[1]);
+			const naming = /^(open|switch)\s+(\S*)$/su.exec(prefix);
+			if (naming) {
+				const cwd = deps.cwd?.();
+				const names: Array<string | [string, string]> = cwd ? worktreeNames(cwd) : [];
+				if (naming[1] === "switch")
+					names.unshift([MAIN_CHECKOUT, "main — the main checkout, even if a worktree has this name"]);
+				return wordCompletions(names, naming[2]);
+			}
 			return wordCompletions(
 				[
 					["list", "list — worktrees with branch, changes, unmerged commits, live agents and tmux panes"],
 					["new", "new <name> — create one and open Octocode in it"],
 					["open", "open <name> [pane [right|down]|window] — open Octocode in an existing worktree in tmux"],
-					["switch", "switch <name> — move this session into a worktree (the old session stays saved)"],
+					[
+						"switch",
+						"switch <name|main> — move this session into a worktree or back to main (the old one stays saved)",
+					],
 					[
 						"remove",
-						"remove <name> [--force] — remove one that holds no unsaved work and no live agents or tmux panes",
+						"remove <name> [--force] — remove one that holds no unsaved work, live agents, reachable finished agents or tmux panes",
 					],
 				],
 				prefix,

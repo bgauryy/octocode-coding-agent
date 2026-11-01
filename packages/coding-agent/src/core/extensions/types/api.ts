@@ -115,6 +115,7 @@ export interface ExtensionAPI {
 	on(event: "ui_prompt_start", handler: ExtensionHandler<AgentEvents.UIPromptStartEvent>): () => void;
 	on(event: "ui_prompt_end", handler: ExtensionHandler<AgentEvents.UIPromptEndEvent>): () => void;
 	on(event: "turn_start", handler: ExtensionHandler<AgentEvents.TurnStartEvent>): () => void;
+	on(event: "turn_prompt", handler: ExtensionHandler<AgentEvents.TurnPromptEvent>): () => void;
 	on(event: "turn_end", handler: ExtensionHandler<AgentEvents.TurnEndEvent, AgentEvents.BoundaryResult>): () => void;
 	on(event: "message_start", handler: ExtensionHandler<AgentEvents.MessageStartEvent>): () => void;
 	on(event: "message_update", handler: ExtensionHandler<AgentEvents.MessageUpdateEvent>): () => void;
@@ -223,8 +224,8 @@ export interface ExtensionAPI {
 	// Session Metadata
 	// =========================================================================
 
-	/** Set the session display name (shown in session selector). */
-	setSessionName(name: string): void;
+	/** Set the session display name (shown in session selector); `source` defaults to `user` (see `SessionNameSource`). */
+	setSessionName(name: string, source?: SessionEvents.SessionInfoChangedEvent["source"]): void;
 
 	/** Get the current session name, if set. */
 	getSessionName(): string | undefined;

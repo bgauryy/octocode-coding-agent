@@ -4,10 +4,15 @@ import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { BashResult } from "../bash-executor.ts";
 import type { CompactionResult } from "../compaction/index.ts";
-import type { InputSource } from "../extensions/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { BashOperations } from "../tools/bash.ts";
-import type { PromptOptions, QueuedInput, QueuedInputDisposition, ReleasedQueuedInput } from "./types.ts";
+import type {
+	PromptOptions,
+	QueuedInput,
+	QueuedInputDisposition,
+	QueuedInputOptions,
+	ReleasedQueuedInput,
+} from "./types.ts";
 
 /** Prompting and input queues of `AgentSession`. */
 export interface AgentSessionPromptingApi {
@@ -28,20 +33,20 @@ export interface AgentSessionPromptingApi {
 	 * before the next LLM call.
 	 * Expands skill commands and prompt templates. Errors on extension commands.
 	 * @param images Optional image attachments to include with the message
-	 * @param options Input source; defaults to interactive
+	 * @param options Input source (defaults to interactive) and whether to attach image paths the text names
 	 * @throws Error if text is an extension command
 	 */
-	steer(text: string, images?: ImageContent[], options?: { source?: InputSource }): Promise<QueuedInputDisposition>;
+	steer(text: string, images?: ImageContent[], options?: QueuedInputOptions): Promise<QueuedInputDisposition>;
 
 	/**
 	 * Queue a follow-up message to be processed after the agent finishes.
 	 * Delivered only when agent has no more tool calls or steering messages.
 	 * Expands skill commands and prompt templates. Errors on extension commands.
 	 * @param images Optional image attachments to include with the message
-	 * @param options Input source; defaults to interactive
+	 * @param options Input source (defaults to interactive) and whether to attach image paths the text names
 	 * @throws Error if text is an extension command
 	 */
-	followUp(text: string, images?: ImageContent[], options?: { source?: InputSource }): Promise<QueuedInputDisposition>;
+	followUp(text: string, images?: ImageContent[], options?: QueuedInputOptions): Promise<QueuedInputDisposition>;
 
 	/**
 	 * Send a custom message to the session. Creates a CustomMessageEntry.
@@ -89,6 +94,9 @@ export interface AgentSessionPromptingApi {
 
 	/** Number of pending messages (includes both steering and follow-up) */
 	readonly pendingMessageCount: number;
+
+	/** Whether a custom message sent with this exact `details` object (identity, not equality) still waits in the agent's queue. */
+	isCustomMessageQueued(details: object): boolean;
 
 	/** Get pending steering messages (read-only) */
 	getSteeringMessages(): readonly string[];

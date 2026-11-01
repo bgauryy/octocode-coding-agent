@@ -13,7 +13,7 @@ export function webCommand(
 		complete: (prefix) => wordCompletions(["backlogs"], prefix),
 		async handler(args, ctx) {
 			if (args.trim() && args.trim() !== "backlogs") {
-				say(ctx, "Usage: /octocode [backlogs]", "warning");
+				say(ctx, "Usage: /web [backlogs]", "warning");
 				return;
 			}
 			const view = args.trim() === "backlogs" ? "board" : "activity";

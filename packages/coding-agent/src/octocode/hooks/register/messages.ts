@@ -3,6 +3,15 @@ import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } fr
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";
 
+/** The delivery flags a received message carries, when they are booleans: whether it asked for an answer, may start a turn, or interrupted. */
+function flagsOf(source: Record<string, unknown>): Pick<MessageEnvelope, "replyRequired" | "wake" | "interrupt"> {
+	return {
+		...(typeof source.replyRequired === "boolean" ? { replyRequired: source.replyRequired } : {}),
+		...(typeof source.wake === "boolean" ? { wake: source.wake } : {}),
+		...(typeof source.interrupt === "boolean" ? { interrupt: source.interrupt } : {}),
+	};
+}
+
 function receivedMessages(value: unknown): MessageEnvelope[] {
 	if (!isRecord(value) || value.role !== "custom" || !isRecord(value.details)) return [];
 	if (value.customType !== INTERNAL_MESSAGE_TYPE && value.customType !== EXTERNAL_MESSAGE_TYPE) return [];
@@ -24,6 +33,7 @@ function receivedMessages(value: unknown): MessageEnvelope[] {
 				text: envelope.text,
 				id: envelope.id,
 				...(typeof envelope.replyTo === "string" ? { replyTo: envelope.replyTo } : {}),
+				...flagsOf(envelope),
 			},
 		];
 	}
@@ -46,6 +56,7 @@ function receivedMessages(value: unknown): MessageEnvelope[] {
 				text: message.text,
 				id: String(message.id),
 				...(typeof message.replyTo === "number" ? { replyTo: String(message.replyTo) } : {}),
+				...flagsOf(message),
 			},
 		];
 	});

@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { octocodeToolDefinition } from "../../../mcp/test/mcp-preset-tool-fixture.ts";
 import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";

@@ -3,8 +3,8 @@ import { decodeKittyPrintable } from "../keys/parse.ts";
 import { KillRing } from "../kill-ring.ts";
 import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { UndoStack } from "../undo-stack.ts";
-import { isWhitespaceChar } from "../utils/chars.ts";
-import { getGraphemeSegmenter } from "../utils/width.ts";
+import { hasControlCharacter, isWhitespaceChar, stripControlCharacters } from "../utils/chars.ts";
+import { getGraphemeSegmenter, visibleWidth } from "../utils/width.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
 import { BracketedPasteBuffer, singleLinePaste } from "./input/paste.ts";
 import { cursorAtColumn, renderInputLine } from "./input/render.ts";
@@ -59,9 +59,10 @@ export class Input implements Component, Focusable {
 		return this.value;
 	}
 
+	/** Like typed and pasted text, a set value (a stored label or name) keeps no control character: it is drawn as is. */
 	setValue(value: string): void {
-		this.value = value;
-		this.cursor = Math.min(this.cursor, value.length);
+		this.value = stripControlCharacters(value.replace(/\r\n|[\r\n]/g, " ").replace(/\t/g, "    "));
+		this.cursor = Math.min(this.cursor, this.value.length);
 	}
 
 	handleInput(data: string): void {
@@ -197,19 +198,14 @@ export class Input implements Component, Focusable {
 
 		// Regular character input - accept printable characters including Unicode,
 		// but reject control characters (C0: 0x00-0x1F, DEL: 0x7F, C1: 0x80-0x9F)
-		// oxlint-disable-next-line typescript/no-misused-spread -- control characters are single code points, so grapheme splitting cannot hide one
-		const hasControlChars = [...data].some((ch) => {
-			const code = ch.charCodeAt(0);
-			return code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f);
-		});
-		if (!hasControlChars) {
+		if (!hasControlCharacter(data)) {
 			this.insertCharacter(data);
 		}
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
 		if (event.type !== "press" || event.button !== "left" || event.y !== 0) return undefined;
-		const visibleColumn = Math.max(0, event.x - 2);
+		const visibleColumn = Math.max(0, event.x - visibleWidth(this.prompt));
 		const targetColumn = this.renderedStartColumn + visibleColumn;
 		this.cursor = this.secret ? Math.min(this.value.length, targetColumn) : cursorAtColumn(this.value, targetColumn);
 		this.lastAction = null;

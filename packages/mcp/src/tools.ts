@@ -13,7 +13,7 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, JsonValue, TextContent } from "@octocodeai/octocode-ai";
 import { type CallToolResult, type McpRequestOptions, toLlmContent } from "./client/index.ts";
 import type { TSchema } from "typebox";
-import { spillOutput } from "../../coding-agent/src/octocode/shared/spill.ts";
+import { hostOutput } from "./host.ts";
 import { visibleContent } from "./sanitize.ts";
 
 export interface McpToolDetails {
@@ -175,7 +175,7 @@ function limitMcpContent(
 	label: string,
 	saveOutput?: McpOutputSaver,
 ): { content: (TextContent | ImageContent)[]; fullOutputPath?: string } {
-	const spilled = spillOutput(textOf(content), {
+	const spilled = hostOutput().spillOutput(textOf(content), {
 		label: `mcp ${label}`,
 		// The budget is bytes; MCP text has no line limit.
 		maxLines: Number.MAX_SAFE_INTEGER,

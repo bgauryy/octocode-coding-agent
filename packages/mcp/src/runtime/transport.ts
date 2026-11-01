@@ -3,10 +3,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { type AuthProvider, type McpTransport, StdioTransport, StreamableHttpTransport } from "../client/index.ts";
-import {
-	resolveConfigValueOrThrow,
-	resolveHeadersOrThrow,
-} from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { McpServerEntry } from "../config.ts";
 
 export type McpTransportFactory = (

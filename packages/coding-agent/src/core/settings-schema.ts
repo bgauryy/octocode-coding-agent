@@ -114,6 +114,19 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.mcpPresentation,
 			}),
 		),
+		research: Type.Optional(
+			Type.Object(
+				{
+					allowedPaths: Type.Optional(
+						Type.Array(Type.String(), {
+							description:
+								'Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn.',
+						}),
+					),
+				},
+				{ description: "Research tool settings." },
+			),
+		),
 		npmCommand: Type.Optional(
 			Type.Array(Type.String(), {
 				description:
@@ -280,7 +293,7 @@ export const SettingsSchema = Type.Object(
 					transport: Type.Optional(
 						Type.Union([Type.Literal("ssh"), Type.Literal("relay")], {
 							description:
-								'How /remote reaches this machine: "ssh" prints a port forward to run; "relay" dials remote.relayUrl.',
+								'How a published /remote link reaches the daemon: "ssh" prints a port forward to run; "relay" dials remote.relayUrl.',
 							default: SETTINGS_DEFAULTS.remote.transport,
 						}),
 					),
@@ -290,8 +303,22 @@ export const SettingsSchema = Type.Object(
 					autoStart: Type.Optional(
 						Type.Union([Type.Literal("off"), Type.Literal("view"), Type.Literal("control")], {
 							description:
-								'Publish a link when a session starts. A project settings file can set "off" but never turn it on.',
+								'Publish a link of that access ("view" or "control") when a session starts and print it. A project settings file can set "off" but never turn it on; the global value stands.',
 							default: SETTINGS_DEFAULTS.remote.autoStart,
+						}),
+					),
+				},
+				{ additionalProperties: false },
+			),
+		),
+		sessions: Type.Optional(
+			Type.Object(
+				{
+					autoTitle: Type.Optional(
+						Type.Boolean({
+							description:
+								"Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title.",
+							default: SETTINGS_DEFAULTS.sessions.autoTitle,
 						}),
 					),
 				},

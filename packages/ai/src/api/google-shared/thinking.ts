@@ -1,9 +1,9 @@
 import { ThinkingLevel as GoogleSdkThinkingLevel, type ThinkingConfig } from "@google/genai";
 import { clampThinkingLevel } from "../../models/model-helpers.ts";
 import type { Model, ThinkingLevel } from "../../types.ts";
-import { usesGoogleThinkingLevel } from "./thinking-format.ts";
+import { type GoogleApiType, usesGoogleThinkingLevel } from "./thinking-format.ts";
 
-export type GoogleApiType = "google-generative-ai" | "google-vertex";
+export type { GoogleApiType };
 
 /**
  * Thinking level for Gemini 3 models.

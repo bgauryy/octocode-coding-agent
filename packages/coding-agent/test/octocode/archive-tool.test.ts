@@ -81,6 +81,14 @@ function tool(cwd: string) {
 const why = { goal: "find the login fix", reason: "the user asked what was decided last week" };
 
 describe("the archive tool", () => {
+	it("owns questions about earlier sessions, and says what query does with errors", () => {
+		const fake = fakeHost();
+		registerArchiveTool(fake.api);
+		const archive = fake.tools.get("archive");
+		expect(archive.promptSnippet).toMatch(/what was said or done in earlier sessions/);
+		expect(archive.parameters.properties.query.description).toMatch(/With errors: filters by tool name or error text/);
+	});
+
 	it("needs a goal and a reason, and records both with the result", async () => {
 		const call = tool(repo());
 		await expect(call({ goal: " ", reason: "x" })).rejects.toThrow(/needs goal .* and reason/);

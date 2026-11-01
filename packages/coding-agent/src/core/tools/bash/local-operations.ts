@@ -12,6 +12,7 @@ import {
 	trackDetachedChildPid,
 	untrackDetachedChildPid,
 } from "../../../utils/shell.ts";
+import type { BashOperations } from "./types.ts";
 
 const MAX_TIMEOUT_SECONDS = MAX_TIMER_MS / 1000;
 
@@ -26,31 +27,6 @@ function resolveTimeoutMs(timeout: number | undefined): number | undefined {
 		throw new Error(`Invalid timeout: maximum is ${MAX_TIMEOUT_SECONDS} seconds`);
 	}
 	return timeoutMs;
-}
-
-/**
- * Pluggable operations for the bash tool.
- * Override these to delegate command execution to remote systems (for example SSH).
- */
-export interface BashOperations {
-	/**
-	 * Execute a command and stream output.
-	 * @param command The command to execute
-	 * @param cwd Working directory
-	 * @param options Execution options
-	 * @returns Promise resolving to the exit code. Report signal terminations as 128 + signal number;
-	 * a null exit code is treated as a failed command.
-	 */
-	exec: (
-		command: string,
-		cwd: string,
-		options: {
-			onData: (data: Buffer) => void;
-			signal?: AbortSignal;
-			timeout?: number;
-			env?: NodeJS.ProcessEnv;
-		},
-	) => Promise<{ exitCode: number | null }>;
 }
 
 /** Shared process execution used by the built-in shell tools. */

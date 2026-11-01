@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { checkPackageBoundaries, scanPackageBoundaries } from "./check-package-boundaries.mjs";
-import { HOST_IMPORT_BASELINE } from "./host-import-baseline.mjs";
 import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { sourceWorkspaceGroups } from "./source-workspaces.mjs";
 const packages = {
@@ -55,61 +54,36 @@ const privatePackages = {
 	mcp: { name: "@app/mcp", private: true, octocodeSource: { host: "host", mount: "mcp" } },
 };
 
-test("accepts private implementation imports within the same host compilation", () => {
+test("accepts the host importing its hosted workspace within one compilation", () => {
 	assert.deepEqual(
 		checkPackageBoundaries(
 			privatePackages,
-			[
-				{ package: "host", path: "src/index.ts", imports: ["../../mcp/src/index.ts"] },
-				{ package: "mcp", path: "src/index.ts", imports: ["../../host/src/config.ts"] },
-			],
+			[{ package: "host", path: "src/index.ts", imports: ["../../mcp/src/index.ts"] }],
 			{ host: [], mcp: [] },
-			{ mcp: ["host/src/config.ts"] },
 		),
 		[],
 	);
 });
 
-test("a hosted workspace cannot reach host files outside its baseline", () => {
+test("a hosted workspace cannot import any host file", () => {
 	const sources = [
 		{ package: "mcp", path: "src/index.ts", imports: ["../../host/src/config.ts", "../../host/src/core/secret.ts"] },
 		{ package: "mcp", path: "src/deep/leaf.ts", imports: ["../../../host/src/core/other.js"] },
 	];
-	const issues = checkPackageBoundaries(
-		privatePackages,
-		sources,
-		{ host: [], mcp: [] },
-		{ mcp: ["host/src/config.ts"] },
-	);
-	assert.deepEqual(issues, [
-		"hosted workspace reaches host internals: mcp/src/index.ts -> host/src/core/secret.ts (not in HOST_IMPORT_BASELINE)",
-		"hosted workspace reaches host internals: mcp/src/deep/leaf.ts -> host/src/core/other.js (not in HOST_IMPORT_BASELINE)",
+	assert.deepEqual(checkPackageBoundaries(privatePackages, sources, { host: [], mcp: [] }), [
+		"hosted workspace reaches host internals: mcp/src/index.ts -> host/src/config.ts (use a host port)",
+		"hosted workspace reaches host internals: mcp/src/index.ts -> host/src/core/secret.ts (use a host port)",
+		"hosted workspace reaches host internals: mcp/src/deep/leaf.ts -> host/src/core/other.js (use a host port)",
 	]);
-	assert.equal(
-		checkPackageBoundaries(privatePackages, sources.slice(0, 1), { host: [], mcp: [] }, {}).length,
-		2,
-		"a hosted workspace without a baseline entry may not import any host file",
-	);
 	assert.deepEqual(
 		checkPackageBoundaries(
 			privatePackages,
 			[{ package: "host", path: "src/index.ts", imports: ["../../host/src/core/secret.ts", "../../mcp/src/index.ts"] }],
 			{ host: [], mcp: [] },
-			{},
 		),
 		[],
 		"the host may import its own files and its hosted workspaces",
 	);
-});
-
-test("the committed host import baseline lists only existing host files of hosted workspaces", () => {
-	const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-	for (const [name, files] of Object.entries(HOST_IMPORT_BASELINE)) {
-		const manifest = JSON.parse(readFileSync(join(root, "packages", name, "package.json"), "utf8"));
-		assert.equal(manifest.octocodeSource?.host, "coding-agent", `${name} must be a hosted workspace`);
-		assert.deepEqual([...files].sort(), files, `${name} baseline must stay sorted`);
-		for (const file of files) assert.ok(existsSync(join(root, "packages", file)), `${file} no longer exists`);
-	}
 });
 
 test("a private implementation cannot hide an outward import or an external cycle", () => {
@@ -139,7 +113,9 @@ test("hosted workspaces reach each other only along their policy edges", () => {
 	assert.deepEqual(checkPackageBoundaries(fixtures, sources("mcp", "common"), policy), []);
 	assert.deepEqual(checkPackageBoundaries(fixtures, sources("host", "mcp"), policy), []);
 	assert.ok(
-		checkPackageBoundaries(fixtures, sources("common", "mcp"), policy).includes("forbidden import: common/src/index.ts -> mcp"),
+		checkPackageBoundaries(fixtures, sources("common", "mcp"), policy).includes(
+			"forbidden import: common/src/index.ts -> mcp",
+		),
 	);
 });
 
@@ -226,7 +202,7 @@ test("a layer cannot import the layer above it unless its baseline lists the fil
 	];
 	const source = (path) => ({ package: "host", path, imports: ["../modes/view.ts"] });
 	assert.deepEqual(
-		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/core/old.ts")], { host: [] }, {}, rules),
+		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/core/old.ts")], { host: [] }, rules),
 		[],
 	);
 	assert.deepEqual(
@@ -234,7 +210,6 @@ test("a layer cannot import the layer above it unless its baseline lists the fil
 			{ host: { name: "@app/host" } },
 			[source("src/core/old.ts"), source("src/core/new.ts")],
 			{ host: [] },
-			{},
 			rules,
 		),
 		["core-must-not-import-modes: host/src/core/new.ts -> host/src/modes/view.ts (not in its baseline)"],
@@ -244,11 +219,41 @@ test("a layer cannot import the layer above it unless its baseline lists the fil
 			{ host: { name: "@app/host" } },
 			[source("src/core/old.ts"), source("src/other/new.ts")],
 			{ host: [] },
-			{},
 			rules,
 		),
 		[],
 		"a file outside the layer is not constrained",
+	);
+});
+
+test("a rule with several target prefixes catches each form of the import", () => {
+	const rules = [
+		{
+			name: "core-must-not-import-mcp",
+			from: "host/src/core/",
+			to: ["@app/mcp", "mcp/src/"],
+			baseline: ["host/src/core/old.ts"],
+		},
+	];
+	const sources = [
+		{ package: "host", path: "src/core/old.ts", imports: ["@app/mcp"] },
+		{ package: "host", path: "src/core/bare.ts", imports: ["@app/mcp/status"] },
+		{ package: "host", path: "src/core/relative.ts", imports: ["../../../mcp/src/status.ts"] },
+	];
+	assert.deepEqual(checkPackageBoundaries(privatePackages, sources, { host: [], mcp: [] }, rules), [
+		"core-must-not-import-mcp: host/src/core/bare.ts -> @app/mcp/status (not in its baseline)",
+		"core-must-not-import-mcp: host/src/core/relative.ts -> mcp/src/status.ts (not in its baseline)",
+	]);
+	assert.deepEqual(
+		checkPackageBoundaries(
+			privatePackages,
+			[{ package: "host", path: "src/core/old.ts", imports: [] }],
+			{ host: [], mcp: [] },
+			rules,
+		),
+		[
+			"core-must-not-import-mcp: host/src/core/old.ts no longer imports @app/mcp or mcp/src/ (remove it from its baseline)",
+		],
 	);
 });
 
@@ -265,7 +270,7 @@ test("a baseline entry that no longer imports its layer fails until it is remove
 		{ package: "host", path: "src/core/fixed.ts", imports: ["./local.ts"] },
 		{ package: "host", path: "src/core/other.ts", imports: ["../octocode/index.ts"] },
 	];
-	assert.deepEqual(checkPackageBoundaries({ host: { name: "@app/host" } }, sources, { host: [] }, {}, rules), [
+	assert.deepEqual(checkPackageBoundaries({ host: { name: "@app/host" } }, sources, { host: [] }, rules), [
 		"core-must-not-import-octocode: host/src/core/other.ts -> host/src/octocode/index.ts (not in its baseline)",
 		"core-must-not-import-octocode: host/src/core/fixed.ts no longer imports host/src/octocode/ (remove it from its baseline)",
 		"core-must-not-import-octocode: host/src/core/gone.ts no longer imports host/src/octocode/ (remove it from its baseline)",

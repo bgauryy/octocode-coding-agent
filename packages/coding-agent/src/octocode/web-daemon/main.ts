@@ -9,7 +9,10 @@ import { RotatingLog } from "../shared/rotating-log.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
+import { configAudits, sharedAgentDb } from "../agentdb/api.ts";
 import { buildConfigSnapshot } from "./config-status.ts";
+import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
+import { writeConfigSetting } from "./config-write.ts";
 import { WEB_DAEMON_IDLE_ENV, webDaemonPaths } from "./paths.ts";
 import { removeRecord, writeDaemonRecord } from "./records.ts";
 import { startDaemonServer, type DaemonServer } from "./server.ts";
@@ -43,8 +46,12 @@ export async function startWebDaemon(
 	const paths = webDaemonPaths(env);
 	privateDir(paths.dir);
 	let release: (() => Promise<void>) | undefined;
+	// Set once the lock is held; a compromise before then cannot happen (the lock is taken with no wait in between).
+	let onLockLost: () => void = () => {};
 	try {
-		release = await acquireRegistryLock(paths.runLock, LOCK_WAIT_MS);
+		// The run lock is what keeps a second daemon out. Losing it (this process stalled past its stale limit and another
+		// daemon took it) ends this one: it drops only its own record (nonce-matched) and leaves the new owner's lock alone.
+		release = await acquireRegistryLock(paths.runLock, LOCK_WAIT_MS, { onCompromised: () => onLockLost() });
 	} catch {
 		return undefined;
 	}
@@ -76,6 +83,7 @@ export async function startWebDaemon(
 			release = undefined;
 			onStopped();
 		})());
+	onLockLost = () => void shutdown();
 	try {
 		server = await startDaemonServer({
 			env,
@@ -86,6 +94,17 @@ export async function startWebDaemon(
 				if (!Value.Check(ConfigSnapshotSchema, snapshot)) throw new Error("The configuration snapshot is invalid.");
 				return snapshot;
 			},
+			writeSetting: (command, repo) => writeConfigSetting(command, { agentDir: getAgentDir(), cwd: repo?.root }),
+			writeCredential: (command) =>
+				writeConfigCredential(command, {
+					agentDir: getAgentDir(),
+					env,
+					actor: `web:${nonce.slice(0, 8)}`,
+					audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
+				}),
+			auditRefused: refusalAuditor(`web:${nonce.slice(0, 8)}`, (entry) =>
+				configAudits.record(sharedAgentDb(env).db, entry),
+			),
 			onDrain: () => {
 				if (!server || server.draining) return;
 				server.draining = true;

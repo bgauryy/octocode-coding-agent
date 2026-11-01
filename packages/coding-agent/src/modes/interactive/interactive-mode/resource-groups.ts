@@ -3,6 +3,7 @@
  */
 
 import { GLYPH } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
@@ -93,15 +94,15 @@ export function formatScopeGroups(groups: ScopeGroup[], options: ScopeGroupForma
 
 		const sortedPaths = [...group.paths].sort((a, b) => a.path.localeCompare(b.path));
 		for (const item of sortedPaths) {
-			lines.push(theme.fg("dim", `    ${options.formatPath(item)}`));
+			lines.push(theme.fg("dim", `    ${sanitizeTerminalText(options.formatPath(item))}`));
 		}
 
 		const sortedPackages = Array.from(group.packages.entries()).sort(([a], [b]) => a.localeCompare(b));
 		for (const [source, items] of sortedPackages) {
-			lines.push(`    ${theme.fg("mdLink", source)}`);
+			lines.push(`    ${theme.fg("mdLink", sanitizeTerminalText(source))}`);
 			const sortedPackagePaths = [...items].sort((a, b) => a.path.localeCompare(b.path));
 			for (const item of sortedPackagePaths) {
-				lines.push(theme.fg("dim", `      ${options.formatPackagePath(item, source)}`));
+				lines.push(theme.fg("dim", `      ${sanitizeTerminalText(options.formatPackagePath(item, source))}`));
 			}
 		}
 	}
@@ -123,14 +124,15 @@ function findSourceInfoForPath(p: string, sourceInfos: Map<string, SourceInfo>):
 	return undefined;
 }
 
+/** Paths and source names come from the file system and package data, so they are shown without terminal controls. */
 function formatPathWithSource(host: ResourceGroupsHost, p: string, sourceInfo?: SourceInfo): string {
 	if (sourceInfo) {
 		const shortPath = host.getShortPath(p, sourceInfo);
 		const { label, scopeLabel } = getDisplaySourceInfo(sourceInfo);
 		const labelText = scopeLabel ? `${label} (${scopeLabel})` : label;
-		return `${labelText} ${shortPath}`;
+		return sanitizeTerminalText(`${labelText} ${shortPath}`);
 	}
-	return host.formatDisplayPath(p);
+	return sanitizeTerminalText(host.formatDisplayPath(p));
 }
 
 export function formatDiagnostics(
@@ -158,7 +160,7 @@ export function formatDiagnostics(
 	for (const [name, collisionList] of collisions) {
 		const first = collisionList[0]?.collision;
 		if (!first) continue;
-		lines.push(theme.fg("warning", `  "${name}" collision:`));
+		lines.push(theme.fg("warning", `  "${sanitizeTerminalText(name)}" collision:`));
 		lines.push(
 			theme.fg(
 				"dim",
@@ -178,12 +180,13 @@ export function formatDiagnostics(
 	}
 
 	for (const d of otherDiagnostics) {
+		const message = sanitizeTerminalText(d.message);
 		if (d.path) {
 			const formattedPath = formatPathWithSource(host, d.path, findSourceInfoForPath(d.path, sourceInfos));
 			lines.push(theme.fg(d.type === "error" ? "error" : "warning", `  ${formattedPath}`));
-			lines.push(theme.fg(d.type === "error" ? "error" : "warning", `    ${d.message}`));
+			lines.push(theme.fg(d.type === "error" ? "error" : "warning", `    ${message}`));
 		} else {
-			lines.push(theme.fg(d.type === "error" ? "error" : "warning", `  ${d.message}`));
+			lines.push(theme.fg(d.type === "error" ? "error" : "warning", `  ${message}`));
 		}
 	}
 

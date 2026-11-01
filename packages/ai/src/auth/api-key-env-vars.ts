@@ -53,5 +53,8 @@ export function apiKeyEnvVars(provider: ApiKeyEnvProvider): readonly string[] {
 
 /** The API-key variables of any provider id, or `undefined` when none are declared. */
 export function findApiKeyEnvVars(provider: string): readonly string[] | undefined {
-	return (API_KEY_ENV_VARS as Readonly<Record<string, readonly string[]>>)[provider];
+	// Own keys only: an id such as `constructor` must not find an inherited property.
+	return Object.hasOwn(API_KEY_ENV_VARS, provider)
+		? (API_KEY_ENV_VARS as Readonly<Record<string, readonly string[]>>)[provider]
+		: undefined;
 }

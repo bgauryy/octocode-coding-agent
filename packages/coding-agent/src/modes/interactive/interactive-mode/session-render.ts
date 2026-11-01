@@ -42,6 +42,7 @@ type SessionRenderHost = Pick<
 	| "sessionManager"
 	| "settingsManager"
 	| "showStatus"
+	| "streamingComponent"
 	| "toolOutputExpanded"
 	| "ui"
 	| "updateEditorBorderColor"
@@ -352,6 +353,14 @@ function renderProjectTrustWarningIfNeeded(host: SessionRenderHost): void {
 }
 
 export function rebuildChatFromMessages(host: SessionRenderHost): void {
+	// The reply being streamed is not saved yet, so the rebuild cannot redraw it: keep it, and its tool rows, below.
+	const live = host.streamingComponent;
+	const liveTools = live ? [...host.pendingTools] : [];
 	host.chatContainer.clear();
 	host.renderSessionEntries(host.sessionManager.buildContextEntries());
+	if (!live) return;
+	host.chatContainer.addChild(live);
+	for (const [toolCallId, component] of liveTools) {
+		if (!host.pendingTools.has(toolCallId)) host.pendingTools.set(toolCallId, component);
+	}
 }

@@ -8,9 +8,11 @@ import {
 	type AttachRecord,
 	type DaemonRecord,
 } from "@octocodeai/octocode-contracts/daemon";
-import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
+import { privateDir } from "../shared/home.ts";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { sameProcess } from "../shared/process.ts";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 function readJson<S extends TSchema>(file: string, schema: S): Static<S> | undefined {
 	try {
@@ -22,12 +24,10 @@ function readJson<S extends TSchema>(file: string, schema: S): Static<S> | undef
 	}
 }
 
-/** Owner-only atomic replacement: a reader sees the old record or the new one. */
+/** Owner-only atomic replacement: a reader sees the old record or the new one, and a failed write leaves no temporary file. */
 function writeJson(file: string, value: unknown): void {
 	privateDir(path.dirname(file));
-	const temporary = `${file}.${process.pid}.tmp`;
-	fs.writeFileSync(temporary, `${JSON.stringify(value)}\n`, { mode: PRIVATE_FILE_MODE });
-	fs.renameSync(temporary, file);
+	atomicWriteFileSync(file, `${JSON.stringify(value)}\n`, { mode: PRIVATE_FILE_MODE });
 }
 
 export const readDaemonRecord = (file: string): DaemonRecord | undefined => readJson(file, DaemonRecordSchema);

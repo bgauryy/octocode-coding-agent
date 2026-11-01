@@ -1,8 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
+import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
-import { USER_AUTHOR } from "../agentdb/author.ts";
-import type { AgentDb } from "../agentdb/db.ts";
-import { type Db, backlog, meta } from "../agentdb/api.ts";
+import { type AgentDb, type Db, USER_AUTHOR, backlog, meta, tasks } from "../agentdb/api.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import {
@@ -19,9 +18,10 @@ import {
 	storedTitle,
 } from "./item.ts";
 import type { AddInput, UpdateInput } from "./inputs.ts";
-import { applyEntities, validateEntityInput } from "./entity-write.ts";
+import { applyEntities, entityColumns, validateEntityInput } from "./entity-write.ts";
+import { checkEpicState, openTasksRefusal } from "./hierarchy.ts";
 import { evidenceLink, mergeLinks, splitEvidence } from "./evidence-links.ts";
-import { derived, getItem, list, liveHolder, origin } from "./reads.ts";
+import { derived, getItem, liveHolder, origin } from "./reads.ts";
 
 /** What closing an item takes; the tool guideline, the hand-over prompts and the refusal all say it with these words. */
 export const COMPLETION_GUIDANCE = "Done needs completion: summary, files, verification, operationKey.";
@@ -85,7 +85,7 @@ function logNote(db: Db, item: Item, at: number, author: string, kind: NoteKind,
 
 /**
  * Creates an item. A subagent (`actor.owners`) proposes: its item lands in `backlog` whatever state it asked for, without
- * a note (its parent has not claimed the item, so a later note would be refused too) and without hierarchy or dependencies.
+ * a note (its parent has not claimed the item, so a later note would be refused too), a completion, hierarchy or dependencies.
  */
 export function addItem(agentDb: AgentDb, repo: string, now: () => number, input: AddInput, actor: Actor): Item {
 	validateEntityInput(input);
@@ -95,6 +95,10 @@ export function addItem(agentDb: AgentDb, repo: string, now: () => number, input
 		if (refused.length)
 			throw new BacklogError(
 				`A subagent proposal cannot set ${refused.join(", ")}: name them in plan or ask your parent.`,
+			);
+		if (input.completion)
+			throw new BacklogError(
+				"A subagent proposal lands in backlog and cannot carry a completion: put the result in your report; your parent can claim and close the item.",
 			);
 	}
 	refuseSecrets({ note: input.note });
@@ -149,8 +153,11 @@ export function addItem(agentDb: AgentDb, repo: string, now: () => number, input
 				sourceSession: input.sourceSession ?? null,
 				at,
 				fromItem: from,
+				type: DEFAULT_ITEM_TYPE,
 			});
 			const item = getItem(agentDb.db, repo, seq)!;
+			const columns = entityColumns(agentDb.db, repo, item, input);
+			if (columns.parent || columns.type) backlog.setEntityColumns(agentDb.db, item.rowId, columns);
 			applyEntities(agentDb.db, repo, item, input, actor, at);
 			if (input.note?.trim()) logNote(agentDb.db, item, at, actor.id, "note", storedText(input.note));
 			if (item.from !== undefined)
@@ -210,7 +217,7 @@ export function updateItem(
 				throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
 			if (actor.owners && !(item.assignee && actor.owners.has(item.assignee))) {
 				throw new BacklogError(
-					`${item.ref} is not claimed by your parent: a subagent updates only the items its parent has claimed.`,
+					`${item.ref} is not claimed by your parent: a subagent updates only the items its parent has claimed. Ask your parent to claim it (agent message to parent), or put the finding in your report.`,
 				);
 			}
 			if (actor.item !== undefined && parseRef(actor.item) !== item.seq) {
@@ -240,6 +247,7 @@ export function updateItem(
 				);
 			const state = input.state ?? item.state;
 			if (!STATES.includes(state)) throw new BacklogError("Unknown backlog state.");
+			checkEpicState(agentDb.db, item, input);
 			if (
 				(state === "ongoing" || state === "done") &&
 				(input.state !== undefined ||
@@ -300,6 +308,7 @@ export function updateItem(
 						? null
 						: origin(agentDb.db, repo, input.from, item);
 			backlog.saveItem(agentDb.db, item.rowId, {
+				...entityColumns(agentDb.db, repo, item, input),
 				title,
 				goal: input.goal === undefined ? item.goal : storedText(input.goal),
 				body: item.body,
@@ -336,7 +345,7 @@ export function updateItem(
 }
 
 /**
- * Deletes an item and its notes. With `actor` (the agent), an item another live session holds is refused; a subagent
+ * Deletes an item, its notes and its closed tasks (open tasks refuse it). With `actor` (the agent), an item another live session holds is refused; a subagent
  * never removes.
  */
 export function removeItem(
@@ -362,13 +371,13 @@ export function removeItem(
 				throw new BacklogError(
 					`${item.ref} is ongoing for ${holder}, which is still running: leave it or ask the user.`,
 				);
-			if (
-				list(agentDb.db, repo).items.some(
-					(other) => other.parentId === item.ref || other.dependsOn.some((r) => r.id === item.ref),
-				)
-			)
+			if (backlog.hasDependants(agentDb.db, repo, item.rowId, item.ref))
 				throw new BacklogError("Reparent children and remove dependencies before deleting this item.");
 			if (item.completions.length) throw new BacklogError("Items with completion history cannot be deleted.");
+			const openTasks = openTasksRefusal(agentDb.db, repo, item);
+			if (openTasks) throw new BacklogError(openTasks);
+			// Closed tasks go first, so their audit rows are filed under the item (the delete trigger needs it to exist).
+			tasks.deleteItemTasks(agentDb.db, item.rowId);
 			// The items that came from it keep a trace of the link in their change log.
 			const at = now();
 			for (const child of derived(agentDb.db, repo, item)) {

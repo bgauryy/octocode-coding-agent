@@ -1,8 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { PromptResponse, SessionNotification } from "@agentclientprotocol/sdk";
-import { PRIVATE_FILE_MODE } from "../../../coding-agent/src/octocode/shared/home.ts";
 import { redactData, redactSecrets } from "../../../common/src/sanitize.ts";
-import { saveTimestamped } from "../../../coding-agent/src/octocode/shared/spill.ts";
+import type { AcpSaveOutput } from "../host.ts";
 import {
 	ACP_TEXT_BYTES,
 	ACP_TEXT_POINTER,
@@ -14,7 +13,8 @@ import {
 	textStreamKey,
 	textUpdate,
 } from "./redaction.ts";
-import type { ExternalReply } from "../../../coding-agent/src/octocode/external/protocol.ts";
+import type { ExternalReply } from "@octocodeai/octocode-contracts/external";
+import { PRIVATE_FILE_MODE } from "../../../common/src/file-mode.ts";
 
 const MAX_UPDATES_BYTES = 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;
@@ -33,8 +33,8 @@ class AcpArchive {
 	private omittedBytes = 0;
 	private failure: string | undefined;
 
-	constructor(label: string, extension: string) {
-		this.file = saveTimestamped("", label, extension);
+	constructor(save: AcpSaveOutput, label: string, extension: string) {
+		this.file = save("", label, extension);
 		if (!this.file) this.failure = "Output archive could not be saved.";
 	}
 
@@ -100,11 +100,16 @@ export class AcpDiagnostics {
 	private readonly text = new AcpTextRedactor((text) => this.archive?.appendRedacted(text));
 	private bytes = 0;
 	private archive?: AcpArchive;
+	private readonly save: AcpSaveOutput;
+
+	constructor(save: AcpSaveOutput) {
+		this.save = save;
+	}
 
 	append(text: string): void {
 		this.bytes += Buffer.byteLength(text);
 		if (!this.archive && this.bytes > ACP_TEXT_BYTES) {
-			this.archive = new AcpArchive("acp-stderr", "txt");
+			this.archive = new AcpArchive(this.save, "acp-stderr", "txt");
 			// The preview can include an unfinished unit; only previously emitted text is safe to archive.
 			this.archive.appendRedacted(this.text.completedPreview());
 		}
@@ -127,6 +132,11 @@ export class AcpOutput {
 	private excessStreamBytes = 0;
 	private completedStreamOmissions = 0;
 	private result?: ExternalReply;
+	private readonly save: AcpSaveOutput;
+
+	constructor(save: AcpSaveOutput) {
+		this.save = save;
+	}
 
 	append(notification: SessionNotification): void {
 		if (this.result) return;
@@ -182,7 +192,7 @@ export class AcpOutput {
 	}
 
 	private spill(): void {
-		this.archive = new AcpArchive("acp-output", "jsonl");
+		this.archive = new AcpArchive(this.save, "acp-output", "jsonl");
 		for (const update of this.updates) this.archiveNotification(update);
 	}
 

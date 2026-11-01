@@ -10,7 +10,7 @@ octocode mcp list
 octocode
 ```
 
-Use `octocode mcp add -l ...` to save to a trusted workspace instead of your user configuration. In a running terminal session, run `/trust` after creating or changing workspace configuration, then `/reload`. Open `/mcp` to inspect servers, tools, errors, sign-in, and exposure.
+Add `--local` (shell short form `-l`) to save to the workspace file `.octocode/mcp.json` instead of your user configuration: `octocode mcp add --local filesystem -- npx -y @modelcontextprotocol/server-filesystem .`. A workspace file loads only in a trusted project. In a running terminal session, run `/trust config` after creating or changing it, then `/reload`; `octocode mcp list` and `/mcp list` check the connection. Open `/mcp` to inspect servers, tools, errors, sign-in, and exposure.
 
 ## Configure servers
 
@@ -56,7 +56,7 @@ The `/mcp` manager changes live state and exposure, but does not add or remove p
 
 ## Authenticate with OAuth
 
-For a remote server without an `Authorization` header, use `/mcp login <server>` or the manager's **Sign in** action. Tokens are stored outside `mcp.json`; see [authentication options](mcp-reference.md#authentication).
+For a remote server without an `Authorization` header, use `/mcp login <server>` or the manager's **Sign in** action; when a dialog, selector or session reset takes the place of the manager, it closes and cancels a sign-in in progress. Tokens are stored outside `mcp.json`; see [authentication options](mcp-reference.md#authentication).
 
 ## Discovery and agent context
 
@@ -73,7 +73,7 @@ flowchart TB
     R --> H["Result in conversation"]
 ```
 
-Every tool of a selected server is declared up front; there is no discovery step. Each such server gets its own system prompt section, `mcp_contract_<server>`, placed after the tool-only instructions and before project context, so sessions in other projects or on other days read it from cache ([second instruction block](prompt-caching.md#second-instruction-block)). With the default `mcpPresentation: "compact"` ([compact presentation](mcp-reference.md#compact-presentation)), the section is the server's generated TypeScript file: its instructions, then each tool as a typed function with its description and result type. The declarations sent to the provider then carry only a one-line trigger and the top-level field types; calls are still validated locally against the server's own input schema, and a failed validation shows the tool's signature. With `"json"`, the section carries the server's instructions once and each declaration carries the full description and input schema (and output schema when supplied). A selected server that is not connected is named in a small `mcp_status` section, which disappears once every selected server is connected. Tool results enter conversation history after a call.
+Every tool of a selected server is declared up front; there is no discovery step. The servers share one system prompt section, `mcps`, with a block per enabled server (its name, one-line purpose, tool prefix `mcp__<server>__*` and contract), placed after the tool-only instructions and before project context, so sessions in other projects or on other days read it from cache ([second instruction block](prompt-caching.md#second-instruction-block)). With the default `mcpPresentation: "compact"` ([compact presentation](mcp-reference.md#compact-presentation)), the section is the server's generated TypeScript file: its instructions, then each tool as a typed function with its description and result type. The declarations sent to the provider then carry only a one-line trigger and the top-level field types; calls are still validated locally against the server's own input schema, and a failed validation shows the tool's signature. With `"json"`, the section carries the server's instructions once and each declaration carries the full description and input schema (and output schema when supplied). A block never carries connection state: a server that is not ready (connecting, failed, disconnected, stopped, needing sign-in, or with tools left undeclared) is one line in the separate `mcp_status` section, the last of the prompt, so a state change patches only that line. A server first seen while it connects gets an empty block that fills once when it connects, also between two requests of the same run; after that its block stays fixed until the loadout is rebuilt (model change, tree navigation, new session) or the server leaves the list. Tool results enter conversation history after a call.
 
 The integration does **not** put raw `mcp.json`, commands, environment values, headers, or tokens into agent context. Server-provided descriptions and instructions do reach it: do not put secrets there. Servers the agent does not select, disabled servers, and servers without declared tools contribute no instructions. [Prompt caching](prompt-caching.md) and [catalog refresh](mcp-reference.md#connections-and-caching) have more detail.
 
@@ -101,7 +101,7 @@ Each tool is named `mcp__<server>__<tool>`. Set `exposure` on a server or `toolE
 
 ## Assign servers to agents
 
-Every server is in each agent's default tool selection. Set `"defaultActive": false` on a server to give it only to the agents whose selection names its tools, for example `mcp__docs__*` in a subagent profile's `tools:` or in `--tools`; a broad wildcard such as `*` or `mcp__*` does not select it. `/mcp assign <server> selected` saves that setting (`all` removes it; add `--local` for the trusted project) and applies from the next session. A session whose selection does not reach a server never starts it, and `/mcp` shows it as `not selected`; a server started for the session anyway (enabled again from `/mcp` after being disabled) declares its tools for that session. The built-in `browser` server ships this way, so only the bundled `browser` subagent starts it and the main agent delegates browser work. [Assignment rules](mcp-reference.md#assign-servers-to-agents) are in the reference.
+Every server is in each agent's default tool selection. Set `"defaultActive": false` on a server to give it only to the agents whose selection names its tools, for example `mcp__docs__*` in a subagent profile's `tools:` or in `--tools`; a broad wildcard such as `*` or `mcp__*` does not select it. `/mcp assign <server> selected` saves that setting (`all` removes it; add `--local` for the trusted project) and applies from the next session. A session whose selection does not reach a server never starts it, and `/mcp` shows it as `not selected`; a server started for the session anyway (enabled again from `/mcp` after being disabled) declares its tools for that session. The built-in `browser` server ships this way, so only the bundled `browser` subagent starts it and the main agent delegates browser work. To give the main session a trimmed browser, name its tools in `defaultTools` ([browser opt-in](mcp-reference.md#configuration-and-precedence)); subagents still start it only when their profile names `mcp__browser__*`. [Assignment rules](mcp-reference.md#assign-servers-to-agents) are in the reference.
 
 ## Host and protocol support
 

@@ -60,12 +60,16 @@ async function breakDeadOwner(lockPath: string): Promise<boolean> {
 	const owner = await readOwner(lockPath);
 	if (!owner || sameProcess(owner.pid, owner.pid_started)) return false;
 	let release: (() => Promise<void>) | undefined;
+	// A breaker stalled past the mutex's stale limit may have lost it to another breaker: it then removes nothing.
+	let compromised = false;
 	try {
 		release = await lockfile.lock(mutexPath(lockPath), {
 			realpath: false,
 			stale: 5000,
 			retries: { retries: 40, factor: 1, minTimeout: 25, maxTimeout: 50 },
-			onCompromised: () => {},
+			onCompromised: () => {
+				compromised = true;
+			},
 		});
 	} catch {
 		return false;
@@ -76,6 +80,7 @@ async function breakDeadOwner(lockPath: string): Promise<boolean> {
 		// A waiter may have taken the lock over through proper-lockfile's stale path before writing its own owner file;
 		// the dead owner's record then describes a directory that no longer exists.
 		if (current.dir !== undefined && current.dir !== (await lockDirId(lockPath))) return false;
+		if (compromised) return false;
 		await fs.rm(ownerPath(lockPath), { force: true });
 		await fs.rmdir(`${lockPath}.lock`).catch(() => undefined);
 		return true;
@@ -84,20 +89,42 @@ async function breakDeadOwner(lockPath: string): Promise<boolean> {
 	}
 }
 
+/** Releases a registry lock; `assertHeld` throws the compromise error once another process took the lock over. */
+export type RegistryLockRelease = (() => Promise<void>) & { assertHeld(): void };
+
+interface RegistryLockOptions {
+	/**
+	 * Called once when the lock is compromised: this process stalled past the stale limit (system sleep, a blocked event
+	 * loop) and another may own it now. A guarded operation must stop; a lifetime holder must shut down.
+	 */
+	onCompromised?: (error: Error) => void;
+	/** The stale limit; tests shorten it (proper-lockfile's minimum is 2s). */
+	staleMs?: number;
+}
+
 /**
  * Takes the registry lock, waiting up to `waitMs` for a live owner. The owner's pid is recorded beside the lock, so a
  * lock left by a crashed process is broken at once instead of after `STALE_MS`; a lock without a readable owner still
- * goes stale after `STALE_MS`.
+ * goes stale after `STALE_MS`. A compromised lock is never released over its successor: the release then removes
+ * neither the lock nor the owner file.
  */
-export async function acquireRegistryLock(lockPath: string, waitMs = LOCK_WAIT_MS): Promise<() => Promise<void>> {
+export async function acquireRegistryLock(
+	lockPath: string,
+	waitMs = LOCK_WAIT_MS,
+	options: RegistryLockOptions = {},
+): Promise<RegistryLockRelease> {
 	const deadline = Date.now() + waitMs;
 	for (;;) {
 		try {
+			let compromised: Error | undefined;
 			const release = await lockfile.lock(lockPath, {
 				realpath: false,
-				stale: STALE_MS,
+				stale: options.staleMs ?? STALE_MS,
 				retries: 0,
-				onCompromised: () => {},
+				onCompromised: (error) => {
+					compromised = error;
+					options.onCompromised?.(error);
+				},
 			});
 			const dir = await lockDirId(lockPath);
 			const owner: LockOwner = {
@@ -106,10 +133,18 @@ export async function acquireRegistryLock(lockPath: string, waitMs = LOCK_WAIT_M
 				...(dir === undefined ? {} : { dir }),
 			};
 			await fs.writeFile(ownerPath(lockPath), JSON.stringify(owner)).catch(() => undefined);
-			return async () => {
-				await fs.rm(ownerPath(lockPath), { force: true }).catch(() => undefined);
-				await release();
+			const assertHeld = () => {
+				if (compromised) throw compromised;
 			};
+			return Object.assign(
+				async () => {
+					// The owner file and lock directory may be a successor's now.
+					if (compromised) return;
+					await fs.rm(ownerPath(lockPath), { force: true }).catch(() => undefined);
+					await release();
+				},
+				{ assertHeld },
+			);
 		} catch (error) {
 			if (!isLocked(error)) throw error;
 			if (await breakDeadOwner(lockPath)) continue;

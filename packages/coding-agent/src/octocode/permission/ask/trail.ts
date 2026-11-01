@@ -1,5 +1,4 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
-import { redactSecrets } from "../../../../../common/src/sanitize.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "../audit.ts";
 import { auditLine, auditLines } from "../effect.ts";
 import {
@@ -160,7 +159,8 @@ export class PermissionTrail {
 			...(request.purpose ? { purpose: auditLine(request.purpose) } : {}),
 			allowed: verdict.allowed,
 			via: verdict.via,
-			...(note ? { note: redactSecrets(note) } : {}),
+			// Gate-made parts (a replaced input, applied updates) or a hook's denial message: each part clipped, as `what` is.
+			...(note ? { note: auditLines(note.split("\n")).join("⏎") } : {}),
 			...(snapshot && "ref" in snapshot ? { snapshot: snapshot.ref } : {}),
 		});
 		if (verdict.allowed) {

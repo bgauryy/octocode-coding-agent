@@ -4,6 +4,7 @@ import { stateFolderRefusal, shellTargetAccess } from "./file-access.ts";
 import { isolatedMainTree, isolatedTreeRefusal } from "./isolated-tree.ts";
 import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
 import { shellParserReady } from "./shell/mutation.ts";
+import { commandWriteTargets } from "./shell/write-targets.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
 import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/extensions/index.ts";
 import { resolveToolPath } from "../shared/home.ts";
@@ -49,10 +50,11 @@ interface PermissionGateOptions {
 	/** Whether a PowerShell command is `shell.destructive`; the Windows helper's parse by default (replaceable in tests). */
 	powershell?: (command: string) => Promise<boolean>;
 	/**
-	 * The request for a call whose class depends on the hosts it reaches (a browser MCP navigation to a private address),
-	 * resolved before the call runs; undefined leaves the call to `classify`.
+	 * The request for a call whose class depends on the hosts it reaches or the arguments it carries (a browser MCP
+	 * navigation to a private address, an upload from outside `cwd`'s workspace), resolved before the call runs;
+	 * undefined leaves the call to `classify`.
 	 */
-	network?: (toolName: string, input: Record<string, unknown>) => Promise<PermissionRequest | undefined>;
+	network?: (toolName: string, input: Record<string, unknown>, cwd: string) => Promise<PermissionRequest | undefined>;
 	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
 	replacement?: {
@@ -92,7 +94,9 @@ export function permissionGate(options: PermissionGateOptions) {
 			}
 			// A read-only role (`readOnly: true` profile) is refused changes in every mode, before any dialog; so is an
 			// isolated child (`isolate: true`) that would change the parent's main tree.
-			if (readOnlyRole(options.env) || isolatedMainTree(ctx.cwd, options.env)) await shellParserReady();
+			// The shell parse decides a read-only role's and an isolated child's refusals, and every bash call's write targets.
+			if (event.toolName === "bash" || readOnlyRole(options.env) || isolatedMainTree(ctx.cwd, options.env))
+				await shellParserReady();
 			const roleRefusal =
 				readOnlyRoleRefusal(event, ctx.cwd, options.env) ?? isolatedTreeRefusal(event, ctx.cwd, options.env);
 			if (roleRefusal) {
@@ -110,7 +114,7 @@ export function permissionGate(options: PermissionGateOptions) {
 			const forceDestructive =
 				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
 				(await powershell(optionalString(input.command) ?? ""));
-			const network = await options.network?.(event.toolName, input);
+			const network = await options.network?.(event.toolName, input, ctx.cwd);
 			const request = network ? callRequest(network, event, ctx) : classify(event, ctx, forceDestructive);
 			const hit = provenance.check(event, ctx);
 			const reasons: AskReason[] = [
@@ -229,7 +233,10 @@ export function permissionGate(options: PermissionGateOptions) {
 										(source?.decision === "ask" && approvedSource?.decision !== "ask")
 									)
 										throw new Error(source.message ?? "Replacement refused by current source policy");
-									for (const target of source?.shellTargets ?? []) {
+									for (const target of [
+										...(source?.shellTargets ?? []),
+										...commandWriteTargets(nextInvocation, ctx.cwd, source?.shellTargets),
+									]) {
 										const access = shellTargetAccess(target, ctx.cwd);
 										if (access.refusal) throw new Error(access.refusal);
 									}

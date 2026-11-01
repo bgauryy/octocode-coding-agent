@@ -1,8 +1,7 @@
 import type { ApplicationActivity } from "@octocodeai/octocode-contracts";
-import { useState } from "react";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
-import { ExpandedText, JsonDetails, type AssetLoader } from "./ContentBlocks.tsx";
+import { type AssetLoader, useAssetRead } from "./asset-expansion.tsx";
+import { ExpandedText, JsonDetails } from "./ContentBlocks.tsx";
 
 /** Session notices share the same authenticated content reads as messages and tool results. */
 export function SessionActivityContent({
@@ -16,11 +15,8 @@ export function SessionActivityContent({
 }) {
 	const { full } = activity;
 	const json = full?.mimeType === "application/json";
-	const key = full && `${full.id}:${full.revision ?? ""}`;
-	const [loaded, setLoaded] = useState<{ key: string; value: unknown }>();
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState("");
-	const current = loaded?.key === key ? loaded : undefined;
+	const read = useAssetRead<unknown>(json ? full : undefined);
+	const current = read.loaded;
 	const data = current ? current.value : activity.data;
 	return (
 		<>
@@ -29,23 +25,13 @@ export function SessionActivityContent({
 			{json && full && !current && (
 				<Button
 					size="sm"
-					loading={loading}
-					onClick={async () => {
-						setLoading(true);
-						setError("");
-						try {
-							setLoaded({ key: key!, value: JSON.parse(await (await loadAsset(full.id)).text()) });
-						} catch (cause) {
-							setError(errorMessage(cause));
-						} finally {
-							setLoading(false);
-						}
-					}}
+					loading={read.loading}
+					onClick={() => read.run(async (asset) => JSON.parse(await (await loadAsset(asset.id)).text()))}
 				>
 					Load full details
 				</Button>
 			)}
-			{error && <p role="alert">{error}</p>}
+			{read.error && <p role="alert">{read.error}</p>}
 		</>
 	);
 }

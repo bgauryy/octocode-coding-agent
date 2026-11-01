@@ -1,6 +1,7 @@
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { WebSocket } from "ws";
 import { redactData } from "../../../../common/src/sanitize.ts";
+import { encodeApplicationFrame, isEncodedApplicationFrame } from "../../core/application/service/frames.ts";
 
 /** A view-only tab sees the session as it is but can do nothing: its snapshots carry no capabilities, so the page draws no controls. */
 function viewFrame(frame: ApplicationFrame): ApplicationFrame {
@@ -9,6 +10,32 @@ function viewFrame(frame: ApplicationFrame): ApplicationFrame {
 
 /** Streamed text reaches a browser at most this often per message (about 20 updates a second). */
 const DELTA_WINDOW_MS = 50;
+
+type EventFrame = Extract<ApplicationFrame, { type: "event" }>;
+type DeltaFrame = EventFrame & { event: Extract<EventFrame["event"], { type: "message.delta" }> };
+const isDelta = (frame: ApplicationFrame | undefined): frame is DeltaFrame =>
+	frame?.type === "event" && frame.event.type === "message.delta";
+
+/**
+ * Joins a delta to the one pending in the window. Appends to the same block join into one append; a full update
+ * replaces whatever of its message is pending. Undefined when they cannot join.
+ */
+function joinDelta(pending: DeltaFrame, next: DeltaFrame): DeltaFrame | undefined {
+	if (pending.event.messageId !== next.event.messageId) return undefined;
+	const fromSequence = pending.fromSequence ?? pending.cursor.sequence;
+	if (!next.event.block) return { ...next, fromSequence };
+	if (!pending.event.block || pending.event.block.index !== next.event.block.index) return undefined;
+	const full = next.event.block.full ?? pending.event.block.full;
+	return {
+		...next,
+		fromSequence,
+		event: {
+			...next.event,
+			delta: pending.event.delta + next.event.delta,
+			block: { ...pending.event.block, ...(full ? { full } : {}) },
+		},
+	};
+}
 
 /**
  * Sends an application connection's frames to a browser socket, redacted, with streamed text coalesced to one update
@@ -20,13 +47,20 @@ export async function pumpApplicationFrames(
 	connection: ApplicationConnection,
 	options: { access?: "control" | "view" } = {},
 ): Promise<void> {
-	const shape = options.access === "view" ? viewFrame : (frame: ApplicationFrame) => frame;
+	const view = options.access === "view";
+	// Frames this process created are redacted and encoded once; relayed ones were redacted by their session and are
+	// redacted again here, once, before anything else reads them.
+	const joined = new WeakSet<ApplicationFrame>();
 	const send = (frame: ApplicationFrame) => {
-		if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "application", data: shape(frame) }));
+		if (socket.readyState !== WebSocket.OPEN) return;
+		const data =
+			(view && frame.type === "snapshot") || joined.has(frame)
+				? JSON.stringify(view ? viewFrame(frame) : frame)
+				: encodeApplicationFrame(frame);
+		socket.send(`{"type":"application","data":${data}}`);
 	};
-	// A delta frame carries the whole redacted text (redacting a fragment could miss a secret split across tokens), so
-	// only the latest per window matters: the first goes out at once, later ones in the window collapse into one.
-	let pendingDelta: ApplicationFrame | undefined;
+	// Only the joined deltas of a window matter: the first goes out at once, later ones in the window join into one.
+	let pendingDelta: DeltaFrame | undefined;
 	let deltaWindow: ReturnType<typeof setTimeout> | undefined;
 	const flushDelta = () => {
 		const frame = pendingDelta;
@@ -40,33 +74,28 @@ export async function pumpApplicationFrames(
 		deltaWindow = setTimeout(tick, DELTA_WINDOW_MS);
 	};
 	try {
-		for await (const frame of connection) {
+		for await (const received of connection) {
 			if (socket.readyState !== WebSocket.OPEN) break;
 			if (socket.bufferedAmount > 1048576) {
 				socket.close(1013, "Reconnect to synchronize");
 				break;
 			}
-			const safe = redactData(frame);
-			if (safe.type === "event" && safe.event.type === "message.delta" && safe.event.text !== undefined) {
-				safe.event.delta = "";
-				const previous =
-					pendingDelta?.type === "event" && pendingDelta.event.type === "message.delta"
-						? pendingDelta.event.messageId
-						: undefined;
-				if (previous !== undefined && previous !== safe.event.messageId) flushDelta();
-				if (deltaWindow) {
-					if (pendingDelta?.type === "event")
-						safe.fromSequence = pendingDelta.fromSequence ?? pendingDelta.cursor.sequence;
-					pendingDelta = safe;
+			const frame = isEncodedApplicationFrame(received) ? received : redactData(received);
+			if (isDelta(frame)) {
+				if (!deltaWindow) {
+					send(frame);
+					deltaWindow = setTimeout(tick, DELTA_WINDOW_MS);
 					continue;
 				}
-				send(safe);
-				deltaWindow = setTimeout(tick, DELTA_WINDOW_MS);
+				const next = pendingDelta && joinDelta(pendingDelta, frame);
+				if (next) joined.add(next);
+				else flushDelta();
+				pendingDelta = next ?? frame;
 				continue;
 			}
 			// Anything else keeps its order behind the text streamed so far.
 			flushDelta();
-			send(safe);
+			send(frame);
 			if (frame.type === "resync") {
 				socket.close(1013, "Reconnect to synchronize");
 				break;

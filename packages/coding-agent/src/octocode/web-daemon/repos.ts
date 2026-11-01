@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { DaemonRepo } from "@octocodeai/octocode-contracts/daemon";
-import { backlog } from "../agentdb/api.ts";
-import { sharedAgentDb } from "../agentdb/db.ts";
+import { backlog, sharedAgentDb } from "../agentdb/api.ts";
 import { BacklogStore } from "../backlog/store.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { repoId, type SessionRegistry } from "./sessions.ts";

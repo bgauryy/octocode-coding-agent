@@ -1,12 +1,13 @@
 import type { IncomingMessage } from "node:http";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
+import { handleDocsRequest } from "../workspace/docs.ts";
 import { handleReportsRequest } from "../workspace/reports.ts";
 import type { Reply } from "./http-util.ts";
 import type { RepoCatalog, RepoInfo } from "./repos.ts";
 
 /**
- * The read-only routes both scopes share: the repository's board, audit and saved reports. `self` is the attached
+ * The read-only routes both scopes share: the repository's board, audit and saved reports and documents. `self` is the attached
  * session (its claims show as live). Returns true when the request was answered. A write is refused: the phase-1 board
  * is read-only, and writes keep going through a session's own page.
  */
@@ -48,5 +49,5 @@ export async function handleRepoRequest(
 		}
 		return handleReportsRequest(req, url, repo.root, reply);
 	}
-	return false;
+	return handleDocsRequest(req, url, repo.root, reply);
 }

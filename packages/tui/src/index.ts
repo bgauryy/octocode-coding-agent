@@ -52,7 +52,7 @@ export {
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";
-export type { EditorOptions, EditorTheme } from "./components/editor/types.ts";
+export type { EditorBorderDecorator, EditorOptions, EditorTheme } from "./components/editor/types.ts";
 export { Editor } from "./components/editor.ts";
 export { HStack } from "./components/h-stack.ts";
 export {
@@ -119,6 +119,7 @@ export {
 	detectMultiplexer,
 	hasTmuxSession,
 	type MultiplexerId,
+	paneTarget,
 	resetMultiplexerCache,
 	type TmuxExecOptions,
 	tmuxClientTermFeatures,
@@ -193,6 +194,7 @@ export {
 	type OverlayUnfocusOptions,
 	renderFakeCursor,
 	computeRenderDelayMs,
+	type RenderErrorListener,
 	type RenderPacingOptions,
 	type RenderPacingStats,
 	type SizeValue,

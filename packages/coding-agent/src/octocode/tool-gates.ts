@@ -74,7 +74,7 @@ export function registerToolGates(
 				permissionGate({
 					permission,
 					provenance,
-					network: (toolName, input) => browserMcpRequest(toolName, input),
+					network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
 					replacement: {
 						definition: (name) => api.getAllTools().find((tool) => tool.name === name),
 						refresh: (ctx) => sourcePolicy.refresh(ctx),

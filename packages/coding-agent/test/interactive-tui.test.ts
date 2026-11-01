@@ -107,7 +107,7 @@ describe("createInteractiveTui", () => {
 			await terminal.waitForRender();
 			terminal.sendInput("\x1b[<64;1;1M");
 			await terminal.waitForRender();
-			expect(terminal.getViewport()[3]).toContain("↓ Jump to latest message · Ctrl+J");
+			expect(terminal.getViewport()[3]).toContain("↓ Jump to latest message · ctrl+j");
 		} finally {
 			ui.stop();
 			setKeybindings(previousKeybindings);

@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as importedModule1 from "../../src/octocode/shared/process.ts";
-import * as treeModule from "../../src/utils/process-tree.ts";
 
 const spawn = vi.fn();
 vi.mock("node:child_process", () => ({ spawn: (...args: unknown[]) => spawn(...args) }));
@@ -13,7 +11,11 @@ vi.mock("../../src/utils/windows/winhelper.ts", () => ({
 		start: () => tree.start(),
 	},
 }));
-const { killTree, stopTree } = await Promise.resolve(importedModule1);
+// The setup file already loaded these modules (through the MCP host ports); reload them under the mocks above.
+vi.resetModules();
+const importedModule1 = await import("../../src/octocode/shared/process.ts");
+const treeModule = await import("../../src/utils/process-tree.ts");
+const { killTree, stopTree } = importedModule1;
 const { adoptTree, prepareTree, signalTree } = await Promise.resolve(treeModule);
 
 const platform = Object.getOwnPropertyDescriptor(process, "platform")!;

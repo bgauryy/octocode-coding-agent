@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { resolvePath } from "../../../common/src/paths.ts";
+import { worktreeRecoveryHint } from "./worktree-path.ts";
 
 export interface SessionCwdIssue {
 	sessionFile?: string;
@@ -35,11 +36,13 @@ export function getMissingSessionCwdIssue(
 
 function formatMissingSessionCwdError(issue: SessionCwdIssue): string {
 	const sessionFile = issue.sessionFile ? `\nSession file: ${issue.sessionFile}` : "";
-	return `Stored session working directory does not exist: ${issue.sessionCwd}${sessionFile}\nCurrent working directory: ${issue.fallbackCwd}`;
+	const hint = worktreeRecoveryHint(issue.sessionCwd);
+	return `Stored session working directory does not exist: ${issue.sessionCwd}${sessionFile}\nCurrent working directory: ${issue.fallbackCwd}${hint ? `\n${hint}` : ""}`;
 }
 
 export function formatMissingSessionCwdPrompt(issue: SessionCwdIssue): string {
-	return `cwd from session file does not exist\n${issue.sessionCwd}\n\ncontinue in current cwd\n${issue.fallbackCwd}`;
+	const hint = worktreeRecoveryHint(issue.sessionCwd);
+	return `cwd from session file does not exist\n${issue.sessionCwd}\n\n${hint ? `${hint}\n\n` : ""}continue in current cwd\n${issue.fallbackCwd}`;
 }
 
 export class MissingSessionCwdError extends Error {
@@ -52,10 +55,10 @@ export class MissingSessionCwdError extends Error {
 	}
 }
 
-/** The folder a new session runs in: `requested` (an existing directory, resolved) or else `current`. */
+/** The folder a new session runs in: `requested` (an existing directory; a relative one resolves against `current`) or else `current`. */
 export function resolveSessionCwd(current: string, requested: string | undefined): string {
 	if (requested === undefined) return current;
-	const cwd = resolvePath(requested);
+	const cwd = resolvePath(requested, current);
 	if (!existsSync(cwd) || !statSync(cwd).isDirectory()) throw new Error(`Working directory is not a folder: ${cwd}`);
 	return cwd;
 }

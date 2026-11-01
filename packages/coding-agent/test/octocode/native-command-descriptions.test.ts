@@ -57,12 +57,12 @@ it("gives every native and bundled extension command a short description with it
 		const hints = new Map(commands.map((command) => [command.name, command.argumentHint]));
 		expect(hints.get("permissions")).toContain("grants");
 		expect(hints.get("plan")).toContain("--approve <revision>");
-		expect(hints.get("resume")).toBe("[all|<query>]");
+		expect(hints.get("resume")).toBe("[all] [<query>|B<n>]");
 		expect(hints.get("archive")).toBe("[<n>]");
 		expect(hints.get("trust")).toBe("[off]");
 		expect(hints.get("modelsettings")).toBe("[check]");
 		expect(hints.get("backlog")).toContain("add <title>");
-		expect(session.extensionRunner.getCommand("resume")?.argumentHint).toBe("[all|<query>]");
+		expect(session.extensionRunner.getCommand("resume")?.argumentHint).toBe("[all] [<query>|B<n>]");
 	} finally {
 		await session.dispose();
 	}

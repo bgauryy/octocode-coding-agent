@@ -10,6 +10,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
 import { formatKeyText, keyHint } from "../keybinding-hints.ts";
+import { plainText } from "../styled-line.ts";
 import type { TreeList } from "./tree-list.ts";
 
 /** Component that displays the current search query */
@@ -146,8 +147,9 @@ export class LabelInput implements Component, Focusable {
 	constructor(entryId: string, currentLabel: string | undefined) {
 		this.entryId = entryId;
 		this.input = new Input();
+		// A stored label is untrusted text (a session file or an extension wrote it): edit it as the list shows it.
 		if (currentLabel) {
-			this.input.setValue(currentLabel);
+			this.input.setValue(plainText(currentLabel));
 		}
 	}
 

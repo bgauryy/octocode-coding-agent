@@ -119,8 +119,14 @@ describe("bash result rows", () => {
 		expect(collapsed).toContain("exit 1 · 3000 lines");
 		expect(collapsed).not.toMatch(HEADER);
 		expect(collapsed).not.toContain("[exit");
-		const expanded = text(renderBashResult(result, { expanded: true, isPartial: false }, theme, { isError: true }));
+		// Wide enough that a long temporary directory does not wrap the path onto a row of its own.
+		const expanded = text(
+			renderBashResult(result, { expanded: true, isPartial: false }, theme, { isError: true }),
+			400,
+		);
+		const spill = (result.details as { fullOutputPath?: string }).fullOutputPath!;
 		expect(expanded).toContain("saved: ");
+		expect(expanded).toContain(spill.slice(spill.lastIndexOf("octocode-bash-")));
 		expect(expanded).toContain("1501: error: boom in the middle");
 	});
 });

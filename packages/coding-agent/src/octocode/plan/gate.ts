@@ -3,7 +3,7 @@ import { NATIVE_FEATURE_PATH } from "../../core/native-tools.ts";
 import { LOCAL_RESEARCH_TOOLS, OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
 import type { McpServerStatus } from "../../../../mcp/src/status.ts";
 
-const reads = new Set(["archive", "askUser", "skill", "web", "graphQuery"]);
+const reads = new Set(["archive", "askUser", "skill", "web"]);
 
 /**
  * Decides whether a shell command only reads. The permission layer depends on planning, so the host injects the

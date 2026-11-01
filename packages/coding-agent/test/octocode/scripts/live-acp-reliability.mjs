@@ -90,6 +90,7 @@ const { createFauxCore, fauxAssistantMessage, fauxToolCall } = await import("@oc
 const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } =
 	await import("@octocodeai/octocodecode");
 const { ApiClient } = await import(path.join(packageRoot, "src/octocode/api/client.ts"));
+const { AGENT_FIELD_RENAMES } = await import(path.join(packageRoot, "src/octocode/shared/agent-call.ts"));
 const { apiDir, listInstances } = await import(path.join(packageRoot, "src/octocode/api/registry.ts"));
 const { redactData } = await import(path.join(packageRoot, "../common/src/sanitize.ts"));
 const { descendantPids, groupMembers, stopTree, processMatch } = await import(
@@ -187,13 +188,24 @@ function budget(vendor, phase, text) {
 function failure(error) {
 	return { error: error.message ?? String(error), ...error.data };
 }
+/** The external mode's own arguments (as the API CLI takes them) under the flat `agent` call's field names. */
+function externalFields(input) {
+	const publicName = Object.fromEntries(
+		Object.entries(AGENT_FIELD_RENAMES.external).map(([field, own]) => [own, field]),
+	);
+	return Object.fromEntries(Object.entries(input).map(([key, value]) => [publicName[key] ?? key, value]));
+}
 async function toolBatch(inputs) {
 	const ids = inputs.map(() => randomUUID());
 	const start = events.length;
 	faux.setResponses([
 		fauxAssistantMessage(
 			inputs.map((input, i) =>
-				fauxToolCall("agent", { type: "external", input, reason: "Verify isolated ACP lifecycle" }, { id: ids[i] }),
+				fauxToolCall(
+					"agent",
+					{ type: "external", ...externalFields(input), reason: "Verify isolated ACP lifecycle" },
+					{ id: ids[i] },
+				),
 			),
 			{ stopReason: "toolUse" },
 		),

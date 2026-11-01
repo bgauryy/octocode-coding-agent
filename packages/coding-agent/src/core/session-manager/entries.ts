@@ -1,6 +1,7 @@
 import { uuidv7 } from "@octocodeai/octocode-ai";
 import { randomUUID } from "crypto";
 import { join } from "path";
+import { jsonlLines, parseJsonlLine } from "../../../../common/src/jsonl.ts";
 import { CURRENT_SESSION_VERSION, type CompactionEntry, type FileEntry, type SessionHeader } from "./types.ts";
 
 export function createSessionId(): string {
@@ -37,6 +38,7 @@ function migrateV1ToV2(entries: FileEntry[]): void {
 		}
 
 		entry.id = generateId(ids);
+		ids.add(entry.id);
 		entry.parentId = prevId;
 		prevId = entry.id;
 
@@ -96,22 +98,15 @@ export function migrateSessionEntries(entries: FileEntry[]): void {
 /** Exported for compaction.test.ts */
 export function parseSessionEntries(content: string): FileEntry[] {
 	const entries: FileEntry[] = [];
-	for (const line of content.trim().split("\n")) {
-		const entry = parseSessionEntryLine(line);
-		if (entry) entries.push(entry);
-	}
+	// A malformed line is skipped: a torn write must not make the rest of the session unreadable.
+	for (const line of jsonlLines(content)) if (line.ok && line.value) entries.push(line.value as FileEntry);
 	return entries;
 }
 
 /** One session-file line as an entry, or null for a blank or malformed line (a torn write is skipped, not fatal). */
 export function parseSessionEntryLine(line: string): FileEntry | null {
-	if (!line.trim()) return null;
-	try {
-		return JSON.parse(line) as FileEntry;
-	} catch {
-		// Skip malformed lines
-		return null;
-	}
+	const parsed = parseJsonlLine(line);
+	return parsed?.ok ? (parsed.value as FileEntry | null) : null;
 }
 
 /** Build a current-version session header. */

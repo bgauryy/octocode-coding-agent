@@ -1,8 +1,9 @@
 import * as os from "node:os";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { hasTmuxSession } from "@octocodeai/octocode-tui";
+import { hasTmuxSession } from "@octocodeai/octocode-tui/multiplexer";
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@octocodeai/octocode-ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
+import { redactData, redactSecrets } from "../../../common/src/sanitize.ts";
 import { VERSION } from "../config.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
 import { writeZipArchive } from "../utils/zip.ts";
@@ -253,24 +254,29 @@ interface BugReportFile {
 	data: string;
 }
 
-/** Files shared by upload and zip export. */
+/**
+ * Files shared by upload and zip export. Credential-looking spans are redacted in every file, as in the /debug log: the
+ * hint, provider errors, crash records, transcript and summary can all quote a key.
+ */
 export function bugReportFiles(bundle: BugReportBundle): BugReportFile[] {
+	const json = (value: unknown) => `${JSON.stringify(redactData(value), null, 2)}\n`;
 	const files: BugReportFile[] = [
-		{ name: "report.json", contentType: "application/json", data: `${JSON.stringify(bundle.metadata, null, 2)}\n` },
-		{
-			name: "diagnostics.json",
-			contentType: "application/json",
-			data: `${JSON.stringify(bundle.diagnostics, null, 2)}\n`,
-		},
+		{ name: "report.json", contentType: "application/json", data: json(bundle.metadata) },
+		{ name: "diagnostics.json", contentType: "application/json", data: json(bundle.diagnostics) },
 	];
 	if (bundle.sessionJsonl !== undefined) {
-		files.push({ name: "session.jsonl", contentType: "application/x-ndjson", data: bundle.sessionJsonl });
+		files.push({
+			name: "session.jsonl",
+			contentType: "application/x-ndjson",
+			data: redactSecrets(bundle.sessionJsonl),
+		});
 	}
 	if (bundle.summary !== undefined) {
+		const summary = redactSecrets(bundle.summary);
 		files.push({
 			name: "summary.md",
 			contentType: "text/markdown",
-			data: bundle.summary.endsWith("\n") ? bundle.summary : `${bundle.summary}\n`,
+			data: summary.endsWith("\n") ? summary : `${summary}\n`,
 		});
 	}
 	return files;

@@ -27,11 +27,12 @@ import { staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
-import { pruneNotice } from "./prune-notice.ts";
+import { startNotices } from "./start-notices.ts";
 import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import { agentToolSpec } from "./agent-tool.ts";
-import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask } from "./children.ts";
+import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
+import { reportNotes } from "./child-tasks.ts";
 import { itemLink } from "./item-link.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { runForeground, startBackground } from "./run-execution.ts";
@@ -54,6 +55,8 @@ export interface AgentControl {
 	 * `reason`: the shutdown's (`reload`, `quit`…), named in the reports of the runs it stopped.
 	 */
 	stopAll(reason?: string): Promise<void>;
+	/** Follow-up windows any session holds open for finished children (they live in session folders, not in memory). */
+	parked: typeof Lingering.parkedChildren;
 	/** `/agents`: list agents, tell, kill, merge; `index.ts` registers it and its `/agents` shortcut. */
 	command: Subcommand;
 }
@@ -218,9 +221,9 @@ export function registerAgentTool(
 			void sweepScratch(root);
 			return undefined;
 		});
-		void pruneNotice(ctx)
-			.then((note) => {
-				if (note && ctx.hasUI) notify(ctx.ui, note.text, note.level);
+		void startNotices(event, ctx)
+			.then((notes) => {
+				for (const note of notes) if (ctx.hasUI) notify(ctx.ui, note.text, note.level);
 			})
 			// The session may have been replaced meanwhile (/new, /resume): its ctx then throws, and nobody is left to tell.
 			.catch(() => undefined);
@@ -284,7 +287,7 @@ export function registerAgentTool(
 				const finish = (outcome?: SubagentOutcome) =>
 					(finalized ??= isolation
 						.finish()
-						.then((note) => `${note}${linked?.attach(outcome, run.identity.id, isolation.ref) ?? ""}`)
+						.then((note) => `${note}${reportNotes(ctx, linked, outcome, run.identity.id, isolation.ref)}`)
 						.finally(run.release));
 				let handedOff = false;
 				// From the claim on, every failure goes through `finish`: the slot and the name are given back.
@@ -313,13 +316,10 @@ export function registerAgentTool(
 					const onSpawn = worktree ? (pid: number) => recordWorktreePid(worktree, pid) : undefined;
 					const library = existingLibrary();
 					const browserMode = run.profile?.headless;
-					const skillText = skillPlan.inTask && !resumed ? taskSkillText(skillResources, skillPlan.inline) : "";
-					const contractTask = childTaskInput(params.task, { referenced, browserMode, skillText, resultContract });
-					const own = withIdentity(
-						resumed ? `Follow-up from your parent:\n${contractTask}` : contractTask,
-						run.identity,
-						library ? { library } : undefined,
-					);
+					const told = resumeText(resumed, params.task);
+					const skillText = skillPlan.inTask && !told.prefix ? taskSkillText(skillResources, skillPlan.inline) : "";
+					const contractTask = childTaskInput(told.text, { referenced, browserMode, skillText, resultContract });
+					const own = withIdentity(`${told.prefix}${contractTask}`, run.identity, library ? { library } : undefined);
 					const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
 					const session = resumed?.session ?? childSession(run.identity);
 					const details = runDetails(run, session);
@@ -391,6 +391,7 @@ export function registerAgentTool(
 		background: () => background.size,
 		running: () => [...runs.foreground.keys(), ...background.keys()],
 		stopAll,
+		parked: Lingering.parkedChildren,
 		command: agentsCommand(team, background, runs.foreground, questions),
 	};
 }

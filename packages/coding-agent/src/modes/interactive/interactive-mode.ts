@@ -1,3 +1,4 @@
+import "./mcp-ui-install.ts";
 /**
  * Interactive mode for the coding agent.
  * Handles TUI rendering and user interaction, delegating execution to the application port.

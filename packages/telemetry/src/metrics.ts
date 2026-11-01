@@ -1,52 +1,10 @@
+import type { TelemetryContext, TelemetryMetrics } from "./context.ts";
 import type {
 	ExactTelemetryAttributes,
 	InferRequiredAndOptionalAttributes,
-	SpanAttributes,
-	TelemetryContext,
+	TelemetryMetricDefinition,
 	TelemetrySchemaDefinition,
-	TelemetryStartAttributeDefinition,
-} from "./index.ts";
-
-export interface InstrumentOptions {
-	description?: string;
-	unit?: string;
-}
-
-export interface HistogramOptions extends InstrumentOptions {
-	/** Bucket hints; callers supply finite, strictly increasing values. */
-	boundaries?: readonly number[];
-}
-
-export interface TelemetryCounter {
-	add(value: number, attributes?: SpanAttributes): void;
-}
-
-export interface TelemetryUpDownCounter {
-	add(value: number, attributes?: SpanAttributes): void;
-}
-
-export interface TelemetryHistogram {
-	record(value: number, attributes?: SpanAttributes, context?: TelemetryContext): void;
-}
-
-/**
- * Optional adapter capability with synchronous factories and recording methods.
- * Typed inputs are trusted; callers supply finite measurements and nonnegative counter increments.
- * Malformed input behavior is unspecified.
- */
-export interface TelemetryMetrics {
-	counter(name: string, options?: InstrumentOptions): TelemetryCounter;
-	upDownCounter(name: string, options?: InstrumentOptions): TelemetryUpDownCounter;
-	histogram(name: string, options?: HistogramOptions): TelemetryHistogram;
-}
-
-export type TelemetryMetricAttributeDefinition = TelemetryStartAttributeDefinition & { cardinality?: "low" };
-
-export type TelemetryMetricDefinition = {
-	description: string;
-	unit?: string;
-	attributes: Record<string, TelemetryMetricAttributeDefinition>;
-} & ({ kind: "counter" | "upDownCounter"; boundaries?: never } | { kind: "histogram"; boundaries?: readonly number[] });
+} from "./schema.ts";
 
 type MetricKind = TelemetryMetricDefinition["kind"];
 type MetricSchemas = readonly [TelemetrySchemaDefinition, ...TelemetrySchemaDefinition[]];

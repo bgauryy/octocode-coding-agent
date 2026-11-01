@@ -1,3 +1,11 @@
+/**
+ * A frozen lookup table without a prototype. Commands come from model output, so `\constructor` or `\toString` must
+ * find nothing rather than an `Object.prototype` member.
+ */
+export function lookupTable(entries: Record<string, string>): Readonly<Record<string, string>> {
+	return Object.freeze(Object.assign(Object.create(null) as Record<string, string>, entries));
+}
+
 export const NAMED_OPERATORS = new Set([
 	"arccos",
 	"arcsin",
@@ -157,7 +165,7 @@ export const RELATION_COMMANDS = new Set([
 	"vdash",
 ]);
 
-export const NEGATED_SYMBOLS: Readonly<Record<string, string>> = {
+export const NEGATED_SYMBOLS: Readonly<Record<string, string>> = lookupTable({
 	"<": "≮",
 	">": "≯",
 	"=": "≠",
@@ -188,9 +196,9 @@ export const NEGATED_SYMBOLS: Readonly<Record<string, string>> = {
 	"⇔": "⇎",
 	"≼": "⋠",
 	"≽": "⋡",
-};
+});
 
-export const BLACKBOARD: Readonly<Record<string, string>> = {
+export const BLACKBOARD: Readonly<Record<string, string>> = lookupTable({
 	C: "ℂ",
 	H: "ℍ",
 	N: "ℕ",
@@ -198,9 +206,9 @@ export const BLACKBOARD: Readonly<Record<string, string>> = {
 	Q: "ℚ",
 	R: "ℝ",
 	Z: "ℤ",
-};
+});
 
-export const SUPERSCRIPTS: Readonly<Record<string, string>> = {
+export const SUPERSCRIPTS: Readonly<Record<string, string>> = lookupTable({
 	"0": "⁰",
 	"1": "¹",
 	"2": "²",
@@ -241,9 +249,9 @@ export const SUPERSCRIPTS: Readonly<Record<string, string>> = {
 	x: "ˣ",
 	y: "ʸ",
 	z: "ᶻ",
-};
+});
 
-export const SUBSCRIPTS: Readonly<Record<string, string>> = {
+export const SUBSCRIPTS: Readonly<Record<string, string>> = lookupTable({
 	"0": "₀",
 	"1": "₁",
 	"2": "₂",
@@ -276,7 +284,7 @@ export const SUBSCRIPTS: Readonly<Record<string, string>> = {
 	u: "ᵤ",
 	v: "ᵥ",
 	x: "ₓ",
-};
+});
 
 export const SPACING_COMMANDS = new Set([
 	",",
@@ -349,7 +357,7 @@ export const PLAIN_WRAPPERS = new Set([
 	"bm",
 	"boldsymbol",
 ]);
-export const ACCENTS: Readonly<Record<string, string>> = {
+export const ACCENTS: Readonly<Record<string, string>> = lookupTable({
 	acute: "\u0301",
 	bar: "\u0305",
 	breve: "\u0306",
@@ -368,4 +376,4 @@ export const ACCENTS: Readonly<Record<string, string>> = {
 	vec: "\u20d7",
 	widehat: "\u0302",
 	widetilde: "\u0303",
-};
+});

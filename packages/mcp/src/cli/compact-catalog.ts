@@ -26,7 +26,6 @@ function serverInput(server: string, instructions: string | undefined, tools: Co
 	};
 }
 
-
 function toolInput(value: unknown): CompactToolInput {
 	if (!isRecord(value) || typeof value.name !== "string" || !value.name) throw new Error("every tool needs a name");
 	const inputSchema = value.inputSchema ?? value.parameters ?? { type: "object" };

@@ -291,7 +291,7 @@ describe("memory injection selection", () => {
 		expect(injection.ids).toEqual([pinned.id, strong.id]);
 		expect(injection.content.split("\n")[0]).toBe(MEMORY_HEADER);
 		expect(injection.content).toContain(
-			`M${strong.id} (project, fact) (agent-written) Checkpoint rewind flow — "Rewind restores`,
+			`M${strong.id} (project, fact, 0d) (agent-written) Checkpoint rewind flow — "Rewind restores`,
 		);
 	});
 
@@ -392,16 +392,16 @@ describe("memory tool", () => {
 			keywords: "compile bundle",
 			kind: "procedure",
 		});
-		expect(text(saved)).toMatch(/^Saved M1 \(project, procedure\) Build with yarn/);
+		expect(text(saved)).toMatch(/^Saved M1 \(project, procedure, 0d\) Build with yarn/);
 		expect(text(await run(tool, { op: "search", query: "compile" }))).toContain(
-			"M1 (project, procedure) Build with yarn",
+			"M1 (project, procedure, 0d) Build with yarn",
 		);
 		expect(text(await run(tool, { op: "search", query: "nothing here" }))).toBe("No memory matches.");
 		expect(text(await run(tool, { op: "get", id: "M1" }))).toContain("keywords: compile bundle");
 		expect(text(await run(tool, { op: "list" }))).toContain("M1");
 		expect(
 			text(await run(tool, { op: "set", id: "M1", pinned: true }, ctxFor({ selects: ["Allow once"] }).ctx)),
-		).toMatch(/^Updated M1 \(project, procedure, pinned\)/);
+		).toMatch(/^Updated M1 \(project, procedure, pinned, 0d\)/);
 		await run(tool, { op: "set", title: "Second memory", scope: "global" }, ctxFor({ selects: ["Allow once"] }).ctx);
 		expect(text(await run(tool, { op: "list", limit: 1 }))).toContain("1 more; search, or raise limit");
 		expect(text(await run(tool, { op: "delete", id: "m1" }, ctxFor({ selects: ["Allow once"] }).ctx))).toMatch(
@@ -456,25 +456,59 @@ describe("memory tool", () => {
 		);
 		await expect(run(tool, { op: "set", id: "M2", body: "changed" }, untrusted())).rejects.toThrow(/untrusted project/);
 		await expect(run(tool, { op: "delete", id: "M2" }, untrusted())).rejects.toThrow(/untrusted project/);
-		expect(text(await run(tool, { op: "set", title: "Plain project note" }, untrusted()))).toMatch(
-			/^Saved M4 \(project[\s\S]*hides project memories from reads until the user \/trusts it/,
+		// A plain project save is no write-only row: the same project reads it back, with one line about injection.
+		const saved = text(await run(tool, { op: "set", title: "Plain project note" }, untrusted()));
+		expect(saved).toMatch(/^Saved M4 \(project[\s\S]*not auto-injected until the user runs \/trust/);
+		expect(saved).not.toMatch(/hidden|hides/);
+	});
+
+	it("reads, updates and deletes project memories in an untrusted project; only injection waits for trust", async () => {
+		const { tool } = setup();
+		expect(text(await run(tool, { op: "set", title: "Project one", body: "first note" }))).toMatch(/^Saved M1/);
+		const allow = ctxFor({ selects: ["Allow once"] }).ctx;
+		expect(text(await run(tool, { op: "set", title: "Global one", scope: "global" }, allow))).toMatch(
+			/^Saved M2 \(global/,
 		);
-		// Hidden project memories: changing them by id, or colliding with one, reveals nothing about them.
-		for (const params of [
-			{ op: "set", id: "M3", body: "x" },
-			{ op: "delete", id: "M3" },
-		])
-			await expect(run(tool, params, untrusted())).rejects.toThrow(/^No memory M3 here/);
-		await expect(run(tool, { op: "set", title: "Project one" }, untrusted())).rejects.toThrow(
-			/^A similar project memory \(M3\) exists, hidden[^"]*$/,
-		);
-		// Reads match auto-injection: only global memories, with a note why.
+		// A trusted project adds no note.
+		expect(text(await run(tool, { op: "list" }))).not.toMatch(/untrusted/);
+		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
+		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
+		const untrusted = () => ctxFor({ trusted: false }).ctx;
+		const note = /untrusted project: project memories are not auto-injected until the user runs \/trust/;
 		const listed = text(await run(tool, { op: "list" }, untrusted()));
+		expect(listed).toContain("M1");
 		expect(listed).toContain("M2");
-		expect(listed).not.toContain("M3");
-		expect(listed).toMatch(/untrusted project: project memories are hidden/);
-		expect(text(await run(tool, { op: "search", query: "project one" }, untrusted()))).not.toContain("M3");
-		await expect(run(tool, { op: "get", id: "M3" }, untrusted())).rejects.toThrow(/No memory M3/);
+		expect(listed).toMatch(note);
+		expect(text(await run(tool, { op: "search", query: "project one" }, untrusted()))).toContain("M1");
+		expect(text(await run(tool, { op: "get", id: "M1" }, untrusted()))).toContain("first note");
+		expect(text(await run(tool, { op: "set", id: "M1", body: "corrected" }, untrusted()))).toMatch(/^Updated M1/);
+		expect(text(await run(tool, { op: "get", id: "M1" }, untrusted()))).toContain("corrected");
+		// A duplicate is named with the call that updates it, as in a trusted project.
+		await expect(run(tool, { op: "set", title: "Project one" }, untrusted())).rejects.toThrow(
+			/Similar memory M1 exists.*id:"M1"/,
+		);
+		expect(text(await run(tool, { op: "delete", id: "M1" }, untrusted()))).toMatch(/^Deleted M1/);
+		// What is missing says so without blaming trust.
+		await expect(run(tool, { op: "get", id: "M1" }, untrusted())).rejects.toThrow(/^No memory M1 here/);
+	});
+
+	it("counts a tool get and the hits of a search as use, but not a list", async () => {
+		const { tool } = setup();
+		const store = memoryStore(cwd);
+		const used = add(store, { title: "Rewind keeps checkpoints", body: "per session" });
+		const unrelated = add(store, { title: "Parser rules", body: "strict" });
+		await run(tool, { op: "list" });
+		expect(store.get(used.id)?.useCount).toBe(0);
+		await run(tool, { op: "search", query: "checkpoints" });
+		expect(store.get(used.id)?.useCount).toBe(1);
+		expect(store.get(unrelated.id)?.useCount).toBe(0);
+		await run(tool, { op: "get", id: "M2" });
+		expect(store.get(unrelated.id)).toMatchObject({ useCount: 1 });
+		expect(store.get(unrelated.id)?.lastUsed).not.toBeNull();
+		// A search with no hit, or a get of a missing memory, marks nothing.
+		await run(tool, { op: "search", query: "zzzunmatched" });
+		await expect(run(tool, { op: "get", id: "M9" })).rejects.toThrow(/No memory M9/);
+		expect(store.get(used.id)?.useCount).toBe(1);
 	});
 
 	it("is read-only in a subagent", async () => {
@@ -483,7 +517,9 @@ describe("memory tool", () => {
 		// The description is the same for every role (it leads the cached prefix); the limit is in the guideline and the refusal.
 		expect(tool.description).toBe(setup(false).tool.description);
 		expect(tool.description).not.toMatch(/subagent|parent/i);
-		expect(tool.promptSnippet).toBe("Search and read durable notes from earlier sessions");
+		// The trigger line is the same for every role and names no role.
+		expect(tool.promptSnippet).toBe(setup(false).tool.promptSnippet);
+		expect(tool.promptSnippet).not.toMatch(/subagent|parent|save/i);
 		expect(tool.promptGuidelines.join(" ")).toMatch(/^Memory is read-only here/);
 		expect(tool.promptGuidelines.join(" ")).not.toMatch(/Prefer updating/);
 		await expect(run(tool, { op: "set", title: "x" })).rejects.toThrow(/read-only in a subagent/);
@@ -491,17 +527,17 @@ describe("memory tool", () => {
 		expect(subcommands.get("memory")).toBeUndefined();
 	});
 
-	it("keeps its prompt lean: at most 2 short guidelines (1 in a subagent), every field described", () => {
+	it("keeps its prompt lean: at most 4 short guidelines (1 in a subagent), every field described", () => {
 		for (const [subagent, max] of [
-			[false, 2],
+			[false, 4],
 			[true, 1],
 		] as const) {
 			const { tool } = setup(subagent);
 			expect(tool.promptGuidelines.length).toBeLessThanOrEqual(max);
 			for (const line of tool.promptGuidelines as string[]) expect(line.length, line).toBeLessThanOrEqual(230);
 			expect([tool.description, ...tool.promptGuidelines].join(" ")).not.toMatch(/ {2}/);
-			// A memory read by search (not only the injected header) may be stale: the guideline says to verify it.
-			expect(tool.promptGuidelines.join(" ")).toMatch(/may be stale; verify it against the code/);
+			// A memory read by search (not only the injected header) may be stale: the guideline says to check it.
+			expect(tool.promptGuidelines.join(" ")).toMatch(/may be stale: check a file, function or flag it names/);
 			expect(MEMORY_HEADER).toMatch(/may be stale/);
 			for (const [name, schema] of Object.entries(
 				tool.parameters.properties as Record<string, { description?: string }>,
@@ -587,7 +623,7 @@ describe("memory lines the model reads", () => {
 
 	it("ends a saved line whose body is cut with the same call, and shows a deleted memory whole: it can no longer be read", async () => {
 		const tool = setup();
-		expect(text(await run(tool, { op: "set", title: "Gadgets", body: long }))).toMatch(
+		expect(text(await run(tool, { op: "set", title: "Gadgets", body: long })).split("\n")[0]).toMatch(
 			new RegExp(`… \\(${pointer}\\)$`),
 		);
 		expect(text(await run(tool, { op: "set", id: "M1", title: "Gadgets", body: "now short" }))).toMatch(

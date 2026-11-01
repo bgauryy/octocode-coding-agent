@@ -69,7 +69,11 @@ export class EditorModel implements EditorAutocompleteHost {
 	snappedFromCursorCol: number | null = null;
 
 	// Undo support
-	undoStack = new UndoStack<EditorSnapshot>();
+	undoStack = new UndoStack<EditorSnapshot>((snapshot) => ({
+		state: { ...snapshot.state, lines: [...snapshot.state.lines] },
+		pastes: new Map(snapshot.pastes),
+		pasteCounter: snapshot.pasteCounter,
+	}));
 
 	// Autocomplete support
 	readonly autocomplete: EditorAutocomplete;

@@ -335,9 +335,11 @@ export const GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS = new Set([
 
 // Checked manually against the authenticated GitHub Copilot /models endpoint on 2026-06-15.
 // Keep this to narrow corrections over models.dev metadata instead of snapshotting Copilot's catalog.
-export const GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES = {
+export const GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES: Readonly<
+	Record<string, NonNullable<Model<Api>["thinkingLevelMap"]> | undefined>
+> = {
 	"claude-opus-4.7": { minimal: "low" },
 	"claude-opus-4.8": { minimal: "low" },
 	"claude-opus-5": { minimal: "low" },
 	"claude-sonnet-4.6": { minimal: "low", max: "max" },
-} satisfies Record<string, NonNullable<Model<Api>["thinkingLevelMap"]>>;
+};

@@ -1,4 +1,4 @@
-import { renderContractSections } from "../../../mcp/src/section.ts";
+import { renderMcpsSection } from "../../../mcp/src/section.ts";
 import { getCurrentSystemPrompt, getSystemMessageText, type SystemMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,15 +17,16 @@ describe("native prompt section updates", () => {
 		canDelegate: true,
 		profiles: [{ name: "researcher", description: "Investigate a question." }],
 	};
-	const contracts = (instructions: string) =>
-		renderContractSections([
+	const contracts = (instructions: string) => ({
+		mcps: renderMcpsSection([
 			{
 				entry: { name: "octocode", source: "default", config: { command: "test" } },
 				state: "connected",
 				instructions,
 				declared: true,
 			},
-		]);
+		])!,
+	});
 	const sections = (value = input, instructions = "Search and read.") =>
 		buildSystemPromptSections({
 			cwd: "/workspace",
@@ -58,13 +59,13 @@ describe("native prompt section updates", () => {
 		const patch = diffSystemPromptSections(previous, current)!;
 		expect(patch.octocode).toBeNull();
 		expect(current.octocode_mcp).toBeUndefined();
-		expect(diffSystemPromptSections(sections(), current)?.mcp_contract_octocode).toBeNull();
+		expect(diffSystemPromptSections(sections(), current)?.mcps).toBeNull();
 	});
 
 	it("keeps server-provided headings opaque within the server section", () => {
 		const text = "# Safety\nServer capability guidance.\n# Work and verification\nMore guidance.";
 		const current = sections(input, text);
-		for (const line of text.split("\n")) expect(current.mcp_contract_octocode).toContain(line);
+		for (const line of text.split("\n")) expect(current.mcps).toContain(line);
 		expect(current.octocode_safety).not.toContain("Server capability");
 		expect(current.octocode_work).not.toContain("More guidance");
 	});
@@ -105,11 +106,12 @@ describe("native prompt section updates", () => {
 		expect(root).toContain("propose wider cleanups.");
 		expect(writer).toContain("within your assigned area; report anything outside it instead of changing it");
 		expect(reader).not.toContain("blast radius");
-		// Mermaid kinds the terminal renderer draws; only the main session answers the user.
-		expect(root).toContain("add a small Mermaid block (`flowchart TD`, `sequenceDiagram` or `stateDiagram-v2`)");
+		// Plain-text visuals the terminal shows as written (user request: no Mermaid); only the main session answers the user.
+		expect(root).toContain("draw it in plain text: a box-and-arrow sketch");
+		expect(root).toContain("do not use Mermaid.");
 		expect(root).toContain("Leave nothing open: finish or revert partial edits");
 		for (const prompt of [writer, reader]) {
-			expect(prompt).not.toContain("Mermaid");
+			expect(prompt).not.toContain("draw it in plain text");
 			expect(prompt).not.toContain("Leave nothing open");
 		}
 	});

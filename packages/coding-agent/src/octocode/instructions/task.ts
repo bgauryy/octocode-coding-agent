@@ -3,21 +3,19 @@ import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
 import { shortPath } from "../shared/format.ts";
 import { rebasePath } from "../shared/prompt-root.ts";
 import { reportContract } from "./report.ts";
+import { renderInstruction } from "../../core/prompt-template.ts";
 
-/** The task a collaborating subagent receives: its own task plus who else is on the team (`name`: `role: goal`) and how to reach them. */
+/** The task a collaborating subagent receives: its own task plus who else is on the team (`name`: `role: goal`) and how to reach them (`subagent/team.md`). */
 export function teamTask(task: string, parentId: string, others: Array<[string, string]>): string {
-	const list =
-		others.length > 0
-			? others.map(([id, line]) => `- \`${id}\`: ${line}`).join("\n")
-			: "- none yet; `agent` type `coordinate`, `input.action` = `list` shows teammates that start later.";
-	return `${task}\n\n## Teammates\nYou collaborate with the other subagents that ${parentId} started for the same goal. Running now:\n${list}\nTo pass on a teammate's message, forward it instead of retyping it.`;
+	const teammates = others.map(([id, line]) => `- \`${id}\`: ${line}`).join("\n");
+	return `${task}\n\n${renderInstruction("subagent/team.md", { parentId, teammates })}`;
 }
 
 /**
- * The facts only this child has, and the report contract (`report.ts`). They ride in its task, not its system prompt,
- * so every child of one profile shares a cached prompt prefix. `archive` is the library of the parent's compacted
- * history (`shared/archive.ts`), given only when the parent has one; the child reads it with the `archive` tool,
- * nothing may change it.
+ * The facts only this child has, and the report contract (`report.ts`), rendered from `subagent/identity.md`. They ride
+ * in its task, not its system prompt, so every child of one profile shares a cached prompt prefix. `archive` is the
+ * library of the parent's compacted history (`shared/archive.ts`), given only when the parent has one; the child reads
+ * it with the `archive` tool, nothing may change it.
  */
 export function withIdentity(
 	task: string,
@@ -33,22 +31,28 @@ export function withIdentity(
 	},
 	archive?: { library: string },
 ): string {
-	const parent = identity.parentId ? `\`${identity.parentId}\`` : "another agent";
-	const scratch = identity.scratch ? `\`${shortPath(identity.scratch)}\`` : "`.octocode/tmp/` in the repository";
-	const role = identity.role ? ` (${identity.role})` : "";
-	const goal = identity.goal ? ` Your goal: ${identity.goal}.` : "";
-	const item = identity.item
-		? ` Your backlog item is \`${identity.item}\`: note progress on it and close it when its goal is verified; you may update no other item.`
-		: "";
-	return `${task}${worktreeNote(identity.isolation)}\n\n## You\nYour name is \`${identity.id}\`${role}.${goal} You work for ${parent}. Your scratch folder, for handoff files and a long report, is ${scratch}.${item}${archive ? `\nEarlier history of your parent session, compacted out of its context, is archived in ${path.dirname(archive.library)} (read-only; ${LIBRARY_FILE} indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}` : ""}\n\n## Report\n${reportContract()}`;
+	const you = renderInstruction("subagent/identity.md", {
+		id: identity.id,
+		role: identity.role,
+		goal: identity.goal,
+		parentId: identity.parentId,
+		scratch: identity.scratch ? shortPath(identity.scratch) : undefined,
+		item: identity.item,
+		archive: Boolean(archive),
+		archiveDir: archive ? path.dirname(archive.library) : undefined,
+		libraryFile: LIBRARY_FILE,
+		archiveSearch: archive ? archiveSearch() : undefined,
+		report: reportContract(),
+	});
+	return `${task}${worktreeNote(identity.isolation)}\n\n${you}`;
 }
 
 /**
- * The worktree an isolated child works in. Its system prompt shows the main checkout's paths, which are the same for
- * every child, so the real location rides in the task. Files under the main checkout are not its copy.
+ * The worktree an isolated child works in (`subagent/worktree.md`). Its system prompt shows the main checkout's paths,
+ * which are the same for every child, so the real location rides in the task.
  */
 function worktreeNote(isolation: { path: string; repo: string; cwd: string } | undefined): string {
 	if (!isolation) return "";
 	const shown = rebasePath(isolation.cwd, { worktree: isolation.path, root: isolation.repo });
-	return `\n\n## Worktree\nYou work in the isolated git worktree \`${isolation.cwd}\` (your working directory). The working directory and project instruction paths in your system prompt name the main checkout \`${shown}\`; read and change files under \`${isolation.cwd}\` instead, not under the main checkout.`;
+	return `\n\n${renderInstruction("subagent/worktree.md", { cwd: isolation.cwd, shown })}`;
 }

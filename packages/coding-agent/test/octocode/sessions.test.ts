@@ -4,7 +4,10 @@ import path from "node:path";
 import * as importedModule1 from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type SessionInfo, SessionManager } from "../../src/core/session-manager.ts";
+import type { SessionPickerOptions } from "../../src/core/session-picker.ts";
+import { agents } from "../../src/octocode/agentdb/api.ts";
 import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { resumeBrief, shortDuration } from "../../src/octocode/sessions/brief.ts";
 import { RESUME_MESSAGE_TYPE, RUNNING_WORK_TYPE, registerSessions } from "../../src/octocode/sessions/register.ts";
 import * as sessionStore from "../../src/octocode/sessions/store.ts";
@@ -369,6 +372,23 @@ describe("running work after compaction", () => {
 		expect(message.content).not.toMatch(/old\.log|bash-1 |…|more/);
 	});
 
+	it("lists this session's open tasks, so a compaction never loses them", async () => {
+		const host = setup({ id: "sess-t", entries: [] });
+		await host.start();
+		const user = { id: "user", kind: "human" as const };
+		const { tasks } = new BacklogStore(() => sharedAgentDb(), repoKey(cwd).key);
+		tasks.add({ goal: "check the footer counts", session: "sess-t" }, user);
+		const finished = tasks.add({ goal: "already finished", session: "sess-t" }, user);
+		tasks.update(finished.ref, { state: "done" }, user);
+		await host.fire("session_compact", { type: "session_compact" }, host.ctx);
+		expect(host.sent).toHaveLength(1);
+		const { content } = host.sent[0].message;
+		expect(content).toMatch(
+			/^\[After compaction\] Open steps of this session: 1 of the session \([^\n]*`steps list`[^\n]*\n- [^\n]*check the footer counts/,
+		);
+		expect(content).not.toContain("already finished");
+	});
+
 	it("ends the brief with the latest user request, capped, and sends it with nothing else to say", async () => {
 		const long = `Ship the reorient brief ${"r".repeat(500)}`;
 		const entries: Entry[] = [
@@ -690,7 +710,7 @@ describe("resume brief", () => {
 	});
 });
 
-describe("/octocode sessions", () => {
+describe("/resume", () => {
 	const info = (id: string, fields: Partial<SessionInfo> = {}): SessionInfo => ({
 		path: path.join(cwd, `${id}.jsonl`),
 		id,
@@ -763,58 +783,194 @@ describe("/octocode sessions", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/Octocode could not list its sessions: disk gone/);
 	});
 
-	it("resumes, shows, renames and forgets a picked session", async () => {
+	/** The picked session and the picker's options, as the interactive host would hand them over. */
+	interface PickerCall {
+		options: SessionPickerOptions;
+		listed: SessionInfo[];
+	}
+	/** A stand-in for the interactive picker: `choose` sees the options and the listed sessions and returns the pick. */
+	function stubPicker(
+		ctx: ReturnType<typeof setup>["ctx"],
+		choose: (call: PickerCall) => Promise<SessionInfo | undefined>,
+	): PickerCall[] {
+		const calls: PickerCall[] = [];
+		Object.assign(ctx.ui, {
+			pickSession: async (options: SessionPickerOptions) => {
+				const call = { options, listed: await SessionManager.list(ctx.cwd) };
+				calls.push(call);
+				return choose(call);
+			},
+		});
+		return calls;
+	}
+	/** Pick `id`, or run the menu action `label` for it (the host runs it after the picker has closed). */
+	const pickOrAct =
+		(id: string, label?: string) =>
+		async ({ options, listed }: PickerCall) => {
+			const session = listed.find((each) => each.id === id)!;
+			if (!label) return session;
+			await options.actions!.find((action) => action.label === label)!.run(session);
+			return undefined;
+		};
+
+	it("resumes, shows and forgets a picked session through the picker", async () => {
 		const { current, other } = await withSessions();
 		const ctx = current.ctx;
 		const handler = current.commands.get("resume")!.handler;
-		const pick = async (index: number, action: string) => {
-			const lines: string[][] = [];
-			Object.assign(ctx.ui, {
-				select: async (_title: string, options: string[]) => {
-					lines.push(options);
-					return lines.length === 1 ? options[index] : action;
-				},
-			});
-			await handler("", ctx);
-			return lines[0];
-		};
 
-		await pick(1, "Resume");
+		const calls = stubPicker(ctx, pickOrAct("other"));
+		await handler("", ctx);
 		expect(current.switched).toEqual([other.path]);
-		await pick(0, "Resume");
+		expect(calls[0].options).toMatchObject({ initialScope: "current", initialQuery: "" });
+		expect(calls[0].options.actions!.map((action) => action.label)).toEqual(["Details", "Forget Octocode data"]);
+		expect(calls[0].options.extras!(["other"]).get("other")).toMatchObject({ branch: "feat/x", files: 2 });
+
+		stubPicker(ctx, pickOrAct("cur"));
+		await handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/current session/);
 
-		await pick(1, "Details");
+		stubPicker(ctx, pickOrAct("other", "Details"));
+		await handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/id: other[\s\S]*file: .*other\.jsonl[\s\S]*live: no/);
 
-		// Octocode can only rename the session it has open.
-		const actionsOf = async (index: number) => {
-			const seen: string[][] = [];
-			Object.assign(ctx.ui, {
-				select: async (_title: string, options: string[]) => {
-					seen.push(options);
-					return seen.length === 1 ? options[index] : undefined;
-				},
-			});
-			await handler("", ctx);
-			return seen[1];
-		};
-		expect(await actionsOf(1)).toEqual(["Resume", "Details", "Forget Octocode data"]);
-		expect(await actionsOf(0)).toContain("Rename");
-		ctx.ui.inputs.push("  Now \u001b[1mnamed ");
-		await pick(0, "Rename");
-		expect(current.names).toEqual(["Now named"]);
-
-		await pick(0, "Forget Octocode data");
+		stubPicker(ctx, pickOrAct("cur", "Forget Octocode data"));
+		await handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/cannot be forgotten/);
 		fs.mkdirSync(path.join(sessionDir("other"), "output"), { recursive: true });
+		stubPicker(ctx, pickOrAct("other", "Forget Octocode data"));
 		ctx.ui.confirms.push(false);
-		await pick(1, "Forget Octocode data");
+		await handler("", ctx);
 		expect(row("other")).toBeDefined();
 		ctx.ui.confirms.push(true);
-		await pick(1, "Forget Octocode data");
+		await handler("", ctx);
 		expect(row("other")).toBeUndefined();
 		expect(fs.existsSync(sessionDir("other"))).toBe(false);
+	});
+
+	it("lists the picker's quick rows from a custom --session-dir in both scopes, as its full listings do", async () => {
+		const current = setup({ id: "cur" });
+		await current.start();
+		// The session manager's folder (the folder of `cur.jsonl`) is not this directory's default folder.
+		const custom = current.ctx.sessionManager.getSessionDir();
+		const saved = SessionManager.create(cwd, custom);
+		saved.appendMessage({ role: "user", content: "kept in the custom folder", timestamp: Date.now() });
+		saved.appendMessage({
+			role: "assistant",
+			content: [{ type: "text", text: "ok" }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "m",
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			timestamp: Date.now(),
+		});
+		const calls = stubPicker(current.ctx, async () => undefined);
+		await current.commands.get("resume")!.handler("", current.ctx);
+		const signal = new AbortController().signal;
+		for (const scope of ["current", "all"] as const) {
+			const quick = await calls[0].options.quickList!(scope, signal);
+			expect(quick.map((info) => info.id)).toEqual([saved.getSessionId()]);
+		}
+	});
+
+	/** Items B1 (done by "other") and B2 (ongoing for "other"), and the team agent "inky-kraken" running "other". */
+	function linkOther() {
+		const store = new BacklogStore(() => sharedAgentDb(), repoKey(cwd).key);
+		const item = { why: "Users need this", goal: "Result can be checked", createdBy: "user" };
+		const actor = { id: "other", kind: "agent" as const };
+		const finished = store.add({ title: "finished", ...item });
+		store.update(finished.ref, { state: "ongoing" }, actor);
+		store.update(
+			finished.ref,
+			{
+				state: "done",
+				completion: {
+					summary: "Done",
+					files: [],
+					verification: { status: "not_applicable", summary: "none" },
+					operationKey: "k1",
+				},
+			},
+			actor,
+		);
+		store.update(store.add({ title: "held", ...item }).ref, { state: "ongoing" }, actor);
+		agents.insert(sharedAgentDb().db, "team", cwd, {
+			id: "inky-kraken",
+			role: "main",
+			pid: process.pid,
+			status: "idle",
+			sessionId: "other",
+			joinedAt: 1,
+			updatedAt: 1,
+			toolCalls: 0,
+			input: 0,
+			cacheRead: 0,
+			output: 0,
+			cost: 0,
+			unpriced: false,
+		});
+	}
+
+	it("shows held items and the agent name in the picker's extras, and lists only the sessions that held B<n> for /resume B<n>", async () => {
+		const { current } = await withSessions();
+		linkOther();
+		const ctx = current.ctx;
+		const handler = current.commands.get("resume")!.handler;
+		const calls = stubPicker(ctx, async () => undefined);
+		await handler("B1", ctx);
+		await handler("all b1", ctx);
+		await handler("old", ctx);
+		expect(
+			calls.map(({ options }) => [options.initialScope, options.initialQuery, [...(options.onlySessions ?? [])]]),
+		).toEqual([
+			["current", "", ["other"]],
+			["all", "", ["other"]],
+			["current", "old", []],
+		]);
+		// The done claim is not a chip; the ongoing one is. An agent shows by its row's session_id only.
+		const extras = calls[0].options.extras!(["other", "cur", "elsewhere"]);
+		expect(extras.get("other")).toMatchObject({ items: ["B2"], agent: "inky-kraken", branch: "feat/x" });
+		expect(extras.get("cur")).not.toHaveProperty("items");
+		expect(extras.get("cur")).not.toHaveProperty("agent");
+
+		stubPicker(ctx, async () => undefined);
+		await handler("B77", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toBe("No session has held B77. Try /resume all.");
+	});
+
+	it("lists the sessions of B<n> as text without a UI, with the item and agent on the line", async () => {
+		const { current } = await withSessions();
+		linkOther();
+		const ctx = Object.assign(current.ctx, { hasUI: false });
+		const handler = current.commands.get("resume")!.handler;
+		await handler("B1", ctx);
+		const text = ctx.ui.notes.at(-1)!.message;
+		expect(text).toMatch(/○ Old task · feat\/x · 2h ago · .* · B2 · inky-kraken · 4 messages · other/);
+		expect(text).not.toMatch(/Current work/);
+		await handler("all B1", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/Old task/);
+		expect(ctx.ui.notes.at(-1)!.message).not.toMatch(/Far away/);
+		await handler("B77", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/No session has held B77/);
+	});
+
+	it("opens the picker on the All scope or with the query it was given", async () => {
+		const { current } = await withSessions();
+		const ctx = current.ctx;
+		const calls = stubPicker(ctx, async () => undefined);
+		await current.commands.get("resume")!.handler("all", ctx);
+		await current.commands.get("resume")!.handler("old task", ctx);
+		expect(calls.map(({ options }) => [options.initialScope, options.initialQuery])).toEqual([
+			["all", ""],
+			["current", "old task"],
+		]);
 	});
 
 	it.each(["..", ".", ""])(
@@ -829,13 +985,7 @@ describe("/octocode sessions", () => {
 			fs.mkdirSync(path.dirname(inside), { recursive: true });
 			fs.writeFileSync(inside, "x");
 			fs.writeFileSync(outside, "x");
-			const lines: string[][] = [];
-			Object.assign(ctx.ui, {
-				select: async (_title: string, options: string[]) => {
-					lines.push(options);
-					return lines.length === 1 ? options.find((line) => line.includes("Odd id")) : "Forget Octocode data";
-				},
-			});
+			stubPicker(ctx, pickOrAct(bad, "Forget Octocode data"));
 			ctx.ui.confirms.push(true);
 			await current.commands.get("resume")!.handler("", ctx);
 			expect(ctx.ui.notes.at(-1)!.message).toMatch(/Refusing to forget "Odd id"/);
@@ -848,10 +998,7 @@ describe("/octocode sessions", () => {
 		const { current } = await withSessions();
 		const ctx = current.ctx;
 		sharedAgentDb().db.prepare("UPDATE sessions SET pid = ? WHERE id = 'other'").run(process.pid);
-		let calls = 0;
-		Object.assign(ctx.ui, {
-			select: async (_title: string, options: string[]) => (calls++ === 0 ? options[1] : "Resume"),
-		});
+		stubPicker(ctx, pickOrAct("other"));
 		ctx.ui.confirms.push(false);
 		await current.commands.get("resume")!.handler("", ctx);
 		expect(current.switched).toEqual([]);
@@ -865,26 +1012,24 @@ describe("/octocode sessions", () => {
 			info("two-abcdef", { firstMessage: "Same", modified: at }),
 		);
 		const ctx = current.ctx;
-		let lines: string[] = [];
-		for (const [index, id] of [
-			[2, "one-abcdef"],
-			[3, "two-abcdef"],
-		] as const) {
-			let calls = 0;
-			Object.assign(ctx.ui, {
-				select: async (_title: string, options: string[]) => {
-					if (calls++ === 0) {
-						lines = options;
-						return options[index];
-					}
-					return "Details";
-				},
-			});
+		for (const id of ["one-abcdef", "two-abcdef"]) {
+			stubPicker(ctx, pickOrAct(id, "Details"));
 			await current.commands.get("resume")!.handler("", ctx);
 			expect(ctx.ui.notes.at(-1)!.message).toContain(`id: ${id}`);
 		}
-		expect(new Set(lines).size).toBe(lines.length);
-		expect(lines[3]).toMatch(/ · abcdef #2$/);
+	});
+
+	it("refuses to forget a session another live process has open", async () => {
+		const { current } = await withSessions();
+		sharedAgentDb().db.prepare("UPDATE sessions SET pid = ? WHERE id = 'other'").run(process.ppid);
+		const ctx = current.ctx;
+		stubPicker(ctx, pickOrAct("other", "Forget Octocode data"));
+		ctx.ui.confirms.push(true);
+		await current.commands.get("resume")!.handler("", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(
+			new RegExp(`open in another Octocode process \\(pid ${process.ppid}\\)`),
+		);
+		expect(row("other")).toBeDefined();
 	});
 
 	it("titles a fork without a prompt by its parent's first message", async () => {
@@ -893,22 +1038,6 @@ describe("/octocode sessions", () => {
 		const ctx = Object.assign(current.ctx, { hasUI: false });
 		await current.commands.get("resume")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/↳ Old task · .*\n\s+fork/);
-	});
-
-	it("refuses to forget a session another live process has open", async () => {
-		const { current } = await withSessions();
-		sharedAgentDb().db.prepare("UPDATE sessions SET pid = ? WHERE id = 'other'").run(process.ppid);
-		const ctx = current.ctx;
-		let calls = 0;
-		Object.assign(ctx.ui, {
-			select: async (_title: string, options: string[]) => (calls++ === 0 ? options[1] : "Forget Octocode data"),
-		});
-		ctx.ui.confirms.push(true);
-		await current.commands.get("resume")!.handler("", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(
-			new RegExp(`open in another Octocode process \\(pid ${process.ppid}\\)`),
-		);
-		expect(row("other")).toBeDefined();
 	});
 
 	it("prints the list to stderr without a UI (print and JSON modes, where notify is a no-op)", async () => {

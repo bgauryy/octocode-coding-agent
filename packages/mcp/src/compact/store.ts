@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { getContextOptimizationDir } from "../../../coding-agent/src/config.ts";
-import { contextOptimizationDirs } from "../../../coding-agent/src/octocode/shared/home.ts";
+import { hostPaths } from "../host.ts";
 import type { GeneratedMeta } from "./types.ts";
 
 /**
@@ -10,11 +9,11 @@ import type { GeneratedMeta } from "./types.ts";
  * `mcp-generated/`, moves there the first time, so its stored overrides keep applying.
  */
 export function generatedDir(agentDir: string): string {
-	const dir = join(getContextOptimizationDir(agentDir), "mcp");
+	const dir = join(hostPaths().contextOptimizationDir(agentDir), "mcp");
 	const legacy = join(agentDir, "mcp-generated");
 	if (!existsSync(dir) && existsSync(legacy)) {
 		try {
-			mkdirSync(getContextOptimizationDir(agentDir), { recursive: true });
+			mkdirSync(hostPaths().contextOptimizationDir(agentDir), { recursive: true });
 			renameSync(legacy, dir);
 		} catch {
 			// Another process moved it first, or the move is not allowed; the files are rendered again when missing.
@@ -29,7 +28,7 @@ export function generatedDir(agentDir: string): string {
  * server keep separate files and overrides.
  */
 export function serverGeneratedDir(agentDir: string, cwd: string, scope: string | undefined): string {
-	const project = scope === "project" ? contextOptimizationDirs(cwd, agentDir).project : undefined;
+	const project = scope === "project" ? hostPaths().contextOptimizationDirs(cwd, agentDir).project : undefined;
 	return project ? join(project.dir, "mcp") : generatedDir(agentDir);
 }
 

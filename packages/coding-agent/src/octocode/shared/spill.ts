@@ -4,10 +4,12 @@ import { formatSize, truncateHead, truncateTail } from "../../core/tools/index.t
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { shortPath } from "./format.ts";
-import { PRIVATE_FILE_MODE, sessionOutputDir } from "./home.ts";
-import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES, TEXT_MAX_CHARS } from "./output-budget.ts";
-import { capOutput, cutText, trimmedCounts } from "./util.ts";
+import { sessionOutputDir } from "./home.ts";
+import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES, TEXT_MAX_CHARS } from "../../utils/output-budget.ts";
+import { capOutput, trimmedCounts } from "./util.ts";
 import { type ImageLimits, imageLimits } from "@octocodeai/octocode-ai/utils/vision";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { cutText } from "../../../../common/src/text.ts";
 
 /**
  * The limit `capResultText` applies, for callers that bound other text by it. Hosted workspaces (`packages/mcp`) take it

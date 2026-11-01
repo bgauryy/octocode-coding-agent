@@ -1,7 +1,14 @@
-import type { SessionExtra } from "../agentdb/queries/sessions.ts";
-export type { SessionExtra };
-import type { AgentDb } from "../agentdb/db.ts";
-import { meta, sessions } from "../agentdb/api.ts";
+export type { CatalogEntry, CatalogRow, SessionExtra, SessionLinks };
+import {
+	type AgentDb,
+	type CatalogEntry,
+	type CatalogRow,
+	meta,
+	type SessionExtra,
+	type SessionLinks,
+	sessionLinks,
+	sessions,
+} from "../agentdb/api.ts";
 import { git } from "../shared/git.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
@@ -87,6 +94,16 @@ export class SessionIndex {
 		return rows;
 	}
 
+	/** What the database links to each of the given sessions: the `ongoing` backlog items it holds and the team agent it runs as. */
+	links(ids: readonly string[]): Map<string, SessionLinks> {
+		return sessionLinks.linksOf(this.agent.db, ids);
+	}
+
+	/** Ids of the sessions that held or hold item `B<seq>` (of repository `repo`, or of any without it). */
+	heldItem(seq: number, repo?: string): Set<string> {
+		return new Set(sessionLinks.heldItem(this.agent.db, seq, repo));
+	}
+
 	/** This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded. */
 	start(id: string, dir?: string): void {
 		sessions.start(this.agent.db, id, process.pid, processStartTime(process.pid) ?? null, dir ?? null);
@@ -113,6 +130,21 @@ export class SessionIndex {
 	/** The session's process has ended: it is no longer live. */
 	end(id: string): void {
 		sessions.clearPid(this.agent.db, id, process.pid);
+	}
+
+	/** The catalog rows (sessions with a recorded file), those of sessions that ran in `scope.cwd` when given. */
+	catalog(scope: { cwd?: string } = {}): CatalogRow[] {
+		return sessions.catalog(this.agent.db, scope.cwd);
+	}
+
+	/** Records what the transcript of session `id` says (its name, first prompt, size and times) for a quick listing. */
+	saveCatalog(id: string, entry: CatalogEntry): void {
+		sessions.saveCatalog(this.agent.db, id, entry);
+	}
+
+	/** Records session `id`'s new name (undefined clears it) and the file's modification time after the name was written. */
+	saveTitle(id: string, title: string | undefined, source: string | undefined, fileMtime: number | null): void {
+		sessions.saveTitle(this.agent.db, id, title ?? null, title ? (source ?? "user") : null, fileMtime);
 	}
 
 	all(): SessionExtra[] {

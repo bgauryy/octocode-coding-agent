@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type InstalledAcpAgent, installedAcpAgents } from "../../src/octocode/external/discover.ts";
 import { describeExternal } from "../../src/octocode/external/describe.ts";
 import { ExternalAgents, type ExternalFactories } from "../../src/octocode/external/manager.ts";
-import { type ExternalBackend, parseExternalParams } from "../../src/octocode/external/protocol.ts";
+import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
+import { parseExternalParams } from "../../src/octocode/external/protocol.ts";
 import { fakeCtx } from "./fake-host.ts";
 
 const roots: string[] = [];

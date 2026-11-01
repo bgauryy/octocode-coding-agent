@@ -27,7 +27,7 @@ function setup(
 		tool.execute("call", params as never, signal, undefined, ctx(hasUI));
 	const text = async (params: Record<string, unknown>, hasUI = true) =>
 		((await run(params, hasUI)).content[0] as { text: string }).text;
-	return { operations, run, text, confirm };
+	return { operations, run, text, confirm, tool };
 }
 
 describe("mcp tool", () => {
@@ -274,5 +274,16 @@ describe("mcp tool", () => {
 		expect(operations.stop).toHaveBeenCalledWith("docs");
 		vi.mocked(operations.remove).mockResolvedValueOnce("comes from configuration");
 		await expect(run({ intent: "remove", server: "docs" })).rejects.toThrow("comes from configuration");
+	});
+});
+
+describe("mcp tool contract", () => {
+	it("says which intents need a server, and names the field when one is missing", async () => {
+		const { run, tool } = setup();
+		const properties = tool.parameters.properties as unknown as Record<string, { description: string }>;
+		expect(properties.server.description).toBe("Server name; required for every intent except list");
+		for (const intent of ["status", "tools", "restart", "connect", "stop"])
+			await expect(run({ intent })).rejects.toThrow(/Name the server in the server field[^]*Servers: docs\./);
+		await expect(run({ intent: "list" })).resolves.toBeDefined();
 	});
 });

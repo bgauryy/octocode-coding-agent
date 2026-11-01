@@ -1,8 +1,8 @@
 import { fenceUntrusted, headerText } from "../../shared/fence.ts";
 import { USER_SENDER } from "../../shared/messages.ts";
-import { cutText } from "../../shared/util.ts";
 import { MESSAGE_MAX_CHARS } from "../routing.ts";
 import { saveMessageFile } from "../spill.ts";
+import { cutText } from "../../../../../common/src/text.ts";
 
 /**
  * What goes to the readers of a message: `text` when it fits `MESSAGE_MAX_CHARS`; a longer one is saved whole to a

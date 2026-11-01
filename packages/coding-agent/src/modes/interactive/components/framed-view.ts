@@ -36,7 +36,9 @@ export function renderClipped(content: Component, width: number): string[] {
 
 /**
  * Shows the view `create` builds and runs `run` with it until it returns; an error is reported as a notification.
- * The view closes when `run` settles.
+ * The view closes when `run` settles. When something else takes its slot first (a dialog, a selector, a session reset),
+ * the view's `dispose()` runs and this returns while `run` may still wait on the view: a view that waits for input
+ * must settle that wait and drop its subscriptions in `dispose()`.
  */
 export async function runInView<V extends Component>(
 	ctx: ExtensionCommandContext,

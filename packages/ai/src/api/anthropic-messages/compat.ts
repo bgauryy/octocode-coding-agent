@@ -3,7 +3,7 @@ import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
 import { isOpenRouterModel } from "../../utils/provider-host.ts";
 
-export function getCacheControl(
+function getCacheControl(
 	model: Model<"anthropic-messages">,
 	cacheRetention?: CacheRetention,
 	env?: ProviderEnv,

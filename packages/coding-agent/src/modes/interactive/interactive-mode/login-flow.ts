@@ -2,7 +2,8 @@
  * Provider management (/login) and credential removal (/logout).
  */
 
-import { showProviderManager, removeProviderCredential, type ProviderManagerHost } from "./provider-manager.ts";
+import { showProviderManager, removeProviderCredential } from "./provider-manager.ts";
+import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { type AuthSelectorProvider, OAuthSelectorComponent } from "../components/oauth-selector.ts";
 
 export function getLoginProviderOptions(

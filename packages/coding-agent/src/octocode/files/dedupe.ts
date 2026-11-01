@@ -4,7 +4,7 @@ import { BranchIndex } from "../shared/branch-index.ts";
 import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
 import { OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contextMessages, plainText, sessionCleared } from "./reads.ts";
 
 /**
@@ -119,7 +119,7 @@ export function registerReadDedupe(api: ExtensionAPI): void {
 				continue;
 			return {
 				content: [{ type: "text" as const, text: unchangedNote(event.toolName, event.input) }],
-				details: { ...(isRecord(event.details) ? event.details : {}), unchangedOf: id },
+				details: { ...asRecord(event.details), unchangedOf: id },
 			};
 		}
 		return undefined;

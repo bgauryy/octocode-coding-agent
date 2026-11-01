@@ -1,8 +1,9 @@
 import type { ToolCallEvent, ToolResultEvent } from "../../core/extensions/index.ts";
-import { browserMcpUrls } from "../shared/browser-mcp.ts";
+import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 import { secretProblem } from "../../../../common/src/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
@@ -11,6 +12,7 @@ import { runsLater } from "./file-access.ts";
 import { KeyTable } from "./key-table.ts";
 import { commandNames, SHELL_TOOLS } from "./shell.ts";
 import { atoms, capBytes, decoded, normalize, RUN, shingles, tokens, URL_PATTERN } from "./provenance/keys.ts";
+import { outsideShellRead } from "./provenance/shell-reads.ts";
 
 /**
  * Files that run when invoked: scripts by extension, anything under a `bin/` or `scripts/` folder, files make, just and
@@ -27,6 +29,7 @@ const SHELL_HINT = "; to save quoted material, write it as data with the `file` 
  * whose arguments repeat them is flagged. `untrusted` output (web, browser, MCP, network commands) reaching a
  * consequential argument (a shell command, file content, an MCP call, a memory) and `private` output (reads
  * outside the workspace, secret-looking lines) reaching an egress argument (a URL, a network command) are hits.
+ * Workspace reads, by Octocode's local readers and searches as by the legacy `read` and `grep`, are trusted.
  *
  * It is substring matching, so paraphrase, encoding or splitting across calls defeat it by design: a tripwire, not
  * a sandbox. The index holds 53-bit hashes only, never the text, lives in memory per session and is never written.
@@ -36,6 +39,9 @@ const MAX_SHINGLES = 200_000;
 const MAX_BYTES_PER_RESULT = 256 * 1024;
 /** Sources (labels and times) kept; a shingle whose source was pruned no longer hits. */
 const MAX_SOURCES = 4096;
+/** Cursors of local-tool pages kept with their origin; the oldest is dropped first. */
+const MAX_CURSORS = 1024;
+const CURSOR = /"cursor"\s*:\s*"([^"]+)"/g;
 
 const NETWORK = new Set([
 	"curl",
@@ -100,6 +106,9 @@ function leaves(value: unknown, out: string[] = []): string[] {
 const isNetworkCommand = (command: string): boolean =>
 	commandNames(command).some((name) => NETWORK.has(name.toLowerCase()));
 
+/** Octocode's local readers and searches, the native `read` and `grep`: known by the host's own names, not server hints. */
+const LOCAL_TOOLS = new Set(LOCAL_RESEARCH_TOOLS);
+
 class Provenance {
 	/** Hash → its slot in the ring below. */
 	private readonly index: KeyTable;
@@ -108,6 +117,8 @@ class Provenance {
 	private ids: Int32Array | undefined;
 	private head = 0;
 	private readonly sources = new Map<number, Source>();
+	/** A local tool's cursor → the origin of the page that returned it (null: trusted), so the next page inherits it. */
+	private readonly cursors = new Map<string, { kind: Kind; label: string } | null>();
 	private nextSource = 1;
 	private readonly workspaceRoot: (cwd: string) => string | undefined;
 	private readonly maxShingles: number;
@@ -127,6 +138,12 @@ class Provenance {
 		const text = capBytes(contentText(event.content), this.maxBytes);
 		if (!text) return;
 		const origin = this.origin(event, ctx.cwd);
+		if (LOCAL_TOOLS.has(event.toolName))
+			for (const [, cursor] of text.matchAll(CURSOR)) {
+				this.cursors.delete(cursor);
+				this.cursors.set(cursor, origin ?? null);
+				if (this.cursors.size > MAX_CURSORS) this.cursors.delete(this.cursors.keys().next().value!);
+			}
 		if (origin?.kind === "untrusted") {
 			// The source's own address was chosen before its content was read.
 			for (const key of atoms(origin.label)) this.remember(key, 0, false);
@@ -173,6 +190,7 @@ class Provenance {
 	clear(): void {
 		this.index.clear();
 		this.sources.clear();
+		this.cursors.clear();
 		this.keys = undefined;
 		this.ids = undefined;
 		this.head = 0;
@@ -200,14 +218,35 @@ class Provenance {
 		const { toolName, input } = event;
 		if (toolName === "web")
 			return { kind: "untrusted", label: `web ${str(input.url) ?? `search "${str(input.query) ?? ""}"`}` };
-		if (toolName === "browser")
-			return { kind: "untrusted", label: `browser ${str(input.url) ?? str(input.action) ?? ""}`.trim() };
 		if (toolName === "externalAgent" && input.action === "prompt")
 			return { kind: "untrusted", label: `externalAgent ${str(input.id) ?? ""}`.trim() };
+		// The native readers and searches, classified as `read` and `grep` were: a batch reaching any path outside the
+		// workspace is private, a batch whose every query names a workspace path is trusted. Every path a query names counts
+		// (`path` and an LSP `workspaceRoot`). A cursor page has the origin of the page that returned its cursor; a query
+		// naming no path, or a cursor this session did not see, leaves the result an ordinary MCP one.
+		if (LOCAL_TOOLS.has(toolName)) {
+			const cursor = str(input.cursor);
+			const inherited = cursor === undefined ? undefined : this.cursors.get(cursor);
+			if (inherited !== undefined) return inherited ?? undefined;
+			const queries: unknown[] = Array.isArray(input.queries) ? input.queries : [];
+			const named = queries.map((query) =>
+				(isRecord(query) ? [str(query.path), str(query.workspaceRoot)] : [])
+					.filter((file): file is string => file !== undefined)
+					.map((file) => resolveToolPath(cwd, file)),
+			);
+			const outside = named.flat().find((file) => !this.inWorkspace(file, cwd));
+			if (outside !== undefined) return { kind: "private", label: `${toolName} ${tildePath(outside)}` };
+			if (named.length > 0 && named.every((files) => files.length > 0)) return undefined;
+		}
 		if (isMcpToolName(toolName)) return { kind: "untrusted", label: toolName };
 		if (SHELL_TOOLS.has(toolName)) {
 			const command = str(input.command) ?? "";
-			if (!isNetworkCommand(command)) return undefined;
+			if (!isNetworkCommand(command)) {
+				// A command that reads a file outside the workspace is private, like the native read of it.
+				const shell = toolName === "powershell" || input.type === "powershell" ? "powershell" : "bash";
+				const outside = outsideShellRead(command, cwd, (file) => this.inWorkspace(file, cwd), shell);
+				return outside === undefined ? undefined : { kind: "private", label: `${toolName} ${tildePath(outside)}` };
+			}
 			const name = commandNames(command).find((program) => NETWORK.has(program.toLowerCase()));
 			const url = command.match(URL_PATTERN)?.[0];
 			return { kind: "untrusted", label: [toolName, name, url].filter(Boolean).join(" ") };
@@ -219,10 +258,12 @@ class Provenance {
 					? resolveToolPath(cwd, str(input.path) ?? ".")
 					: undefined;
 		if (!target) return undefined;
+		return this.inWorkspace(target, cwd) ? undefined : { kind: "private", label: `${toolName} ${tildePath(target)}` };
+	}
+
+	private inWorkspace(target: string, cwd: string): boolean {
 		const root = this.workspaceRoot(cwd);
-		return root !== undefined && isWithin(canonicalPath(target), canonicalPath(root))
-			? undefined
-			: { kind: "private", label: `${toolName} ${tildePath(target)}` };
+		return root !== undefined && isWithin(canonicalPath(target), canonicalPath(root));
 	}
 
 	/**
@@ -260,7 +301,6 @@ class Provenance {
 		const url = str(input.url);
 		if (toolName === "externalAgent" && input.action === "prompt") return [str(input.text) ?? ""];
 		if (toolName === "web") return [url, str(input.query)].filter((value): value is string => value !== undefined);
-		if (toolName === "browser" && url && (input.action === "navigate" || input.action === "tab")) return [url];
 		const opened = browserMcpUrls(toolName, input);
 		if (opened.length > 0) return opened;
 		const command = SHELL_TOOLS.has(toolName) ? str(input.command) : undefined;

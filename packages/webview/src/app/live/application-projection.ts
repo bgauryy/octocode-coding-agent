@@ -27,6 +27,12 @@ export class ApplicationProjection {
 	private readonly tools = new Map<string, FeedEvent>();
 	private readonly errors = new Map<string, FeedEvent>();
 	private readonly activities = new Map<string, FeedEvent>();
+	/**
+	 * The source objects each message and tool row was built from. The stream replaces only the message or tool an event
+	 * changed, so a row whose sources are the same objects is reused without rebuilding or serializing it: the work per
+	 * streamed frame follows the changed row, not the transcript.
+	 */
+	private readonly sources = new WeakMap<FeedEvent, readonly unknown[]>();
 	private nextId = -1;
 
 	update(snapshot: ApplicationSnapshot | undefined, at: number): FeedEvent[] {
@@ -44,20 +50,27 @@ export class ApplicationProjection {
 			this.answered = false;
 		}
 		const availableTools = snapshot?.tools ?? [];
+		const toolIds = new Set(availableTools.map((tool) => tool.toolCallId));
 		const linked = new Set<string>();
 		const messages = new Map<string, FeedEvent>();
 		for (const message of snapshot?.messages ?? []) {
 			if (message.display === false || (message.role === "custom" && message.display !== true)) continue;
-			if (message.role === "toolResult" && availableTools.some((tool) => tool.toolCallId === message.toolCallId))
+			if (message.role === "toolResult" && message.toolCallId !== undefined && toolIds.has(message.toolCallId))
 				continue;
-			const text = message.content ? message.text : visibleLegacyText(message.text);
-			if (!text.trim() && !message.content?.length && !message.errorMessage && !isInterrupted(message.status)) continue;
 			const references = new Set(
 				message.content?.flatMap((block) => (block.type === "toolCall" ? [block.toolCallId] : [])) ?? [],
 			);
 			const tools = relatedTools(availableTools, references);
-			for (const tool of tools) linked.add(tool.toolCallId);
+			const sources = [snapshot?.sessionId, message, ...tools];
 			const previous = this.messages.get(message.id);
+			if (previous && sameSources(this.sources.get(previous), sources)) {
+				for (const tool of tools) linked.add(tool.toolCallId);
+				messages.set(message.id, previous);
+				continue;
+			}
+			const text = message.content ? message.text : visibleLegacyText(message.text);
+			if (!text.trim() && !message.content?.length && !message.errorMessage && !isInterrupted(message.status)) continue;
+			for (const tool of tools) linked.add(tool.toolCallId);
 			const status = message.status ?? (message.complete ? "completed" : "streaming");
 			let thoughtMs = previous?.thoughtMs;
 			if (!previous && this.run && !this.answered && message.role === "assistant") {
@@ -81,7 +94,7 @@ export class ApplicationProjection {
 					...(thoughtMs !== undefined ? { thoughtMs } : {}),
 				},
 			};
-			messages.set(message.id, unchanged(previous, next));
+			messages.set(message.id, this.remember(unchanged(previous, next), sources));
 		}
 		const tools = new Map<string, FeedEvent>();
 		for (const tool of availableTools) {
@@ -90,7 +103,12 @@ export class ApplicationProjection {
 				(item) => item.toolCallId !== tool.toolCallId,
 			);
 			const embedded =
-				linked.has(tool.toolCallId) || availableTools.some((parent) => parent.toolCallId === tool.parentToolCallId);
+				linked.has(tool.toolCallId) || (tool.parentToolCallId !== undefined && toolIds.has(tool.parentToolCallId));
+			const sources = [snapshot?.sessionId, tool, embedded, ...nested];
+			if (previous && sameSources(this.sources.get(previous), sources)) {
+				tools.set(tool.toolCallId, previous);
+				continue;
+			}
 			const next: FeedEvent = {
 				id: previous?.id ?? this.nextId--,
 				at: previous?.at ?? at,
@@ -108,7 +126,7 @@ export class ApplicationProjection {
 					...(tool.details === undefined ? {} : { result: tool.details }),
 				},
 			};
-			tools.set(tool.toolCallId, unchanged(previous, next));
+			tools.set(tool.toolCallId, this.remember(unchanged(previous, next), sources));
 		}
 		const errors = new Map<string, FeedEvent>();
 		for (const error of snapshot?.errors ?? []) {
@@ -154,6 +172,11 @@ export class ApplicationProjection {
 			.concat([...activities.values()], [...errors.values()]);
 	}
 
+	private remember(event: FeedEvent, sources: readonly unknown[]): FeedEvent {
+		this.sources.set(event, sources);
+		return event;
+	}
+
 	private replace(target: Map<string, FeedEvent>, source: Map<string, FeedEvent>): void {
 		target.clear();
 		for (const [key, value] of source) target.set(key, value);
@@ -162,6 +185,10 @@ export class ApplicationProjection {
 
 function unchanged(previous: FeedEvent | undefined, next: FeedEvent): FeedEvent {
 	return previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+}
+
+function sameSources(previous: readonly unknown[] | undefined, next: readonly unknown[]): boolean {
+	return previous?.length === next.length && previous.every((value, index) => value === next[index]);
 }
 
 function isInterrupted(status: ApplicationMessage["status"]): boolean {

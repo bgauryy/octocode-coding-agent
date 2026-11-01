@@ -13,6 +13,7 @@ import {
 	Text,
 	type TUI,
 } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { editInExternalEditor } from "../external-editor.ts";
 import { getEditorTheme, theme } from "../../../theme/theme.ts";
@@ -30,6 +31,8 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 	private tui: TUI;
 	private keybindings: KeybindingsManager;
 	private externalEditorCommand: string;
+	/** Why the external editor could not run; empty (and drawn as nothing) otherwise. */
+	private notice = new Text("", 1, 0);
 
 	private _focused = false;
 	get focused(): boolean {
@@ -97,6 +100,7 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 			keyHint("tui.select.cancel", "cancel") +
 			`  ${keyHint("app.editor.external", "external editor")}`;
 		this.addChild(new Text(hint, 1, 0));
+		this.addChild(this.notice);
 
 		this.addChild(new Spacer(1));
 
@@ -124,6 +128,7 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 
 	private async handleOpenExternalEditor(): Promise<void> {
 		const content = this.editor.getText();
+		this.notice.setText("");
 		this.tui.stop();
 		try {
 			const result = await editInExternalEditor({
@@ -132,6 +137,9 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 			});
 			if (result.status === "complete") {
 				this.editor.setText(result.content);
+			} else if (result.error) {
+				// A non-zero exit (a deliberate cancel) has no error and stays silent, as in the main editor.
+				this.notice.setText(theme.fg("error", sanitizeTerminalText(`External editor failed: ${result.error}`)));
 			}
 		} finally {
 			this.tui.start();

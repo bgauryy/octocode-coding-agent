@@ -144,7 +144,7 @@ it("sends byte-identical tools and first instruction block from different projec
 	const b = layers((await twoRequests(agentDir, home, "project-b"))[0]);
 
 	// The server's file is part of the stable block, which ends before anything project- or day-specific.
-	expect(a.firstNames).toContain("mcp_contract_echo");
+	expect(a.firstNames).toContain("mcps");
 	expect(a.toolNames).toContain("mcp__echo__shout");
 	expect(a.toolNames.some((name) => name.startsWith("mcp__browser__"))).toBe(false);
 	expect(a.boundary).toBe("project_context");

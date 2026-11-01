@@ -27,7 +27,8 @@
  * SOFTWARE.
  */
 
-import { incompleteAnsiStart, stripTerminalSequences } from "@octocodeai/octocode-tui";
+// The headless-safe subpath: the scanner imports nothing, so the SDK does not load the interactive tui package.
+import { incompleteAnsiStart, stripTerminalSequences } from "@octocodeai/octocode-tui/ansi";
 
 // Longest unfinished sequence held back while streaming. Longer ones are processed as-is.
 const MAX_PENDING_ANSI_LENGTH = 256;

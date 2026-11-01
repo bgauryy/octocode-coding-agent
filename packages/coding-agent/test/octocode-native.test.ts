@@ -34,9 +34,7 @@ describe("native Octocode runtime", () => {
 			expect(result.errors).toEqual([]);
 			const native = result.extensions.filter((extension) => extension.path === "<inline:octocode>");
 			expect(native).toHaveLength(1);
-			expect([...native[0].tools.keys()]).toEqual(
-				expect.arrayContaining(["file", "bash", "agent", "browser", "askUser"]),
-			);
+			expect([...native[0].tools.keys()]).toEqual(expect.arrayContaining(["file", "bash", "agent", "askUser"]));
 			expect(native[0].commands.has("status")).toBe(true);
 			expect(native[0].handlers.has("tool_call")).toBe(true);
 			expect(native[0].handlers.has("session_shutdown")).toBe(true);

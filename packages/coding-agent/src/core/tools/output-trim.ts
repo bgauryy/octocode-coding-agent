@@ -21,6 +21,8 @@ export function collapseCarriageReturns(text: string): string {
 
 /** Lines that usually say what went wrong: compiler and test errors, crashes, assertion output. */
 const FAILURE_LINE = /error|fail|panic|exception|traceback|fatal|assert|✗|✖|npm ERR!/i;
+/** The words of `FAILURE_LINE`, for the note that tells a reader what the shown lines matched. */
+export const FAILURE_WORDS = "error, fail, panic, exception, traceback, fatal, assert";
 
 /** The most matched lines one result shows, and the most bytes they may take together. */
 const MATCHED_MAX_LINES = 20;

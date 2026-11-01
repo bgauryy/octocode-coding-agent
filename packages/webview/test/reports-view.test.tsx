@@ -128,6 +128,21 @@ it("selects same-id research and brainstorm documents by kind", async () => {
 	expect(reportFile).toHaveBeenCalledWith("shared", "brainstorm", "brief.md", expect.any(AbortSignal));
 });
 
+it("links each listed report to the same kind its click opens, so a copied link opens the same document", async () => {
+	const research = { ...brief, id: "shared", title: "Research version" };
+	const brainstormReport = { ...brainstorm, id: "shared", title: "Brainstorm version" };
+	reports.mockResolvedValue({ reports: [research, brainstormReport] });
+	render(<ResearchView index={index} params={{}} setParams={() => {}} />);
+	expect(await screen.findByRole("link", { name: /Brainstorm version/ })).toHaveAttribute(
+		"href",
+		"#research?id=shared&kind=brainstorm",
+	);
+	expect(screen.getByRole("link", { name: /Research version/ })).toHaveAttribute(
+		"href",
+		"#research?id=shared&kind=research",
+	);
+});
+
 it("renders item links to reports as links only when a resolver is provided", () => {
 	const reportPath = ".octocode/octocode-rfc-generator/2026-10-25-webview-voice-engine/RFC.md";
 	const item: SnapshotItem = snapshotItem("B1", {
@@ -184,4 +199,23 @@ it("aborts a retry request when the tab unmounts", async () => {
 	await new Promise((resolve) => setTimeout(resolve, 10));
 	expect(errorSpy).not.toHaveBeenCalled();
 	errorSpy.mockRestore();
+});
+
+it("cancels the retry's request, not only the first one, when the tab unmounts", async () => {
+	const signals: AbortSignal[] = [];
+	reports
+		.mockImplementationOnce((signal: AbortSignal) => {
+			signals.push(signal);
+			return Promise.reject(new Error("Network error"));
+		})
+		.mockImplementationOnce((signal: AbortSignal) => {
+			signals.push(signal);
+			return new Promise<ReportsIndex>(() => {});
+		});
+	const { unmount } = render(<RfcView index={index} params={{}} setParams={() => {}} />);
+	await userEvent.click(await screen.findByRole("button", { name: "Retry loading reports" }));
+	await waitFor(() => expect(signals).toHaveLength(2));
+	expect(signals[1].aborted).toBe(false);
+	unmount();
+	expect(signals[1].aborted).toBe(true);
 });

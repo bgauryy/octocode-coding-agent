@@ -141,6 +141,7 @@ describe("presentation keeps a tool's JSON declaration when its block is not fai
 			inputSchema: { type: "object", properties: { r: { $ref: "https://example.com/x.json" } } },
 		};
 		presentation.sync("s", "s", undefined, [plain, remote]);
+		presentation.describe("s", ["plain", "remote"], undefined, true);
 		expect(presentation.isThin("s", plain)).toBe(true);
 		expect(presentation.isThin("s", remote)).toBe(false);
 		expect(presentation.signature("s", "remote")).toBeUndefined();
@@ -227,6 +228,6 @@ describe("function names match the names the model calls", () => {
 		const tools = [{ name: "find", inputSchema: empty }];
 		presentation.sync("s", "s", undefined, tools, new Map([["find", "mcp__s__find_1234abcd"]]));
 		expect(presentation.signature("s", "find")).toContain("function find_1234abcd(");
-		expect(presentation.section("s", ["find"])).toContain("function find_1234abcd(");
+		expect(presentation.describe("s", ["find"], undefined, true).file).toContain("function find_1234abcd(");
 	});
 });

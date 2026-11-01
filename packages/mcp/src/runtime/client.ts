@@ -5,12 +5,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { McpClient, McpHttpError, McpSessionExpiredError, type StdioTransport } from "../client/index.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
-import { VERSION } from "../../../coding-agent/src/config.ts";
+import { hostIdentity, hostOutput } from "../host.ts";
 import { visibleControls } from "../../../common/src/sanitize.ts";
-import { cutText } from "../../../coding-agent/src/octocode/shared/util.ts";
-import { tailNote } from "../../../coding-agent/src/octocode/shared/format.ts";
-import { saveFullOutput } from "../../../coding-agent/src/octocode/shared/spill.ts";
 import type { McpServerLog } from "../log.ts";
+import { cutText } from "../../../common/src/text.ts";
 
 const DEFAULT_TIMEOUT_SECONDS = 60;
 /** The default bound on one request of a server. */
@@ -77,7 +75,7 @@ export function stderrTail(transport: StdioTransport | undefined): string | unde
 	if (!report) return undefined;
 	const { text, tail } = report;
 	return tail.length < text.length
-		? `${tailNote("server stderr", tail.length, text.length, saveFullOutput(text, "mcp-stderr"))}\n${tail}`
+		? `${hostOutput().tailNote("server stderr", tail.length, text.length, hostOutput().saveFullOutput(text, "mcp-stderr"))}\n${tail}`
 		: tail;
 }
 
@@ -142,7 +140,7 @@ export function createMcpClient(
 ): { client: McpClient; closeClient: () => Promise<void> } {
 	const client = new McpClient({
 		name: "octocode",
-		version: VERSION,
+		version: hostIdentity().version,
 		requestTimeoutMs: timeoutMs,
 		roots: [{ uri: pathToFileURL(cwd).href, name: basename(cwd) }],
 	});

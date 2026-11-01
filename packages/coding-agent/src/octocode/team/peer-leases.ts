@@ -3,8 +3,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { allRows } from "../agentdb/rows.ts";
-import { loadSqlite } from "../shared/util.ts";
+import { allRows, openReadOnlyDb } from "../agentdb/api.ts";
 import { keysOverlap, type LeaseKind, leaseKey } from "./lease-key.ts";
 import type { Lease } from "./model.ts";
 import { PeerRegistry } from "./peer-registry.ts";
@@ -108,8 +107,7 @@ class PeerDatabase {
 		if (now < this.retryAt || !fs.existsSync(this.file)) return undefined;
 		let db: DatabaseSync | undefined;
 		try {
-			const { DatabaseSync: Database } = loadSqlite();
-			db = new Database(this.file, { readOnly: true });
+			db = openReadOnlyDb(this.file);
 			db.exec(`PRAGMA busy_timeout=${BUSY_MS}`);
 			const id = (db.prepare("PRAGMA application_id").get() as { application_id: number }).application_id;
 			const version = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;

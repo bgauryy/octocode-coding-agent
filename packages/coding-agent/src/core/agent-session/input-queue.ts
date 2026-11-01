@@ -33,6 +33,8 @@ export class SessionInputQueue {
 
 	/** Custom messages steered into the running agent (team mail), until the agent takes them. */
 	private readonly _steeredCustomMessages = new Set<CustomMessage>();
+	// Custom messages handed to the agent's steering or follow-up queue; pruned once the agent no longer holds them.
+	private readonly _queuedCustomMessages = new Set<CustomMessage>();
 
 	private readonly host: Pick<SessionInternals, "session" | "emit" | "refreshContext">;
 
@@ -286,6 +288,24 @@ export class SessionInputQueue {
 			else this._steeredCustomMessages.delete(message);
 		}
 		return waiting;
+	}
+
+	/** Records a custom message handed to the agent's steering or follow-up queue, so its sender can ask whether it waits. */
+	noteQueuedCustomMessage(message: CustomMessage): void {
+		this._pruneQueuedCustomMessages();
+		this._queuedCustomMessages.add(message);
+	}
+
+	/** Whether a custom message sent with this exact `details` object (identity, never equality) still waits in the agent's queue. */
+	isCustomMessageQueued(details: object): boolean {
+		this._pruneQueuedCustomMessages();
+		for (const message of this._queuedCustomMessages) if (message.details === details) return true;
+		return false;
+	}
+
+	private _pruneQueuedCustomMessages(): void {
+		for (const message of this._queuedCustomMessages)
+			if (!this.host.session.agent.hasQueuedMessage(message)) this._queuedCustomMessages.delete(message);
 	}
 
 	addPendingCustomMessage(message: CustomMessage): void {

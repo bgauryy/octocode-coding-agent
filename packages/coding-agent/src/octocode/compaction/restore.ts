@@ -8,11 +8,12 @@ import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from ".
 import type { FileGuard } from "../files/tool/guard.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
-import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
-import { cutText, isStaleSessionError } from "../shared/util.ts";
+import { isStaleSessionError } from "../shared/util.ts";
+import { cutText } from "../../../../common/src/text.ts";
 
 /**
  * After a compaction, the files the agent was working on are read again from disk and put back in its context, as

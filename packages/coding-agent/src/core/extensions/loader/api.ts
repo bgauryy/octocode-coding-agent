@@ -5,6 +5,7 @@ import type { ExecOptions } from "../../exec.ts";
 import { execCommand } from "../../exec.ts";
 import { type McpServerChange, type McpServerConfig, validateMcpServerConfig } from "../../../../../mcp/src/servers.ts";
 import { NATIVE_FEATURE_PATH } from "../../native-tools.ts";
+import type { SessionNameSource } from "../../session-manager.ts";
 import type { ModelRouteRequest, VirtualModelDefinition } from "../../virtual-models.ts";
 import type {
 	EntryRenderer,
@@ -208,9 +209,9 @@ export function createExtensionAPI(
 			runtime.appendEntry(customType, data);
 		},
 
-		setSessionName(name: string): void {
+		setSessionName(name: string, source?: SessionNameSource): void {
 			assertActive();
-			runtime.setSessionName(name);
+			runtime.setSessionName(name, source);
 		},
 
 		getSessionName(): string | undefined {

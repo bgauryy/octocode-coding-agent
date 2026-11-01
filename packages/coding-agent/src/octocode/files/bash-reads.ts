@@ -1,11 +1,15 @@
+import fs from "node:fs";
+import { followableCdTarget } from "../permission/bash-cwd.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import type { LineRange } from "./coverage.ts";
 
 /**
- * Which files a `bash` command showed the model, for the file guard while Octocode's local readers are unavailable
- * (`BASH_READER`). Only a lone, fully literal command that prints file text is credited: `cat FILE...`,
- * `head [-n N] FILE`, `tail -n +N FILE` and `sed -n 'A,Bp' FILE`. A pipe, redirect, list, substitution, glob, variable or
- * unknown option shows nothing certain, so it is not credited; the model then reads again with one of these commands.
+ * Which files a `bash` command showed the model, for the file guard, whichever reader its refusals name. Only a lone, fully
+ * literal command that prints file text is credited: `cat FILE...`, `head [-n N] FILE`, `tail -n +N FILE` and
+ * `sed -n 'A,Bp' FILE`, optionally after `cd DIR &&` or `cd DIR;` steps that relative files resolve against (DIR is `.`, or
+ * starts with `/` or `./`, with no `..`: `followableCdTarget`). A
+ * pipe, redirect, other list, substitution, glob, variable or unknown option shows nothing certain, so it is not credited;
+ * the model then reads again with one of these commands.
  */
 
 /** What one command showed of one file. */
@@ -86,12 +90,36 @@ function sedRange(script: string): LineRange | undefined {
 	return last && last >= first ? [first, last] : undefined;
 }
 
+const CD_STEP = /^cd[ \t]+('[^']*'|"[^"$`\\]*"|[^\s'"|&;<>()$`*?[\]{}~!#\\]+)[ \t]*(&&|;)/;
+
+/**
+ * The directory leading literal `cd DIR &&` / `cd DIR;` steps end in, and the command after them; undefined when a step is
+ * not a plain `cd` to a literal directory. After `;` the printer runs even when the `cd` failed, in the old directory, so
+ * that directory must exist for the printed file to be the one named.
+ */
+function afterCd(command: string, cwd: string): { command: string; cwd: string } | undefined {
+	let rest = command;
+	let dir = cwd;
+	for (let step = CD_STEP.exec(rest); step; step = CD_STEP.exec(rest)) {
+		const target = literalWords(step[1])?.[0];
+		// A bare name goes through `CDPATH` and `..` is followed on the spelling, not the real directories.
+		if (!target || !followableCdTarget(target)) return undefined;
+		dir = resolveToolPath(dir, target);
+		if (step[2] === ";" && !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return undefined;
+		rest = rest.slice(step[0].length).trimStart();
+	}
+	return { command: rest, cwd: dir };
+}
+
 /**
  * The files `command` showed. `truncated`: the tool cut the output, so no view is certain to be whole or to hold the
  * lines asked for; the files still count as read in part.
  */
-export function bashReads(command: string, cwd: string, truncated = false): BashRead[] {
-	const words = literalWords(command.trim());
+export function bashReads(command: string, shellCwd: string, truncated = false): BashRead[] {
+	const target = afterCd(command.trim(), shellCwd);
+	if (!target) return [];
+	const cwd = target.cwd;
+	const words = literalWords(target.command);
 	if (!words?.length) return [];
 	const [name, ...args] = words;
 	const read = (file: string, whole: boolean, lines?: LineRange): BashRead => ({

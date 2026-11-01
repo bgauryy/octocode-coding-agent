@@ -32,13 +32,13 @@ describe("native cleanup regressions", () => {
 		try {
 			// The chip, not the editor hint, is the one place that names the permission key.
 			expect(hintText(200)).not.toContain("permission");
-			expect(chipText("workspace")).toBe("permission: workspace · Ctrl+Y");
+			expect(chipText("workspace")).toBe("permission: workspace · ctrl+y");
 			expect(shortChip(chipText("full", { actions: 2, warnings: 1 }))).toBe("⏵⏵ full · 2 actions · 1 ⚠");
 			expect(shortChip(chipText("manual"))).toBe("⏸ manual");
 			expect(expandKey()).toBe("ctrl+e");
 			expect(appKey("app.thinking.toggle")).toBe("unbound");
 			bindings.setUserBindings({ "app.permission.cycle": [] });
-			expect(chipText("full")).toContain("Unbound");
+			expect(chipText("full")).toContain("unbound");
 		} finally {
 			setKeybindings(previous);
 		}
@@ -57,16 +57,16 @@ describe("native cleanup regressions", () => {
 							handleInput(data: string): void;
 						};
 						const wide = board.render(240);
-						expect(wide.join("\n")).toContain("N add");
-						expect(wide.join("\n")).toContain("Unbound export");
+						expect(wide.join("\n")).toContain("n add");
+						expect(wide.join("\n")).toContain("unbound export");
 						expect(wide.join("\n")).not.toContain("a add");
 						for (const width of [12, 1, 80]) {
 							const narrow = board.render(width);
 							expect(narrow.every((line) => visibleWidth(line) <= width)).toBe(true);
 						}
 						const tall = board.render(80);
-						expect(tall.join("\n")).toContain("Escape/Ctrl+C/Q close");
-						expect(tall.join("\n")).toContain("Unbound export");
+						expect(tall.join("\n")).toContain("escape/ctrl+c/q close");
+						expect(tall.join("\n")).toContain("unbound export");
 						terminal.rows = 14;
 						expect(board.render(80).length).toBeLessThan(tall.length);
 						board.handleInput("n");

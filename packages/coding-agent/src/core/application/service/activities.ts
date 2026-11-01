@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ApplicationActivity, ApplicationHistory } from "@octocodeai/octocode-contracts";
-import type { AgentSessionEvent } from "../../agent-session.ts";
+import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import type { SessionEntry } from "../../session-manager.ts";
 import type { ApplicationAssets } from "../assets.ts";
 import { cloneDisplay } from "../normalize.ts";
@@ -68,6 +68,13 @@ export class ApplicationActivities {
 		if (event.type === "bash_execution_update") {
 			const id = `bash:${event.id ?? this.shellId}`;
 			const previous = this.values.get(id);
+			// Past the preview, the delta goes onto the stored output: rewriting it per delta made long output quadratic.
+			const appended = previous?.full && this.assets.append(id, event.delta);
+			if (appended) {
+				const activity = { ...previous, full: appended };
+				this.entries.set(id, activity);
+				return cloneDisplay(activity);
+			}
 			const text =
 				(previous?.full ? (this.assets.get(previous.full.id)?.data ?? "") : (previous?.text ?? "")) + event.delta;
 			const activity = this.put(

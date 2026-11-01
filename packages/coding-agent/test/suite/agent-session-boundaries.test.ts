@@ -744,7 +744,7 @@ describe("durable length recovery", () => {
 
 		expect(executed).toBe(false);
 		expect(harness.faux.state.callCount).toBe(2);
-		expect(requests[0]).toContain("may be truncated");
+		expect(requests[0]).toContain("cannot be confirmed complete");
 		expect(harness.sessionManager.getEntries().some((entry) => entry.type === "context_edit")).toBe(false);
 	});
 

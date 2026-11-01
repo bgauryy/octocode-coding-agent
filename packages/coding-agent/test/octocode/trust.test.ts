@@ -153,9 +153,32 @@ describe("project trust", () => {
 		const child = ctx(project({ ".codex/hooks.json": MCP }));
 		expect(await projectTrust(child)).toBe(false);
 		const notice = String(child.ui.notify.mock.calls[0]?.[0]);
-		expect(notice).toContain("Project config not loaded (1 files)");
+		expect(notice).toContain("Project config not loaded: 1 hook or MCP file in this project");
 		expect(notice).not.toContain("Run /trust");
-		expect(notice).toContain("main session");
+		expect(notice).toContain("The user can review them with /trust in the main session.");
+	});
+
+	it("names what is off by kind and why: never reviewed, or changed since the last decision", async () => {
+		const cwd = project({
+			".codex/hooks.json": MCP,
+			".claude/settings.json": "{}",
+			".octocode/agents/helper.md": "---\nname: helper\n---\nhelp",
+			".octocode/skills/one.md": "one",
+			".octocode/skills/two.md": "two",
+		});
+		const first = ctx(cwd);
+		expect(await projectTrust(first)).toBe(false);
+		expect(first.ui.notify).toHaveBeenCalledWith(
+			"Project config not loaded: 2 hook or MCP files, 1 subagent profile and 2 skills in this project have not been reviewed yet, so they are off for now. Run /trust to see what they would run and choose whether to load them.",
+			"warning",
+		);
+		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
+		put(cwd, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "echo changed" }] }] } }));
+		const later = ctx(cwd);
+		expect(await projectTrust(later)).toBe(false);
+		expect(String(later.ui.notify.mock.calls[0]?.[0])).toContain(
+			"in this project changed since you last reviewed them, so they are off for now. Run /trust",
+		);
 	});
 
 	it("/trust lists what would run, asks, remembers the answer and must be repeated when the files change", async () => {

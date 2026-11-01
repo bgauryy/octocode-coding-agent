@@ -135,8 +135,13 @@ export class EventInterner {
 	intern(events: readonly WorkspaceEvent[]): WorkspaceEvent[] {
 		const next = new Map<number, { json: string; event: WorkspaceEvent }>();
 		const result = events.map((event) => {
-			const json = JSON.stringify(event);
 			const previous = this.known.get(event.id);
+			// The projection keeps unchanged rows identical, so only new or changed objects are serialized.
+			if (previous?.event === event) {
+				next.set(event.id, previous);
+				return event;
+			}
+			const json = JSON.stringify(event);
 			const entry = previous?.json === json ? previous : { json, event };
 			next.set(event.id, entry);
 			return entry.event;
@@ -305,7 +310,7 @@ export function settleToolStarts(events: readonly FeedEvent[]): FeedEvent[] {
 	const open = new Map<string, number[]>();
 	const settledBy = new Map<number, number>();
 	for (const [position, event] of events.entries()) {
-		if (!fromWorkspacePath(event)) continue;
+		if ((event.type !== "tool.start" && event.type !== "tool.result") || !fromWorkspacePath(event)) continue;
 		const name = toolHeadline(event)[0];
 		if (event.type === "tool.start") open.set(name, [...(open.get(name) ?? []), position]);
 		else if (event.type === "tool.result") {

@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { assignMcpToolNames } from "../tool-names.ts";
 import { dedupeFieldDocs } from "./field-docs.ts";
-import { oneLine, schemaToTs } from "./schema-to-ts.ts";
+import { isHoistableUnion, oneLine } from "./schema-nodes.ts";
+import { schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides } from "./types.ts";
 
 /** Bump when the rendered text changes for the same catalog, so stored files regenerate. */
-export const COMPACT_GENERATOR_VERSION = 7;
+export const COMPACT_GENERATOR_VERSION = 9;
 
 /**
  * A field doc repeated by at least this many tools is written once, in the server's shared-fields block, when every
@@ -23,6 +24,8 @@ export const OUTPUT_FIELD_PREFIX = "output.";
 const HOISTED_TYPE_MIN_TOOLS = 3;
 const HOISTED_TYPE_MIN_CHARS = 60;
 const HOISTED_REPEAT_MIN_CHARS = 200;
+/** A union of plain types (`string | Record<string, unknown>`) used this many times is named once. */
+const HOISTED_UNION_MIN_USES = 4;
 
 const INDENT = "\t";
 const SHARED_HEAD = `${INDENT}/** Fields documented once; the doc applies wherever the field appears:`;
@@ -242,7 +245,7 @@ function findHoistedTypes(
 		renderTool(tool, names.get(tool.name)!, overrides, {
 			sharedDocs,
 			onObject: (field, type, source) => {
-				if (type.length < HOISTED_TYPE_MIN_CHARS) return;
+				if (type.length < HOISTED_TYPE_MIN_CHARS && !isHoistableUnion(type)) return;
 				const entry = seen.get(type) ?? { field, tools: new Set<string>(), sources: new Set<object>() };
 				entry.tools.add(tool.name);
 				entry.sources.add(source);
@@ -251,13 +254,16 @@ function findHoistedTypes(
 		});
 	const hoisted = new Map<string, string>();
 	const taken = new Set<string>();
-	const repeated = [...seen].filter(
-		([type, entry]) =>
-			entry.tools.size >= HOISTED_TYPE_MIN_TOOLS ||
-			(entry.sources.size >= 2 && type.length >= HOISTED_REPEAT_MIN_CHARS),
+	const repeated = [...seen].filter(([type, entry]) =>
+		isHoistableUnion(type)
+			? entry.sources.size >= HOISTED_UNION_MIN_USES
+			: entry.tools.size >= HOISTED_TYPE_MIN_TOOLS ||
+				(entry.sources.size >= 2 && type.length >= HOISTED_REPEAT_MIN_CHARS),
 	);
 	for (const [type, { field }] of repeated.sort(([, a], [, b]) => a.field.localeCompare(b.field))) {
-		const base = `${field[0]?.toUpperCase() ?? "T"}${field.slice(1).replace(/\W/g, "_")}`;
+		const base = isHoistableUnion(type)
+			? "Value"
+			: `${field[0]?.toUpperCase() ?? "T"}${field.slice(1).replace(/\W/g, "_")}`;
 		let name = base;
 		for (let index = 2; taken.has(name); index++) name = `${base}${index}`;
 		taken.add(name);
@@ -267,7 +273,7 @@ function findHoistedTypes(
 }
 
 const hoistedBlock = (entries: Iterable<[string, string]>) =>
-	`${HOISTED_HEAD}\n${[...entries].map(([name, type]) => `${indentBlock(`type ${name} = ${type};`, INDENT)}\n`).join("")}`;
+	`${HOISTED_HEAD}\n${[...entries].map(([name, type]) => `${dedupeFieldDocs(indentBlock(`type ${name} = ${type};`, INDENT))}\n`).join("")}`;
 
 const sharedLine = (field: string, doc: string) => `${INDENT} * ${field}: ${doc}`;
 const sharedBlock = (entries: Iterable<[string, string]>) =>

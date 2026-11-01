@@ -6,7 +6,14 @@ import { getNativeToolNames, takesCallReason } from "../../src/octocode/permissi
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-type Schema = { required?: string[]; properties?: Record<string, { type?: string }> };
+type Schema = {
+	type?: string;
+	description?: string;
+	required?: string[];
+	properties?: Record<string, Schema>;
+	items?: Schema;
+	anyOf?: Schema[];
+};
 
 /** The tools whose model-facing schema lacks a required string `reason`. */
 const missingReason = (tools: Array<{ name: string; parameters: unknown }>): string[] =>
@@ -15,6 +22,25 @@ const missingReason = (tools: Array<{ name: string; parameters: unknown }>): str
 			const schema = parameters as Schema;
 			return !schema.required?.includes("reason") || schema.properties?.reason?.type !== "string";
 		})
+		.map(({ name }) => name);
+
+/** Direct object arguments and object items, including the unified agent branches. */
+const argumentContainers = (schema: Schema): Schema[] => [
+	...Object.values(schema.properties ?? {}).flatMap((property) =>
+		property.type === "object" && property.properties
+			? [property]
+			: property.type === "array" && property.items?.type === "object" && property.items.properties
+				? [property.items]
+				: [],
+	),
+	...(schema.anyOf ?? []).flatMap(argumentContainers),
+];
+
+const missingNestedReason = (tools: Array<{ name: string; parameters: unknown }>): string[] =>
+	tools
+		.filter(({ parameters }) =>
+			argumentContainers(parameters as Schema).some((schema) => schema.properties?.reason?.type !== "string"),
+		)
 		.map(({ name }) => name);
 
 let saved: NodeJS.ProcessEnv;
@@ -38,7 +64,18 @@ describe("the required reason on every core tool", () => {
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const tools = fake.api.getAllTools() as Array<{ name: string; parameters: unknown }>;
 		expect(tools.map(({ name }) => name).sort()).toEqual(expect.arrayContaining(getNativeToolNames().sort()));
-		expect(missingReason(tools.filter(({ name }) => takesCallReason(name)))).toEqual([]);
+		const reasoned = tools.filter(({ name }) => takesCallReason(name));
+		expect(missingReason(reasoned)).toEqual([]);
+		expect(missingNestedReason(reasoned)).toEqual([]);
+		// The top-level slot is the one the model reads and carries the description; nested slots only accept a lifted value.
+		for (const { name, parameters } of reasoned) {
+			const root = parameters as Schema;
+			const described = root.properties?.reason?.description;
+			expect(described, `${name} top-level reason`).toBeTruthy();
+			for (const container of argumentContainers(root)) {
+				expect(container.properties?.reason?.description, `${name} nested reason`).not.toBe(described);
+			}
+		}
 	});
 
 	it("is required by the built-in MCP extension's `mcp` tool", () => {
@@ -56,5 +93,6 @@ describe("the required reason on every core tool", () => {
 		expect(tool).toBeDefined();
 		expect(takesCallReason(MCP_MANAGE_TOOL_NAME)).toBe(true);
 		expect(missingReason([tool!])).toEqual([]);
+		expect(missingNestedReason([tool!])).toEqual([]);
 	});
 });

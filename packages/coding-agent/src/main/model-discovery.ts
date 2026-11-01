@@ -1,7 +1,25 @@
 import { discoverProviderModels } from "@octocodeai/octocode-ai/providers/discovery";
 import { APP_NAME } from "../config.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
-import { isTruthyEnvFlag } from "../utils/env-flag.ts";
+import { isOfflineModeEnabled } from "../utils/env-flag.ts";
+import { sanitizeTerminalText } from "../../../common/src/sanitize.ts";
+
+type Discovery = Awaited<ReturnType<typeof discoverProviderModels>>;
+
+/** The text report of `models discover`; vendor ids, notes and links come from a remote `/models` response, so control sequences are stripped. */
+export function discoveryLines(results: Discovery[]): string[] {
+	const clean = (value: string) => sanitizeTerminalText(value);
+	const lines: string[] = [];
+	for (const result of results) {
+		lines.push(`${clean(result.provider)}: ${result.status} (${result.models.length} models)`);
+		if (result.note) lines.push(`  ${clean(result.note)}`);
+		if (result.docs) lines.push(`  Documentation: ${clean(result.docs)}`);
+		for (const model of result.models) lines.push(`  ${clean(model.id)}${model.known ? "" : " — metadata required"}`);
+		if (result.missingFromVendor?.length)
+			lines.push(`  Not listed by vendor: ${result.missingFromVendor.map(clean).join(", ")}`);
+	}
+	return lines;
+}
 
 /** Explicit, read-only vendor discovery; never makes an inference request. */
 export async function runModelDiscoveryCommand(args: string[]): Promise<boolean> {
@@ -15,7 +33,7 @@ export async function runModelDiscoveryCommand(args: string[]): Promise<boolean>
 	try {
 		if (args[1] !== "discover") throw new Error("Expected models discover");
 		let providerId: string | undefined;
-		let offline = isTruthyEnvFlag(process.env.OCTOCODE_OFFLINE);
+		let offline = isOfflineModeEnabled();
 		let json = false;
 		for (let index = 2; index < args.length; index++) {
 			const arg = args[index];
@@ -42,15 +60,7 @@ export async function runModelDiscoveryCommand(args: string[]): Promise<boolean>
 			);
 		}
 		if (json) console.log(JSON.stringify(results, null, 2));
-		else
-			for (const result of results) {
-				console.log(`${result.provider}: ${result.status} (${result.models.length} models)`);
-				if (result.note) console.log(`  ${result.note}`);
-				if (result.docs) console.log(`  Documentation: ${result.docs}`);
-				for (const model of result.models) console.log(`  ${model.id}${model.known ? "" : " — metadata required"}`);
-				if (result.missingFromVendor?.length)
-					console.log(`  Not listed by vendor: ${result.missingFromVendor.join(", ")}`);
-			}
+		else for (const line of discoveryLines(results)) console.log(line);
 		if (results.some((result) => result.status === "error" || result.status === "unconfigured")) process.exitCode = 1;
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : "Model discovery failed");

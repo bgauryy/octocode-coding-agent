@@ -1,0 +1,55 @@
+import type { Terminal } from "../terminal/types.ts";
+import type { TerminalColorScheme, TerminalColors } from "../terminal-colors.ts";
+import type { Component } from "./component.ts";
+import type { TuiInputListener } from "./input-listeners.ts";
+import type { OverlayHandle, OverlayOptions } from "./overlay-types.ts";
+
+export type TuiMode = "regular" | "fullscreen";
+
+export interface TuiStopOptions {
+	/** Leave renderer output in place for another TUI taking over the same terminal. */
+	preserveScreen?: boolean;
+}
+
+export interface TUI extends Component {
+	readonly mode: TuiMode;
+	children: Component[];
+	terminal: Terminal;
+	onDebug?: () => void;
+	onRenderError?: (error: unknown, component: Component) => void;
+	readonly fullRedraws: number;
+	addChild(component: Component): void;
+	removeChild(component: Component): void;
+	clear(): void;
+	getShowHardwareCursor(): boolean;
+	setShowHardwareCursor(enabled: boolean): void;
+	getClearOnShrink(): boolean;
+	setClearOnShrink(enabled: boolean): void;
+	setFocus(component: Component | null): void;
+	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
+	hideOverlay(): void;
+	hasOverlay(): boolean;
+	start(): void;
+	stop(options?: TuiStopOptions): void;
+	renderNow(force?: boolean): void;
+	requestRender(force?: boolean): void;
+	addInputListener(listener: TuiInputListener): () => void;
+	removeInputListener(listener: TuiInputListener): void;
+	onTerminalColorSchemeChange(listener: (scheme: TerminalColorScheme) => void): () => void;
+	setTerminalColorSchemeNotifications(enabled: boolean): void;
+	queryTerminalColors(options: {
+		timeoutMs: number;
+		onLateReply?: (colors: TerminalColors) => void;
+	}): Promise<TerminalColors>;
+}
+
+export const VIEWPORT_TUI = Symbol.for("@octocodeai/octocode-tui/viewport");
+
+export interface ViewportTUI extends TUI {
+	readonly [VIEWPORT_TUI]: true;
+	setLayoutRoot(component: Component | undefined): void;
+}
+
+export function isViewportTUI(tui: TUI): tui is ViewportTUI {
+	return (tui as Partial<ViewportTUI>)[VIEWPORT_TUI] === true;
+}

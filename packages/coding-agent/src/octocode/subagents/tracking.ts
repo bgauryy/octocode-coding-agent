@@ -47,6 +47,7 @@ export const reportFacts = (
 	| "unpriced"
 	| "model"
 	| "fallback"
+	| "refusedBy"
 	| "compactions"
 	| "notices"
 	| "session"
@@ -65,6 +66,7 @@ export const reportFacts = (
 		...(usage ? { usage, unpriced: details.unpriced } : {}),
 		...(details.model ? { model: details.model } : {}),
 		...(details.fallback ? { fallback: details.fallback } : {}),
+		...(details.refusedBy ? { refusedBy: details.refusedBy } : {}),
 		...(details.compactions ? { compactions: details.compactions } : {}),
 		...(details.notices ? { notices: details.notices } : {}),
 		...(details.session ? { session: details.session } : {}),
@@ -240,13 +242,14 @@ const startDetails = (fields: Pick<RunDetails, "id" | "profile" | "goal" | "stat
 
 /** A run's details as it starts; `session` names the folder its transcript goes to. */
 export function runDetails(run: Run, session?: ChildSession): RunDetails {
-	const { model, fallback } = run.route;
+	const { model, fallback, refusedBy } = run.route;
 	return {
 		...startDetails({ id: run.identity.id, profile: run.identity.role, goal: run.identity.goal, status: "running" }),
 		runId: randomUUID(),
 		session: { id: run.identity.id, ...(session ? { dir: session.dir } : {}) },
 		...(model ? { model } : {}),
 		...(fallback ? { fallback } : {}),
+		...(refusedBy ? { refusedBy } : {}),
 	};
 }
 

@@ -2,7 +2,7 @@ import { GLYPH } from "@octocodeai/octocode-tui";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clip } from "../shared/render/text.ts";
 import { capOutputToFile } from "../shared/spill.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const asRecords = (value: unknown): Array<Record<string, unknown>> =>
 	Array.isArray(value) ? value.filter(isRecord) : [];
@@ -12,7 +12,7 @@ const row = (...cells: string[]): string => `  ${cells.filter(Boolean).join(" ·
 
 /** Connected and discoverable external agents as readable rows; empty when there are none. */
 export function externalRows(data: unknown): string[] {
-	const found = isRecord(data) ? data : {};
+	const found = asRecord(data);
 	const connections = asRecords(found.connections).map((entry) =>
 		row(
 			`${GLYPH.live} ${cell(entry.id, 64)}`,
@@ -58,7 +58,7 @@ export function externalRows(data: unknown): string[] {
  */
 export function describeExternal(data: unknown): string {
 	const safe = redactData(data);
-	const found = isRecord(safe) ? safe : {};
+	const found = asRecord(safe);
 	const id = cell(found.id, 64);
 	const text = (() => {
 		if ("connections" in found || "instances" in found || "acpAgents" in found)

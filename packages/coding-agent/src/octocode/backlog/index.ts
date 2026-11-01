@@ -4,7 +4,8 @@ import { webLauncher } from "../shared/web.ts";
 import { STATUS } from "../shared/status.ts";
 import { backlogCommand } from "./command.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
-import { countsText } from "./format.ts";
+import { countsText, openTaskCount } from "./format.ts";
+import { registerTaskTool } from "./task-tool.ts";
 import { registerBacklogTool } from "./tool.ts";
 import { sharedWorkspaceWeb } from "./shared-web.ts";
 
@@ -16,8 +17,8 @@ interface RegisterBacklogOptions extends BacklogOptions {
 }
 
 /**
- * The repository backlog: the `backlog` tool, `/backlog` (registered centrally after
- * `commands` is registered) and footer counts with a persistent `/octocode` hint for backlogs and activity.
+ * The repository backlog: the `backlog` and `steps` tools, `/backlog` (registered centrally after
+ * `commands` is registered) and footer counts with a persistent `/web` hint for backlogs and activity.
  */
 export function registerBacklog(
 	api: ExtensionAPI,
@@ -31,7 +32,7 @@ export function registerBacklog(
 		if (!ctx.hasUI || options.isSubagent) return;
 		try {
 			const backlog = openBacklog(ctx, backlogOptions);
-			const text = countsText(backlog.store.counts());
+			const text = countsText(backlog.store.counts(), openTaskCount(backlog.store, backlog.session));
 			ctx.ui.setStatus(STATUS.backlog, text || undefined);
 		} catch {
 			// An unreadable agent database (a foreign file) hides the counts; the tool and command report why.
@@ -54,6 +55,7 @@ export function registerBacklog(
 		);
 	};
 	registerBacklogTool(api, { ...backlogOptions, changed: refresh });
+	registerTaskTool(api, { ...backlogOptions, changed: refresh });
 	if (!options.isSubagent)
 		commands.add(
 			"backlog",

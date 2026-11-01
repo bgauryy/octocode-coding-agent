@@ -10,5 +10,5 @@ export function shortcutText(action: Keybinding, manager: KeybindingsManager = g
 		: Array.isArray(defaults)
 			? defaults
 			: [defaults];
-	return keys.length ? formatKeyText(keys.join("/"), { capitalize: true }) : "Unbound";
+	return keys.length ? formatKeyText(keys.join("/")) : "unbound";
 }

@@ -1,4 +1,6 @@
-export const SYMBOLS: Readonly<Record<string, string>> = {
+import { lookupTable } from "./commands.ts";
+
+export const SYMBOLS: Readonly<Record<string, string>> = lookupTable({
 	alpha: "α",
 	beta: "β",
 	gamma: "γ",
@@ -223,4 +225,4 @@ export const SYMBOLS: Readonly<Record<string, string>> = {
 	lceil: "⌈",
 	rceil: "⌉",
 	colon: ":",
-};
+});

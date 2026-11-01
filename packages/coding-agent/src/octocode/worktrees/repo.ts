@@ -1,10 +1,10 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
-import { git, gitQuiet } from "../shared/git.ts";
+import { git, GitError, gitQuiet } from "../shared/git.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { worktreeBranch } from "./name.ts";
 
-/** One entry of `git worktree list --porcelain`. */
+/** One entry of `git worktree list --porcelain -z`. */
 export interface WorktreeEntry {
 	/** Absolute path as git reports it. */
 	path: string;
@@ -24,11 +24,15 @@ export const canonical = (file: string): string => {
 	}
 };
 
-function parseWorktreeList(output: string): WorktreeEntry[] {
+/**
+ * Entries of `git worktree list --porcelain`: with `-z` (`nul`), fields end in NUL and a record in an empty field, so a
+ * path holding a newline stays whole; without it, lines and blank lines.
+ */
+function parseWorktreeList(output: string, nul: boolean): WorktreeEntry[] {
 	const entries: WorktreeEntry[] = [];
-	for (const block of output.split(/\r?\n\r?\n/u)) {
+	for (const block of output.split(nul ? "\0\0" : /\r?\n\r?\n/u)) {
 		const entry: WorktreeEntry = { path: "", bare: false, prunable: false };
-		for (const line of block.split(/\r?\n/u)) {
+		for (const line of block.split(nul ? "\0" : /\r?\n/u)) {
 			const space = line.indexOf(" ");
 			const key = space === -1 ? line : line.slice(0, space);
 			const value = space === -1 ? "" : line.slice(space + 1);
@@ -45,7 +49,14 @@ function parseWorktreeList(output: string): WorktreeEntry[] {
 
 /** Every worktree of the repository `cwd` belongs to, the main one first. Rejects when `cwd` is not in a repository. */
 async function listWorktrees(cwd: string): Promise<WorktreeEntry[]> {
-	const entries = parseWorktreeList(await git(cwd, ["worktree", "list", "--porcelain"]));
+	let entries: WorktreeEntry[];
+	try {
+		entries = parseWorktreeList(await git(cwd, ["worktree", "list", "--porcelain", "-z"], { raw: true }), true);
+	} catch (error) {
+		// Git before 2.36 has no `-z` here and exits 129 for the unknown switch.
+		if (!(error instanceof GitError) || error.exitCode !== 129) throw error;
+		entries = parseWorktreeList(await git(cwd, ["worktree", "list", "--porcelain"]), false);
+	}
 	if (entries.length === 0) throw new Error("git reported no worktrees.");
 	return entries;
 }

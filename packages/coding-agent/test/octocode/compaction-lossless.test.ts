@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { inlineSummaryTokens } from "../../src/core/compaction/checkpoint.ts";
-import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { summarizerView, userMessagesSection, writeSummary } from "../../src/octocode/compaction/summary.ts";
 
 describe("lossless compaction references", () => {
@@ -35,6 +36,17 @@ describe("lossless compaction references", () => {
 		expect(() =>
 			userMessagesSection([], 0, ["original"], { total: 0, perMessage: 0 }, undefined, () => "/durable/users.txt"),
 		).toThrow(/budget/);
+	});
+	it("keeps the newest requests word for word beside the reference when an older message is too long", () => {
+		const pasted = `LOG ${"x".repeat(5_000)}`;
+		const latest = "now fix the Safari login bug";
+		const budget = { total: 1000, perMessage: 250 };
+		const section = userMessagesSection([], 0, [pasted, "second ask", latest], budget, undefined, () => "/d/u.txt");
+		const back = splitSummary(`## Goal\nx${section}`);
+		expect(section.length).toBeLessThanOrEqual(1000);
+		expect(back.messages[0]).toContain("/d/u.txt");
+		expect(back.messages.slice(1)).toEqual(["second ask", latest]);
+		expect(section).not.toContain(pasted);
 	});
 	it("saves the full tool result before using a pointer in the standalone summarizer", () => {
 		const original = "FULL START " + "x".repeat(10000) + " FULL END";

@@ -2,11 +2,11 @@
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "../auth-guidance.ts";
-import type { InputSource } from "../extensions/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionCompaction } from "./compaction-control.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
+import { attachPromptPathImages, type PathImagesHost } from "./prompt-image-paths.ts";
 import {
 	expandSkillInput,
 	runInputHandlers,
@@ -14,10 +14,11 @@ import {
 	tryExecuteExtensionCommand,
 } from "./prompt-expansion.ts";
 import type { SessionRunLoop } from "./run-loop.ts";
-import type { PendingUserInput, PromptOptions, QueuedInputDisposition } from "./types.ts";
+import type { PendingUserInput, PromptOptions, QueuedInputDisposition, QueuedInputOptions } from "./types.ts";
 import { checkSessionDispatch } from "./dispatch.ts";
 
-export interface PromptingHost extends Pick<SessionInternals, "session" | "run" | "cwd"> {
+export interface PromptingHost
+	extends Pick<SessionInternals, "session" | "run" | "cwd">, Pick<PathImagesHost, "limitsModel"> {
 	readonly inputs: SessionInputQueue;
 	readonly compaction: SessionCompaction;
 	readonly runLoop: SessionRunLoop;
@@ -69,6 +70,8 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		({ text: expandedText, expandedPaths } = expandSkillInput(host, expandedText));
 	}
 
+	// Image paths in typed text attach as images; a skill or template command line is not scanned.
+	const attachImagePaths = options?.attachImagePaths === true && expandedText === currentText;
 	const input: PendingUserInput = {
 		text: currentText,
 		images: currentImages,
@@ -82,11 +85,15 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 				"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
 			);
 		}
+		const queued = attachImagePaths
+			? await attachPromptPathImages(host, expandedText, currentImages, true)
+			: { text: expandedText, images: currentImages };
+		checkSessionDispatch(session);
 		await host.inputs.queue(
 			options.streamingBehavior === "followUp" ? "followUp" : "steer",
-			expandedText,
-			currentImages,
-			input,
+			queued.text,
+			queued.images,
+			{ ...input, images: queued.images },
 		);
 		preflightResult?.("queued");
 		return;
@@ -113,10 +120,14 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		throw new Error(formatNoApiKeyFoundMessage(session.model.provider));
 	}
 
+	const started = attachImagePaths
+		? await attachPromptPathImages(host, expandedText, currentImages, false)
+		: { text: expandedText, images: currentImages };
+	checkSessionDispatch(session);
 	await host.runLoop.startRun(
-		{ messageType: "user", prompt: expandedText, images: currentImages },
+		{ messageType: "user", prompt: started.text, images: started.images },
 		() => preflightResult?.("started"),
-		input,
+		{ ...input, images: started.images },
 	);
 }
 
@@ -125,9 +136,10 @@ export async function queueUserInput(
 	text: string,
 	images: ImageContent[] | undefined,
 	behavior: "steer" | "followUp",
-	source: InputSource,
+	options?: QueuedInputOptions,
 ): Promise<QueuedInputDisposition> {
 	const { session } = host;
+	const source = options?.source ?? "interactive";
 	if (text.startsWith("/")) {
 		throwIfExtensionCommand(session.extensionRunner, text);
 	}
@@ -143,8 +155,12 @@ export async function queueUserInput(
 
 	const { text: expandedText, expandedPaths } = expandSkillInput(host, processedInput.text);
 
-	const input: PendingUserInput = { text: processedInput.text, images: processedInput.images, source, expandedPaths };
-	await host.inputs.queue(behavior, expandedText, processedInput.images, input);
+	const queued =
+		options?.attachImagePaths === true && expandedText === processedInput.text
+			? await attachPromptPathImages(host, expandedText, processedInput.images, true)
+			: { text: expandedText, images: processedInput.images };
+	const input: PendingUserInput = { text: processedInput.text, images: queued.images, source, expandedPaths };
+	await host.inputs.queue(behavior, queued.text, queued.images, input);
 	return "queued";
 }
 
@@ -169,6 +185,7 @@ export async function sendCustomMessage<T = unknown>(
 	if (options?.deliverAs === "nextTurn") {
 		host.inputs.addNextTurnMessage(appMessage);
 	} else if (session.isStreaming && options?.triggerTurn !== false) {
+		host.inputs.noteQueuedCustomMessage(appMessage);
 		if (options?.deliverAs === "followUp") {
 			session.agent.followUp(appMessage);
 		} else {

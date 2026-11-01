@@ -136,6 +136,7 @@ describe("ExtensionRunner", () => {
 		getSignal: () => undefined,
 		abort: () => {},
 		hasPendingMessages: () => false,
+		isMessageQueued: () => false,
 		shutdown: () => {},
 		getContextUsage: () => undefined,
 		compact: () => {},

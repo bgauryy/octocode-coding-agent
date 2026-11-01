@@ -12,6 +12,8 @@ import { SDK_REACH_BASELINE } from "./sdk-reach-baseline.mjs";
 export const SDK_ENTRIES = ["coding-agent/src/core/sdk.ts"];
 /** Interactive layers an SDK consumer must not load: these packages and the terminal modes folder. */
 export const SDK_FORBIDDEN_PACKAGES = ["tui", "webview"];
+/** Subpaths of a forbidden package that import nothing interactive, so a headless consumer may load them. */
+export const SDK_HEADLESS_SUBPATHS = ["@octocodeai/octocode-tui/ansi", "@octocodeai/octocode-tui/multiplexer"];
 export const SDK_FORBIDDEN_PREFIX = "coding-agent/src/modes/";
 
 const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
@@ -55,6 +57,7 @@ export function sdkReachEdges(files, packageNames, { entries = SDK_ENTRIES, pref
 	for (const file of queue) {
 		for (const specifier of files.get(file)) {
 			if (!specifier.startsWith(".")) {
+				if (SDK_HEADLESS_SUBPATHS.includes(specifier)) continue;
 				const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
 				const target = packageNames.get(name);
 				if (SDK_FORBIDDEN_PACKAGES.includes(target)) edges.add(`${file} -> ${target}`);

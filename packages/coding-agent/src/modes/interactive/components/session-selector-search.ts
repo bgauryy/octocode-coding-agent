@@ -24,12 +24,19 @@ function normalizeWhitespaceLower(text: string): string {
 	return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** The text a query searches: the transcript, or the first prompt for a quick catalog row, which has no transcript text. */
 function getSessionSearchText(session: SessionInfo): string {
-	return `${session.id} ${session.name ?? ""} ${session.allMessagesText} ${session.cwd}`;
+	return `${session.id} ${session.name ?? ""} ${session.allMessagesText || session.firstMessage} ${session.cwd}`;
 }
 
+/** The part of the search text a row shows: its name or first prompt, and where it ran. */
+function getSessionTitleText(session: SessionInfo): string {
+	return `${session.id} ${session.name ?? ""} ${session.firstMessage} ${session.cwd}`;
+}
+
+/** Whether the user named the session; generated titles and subagent goals do not count. */
 export function hasSessionName(session: SessionInfo): boolean {
-	return Boolean(session.name?.trim());
+	return Boolean(session.name?.trim()) && session.nameSource === undefined;
 }
 
 function matchesNameFilter(session: SessionInfo, filter: NameFilter): boolean {
@@ -114,9 +121,11 @@ function parseSearchQuery(query: string): ParsedSearchQuery {
 	return { mode: "tokens", tokens, regex: null };
 }
 
-function matchSession(session: SessionInfo, parsed: ParsedSearchQuery): MatchResult {
-	const text = getSessionSearchText(session);
-
+function matchSession(
+	session: SessionInfo,
+	parsed: ParsedSearchQuery,
+	text: string = getSessionSearchText(session),
+): MatchResult {
 	if (parsed.mode === "regex") {
 		if (!parsed.regex) {
 			return { matches: false, score: 0 };
@@ -154,6 +163,14 @@ function matchSession(session: SessionInfo, parsed: ParsedSearchQuery): MatchRes
 	return { matches: true, score: totalScore };
 }
 
+/** Whether `query` finds the session only in its transcript, not in what its row shows. */
+export function isTranscriptOnlyMatch(session: SessionInfo, query: string): boolean {
+	if (!query.trim()) return false;
+	const parsed = parseSearchQuery(query);
+	if (parsed.error) return false;
+	return matchSession(session, parsed).matches && !matchSession(session, parsed, getSessionTitleText(session)).matches;
+}
+
 export function filterAndSortSessions(
 	sessions: SessionInfo[],
 	query: string,
@@ -178,15 +195,20 @@ export function filterAndSortSessions(
 		return filtered;
 	}
 
-	// Relevance mode: sort by score, tie-break by modified desc.
-	const scored: { session: SessionInfo; score: number }[] = [];
+	// Relevance mode: title and name matches first, then by score, tie-break by modified desc.
+	const scored: { session: SessionInfo; score: number; transcriptOnly: boolean }[] = [];
 	for (const s of nameFiltered) {
 		const res = matchSession(s, parsed);
 		if (!res.matches) continue;
-		scored.push({ session: s, score: res.score });
+		scored.push({
+			session: s,
+			score: res.score,
+			transcriptOnly: !matchSession(s, parsed, getSessionTitleText(s)).matches,
+		});
 	}
 
 	scored.sort((a, b) => {
+		if (a.transcriptOnly !== b.transcriptOnly) return a.transcriptOnly ? 1 : -1;
 		if (a.score !== b.score) return a.score - b.score;
 		return b.session.modified.getTime() - a.session.modified.getTime();
 	});

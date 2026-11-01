@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { OCTOCODE_DIR, octocodeHome, resolveToolPath } from "../shared/home.ts";
 import type { ActionClass } from "./mode.ts";
@@ -11,6 +12,8 @@ import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents", OCTOCODE_DIR].map((entry) =>
 	entry.toLowerCase(),
 );
+/** Octocode's scratch folder: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
+const SCRATCH_AT_ROOT = `${OCTOCODE_DIR}/tmp`.toLowerCase();
 /** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
 const RUNS_LATER_ANYWHERE = [
 	".git/hooks",
@@ -30,11 +33,27 @@ const RUNS_LATER_ANYWHERE = [
  */
 export function runsLater(file: string, root: string): boolean {
 	const relative = path.relative(root, file).split(path.sep).join("/").toLowerCase();
-	const rooted = RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
+	const scratch = relative === SCRATCH_AT_ROOT || relative.startsWith(`${SCRATCH_AT_ROOT}/`);
+	const rooted = !scratch && RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
 	return (
 		rooted ||
 		RUNS_LATER_ANYWHERE.some((entry) => `/${relative}`.endsWith(`/${entry}`) || `/${relative}`.includes(`/${entry}/`))
 	);
+}
+
+/**
+ * Whether a change to `file` (canonical) stays inside the workspace `root`: it lies under `root` and is not an existing
+ * file that other names share. A hard link (`ln ~/.zshrc z`) puts a file from anywhere at a workspace path, and a change
+ * through that path changes the file everywhere it is linked.
+ */
+export function changesOnlyWorkspace(file: string, root: string): boolean {
+	if (!isWithin(file, root)) return false;
+	try {
+		const stat = fs.statSync(file);
+		return stat.isDirectory() || stat.nlink <= 1;
+	} catch {
+		return true;
+	}
 }
 
 /** The refusal for a change inside Octocode's state folder (its trust store, agent database, config), in every mode. */
@@ -53,6 +72,33 @@ export function shellPath(cwd: string, raw: string): string {
 	return path.isAbsolute(raw) ? raw : `${path.resolve(cwd)}${path.sep}${raw}`;
 }
 
+/** `BashFileTarget.uncertain` for a target spelled with an expansion (`> $FILE`, `~`). */
+export const DYNAMIC_TARGET = "dynamic file target";
+
+/**
+ * A shell word spelled from the home directory (`~`, `~/x`, `$HOME/x`, `"${HOME}/x"`) as a `~` path, which
+ * `resolveToolPath` expands from the same `HOME` the shell sees; undefined for any other spelling (`~user`, a quoted
+ * `"~/x"`, other variables, globs).
+ */
+export function homeSpelling(raw: string): string | undefined {
+	if (/^~(?:\/[^$`*?[\\"'{}]*)?$/.test(raw)) return raw;
+	const match = /^\$(?:HOME|\{HOME\})(\/[^$`*?[\\'{}]*)?$/.exec(raw.replaceAll('"', ""));
+	return match ? `~${match[1] ?? ""}` : undefined;
+}
+
+/** The path a shell target names, for a containment check: its literal path, or a home spelling; undefined when unresolved. */
+export function shellTargetPath(target: BashFileTarget): string | undefined {
+	if (target.kind === "write" && (!target.uncertain || target.uncertain === DYNAMIC_TARGET)) {
+		const home = homeSpelling(target.raw);
+		if (home !== undefined) return home;
+	}
+	return target.uncertain ? undefined : target.path;
+}
+
+/**
+ * How a shell target is treated: the state-folder refusal for any resolvable write (checked first, in every mode), then
+ * the class a write outside the workspace or to a run-later file needs, or `uncertain` when it names no known place.
+ */
 export function shellTargetAccess(
 	target: BashFileTarget,
 	cwd: string,
@@ -62,23 +108,19 @@ export function shellTargetAccess(
 	uncertain?: boolean;
 	protected?: boolean;
 } {
-	if (!target.path || target.uncertain) return { uncertain: true };
-	const file = canonicalPath(shellPath(cwd, target.path));
+	const spelled = shellTargetPath(target);
+	if (!spelled) return { uncertain: true };
+	const file = canonicalPath(shellPath(cwd, spelled));
 	if (target.kind === "write") {
 		const refusal = stateFolderRefusal(file, target.raw, "Bash");
 		if (refusal) return { refusal };
 	}
 	const root = workspaceRoot(cwd);
-	const inside = root !== undefined && isWithin(file, root);
+	if (target.kind === "read")
+		return { protected: false, action: root !== undefined && isWithin(file, root) ? undefined : "read.outside" };
+	const inside = root !== undefined && changesOnlyWorkspace(file, root);
 	return {
-		protected: target.kind === "write" && inside && runsLater(file, root),
-		action:
-			target.kind === "read"
-				? inside
-					? undefined
-					: "read.outside"
-				: inside && !runsLater(file, root)
-					? undefined
-					: "file.outside",
+		protected: inside && runsLater(file, root),
+		action: inside && !runsLater(file, root) ? undefined : "file.outside",
 	};
 }

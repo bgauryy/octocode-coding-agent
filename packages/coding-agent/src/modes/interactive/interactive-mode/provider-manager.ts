@@ -2,24 +2,8 @@ import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { OAuthSelectorComponent, type AuthSelectorProvider } from "../components/oauth-selector.ts";
-import type { InteractiveModeHost } from "./host.ts";
+import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPiProviders } from "./provider-pi.ts";
-
-export type ProviderManagerHost = Pick<
-	InteractiveModeHost,
-	| "session"
-	| "getLoginProviderOptions"
-	| "showSelector"
-	| "showExtensionSelector"
-	| "showLoginDialog"
-	| "showApiKeyLoginDialog"
-	| "showAmbientAuthDialog"
-	| "showModelSelector"
-	| "showStatus"
-	| "showError"
-	| "updateAvailableProviderCount"
-	| "ui"
->;
 
 /** Describe configuration without resolving secrets or claiming a successful network login. */
 function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): string {
@@ -83,8 +67,9 @@ async function manageProvider(host: ProviderManagerHost, id: string, saved: read
 		choices.set("Choose a model for this chat", () => host.showModelSelector(`${id}/`));
 	}
 	for (const option of methods) {
+		// Login dialogs call `back` synchronously and drop its result, so it reports its own failure.
 		const back = () => {
-			void showProviderManager(host, id);
+			showProviderManager(host, id).catch((error: unknown) => host.showError(errorMessage(error)));
 		};
 		if (option.authType === "oauth") {
 			choices.set(

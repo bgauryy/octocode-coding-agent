@@ -7,6 +7,7 @@ import {
 	Text,
 	type TUI,
 } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText as plain } from "../../../../common/src/sanitize.ts";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { frame, renderClipped, runInView } from "../../modes/interactive/components/framed-view.ts";
@@ -82,6 +83,9 @@ class LlamaView implements LlamaUi, Focusable {
 	private progressResolver: (() => void) | undefined;
 	private showingProgress = false;
 	private _focused = false;
+	private disposed = false;
+	/** Settle the open list or search as cancelled. */
+	private readonly pending = new Set<() => void>();
 
 	constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager) {
 		this.tui = tui;
@@ -104,6 +108,7 @@ class LlamaView implements LlamaUi, Focusable {
 		inputHandler?: { handleInput?(data: string): void },
 		inputTarget?: Focusable,
 	): void {
+		if (this.disposed) return;
 		if (this.inputTarget) this.inputTarget.focused = false;
 		this.progressPromise = undefined;
 		this.progressResolver = undefined;
@@ -129,7 +134,7 @@ class LlamaView implements LlamaUi, Focusable {
 			})),
 			{ value: DOWNLOAD_VALUE, label: "Download model…", description: "Hugging Face owner/repository[:quant]" },
 		];
-		return new Promise((resolve) => {
+		return this.wait<LlamaManagerAction>({ type: "close" }, (resolve) => {
 			const list = new SelectList(items, Math.min(items.length, 12), selectTheme(this.theme), {
 				minPrimaryColumnWidth: 36,
 				maxPrimaryColumnWidth: 56,
@@ -146,7 +151,7 @@ class LlamaView implements LlamaUi, Focusable {
 				frame(
 					this.theme,
 					"llama.cpp models",
-					[new Text(this.theme.fg("dim", serverUrl), 1, 0), new Spacer(1), list],
+					[new Text(this.theme.fg("dim", plain(serverUrl)), 1, 0), new Spacer(1), list],
 					`${keyHint("tui.select.confirm", "load/unload/download")} • ${keyHint("tui.select.cancel", "close")}`,
 				),
 				list,
@@ -155,7 +160,7 @@ class LlamaView implements LlamaUi, Focusable {
 	}
 
 	select(title: string, options: string[]): Promise<string | undefined> {
-		return new Promise((resolve) => {
+		return this.wait<string | undefined>(undefined, (resolve) => {
 			const list = new SelectList(
 				options.map((option) => ({ value: option, label: option })),
 				Math.min(options.length, 12),
@@ -166,7 +171,8 @@ class LlamaView implements LlamaUi, Focusable {
 			this.setContent(
 				frame(
 					this.theme,
-					title,
+					// Titles carry server text: model ids and the server's error messages.
+					plain(title),
 					[new Spacer(1), list],
 					`${keyHint("tui.select.confirm", "select")} • ${keyHint("tui.select.cancel", "cancel")}`,
 				),
@@ -187,7 +193,7 @@ class LlamaView implements LlamaUi, Focusable {
 	searchModels(
 		search: (query: string, signal: AbortSignal) => Promise<HuggingFaceModel[]>,
 	): Promise<string | undefined> {
-		return new Promise((resolve) => {
+		return this.wait<string | undefined>(undefined, (resolve) => {
 			const component = new HuggingFaceSearch(
 				this.tui,
 				this.theme,
@@ -206,14 +212,20 @@ class LlamaView implements LlamaUi, Focusable {
 				component,
 				component,
 			);
+			// Stops a pending search request and its debounce before answering.
+			return () => component.dispose();
 		});
 	}
 
 	showStatus(title: string, message: string): void {
-		this.setContent(frame(this.theme, title, [new Spacer(1), new Text(this.theme.fg("muted", message), 1, 0)]));
+		this.setContent(
+			frame(this.theme, plain(title), [new Spacer(1), new Text(this.theme.fg("muted", plain(message)), 1, 0)]),
+		);
 	}
 
+	/** After `dispose` nobody can ask to stop, so the progress wait stays open until the operation ends. */
 	progress(state: ProgressState): Promise<void> {
+		if (this.disposed) return new Promise(() => {});
 		if (!this.progressPromise) {
 			this.progressPromise = new Promise((resolve) => {
 				this.progressResolver = resolve;
@@ -225,11 +237,12 @@ class LlamaView implements LlamaUi, Focusable {
 	}
 
 	updateProgress(state: ProgressState): void {
-		if (!this.showingProgress) return;
+		if (!this.showingProgress || this.disposed) return;
 		const body = [
-			new Text(this.theme.fg("text", state.model), 1, 0),
+			new Text(this.theme.fg("text", plain(state.model)), 1, 0),
 			new Spacer(1),
-			new Text(this.theme.fg("muted", state.message), 1, 0),
+			// The stage name comes from the server's live updates.
+			new Text(this.theme.fg("muted", plain(state.message)), 1, 0),
 		];
 		if (state.ratio !== undefined) {
 			const available = 40;
@@ -245,8 +258,8 @@ class LlamaView implements LlamaUi, Focusable {
 				),
 			);
 		}
-		if (state.detail) body.push(new Text(this.theme.fg("dim", state.detail), 1, 0));
-		this.content = frame(this.theme, state.title, body, keyHint("tui.select.cancel", "stop"));
+		if (state.detail) body.push(new Text(this.theme.fg("dim", plain(state.detail)), 1, 0));
+		this.content = frame(this.theme, plain(state.title), body, keyHint("tui.select.cancel", "stop"));
 		this.inputHandler = undefined;
 		this.tui.requestRender();
 	}
@@ -269,6 +282,45 @@ class LlamaView implements LlamaUi, Focusable {
 
 	invalidate(): void {
 		this.content.invalidate();
+	}
+
+	/**
+	 * Something else took the view's place (`runInView`): settle the open list or search as cancelled so the run ends
+	 * through its cancel paths. A running load or download is not a request to stop: it continues, and the run ends after it.
+	 */
+	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		const cancels = [...this.pending];
+		this.pending.clear();
+		this.inputHandler = undefined;
+		this.progressResolver = undefined;
+		this.showingProgress = false;
+		for (const cancel of cancels) cancel();
+	}
+
+	/**
+	 * A wait settled once: by `show`'s answer, or with `cancelled` when the view is disposed, after `show`'s returned
+	 * cleanup runs. Once disposed, it answers `cancelled` without showing anything.
+	 */
+	private wait<T>(cancelled: T, show: (settle: (value: T) => void) => (() => void) | undefined): Promise<T> {
+		if (this.disposed) return Promise.resolve(cancelled);
+		return new Promise((resolve) => {
+			let done = false;
+			const settle = (value: T) => {
+				if (done) return;
+				done = true;
+				this.pending.delete(cancel);
+				resolve(value);
+			};
+			// `dispose` calls `cancel` only after `cleanup` is assigned.
+			const cancel = () => {
+				cleanup?.();
+				settle(cancelled);
+			};
+			const cleanup = show(settle);
+			if (!done) this.pending.add(cancel);
+		});
 	}
 }
 

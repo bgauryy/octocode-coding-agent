@@ -1,5 +1,4 @@
 import {
-	appendFileSync,
 	closeSync,
 	existsSync,
 	fstatSync,
@@ -26,13 +25,36 @@ import {
 } from "./entries.ts";
 import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
 
-export function assertCompleteSessionTail(file: string): void {
+/** Offset just past the last newline of `fd` (0 when there is none), reading backwards in blocks. */
+export function endOfLastRecord(fd: number, size: number): number {
+	const block = Buffer.alloc(64 * 1024);
+	for (let end = size; end > 0;) {
+		const start = Math.max(0, end - block.length);
+		const read = readSync(fd, block, 0, end - start, start);
+		const at = block.subarray(0, read).lastIndexOf(10);
+		if (at >= 0) return start + at + 1;
+		end = start;
+	}
+	return 0;
+}
+
+/**
+ * Throws unless the file ends with a whole record. Returns true when that record lacks only its newline (a hand edit,
+ * or a writer that stopped just before it); a caller about to append, holding the session lock, writes the newline
+ * first. `loadEntriesFromFile` keeps such a record and never writes the file itself.
+ */
+export function assertCompleteSessionTail(file: string): boolean {
 	const fd = openSync(file, "r");
 	try {
 		const size = fstatSync(fd).size;
 		const last = Buffer.alloc(1);
-		if (size === 0 || readSync(fd, last, 0, 1, size - 1) !== 1 || last[0] !== 10)
-			throw new Error("Session has an incomplete final record; recover the transcript before writing.");
+		if (size > 0 && readSync(fd, last, 0, 1, size - 1) === 1 && last[0] === 10) return false;
+		const start = endOfLastRecord(fd, size);
+		const tail = Buffer.alloc(size - start);
+		if (size > 0 && readSync(fd, tail, 0, tail.length, start) === tail.length) {
+			if (parseSessionEntryLine(tail.toString("utf8"))) return true;
+		}
+		throw new Error("Session has an incomplete final record; recover the transcript before writing.");
 	} finally {
 		closeSync(fd);
 	}
@@ -104,14 +126,11 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 		closeSync(fd);
 	}
 
-	// Validate session header before repairing the file.
 	if (entries.length === 0) return entries;
 	const header = entries[0];
 	if (header.type !== "session" || typeof (header as { id?: unknown }).id !== "string") {
 		return [];
 	}
-
-	if (pending && parseSessionEntryLine(pending)) appendFileSync(resolvedFilePath, "\n");
 	return entries;
 }
 

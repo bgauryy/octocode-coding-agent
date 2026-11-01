@@ -19,6 +19,7 @@ import { createInteractiveTui, createInteractiveTuiReference } from "../tui-rend
 import type { InteractiveModeHost } from "./host.ts";
 import { bindInteractiveModeMethods } from "./host-methods.ts";
 import { handleRightClickPaste } from "./input-handlers.ts";
+import { installRenderErrorNotices } from "./render-errors.ts";
 import type { InteractiveModeOptions } from "./types.ts";
 
 type WritableHost = { -readonly [K in keyof InteractiveModeHost]: InteractiveModeHost[K] };
@@ -71,7 +72,6 @@ export function createInteractiveModeHost(
 		// Status line tracking (for mutating immediately-sequential status updates)
 		lastStatusSpacer: undefined,
 		lastStatusText: undefined,
-		lastStatusMessage: "",
 		managedToolStatusStarted: false,
 
 		// Streaming message tracking
@@ -181,6 +181,7 @@ export function createInteractiveModeHost(
 		fullscreenWheelScrollLines: host.settingsManager.getFullscreenWheelScrollLines(),
 	});
 	host.ui = createInteractiveTuiReference(() => host.renderer);
+	installRenderErrorNotices(host);
 	host.ui.setClearOnShrink(host.settingsManager.getClearOnShrink());
 	// Header container that holds the built-in or custom header
 	host.headerContainer = new Container();

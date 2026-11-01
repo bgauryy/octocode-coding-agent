@@ -1,27 +1,12 @@
-import { createRequire } from "node:module";
-import type * as Sqlite from "node:sqlite";
 import type { Usage } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "./output-budget.ts";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../../utils/output-budget.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
-
-/** node:sqlite prints an ExperimentalWarning on some Node versions; that would land in the terminal UI. */
-export function loadSqlite(): typeof Sqlite {
-	const emit = process.emitWarning;
-	process.emitWarning = (warning: string | Error, ...rest: unknown[]) => {
-		const text = typeof warning === "string" ? warning : warning.message;
-		if (/sqlite/i.test(text)) return;
-		return (emit as (...args: unknown[]) => void).call(process, warning, ...rest);
-	};
-	try {
-		return createRequire(import.meta.url)("node:sqlite") as typeof Sqlite;
-	} finally {
-		process.emitWarning = emit;
-	}
-}
+import { cutText } from "../../../../common/src/text.ts";
+import { clipText, firstLine } from "../../../../common/src/clip.ts";
 
 interface TextResult<T = unknown> {
 	content: Array<{ type: "text"; text: string }>;
@@ -48,49 +33,7 @@ export function capOutput(text: string, maxBytes = RESULT_DEFAULT_BYTES, maxLine
 	return `${cut.content}\n\n[Output trimmed: ${trimmedCounts(cut.outputLines, cut.totalLines, cut.outputBytes, cut.totalBytes)}.]`;
 }
 
-/**
- * The one text cut: the head (or, with `tail`, the end) of `text` within `max` UTF-8 bytes, or UTF-16 code units with
- * `chars`. A character is never cut in half: neither a multi-byte UTF-8 sequence nor a surrogate pair.
- */
-export function cutText(
-	text: string,
-	max: number,
-	{ chars = false, tail = false }: { chars?: boolean; tail?: boolean } = {},
-): string {
-	const limit = Math.max(0, Math.floor(max));
-	if (chars) {
-		if (text.length <= limit) return text;
-		if (tail) {
-			let start = text.length - limit;
-			if (isLowSurrogate(text.charCodeAt(start))) start++;
-			return text.slice(start);
-		}
-		let end = limit;
-		if (end > 0 && isHighSurrogate(text.charCodeAt(end - 1))) end--;
-		return text.slice(0, end);
-	}
-	const bytes = Buffer.from(text, "utf8");
-	if (bytes.length <= limit) return text;
-	// UTF-8 continuation bytes are 10xxxxxx: a cut moves off them to the nearest character boundary inside the budget.
-	const continuation = (index: number) => (bytes[index] & 0xc0) === 0x80;
-	if (tail) {
-		let start = bytes.length - limit;
-		while (start < bytes.length && continuation(start)) start++;
-		return bytes.subarray(start).toString("utf8");
-	}
-	let end = limit;
-	while (end > 0 && continuation(end)) end--;
-	return bytes.subarray(0, end).toString("utf8");
-}
-
-const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
-const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
-
-/** `text` cut to `max` characters, ending in `…` when cut: the one character clip (`clip` adds one sanitized line). */
-export function clipText(text: string, max: number): string {
-	if (max <= 0) return "";
-	return text.length > max ? `${cutText(text, max - 1, { chars: true })}…` : text;
-}
+export { clipText, firstLine };
 
 /** Whole seconds in `ms`, rounded: the unit of a job's runtime and of a timeout in messages. */
 export const wholeSeconds = (ms: number): number => Math.round(ms / 1000);
@@ -130,34 +73,6 @@ export async function settleWithin(
 	} finally {
 		clearTimeout(timer);
 		if (onAbort) signal?.removeEventListener("abort", onAbort);
-	}
-}
-
-/** `promise`, or a rejection with the signal's reason as soon as `signal` aborts (at once when it already has). */
-export async function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-	if (!signal) return promise;
-	let onAbort: () => void = () => undefined;
-	const aborted = new Promise<never>((_, reject) => {
-		onAbort = () => reject(signal.reason);
-		if (signal.aborted) onAbort();
-		else signal.addEventListener("abort", onAbort, { once: true });
-	});
-	try {
-		return await Promise.race([promise, aborted]);
-	} finally {
-		signal.removeEventListener("abort", onAbort);
-	}
-}
-
-export async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
-	let timer: NodeJS.Timeout | undefined;
-	const timeout = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => reject(new Error(`${label} timed out after ${wholeSeconds(ms)}s`)), ms);
-	});
-	try {
-		return await Promise.race([work, timeout]);
-	} finally {
-		clearTimeout(timer);
 	}
 }
 
@@ -246,7 +161,7 @@ export function isStaleSessionError(error: unknown): boolean {
  * credentials are dropped and anything that looks like a secret is redacted.
  */
 export function toolHint(args: unknown): string {
-	const input = isRecord(args) ? args : {};
+	const input = asRecord(args);
 	const hint = [input.path, input.command, input.query, input.url, input.ref].find(
 		(value) => typeof value === "string",
 	);
@@ -254,9 +169,6 @@ export function toolHint(args: unknown): string {
 	const line = firstLine(hint).replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1");
 	return clipText(redactSecrets(line), 80);
 }
-
-/** The first line of a text (all of it when it has one line). */
-export const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
 export function emptyUsage(): Usage {
 	return createEmptyUsage();
@@ -277,7 +189,7 @@ export function addUsage(total: Usage, usage: unknown): void {
 		if (typeof usage[key] === "number" && Number.isFinite(usage[key])) total[key] = (total[key] ?? 0) + usage[key];
 	}
 	total.totalTokens += finiteOrZero(usage.totalTokens);
-	const cost = isRecord(usage.cost) ? usage.cost : {};
+	const cost = asRecord(usage.cost);
 	total.cost.input += finiteOrZero(cost.input);
 	total.cost.output += finiteOrZero(cost.output);
 	total.cost.cacheRead += finiteOrZero(cost.cacheRead);

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { JSDOM, VirtualConsole } from "jsdom";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderBacklogHtml } from "../src/index.ts";
+import { OFFLINE_PAGE_JS } from "../src/state.generated.ts";
 
 /**
  * The offline export's guarantee: data renders only as text and the page never parses HTML or reaches the network.
@@ -24,11 +25,14 @@ const SINKS = [
 ];
 const XSS = '</script><img src=x onerror="alert(1)"><script>alert(2)</script><iframe srcdoc="x">';
 
+const GENERATED = new Set(["state.generated.ts", "mermaid.generated.ts"]);
+
 function sources(directory: string): string[] {
 	return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
 		const path = join(directory, entry.name);
 		if (entry.isDirectory()) return sources(path);
-		return /\.tsx?$/.test(entry.name) && entry.name !== "state.generated.ts" ? [path] : [];
+		// The generated page bundle and the vendored Mermaid script are library code; the next tests cover what ships.
+		return /\.tsx?$/.test(entry.name) && !GENERATED.has(entry.name) ? [path] : [];
 	});
 }
 
@@ -44,6 +48,10 @@ describe("offline export security", () => {
 			const text = readFileSync(file, "utf8");
 			for (const sink of SINKS) expect(text, `${file.slice(root.length)} uses ${sink}`).not.toContain(sink);
 		}
+	});
+
+	it("ships no Mermaid in the offline export, which never loads a diagram renderer", () => {
+		expect(OFFLINE_PAGE_JS).not.toMatch(/mermaid/i);
 	});
 
 	it("renders hostile data as text in every view without touching a sink or the network", async () => {

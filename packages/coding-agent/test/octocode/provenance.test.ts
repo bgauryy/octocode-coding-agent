@@ -224,10 +224,9 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		).toBeUndefined();
 	});
 
-	it("does not treat browser type/fill or agent task text as sinks", () => {
+	it("does not treat agent task text as a sink", () => {
 		const { provenance } = setup();
-		provenance.record(result("browser", { action: "snapshot" }, PAGE), ctx);
-		expect(provenance.check(call("browser", { action: "type", ref: 3, text: SPAN }), ctx)).toBeUndefined();
+		provenance.record(result("mcp__browser__snapshot", {}, PAGE), ctx);
 		expect(provenance.check(call("agent", { task: SPAN }), ctx)).toBeUndefined();
 	});
 });
@@ -242,7 +241,7 @@ describe("provenance: private text reaching an egress sink", () => {
 		expect(provenance.check(call("web", { url }), ctx)?.why).toMatch(
 			/^sends private text from read \/etc\/ssh\/ssh_config \(0s ago\)$/,
 		);
-		expect(provenance.check(call("browser", { action: "navigate", url }), ctx)).toMatchObject({
+		expect(provenance.check(call("mcp__browser__open", { url }), ctx)).toMatchObject({
 			why: expect.stringMatching(/^sends private text from read \/etc\/ssh\/ssh_config/),
 		});
 		expect(provenance.check(call("bash", { command: `curl '${url}'` }), ctx)).toMatchObject({

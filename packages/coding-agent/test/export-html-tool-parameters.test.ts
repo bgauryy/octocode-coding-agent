@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
+import { getExportTemplateDir } from "../src/config.ts";
+import { readTemplateScript } from "../src/core/export-html/template-script.ts";
 
-const template = readFileSync(new URL("../src/core/export-html/template.js", import.meta.url), "utf8");
+const template = readTemplateScript(getExportTemplateDir());
 
 function renderTool(parameters?: object): string {
 	// Exercise the export's real header and escaping functions without booting its browser event loop.

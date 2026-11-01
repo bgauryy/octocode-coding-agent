@@ -1,3 +1,4 @@
+import "../../../octocode/mcp-host/core-install.ts";
 import { GLYPH } from "@octocodeai/octocode-tui";
 import type { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { type GithubStatus, runGithubAuth } from "../../../../../mcp/src/presets/octocode/github-auth.ts";

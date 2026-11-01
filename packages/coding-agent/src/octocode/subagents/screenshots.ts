@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { globalPaths, PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
+import { globalPaths, privateDir } from "../shared/home.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 /**
- * A subagent's screenshots (the `browser` tool) live only in its own conversation. The parent saves the
+ * A subagent's screenshots (the browser MCP tools) live only in its own conversation. The parent saves the
  * latest ones next to the team database so the user sees what the agent sees, live in the tool row and as a path to open.
  */
 

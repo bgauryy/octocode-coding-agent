@@ -98,18 +98,18 @@ export function registerAskUser(api: ExtensionAPI): void {
 		timedTool({
 			name: "askUser",
 			label: "Ask user",
+			promptSnippet:
+				"When you need the user's answer to continue: a decision, a preference, approval of a step you propose, a fact tools cannot discover, or what only they can confirm (what they see), including a subagent's question",
 			description:
-				"Ask the user when you need their answer to continue: a preference or decision, a fact tools cannot discover, or a confirmation only they can give (what they see on screen), including a question a subagent relays. " +
-				"Call it instead of ending your reply with a question; the answer arrives in the same turn. Batch related, self-contained questions in one call. " +
-				"Decisions: 2-4 options when known (none for free text), a supported recommendation first labelled ' (Recommended)'; the UI adds a write-in field, so never add \"Other\".",
-			promptSnippet: "Ask the user a question only they can answer",
+				"Put one or more questions to the user and get the answers this turn; use it instead of ending a reply or report with a question. Batch related, self-contained questions. " +
+				"Decisions: 2-4 options (none for free text), each clear on its own, the supported recommendation first, labelled ' (Recommended)'; the UI adds a write-in, so never add \"Other\".",
 			parameters: Type.Object({
 				questions: Type.Array(
 					Type.Object({
-						question: Type.String({ description: "Question with the context needed to answer" }),
+						question: Type.String({ description: "Question with the context to answer it" }),
 						header: Type.Optional(
 							Type.String({
-								description: "Tab label, about 12 characters shown; omit for a question number",
+								description: "Tab label, ~12 characters shown",
 							}),
 						),
 						options: Type.Optional(
@@ -118,7 +118,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 									label: Type.String({ description: "Concise answer label" }),
 									description: Type.Optional(
 										Type.String({
-											description: "Effect or trade-off that distinguishes it",
+											description: "Its distinguishing effect or trade-off",
 										}),
 									),
 								}),
@@ -126,7 +126,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 						),
 						multiSelect: Type.Optional(
 							Type.Boolean({
-								description: "true: the user may pick several. Default false: exactly one",
+								description: "true: the user may pick several",
 							}),
 						),
 					}),
@@ -167,15 +167,22 @@ export function registerAskUser(api: ExtensionAPI): void {
 				return { content: [{ type: "text", text: `${formatAnswers(result)}${note}` }], details: result };
 			},
 			renderCall(args, theme, context) {
-				const headers = (args.questions ?? [])
+				const questions = args.questions ?? [];
+				const headers = questions
 					.map((q) => clip(String(q?.header ?? ""), 24))
 					.filter(Boolean)
 					.join(", ");
+				// Without headers the row names the first question, so the transcript shows what was asked.
+				const first = String(questions[0]?.question ?? "")
+					.split("\n")[0]
+					.trim();
+				const more = questions.length > 1 ? ` +${questions.length - 1} more` : "";
+				const what = headers || (first ? `${clip(first, 80)}${more}` : "");
 				// The question is open on screen until the user answers: it waits on them (`◇`, breathing). Once answered the header
 				// is its phase's `✓`; a declined or interrupted question was recorded by `renderResult`.
 				const open = context.isPartial && context.executionStarted;
 				const state = sharedRowState(context) ?? (open ? "waiting" : undefined);
-				return toolHeader(theme, context, "Ask", headers, state ? { state } : {});
+				return toolHeader(theme, context, "Ask", what, state ? { state } : {});
 			},
 			renderResult(result, _options, theme, context) {
 				const details = result.details as Partial<AskResult> | undefined;

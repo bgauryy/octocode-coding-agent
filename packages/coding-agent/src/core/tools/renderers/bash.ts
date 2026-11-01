@@ -7,10 +7,10 @@
  */
 
 import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
-import type { BashToolDetails } from "../bash.ts";
+import type { BashToolDetails } from "../bash/outcome.ts";
 import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
 import { reuseText } from "./output.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";

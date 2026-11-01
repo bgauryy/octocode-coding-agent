@@ -1,5 +1,12 @@
-import type { SpanOptions, TelemetryPropagation, TelemetrySpan } from "./index.ts";
-import type { TelemetryCounter, TelemetryHistogram, TelemetryMetrics, TelemetryUpDownCounter } from "./metrics.ts";
+import type {
+	SpanOptions,
+	TelemetryCounter,
+	TelemetryHistogram,
+	TelemetryMetrics,
+	TelemetryPropagation,
+	TelemetrySpan,
+	TelemetryUpDownCounter,
+} from "./context.ts";
 
 async function startNoopSpan<T>(_options: SpanOptions, callback: (span: TelemetrySpan) => T | Promise<T>): Promise<T> {
 	return callback(noopTelemetrySpan);

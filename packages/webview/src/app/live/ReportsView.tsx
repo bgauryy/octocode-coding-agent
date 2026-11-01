@@ -1,8 +1,9 @@
 import type { ReportFile, ReportSummary } from "@octocodeai/octocode-contracts/protocol";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import type { ViewProps } from "../extension.ts";
 import { plural } from "../model/format.ts";
+import { hashFor } from "../model/route.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { KIND_LABELS, TAB_KINDS, type ReportTab } from "../model/reports.ts";
 import { RichTextContext } from "../ui/LongText.tsx";
@@ -44,36 +45,24 @@ function ReportsTab({
 }: ViewProps & { tab: ReportTab; heading: string; empty: string }) {
 	const { api } = useLive();
 	const [list, setList] = useState<ListState>(FIRST_LIST);
-	const load = useCallback(
-		(signal: AbortSignal) =>
-			api.reports(signal).then(
-				(reports) => {
-					if (signal.aborted) return;
-					setList({ reports: reports.reports, loading: false, error: "" });
-				},
-				(error: unknown) => {
-					if (signal.aborted) return;
-					setList((current) => ({ reports: current.reports, loading: false, error: errorMessage(error) }));
-				},
-			),
-		[api],
-	);
-	const controllerRef = useRef<AbortController | null>(null);
+	// Every load, the first and each retry, runs in this effect, so unmounting or a new API aborts the one in flight.
+	const [attempt, setAttempt] = useState(0);
 	useEffect(() => {
 		const controller = new AbortController();
-		controllerRef.current = controller;
-		void load(controller.signal);
-		return () => {
-			controller.abort();
-			controllerRef.current = null;
-		};
-	}, [load]);
+		api.reports(controller.signal).then(
+			(reports) => {
+				if (!controller.signal.aborted) setList({ reports: reports.reports, loading: false, error: "" });
+			},
+			(error: unknown) => {
+				if (!controller.signal.aborted)
+					setList((current) => ({ reports: current.reports, loading: false, error: errorMessage(error) }));
+			},
+		);
+		return () => controller.abort();
+	}, [api, attempt]);
 	const retry = () => {
-		controllerRef.current?.abort();
-		const controller = new AbortController();
-		controllerRef.current = controller;
 		setList((current) => ({ reports: current.reports, loading: true, error: "" }));
-		void load(controller.signal);
+		setAttempt((count) => count + 1);
 	};
 	const reports = useMemo(
 		() => list.reports.filter((report) => TAB_KINDS[tab].includes(report.kind)),
@@ -135,7 +124,7 @@ function ReportRow({ report, tab, onOpen }: { report: ReportSummary; tab: Report
 	return (
 		<li>
 			<a
-				href={`#${tab}?id=${encodeURIComponent(report.id)}`}
+				href={hashFor(tab, { id: report.id, kind: report.kind })}
 				onClick={(event) => {
 					event.preventDefault();
 					onOpen();

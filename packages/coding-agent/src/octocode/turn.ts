@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import type { Skill } from "../core/skills.ts";
 import { currentEnvironment } from "../core/system-prompt.ts";
-import { GRAPH_TOOLS } from "./graph/cli.ts";
+import { FILE_CHANGING_TOOLS } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
@@ -10,8 +10,8 @@ import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../c
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
 import { isOctocodeTool, OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
-import { browserMcpTool } from "./shared/browser-mcp.ts";
-import { type AgentProfile, profileSelectsTool } from "./subagents/profiles.ts";
+import { browserMcpTool } from "../../../common/src/browser-mcp.ts";
+import { type AgentProfile, profileSelectsBrowser } from "./subagents/profiles.ts";
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
@@ -43,27 +43,26 @@ export function registerTurnSetup(
 			selected.some((name) => browserMcpTool(name) !== undefined);
 		// Only enablement and selection count, never connection state: the prompt says how to recover when a tool turns
 		// out to be missing, so a server that is still connecting, or that failed or stopped later, keeps the same policy
-		// bytes and the cached prefix. `mcp_status` carries the state. The native `mcp` tool is always selected where MCP
+		// bytes and the cached prefix. The `mcps` section carries the state. The native `mcp` tool is always selected where MCP
 		// is allowed, so the answer does not change when the server's own tools appear.
 		const octocode = selected.some(isOctocodeTool) || (server?.enabled === true && canReachMcp(selected));
 		// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
-		const canWrite = !readOnlyRole && ["file", "write", "edit"].some((name) => selected.includes(name));
+		const canWrite = !readOnlyRole && FILE_CHANGING_TOOLS.some((name) => selected.includes(name));
 		const profiles = [...options.profiles().values()];
 		const inputs = {
 			octocode,
-			// graphBuild stays for a read-only role: the permission gate allows it because it writes only `.octocode/graph/`.
-			graphTools: GRAPH_TOOLS.filter((name) => selected.includes(name)),
 			profiles: profiles.map(({ name, description }) => ({ name, description })),
 			browserProfiles:
-				!options.isSubagent && selected.includes("agent") && !selected.includes("browser") && !browserMcp
-					? profiles.filter((profile) => profileSelectsTool(profile, "browser", [])).map(({ name }) => name)
+				!options.isSubagent && selected.includes("agent") && !browserMcp
+					? profiles.filter(profileSelectsBrowser).map(({ name }) => name)
 					: [],
-			canBrowse: selected.includes("browser") || browserMcp,
+			canBrowse: browserMcp,
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
+			canAsk: selected.includes("askUser"),
 			canWrite,
 			readOnlyRole,
-			canSave: ["file", "write", "edit"].some((name) => selected.includes(name)),
+			canSave: FILE_CHANGING_TOOLS.some((name) => selected.includes(name)),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
 			// Availability follows the connected servers; a global MCP opt-out still applies.

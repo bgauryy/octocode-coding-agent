@@ -1,3 +1,4 @@
+import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { ComponentType, ReactNode } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
@@ -27,6 +28,22 @@ export interface ViewProps {
 	setParams: (params: Params) => void;
 	/** Optional authenticated action; static exports keep cards read-only. */
 	ItemAction?: ComponentType<{ item: SnapshotItem }>;
+	/** Edit controls for the epic → item → task hierarchy; absent in static exports and read-only pages. */
+	controls?: HierarchyControls;
+}
+
+/** The controls a live, editable page adds to the hierarchy views. The host still refuses what it does not allow. */
+export interface HierarchyControls {
+	/** In the tree: re-parent an item under an epic, add an item to an epic, add a task to an item. */
+	ItemTools: ComponentType<{ item: SnapshotItem; index: BacklogIndex }>;
+	/** Change a task's state and move it up or down among its owner's tasks. */
+	TaskTools: ComponentType<{ task: BacklogTask; siblings: readonly BacklogTask[] }>;
+	/** Change an item's state from its board card. */
+	StateControl: ComponentType<{ item: SnapshotItem }>;
+	/** An item's tasks in its detail sheet, with inline add and edit. */
+	ItemTasks: ComponentType<{ item: SnapshotItem }>;
+	/** Promote a session task to an item or move it under one. */
+	SessionTaskTools: ComponentType<{ task: BacklogTask; index: BacklogIndex }>;
 }
 export interface ViewDefinition {
 	name: string;
@@ -55,6 +72,8 @@ export interface LiveExtension {
 	Provider: ComponentType<{ access: string; backlog: BacklogStore; children: ReactNode }>;
 	ConnectionStatus: ComponentType;
 	ItemActions: ComponentType<{ item: SnapshotItem }>;
+	/** Tree, board and detail edit controls for items and tasks. */
+	controls: HierarchyControls;
 	ItemQuickAction?: ComponentType<{ item: SnapshotItem }>;
 	ItemActivity: ComponentType<{ item: SnapshotItem }>;
 	Editor: ComponentType<EditorProps>;

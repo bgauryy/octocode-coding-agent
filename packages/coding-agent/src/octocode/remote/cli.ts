@@ -45,7 +45,7 @@ export async function runRemoteCli(
 	}
 	const daemon = await findWebDaemon(env);
 	if (!daemon) {
-		io.err("No web daemon is running. Start a session with OCTOCODE_WEB_DAEMON=1 and run /octocode or /remote.");
+		io.err("No web daemon is running. Start a session with OCTOCODE_WEB_DAEMON=1 and run /web or /remote.");
 		return 2;
 	}
 	try {

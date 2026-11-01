@@ -223,13 +223,10 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			this.emitClose();
 			return;
 		}
-		if (child.exitCode !== null || child.signalCode !== null) {
-			// The launcher (npx, uvx) exited, but the server it started can still hold the pipes: stop the group too.
-			child.stdin?.end();
-			killProcessTree(child, "SIGTERM");
-			return;
-		}
-		// Shutdown per the spec: close stdin and let the server exit, then SIGTERM, then SIGKILL.
+		// Shutdown per the spec: close stdin and let the server exit, then SIGTERM, then SIGKILL. When the launcher
+		// (npx, uvx) already exited, the server it started can still hold the pipes: it gets SIGTERM at once and the
+		// same SIGKILL escalation, since only the group signal still reaches it.
+		const launcherExited = child.exitCode !== null || child.signalCode !== null;
 		const closeTimeoutMs = this.options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS;
 		await new Promise<void>((resolve) => {
 			const timers: ReturnType<typeof setTimeout>[] = [];
@@ -239,9 +236,21 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 				killProcessTree(child, "SIGTERM");
 				resolve();
 			});
-			const grace = Math.min(STDIN_CLOSE_GRACE_MS, closeTimeoutMs);
+			const grace = launcherExited ? 0 : Math.min(STDIN_CLOSE_GRACE_MS, closeTimeoutMs);
 			timers.push(setTimeout(() => killProcessTree(child, "SIGTERM"), grace));
 			timers.push(setTimeout(() => killProcessTree(child, "SIGKILL"), grace + closeTimeoutMs));
+			// A holder outside the group (or a launcher Windows can no longer kill) keeps the pipes open after SIGKILL:
+			// release them so close() still finishes.
+			timers.push(
+				setTimeout(
+					() => {
+						child.stdout?.destroy();
+						child.stderr?.destroy();
+						child.stdin?.destroy();
+					},
+					grace + 2 * closeTimeoutMs,
+				),
+			);
 			child.stdin?.end();
 		});
 	}

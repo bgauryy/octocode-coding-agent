@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { hasControlCharacter } from "../utils/chars.ts";
 import { toDisplayPath } from "./path-prefix.ts";
 
 function escapeRegex(value: string): string {
@@ -122,6 +123,8 @@ export async function walkDirectoryWithFd(
 				if (normalizedPath === ".git" || normalizedPath.startsWith(".git/") || normalizedPath.includes("/.git/")) {
 					continue;
 				}
+				// Paths with control characters would write their escapes to the terminal as suggestion labels.
+				if (hasControlCharacter(displayLine)) continue;
 
 				results.push({
 					path: displayLine,

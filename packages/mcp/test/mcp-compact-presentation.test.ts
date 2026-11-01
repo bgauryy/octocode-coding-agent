@@ -71,11 +71,11 @@ describe("compact MCP presentation", () => {
 		expect(readGenerated(dir, "octocode")!.meta.hash).not.toBe(hash);
 		const during = await h.prompt();
 		// The file's section is byte-identical; the new tool, which the frozen file does not describe, is declared in full.
-		expect(during.mcp_contract_octocode).toBe(before.mcp_contract_octocode);
-		expect(during.mcp_contract_octocode).not.toContain("function late(");
+		expect(during.mcps).toBe(before.mcps);
+		expect(during.mcps).not.toContain("function late(");
 		expect(h.tools.get("mcp__octocode__late").validationParameters).toBeUndefined();
 		await h.fire("model_select", { model: undefined }, h.ctx);
-		expect((await h.prompt()).mcp_contract_octocode).toContain("function late(");
+		expect((await h.prompt()).mcps).toContain("function late(");
 	});
 
 	it("picks up externally applied overrides and thin triggers when the model loadout rebuilds", async () => {
@@ -95,9 +95,9 @@ describe("compact MCP presentation", () => {
 			overrides,
 			generatedAt: "fixture",
 		});
-		expect((await h.prompt()).mcp_contract_octocode).toBe(before.mcp_contract_octocode);
+		expect((await h.prompt()).mcps).toBe(before.mcps);
 		await h.fire("model_select", { model: undefined }, h.ctx);
-		expect((await h.prompt()).mcp_contract_octocode).toContain("Applied shout wording.");
+		expect((await h.prompt()).mcps).toContain("Applied shout wording.");
 		expect(h.tools.get("mcp__octocode__shout").description).toBe("Use the applied shout trigger.");
 	});
 
@@ -127,19 +127,21 @@ describe("compact MCP presentation", () => {
 		const h = host();
 		await h.start();
 		const sections = await h.prompt();
-		const contract = sections.mcp_contract_octocode;
+		const contract = sections.mcps;
 		expect(contract).toContain("declare namespace octocode {");
 		expect(contract).toContain("function shout(");
 		expect(contract).toContain("mcp__octocode__<function>");
 		// Every server is connected: no status section, and no other MCP section.
-		expect(Object.keys(sections).filter((name) => name.startsWith("mcp_"))).toEqual(["mcp_contract_octocode"]);
+		expect(Object.keys(sections).filter((name) => name.startsWith("mcp"))).toEqual(["mcps"]);
+		expect(contract).toContain('<mcp name="octocode" tools="mcp__octocode__*">');
+		expect(contract).not.toContain("state=");
 	});
 
 	it("keeps JSON declarations and writes nothing when mcpPresentation is json", async () => {
 		const dir = generatedDir(isolatedAgentDir());
 		const h = host({ presentation: "json" });
 		await h.start();
-		const { mcp_contract_octocode: section } = await h.prompt();
+		const { mcps: section } = await h.prompt();
 		const shout = h.tools.get("mcp__octocode__shout");
 		expect(shout.parameters).toMatchObject({ type: "object", properties: { text: { type: "string" } } });
 		expect(shout.validationParameters).toBeUndefined();
@@ -184,6 +186,8 @@ describe("McpPresentation", () => {
 		const blocked = new McpPresentation({ agentDir: () => "/dev/null/x", mode: () => "compact" });
 		const a = tool("a");
 		blocked.sync("s", "s", undefined, [a]);
+		expect(blocked.isThin("s", a)).toBe(false);
+		blocked.describe("s", ["a"], undefined, true);
 		expect(blocked.isThin("s", a)).toBe(true);
 		expect(blocked.signature("s", "a")).toContain("function a(");
 	});
@@ -192,18 +196,33 @@ describe("McpPresentation", () => {
 		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
 		const a = tool("a");
 		presentation.sync("s", "s", "Be careful.", [a]);
-		const frozen = presentation.section("s", ["a"]);
+		const describe = (tools: string[]) => presentation.describe("s", tools, "Be careful.", true);
+		const frozen = describe(["a"]).file;
 		expect(frozen).toContain("Be careful.");
 		const changed = tool("a", "Does other work.");
 		presentation.sync("s", "s", "Be careful.", [changed, tool("b")]);
-		expect(presentation.section("s", ["a"])).toBe(frozen);
+		expect(describe(["a", "b"]).file).toBe(frozen);
 		expect(presentation.isThin("s", a)).toBe(true);
 		expect(presentation.isThin("s", changed)).toBe(false);
 		expect(presentation.isThin("s", tool("b"))).toBe(false);
 		expect(presentation.signature("s", "b")).toContain("function b(");
+		// A dropped connection withdraws the catalog; the description stays.
+		presentation.sync("s", "s", undefined, []);
+		expect(describe([]).file).toBe(frozen);
+		presentation.sync("s", "s", "Be careful.", [changed, tool("b")]);
 		presentation.rebuild();
-		expect(presentation.section("s", ["a"])).toContain("Does other work.");
+		expect(describe(["a"]).file).toContain("Does other work.");
 		expect(presentation.isThin("s", changed)).toBe(true);
+	});
+
+	it("describes a server first seen without its catalog once more when it connects, then freezes", () => {
+		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
+		expect(presentation.describe("s", [], undefined, false).file).toBeUndefined();
+		presentation.sync("s", "s", undefined, [tool("a")]);
+		const connected = presentation.describe("s", ["a"], undefined, true).file;
+		expect(connected).toContain("function a(");
+		presentation.sync("s", "s", undefined, [tool("a", "Changed.")]);
+		expect(presentation.describe("s", ["a"], undefined, true).file).toBe(connected);
 	});
 
 	it("reuses a stored file whose hash matches and drops overrides of an older catalog", () => {

@@ -57,6 +57,7 @@ describe("parseToolCallArguments", () => {
 		expect(parseToolCallArguments("[1,2]")).toEqual({
 			arguments: {},
 			argumentsError: "Tool arguments must be a JSON object\n\nReceived arguments:\n[1,2]",
+			rawArguments: "[1,2]",
 		});
 	});
 });
@@ -177,5 +178,20 @@ describe("parseToolCallArguments error echo", () => {
 		expect(result.argumentsError).toBeDefined();
 		expect(result.argumentsError!.length).toBeLessThan(MAX_ECHOED_ARGUMENTS_CHARS + 500);
 		expect(result.argumentsError).toContain(`first ${MAX_ECHOED_ARGUMENTS_CHARS} of ${raw.length} characters`);
+	});
+
+	it("keeps the whole text on the call although the echo is capped", () => {
+		const raw = `{"content":"${"x".repeat(40_000)}`;
+		expect(parseToolCallArguments(raw).rawArguments).toBe(raw);
+	});
+
+	it("sets no raw text for arguments that parse", () => {
+		expect(parseToolCallArguments('{"a":1}')).toEqual({ arguments: { a: 1 } });
+	});
+
+	it("names the structural fault of malformed text", () => {
+		expect(parseToolCallArguments('{"q":[{"a":"b"}').argumentsError).toContain(
+			"ends with 2 unclosed brackets; it needs `]}` at the end",
+		);
 	});
 });

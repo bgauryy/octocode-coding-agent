@@ -1,5 +1,9 @@
-import type { EntityInput } from "@octocodeai/octocode-contracts/backlogs";
+import type { EntityInput, ItemType } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
+import type { backlog } from "../agentdb/api.ts";
+
+/** What the store's `add` and `update` take: the input, with `type` also allowed to be the former name `task` of `feature` for one release (mapped by `withCurrentType`). */
+export type WithLegacyType<T extends { type?: ItemType }> = Omit<T, "type"> & { type?: ItemType | "task" };
 
 export interface AddInput extends EntityInput {
 	note?: string;
@@ -37,11 +41,35 @@ export interface UpdateInput extends EntityInput {
 	force?: boolean;
 }
 
+/** Which items to list; every set field must hold, and a list field matches when any entry does. */
 export interface ListQuery {
 	states?: readonly State[];
 	query?: string;
 	/** Only the items that came from this one (`B12`). */
 	from?: string;
+	/** Item ids (`B12`). */
+	ids?: readonly string[];
+	/** Text whose words all appear in the title. */
+	title?: string;
+	/** The items under this one (`B3`), at any depth. */
+	parentId?: string;
+	types?: readonly ItemType[];
+	/** Priorities up to this one (0 is the most urgent). */
+	maxPriority?: number;
+	tags?: readonly string[];
+	/** Prefixes of an item's paths. */
+	paths?: readonly string[];
+	/** Items that depend on one of these (`B12`). */
+	dependsOn?: readonly string[];
+	/** true: waits on a prerequisite that is missing or not done; false: none. */
+	blocked?: boolean;
+	/** Session ids holding the item. */
+	assignees?: readonly string[];
+	/** Epoch milliseconds: updated at or after. */
+	updatedSince?: number;
+	/** Epoch milliseconds: created at or after. */
+	createdSince?: number;
+	sort?: backlog.ItemSort;
 	limit?: number;
 	offset?: number;
 }

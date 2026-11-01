@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@octocodeai/octocode-ai";
 import type { SystemMessage } from "@octocodeai/octocode-ai/compat";
 import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/client/index.ts";
@@ -9,7 +10,7 @@ import type { SessionManager } from "../../src/core/session-manager.ts";
 import type { McpExposure, McpServerEntry } from "../../../mcp/src/config.ts";
 import type { McpPresentationMode } from "../../../mcp/src/presentation/index.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
-import { MCP_CONTRACT_SECTION_PREFIX, MCP_STATUS_SECTION } from "../../../mcp/src/section.ts";
+import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../../mcp/src/section.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
@@ -138,7 +139,7 @@ describe("AgentSession MCP integration", () => {
 			resources?: boolean;
 			description?: string;
 			instructions?: string;
-			/** How tools and the `mcp_contract_<server>` sections are presented. Default: the setting (`compact`). */
+			/** How tools and the `mcps` section are presented. Default: the setting (`compact`). */
 			presentation?: McpPresentationMode;
 		} = {},
 	) {
@@ -227,21 +228,12 @@ describe("AgentSession MCP integration", () => {
 			.flatMap((message) => (message.toolsAdded ?? []).map((tool) => tool.name));
 	}
 
-	/**
-	 * The MCP prompt sections as the model currently has them: each server's contract (`mcp_contract_<server>`, a base
-	 * section), then `mcp_status`; undefined when the model has none.
-	 */
-	function serversSection(harness: Harness): string | undefined {
-		const current = new Map<string, string | null>();
-		for (const message of harness.session.messages) {
-			if (message.role !== "system" || !message.sections) continue;
-			for (const [name, text] of Object.entries(message.sections))
-				if (name === MCP_STATUS_SECTION || name.startsWith(MCP_CONTRACT_SECTION_PREFIX)) current.set(name, text);
-		}
-		const status = current.get(MCP_STATUS_SECTION);
-		const texts = [...current].flatMap(([name, text]) => (name !== MCP_STATUS_SECTION && text ? [text] : []));
-		if (status) texts.push(status);
-		return texts.length ? texts.join("\n") : undefined;
+	/** A section as the model currently has it (default: `mcps`, one block per server); undefined when it has none. */
+	function serversSection(harness: Harness, name: string = MCPS_SECTION): string | undefined {
+		let current: string | null | undefined;
+		for (const message of harness.session.messages)
+			if (message.role === "system" && message.sections && name in message.sections) current = message.sections[name];
+		return current || undefined;
 	}
 
 	function nestedToolNames(harness: Harness): string[] {
@@ -518,21 +510,22 @@ describe("AgentSession MCP integration", () => {
 
 		const section = serversSection(harness);
 		expect(section).toContain(
-			"MCP server mcp__docs: call its tools as mcp__docs__<tool>; their declarations carry the full descriptions and schemas.\nDocs search.\nLong guidance.",
+			'<mcp name="docs" tools="mcp__docs__*">\nIts tool declarations carry the full descriptions and schemas.\nDocs search.\nLong guidance.',
 		);
 		expect(section?.match(/Docs search\./g)).toHaveLength(1);
 		expect(section).not.toContain("tool_search");
 	});
 
-	it("places server contracts in the base sections, ahead of the session's own sections", async () => {
+	it("places the `mcps` section in the base sections, ahead of the session's own sections", async () => {
 		const { harness } = await setup("direct", undefined, { instructions: "Docs search." });
 		harness.setResponses([fauxAssistantMessage("done")]);
 		await harness.session.prompt("go");
 		const first = harness.session.messages.find((message): message is SystemMessage => message.role === "system");
 		const names = Object.keys(first?.sections ?? {});
-		expect(names).toContain("mcp_contract_docs");
-		expect(names.indexOf("mcp_contract_docs")).toBeLessThan(names.indexOf("cwd"));
-		expect(names).not.toContain(MCP_STATUS_SECTION);
+		expect(names).toContain(MCPS_SECTION);
+		expect(names.indexOf(MCPS_SECTION)).toBeLessThan(names.indexOf("cwd"));
+		expect(names.filter((name) => name.startsWith("mcp_"))).toEqual([]);
+		expect(first?.sections?.[MCPS_SECTION]).toContain('<mcp name="docs" tools="mcp__docs__*">');
 	});
 
 	it("caches full default contracts and instructions without repeating them on an unchanged prompt (json)", async () => {
@@ -606,10 +599,10 @@ describe("AgentSession MCP integration", () => {
 	});
 
 	it.each([
-		["json", "MCP server mcp__docs:"],
+		["json", "Its tool declarations carry"],
 		["compact", "function search("],
 	] as const)(
-		"keeps the instructions while one of the server's tools stays selected (%s)",
+		"keeps the block while one of the server's tools stays selected, and names the others in the status (%s)",
 		async (presentation, listing) => {
 			const { harness } = await setup("direct", undefined, { instructions: "LOADED_RULE", presentation });
 			harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("done")]);
@@ -619,8 +612,8 @@ describe("AgentSession MCP integration", () => {
 			const section = serversSection(harness);
 			expect(section).toContain("LOADED_RULE");
 			expect(section).toContain(listing);
-			if (presentation === "compact") expect(section).not.toContain("function fail(");
 			expect(section).not.toContain("tool_search");
+			expect(serversSection(harness, MCP_STATUS_SECTION)).toMatch(/- docs: connected; not declared: .*fail/);
 		},
 	);
 
@@ -638,6 +631,7 @@ describe("AgentSession MCP integration", () => {
 	) {
 		const calls: string[] = [];
 		const notifications: string[] = [];
+		const transports: Array<{ close(): Promise<void> }> = [];
 		const { name = "slow", instructions, presentation, ...serverConfig } = config;
 		const entry: McpServerEntry = {
 			name,
@@ -652,6 +646,7 @@ describe("AgentSession MCP integration", () => {
 					createTransport: () => {
 						const pair = createFakeServer(calls, { initializeDelayMs, instructions });
 						void pair.server.start();
+						transports.push(pair.client);
 						return pair.client;
 					},
 					...(startupWaitMs === undefined ? {} : { startupWaitMs }),
@@ -663,10 +658,10 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.bindExtensions({
 			uiContext: createTestUiContext({ notify: (message) => notifications.push(message) }),
 		});
-		return { harness, calls, notifications };
+		return { harness, calls, notifications, transports };
 	}
 
-	it("names a server still connecting after the startup wait in mcp_status, not in a contract", async () => {
+	it("names a server still connecting after the startup wait in `mcp_status`, with a block that has no contract", async () => {
 		const { harness, notifications } = await setupSlow({}, Number.POSITIVE_INFINITY, 50);
 		harness.setResponses([fauxAssistantMessage("ready")]);
 
@@ -676,33 +671,71 @@ describe("AgentSession MCP integration", () => {
 		expect(Date.now() - started).toBeLessThan(1500);
 		expect(getAssistantTexts(harness)).toEqual(["ready"]);
 		const section = serversSection(harness);
-		expect(section).toContain("- mcp__slow: connecting");
-		expect(section).not.toContain("mcp_contract_slow");
+		expect(section).toContain('<mcp name="slow" tools="mcp__slow__*"></mcp>');
+		expect(section).not.toContain("declare namespace");
+		expect(serversSection(harness, MCP_STATUS_SECTION)).toContain("- slow: connecting");
 		expect(notifications).toEqual(["MCP servers are still connecting; their tools become available once connected."]);
 	});
 
-	it("appends a late server's contract with the next prompt and drops its status line", async () => {
-		const { harness } = await setupSlow({ instructions: "Slow docs.\nMore." }, 60, 10);
-		harness.setResponses([fauxAssistantMessage("one"), fauxAssistantMessage("two")]);
+	it("fills a late server's block once when it connects; a drop and a reconnect patch only `mcp_status`", async () => {
+		const { harness, transports } = await setupSlow({ instructions: "Slow docs.\nMore." }, 60, 10);
+		harness.setResponses([1, 2, 3, 4].map((turn) => fauxAssistantMessage(`turn ${turn}`)));
+		const updates = () =>
+			harness.session.messages.filter((message): message is SystemMessage => message.role === "system");
+		const callable = () => harness.session.getCallableToolNames();
 
 		await harness.session.prompt("first");
-		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).toContain("mcp__slow__search"));
-		await harness.session.prompt("second");
+		const first = updates()[0].sections!;
+		expect(first[MCPS_SECTION]).toBe('<mcps>\n<mcp name="slow" tools="mcp__slow__*"></mcp>\n</mcps>');
+		expect(first[MCP_STATUS_SECTION]).toContain("- slow: connecting");
+		expect(Object.keys(first).at(-1)).toBe(MCP_STATUS_SECTION);
 
-		const systemMessages = harness.session.messages.filter(
-			(message): message is SystemMessage => message.role === "system",
+		// The catalog arrives: the block gets its contract once, the status line goes, and the tools are thin.
+		await vi.waitFor(() => expect(callable()).toContain("mcp__slow__search"));
+		await harness.session.prompt("second");
+		const filled = updates().at(-1)!.sections!;
+		expect(filled).toEqual({ [MCPS_SECTION]: expect.stringContaining("Slow docs. More."), [MCP_STATUS_SECTION]: null });
+		const block = filled[MCPS_SECTION];
+
+		// The transport drops: only the status changes; the block keeps its contract.
+		await transports.at(-1)!.close();
+		await vi.waitFor(() => expect(callable()).not.toContain("mcp__slow__search"));
+		await harness.session.prompt("third");
+		const dropped = updates().at(-1)!.sections!;
+		expect(Object.keys(dropped)).toEqual([MCP_STATUS_SECTION]);
+		expect(dropped[MCP_STATUS_SECTION]).toContain("- slow: disconnected");
+
+		// A reconnect removes the status line; the block stays byte-identical.
+		await harness.session.prompt("/mcp reconnect slow");
+		await vi.waitFor(() => expect(callable()).toContain("mcp__slow__search"));
+		await harness.session.prompt("fourth");
+		expect(updates().at(-1)!.sections).toEqual({ [MCP_STATUS_SECTION]: null });
+		expect(serversSection(harness)).toBe(block);
+	});
+
+	it("fills a server's block on the next turn of the same run when it connects mid-run, with thin tools", async () => {
+		const { harness } = await setupSlow({ instructions: "Slow docs." }, 60, 10);
+		const callable = () => harness.session.getCallableToolNames();
+		harness.setResponses([
+			async () => {
+				await vi.waitFor(() => expect(callable()).toContain("mcp__slow__search"));
+				return fauxAssistantMessage([fauxToolCall("mcp__slow__search", { query: "x" })], { stopReason: "toolUse" });
+			},
+			fauxAssistantMessage("done"),
+		]);
+
+		await harness.session.prompt("one run");
+
+		const messages = harness.session.messages;
+		const update = messages.find(
+			(message): message is SystemMessage =>
+				message.role === "system" && messages.indexOf(message) > 0 && !!message.sections?.[MCPS_SECTION],
 		);
-		expect(systemMessages[0].sections?.[MCP_STATUS_SECTION]).toContain("- mcp__slow: connecting");
-		expect(Object.keys(systemMessages[0].sections ?? {})).not.toContain("mcp_contract_slow");
-		const update = systemMessages.find((message) => message.sections?.mcp_contract_slow);
-		expect(update).toBeDefined();
-		// Only the late server's sections change: its contract arrives and the status line goes.
-		expect(Object.keys(update!.sections!).sort()).toEqual([MCP_STATUS_SECTION, "mcp_contract_slow"].sort());
-		expect(update!.sections![MCP_STATUS_SECTION]).toBeNull();
-		expect(update!.sections!.mcp_contract_slow).toContain("Slow docs. More.");
-		expect(harness.session.messages.indexOf(update!)).toBeGreaterThan(
-			harness.session.messages.findIndex((message) => message.role === "assistant"),
-		);
+		expect(update?.sections?.[MCPS_SECTION]).toContain("function search(");
+		expect(update?.sections?.[MCP_STATUS_SECTION]).toBeNull();
+		expect(messages.filter((message) => message.role === "user")).toHaveLength(1);
+		const declared = getCurrentTools(messages).find((tool) => tool.name === "mcp__slow__search");
+		expect(JSON.stringify(declared?.parameters ?? {}).length).toBeLessThan(400);
 	});
 
 	it("waits for servers with direct tools before describing them", async () => {
@@ -731,7 +764,7 @@ describe("AgentSession MCP integration", () => {
 
 		const section = serversSection(harness);
 		expect(section).toContain(
-			"MCP server mcp__slow: call its tools as mcp__slow__<tool>; their declarations carry the full descriptions and schemas.\nSlow docs.\nSearch, then read.",
+			"Its tool declarations carry the full descriptions and schemas.\nSlow docs.\nSearch, then read.",
 		);
 		expect(section).not.toContain("tool_search");
 	});

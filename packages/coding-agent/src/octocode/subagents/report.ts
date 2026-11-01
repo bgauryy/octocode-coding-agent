@@ -6,16 +6,17 @@ import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instruc
 import { shortPath } from "../shared/format.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
-import { capOutput, contentText, cutText } from "../shared/util.ts";
+import { capOutput, contentText } from "../shared/util.ts";
 import {
 	type ResultContract,
 	type StructuredResultV1,
 	unavailableResult,
 	validateResultAnswer,
 } from "./result-schema.ts";
-import { errorMessage as describeError, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage as describeError } from "@octocodeai/octocode-contracts/guards";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { snapshotReport, type ReportArtifact } from "../shared/report-artifact.ts";
+import { cutText } from "../../../../common/src/text.ts";
 
 const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
@@ -34,7 +35,7 @@ export function jobNotice(message: { customType?: unknown; content?: unknown; de
 	const lines = contentText(message.content).split("\n");
 	const line = visibleControls(lines.find((text) => text.startsWith("Background bash ")) ?? lines[0] ?? "");
 	if (!line) return {};
-	const details = isRecord(message.details) ? message.details : {};
+	const details = asRecord(message.details);
 	if (details.quiet !== true) return { job: line };
 	const log = typeof details.log === "string" ? ` (log: ${visibleControls(shortPath(details.log))})` : "";
 	return { job: `${line}${log}`, quiet: true };
@@ -112,13 +113,6 @@ export function reportChecks(text: string | undefined): string[] | undefined {
 		if (entry) checks.push(entry);
 	}
 	return checks;
-}
-
-/** The saved whole report a report points at: the last pointer line, and only a scratch path (never one the child wrote). */
-export function reportFilePath(text: string | undefined): string | undefined {
-	const pointers = [...(text ?? "").matchAll(/^Full report: (.+?) \(read only/gm)].map((match) => match[1]);
-	const file = pointers.at(-1);
-	return file?.includes("tmp/agents/") ? file : undefined;
 }
 
 interface ReportHead {

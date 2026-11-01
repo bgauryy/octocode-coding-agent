@@ -1,4 +1,13 @@
-import { type Component, type Focusable, Input, type KeybindingsManager, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	type Focusable,
+	Input,
+	type KeybindingsManager,
+	matchesKey,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { EMPTY_INVENTORY, HOST_TITLES, type InventoryItem } from "../../core/extensibility/inventory.ts";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
@@ -175,7 +184,7 @@ export class PluginsPicker implements Component, Focusable {
 		);
 		const hints = [
 			...(this.options.projectTrusted ? [hint(shortcutText("tui.input.tab", this.keys), "scope")] : []),
-			hint("Space/Enter", "toggle"),
+			hint("space/enter", "toggle"),
 			hint("→/←", "hooks"),
 			hint(shortcutText("tui.select.cancel", this.keys), "close"),
 		].join(sep);

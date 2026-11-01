@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { agentDbPath, globalPaths, privateDir } from "../shared/home.ts";
-import { loadSqlite } from "../shared/util.ts";
+import { loadSqlite } from "./sqlite.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import * as backlog from "./queries/backlog.ts";
 import { AgentDbError, ensureSchema, schemaCurrent } from "./schema.ts";
@@ -10,9 +10,17 @@ import { AgentDbError, ensureSchema, schemaCurrent } from "./schema.ts";
 /** The open SQLite handle of an agent database; features pass it to `agentdb/api.ts` functions and never call it themselves. */
 export type Db = DatabaseSync;
 
-/** An open agent database. Features write their own SQL against the schema tables (`./schema.ts`). */
+/**
+ * An open agent database. Features pass `db` to the `agentdb/api.ts` query functions and group writes with
+ * `transaction`; they never write SQL themselves.
+ */
 export interface AgentDb {
 	readonly file: string;
+	/**
+	 * `<Octocode home>/archive`: where housekeeping keeps history rows moved out of this database (`backlog/retention.ts`),
+	 * under the home even when `OCTOCODE_AGENT_DB` names a file elsewhere. Nothing is created at open.
+	 */
+	readonly archiveDir: string;
 	readonly db: Db;
 	/** False when SQLite lacks FTS5: memory search falls back to LIKE. */
 	readonly fts: boolean;
@@ -76,10 +84,19 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
 		// Comments replaced the backlog notes of kind `note`; rows written by an older build are copied across once.
 		if (backlog.hasUncopiedNotes(db)) transaction(() => backlog.copyNotesToComments(db));
+		// The item type `task` was renamed `feature`; an older build still running (or an existing file's column default,
+		// which a schema sync cannot change) writes `task` again, so every open rewrites whatever rows it finds. The check
+		// takes no write lock. Best effort: a locked file keeps its rows (every read maps `task` to `feature`); the next open retries.
+		try {
+			if (backlog.hasLegacyItemType(db)) transaction(() => backlog.renameLegacyItemType(db));
+		} catch {
+			// Busy or read-only: not a reason to fail the open.
+		}
 		tighten(target);
 		let open = true;
 		return {
 			file: target,
+			archiveDir: path.join(globalPaths(env).home, "archive"),
 			db,
 			fts,
 			transaction,

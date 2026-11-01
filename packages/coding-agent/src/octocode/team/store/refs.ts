@@ -1,6 +1,5 @@
-import { type Db, deliveries } from "../../agentdb/api.ts";
-import { num } from "../../agentdb/rows.ts";
-import { type Message, type SendOptions, toMessage, WAKE } from "../model.ts";
+import { type Db, deliveries, num } from "../../agentdb/api.ts";
+import { type Message, type OpenQuestion, type SendOptions, toMessage, toOpenQuestion, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
 import { insertMessage } from "./mail.ts";
 
@@ -172,9 +171,17 @@ export class MessageRefs {
 			.map((row) => ({ message: toMessage(row, String(row.relay_to)), target: String(row.relay_to) }));
 	}
 
-	/** Takes relay request `id` for `parent` to work on; false when it was already taken (or is gone). */
-	claimRelay(id: number, parent: string, now = Date.now()): boolean {
-		return this.transaction(() => deliveries.claimRelay(this.db, id, parent, now));
+	/**
+	 * Takes relay request `id` for `parent` and runs `settle` (`deliverRelay` or `failRelay`) in the same transaction: when
+	 * `settle` throws, the take rolls back and the request waits for the next tick instead of staying taken and unsettled.
+	 * False when it was already taken (or is gone).
+	 */
+	takeRelay(id: number, parent: string, settle: () => void, now = Date.now()): boolean {
+		return this.transaction(() => {
+			if (!deliveries.claimRelay(this.db, id, parent, now)) return false;
+			settle();
+			return true;
+		});
 	}
 
 	/**
@@ -211,5 +218,15 @@ export class MessageRefs {
 	 */
 	unansweredPeerAsks(sender: string, parent?: string): number {
 		return deliveries.unansweredAsks(this.db, this.team, sender, parent ?? "");
+	}
+
+	/** The questions members of this team read and have not answered, oldest first (what `Member.pending` counts). */
+	openQuestions(): OpenQuestion[] {
+		return deliveries.openQuestions(this.db, this.team).map(toOpenQuestion);
+	}
+
+	/** Closes `recipient`'s open question `id` without an answer: its asker can no longer be reached. */
+	closeQuestion(id: number, recipient: string, now = Date.now()): void {
+		deliveries.complete(this.db, id, recipient, now);
 	}
 }

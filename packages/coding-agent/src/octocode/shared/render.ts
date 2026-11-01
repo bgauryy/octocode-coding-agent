@@ -1,4 +1,10 @@
-import { type Component, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	stripTerminalSequences,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { formatDuration, shortPath } from "./format.ts";

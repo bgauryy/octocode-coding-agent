@@ -10,7 +10,7 @@ import type { EditLog } from "./edits.ts";
 import { HeldLeases } from "./held.ts";
 import { agentName, LINE_MAX } from "./identity.ts";
 import { Mail } from "./mail.ts";
-import type { Lease, SendOptions } from "./model.ts";
+import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
 import { PeerLeases } from "./peer-leases.ts";
 import { Relays } from "./relay.ts";
 import { Activity, HEARTBEAT_MS } from "./session/activity.ts";
@@ -22,7 +22,6 @@ import { lockPaths, type ReservationHost, reservationText, unlockPaths } from ".
 import * as refs from "./session/references.ts";
 import { type MessageHook, type Resumer, type SendResult, sendMessage } from "./session/send.ts";
 import { Vouches } from "./session/vouches.ts";
-import { type TeamStore } from "./store.ts";
 import { TeamTicker, type TeamView } from "./ticker.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -36,7 +35,7 @@ export class Team {
 	/** The one ticker: delivery and heartbeats while joined, a cached view for watchers (the panel). */
 	private readonly ticker = new TeamTicker({
 		joined: () => this.me !== undefined,
-		beat: () => this.delivery.deliver(this.database.current),
+		beat: () => this.deliverMail(),
 		dbFile: () => this.database.watchedFile(),
 		read: () => this.database.read(),
 		resumed: (since, now) => this.database.resumed(since, now),
@@ -154,11 +153,6 @@ export class Team {
 		});
 	}
 
-	/** The database opens on first use, so a session that never collaborates never creates it. */
-	private store(): TeamStore {
-		return this.database.store();
-	}
-
 	/** Set when the team database is foreign or too new; nothing team-related works until it is fixed. */
 	get problem(): string | undefined {
 		return this.database.problem;
@@ -168,7 +162,7 @@ export class Team {
 	newName(inUse: Iterable<string> = []): string {
 		let live: string[] = [];
 		try {
-			live = this.existing()?.names() ?? [];
+			live = this.database.existing()?.names() ?? [];
 		} catch {
 			// An unusable database holds no names this process can read; avoid the rest.
 		}
@@ -177,7 +171,7 @@ export class Team {
 
 	/** Join (or refresh) as this process. Idempotent; `goal` replaces the one-line goal (validated by the caller with `checkGoal`, `identity.ts`). */
 	join(goal?: string): Member {
-		const db = this.store(); // throws before the session starts
+		const db = this.database.store(); // throws before the session starts
 		const ctx = this.ctx!;
 		if (!this.me) {
 			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost), this.name);
@@ -215,6 +209,7 @@ export class Team {
 			this.peers?.close();
 			this.peers = undefined;
 			this.ticker.reset();
+			this.relays.reset();
 			this.finished.clear();
 			this.vouches.clear();
 			this.ctx = undefined;
@@ -229,14 +224,6 @@ export class Team {
 	/** The latest snapshot the ticker read (for watchers). */
 	get view(): TeamView {
 		return this.ticker.view;
-	}
-
-	/**
-	 * The database only if someone already created it: reads never create it, since before anyone has collaborated
-	 * there is nothing to read. Throws when it exists but is unusable.
-	 */
-	private existing(): TeamStore | undefined {
-		return this.database.existing();
 	}
 
 	/** Live agents (none when the database cannot be read; `snapshot` says why). */
@@ -255,6 +242,11 @@ export class Team {
 	 */
 	asks(child: string, parent: string, since: number): Ask[] {
 		return this.database.asks(child, parent, since);
+	}
+
+	/** The questions members read and have not answered, with ids and senders (`coordinate list`, `/agents`). */
+	openQuestions(): OpenQuestion[] {
+		return this.database.openQuestions();
 	}
 
 	/** Queue a message for the agents `to` resolves to; returns who got it and the message id, or an error text. */
@@ -285,7 +277,7 @@ export class Team {
 			me: () => this.me,
 			ctx: () => this.ctx,
 			db: () => this.database.current,
-			store: () => this.store(),
+			store: () => this.database.store(),
 			parentId: () => this.parentId,
 			finished: this.finished,
 			resumer: () => this.resumer,
@@ -314,8 +306,8 @@ export class Team {
 			me: () => this.me,
 			join: () => this.join(),
 			cwd: () => this.ctx?.cwd,
-			store: () => this.store(),
-			existing: () => this.existing(),
+			store: () => this.database.store(),
+			existing: () => this.database.existing(),
 			held: this.held,
 			// Whether this agent takes part in the team: it joined, or still tracks reservations.
 			collaborating: () => this.me !== undefined || this.held.any,
@@ -340,7 +332,7 @@ export class Team {
 
 	/** Who changed which file recently, once the database exists; throws when it is unusable. */
 	editLog(): EditLog | undefined {
-		return this.existing()?.edits;
+		return this.database.existing()?.edits;
 	}
 
 	// Activity the parent and the user see: state, current tool, tokens.
@@ -369,6 +361,11 @@ export class Team {
 	/** A subagent (no person to talk to, whatever its mode): once its run is over it gets no further turn. */
 	private headless(): boolean {
 		return Boolean(this.env[AGENT_ID_ENV] && this.ctx && !interactive(this.ctx, envFlag(this.env, SUBAGENT_ENV)));
+	}
+
+	/** Hands waiting mail to Octocode: every second from the ticker, and at the end of a turn that ran tools (`tools.ts`). */
+	deliverMail(): void {
+		this.delivery.deliver(this.database.current);
 	}
 
 	/** Octocode is about to call the model with `messages`: team mail among them is now delivered. */

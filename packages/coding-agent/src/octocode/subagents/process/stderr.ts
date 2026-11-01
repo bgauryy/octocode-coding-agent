@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { tailNote } from "../../shared/format.ts";
-import { PRIVATE_FILE_MODE } from "../../shared/home.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
-import { cutText } from "../../shared/util.ts";
-import { type ChildNotices, type ChildState, noticeText } from "../events.ts";
+import type { ChildState } from "../events.ts";
+import { type ChildNotices, noticeText } from "../notices.ts";
+import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
+import { cutText } from "../../../../../common/src/text.ts";
 
 /** Characters of a child's stderr a failure shows (its end); a longer stderr is saved whole. */
 const STDERR_TAIL_CHARS = 4_000;
@@ -97,9 +98,10 @@ export class StderrTail {
 }
 
 /**
- * The run's notices as the parent gets them at the end. When some did not fit the inline page, every notice (whole, one
- * per line, repeats folded with their count) is saved to `notices.txt` in `dir` and the notices name it; when it cannot
- * be saved, every notice goes inline instead, so none is dropped. Undefined when the inline page already holds them all.
+ * The run's notices as the parent gets them at the end. When some did not fit the inline page, the notice log (each
+ * notice whole, one per line, repeats folded with their count, and how many past its bounds it did not keep) is saved to
+ * `notices.txt` in `dir` and the notices name it; when it cannot be saved, the log goes inline instead. Undefined when
+ * the inline page already holds them all.
  */
 export function savedNotices(state: ChildState, dir: string | undefined): ChildNotices | undefined {
 	if (state.notices.more === 0) return undefined;

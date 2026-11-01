@@ -40,9 +40,9 @@ describe("settings keys Octocode ignores", () => {
 		expect(diagnostics).toHaveLength(1);
 		expect(diagnostics[0]?.type).toBe("warning");
 		expect(diagnostics[0]?.message).toContain(`Settings file ${globalPath}:`);
-		expect(diagnostics[0]?.message).toContain('Setting "compaction" is ignored');
-		expect(diagnostics[0]?.message).toContain("contextBudget");
-		expect(diagnostics[0]?.message).toContain("modelOverrides");
+		expect(diagnostics[0]?.message).toBe(
+			`Settings file ${globalPath}: Setting "compaction" is no longer used: the whole block (enabled, reserveTokens, keepRecentTokens, modelOverrides) does nothing, because Octocode now decides when to compact from each model's context window. To compact earlier, set a smaller "contextBudget" (or use /context size for one session). Delete "compaction" from the file to hide this warning.`,
+		);
 		// Loading stays permissive: the known keys still apply and the unknown one is kept in the file.
 		expect(manager.getTheme()).toBe("dark");
 		expect(manager.getCompactionReserveTokens()).toBeGreaterThan(0);
@@ -54,7 +54,7 @@ describe("settings keys Octocode ignores", () => {
 
 		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
 
-		expect(warning?.message).toContain('Setting "defaultModle" is not a known setting and is ignored');
+		expect(warning?.message).toContain('Setting "defaultModle" is not a known setting, so it does nothing.');
 	});
 
 	it("explains the removed codemode keys", () => {
@@ -63,8 +63,20 @@ describe("settings keys Octocode ignores", () => {
 		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
 
 		expect(messages).toHaveLength(2);
-		expect(messages.join("\n")).toContain('Setting "codemode" is ignored: codemode was removed');
-		expect(messages.join("\n")).toContain('Setting "autoEnableCodemode" is ignored: codemode was removed');
+		expect(messages.join("\n")).toContain('Setting "codemode" is no longer used: codemode was removed');
+		expect(messages.join("\n")).toContain('Setting "autoEnableCodemode" is no longer used: codemode was removed');
+	});
+
+	it("explains a defaultTools entry for the removed native browser tool, with or without a modifier", () => {
+		writeFileSync(globalPath, JSON.stringify({ defaultTools: ["+browser", "+debug", "-browser"] }));
+
+		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
+
+		expect(messages).toHaveLength(2);
+		expect(messages[0]).toContain(`Settings file ${globalPath}:`);
+		expect(messages[0]).toContain('"defaultTools" entry "+browser" has no effect');
+		expect(messages[0]).toContain("mcp__browser__*");
+		expect(messages[1]).toContain('entry "-browser"');
 	});
 
 	it("stays silent for known keys, including legacy ones that migrate", () => {
@@ -114,7 +126,7 @@ describe("settings keys Octocode ignores", () => {
 		untrusted.setProjectTrusted(true);
 		const [warning] = collectSettingsDiagnostics(untrusted);
 		expect(warning?.message).toContain(`Settings file ${projectPath}:`);
-		expect(warning?.message).toContain('Setting "compaction" is ignored');
+		expect(warning?.message).toContain('Setting "compaction" is no longer used');
 
 		new ProjectTrustStore(agentDir).set(cwd, true);
 		expect(collectSettingsDiagnostics(SettingsManager.createForStartup(cwd, agentDir))).toHaveLength(1);

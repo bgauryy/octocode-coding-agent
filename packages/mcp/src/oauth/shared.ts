@@ -9,7 +9,7 @@ import {
 	type OAuthClientInformationMixed,
 	type OAuthClientMetadataDocument,
 } from "../client/oauth/index.ts";
-import { APP_NAME } from "../../../coding-agent/src/config.ts";
+import { hostIdentity } from "../host.ts";
 
 const CALLBACK_HOST = "127.0.0.1";
 export const CALLBACK_PATH = "/callback";
@@ -140,7 +140,7 @@ export function createProvider(
 	return new McpOAuthProvider({
 		serverUrl,
 		redirectUrl,
-		clientMetadata: { client_name: settings.clientName ?? APP_NAME },
+		clientMetadata: { client_name: settings.clientName ?? hostIdentity().appName },
 		clientMetadataDocument:
 			settings.clientRegistration === "cimd"
 				? (metadata) => clientMetadataDocument(serverUrl, redirectUrl, metadata)

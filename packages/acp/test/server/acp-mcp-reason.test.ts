@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../../coding-agent/src/core/resource-loader.ts";
 import { createHarness } from "../../../coding-agent/test/suite/harness.ts";
 import { MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
+import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 import { prepareAcpMcpServers } from "../../src/server/mcp.ts";
 
 type Schema = { required?: string[]; properties?: Record<string, { type?: string }> };
@@ -28,6 +29,7 @@ describe("the mcp tool of an ACP worker session", () => {
 		const clientServers = await prepareAcpMcpServers(
 			[{ name: "client server", command: process.execPath, args: [], env: [] }],
 			root,
+			acpServerHost,
 		);
 		try {
 			for (const additionalExtensionPaths of [[], [clientServers.args[1]]]) {

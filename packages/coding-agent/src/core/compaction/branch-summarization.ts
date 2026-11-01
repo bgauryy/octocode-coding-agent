@@ -16,6 +16,7 @@ import {
 	createCustomMessage,
 } from "../messages.ts";
 import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+import { ancestors } from "../session-manager/ancestors.ts";
 import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
 import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
@@ -131,13 +132,9 @@ export function collectEntriesForBranchSummary(
 
 	// Collect entries from old leaf back to common ancestor
 	const entries: SessionEntry[] = [];
-	let current: string | null = oldLeafId;
-
-	while (current && current !== commonAncestorId) {
-		const entry = session.getEntry(current);
-		if (!entry) break;
+	for (const entry of ancestors(session.getEntry(oldLeafId), (id) => session.getEntry(id))) {
+		if (entry.id === commonAncestorId) break;
 		entries.push(entry);
-		current = entry.parentId;
 	}
 
 	// Reverse to get chronological order

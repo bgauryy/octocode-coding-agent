@@ -31,7 +31,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 export interface ExtensionBindingsHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
 	readonly tools: SessionToolLoadout;
 	readonly models: SessionModelControl;
-	readonly inputs: Pick<SessionInputQueue, "hasWaitingCustomMessages">;
+	readonly inputs: Pick<SessionInputQueue, "hasWaitingCustomMessages" | "isCustomMessageQueued">;
 	readonly defaultToolModifiers: readonly string[];
 	recordAbortReason(reason: AbortReason): void;
 	executeNestedToolCall(
@@ -213,8 +213,8 @@ export class SessionExtensionBindings {
 						this.host.emit({ type: "entry_appended", entry });
 					}
 				},
-				setSessionName: (name) => {
-					session.setSessionName(name);
+				setSessionName: (name, source) => {
+					session.setSessionName(name, source);
 				},
 				getSessionName: () => {
 					return session.sessionManager.getSessionName();
@@ -266,6 +266,7 @@ export class SessionExtensionBindings {
 					void session.abort(reason);
 				},
 				hasPendingMessages: () => session.pendingMessageCount > 0 || this.host.inputs.hasWaitingCustomMessages,
+				isMessageQueued: (details) => this.host.inputs.isCustomMessageQueued(details),
 				shutdown: () => {
 					this._shutdownHandler?.();
 				},

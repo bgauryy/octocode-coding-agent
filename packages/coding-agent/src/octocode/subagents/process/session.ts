@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { privateDir, sessionOutputDir } from "../../shared/home.ts";
-import { type AgentProfile, profileExcludes, profileTools } from "../profiles.ts";
+import { type AgentProfile, profileExcludes, profileSelectsBrowser, profileTools } from "../profiles.ts";
+import { BROWSER_SERVER, mcpNamespace } from "../../../../../common/src/mcp-names.ts";
 import type { Identity } from "./env.ts";
 
 /** Where a child saves its conversation: Octocode's session folder and the session id (the child's name, so its Octocode folder maps back to it). */
@@ -54,7 +55,13 @@ export function buildAgentArgs(
 	// preference is routed by `routeModel` before this, so an unavailable one never reaches Octocode.
 	if (model) args.push("--model", model);
 	args.push("--tools", profileTools(profile));
-	if (profile?.excludeTools) args.push("--exclude-tools", profileExcludes(profile.excludeTools).join(","));
+	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
+	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`).
+	const excluded = [
+		...profileExcludes(profile?.excludeTools),
+		...(profileSelectsBrowser(profile) ? [] : [`${mcpNamespace(BROWSER_SERVER)}__*`]),
+	];
+	if (excluded.length > 0) args.push("--exclude-tools", excluded.join(","));
 	if (skillPaths !== undefined) args.push("--no-skills");
 	for (const file of skillPaths ?? []) args.push("--skill", file);
 	return args;

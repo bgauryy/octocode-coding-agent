@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { browserMcpUrls } from "../../src/octocode/shared/browser-mcp.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { browserMcpEscalations, browserMcpUrls } from "../../../common/src/browser-mcp.ts";
+import { PERMISSION_ENV, PERMISSION_GRANTS_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -105,5 +105,138 @@ describe("browser MCP navigation targets", () => {
 		expect(asked).toHaveLength(2);
 		expect(asked[1]).toContain("Replay a captured request?");
 		expect(replay?.block).toBe(true);
+	});
+});
+
+const browserTool = (tool: string) => createMcpToolName("browser", tool);
+
+/** One call per gap: the real profile, another program as Chrome, an outside upload, and cookie or download CDP. */
+const GAPS = {
+	profile: { tool: "open", input: { args: ["--profile", "Default"] } },
+	chromePath: { tool: "open", input: { args: ["--chromePath=/tmp/evil"] } },
+	upload: {
+		tool: "run",
+		input: { plan: { steps: [{ op: "act", action: "upload", selector: "input", value: "/etc/hosts" }] } },
+	},
+	cookies: { tool: "cdp", input: { method: "Network.getAllCookies" } },
+	downloads: {
+		tool: "run",
+		input: {
+			plan: {
+				steps: [
+					{ op: "cdp", method: "Browser.setDownloadBehavior", params: { behavior: "allow", downloadPath: "/tmp" } },
+				],
+			},
+		},
+	},
+} as const;
+
+describe("browser MCP calls that leave the isolated browser", () => {
+	it("finds launcher flags, cookie and download CDP, and uploads wherever the package reads them", () => {
+		const found = (tool: string, input: Record<string, unknown>) =>
+			browserMcpEscalations(browserTool(tool), input).map(({ kind, path }) => `${kind}${path ? `:${path}` : ""}`);
+		expect(found("open", { args: ["--profile", "Work", "--CHROMEPATH", "/x"] })).toEqual(["control", "control"]);
+		expect(found("open", { args: ["--headless", "--port", "9333"] })).toEqual([]);
+		expect(found("cookies", { args: ["--chrome-path", "/x"] })).toEqual(["control"]);
+		expect(found("step", { step: { op: "cdp", method: "Storage.getCookies" } })).toEqual(["control"]);
+		expect(found("cdp", { method: "Target.sendMessageToTarget", params: { message: "{}" } })).toEqual(["control"]);
+		expect(found("cdp", { method: "Page.setDownloadBehavior", params: { behavior: "deny" } })).toEqual([]);
+		expect(found("cdp", { method: "Runtime.evaluate", params: { expression: "1" } })).toEqual([]);
+		expect(found("cdp", { method: "DOM.setFileInputFiles", params: { files: ["/a", "b"] } })).toEqual([
+			"upload:/a",
+			"upload:b",
+		]);
+		expect(found("step", { step: { op: "act", action: "upload", value: "/a | /b" } })).toEqual([
+			"upload:/a",
+			"upload:/b",
+		]);
+		expect(
+			found("check", { recipe: "dom-operations-check", options: { DOM_ACTION: "upload", DOM_VALUE: "/c" } }),
+		).toEqual(["upload:/c"]);
+		expect(
+			found("check", {
+				recipe: "dom-operations-check",
+				options: { DOM_STEPS: JSON.stringify([{ action: "upload", value: "/d" }]) },
+			}),
+		).toEqual(["upload:/d"]);
+		expect(browserMcpEscalations("mcp__other__open", { args: ["--profile"] })).toEqual([]);
+	});
+
+	it("asks in workspace mode for each gap, with the existing classes, and lets workspace uploads run", async () => {
+		const cwd = fs.realpathSync(tmp());
+		fs.mkdirSync(path.join(cwd, ".git"));
+		fs.writeFileSync(path.join(cwd, "fixture.txt"), "x");
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: "workspace" }, isSubagent: false });
+		const ctx = fakeCtx({ cwd, hasUI: true, ui: { selects: [] } });
+		permission.start(ctx);
+		const asked: string[] = [];
+		const select = ctx.ui.select;
+		ctx.ui.select = async (title: string, choices: string[]) => {
+			asked.push(title);
+			return select(title, choices);
+		};
+		const gate = permissionGate({
+			permission,
+			provenance: { check: () => undefined },
+			powershell: async () => false,
+			network: (toolName, input, at) => browserMcpRequest(toolName, input, lookup, at),
+		});
+		const call = (tool: string, input: Record<string, unknown>) =>
+			gate({ type: "tool_call", toolCallId: `t-${tool}`, toolName: browserTool(tool), input }, ctx);
+		for (const [gap, { tool, input }] of Object.entries(GAPS)) {
+			const before = asked.length;
+			expect((await call(tool, input))?.block, gap).toBe(true);
+			expect(asked.length, gap).toBe(before + 1);
+		}
+		for (const gap of ["profile", "chromePath", "cookies", "downloads"] as const)
+			expect((await browserMcpRequest(browserTool(GAPS[gap].tool), GAPS[gap].input, lookup, cwd))?.action).toBe(
+				"browser.control",
+			);
+		expect(await browserMcpRequest(browserTool("run"), GAPS.upload.input, lookup, cwd)).toMatchObject({
+			action: "upload.outside",
+			what: [fs.realpathSync("/etc/hosts")],
+		});
+		// Several classes in one call: one ask naming them all, and no per-host grant.
+		const both = await browserMcpRequest(
+			browserTool("run"),
+			{ plan: { steps: [{ op: "goto", url: "http://127.0.0.1:3000/" }, ...GAPS.upload.input.plan.steps] } },
+			lookup,
+			cwd,
+		);
+		expect(both).toMatchObject({ action: "upload.outside", also: ["net.private"] });
+		expect(both?.grant).toBeUndefined();
+		const before = asked.length;
+		const inside = { plan: { steps: [{ op: "act", action: "upload", selector: "input", value: "fixture.txt" }] } };
+		expect(await call("run", inside)).toBeUndefined();
+		expect(asked.length).toBe(before);
+	});
+
+	it("refuses each gap in a read-only role that holds browser.control, and still runs the granted tools", async () => {
+		const cwd = fs.realpathSync(tmp());
+		fs.mkdirSync(path.join(cwd, ".git"));
+		const env = {
+			[SUBAGENT_ENV]: "1",
+			[READ_ONLY_ENV]: "1",
+			[PERMISSION_ENV]: "workspace",
+			[PERMISSION_GRANTS_ENV]: "browser.control",
+		};
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env, isSubagent: true });
+		const ctx = fakeCtx({ cwd, hasUI: false });
+		permission.start(ctx);
+		const gate = permissionGate({
+			permission,
+			provenance: { check: () => undefined },
+			powershell: async () => false,
+			network: (toolName, input, at) => browserMcpRequest(toolName, input, lookup, at),
+			env,
+		});
+		const call = (tool: string, input: Record<string, unknown>) =>
+			gate({ type: "tool_call", toolCallId: `r-${tool}`, toolName: browserTool(tool), input }, ctx);
+		for (const [gap, { tool, input }] of Object.entries(GAPS))
+			expect((await call(tool, input))?.reason, gap).toMatch(/read-only role/);
+		expect(await call("script", { args: ["probe.mjs"] })).toBeUndefined();
+		expect(await call("open", { args: ["--headless"] })).toBeUndefined();
 	});
 });

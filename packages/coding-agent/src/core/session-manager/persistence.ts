@@ -197,7 +197,10 @@ export function persistEntry(state: SessionState, entry: SessionEntry): void {
 		const file = state.sessionFile;
 		withSessionFileLock(file, () => {
 			mergeForeignEntries(state, file, entry);
-			assertCompleteSessionTail(file);
+			if (assertCompleteSessionTail(file)) {
+				appendFileSync(file, "\n", { flush: true });
+				state.fileSize = (state.fileSize ?? 0) + 1;
+			}
 			const line = `${JSON.stringify(entry)}\n`;
 			appendFileSync(file, line, { flush: true });
 			state.fileSize = (state.fileSize ?? 0) + Buffer.byteLength(line);

@@ -6,7 +6,7 @@ import type { KeyId } from "@octocodeai/octocode-tui";
 import type { McpServerRegistry } from "../../../../../mcp/src/servers.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
-import type { SessionEntry, SessionManager } from "../../session-manager.ts";
+import type { SessionEntry, SessionManager, SessionNameSource } from "../../session-manager.ts";
 import type { Settings } from "../../settings-manager.ts";
 import type { SkillResourceSnapshot } from "../../skill-resource-snapshot.ts";
 import type { SlashCommandInfo } from "../../slash-commands.ts";
@@ -96,7 +96,7 @@ type SendUserMessageHandler = (
 
 type AppendEntryHandler = <T = unknown>(customType: string, data?: T) => void;
 
-type SetSessionNameHandler = (name: string) => void;
+type SetSessionNameHandler = (name: string, source?: SessionNameSource) => void;
 
 type GetSessionNameHandler = () => string | undefined;
 
@@ -197,6 +197,7 @@ export interface ExtensionContextActions {
 	getTurnId?: () => string | undefined;
 	abort: (reason?: "interrupted" | "internal") => void;
 	hasPendingMessages: () => boolean;
+	isMessageQueued: (details: object) => boolean;
 	shutdown: () => void;
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (options?: CompactOptions) => void;

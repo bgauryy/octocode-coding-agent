@@ -114,7 +114,7 @@ describe("buildSystemPrompt", () => {
 	});
 
 	describe("empty tools", () => {
-		test("shows (none) for empty tools list", () => {
+		test("leaves the tools section out for an empty tools list", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: [],
 				contextFiles: [],
@@ -122,7 +122,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("<tools>\n(none)\n");
+			expect(prompt).not.toContain("<tools>");
 		});
 
 		test("shows file paths guideline even with no tools", () => {
@@ -194,10 +194,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain(
-				"- Resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
-			);
-			expect(prompt).toContain("docs/index.md maps every Octocode topic to its page");
+			expect(prompt).toMatch(/Octocode documentation, under \S+ \(not the working directory\)/);
+			expect(prompt).toContain("README.md; docs/ (docs/index.md maps every Octocode topic to its page); examples/");
 		});
 	});
 
@@ -316,6 +314,37 @@ describe("buildSystemPrompt", () => {
 			expect(build([])).not.toContain("Use the read tool");
 		});
 	});
+
+	describe("tools section", () => {
+		const tools = (selectedTools: string[], toolSnippets: Record<string, string>) =>
+			buildSystemPromptSections({ selectedTools, toolSnippets, cwd: "/tmp" }).tools;
+
+		test("lists one `- name: trigger` line per declared tool, in declaration order", () => {
+			expect(tools(["file", "bash", "agent"], { agent: "Delegate", bash: "Run", file: "Change files" })).toBe(
+				"<tools>\n- file: Change files\n- bash: Run\n- agent: Delegate\n</tools>",
+			);
+		});
+
+		test("leaves out MCP tools, which `mcps` describes, and tools without a snippet", () => {
+			const section = tools(["bash", "mcp__docs__search", "mcp", "quiet"], {
+				bash: "Run",
+				mcp__docs__search: "Search the docs",
+				mcp: "Manage servers",
+			});
+			expect(section).toBe("<tools>\n- bash: Run\n- mcp: Manage servers\n</tools>");
+		});
+
+		test("is absent when no declared tool has a snippet", () => {
+			expect(tools(["bash"], {})).toBeUndefined();
+			expect(tools(["mcp__docs__search"], { mcp__docs__search: "Search" })).toBeUndefined();
+		});
+
+		test("follows the tool set: unchanged by an undeclared tool's snippet, changed by a new tool", () => {
+			const snippets = { bash: "Run", file: "Change files" };
+			expect(tools(["bash"], snippets)).toBe(tools(["bash"], { ...snippets, unused: "Never declared" }));
+			expect(tools(["bash", "file"], snippets)).not.toBe(tools(["bash"], snippets));
+		});
+	});
 });
 
 describe("environment section", () => {
@@ -342,50 +371,40 @@ describe("base sections", () => {
 		appendSystemPrompt: "Addendum.",
 		environment: "Date: 2026-10-28",
 		sections: { octocode: "Policy." },
-		baseSections: { mcp_contract_docs: "docs file", mcp_contract_octocode: "octocode file" },
+		baseSections: { mcps: "servers", other_base: "other file" },
 	};
 
 	test("follow docs in the given order, ahead of the addendum, project context and custom sections", () => {
+		// An extension's own section ends the session sections, ahead of the volatile `environment`.
 		expect(Object.keys(buildSystemPromptSections(base))).toEqual([
 			"preamble",
-			"tools",
 			"rules",
 			"docs",
-			"mcp_contract_docs",
-			"mcp_contract_octocode",
+			"mcps",
+			"other_base",
 			"addendum",
 			"project_context",
 			"cwd",
-			"environment",
 			"octocode",
+			"environment",
 		]);
-		expect(buildSystemPromptSections(base).mcp_contract_docs).toBe(
-			"<mcp_contract_docs>\ndocs file\n</mcp_contract_docs>",
-		);
+		expect(buildSystemPromptSections(base).mcps).toBe("<mcps>\nservers\n</mcps>");
 	});
 
 	test("follow the preamble of a custom prompt, and stay after rules when a subagent removes docs", () => {
 		expect(Object.keys(buildSystemPromptSections({ ...base, customPrompt: "Custom." })).slice(0, 3)).toEqual([
 			"preamble",
-			"mcp_contract_docs",
-			"mcp_contract_octocode",
+			"mcps",
+			"other_base",
 		]);
 		const child = buildSystemPromptSections({ ...base, sections: { docs: "" } });
-		expect(Object.keys(child).slice(0, 5)).toEqual([
-			"preamble",
-			"tools",
-			"rules",
-			"mcp_contract_docs",
-			"mcp_contract_octocode",
-		]);
+		expect(Object.keys(child).slice(0, 4)).toEqual(["preamble", "rules", "mcps", "other_base"]);
 	});
 
 	test("reject invalid section names and drop empty ones", () => {
 		expect(() => buildSystemPromptSections({ ...base, baseSections: { "Bad Name": "x" } })).toThrow(
 			"Invalid system prompt section name",
 		);
-		expect(Object.keys(buildSystemPromptSections({ ...base, baseSections: { mcp_contract_docs: "" } }))).not.toContain(
-			"mcp_contract_docs",
-		);
+		expect(Object.keys(buildSystemPromptSections({ ...base, baseSections: { mcps: "" } }))).not.toContain("mcps");
 	});
 });

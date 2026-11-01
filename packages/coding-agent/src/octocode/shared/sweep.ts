@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { processAlive } from "./process.ts";
 
-/** Clearing out runtime files: aged output folders, a crashed process's leftovers, and moving a file across file systems. */
+/** Clearing out runtime files: aged output folders, and moving a file across file systems. */
 
 /** Removes entries of `dir` not modified for `maxAgeMs`, except those named in `keep`, with non-blocking calls. Never rejects. */
 export async function sweepStaleOutputs(
@@ -23,29 +22,6 @@ export async function sweepStaleOutputs(
 		try {
 			if (now - (await fs.promises.stat(file)).mtimeMs > maxAgeMs)
 				await fs.promises.rm(file, { recursive: true, force: true });
-		} catch {
-			// Removed meanwhile, or not ours to remove.
-		}
-	}
-}
-
-/**
- * Removes entries of `dir` named `<pid>-…` whose process is gone and that are older than `maxAgeMs` (a crashed
- * session's leftovers); entries of live processes stay whatever their age. Never throws.
- */
-export function sweepDeadOutputs(dir: string, maxAgeMs: number, now = Date.now()): void {
-	let names: string[];
-	try {
-		names = fs.readdirSync(dir);
-	} catch {
-		return;
-	}
-	for (const name of names) {
-		const pid = Number(/^(\d+)-/.exec(name)?.[1]);
-		if (!pid || pid === process.pid || processAlive(pid)) continue;
-		const file = path.join(dir, name);
-		try {
-			if (now - fs.statSync(file).mtimeMs > maxAgeMs) fs.rmSync(file, { recursive: true, force: true });
 		} catch {
 			// Removed meanwhile, or not ours to remove.
 		}

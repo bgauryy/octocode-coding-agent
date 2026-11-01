@@ -3,8 +3,9 @@ import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { getAgentDir } from "../../config.ts";
+import { cleanTitle } from "../../core/session-manager/title.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { sharedAgentDb } from "../agentdb/db.ts";
+import { sharedAgentDb } from "../agentdb/api.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
 import { currentSessionId } from "../shared/home.ts";
@@ -22,9 +23,11 @@ import {
 	spendOf,
 	unpricedModel,
 } from "../shared/util.ts";
-import { type BriefInput, latestRequest, ongoingBrief, resumeBrief } from "./brief.ts";
+import { type BriefInput, latestRequest, ongoingBrief, openTasksBrief, resumeBrief } from "./brief.ts";
+import { recordSession, recordTitle } from "./catalog.ts";
 import { registerSessionsCommand } from "./command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
+import { type CompleteTitle, createAutoTitler } from "./title.ts";
 import { sweepSessions } from "./sweep.ts";
 import { describeWork, unreportedWork } from "./work.ts";
 
@@ -39,6 +42,10 @@ interface SessionsOptions {
 	isSubagent: boolean;
 	/** Distinct files the agent changed in this session (the checkpoint journal). */
 	filesChanged?: () => number;
+	/** A subagent's goal: it names the child's session (`session_info` with source `goal`). */
+	goal?: string;
+	/** The model call that writes an auto title, and how long it may take (tests replace both). */
+	titleCall?: { complete?: CompleteTitle; timeoutMs?: number };
 }
 
 type Entry = {
@@ -86,7 +93,7 @@ const branchOf = (ctx: ExtensionContext): readonly unknown[] =>
 /**
  * After a compaction, a non-waking reorient brief: the work still running (background bash jobs and subagents started
  * since this session started in this process, without a report yet), this session's ongoing backlog items with their
- * goal, why, paths, links and last notes, and the latest user request. The summary may have dropped them, and the
+ * goal, why, paths, links and last notes, its open tasks, and the latest user request. The summary may have dropped them, and the
  * running work's reports will arrive later as messages. Every part is capped (see brief.ts).
  */
 function registerRunningWork(api: ExtensionAPI): void {
@@ -99,7 +106,8 @@ function registerRunningWork(api: ExtensionAPI): void {
 		const running = unreportedWork(branch, since).map((work) => describeWork(work, false));
 		let ongoing: string[] = [];
 		try {
-			ongoing = ongoingBrief(sharedAgentDb(), repoKey(ctx.cwd).key, ctx.sessionManager.getSessionId());
+			const [agent, repo, session] = [sharedAgentDb(), repoKey(ctx.cwd).key, ctx.sessionManager.getSessionId()];
+			ongoing = [...ongoingBrief(agent, repo, session), ...openTasksBrief(agent, repo, session)];
 		} catch {
 			// The agent database is unavailable: the running work and the request alone still help.
 		}
@@ -145,6 +153,21 @@ function pendingReportIds(sessionId: string): Set<string> {
 	return ids;
 }
 
+/** A subagent's session is named for its goal, unless it already has a name (a resumed one). */
+function registerGoalName(api: ExtensionAPI, goal: string | undefined): void {
+	const name = goal ? cleanTitle(goal, GOAL_NAME_MAX) : "";
+	if (!name) return;
+	api.on("session_start", async (_event, ctx) => {
+		try {
+			if (!ctx.sessionManager.getSessionName()) api.setSessionName(name, "goal");
+		} catch {
+			// The session was replaced: it keeps no goal name.
+		}
+	});
+}
+
+const GOAL_NAME_MAX = 200;
+
 const hasUserMessage = (entries: readonly Entry[]) =>
 	entries.some((entry) => entry.type === "message" && entry.message?.role === "user");
 
@@ -156,7 +179,10 @@ const hasUserMessage = (entries: readonly Entry[]) =>
  */
 export function registerSessions(api: ExtensionAPI, options: SessionsOptions): void {
 	registerRunningWork(api);
-	if (options.isSubagent) return;
+	if (options.isSubagent) {
+		registerGoalName(api, options.goal);
+		return;
+	}
 	let warned = false;
 	/** A resumed session's record from before this start, briefed at the next prompt (not now: the user may come back later). */
 	let pending: Omit<BriefInput, "git"> | undefined;
@@ -165,6 +191,10 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	let unpriced = false;
 	let gitRevision = 0;
 	const index = () => new SessionIndex(sharedAgentDb());
+	const titler = createAutoTitler(api, {
+		...options.titleCall,
+		enabled: () => api.getSettings().sessions?.autoTitle !== false,
+	});
 	const safely = (ctx: ExtensionContext, work: (sessions: SessionIndex) => void) => {
 		try {
 			work(index());
@@ -202,6 +232,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 
 	api.on("session_start", async (event, ctx) => {
 		gitRevision++;
+		titler.cancel();
 		pending = undefined;
 		const id = ctx.sessionManager.getSessionId();
 		const entries = (ctx.sessionManager.getEntries?.() ?? []) as readonly Entry[];
@@ -234,6 +265,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			const sessionDir = ctx.sessionManager.getSessionDir?.();
 			const dir = sessionDir ? path.resolve(sessionDir) : undefined;
 			sessions.start(id, dir);
+			recordSession(sessions, ctx.sessionManager);
 			// Octocode's default listing misses sessions kept under --session-dir: the sweep must list that dir too, or it removes their folders.
 			// Octocode's own listing covers every folder of `<agent dir>/sessions`; any other dir is recorded.
 			if (dir && path.dirname(dir) !== path.join(getAgentDir(), "sessions")) sessions.addSessionDir(dir);
@@ -281,12 +313,27 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			filesChanged: options.filesChanged?.() ?? 0,
 			unpriced,
 		};
-		safely(ctx, (sessions) => sessions.stats(id, stats));
+		safely(ctx, (sessions) => {
+			sessions.stats(id, stats);
+			recordSession(sessions, ctx.sessionManager);
+		});
 		void recordGit(ctx, id);
+		// In the background: a turn never waits for its title.
+		void titler.onAgentEnd(ctx);
+	});
+
+	// A session still unnamed when it is compacted gets one title from the summary's goal, in the background.
+	api.on("session_compact", async (event, ctx) => {
+		void titler.onCompact(ctx, event);
+	});
+
+	api.on("session_info_changed", async (event, ctx) => {
+		safely(ctx, (sessions) => recordTitle(sessions, ctx.sessionManager, event.name, event.source));
 	});
 
 	api.on("session_shutdown", async (_event, ctx) => {
 		gitRevision++;
+		titler.cancel();
 		safely(ctx, (sessions) => sessions.end(ctx.sessionManager.getSessionId()));
 	});
 

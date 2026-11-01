@@ -100,7 +100,7 @@ export async function forwardMessage(
 		forwardedBy: by,
 		...(trimmed ? { note: trimmed } : {}),
 	});
-	const targets = resolveTarget(db.list(), by, to, host.parentId(), scope);
+	const targets = resolveTarget(db.list(), by, to, host.parentId(), scope, db.list(Date.now(), true));
 	if (typeof targets === "string") {
 		if (!host.finished.has(to) || !host.resumer()) return { error: `${targets} Nothing was forwarded.` };
 		if (stored.recipients.includes(to))

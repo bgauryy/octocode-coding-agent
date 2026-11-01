@@ -104,7 +104,7 @@ describe("write rules live in the store", () => {
 		expect(store.get("B1")).toBeDefined();
 	});
 
-	it("states the completion guidance once, in the store error, the tool guideline and the hand-over prompts", async () => {
+	it("states the completion guidance once, in the store error and the hand-over prompts; the tool leaves it to its schema", async () => {
 		expect(COMPLETION_GUIDANCE).toMatch(/needs completion/);
 		const store = storeFor("r");
 		store.add({ ...READY, title: "task", state: "todo", createdBy: "user" });
@@ -113,7 +113,15 @@ describe("write rules live in the store", () => {
 			COMPLETION_GUIDANCE,
 		);
 		const t = setup();
-		expect(t.tool.promptGuidelines.join("\n")).toContain(COMPLETION_GUIDANCE);
+		// The guideline leaves the completion fields to the description ("done needs completion") and the schema's `required`.
+		expect(t.tool.promptGuidelines.join("\n")).not.toContain(COMPLETION_GUIDANCE);
+		expect(t.tool.description).toContain("done needs completion");
+		expect(t.tool.parameters.properties.completion.required).toEqual([
+			"summary",
+			"files",
+			"verification",
+			"operationKey",
+		]);
 		// A child's guideline is conditioned on holding an item and leaves the fields to the schema and the store error.
 		const childGuideline = setup({ isSubagent: true, parentSession: "p" }).tool.promptGuidelines.join("\n");
 		expect(childGuideline).toContain("If your task names a backlog item, note progress on it");

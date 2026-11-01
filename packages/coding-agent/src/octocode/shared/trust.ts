@@ -8,7 +8,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { notify, type Subcommands, say, wordCompletions } from "./commands.ts";
 import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "../../../../common/src/env.ts";
 import { projectHookFiles } from "./home.ts";
-import { describeProjectConfig, startsCommands } from "./trust/describe.ts";
+import { describeProjectConfig, startsCommands, untrustedProjectNotice } from "./trust/describe.ts";
 import { fingerprint, projectConfigFiles, projectMcpFiles, readForFingerprint, realPath } from "./trust/files.ts";
 import { createdFrom } from "./trust/origin.ts";
 import { isWorktreeOf, readStore, storeKey, storePath, withFileLock } from "./trust/store.ts";
@@ -184,11 +184,13 @@ export async function projectTrust(ctx: ProjectContext, home?: string): Promise<
 	const key = `${storeKey(ctx.cwd)}\0${sha}`;
 	if (!noticed.has(key)) {
 		noticed.add(key);
-		// A subagent has no /trust (it is registered in the main session only): the user decides there.
-		const next = envFlag(process.env, SUBAGENT_ENV)
-			? "The project is not trusted; the user can review it with /trust in the main session."
-			: "Run /trust to review.";
-		if (ctx.ui) notify(ctx.ui, `Project config not loaded (${files.length} files). ${next}`, "warning");
+		// A subagent has no /trust (it is registered in the main session only): the user decides there. A stored decision
+		// that no longer matches means the files changed since the user last answered.
+		const notice = untrustedProjectNotice(ctx.cwd, files, {
+			changed: Boolean(readStore(home)[storeKey(ctx.cwd)]),
+			subagent: envFlag(process.env, SUBAGENT_ENV),
+		});
+		if (ctx.ui) notify(ctx.ui, notice, "warning");
 	}
 	return false;
 }
@@ -202,9 +204,10 @@ export function saveDecision(cwd: string, sha: string, trusted: boolean, home?: 
 	const key = storeKey(cwd);
 	const file = storePath(home);
 	fs.mkdirSync(path.dirname(file), { recursive: true });
-	withFileLock(file, () => {
+	withFileLock(file, (assertHeld) => {
 		const store = readStore(home);
 		store[key] = { sha, trusted };
+		assertHeld();
 		atomicWriteFileSync(file, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
 	});
 }
@@ -327,10 +330,11 @@ export function preparePermissionTrustUpdate(
 		const nextSha = fingerprint(expectedFiles, undefined, (file) => expected.get(file)!);
 		const storeFile = storePath(home);
 		let advanced = false;
-		withFileLock(storeFile, () => {
+		withFileLock(storeFile, (assertHeld) => {
 			const store = readStore(home);
 			if (!store[key]?.trusted || store[key]?.sha !== originalSha) return;
 			store[key] = { sha: nextSha, trusted: true };
+			assertHeld();
 			atomicWriteFileSync(storeFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
 			trustMemo.clear();
 			advanced = true;

@@ -331,6 +331,10 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): any {
 	return validateToolArguments(tool, toolCall);
 }
 
+/** Appended to a malformed-arguments error: resending the same long text tends to fail the same way. */
+const INVALID_ARGUMENTS_NEXT_STEP =
+	"Send the call again as one valid JSON object. If it is long, split it into several smaller calls: closing brackets and quotes are most often lost in long, deeply nested text.";
+
 /**
  * Validates tool call arguments against the tool's TypeBox schema
  * @param tool The tool definition with TypeBox schema
@@ -340,7 +344,9 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): any {
  */
 export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	if (toolCall.argumentsError) {
-		throw new Error(`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}`);
+		throw new Error(
+			`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}\n\n${INVALID_ARGUMENTS_NEXT_STEP}`,
+		);
 	}
 	const schema = tool.validationParameters ?? tool.parameters;
 	let args = structuredClone(toolCall.arguments);
@@ -374,7 +380,15 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 		args = recovered;
 	}
 
-	const failure = formatValidationFailure(toolCall.name, [...validator.Errors(args)], toolCall.arguments);
-	const hint = tool.validationHint?.();
+	const errors = [...validator.Errors(args)];
+	const failure = formatValidationFailure(toolCall.name, errors, toolCall.arguments);
+	// An envelope mistake: properties the root does not allow, with no problem inside a nested value. A `boolean` error
+	// ("schema is false") sits at the unexpected property itself; its sibling at the object names it.
+	const located = errors.filter((error) => error.keyword !== "boolean");
+	const hint = tool.validationHint?.({
+		envelope:
+			located.every((error) => error.instancePath === "") &&
+			located.some((error) => error.keyword === "additionalProperties"),
+	});
 	throw new Error(hint ? `${failure}\n\n${hint}` : failure);
 }

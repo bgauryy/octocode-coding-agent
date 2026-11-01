@@ -1,4 +1,4 @@
-import { BYTES_PER_TOKEN, RESULT_DEFAULT_LINES } from "../../../octocode/shared/output-budget.ts";
+import { BYTES_PER_TOKEN, RESULT_DEFAULT_LINES } from "../../../utils/output-budget.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 
 /** What one foreground bash result may put into the model's context: the shared default (20 KB, 500 lines; see `output-budget.ts`). */

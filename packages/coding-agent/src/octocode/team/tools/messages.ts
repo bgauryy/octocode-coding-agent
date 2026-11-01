@@ -7,9 +7,10 @@ import { resultBlock, toolHeader } from "../../shared/render.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
 import type { MailDetails } from "../model.ts";
 import type { Team } from "../session.ts";
+import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
 import { clip, plural } from "../../shared/render/text.ts";
 import { timedTool, timingOf } from "../../shared/render/rows.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Columns of the sent text shown on the collapsed Send row. */
 const PREVIEW_CHARS = 60;
@@ -52,12 +53,21 @@ export function registerMessageRenderer(api: ExtensionAPI): void {
 async function forwardResult(
 	team: Team,
 	by: string,
-	params: { forward?: number; to?: string; message?: string; replyRequired?: boolean; interrupt?: boolean },
+	params: {
+		forward?: number;
+		to?: string;
+		message?: string;
+		replyRequired?: boolean;
+		interrupt?: boolean;
+		wake?: boolean;
+	},
 	signal?: AbortSignal,
 ) {
 	if (params.to === undefined) throw new Error("Say who to forward to with `to`.");
-	if (params.interrupt || params.replyRequired !== undefined)
-		throw new Error("A forward keeps the original message's reply request and never interrupts; drop those fields.");
+	if (params.interrupt || params.replyRequired !== undefined || params.wake !== undefined)
+		throw new Error(
+			"A forward keeps the original message's reply request and never interrupts or wakes; drop those fields.",
+		);
 	const result = await team.forwardMessage(params.forward!, by, params.to, params.message, signal);
 	if ("error" in result) throw new Error(result.error);
 	if (result.resumed) return textResult(result.resumed, { to: result.sent, id: result.id });
@@ -104,6 +114,11 @@ export function registerSendMessageTool(
 						description: "true: a request you need answered; wakes an idle recipient. Default false: an FYI",
 					}),
 				),
+				wake: Type.Optional(
+					Type.Boolean({
+						description: "true: an idle recipient acts now, no answer expected (an FYI waits). Not with to: all",
+					}),
+				),
 				replyTo: Type.Optional(
 					Type.Integer({
 						description: "Message number to answer; wakes the asker.",
@@ -126,30 +141,77 @@ export function registerSendMessageTool(
 					...(params.replyRequired !== undefined ? { replyRequired: params.replyRequired } : {}),
 					...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}),
 					...(params.interrupt ? { interrupt: true } : {}),
+					...(params.wake ? { wake: true } : {}),
 				});
 				if ("error" in result) throw new Error(result.error);
-				if (result.resumed) return textResult(result.resumed, { to: result.sent, id: result.id });
+				const details = {
+					to: result.sent,
+					id: result.id,
+					...(result.delivery ? { delivery: result.delivery } : {}),
+					...(result.departed?.length ? { departed: result.departed } : {}),
+				};
+				if (result.resumed) return textResult(result.resumed, details);
 				if (result.relayed)
 					return textResult(
 						`${result.sent.join(", ")} is not running: message #${result.id} goes through your parent ${result.relayed}, which resumes it with the message if it can. If not, you get a notice saying why.`,
-						{ to: result.sent, id: result.id, relayed: result.relayed },
+						{ ...details, relayed: result.relayed },
 					);
 				if (params.interrupt)
 					return textResult(
 						`Interrupt queued for ${result.sent.join(", ")} as message #${result.id}: a busy subagent stops its current step within a second.`,
-						{ to: result.sent, id: result.id },
+						details,
 					);
 				const departed = result.departed?.length ? ` Not sent to ${result.departed.join(", ")} (left the team).` : "";
 				const recipients = result.sent.join(", ");
-				const mode =
-					params.replyRequired === true
-						? `as a request: ${recipients} ${result.sent.length > 1 ? "are" : "is"} woken and must answer with replyTo ${result.id}`
-						: "as an FYI (no reply requested)";
-				return textResult(`Queued message #${result.id} for ${recipients} ${mode}.${departed}`, {
-					to: result.sent,
-					id: result.id,
-					...(result.departed?.length ? { departed: result.departed } : {}),
-				});
+				// Told as it meets each recipient, so a sender knows an idle one will not act on an FYI alone, and which one is not answering.
+				const delivery = result.delivery ?? {};
+				const group = (status: string) => result.sent.filter((recipient) => delivery[recipient] === status);
+				const fate = (who: string[], one: string, many: string) =>
+					who.length === 0 ? "" : `${who.join(", ")} ${who.length > 1 ? many : one}`;
+				const stalled = fate(
+					group("stalled"),
+					"has not been seen for over a minute: the message waits, and you are told if it never recovers (it then becomes a dead letter).",
+					"have not been seen for over a minute: the message waits, and you are told if they never recover (it then becomes a dead letter).",
+				);
+				// An answer to the recipient's own question is never paced; any other agent-started turn is.
+				const pace =
+					params.replyTo === undefined && group("wake").length > 0
+						? `Agent-started turns are paced (at most one per ${WAKE_INTERVAL_MS / 1000}s; mail meanwhile joins that turn).`
+						: "";
+				if (params.replyRequired === true)
+					return textResult(
+						`Queued message #${result.id} for ${recipients} as a request: ${recipients} ${result.sent.length > 1 ? "are" : "is"} woken and must answer with replyTo ${result.id}.${departed}${[
+							pace,
+							stalled,
+						]
+							.filter(Boolean)
+							.map((part) => ` ${part}`)
+							.join("")}`,
+						details,
+					);
+				const fates = [
+					fate(
+						group("wake"),
+						"is woken: a turn starts if it is idle, otherwise it reads the message at its next step.",
+						"are woken: a turn starts for each idle one, otherwise they read the message at their next steps.",
+					),
+					pace,
+					fate(group("next-step"), "reads it at its next step.", "read it at their next steps."),
+					fate(
+						group("queued-quiet"),
+						"is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes. wake: true starts it with no reply expected.",
+						"are idle: they read this on their next turn and will not act on it alone; replyRequired: true asks and wakes. wake: true starts them with no reply expected.",
+					),
+					stalled,
+				]
+					.filter(Boolean)
+					.join(" ");
+				return textResult(
+					[`Queued message #${result.id} for ${recipients} as an FYI (no reply requested).`, fates]
+						.filter(Boolean)
+						.join(" ") + departed,
+					details,
+				);
 			},
 			renderCall(args, theme, context) {
 				const to = args.to === undefined ? "" : `→ ${String(args.to)}`;
@@ -165,7 +227,7 @@ export function registerSendMessageTool(
 				);
 			},
 			renderResult(result, _options, theme, context) {
-				const details: Record<string, unknown> = isRecord(result.details) ? result.details : {};
+				const details: Record<string, unknown> = asRecord(result.details);
 				const text = contentText(result.content);
 				const sent = Array.isArray(details.to) ? details.to.map(String) : [];
 				const departed =

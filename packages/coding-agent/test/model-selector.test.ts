@@ -72,7 +72,7 @@ describe("model selector", () => {
 			saveDefault,
 		);
 
-		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Ctrl+R to set as default");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("ctrl+r to set as default");
 		selector.handleInput("\x13");
 		expect(saveDefault).not.toHaveBeenCalled();
 		selector.handleInput("\x12");

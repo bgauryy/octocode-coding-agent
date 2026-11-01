@@ -182,7 +182,8 @@ function sendReleased(
 			images: message.images.length > 0 ? message.images : undefined,
 			streamingBehavior: message.mode,
 			source: message.source,
-			...(message.expand ? {} : { expandPromptTemplates: false }),
+			// A compaction-queue message is unsent typed text; a session-queue message already carries its images.
+			...(message.expand ? { attachImagePaths: true } : { expandPromptTemplates: false }),
 			preflightResult: () => {
 				accepted = true;
 			},

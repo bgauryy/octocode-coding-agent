@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
-import { USER_AUTHOR } from "../agentdb/author.ts";
+import { USER_AUTHOR } from "../agentdb/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { lastInjection } from "./inject.ts";
@@ -11,12 +11,15 @@ import {
 	type MemoryInput,
 	type MemoryKind,
 	type MemoryStore,
+	memoryAge,
 	memoryLine,
 } from "./store.ts";
 import { describeMemory } from "./tool.ts";
 
 const LIST_LIMIT = 100;
 const ADD = "+ Add a memory";
+/** `/memory review` without a number: memories not updated in this many days are due. */
+const REVIEW_DAYS = 30;
 
 /** The editor template `add` and Edit open: header lines, a `---` line, then the body. */
 export function memoryTemplate(
@@ -90,7 +93,7 @@ function textList(memories: readonly Memory[], title: string): string {
 }
 
 /**
- * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto on|off`, `last`. The TUI picks
+ * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto on|off`, `last`, `review [days]`. The TUI picks
  * with `ui.select` and edits in `ui.editor`; without a UI every form prints text.
  */
 export function registerMemoryCommand(
@@ -107,6 +110,7 @@ export function registerMemoryCommand(
 					["auto on", "inject relevant memories"],
 					["auto off", "stop injecting"],
 					["last", "what was injected last"],
+					["review", "unused or stale memories"],
 				],
 				prefix,
 			),
@@ -147,13 +151,39 @@ async function run(
 		return say(ctx, last ?? "No memories were injected on this branch yet.", "info");
 	}
 	if (verb === "add") return add(ctx, store, rest);
+	if (verb === "review") return review(ctx, store, rest);
 	if (verb === "search") {
 		if (!rest) return say(ctx, "Usage: /memory search <words>", "warning");
 		return browse(ctx, store, store.search(rest, "all", 20), `Memories matching "${rest}"`);
 	}
 	if (verb === "" || verb === "list")
 		return browse(ctx, store, store.list("all", LIST_LIMIT), `Memories (auto ${autoStatus(store, autoEnv)})`);
-	return say(ctx, "Usage: /memory [search <q>|add|auto on|off|last]", "warning");
+	return say(ctx, "Usage: /memory [search <q>|add|auto on|off|last|review [days]]", "warning");
+}
+
+/**
+ * `/memory review [days]`: memories never injected, or not updated in `days` (default 30), oldest first. The TUI opens
+ * them in the browser, whose Edit and Delete act on one; headless, each line says why it is listed.
+ */
+async function review(ctx: ExtensionCommandContext, store: MemoryStore, rest: string): Promise<void> {
+	const days = rest ? Number(rest) : REVIEW_DAYS;
+	if (!Number.isInteger(days) || days < 1) return say(ctx, "Usage: /memory review [days]", "warning");
+	const now = Date.now();
+	const due = store.review(days, "all", LIST_LIMIT, now);
+	const title = `Memories never used or not updated in ${days} days`;
+	if (due.length === 0) return say(ctx, `${title}: none.`, "info");
+	if (ctx.hasUI) return browse(ctx, store, due, `${title} (pick one to edit or delete)`);
+	const why = (memory: Memory) =>
+		[...(memory.useCount === 0 ? ["never used"] : []), `updated ${memoryAge(memory, now)} ago`].join(", ");
+	return say(
+		ctx,
+		[
+			`${title}:`,
+			...due.map((memory) => `  ${memoryLine(memory, 80)} (${why(memory)})`),
+			"Edit or delete one in the TUI: /memory, then pick it.",
+		].join("\n"),
+		"info",
+	);
 }
 
 const autoStatus = (store: MemoryStore, autoEnv: () => boolean) =>

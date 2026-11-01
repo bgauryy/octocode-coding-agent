@@ -2,67 +2,13 @@
  * CLI argument parsing and help display
  */
 
-import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import type { TuiMode } from "../core/settings-manager.ts";
 import { isValidThinkingLevel } from "../core/thinking-level.ts";
 import { flagSpec, invalidValue, looksLikeFlag, missingValue } from "./args/flags.ts";
+import type { Args } from "./args/types.ts";
 
 export { printHelp } from "./args/help.ts";
+export type { Args, Mode } from "./args/types.ts";
 export { isValidThinkingLevel };
-
-export type Mode = "text" | "json" | "rpc" | "acp";
-
-export interface Args {
-	provider?: string;
-	model?: string;
-	apiKey?: string;
-	systemPrompt?: string;
-	appendSystemPrompt?: string[];
-	thinking?: ThinkingLevel;
-	continue?: boolean;
-	resume?: boolean;
-	help?: boolean;
-	version?: boolean;
-	mode?: Mode;
-	name?: string;
-	noSession?: boolean;
-	session?: string;
-	sessionId?: string;
-	fork?: string;
-	sessionDir?: string;
-	/** Name of the worktree to start in (`--worktree`). */
-	worktree?: string;
-	models?: string[];
-	tools?: string[];
-	excludeTools?: string[];
-	noTools?: boolean;
-	noBuiltinTools?: boolean;
-	extensions?: string[];
-	noExtensions?: boolean;
-	noMcp?: boolean;
-	print?: boolean;
-	export?: string;
-	noSkills?: boolean;
-	skills?: string[];
-	promptTemplates?: string[];
-	noPromptTemplates?: boolean;
-	themes?: string[];
-	useTheme?: string;
-	noThemes?: boolean;
-	noContextFiles?: boolean;
-	listModels?: string | true;
-	offline?: boolean;
-	tuiMode?: TuiMode;
-	verbose?: boolean;
-	projectTrustOverride?: boolean;
-	messages: string[];
-	fileArgs: string[];
-	/** Unknown flags (potentially extension flags) - map of flag name to value */
-	unknownFlags: Map<string, boolean | string>;
-	/** Words unknown flags consumed as values, returned to `messages` if the flag is boolean. */
-	unknownFlagWords?: Array<{ flag: string; word: string; at: number }>;
-	diagnostics: Array<{ type: "warning" | "error"; message: string }>;
-}
 
 export function normalizeSessionName(value: string): string | undefined {
 	const name = value.trim();

@@ -61,8 +61,14 @@ describe("workspace WebSocket handlers without network I/O", () => {
 			),
 		);
 		const frames = socket.frames();
-		const lastDelta = frames.filter((frame) => frame.type === "event" && frame.event.type === "message.delta").at(-1);
-		expect(lastDelta).toMatchObject({ event: { text: "First second third", delta: "" } });
+		// Deltas append only released text: the last word waits for the whitespace or completion that proves it whole.
+		const deltas = frames.flatMap((frame) =>
+			frame.type === "event" && frame.event.type === "message.delta" ? [frame.event] : [],
+		);
+		expect(deltas.map((delta) => delta.delta).join("")).toBe("First second ");
+		expect(frames.at(-1)).toMatchObject({
+			event: { type: "message.completed", message: { text: "First second third" } },
+		});
 		for (let index = 1; index < frames.length; index++) {
 			const frame = frames[index];
 			if (frame.type !== "event") throw new Error(`Unexpected frame: ${frame.type}`);

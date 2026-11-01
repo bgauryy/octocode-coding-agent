@@ -2,16 +2,15 @@
 
 import { join } from "node:path";
 import chalk from "chalk";
-import { APP_NAME } from "../../../coding-agent/src/config.ts";
+import { hostIdentity, hostTrust } from "../host.ts";
 import { findMcpPreset, type McpServerPreset } from "../preset.ts";
-import { ProjectTrustStore } from "../../../coding-agent/src/core/trust-manager.ts";
 import { createServerConnection } from "../connection-factory.ts";
 import type { McpServerEntry } from "../config.ts";
 import { McpServerLog } from "../log.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
 import { storedProviderToken } from "./provider-token.ts";
 
-export const HELP_HINT = chalk.dim(`Use "${APP_NAME} mcp --help" for usage.`);
+export const helpHint = (): string => chalk.dim(`Use "${hostIdentity().appName} mcp --help" for usage.`);
 
 export interface McpCommandOptions {
 	presets?: readonly McpServerPreset[];
@@ -50,7 +49,7 @@ export function createConnection(
 		prepareLaunch: (entry, cwd) => {
 			const preset = findMcpPreset(options.presets, entry.name);
 			const prepared =
-				preset?.prepareLaunch?.(entry, cwd, new ProjectTrustStore(options.agentDir).get(cwd) === true) ?? entry;
+				preset?.prepareLaunch?.(entry, cwd, hostTrust().directoryTrusted(options.agentDir, cwd)) ?? entry;
 			return options.prepareLaunch?.(prepared, cwd) ?? prepared;
 		},
 		log: new McpServerLog(join(options.agentDir, "mcp.log")),
@@ -94,7 +93,7 @@ export function parseOptions(
 		const name = arg.slice(2);
 		const kind = known[name];
 		if (!kind) {
-			error(`Unknown option ${arg}.\n${HELP_HINT}`);
+			error(`Unknown option ${arg}.\n${helpHint()}`);
 			return undefined;
 		}
 		if (kind === "flag") {

@@ -3,10 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import ignore from "ignore";
 import type { ToolInvocation } from "../../../core/extensions/types.ts";
+import { agentCall } from "../../shared/agent-call.ts";
 import { fileChanges } from "../../shared/file-input.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { canonicalPath } from "../../shared/home/repo.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { names, primaryParameter, type Rule, toolMatches, wildcard } from "./rules.ts";
@@ -21,7 +22,7 @@ export interface Operation {
 	mutation?: boolean;
 }
 export function operations(invocation: ToolInvocation): Operation[] {
-	const input = isRecord(invocation.input) ? invocation.input : {};
+	const input = asRecord(invocation.input);
 	if (invocation.toolName === "file")
 		return fileChanges(input).flatMap((query) => {
 			const name = query.type === "write" ? "Write" : query.type === "delete" ? "Delete" : "Edit";
@@ -44,13 +45,10 @@ export function operations(invocation: ToolInvocation): Operation[] {
 					: []),
 			];
 		});
-	if (invocation.toolName === "agent")
-		return [
-			{
-				name: input.type === "task" ? "Agent" : `agent.${typeof input.type === "string" ? input.type : "unknown"}`,
-				input: isRecord(input.input) ? input.input : input,
-			},
-		];
+	if (invocation.toolName === "agent") {
+		const call = agentCall(input);
+		return [{ name: call.type === "task" ? "Agent" : `agent.${call.type ?? "unknown"}`, input: call.input }];
+	}
 	if (invocation.toolName === "bash") return [{ name: input.type === "powershell" ? "PowerShell" : "Bash", input }];
 	if (invocation.toolName === "web") return [{ name: typeof input.url === "string" ? "WebFetch" : "WebSearch", input }];
 	return names(invocation.toolName).map((name) => ({
@@ -61,9 +59,10 @@ export function operations(invocation: ToolInvocation): Operation[] {
 		mutation: ["Edit", "Write", "Delete"].includes(name),
 	}));
 }
+/** The resolved path the filesystem holds, in its on-disk letter case (`realpathSync.native`), so a respelled directory on a case-insensitive volume still meets a deny rule. */
 function realCandidate(value: string): string {
 	try {
-		return fs.realpathSync(value);
+		return fs.realpathSync.native(value);
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		const canonical = canonicalPath(value);
@@ -96,8 +95,11 @@ export function pathMatch(rule: Rule, target: string, cwd: string): boolean | un
 		let adapted = candidatePattern;
 		if (rule.behavior !== "allow" && /^[^/]+\/\*\*$/.test(adapted) && !specifier.startsWith("/"))
 			adapted = `**/${adapted}`;
+		// An allow rule matches the case it names (on a case-sensitive filesystem `DOCS/` is another directory); deny and ask match any.
 		try {
-			return ignore().add(adapted).ignores(relative);
+			return ignore({ ignorecase: rule.behavior !== "allow" })
+				.add(adapted)
+				.ignores(relative);
 		} catch {
 			return rule.behavior !== "allow" && relative === pattern;
 		}

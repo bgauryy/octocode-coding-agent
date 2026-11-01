@@ -6,7 +6,7 @@ import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import { convertToLlm } from "../../core/messages.ts";
 import { sessionCleared, sessionClearedAt } from "../files/reads.ts";
-import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { SUMMARY_CHECKPOINT_FORMAT, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";

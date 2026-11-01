@@ -35,6 +35,15 @@ export async function readJson(response: Response): Promise<Record<string, unkno
 	}
 }
 
+/**
+ * Names the fields of a successful but unusable OAuth response for an error message. Values are
+ * never included: device codes, user codes, authorization codes and tokens are login secrets.
+ */
+export function describeResponseFields(json: unknown): string {
+	if (!json || typeof json !== "object" || Array.isArray(json)) return "not a JSON object";
+	return `fields [${Object.keys(json).join(", ")}]`;
+}
+
 /** The verification URI is opened in the user's browser; only http(s) URLs are trusted. */
 export function trustedHttpUrl(value: unknown): string | null {
 	if (typeof value !== "string" || !value) return null;

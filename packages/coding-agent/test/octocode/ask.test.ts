@@ -84,13 +84,13 @@ describe("askUser", () => {
 			undefined,
 			keybindings,
 		);
-		expect(frames[0]).toContain("P/N questions");
-		expect(frames[0]).toContain("X/Y toggle");
-		expect(frames[0]).toMatch(/Q\s+cancel/);
+		expect(frames[0]).toContain("p/n questions");
+		expect(frames[0]).toContain("x/y toggle");
+		expect(frames[0]).toMatch(/q\s+cancel/);
 		expect(result.answers.map((answer) => answer.answer)).toEqual(["Docs", "Small (Recommended)"]);
 		keybindings.setUserBindings({ "app.ask.toggle": [], "tui.select.cancel": "q" });
 		const disabled = await drive([extras], ["q"], undefined, keybindings);
-		expect(disabled.frames[0]).toContain("Unbound/Enter toggle");
+		expect(disabled.frames[0]).toContain("unbound/enter toggle");
 		expect(disabled.result.cancelled).toBe(true);
 	});
 
@@ -98,8 +98,8 @@ describe("askUser", () => {
 		const keybindings = new KeybindingsManager({ "tui.select.down": "j", "tui.select.confirm": "y" });
 		const { result, frames } = await drive([scope], [KEY.down, "j", "y"], undefined, keybindings);
 		expect(result.answers[0]?.answer).toBe("Large");
-		expect(frames[0]).toContain("Up/J/1-9 move · Y choose");
-		expect(frames[0]).not.toContain("Enter choose");
+		expect(frames[0]).toContain("up/j/1-9 move · y choose");
+		expect(frames[0]).not.toContain("enter choose");
 	});
 	it("rewraps on resize and strips terminal controls from question text", async () => {
 		const ctx = fakeCtx({
@@ -196,7 +196,7 @@ describe("askUser", () => {
 		expect(frames[0]).toContain("› 1. Small (Recommended)");
 		expect(frames[0]).toContain("One file");
 		expect(frames[0]).toContain("3. Write an answer");
-		expect(frames[0]).toContain("Up/Down/1-9 move · Enter choose · Escape/Ctrl+C cancel");
+		expect(frames[0]).toContain("up/down/1-9 move · enter choose · escape/ctrl+c cancel");
 		expect(frames[0]).toContain("Choose one");
 		expect(frames[0]).not.toContain("Submit");
 	});
@@ -207,10 +207,10 @@ describe("askUser", () => {
 			cancelled: false,
 			answers: [{ question: "Which scope?", answer: "x my own", custom: true }],
 		});
-		expect(typed.frames[3]).toContain("Enter submit · Escape/Ctrl+C back");
+		expect(typed.frames[3]).toContain("enter submit · escape/ctrl+c back");
 		// An empty submission keeps the dialog open and leaves typing mode.
 		const empty = await drive([scope], ["3", KEY.enter, KEY.enter, KEY.escape]);
-		expect(empty.frames[3]).toContain("Enter choose");
+		expect(empty.frames[3]).toContain("enter choose");
 		const cancelled = await drive([scope], ["q", KEY.escape]);
 		expect(cancelled.result).toEqual({ cancelled: true, answers: [] });
 	});
@@ -220,7 +220,7 @@ describe("askUser", () => {
 			[scope, { question: "Why?", header: "Why", options: [] }],
 			[KEY.enter, ..."abc", KEY.escape, KEY.shiftTab, KEY.tab, KEY.enter, KEY.enter],
 		);
-		expect(frames[7]).toContain("Enter submit · Escape/Ctrl+C back");
+		expect(frames[7]).toContain("enter submit · escape/ctrl+c back");
 		expect(frames[7]).toContain("abc");
 		expect(result.answers).toEqual([
 			{ question: "Which scope?", answer: "Small (Recommended)", custom: false },
@@ -230,7 +230,7 @@ describe("askUser", () => {
 
 	it("opens the editor directly for free-text questions", async () => {
 		const { result, frames } = await drive([{ question: "Which region?", options: [] }], [..."eu-west-1", KEY.enter]);
-		expect(frames[0]).toContain("Enter submit");
+		expect(frames[0]).toContain("enter submit");
 		expect(result.answers).toEqual([{ question: "Which region?", answer: "eu-west-1", custom: true }]);
 	});
 
@@ -262,11 +262,11 @@ describe("askUser", () => {
 		expect(frames[0]).toContain("◇ Scope");
 		expect(frames[0]).toContain("✓ Submit");
 		expect(frames[2]).toContain("[x] Docs");
-		expect(frames[2]).toContain("Space/Enter toggle");
+		expect(frames[2]).toContain("space/enter toggle");
 		expect(frames[2]).toContain("Choose one or more, then Submit selection");
 		expect(frames[7]).toContain("✓ Submit selection (2 selected)");
 		expect(frames[9]).toContain("Scope: Small (Recommended)");
-		expect(frames[9]).toContain("Enter to submit");
+		expect(frames[9]).toContain("enter to submit");
 
 		// Submit refuses until every question is answered; typed text joins the toggled options.
 		const typed = await drive(
@@ -541,6 +541,21 @@ describe("askUser tool", () => {
 		expect(rendered(tool.renderCall(params, theme, {}))).toBe("○ Ask(A very long header, Extras)");
 		expect(rendered(tool.renderCall({ questions: [{ header: "bad\u001b[31m\nnext" }] }, theme, {}))).toBe("○ Ask(bad)");
 		expect(rendered(tool.renderCall({}, theme, {}))).toBe("○ Ask");
+		// Without headers the row names the first question's first line, and how many more follow.
+		expect(
+			rendered(
+				tool.renderCall(
+					{
+						questions: [
+							{ question: "Implement fixes 1-3?\nThey touch three guards." },
+							{ question: "Run a reviewer?" },
+						],
+					},
+					theme,
+					{},
+				),
+			),
+		).toBe("○ Ask(Implement fixes 1-3? +1 more)");
 		expect(rendered(tool.renderResult({ content: [] }, {}, theme, {}))).toBe("");
 		const answered = {
 			content: [],

@@ -108,10 +108,10 @@ describe("default MCP in the shared host", () => {
 		expect(h.state.servers).toHaveLength(1);
 		expect(h.transports).toHaveLength(1);
 		expect(h.state.findServer("octocode")?.connection?.tools).toHaveLength(9);
-		expect(sections.mcp_status).toBeUndefined();
+		expect(sections.mcps).not.toContain("state=");
 		// The generated file carries the instructions and signatures, in the server's contract section.
-		expect(sections.mcp_contract_octocode).toContain("Echo test server.");
-		expect(sections.mcp_contract_octocode).toContain("localFetch");
+		expect(sections.mcps).toContain("Echo test server.");
+		expect(sections.mcps).toContain("localFetch");
 		expect(sections.octocode_mcp).toBeUndefined();
 		expect(await h.call("mcp__octocode__shout", { text: "hello" })).toMatchObject({ content: [{ text: "HELLO" }] });
 		expect(await h.call("mcp__octocode__roots")).toMatchObject({
@@ -153,8 +153,8 @@ describe("default MCP in the shared host", () => {
 		const h = host();
 		await h.start();
 		const sections = await h.prompt();
-		expect(sections.mcp_contract_octocode).toContain("fixture");
-		expect(sections.mcp_contract_octocode).not.toContain("\u001b");
+		expect(sections.mcps).toContain("fixture");
+		expect(sections.mcps).not.toContain("\u001b");
 	});
 	it("returns tool errors and honors cancellation and progress through the common executor", async () => {
 		const h = host();
@@ -194,7 +194,11 @@ describe("default MCP in the shared host", () => {
 		await h.prompt();
 		expect(await h.call("mcp", { intent: "stop", server: "octocode" })).not.toMatchObject({ isError: true });
 		expect(getMcpSessionStatus(h.api.events)).toMatchObject([{ name: "octocode", state: "stopped" }]);
-		expect((await h.prompt()).mcp_status).toContain("- mcp__octocode: stopped");
+		const stopped = await h.prompt();
+		// The block keeps its contract; the stop goes to the status section only.
+		expect(stopped.mcps).toContain('<mcp name="octocode" tools="mcp__octocode__*">');
+		expect(stopped.mcps).toContain("declare namespace octocode");
+		expect(stopped.mcp_status).toContain("- octocode: stopped");
 		expect(h.transports).toHaveLength(1);
 		expect(h.tools.get("mcp__octocode__shout").exposure).toBe("hidden");
 		await h.commands.get("mcp").handler("reconnect octocode", h.ctx);

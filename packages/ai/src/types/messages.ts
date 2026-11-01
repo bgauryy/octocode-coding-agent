@@ -57,6 +57,11 @@ export interface ToolCall {
 	 * Describes the problem and includes the text the model sent; tool argument validation fails with it.
 	 */
 	argumentsError?: string;
+	/**
+	 * With `argumentsError`: the model's whole arguments text, uncut. `argumentsError` and tool results echo only a
+	 * bounded part of it; the session keeps this so nothing the model sent is lost. Never sent back to a model.
+	 */
+	rawArguments?: string;
 }
 
 export interface Usage {
@@ -247,6 +252,12 @@ export type ConstrainedSamplingConfig =
 			variants: GrammarVariants;
 	  };
 
+/** What a tool's `validationHint` is told about the failure it follows. */
+interface ToolValidationFailure {
+	/** Every problem is at the top level of the arguments, none inside a nested value. */
+	envelope: boolean;
+}
+
 export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;
@@ -257,8 +268,12 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	 * thin stub and whose full contract the model reads elsewhere. Never sent to a provider.
 	 */
 	validationParameters?: TSchema;
-	/** Text appended to a validation failure of this tool's call, such as its typed signature. Never sent to a provider. */
-	validationHint?: () => string | undefined;
+	/**
+	 * Text appended to a validation failure of this tool's call, such as its typed signature. `failure.envelope` is true
+	 * when the problem is unexpected root properties and nothing inside a nested value, so the hint can
+	 * name the call shape instead of the whole signature. Never sent to a provider.
+	 */
+	validationHint?: (failure: ToolValidationFailure) => string | undefined;
 }
 
 export interface ToolReference {

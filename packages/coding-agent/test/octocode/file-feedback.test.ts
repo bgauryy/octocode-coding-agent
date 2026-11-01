@@ -193,6 +193,29 @@ it("discards parser observations from a session switched during the nested call"
 	expect((await captureParseBefore([f.file], f.ctx)).has(f.file)).toBe(false);
 });
 
+it("says nothing when diagnostics or the parse prove nothing about the edit, and keeps real findings", () => {
+	for (const state of [
+		"observed-empty",
+		"unpublished",
+		"unsupported",
+		"unavailable",
+		"cancelled",
+		"pending",
+		"superseded",
+	] as const)
+		expect(formatFeedback([{ path: "a.ts", state }]), state).toBe("");
+	for (const state of ["observed-parsed", "unsupported", "superseded"] as const)
+		expect(formatParseFeedback([{ path: "a.ts", state }]), state).toBe("");
+	expect(
+		formatFeedback([
+			{ path: "a.ts", state: "observed-empty" },
+			{ path: "b.ts", state: "issues", issues: ["TS2322 :1 bad"] },
+		]),
+	).toBe("b.ts: diagnostics observed after edit (source version unverified): TS2322 :1 bad.");
+	expect(formatParseFeedback([{ path: "a.ts", state: "possible-regression" }])).toContain("possible parse regression");
+	expect(formatParseFeedback([{ path: "a.ts", state: "already-invalid" }])).toContain("already observed");
+});
+
 it("labels issue diagnostics as unverified against committed bytes", () => {
 	expect(formatFeedback([{ path: "a.ts", state: "issues", issues: ["TS2307 :8 module missing"] }])).toContain(
 		"source version unverified",
@@ -404,5 +427,59 @@ it("records only committed queries and inspects the final repeated write", async
 	expect(result.details.receipts.map((receipt: MutationReceipt) => receipt.revision)).toEqual([before + 1, before + 2]);
 	expect(result.details.diagnostics).toMatchObject([{ state: "observed-empty" }]);
 	expect(f.ctx.executeTool).toHaveBeenCalledTimes(1);
-	expect(result.content[0].text).toContain("source version unverified");
+	expect(result.content[0].text).not.toContain("diagnostics");
+});
+
+it("checks the parse of each file a batch edits, however many times it edits the first", async () => {
+	const f = fixture();
+	const other = path.join(path.dirname(f.file), "other.ts");
+	fs.writeFileSync(other, "const y = 1;\n");
+	// Its own session: an earlier test records `.ts` as unserved for the shared fake session id.
+	Object.defineProperty(f.ctx.sessionManager, "getSessionId", { value: () => "parse-cap-session" });
+	const guard = new FileGuard();
+	guard.record(f.file);
+	guard.record(other);
+	const fake = fakeHost();
+	registerFileTool(fake.api, guard, fakePermission(), undefined, undefined, { enabled: true });
+	Object.defineProperty(f.ctx, "tools", { value: [{ name: "mcp__octocode__astSearch" }] });
+	Object.defineProperty(f.ctx, "executeTool", {
+		value: vi.fn(async (_tool: string, args: { queries: [{ path: string }] }) => {
+			const target = args.queries[0].path;
+			const recovered = fs.readFileSync(target, "utf8").includes("= ;");
+			return {
+				isError: false,
+				result: {
+					content: [],
+					structuredContent: {
+						root: f.ctx.cwd,
+						results: [
+							{
+								data: {
+									path: path.basename(target),
+									operation: "syntaxTree",
+									nodes: [],
+									...(recovered ? { diagnostics: [{ code: "syntaxTree.parse.recovered" }] } : {}),
+								},
+							},
+						],
+					},
+				},
+			};
+		}),
+	});
+	const result = await fake.tools.get("file")!.execute(
+		"batch",
+		{
+			queries: [
+				{ type: "write", path: f.file, reason: "one", content: "const x = 2;\n" },
+				{ type: "write", path: f.file, reason: "two", content: "const x = 3;\n" },
+				{ type: "write", path: f.file, reason: "three", content: "const x = 4;\n" },
+				{ type: "write", path: other, reason: "break", content: "const y = ;\n" },
+			],
+		},
+		undefined,
+		undefined,
+		f.ctx,
+	);
+	expect(result.content[0].text).toContain(`${other}: possible parse regression observed after edit`);
 });

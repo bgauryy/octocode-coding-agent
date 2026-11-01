@@ -107,6 +107,23 @@ export function mayHaveStrippableCode(str: string): boolean {
 	return str.includes("\x1b") || C1_INTRODUCER_PATTERN.test(str);
 }
 
+/** Remove ESC and 8-bit C1 control sequences (CSI, OSC, APC, DCS and others) while preserving visible text. */
+export function stripTerminalSequences(str: string): string {
+	if (!mayHaveStrippableCode(str)) return str;
+	let result = "";
+	let i = 0;
+	while (i < str.length) {
+		const length = strippableCodeLength(str, i);
+		if (length > 0) {
+			i += length;
+			continue;
+		}
+		result += str[i];
+		i++;
+	}
+	return result;
+}
+
 /**
  * Index of the first escape sequence at or after `from` that the text ends inside (a sequence a later chunk could
  * finish, such as `ESC [ 3` or an OSC without its terminator), or -1 when the text ends outside any sequence.

@@ -1,6 +1,12 @@
 /** The MCP server name Octocode registers its built-in browser under (and looks for in `mcp.json`). */
 export const BROWSER_SERVER = "browser";
 
+/** The base prompt section that describes every enabled MCP server, one block per server (`mcp/src/section.ts`). */
+export const MCPS_SECTION = "mcps";
+
+/** The volatile prompt section that names MCP servers which are not ready (`mcp/src/section.ts`). */
+export const MCP_STATUS_SECTION = "mcp_status";
+
 /** The npm package that runs the browser server. */
 export const BROWSER_PACKAGE = "@octocodeai/octocode-chrome-devtools";
 

@@ -5,9 +5,9 @@ import {
 	type BacklogComment,
 	type BacklogAudit,
 } from "@octocodeai/octocode-contracts/snapshot";
-import { sessionRunningPid } from "../agentdb/liveness.ts";
 import { redactData, visibleControls } from "../../../../common/src/sanitize.ts";
-import { type Db, backlog } from "../agentdb/api.ts";
+import { LEGACY_ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { type Db, backlog, sessionRunningPid } from "../agentdb/api.ts";
 import { type Row, toItem } from "./row.ts";
 import { enrichItems } from "./entities.ts";
 import { type Item, BacklogError, parseRef } from "./item.ts";
@@ -46,19 +46,56 @@ export function origin(db: Db, repo: string, ref: string, item?: Item): number {
 	return target.rowId;
 }
 
-/** Items in `states` (every state when unset), ongoing first, then by priority and most recently updated; `total` counts past the limit. */
-export function list(db: Db, repo: string, query: ListQuery = {}): { items: Item[]; total: number } {
-	const states = query.states?.length ? [...new Set(query.states)] : [...STATES];
+/** The number an item id names (`B12`, `b12`, `12`), refused when it names none. */
+function seqOf(ref: string): number {
+	const seq = parseRef(ref);
+	if (seq === undefined) throw new BacklogError(`${visibleControls(ref)} is not an item id, e.g. "B12".`);
+	return seq;
+}
+
+/** The stored type names of `types`: a row an older build wrote may still say `task` for `feature`. */
+const storedTypes = (types: readonly string[]) => [
+	...types,
+	...Object.entries(LEGACY_ITEM_TYPES)
+		.filter(([, current]) => types.includes(current))
+		.map(([legacy]) => legacy),
+];
+
+/** The SQL filter of a listing: item ids become numbers or row ids, and a missing parent or origin is refused. */
+function filterOf(db: Db, repo: string, query: ListQuery): backlog.ItemFilter {
 	const text = query.query?.trim();
-	const filter = {
+	const words = query.title?.trim().split(/\s+/).filter(Boolean) ?? [];
+	const parent = query.parentId === undefined ? undefined : getItem(db, repo, query.parentId);
+	if (query.parentId !== undefined && !parent)
+		throw new BacklogError(`No backlog item ${visibleControls(query.parentId)}.`);
+	const tags = query.tags?.map((tag) => tag.trim().replace(/^#+/, "")).filter(Boolean);
+	const paths = query.paths?.map((path) => path.trim().replace(/^\.\//, "")).filter(Boolean);
+	return {
 		repo,
-		states,
+		states: query.states?.length ? [...new Set(query.states)] : [...STATES],
 		...(text ? { text } : {}),
 		...(query.from !== undefined ? { fromItem: origin(db, repo, query.from) } : {}),
+		...(query.ids ? { seqs: query.ids.map(seqOf) } : {}),
+		...(words.length ? { titleWords: words } : {}),
+		...(parent ? { underItem: parent.rowId } : {}),
+		...(query.types ? { types: storedTypes(query.types) } : {}),
+		...(query.maxPriority !== undefined ? { maxPriority: query.maxPriority } : {}),
+		...(tags?.length ? { tags } : {}),
+		...(paths?.length ? { pathPrefixes: paths } : {}),
+		...(query.dependsOn ? { dependsOn: query.dependsOn.map((ref) => `B${seqOf(ref)}`) } : {}),
+		...(query.blocked !== undefined ? { blocked: query.blocked } : {}),
+		...(query.assignees ? { assignees: query.assignees } : {}),
+		...(query.updatedSince !== undefined ? { updatedSince: query.updatedSince } : {}),
+		...(query.createdSince !== undefined ? { createdSince: query.createdSince } : {}),
 	};
+}
+
+/** Items matching `query` (every state when `states` is unset) in its sort order, board order by default; `total` counts past the limit. */
+export function list(db: Db, repo: string, query: ListQuery = {}): { items: Item[]; total: number } {
+	const filter = filterOf(db, repo, query);
 	const total = backlog.countItems(db, filter);
 	const limit = query.limit === undefined ? -1 : Math.max(0, Math.floor(query.limit));
-	const rows = backlog.listItems(db, filter, limit, query.offset ?? 0) as Row<State>[];
+	const rows = backlog.listItems(db, filter, limit, query.offset ?? 0, query.sort) as Row<State>[];
 	return { items: enrichItems(db, repo, rows.map(toItem)), total };
 }
 
@@ -83,11 +120,27 @@ export function comments(db: Db, repo: string, ref: string): BacklogComment[] {
 	return backlog.commentsOf(db, item.rowId).map((row) => ({ ...row, backlogId: item.ref }));
 }
 
-/** The repository's audit trail, newest first, redacted; `ref` narrows it to one item. */
-export function audit(db: Db, repo: string, ref?: string, limit = 500, before?: number): BacklogAudit[] {
-	const rows = backlog.auditRows(db, repo, ref, before, Math.max(1, Math.min(500, Math.floor(limit))));
+/**
+ * The repository's audit trail, oldest first, redacted: the newest `limit` rows; `ref` narrows it to one item, `before`
+ * to ids below it. `archived` (the same columns, read from the history archive) is merged in by id; a row in both
+ * (archived, not yet deleted) is read once.
+ */
+export function audit(
+	db: Db,
+	repo: string,
+	ref?: string,
+	limit = 500,
+	before?: number,
+	archived: ReadonlyArray<Record<string, string | number | null>> = [],
+): BacklogAudit[] {
+	const size = Math.max(1, Math.min(500, Math.floor(limit)));
+	const rows = backlog.auditRows(db, repo, ref, before, size);
+	const stored = new Set(rows.map((row) => Number(row.id)));
+	const merged = [...rows, ...archived.filter((row) => !stored.has(Number(row.id)))]
+		.sort((a, b) => Number(b.id) - Number(a.id))
+		.slice(0, size);
 	return redactData(
-		rows.reverse().map((row) => ({
+		merged.reverse().map((row) => ({
 			id: Number(row.id),
 			backlogId: String(row.backlog_id),
 			at: Number(row.at),

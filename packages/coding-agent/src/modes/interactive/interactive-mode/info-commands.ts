@@ -5,6 +5,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type Keybinding, Markdown, Spacer, visibleWidth } from "@octocodeai/octocode-tui";
+import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
+import { redactSecrets } from "../../../../../common/src/sanitize.ts";
 import { getDebugLogPath } from "../../../config.ts";
 import { describeCachePolicy } from "../../../core/cache-configuration.ts";
 import { computeCacheWaste } from "../../../core/cache-stats.ts";
@@ -14,7 +17,7 @@ import { getUsageCostBreakdown } from "../../../core/usage-totals.ts";
 import { formatTokens } from "../../../octocode/shared/format.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../components/dynamic-border.ts";
-import { formatKeyText, keyDisplayText } from "../components/keybinding-hints.ts";
+import { formatKeyText, keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
@@ -146,17 +149,17 @@ export function handleChangelogCommand(host: InfoCommandsHost): void {
 }
 
 /**
- * Get capitalized display string for an app keybinding action.
+ * Get the display string for an app keybinding action.
  */
 export function getAppKeyDisplay(action: AppKeybinding): string {
-	return keyDisplayText(action);
+	return keyText(action);
 }
 
 /**
- * Get capitalized display string for an editor keybinding action.
+ * Get the display string for an editor keybinding action.
  */
 function getEditorKeyDisplay(action: Keybinding): string {
-	return keyDisplayText(action);
+	return keyText(action);
 }
 
 export function handleHotkeysCommand(host: InfoCommandsHost): void {
@@ -262,7 +265,7 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 `;
 		for (const [key, shortcut] of shortcuts) {
 			const description = shortcut.description ?? shortcut.extensionPath;
-			const keyDisplay = formatKeyText(key, { capitalize: true });
+			const keyDisplay = formatKeyText(key);
 			hotkeys += `| \`${keyDisplay}\` | ${description} |\n`;
 		}
 	}
@@ -299,8 +302,10 @@ export function handleDebugCommand(host: InfoCommandsHost): void {
 		"",
 	].join("\n");
 
-	fs.mkdirSync(path.dirname(debugLogPath), { recursive: true });
-	fs.writeFileSync(debugLogPath, debugData);
+	// The log holds the whole screen and every message: owner-only, credentials redacted, replaced atomically so a
+	// pre-existing permissive file does not keep its mode.
+	fs.mkdirSync(path.dirname(debugLogPath), { recursive: true, mode: 0o700 });
+	atomicWriteFileSync(debugLogPath, redactSecrets(debugData), { mode: PRIVATE_FILE_MODE });
 
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(noticeLine("success", "Debug log written", host.outputPad));

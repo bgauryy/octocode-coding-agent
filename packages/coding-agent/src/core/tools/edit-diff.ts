@@ -7,6 +7,7 @@ import {
 	applyReplacementsPreservingUnchangedLines,
 	type MatchedEdit,
 } from "./edit-diff/replacements.ts";
+import { mismatchHint } from "./edit-mismatch.ts";
 
 export { generateDiffString, generateUnifiedPatch } from "./edit-diff/display.ts";
 
@@ -155,14 +156,14 @@ function countOccurrences(content: string, oldText: string): number {
 	return fuzzyContent.split(fuzzyOldText).length - 1;
 }
 
-function getNotFoundError(path: string, editIndex: number, totalEdits: number): Error {
+function getNotFoundError(path: string, editIndex: number, totalEdits: number, hint = ""): Error {
 	if (totalEdits === 1) {
 		return new Error(
-			`Could not find the exact text in ${path}. The old text must match exactly including all whitespace and newlines.`,
+			`Could not find the exact text in ${path}. The old text must match exactly including all whitespace and newlines.${hint}`,
 		);
 	}
 	return new Error(
-		`Could not find edits[${editIndex}] in ${path}. The oldText must match exactly including all whitespace and newlines.`,
+		`Could not find edits[${editIndex}] in ${path}. The oldText must match exactly including all whitespace and newlines.${hint}`,
 	);
 }
 
@@ -231,7 +232,8 @@ export function applyEditsToNormalizedContent(
 		const edit = normalizedEdits[i];
 		if (edit.replaceAll === true) {
 			const matches = findAllEditOccurrences(normalizedContent, edit.oldText);
-			if (!matches.length) throw getNotFoundError(path, i, normalizedEdits.length);
+			if (!matches.length)
+				throw getNotFoundError(path, i, normalizedEdits.length, mismatchHint(normalizedContent, edit.oldText));
 			for (const matchIndex of matches)
 				matchedEdits.push({
 					editIndex: i,
@@ -245,7 +247,7 @@ export function applyEditsToNormalizedContent(
 			throw new Error("Unsupported mixed all-occurrence and fuzzy edits; use separate calls");
 		const matchResult = fuzzyFindText(replacementBaseContent, edit.oldText);
 		if (!matchResult.found) {
-			throw getNotFoundError(path, i, normalizedEdits.length);
+			throw getNotFoundError(path, i, normalizedEdits.length, mismatchHint(normalizedContent, edit.oldText));
 		}
 
 		const occurrences = countOccurrences(replacementBaseContent, edit.oldText);

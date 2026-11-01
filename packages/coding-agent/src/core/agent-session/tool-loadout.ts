@@ -12,7 +12,7 @@ import {
 } from "../extensions/index.ts";
 import { createToolNameMatcher, isMcpToolName } from "../../../../mcp/src/servers.ts";
 import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
-import { applyToolModifiers } from "../settings-manager.ts";
+import { applyToolModifiers, currentToolName } from "../settings-manager.ts";
 import {
 	buildSystemPrompt,
 	buildSystemPromptSections,
@@ -42,6 +42,8 @@ export class SessionToolLoadout {
 	 * except MCP tools of servers still connecting, which `pendingMcp` keeps until registered or settled.
 	 */
 	private _pendingToolNames = new Set<string>();
+	/** Tools `setActiveToolsByName()` deactivated since: re-registration (an MCP reconnect) keeps them inactive. */
+	private _deselectedToolNames = new Set<string>();
 	readonly pendingMcp = new PendingMcpTools();
 	/** Matches the `--tools` entries: tool names or patterns. */
 	private _allowedTools?: (name: string) => boolean;
@@ -113,8 +115,9 @@ export class SessionToolLoadout {
 		}));
 	}
 
+	/** A renamed tool's old name finds the current tool, so an old transcript's calls (`task`) render with it (`steps`). */
 	getToolDefinition(name: string): ToolDefinition | undefined {
-		return this._toolDefinitions.get(name)?.definition;
+		return (this._toolDefinitions.get(name) ?? this._toolDefinitions.get(currentToolName(name)))?.definition;
 	}
 
 	setActiveToolsByName(toolNames: string[]): void {
@@ -125,6 +128,10 @@ export class SessionToolLoadout {
 		// One that only adds tools keeps them.
 		const active = new Set(session.getActiveToolNames());
 		if (previous.some((name) => !active.has(name))) this._pendingToolNames.clear();
+		// The caller's request, not what policy or exposure let through, decides what stays deselected.
+		const requested = new Set(toolNames);
+		for (const name of previous) if (!requested.has(name)) this._deselectedToolNames.add(name);
+		for (const name of requested) this._deselectedToolNames.delete(name);
 	}
 
 	setActiveTools(toolNames: string[]): void {
@@ -315,19 +322,20 @@ export class SessionToolLoadout {
 	 */
 	restoreFromTranscript(modifiers: readonly string[] = []): void {
 		this._pendingToolNames.clear();
+		this._deselectedToolNames.clear();
 		const current = getCurrentSystemMessage(this.host.session.sessionManager.buildSessionContext().messages);
 		if (!current) return;
 		const names = applyToolModifiers(
-			(current.toolsAdded ?? []).map((tool) => tool.name),
-			modifiers,
+			(current.toolsAdded ?? []).map((tool) => currentToolName(tool.name)),
+			modifiers.map(currentToolName),
 		);
 		this._pendingToolNames = new Set(names.filter((name) => this._isAllowedTool(name)));
 		this.setActiveTools(names);
 	}
 
 	refresh(options?: { activeToolNames?: string[]; includeAllExtensionTools?: boolean }): void {
-		// Tools that were already activated on registration. A tool whose exposure changes to
-		// `direct` or `model-only` (for example from `hidden`) is activated like a new tool.
+		// Tools already activated on registration. One whose exposure changes to `direct` or `model-only` (say from
+		// `hidden`) is activated like a new tool, unless deselected.
 		const previousActivatedOnRegistration = new Set(
 			[...this._toolRegistry.keys()].filter((name) => this._isActivatedOnRegistration(name)),
 		);
@@ -357,7 +365,7 @@ export class SessionToolLoadout {
 		if (allowedTools) {
 			for (const toolName of this._toolRegistry.keys()) {
 				// Naming or matching a tool activates it even when it is not active by default.
-				if (allowedTools(toolName) && this._isDeclarable(toolName)) {
+				if (allowedTools(toolName) && this._isDeclarable(toolName) && !this._deselectedToolNames.has(toolName)) {
 					nextActiveToolNames.push(toolName);
 				}
 			}
@@ -368,9 +376,8 @@ export class SessionToolLoadout {
 			}
 		} else if (!options?.activeToolNames) {
 			for (const toolName of this._toolRegistry.keys()) {
-				if (!previousActivatedOnRegistration.has(toolName) && this._isActivatedOnRegistration(toolName)) {
-					nextActiveToolNames.push(toolName);
-				}
+				const known = previousActivatedOnRegistration.has(toolName) || this._deselectedToolNames.has(toolName);
+				if (!known && this._isActivatedOnRegistration(toolName)) nextActiveToolNames.push(toolName);
 			}
 		}
 		// Pending tools that are registered now become active.

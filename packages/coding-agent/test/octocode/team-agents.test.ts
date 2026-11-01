@@ -125,7 +125,7 @@ describe("agent identity on the team", () => {
 			ctx,
 		);
 		expect(team.members()[0]).toMatchObject({ role: "main", goal: "refactor the whole auth module today please" });
-		expect(coordinate.parameters.properties.goal.description).toMatch(/goal.*48 characters fit/);
+		expect(coordinate.parameters.properties.goal.description).toMatch(/^join: your goal/);
 		expect(coordinate.parameters.properties.goal).not.toHaveProperty("maxLength");
 		await fake.emit("session_shutdown", {}, ctx);
 	});

@@ -69,7 +69,7 @@ Native source paths are relative to `packages/coding-agent/src/octocode/`; test 
 
 ### Command coverage
 
-Commands are inventoried separately from tools. The [command reference](../packages/coding-agent/docs/commands.md) owns the current commands and mode restrictions; each command has one name and no aliases. Child sessions expose a smaller registered set.
+Commands are inventoried separately from tools. The [command reference](../packages/coding-agent/docs/commands.md) owns the current commands and mode restrictions; each command has one name and no aliases, except that `/clear` and `/reset` run the same handler as `/new`. Child sessions expose a smaller registered set.
 
 `/debug` saves diagnostics; the opt-in `debug` tool controls DAP. `/help` reports the current mode's available commands. `/share` and `/bug` were source/fixture checked; this audit did not publish a gist or submit a report. Custom extension, prompt and skill commands are dynamic.
 

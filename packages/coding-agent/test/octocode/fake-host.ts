@@ -207,6 +207,7 @@ export function fakeCtx(options: {
 		isProjectTrusted: () => true,
 		abort: () => undefined,
 		hasPendingMessages: () => false,
+		isMessageQueued: () => false,
 		signal: undefined,
 		sessionManager: {
 			getSessionId: () => "session-test",

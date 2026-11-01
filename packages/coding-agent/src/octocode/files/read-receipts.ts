@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { appendReadDigests, completedLocalReads, type snapshotLocalReads } from "../shared/local-reads.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Credit source reads before the file guard sees them, and expose whole-source anchors to the model. */
 export function registerReadReceipts(api: ExtensionAPI) {
@@ -8,7 +8,7 @@ export function registerReadReceipts(api: ExtensionAPI) {
 	api.on("tool_result", async (event, ctx) => {
 		const snapshots = snapshotsByCall.get(event.toolCallId);
 		snapshotsByCall.delete(event.toolCallId);
-		const details = isRecord(event.details) ? event.details : {};
+		const details = asRecord(event.details);
 		if (!snapshots || event.isError || details.outputTruncated || details.fullOutputPath) return;
 		const reads = await completedLocalReads(snapshots, event.structuredContent, ctx.cwd);
 		if (reads.length)

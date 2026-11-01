@@ -13,7 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 
 function spanId(telemetry: InMemoryTelemetryContext, span: TelemetrySpan): string {
 	const carrier = telemetry.inject(span)!;
-	return `${carrier["pi-memory-scope"]}:${carrier["pi-memory-span"]}`;
+	return `${carrier["octocode-memory-scope"]}:${carrier["octocode-memory-span"]}`;
 }
 
 describe("InMemoryTelemetryContext recording copies caller input", () => {
@@ -70,7 +70,7 @@ describe("InMemoryTelemetryContext recording copies caller input", () => {
 		});
 		const snapshot = telemetry.getSpans()[0];
 		const original = { ...snapshot.context };
-		(snapshot.context as Record<string, string>)["pi-memory-span"] = "999";
+		(snapshot.context as Record<string, string>)["octocode-memory-span"] = "999";
 		expect(telemetry.getSpans()[0]?.context).toEqual(original);
 		expect(telemetry.inject(captured)).toEqual(original);
 	});
@@ -88,7 +88,9 @@ describe("InMemoryTelemetryContext recording copies caller input", () => {
 		});
 		const source = telemetry.getSpans()[0];
 		expect(source.links).toHaveLength(1);
-		expect(source.links[0]?.context["pi-memory-trace"]).toBe(foreign.getSpans()[0]?.context["pi-memory-trace"]);
+		expect(source.links[0]?.context["octocode-memory-trace"]).toBe(
+			foreign.getSpans()[0]?.context["octocode-memory-trace"],
+		);
 	});
 });
 

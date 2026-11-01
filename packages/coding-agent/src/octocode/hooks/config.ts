@@ -11,7 +11,7 @@ import type { Settings } from "../../core/settings-manager.ts";
 import os from "node:os";
 import path from "node:path";
 import { claudeSettingsSources, globalPaths, projectHookFiles } from "../shared/home.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
 import { applyHookToggles } from "./config/toggles.ts";
 
@@ -109,7 +109,7 @@ export function loadHooks(
 		try {
 			const value = parseConfigDocument(text, file);
 			if (file.endsWith(".toml") && isRecord(value)) {
-				const features = isRecord(value.features) ? value.features : {};
+				const features = asRecord(value.features);
 				const enabled = features.hooks ?? features.codex_hooks;
 				if (typeof enabled === "boolean") codexEnabled = enabled;
 				else if (enabled !== undefined) errors.push(`${file}: features.hooks must be a boolean`);

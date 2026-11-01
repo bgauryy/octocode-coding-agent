@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../coding-agent/src/core/extensions/types.ts";
+import type { McpCommandContext } from "./host/types.ts";
 import { sanitizeTerminalText } from "../../common/src/sanitize.ts";
 
 /**
@@ -7,7 +7,7 @@ import { sanitizeTerminalText } from "../../common/src/sanitize.ts";
  * workspace may not import.
  */
 export function say(
-	ctx: Pick<ExtensionCommandContext, "hasUI" | "ui">,
+	ctx: Pick<McpCommandContext, "hasUI" | "ui">,
 	text: string,
 	level: "info" | "warning" | "error" = "info",
 ): void {

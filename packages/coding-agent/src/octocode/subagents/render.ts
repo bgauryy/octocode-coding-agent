@@ -21,7 +21,8 @@ import {
 } from "../shared/format.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
-import { noticeText } from "./events.ts";
+import { modelLabel } from "./model.ts";
+import { noticeText } from "./notices.ts";
 import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
 import { agentState, headerOverride } from "./render-state.ts";
 
@@ -37,14 +38,8 @@ import type { RenderContext } from "../shared/render/types.ts";
 import { ReportView } from "../shared/render/report.ts";
 import { displayReport } from "./report-display.ts";
 import { timingOf } from "../shared/render/rows.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
-
-/** The model a run is on without its provider (`claude-haiku-5-5:low`), marked as the parent's when the profile's preference was unavailable. */
-function modelLabel(details: Pick<RunDetails, "model" | "fallback">): string {
-	const model = details.model?.slice(details.model.lastIndexOf("/") + 1);
-	return details.fallback ? `${model ?? "parent model"} (${details.fallback} unavailable)` : (model ?? "");
-}
 
 /** `2 denied`: tool calls the child had no one to approve (empty when none). */
 export const deniedLabel = (details: Pick<RunDetails, "denied">): string =>
@@ -78,7 +73,7 @@ export function compactionNote(details: Pick<RunDetails, "compactions">): string
  * showed the same warning the report need not repeat it; a child that alone lacks config (an isolated worktree whose
  * files differ) keeps it.
  */
-const TRUST_NOTICE = /^Project config not loaded \(\d+ files?\)\./;
+const TRUST_NOTICE = /^Project config not loaded\b/;
 
 /**
  * What the child's extensions said that a person would have read on screen (warnings, errors, the latest compaction
@@ -130,6 +125,7 @@ type Progress = Pick<
 	| "unpriced"
 	| "model"
 	| "fallback"
+	| "refusedBy"
 	| "compactions"
 >;
 
@@ -151,7 +147,7 @@ function runStats(details: Progress): string {
 /** What the expanded summary adds to a finished run's row: compactions, tokens, cost and model. */
 function finishedStats(
 	totals: Parameters<typeof formatTokenUsage>[0] & Parameters<typeof formatCost>[0],
-	details: Pick<RunDetails, "model" | "fallback" | "compactions" | "cache">,
+	details: Pick<RunDetails, "model" | "fallback" | "refusedBy" | "compactions" | "cache">,
 ): string {
 	return [compactionLabel(details), formatTokenUsage(totals), formatCost(totals), modelLabel(details)]
 		.concat(details.cache ? [`conversation cache: ${childCacheLabel(details.cache)}`] : [])
@@ -198,7 +194,7 @@ interface AgentArgs {
 	isolate?: boolean | undefined;
 }
 
-const argsOf = (context: RenderContext): AgentArgs => (isRecord(context.args) ? context.args : {});
+const argsOf = (context: RenderContext): AgentArgs => asRecord(context.args);
 
 /**
  * `Prompt` and the task, then the heading of what follows (`Report`, `Progress`): the expanded view's preface. Task

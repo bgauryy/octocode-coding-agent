@@ -55,7 +55,27 @@ describe("bounded memory retrieval", () => {
 				seen: new Set(Array.from({ length: 10_000 }, (_, i) => i)),
 				topK: 5,
 			});
-			expect(search.mock.calls[0][2]).toBeLessThanOrEqual(10);
+			expect(search.mock.calls[0][2]).toBeLessThanOrEqual(15);
+		} finally {
+			db.close();
+		}
+	});
+});
+
+describe("relevance filtering of injected hits", () => {
+	it("fetches more hits than topK, so irrelevant top hits do not crowd out a relevant one", () => {
+		const db = openAgentDb(path.join(tmp(), "memory.sqlite"));
+		try {
+			const store = new MemoryStore(db, "repo-a");
+			// One matched body word is not relevant; a title word is. The two body-only memories rank above the title match.
+			const noise = ["alpha", "bravo"].map(
+				(word) => store.set({ title: `Note ${word}`, body: "rewind", author: "test" }).memory,
+			);
+			const wanted = store.set({ title: "Rewind rule", author: "test" }).memory;
+			const ranked = [...noise, wanted].map((memory, index) => ({ ...memory, score: 3 - index }));
+			vi.spyOn(store, "search").mockImplementation((_query, _scope, limit = 10) => ranked.slice(0, limit));
+			const injection = selectInjection(store, { query: "rewind", scope: "all", seen: new Set(), topK: 1 });
+			expect(injection?.ids).toEqual([wanted.id]);
 		} finally {
 			db.close();
 		}

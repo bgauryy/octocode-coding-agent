@@ -1,5 +1,4 @@
-import { type Db, deliveries } from "../../agentdb/api.ts";
-import { num } from "../../agentdb/rows.ts";
+import { type Db, deliveries, num } from "../../agentdb/api.ts";
 import type { Ask } from "../asks.ts";
 import { type DeadLetter, type Message, type SendOptions, toAsk, toMessage, toTraffic, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
@@ -20,10 +19,10 @@ export function insertMessage(
 	body: string,
 	options: SendOptions & { replyRequired: boolean; wake?: boolean; sign?: SignProof },
 	now: number,
-): { id: number | undefined; departed: string[] } {
+): { id: number | undefined; departed: string[]; woken: string[] } {
 	const departed = to.filter((recipient) => !live.has(recipient));
 	const recipients = to.filter((recipient) => live.has(recipient));
-	if (recipients.length === 0) return { id: undefined, departed };
+	if (recipients.length === 0) return { id: undefined, departed, woken: [] };
 	// The asker is woken by the answer to its own open question, never by a reply to an FYI or a thank-you.
 	let asker: string | undefined;
 	let completesReply = false;
@@ -33,16 +32,18 @@ export function insertMessage(
 		completesReply = question !== undefined && recipients.includes(question.from);
 	}
 	const id = deliveries.insertMessage(db, team, from, body, options.replyRequired, options.replyTo, now);
+	const woken: string[] = [];
 	for (const recipient of recipients) {
 		const wake = options.interrupt
 			? WAKE.interrupt
 			: options.wake || options.replyRequired || recipient === asker
 				? WAKE.wake
 				: WAKE.none;
+		if (wake !== WAKE.none) woken.push(recipient);
 		deliveries.insertDelivery(db, { message: id, recipient, wake, proof: options.sign?.(id, recipient) });
 	}
 	if (options.replyTo !== undefined && completesReply) deliveries.complete(db, options.replyTo, from, now);
-	return { id, departed };
+	return { id, departed, woken };
 }
 
 export function asks(db: Db, team: string, child: string, parent: string, since: number): Ask[] {

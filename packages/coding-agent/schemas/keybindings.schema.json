@@ -355,6 +355,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Delete session"
     },
+    "app.session.actions": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Open session actions"
+    },
     "app.session.deleteNoninvasive": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Delete session when query is empty"

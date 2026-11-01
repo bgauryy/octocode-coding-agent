@@ -1,23 +1,8 @@
-import { extractAnsiCode, mayHaveStrippableCode, strippableCodeLength } from "./utils/ansi-codes.ts";
+import { extractAnsiCode } from "./utils/ansi-codes.ts";
 import { visibleWidth } from "./utils/width.ts";
 import { flattenLines } from "./utils/wrap.ts";
 
-/** Remove ESC and 8-bit C1 control sequences (CSI, OSC, APC, DCS and others) while preserving visible text. */
-export function stripTerminalSequences(str: string): string {
-	if (!mayHaveStrippableCode(str)) return str;
-	let result = "";
-	let i = 0;
-	while (i < str.length) {
-		const length = strippableCodeLength(str, i);
-		if (length > 0) {
-			i += length;
-			continue;
-		}
-		result += str[i];
-		i++;
-	}
-	return result;
-}
+export { stripTerminalSequences } from "./utils/ansi-codes.ts";
 
 /**
  * Normalize text for terminal output without changing logical editor content.

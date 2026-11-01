@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "../src/core/tools/bash/budget.ts";
-import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../src/octocode/shared/output-budget.ts";
+import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../src/utils/output-budget.ts";
 import { type BashOperations, createBashTool } from "../src/core/tools/bash.ts";
 
 const text = (result: any): string => result.content.map((part: any) => part.text).join("\n");
@@ -96,7 +96,9 @@ describe("bash result header and budget", () => {
 		expect(header.endsWith(`full output: ${file}]`)).toBe(true);
 		expect(rest[0]).toBe("compiling module 1");
 		expect(body).toContain("\n  25000: src/x.ts(1,1): error TS2322: bad type\n");
-		expect(body).toContain("1 matched line below, then the end of the output]");
+		expect(body).toContain(
+			"1 line matching error, fail, panic, exception, traceback, fatal, assert below, then the end of the output]",
+		);
 		expect(body.endsWith("compiling module 50000")).toBe(true);
 		expect(Buffer.byteLength(body)).toBeLessThan(BASH_MAX_BYTES + 400);
 		expect(existsSync(file)).toBe(true);

@@ -9,7 +9,7 @@
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { sleep } from "../../utils/sleep.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
+import { describeResponseFields, pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
 const DEFAULT_OAUTH_HOST = "https://auth.kimi.com";
@@ -75,7 +75,7 @@ async function startDeviceAuthorization(oauthHost: string, signal: AbortSignal):
 		!trustedHttpUrl(verificationUriComplete) ||
 		!trustedHttpUrl(verificationUri)
 	) {
-		throw new Error(`Invalid Kimi Code device authorization response: ${JSON.stringify(json)}`);
+		throw new Error(`Invalid Kimi Code device authorization response: ${describeResponseFields(json)}`);
 	}
 
 	const interval = json?.interval;
@@ -109,7 +109,7 @@ function parseTokenResponse(json: Record<string, unknown> | null, operation: str
 		!Number.isFinite(expiresIn) ||
 		expiresIn <= 0
 	) {
-		throw new Error(`Kimi Code token ${operation} response missing fields: ${JSON.stringify(json)}`);
+		throw new Error(`Kimi Code token ${operation} response missing fields: ${describeResponseFields(json)}`);
 	}
 	return {
 		access: accessToken,

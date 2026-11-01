@@ -1,10 +1,9 @@
 import type { RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import { describe, expect, it } from "vitest";
-import type { RpcExtensionUIRequest } from "../../../coding-agent/src/modes/rpc/rpc-types.ts";
+import type { AcpUiRequest } from "../../src/host.ts";
 import { deferred, harness } from "./acp-test-harness.ts";
 
-const permission: RpcExtensionUIRequest = {
-	type: "extension_ui_request",
+const permission: AcpUiRequest = {
 	id: "permission-1",
 	method: "select",
 	title: "Write /workspace/target.ts?",
@@ -12,7 +11,6 @@ const permission: RpcExtensionUIRequest = {
 	permission: {
 		toolCallId: "call-1",
 		toolName: "file",
-		action: "file.write",
 		targets: ["/workspace/target.ts"],
 		allowOnce: "Allow once",
 		rejectOnce: "Deny",
@@ -97,7 +95,6 @@ describe("ACP permission relay", () => {
 		const run = h.prompt(sessionId);
 		await expect.poll(() => h.workers[0].prompt.mock.calls.length).toBe(1);
 		h.workers[0].ask({
-			type: "extension_ui_request",
 			id: "ordinary",
 			method: "select",
 			title: "Choose text",

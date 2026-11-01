@@ -20,9 +20,13 @@ import {
  * best-effort JSON salvage parser, so a truncated message can yield tool calls
  * whose arguments parse and validate but are silently incomplete. None of them
  * are safe to execute; report each as an error so the model can re-issue them.
+ *
+ * Sending the same oversized call again reaches the same limit, so the message names the limit and
+ * asks for smaller pieces.
  */
 export async function failToolCallsFromTruncatedMessage(
 	toolCalls: AgentToolCall[],
+	assistantMessage: AssistantMessage,
 	emit: AgentEventSink,
 ): Promise<ExecutedToolCallBatch> {
 	const messages: ToolResultMessage[] = [];
@@ -35,9 +39,7 @@ export async function failToolCallsFromTruncatedMessage(
 		});
 		const finalized: AgentToolCallOutcome = {
 			toolCall,
-			result: createErrorToolResult(
-				`Tool call "${toolCall.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
-			),
+			result: createErrorToolResult(describeTruncatedToolCall(toolCall, assistantMessage)),
 			isError: true,
 		};
 		await emitToolExecutionEnd(finalized, emit);
@@ -46,6 +48,15 @@ export async function failToolCallsFromTruncatedMessage(
 		messages.push(toolResultMessage);
 	}
 	return { messages, terminate: false };
+}
+
+function describeTruncatedToolCall(toolCall: AgentToolCall, assistantMessage: AssistantMessage): string {
+	const limit = assistantMessage.usage.output > 0 ? ` (${assistantMessage.usage.output} tokens)` : "";
+	if (toolCall.argumentsError === undefined) {
+		return `Tool call "${toolCall.name}" was not executed: the response reached the model's output limit${limit} before it ended, so this call cannot be confirmed complete. Send it again, and keep the whole response well under the limit by splitting long content across several calls.`;
+	}
+	const cutAfter = toolCall.rawArguments === undefined ? "" : ` after ${toolCall.rawArguments.length} characters`;
+	return `Tool call "${toolCall.name}" was not executed: the response reached the model's output limit${limit} in the middle of this call, so its arguments were cut off${cutAfter}. Sending the same call again reaches the same limit. Send it again in smaller pieces: split long content across several calls, each well under the limit, or shorten it.`;
 }
 
 /**

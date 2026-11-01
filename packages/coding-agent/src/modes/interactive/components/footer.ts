@@ -15,18 +15,7 @@ import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
 import { billedBySubscription } from "../../../core/subscription.ts";
-
-/**
- * Sanitize text for display in a single-line status.
- * Removes newlines, tabs, carriage returns, and other control characters.
- */
-function sanitizeStatusText(text: string): string {
-	// Replace newlines, tabs, carriage returns with space, then collapse multiple spaces
-	return text
-		.replace(/[\r\n\t]/g, " ")
-		.replace(/ +/g, " ")
-		.trim();
-}
+import { styledLine } from "./styled-line.ts";
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
@@ -222,7 +211,7 @@ export class FooterComponent implements Component {
 		if (extensionStatuses.size > 0) {
 			const sortedStatuses = Array.from(extensionStatuses.entries())
 				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([, status]) => paintStatus({ ...status, text: sanitizeStatusText(status.text) }, theme));
+				.map(([, status]) => paintStatus({ ...status, text: styledLine(status.text) }, theme));
 			const statusLine = sortedStatuses.join(" ");
 			// Truncate to terminal width with dim ellipsis for consistency with footer style
 			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", ELLIPSIS)));

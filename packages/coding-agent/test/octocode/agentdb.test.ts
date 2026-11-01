@@ -6,11 +6,19 @@ import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octoco
 import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/schema.ts";
 import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
-import { loadSqlite } from "../../src/octocode/shared/util.ts";
+import { loadSqlite } from "../../src/octocode/agentdb/sqlite.ts";
 import { tmp } from "./helpers.ts";
 import { repoKey } from "../../src/octocode/shared/home/repo.ts";
 
 const modeOf = (file: string) => fs.statSync(file).mode & 0o777;
+
+/** The `meta` keys added since this call; rows the open itself wrote (migration flags) are not the test's. */
+function addedMetaKeys(agent: ReturnType<typeof openAgentDb>): () => string[] {
+	const keys = () =>
+		(agent.db.prepare("SELECT key FROM meta ORDER BY key").all() as { key: string }[]).map((row) => row.key);
+	const initial = new Set(keys());
+	return () => keys().filter((key) => !initial.has(key));
+}
 
 afterEach(() => {
 	closeSharedAgentDb();
@@ -243,6 +251,7 @@ describe("openAgentDb", () => {
 	it("joins nested transactions and rolls the whole one back on error", () => {
 		const agent = openAgentDb(path.join(tmp(), "a.db"));
 		try {
+			const ownKeys = addedMetaKeys(agent);
 			const put = (key: string) => agent.db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(key, "v");
 			expect(() =>
 				agent.transaction(() => {
@@ -251,9 +260,9 @@ describe("openAgentDb", () => {
 					throw new Error("boom");
 				}),
 			).toThrow("boom");
-			expect(agent.db.prepare("SELECT COUNT(*) AS n FROM meta").get()).toEqual({ n: 0 });
+			expect(ownKeys()).toEqual([]);
 			agent.transaction(() => put("c"));
-			expect(agent.db.prepare("SELECT key FROM meta").all()).toEqual([{ key: "c" }]);
+			expect(ownKeys()).toEqual(["c"]);
 		} finally {
 			agent.close();
 		}
@@ -264,6 +273,7 @@ describe("transactions", () => {
 	it("rethrows the original error when SQLite already rolled the transaction back", () => {
 		const agent = openAgentDb(path.join(tmp(), "rb.db"));
 		try {
+			const ownKeys = addedMetaKeys(agent);
 			// `ROLLBACK` in the callback stands for SQLite's own automatic rollback: ours then fails with "no transaction".
 			expect(() =>
 				agent.transaction(() => {
@@ -273,7 +283,7 @@ describe("transactions", () => {
 			).toThrow("the real failure");
 			// The connection stays usable.
 			agent.transaction(() => agent.db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run("k", "v"));
-			expect(agent.db.prepare("SELECT key FROM meta").all()).toEqual([{ key: "k" }]);
+			expect(ownKeys()).toEqual(["k"]);
 		} finally {
 			agent.close();
 		}

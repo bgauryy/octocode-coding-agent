@@ -1,35 +1,8 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { getToolListError, type TuiMode } from "../../core/settings-manager.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
-import type { Args, Mode } from "../args.ts";
+import type { Args, FlagSpec, Mode } from "./types.ts";
 import { WORKTREE_FLAG } from "./worktree-flag.ts";
-
-/**
- * Every top-level CLI flag, declared once: the parser, `--help` and shell completion all read this table, so a flag
- * cannot be parsed but undocumented, documented but unparsed, or missing from completion.
- */
-export interface FlagSpec {
-	name: `--${string}`;
-	short?: `-${string}`;
-	/**
-	 * boolean: no value. value: exactly one value. list: one value, repeatable. csv: one comma-separated value.
-	 * optional: takes the next word only when it is not a flag or an @file.
-	 */
-	kind: "boolean" | "value" | "list" | "csv" | "optional";
-	/** Value placeholder in help, e.g. `<name>`. */
-	arg?: string;
-	/** Allowed values; anything else is an error naming them. */
-	values?: readonly string[];
-	/** Noun for an invalid value (`Invalid <label> "x"`). */
-	label?: string;
-	/** Message when the value is missing, when the generic one is not enough. */
-	missing?: string;
-	completion?: "path" | "text";
-	/** First line, then continuation lines. */
-	help: readonly string[];
-	/** Store the flag; returns why the value is not acceptable (the parser prefixes the flag as typed). */
-	apply(args: Args, value: string | undefined): string | undefined;
-}
 
 const csv = (value: string) =>
 	value

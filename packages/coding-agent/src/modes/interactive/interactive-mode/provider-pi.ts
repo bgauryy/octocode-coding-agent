@@ -7,7 +7,7 @@ import {
 } from "../../../core/auth-storage/pi.ts";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { ProviderManagerHost } from "./provider-manager.ts";
+import type { ProviderManagerHost } from "./provider-manager-host.ts";
 
 /** Pi is a setup source. Its providers still own authentication, model IDs and requests. */
 export async function showPiProviders(

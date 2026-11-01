@@ -212,7 +212,7 @@ describe("a lingering background subagent", () => {
 			name: "browser",
 			description: "browser",
 			prompt: "Browse.",
-			tools: "browser,web",
+			tools: "mcp__browser__*,web",
 			headless: true,
 		};
 		const profiles = new Map([["browser", browser]]);

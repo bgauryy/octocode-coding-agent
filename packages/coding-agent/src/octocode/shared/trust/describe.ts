@@ -1,7 +1,7 @@
 import path from "node:path";
 import { parseConfigDocument } from "../../../utils/config-document.ts";
 import { parseFrontmatter } from "../../../utils/frontmatter.ts";
-import { projectHookFiles } from "../home.ts";
+import { projectAgentDirs, projectHookFiles } from "../home.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { projectConfigFiles, projectMcpFiles, readText, realPath } from "./files.ts";
@@ -11,6 +11,38 @@ const MAX_PLAIN_FILES = 40;
 
 /** One dialog line: escape sequences stripped and newlines folded, so a value cannot draw or fake another line. */
 const dialogLine = (text: string): string => sanitizeTerminalText(text).replace(/\s*\n\s*/g, " ⏎ ");
+
+const counted = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+
+/**
+ * The startup notice for project config that waits for `/trust`: what is off, grouped by kind, and why (never reviewed,
+ * or changed since the last decision), then what to do. It starts with `Project config not loaded` (the subagent report
+ * filter in `subagents/render.ts` matches that prefix).
+ */
+export function untrustedProjectNotice(
+	cwd: string,
+	files: readonly string[],
+	opts: { changed: boolean; subagent: boolean },
+): string {
+	const commands = new Set([...projectHookFiles(cwd).map(realPath), ...projectMcpFiles(cwd)]);
+	const runners = files.filter((file) => commands.has(file)).length;
+	const agentDirs = new Set(projectAgentDirs(cwd).map(realPath));
+	const profiles = files.filter((file) => !commands.has(file) && agentDirs.has(path.dirname(file))).length;
+	const skills = files.length - runners - profiles;
+	const parts = [
+		runners && counted(runners, "hook or MCP file", "hook or MCP files"),
+		profiles && counted(profiles, "subagent profile", "subagent profiles"),
+		skills && counted(skills, "skill", "skills"),
+	].filter((part): part is string => Boolean(part));
+	const what = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? "no files");
+	const why = opts.changed
+		? "changed since you last reviewed them, so they are off for now."
+		: "have not been reviewed yet, so they are off for now.";
+	const next = opts.subagent
+		? "The user can review them with /trust in the main session."
+		: "Run /trust to see what they would run and choose whether to load them.";
+	return `Project config not loaded: ${what} in this project ${why} ${next}`;
+}
 
 /**
  * What trusting would run: each file, with every `command`/`args`/`url` found in JSON configs (never cut) and the
@@ -51,6 +83,8 @@ function permissionsIn(text: string): string[] {
 }
 
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g;
+/** HTTP hooks also expand a bare `$VAR` in headers (`hooks/http.ts`), for the names in `allowedEnvVars`. */
+const HEADER_ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
 
 function commandsIn(value: unknown, out: string[] = []): string[] {
 	if (Array.isArray(value)) for (const item of value) commandsIn(item, out);
@@ -74,7 +108,10 @@ function commandsIn(value: unknown, out: string[] = []): string[] {
 	return out;
 }
 
-/** `  sends $A, $B (headers, env)` for the `${VAR}` references Octocode expands in a server's headers and env. */
+/**
+ * `  sends $A, $B (headers, env)` for the `${VAR}` references Octocode expands in a server's headers and env, and the
+ * bare `$VAR` an HTTP hook expands in its headers.
+ */
 function envSent(server: Record<string, unknown>): string | undefined {
 	const names = new Set<string>();
 	const where: string[] = [];
@@ -83,7 +120,8 @@ function envSent(server: Record<string, unknown>): string | undefined {
 		if (!isRecord(block)) continue;
 		const before = names.size;
 		for (const text of Object.values(block))
-			for (const match of String(text).matchAll(ENV_REFERENCE)) names.add(match[1]);
+			for (const match of String(text).matchAll(key === "headers" ? HEADER_ENV_REFERENCE : ENV_REFERENCE))
+				names.add(match[1] ?? match[2]);
 		if (names.size > before) where.push(key);
 	}
 	return names.size > 0

@@ -12,7 +12,7 @@ import {
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { reserveTokensFor } from "../../src/octocode/shared/tokens.ts";
-import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 
 describe("thrash breaker", () => {
 	const refill = (breaker: ThrashBreaker, turns: number) => {

@@ -176,7 +176,7 @@ describe("editor", () => {
 		expect(mutation).toMatchObject({
 			op: "add",
 			title: "Write docs",
-			type: "task",
+			type: "feature",
 			state: "backlog",
 			priority: 2,
 			tags: ["docs", "ux", "web"],

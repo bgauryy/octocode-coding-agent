@@ -7,7 +7,7 @@ const source = {
 	path: "/home/test/.claude/settings.json",
 	anchor: "/home/test/.claude",
 };
-const evaluate = (command: string, permissions: Record<string, string[]>) =>
+const decide = (command: string, permissions: Record<string, string[]>) =>
 	evaluateSourcePolicy(
 		parseSourcePolicy({ permissions }, source),
 		{
@@ -17,7 +17,8 @@ const evaluate = (command: string, permissions: Record<string, string[]>) =>
 			active: true,
 		},
 		"/work",
-	).decision;
+	);
+const evaluate = (command: string, permissions: Record<string, string[]>) => decide(command, permissions).decision;
 describe("source Bash syntax matching", () => {
 	it.each([
 		"printf '%s' 'SAFE; printf BLOCK'",
@@ -79,13 +80,23 @@ it.each(['printf "$(other)"', "printf SAFE | other", "printf SAFE >$(other)"])(
 		expect(evaluate(command, { allow: ["Bash(printf *)"] })).not.toBe("allow");
 	},
 );
-it("keeps unsupported structural syntax explicit without partial approval", () => {
-	expect(evaluate("if true; then printf SAFE; fi", { allow: ["Bash(printf *)"] })).toBe("unsupported");
-	expect(
-		evaluate("cat <<'EOF'\n$(printf BLOCK)\nEOF", {
-			deny: ["Bash(printf BLOCK*)"],
-		}),
-	).toBe("unsupported");
+// An allow rule only grants: syntax it cannot model leaves the call to the native mode, never a partial approval.
+it.each([
+	"if true; then printf SAFE; fi",
+	"for f in a b; do printf SAFE; done",
+	"cat <<'EOF'\nSAFE\nEOF",
+	"export X=1 && printf SAFE",
+])("leaves unmodelled syntax to the native mode under allow-only rules: %s", (command) => {
+	expect(evaluate(command, { allow: ["Bash(printf *)", "Bash(cat *)", "Bash(export *)"] })).toBe("none");
+});
+it("refuses unmodelled syntax under a restriction, naming the construct and the rule", () => {
+	const refused = decide("cat <<'EOF'\n$(printf BLOCK)\nEOF", { deny: ["Bash(printf BLOCK*)"] });
+	expect(refused.decision).toBe("unsupported");
+	expect(refused.message).toMatch(/heredoc/);
+	expect(refused.message).toContain(`${source.path} (Bash)`);
+	expect(evaluate("if true; then printf SAFE; fi", { allow: ["Bash(printf *)"], ask: ["Bash(rm *)"] })).toBe(
+		"unsupported",
+	);
 });
 it.each(["printf >target BLOCK", ">target printf BLOCK"])(
 	"does not silently ignore words around a redirect: %s",

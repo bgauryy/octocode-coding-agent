@@ -9,7 +9,7 @@ import {
 	type TruncationResult,
 	truncateTail,
 } from "../../../core/tools/truncate.ts";
-import { stripAnsi } from "../../../utils/ansi.ts";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -33,6 +33,8 @@ export class BashExecutionComponent extends Container {
 	/** `dim` marks `!!` commands, whose output is excluded from the model context. */
 	private readonly colorKey: "dim" | "bashMode";
 	private outputPad: number;
+	/** Output arrived since the last layout: rebuilt once per frame in render(), not once per streamed chunk. */
+	private layoutStale = false;
 
 	constructor(command: string, ui: TUI, excludeFromContext = false, outputPad = 1) {
 		super();
@@ -82,10 +84,15 @@ export class BashExecutionComponent extends Container {
 		this.updateDisplay();
 	}
 
+	override render(width: number): string[] {
+		if (this.layoutStale) this.updateDisplay();
+		return super.render(width);
+	}
+
 	appendOutput(chunk: string): void {
-		// Strip ANSI codes and normalize line endings
-		// Note: binary data is already sanitized in tui-renderer.ts executeBashCommand
-		const clean = stripAnsi(chunk).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+		// The executor strips colors from its stream, but an extension's result and a stored (possibly imported) session
+		// message arrive raw. Every control goes per chunk, so a sequence split across chunks cannot rejoin; CR becomes LF.
+		const clean = sanitizeTerminalText(chunk);
 
 		// Append to output lines
 		const newLines = clean.split("\n");
@@ -97,7 +104,7 @@ export class BashExecutionComponent extends Container {
 			this.outputLines.push(...newLines);
 		}
 
-		this.updateDisplay();
+		this.layoutStale = true;
 	}
 
 	setComplete(
@@ -124,6 +131,7 @@ export class BashExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
+		this.layoutStale = false;
 		// Apply truncation for LLM context limits (same limits as bash tool)
 		const fullOutput = this.outputLines.join("\n");
 		const contextTruncation = truncateTail(fullOutput, {
@@ -142,10 +150,14 @@ export class BashExecutionComponent extends Container {
 		this.contentContainer.clear();
 
 		// Command header
-		const header = new Text(theme.fg(this.colorKey, theme.bold(`$ ${this.command}`)), this.outputPad, 0);
+		const header = new Text(
+			theme.fg(this.colorKey, theme.bold(`$ ${sanitizeTerminalText(this.command)}`)),
+			this.outputPad,
+			0,
+		);
 		this.contentContainer.addChild(header);
 		if (this.header && this.status !== "running") {
-			this.contentContainer.addChild(new Text(theme.fg("muted", this.header), this.outputPad, 0));
+			this.contentContainer.addChild(new Text(theme.fg("muted", sanitizeTerminalText(this.header)), this.outputPad, 0));
 		}
 
 		// Output
@@ -206,7 +218,9 @@ export class BashExecutionComponent extends Container {
 			// Add truncation warning (context truncation, not preview truncation)
 			const wasTruncated = this.truncationResult?.truncated || contextTruncation.truncated;
 			if (!this.header && wasTruncated && this.fullOutputPath) {
-				statusParts.push(theme.fg("warning", `Output truncated. Full output: ${this.fullOutputPath}`));
+				statusParts.push(
+					theme.fg("warning", `Output truncated. Full output: ${sanitizeTerminalText(this.fullOutputPath)}`),
+				);
 			}
 
 			if (statusParts.length > 0) {

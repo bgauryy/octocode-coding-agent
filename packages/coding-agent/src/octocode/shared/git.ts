@@ -1,6 +1,7 @@
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,7 +23,9 @@ export interface GitOptions {
 }
 
 /**
- * Why a git call failed. `message` is git's stderr, or the spawn error when git wrote none. The fields let a caller
+ * Why a git call failed. `message` is git's stderr, or the spawn error when git wrote none, with credentials redacted:
+ * git repeats a URL as given in some messages (a failed submodule clone), and the spawn error repeats the command line,
+ * and callers show the message to the model and the user. The fields let a caller
  * map the failure itself: a timeout (`timedOut`), a plain non-zero exit (`exitCode`, e.g. 1 for "no match"), or output
  * past `maxBuffer` (`overflow`, with the `stdout` that fit).
  */
@@ -59,7 +62,7 @@ export async function git(cwd: string, args: readonly string[], options: GitOpti
 		return options.raw ? stdout : stdout.trimEnd();
 	} catch (error) {
 		const stderr = (error as { stderr?: string }).stderr?.trim();
-		throw new GitError(stderr || errorMessage(error), error);
+		throw new GitError(redactSecrets(stderr || errorMessage(error)), error);
 	}
 }
 

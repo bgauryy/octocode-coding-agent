@@ -78,4 +78,15 @@ describe("notices", () => {
 		expect(line("warning")).toContain(`${theme.fg("warning", "⚠")} ${theme.fg("text", "x")}`);
 		expect(line("error")).toContain(theme.fg("error", "✗ x"));
 	});
+
+	test("a notice strips terminal controls from its message", () => {
+		// Error and warning text often carries tool output (gh stderr, extension errors): it must not drive the terminal.
+		const rendered = display
+			.noticeLine("error", "gist: \u001b]0;pwned\u0007bad\u001b[2J \u009b31mtoken", 0)
+			.render(80)
+			.join("\n");
+
+		expect(stripAnsi(rendered).trimEnd()).toBe("✗ gist: bad token");
+		expect(rendered.replace(/\u001b\[[0-9;]*m/g, "")).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+	});
 });

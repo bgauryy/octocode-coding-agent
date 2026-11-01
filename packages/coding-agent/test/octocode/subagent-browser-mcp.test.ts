@@ -21,9 +21,24 @@ describe("browser MCP server in a subagent", () => {
 		expect(subagentProcessEnv(profiles().get("browser"), { [MCP_BROWSER_ENV]: "0" })[MCP_BROWSER_ENV]).toBe("0");
 	});
 
-	it("leaves the child arguments, and so its research servers, unchanged", () => {
+	it("keeps its research servers and excludes only the browser server", () => {
 		const args = buildAgentArgs(profiles().get("researcher"), undefined, { dir: "/s", id: "a" }, []).join(" ");
 		expect(args).toContain("--no-extensions -e builtin:mcp");
 		expect(args).not.toContain("--no-mcp");
+	});
+
+	// A main-session opt-in (`defaultTools` entries, `defaultActive: true`, `/mcp assign browser all`) is read by every
+	// child from the same settings; the exclusion keeps it in the main session and the profiles that name the server.
+	it("excludes the browser server for every bundled role except browser", () => {
+		const roles = profiles();
+		const argsOf = (name: string) => buildAgentArgs(roles.get(name), undefined, { dir: "/s", id: "a" }, []);
+		for (const name of ["implementer", "researcher", "reviewer"]) {
+			const args = argsOf(name);
+			expect(args[args.indexOf("--exclude-tools") + 1]?.split(","), name).toContain("mcp__browser__*");
+		}
+		const browser = argsOf("browser");
+		expect(browser.includes("--exclude-tools") ? browser[browser.indexOf("--exclude-tools") + 1] : "").not.toContain(
+			"mcp__browser__",
+		);
 	});
 });

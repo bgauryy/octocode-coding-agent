@@ -1,8 +1,14 @@
-import { isActiveCredential, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore } from "@octocodeai/octocode-ai";
+import {
+	isActiveCredential,
+	type AuthOperationOptions,
+	type Credential,
+	type CredentialInfo,
+	type CredentialStore,
+} from "@octocodeai/octocode-ai";
 import { join } from "path";
 import { getAgentDir } from "../../config.ts";
 import { normalizePath } from "../../../../common/src/paths.ts";
-import { isCommandConfigValue, resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { isCommandConfigValue, resolveConfigValue } from "../config-value.ts";
 import type { AuthStorageData } from "./backends.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { readJsonFile } from "../../../../common/src/json.ts";
@@ -65,7 +71,9 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 	/** Read a validated credential without evaluating key references or commands. */
 	async readRaw(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		options?.signal?.throwIfAborted();
-		const credential = this.load()[providerId];
+		const data = this.load();
+		// An own key only: a provider id such as `constructor` must not read an inherited property.
+		const credential = Object.hasOwn(data, providerId) ? data[providerId] : undefined;
 		options?.signal?.throwIfAborted();
 		return credential ? structuredClone(credential) : undefined;
 	}

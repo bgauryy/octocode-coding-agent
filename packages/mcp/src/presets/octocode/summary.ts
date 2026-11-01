@@ -1,4 +1,4 @@
-import { clip, plural } from "../../../../coding-agent/src/octocode/shared/render/text.ts";
+import { clip, plural } from "../../../../common/src/clip.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Longest error sentence shown in the row; the full payload shows when the row expands. */

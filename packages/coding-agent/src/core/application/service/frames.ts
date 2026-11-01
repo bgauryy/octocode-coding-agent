@@ -11,32 +11,60 @@ export type ApplicationFramePayload =
 	| { type: "resumed" }
 	| { type: "resync"; reason: "overflow" | "session-changed" };
 
-/** Serialized views retain rich fields without exporting credentials from native transcript data. */
+/** The JSON of each frame this module created: encoded once, shared by the replay buffer, queues and sockets. */
+const encoded = new WeakMap<ApplicationFrame, string>();
+
+/**
+ * A frame from a payload the wire layer already redacted (`ApplicationWire`), encoded once. Frames are immutable once
+ * created: derive a new one rather than changing it.
+ */
 export function createApplicationFrame(cursor: ApplicationCursor, payload: ApplicationFramePayload): ApplicationFrame {
-	return redactData({ protocolVersion: APPLICATION_PROTOCOL_VERSION, cursor, at: Date.now(), ...payload });
+	const frame = {
+		protocolVersion: APPLICATION_PROTOCOL_VERSION,
+		cursor,
+		at: Date.now(),
+		...payload,
+	} as ApplicationFrame;
+	encoded.set(frame, JSON.stringify(frame));
+	return frame;
 }
 
 /**
- * Append an event frame to the replay buffer, then drop the oldest frames until at most 200 remain within 256 KB.
- * `sizes` holds the serialized length of each replay frame, so bounding the buffer does not reserialize it on every
- * token. Returns the new serialized total.
+ * The JSON of a frame, redacted. A frame this process created is redacted and encoded already; any other (one relayed
+ * from another process) is redacted here.
  */
-export function appendReplayFrame(
-	replay: ApplicationFrame[],
-	sizes: number[],
-	chars: number,
-	frame: ApplicationFrame,
-): number {
-	const size = JSON.stringify(frame).length;
-	replay.push(frame);
-	sizes.push(size);
-	chars += size;
-	// The length `JSON.stringify(replay)` would have: the frames, their commas and the brackets.
-	while (replay.length > 200 || 2 + chars + Math.max(replay.length - 1, 0) > 262144) {
-		replay.shift();
-		chars -= sizes.shift()!;
+export function encodeApplicationFrame(frame: ApplicationFrame): string {
+	return encoded.get(frame) ?? JSON.stringify(redactData(frame));
+}
+
+/** Whether `frame` was created, redacted, by this process. */
+export function isEncodedApplicationFrame(frame: ApplicationFrame): boolean {
+	return encoded.has(frame);
+}
+
+/** Event frames kept for reconnecting views: at most 200 within 256 KB, measured by their encoded length. */
+export class ReplayBuffer {
+	frames: ApplicationFrame[] = [];
+	private sizes: number[] = [];
+	private chars = 0;
+
+	push(frame: ApplicationFrame): void {
+		const size = encodeApplicationFrame(frame).length;
+		this.frames.push(frame);
+		this.sizes.push(size);
+		this.chars += size;
+		// The length the encoded array would have: the frames, their commas and the brackets.
+		while (this.frames.length > 200 || 2 + this.chars + Math.max(this.frames.length - 1, 0) > 262144) {
+			this.frames.shift();
+			this.chars -= this.sizes.shift()!;
+		}
 	}
-	return chars;
+
+	clear(): void {
+		this.frames = [];
+		this.sizes = [];
+		this.chars = 0;
+	}
 }
 
 /**
@@ -54,7 +82,7 @@ export function createFrameQueue(
 } {
 	let closed = false;
 	let overflowed = false;
-	let queue: ApplicationFrame[] = [];
+	let queue: { frame: ApplicationFrame; size: number }[] = [];
 	let bytes = 0;
 	let waiting: ((result: IteratorResult<ApplicationFrame>) => void) | undefined;
 	const push = (frame: ApplicationFrame) => {
@@ -71,14 +99,15 @@ export function createFrameQueue(
 			resolve({ value: frame, done: false });
 			return;
 		}
-		const size = JSON.stringify(frame).length;
+		const size = encodeApplicationFrame(frame).length;
 		if (queue.length >= 200 || bytes + size > 262144) {
 			overflowed = true;
-			queue = [overflowFrame()];
-			bytes = JSON.stringify(queue[0]).length;
+			const resync = overflowFrame();
+			queue = [{ frame: resync, size: encodeApplicationFrame(resync).length }];
+			bytes = queue[0].size;
 			return;
 		}
-		queue.push(frame);
+		queue.push({ frame, size });
 		bytes += size;
 	};
 	const close = () => {
@@ -90,10 +119,10 @@ export function createFrameQueue(
 	};
 	const iterator: AsyncIterator<ApplicationFrame> = {
 		next: () => {
-			const frame = queue.shift();
-			if (frame) {
-				bytes -= JSON.stringify(frame).length;
-				return Promise.resolve({ value: frame, done: false });
+			const entry = queue.shift();
+			if (entry) {
+				bytes -= entry.size;
+				return Promise.resolve({ value: entry.frame, done: false });
 			}
 			if (closed) return Promise.resolve({ value: undefined, done: true });
 			if (waiting) return Promise.reject(new Error("Concurrent stream reads are unsupported"));

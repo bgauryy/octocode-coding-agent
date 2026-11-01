@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as Launch from "../../../mcp/src/presets/octocode/launch.ts";
 

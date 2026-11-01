@@ -1,6 +1,7 @@
 import { InMemoryModelsStore, type AuthPrompt, type Credential } from "@octocodeai/octocode-ai";
 import { describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
+import type { AuthStorageBackend } from "../src/core/auth-storage/backends.ts";
 import type { KeychainBackend } from "../src/core/auth-storage/keychain.ts";
 import { type KeychainChoice, KeychainLoginSession } from "../src/core/auth-storage/keychain-login.ts";
 import { CredentialSynchronizationError, ModelRuntime } from "../src/core/model-runtime.ts";
@@ -193,6 +194,48 @@ describe("KeychainLoginSession", () => {
 			type: "api_key",
 			key: "!fake lookup opencode",
 		});
+	});
+
+	/** Storage whose file write fails after the callback ran, as a full disk does (G-K1). */
+	function failingWriteStorage(keychain: KeychainBackend, initial: string): AuthStorage {
+		let failed = false;
+		const backend: AuthStorageBackend = {
+			withLock: (fn) => fn(initial).result,
+			withLockAsync: async (fn) => {
+				const { result, next } = await fn(initial);
+				// Only a write fails; the read that checks what was saved still works.
+				if (next !== undefined && !failed) {
+					failed = true;
+					throw new Error("disk full");
+				}
+				return result;
+			},
+		};
+		return AuthStorage.fromStorage(backend, { keychain });
+	}
+
+	test("removes the keychain entry when auth.json cannot be written (G-K1)", async () => {
+		const keychain = fakeKeychain();
+		const storage = failingWriteStorage(keychain, "{}");
+		const session = new KeychainLoginSession(keychain, "opencode", async () => "keychain");
+		await expect(login(storage, session, "sk-secret")).rejects.toThrow("disk full");
+		expect(keychain.stored.has("opencode")).toBe(false);
+		expect(keychain.removed).toEqual(["opencode"]);
+	});
+
+	test("puts the old keychain key back when a replacement cannot be written", async () => {
+		const command = (word: string) => `printf %s ${word}`;
+		const keychain = fakeKeychain();
+		keychain.stored.set("opencode", "old-key");
+		keychain.referenceFor = () => `!${command("old-key")}`;
+		keychain.isOwnReference = (key) => key === `!${command("old-key")}`;
+		const storage = failingWriteStorage(
+			keychain,
+			JSON.stringify({ opencode: { type: "api_key", key: `!${command("old-key")}` } }),
+		);
+		const session = new KeychainLoginSession(keychain, "opencode", async () => "keychain");
+		await expect(login(storage, session, "sk-new")).rejects.toThrow("disk full");
+		expect(keychain.stored.get("opencode")).toBe("old-key");
 	});
 
 	test("leaves a credential whose key was not the typed secret alone", async () => {

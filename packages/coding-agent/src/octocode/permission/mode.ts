@@ -4,7 +4,7 @@ import { plural } from "../shared/render/text.ts";
 
 /**
  * Permission modes: which agent actions run, which ask the user first. One table decides every class in every mode;
- * the invariants (reservations, the Octocode home, redirects to private addresses, browser attach validation, an
+ * the invariants (reservations, the Octocode home, redirects to private addresses, an
  * untrusted project's shared memory, hook denies) run before it and no mode skips them. `full` allows every class
  * and records each call. Modes are not a sandbox: they decide what Octocode asks about, while the OS user's rights
  * stay what they are.
@@ -82,7 +82,7 @@ const MATRIX: Record<ActionClass, { rules: [Rule, Rule, Rule]; noun: string; why
 	"browser.control": {
 		rules: ["ask", "ask", "allow"],
 		noun: "taking control of the browser",
-		why: "it takes control of a browser: attaching to one, running script in a page or uploading files",
+		why: "it takes control of a browser: running custom code against it, moving its cookies or replaying a request",
 	},
 	"net.private": {
 		rules: ["ask", "ask", "allow"],

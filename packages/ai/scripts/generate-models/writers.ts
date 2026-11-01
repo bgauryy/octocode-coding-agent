@@ -5,6 +5,7 @@ import {
 	createModelDataManifest,
 	groupProviderModelData,
 	MODEL_DATA_MANIFEST_FILE,
+	type ModelCatalogEntry,
 	type ModelDataStructure,
 	readModelDataProviderIds,
 	validateGeneratedModelData,
@@ -123,7 +124,12 @@ export function writeModelCatalogs({
 	const generatedDataProviders: Record<string, Record<string, Record<string, AnyModel>>> = {};
 	const modelDataStructure: ModelDataStructure = {};
 	for (const providerId of generatedDataProviderIds) {
-		const { groups, structure } = groupProviderModelData(providerId, jsonAllProviders[providerId]);
+		// Data files key entries by `type:id`; an untyped entry would be written as `undefined:id`.
+		const entries = jsonAllProviders[providerId].map((model) => {
+			if (typeof model.type !== "string") throw new Error(`${providerId}/${model.id} has no catalog type`);
+			return model as AnyModel & ModelCatalogEntry;
+		});
+		const { groups, structure } = groupProviderModelData(providerId, entries);
 		generatedDataProviders[providerId] = groups;
 		modelDataStructure[providerId] = structure;
 	}

@@ -21,5 +21,13 @@ export const LEGACY_CHANGE_TOOLS: readonly string[] = ["edit", "write"];
 /** Tools whose call input names the one file they act on: the single-path readers and changers. */
 export const PATH_INPUT_TOOLS: readonly string[] = [READ_TOOL, ...LEGACY_CHANGE_TOOLS];
 
+/**
+ * Built-in tools renamed in the last release, old name to current. A selection that names the old one (`--tools`,
+ * `--exclude-tools`, the SDK options, the `defaultTools` setting, a profile's `tools`/`excludeTools`, a resumed
+ * transcript's loadout) selects the current one, and an old transcript's calls render with it (`currentToolName`).
+ * The current tool keeps exactly one registered name; drop an entry one release after its rename.
+ */
+export const RENAMED_TOOLS: Readonly<Record<string, string>> = { task: "steps" };
+
 /** Every tool that can change a workspace file: `file` and the legacy changers. */
 export const FILE_CHANGING_TOOLS: readonly string[] = [FILE_TOOL, ...LEGACY_CHANGE_TOOLS];

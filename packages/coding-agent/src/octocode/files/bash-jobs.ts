@@ -8,13 +8,14 @@ import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration, shortPath } from "../shared/format.ts";
-import { PRIVATE_FILE_MODE, privateDir, sessionOutputDir } from "../shared/home.ts";
+import { privateDir, sessionOutputDir } from "../shared/home.ts";
 import { groupAlive, killTree, processStartTime, stopTree } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
 import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
 import type { BashJob, JobExit, VerificationReceipt } from "./bash-jobs/types.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 /**
  * Background shell jobs for the `bash` tool (bash.ts): each runs in its own process group, with the user's Octocode shell,
