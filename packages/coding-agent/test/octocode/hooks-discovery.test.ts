@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
-import { registerHooks, registerHooksCommand } from "../../src/octocode/hooks/register.ts";
+import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -37,14 +38,14 @@ describe("documented hook discovery and controls", () => {
 		expect(errors).toEqual([]);
 	});
 
-	it.each(["enable", "off"])("does not pretend /hooks %s changes execution", async (argument) => {
+	it.each(["enable", "off"])("does not pretend /harness hooks %s changes execution", async (argument) => {
 		const { api } = fakeHost();
 		const hooks = registerHooks(api, { OCTOCODE_SUBAGENT: "1" }, tmp());
 		const commands = new Subcommands();
-		registerHooksCommand(commands, hooks);
+		registerHarnessCommand(commands, hooks, api);
 		const notify = vi.fn();
-		await commands.get("hooks")!.handler(argument, { hasUI: true, cwd: tmp(), ui: { notify } } as never);
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Usage: /hooks"), "warning");
+		await commands.get("harness")!.handler(`hooks ${argument}`, { hasUI: true, cwd: tmp(), ui: { notify } } as never);
+		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Usage: /harness hooks"), "warning");
 		expect(notify.mock.calls[0][0]).toContain("disableAllHooks");
 		expect(hooks.summary()).toContain("off");
 	});

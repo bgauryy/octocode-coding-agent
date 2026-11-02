@@ -285,8 +285,3 @@ export function applyEditsToNormalizedContent(
 
 	return { baseContent, newContent };
 }
-
-export interface EditDiffResult {
-	diff: string;
-	firstChangedLine: number | undefined;
-}

@@ -84,19 +84,13 @@ export const CARRIER_KEYS = {
 	span: "octocode-memory-span",
 	trace: "octocode-memory-trace",
 } as const;
-/** Keys of carriers written before the rename; read (never written) so those carriers still extract. */
-const LEGACY_CARRIER_KEYS: Readonly<Record<keyof typeof CARRIER_KEYS, string>> = {
-	scope: "pi-memory-scope",
-	span: "pi-memory-span",
-	trace: "pi-memory-trace",
-};
 
-/** One identity field of a carrier: the current key, else the legacy one. */
+/** One identity field of a carrier. */
 export function carrierField(
 	carrier: Readonly<TelemetryCarrier> | undefined,
 	field: keyof typeof CARRIER_KEYS,
 ): unknown {
-	return carrier?.[CARRIER_KEYS[field]] ?? carrier?.[LEGACY_CARRIER_KEYS[field]];
+	return carrier?.[CARRIER_KEYS[field]];
 }
 
 export function carrierId(carrier: Readonly<TelemetryCarrier>): string {

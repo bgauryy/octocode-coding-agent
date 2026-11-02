@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@octocodeai/octocode-ai";
-import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { formatSkillsForPrompt, loadSkillsFromDir } from "../../src/core/skills.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
@@ -341,7 +340,7 @@ describe("skill policy", () => {
 			expect(prompt).not.toContain(trigger);
 			expect(prompt).not.toMatch(/load (that|a|the|any named) skill/i);
 		}
-		expect(octocodePrompt({ ...base, canDelegate: false })).toContain("Finish it yourself.");
+		expect(octocodePrompt({ ...base, canDelegate: false })).toContain("finish your task yourself.");
 		// The skills section carries the rule for whichever loader the session has; the tool says only what it does.
 		expect(formatSkillsForPrompt(fixtures().loaded.skills.slice(0, 1), "skill")).toContain(
 			`Use the skill tool with a skill's name to load it ${trigger}.`,
@@ -367,7 +366,8 @@ describe("a session with skills", () => {
 		const extensionsResult = await createTestExtensionsResult(
 			[
 				{
-					path: NATIVE_FEATURE_PATH,
+					owner: "native",
+					path: "<inline:octocode>",
 					factory: (api) => {
 						const wrapped = withNativePermissionOwners(api);
 						registerSkillTool(wrapped);

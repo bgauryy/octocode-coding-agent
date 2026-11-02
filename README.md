@@ -67,7 +67,7 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 
 | Directory                                       | Responsibility                                                       |
 | ----------------------------------------------- | -------------------------------------------------------------------- |
-| [coding-agent](packages/coding-agent/README.md) | CLI, sessions, native Octocode features and SDK                      |
+| [coding-agent](packages/coding-agent/README.md) | CLI, sessions and native Octocode features; RPC                  |
 | [acp](packages/acp/README.md)                   | Private inbound/outbound ACP integration, compiled into coding-agent |
 | [mcp](packages/mcp/README.md)                   | Private MCP client and host integration, compiled into coding-agent  |
 | [agent](packages/agent/README.md)               | Agent loop and tool execution                                        |
@@ -86,7 +86,7 @@ yarn run check
 
 `check` runs TypeScript, Oxlint, the format check, browser imports, workspace bundle and favicon freshness, and the package and database boundary checks without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files, [scripts/README.md](scripts/README.md) for what each repository script does, and the [coding-agent suite rules](packages/coding-agent/test/suite/README.md) for harness-based session tests. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
 
-Run `yarn run check:unused` (Knip) from the root to inspect unused files, exports and dependencies across all workspaces. [knip.jsonc](knip.jsonc) identifies public APIs, dynamically loaded entrypoints, copied vendor assets and external system commands. Verify findings against those consumers before removing code; the analyzer does not establish whether an external SDK consumer uses a public export.
+Run `yarn run check:unused` (Knip) from the root to inspect unused files, exports and dependencies across all workspaces. [knip.jsonc](knip.jsonc) identifies public APIs, dynamically loaded entrypoints, copied vendor assets and external system commands. Verify findings against those consumers before removing code; the package root exports only the CLI and RPC surface.
 
 ## License
 

@@ -20,7 +20,6 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 import { loadedSkillDirectories, loadSkills } from "../src/core/skills.ts";
 import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
 import { initTheme } from "../src/theme/theme.ts";
-import * as nativeExtension from "../src/octocode/index.ts";
 import { prepareOctocodeSkillLaunch } from "../../mcp/src/presets/octocode/skill-paths.ts";
 
 describe("bundled public skills", () => {
@@ -51,7 +50,7 @@ describe("bundled public skills", () => {
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			settingsManager: SettingsManager.inMemory(),
 		});
 		await loader.reload();
@@ -74,7 +73,7 @@ describe("bundled public skills", () => {
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			settingsManager: SettingsManager.inMemory(),
 		});
 		await loader.reload();
@@ -88,7 +87,7 @@ describe("bundled public skills", () => {
 			const loader = new DefaultResourceLoader({
 				cwd,
 				agentDir,
-				noExtensions: true,
+				disabledFeatures: ["mcp", "llama.cpp"],
 				settingsManager: SettingsManager.inMemory(),
 				...options,
 			});
@@ -107,7 +106,7 @@ describe("bundled public skills", () => {
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			settingsManager: SettingsManager.inMemory(),
 		});
 		await loader.reload();
@@ -131,7 +130,12 @@ describe("bundled public skills", () => {
 		};
 		const bundled = (name = "octocode-research") => join(getBundledSkillsDir(), name, "SKILL.md");
 		const load = async (settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true })) => {
-			const loader = new DefaultResourceLoader({ cwd, agentDir, noExtensions: true, settingsManager });
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				disabledFeatures: ["mcp", "llama.cpp"],
+				settingsManager,
+			});
 			await loader.reload();
 			return loader;
 		};
@@ -193,7 +197,7 @@ describe("bundled public skills", () => {
 			const loader = new DefaultResourceLoader({
 				cwd,
 				agentDir,
-				noExtensions: true,
+				disabledFeatures: ["mcp", "llama.cpp"],
 				additionalSkillPaths: [join(root, "explicit", "octocode-documentation")],
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 			});
@@ -250,7 +254,7 @@ describe("bundled public skills", () => {
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			additionalSkillPaths: [explicit],
 			settingsManager: SettingsManager.inMemory(),
@@ -312,15 +316,14 @@ describe("bundled public skills", () => {
 	});
 
 	it("disables the shared MCP host while retaining native tools", async () => {
-		const native = vi.spyOn(nativeExtension, "default").mockImplementation(() => {});
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			disabledBuiltinExtensions: ["mcp"],
+			disabledFeatures: ["mcp"],
 			settingsManager: SettingsManager.inMemory(),
 		});
 		await loader.reload();
-		expect(native).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ registerTool: expect.any(Function) }));
+		expect(loader.getExtensions().extensions.map((extension) => extension.path)).toContain("<inline:octocode>");
 		expect(loader.getExtensions().errors).toEqual([]);
 		expect(loader.getExtensions().extensions.map((extension) => extension.path)).not.toContain("builtin:mcp");
 	});

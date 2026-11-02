@@ -8,7 +8,7 @@ import {
 	type RemoteStatus,
 } from "@octocodeai/octocode-contracts/daemon";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { RemoteSettings } from "../../core/settings-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";

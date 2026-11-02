@@ -7,7 +7,7 @@ import { expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createReadTool } from "./fixtures/read-tool.ts";
-import type { InlineExtension } from "../src/index.ts";
+import type { InlineExtension } from "../src/core/features/index.ts";
 import { createHarness } from "./suite/harness.ts";
 
 type Spec = {
@@ -53,7 +53,7 @@ async function fixture(specs: Spec[] = [{ name: "alpha" }, { name: "beta" }], ex
 		cwd,
 		agentDir,
 		nativeFeatures: false,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -448,7 +448,7 @@ it.each(["disabled", "untrusted"])("cannot select a %s discovery resource by nam
 			cwd: f.cwd,
 			agentDir,
 			nativeFeatures: false,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
@@ -507,7 +507,7 @@ it.each(["portable", "legacy"])("uses qualified plugin mention names and %s prom
 			cwd: f.cwd,
 			agentDir: path.join(f.root, "agent"),
 			nativeFeatures: false,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,

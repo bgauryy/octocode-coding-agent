@@ -1,7 +1,7 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Static, Type } from "typebox";
 import { getShellEnv } from "../../utils/shell.ts";
-import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import type { ExtensionContext, ToolDefinition } from "../features/types.ts";
 import { createLocalBashOperations } from "./bash/local-operations.ts";
 import { bashSchema } from "./bash/schema.ts";
 import type { BashOperations } from "./bash/types.ts";
@@ -13,7 +13,7 @@ import { type BashEnd, formatBashHeader } from "./bash/header.ts";
 import { BashExecutionError, type BashToolDetails } from "./bash/outcome.ts";
 
 export { createLocalBashOperations } from "./bash/local-operations.ts";
-export { type BashToolInput, maxOutputTokensParameter } from "./bash/schema.ts";
+export { maxOutputTokensParameter } from "./bash/schema.ts";
 export type { BashOperations } from "./bash/types.ts";
 export { type BashToolDetails } from "./bash/outcome.ts";
 
@@ -41,13 +41,13 @@ const bashOutputSchema = Type.Object({
 
 type BashToolOutput = Static<typeof bashOutputSchema>;
 
-export interface BashSpawnContext {
+interface BashSpawnContext {
 	command: string;
 	cwd: string;
 	env: NodeJS.ProcessEnv;
 }
 
-export type BashSpawnHook = (context: BashSpawnContext) => BashSpawnContext;
+type BashSpawnHook = (context: BashSpawnContext) => BashSpawnContext;
 
 /**
  * The environment a bash command runs with: the shell environment, with the OCTOCODE_* session variables set from `ctx`

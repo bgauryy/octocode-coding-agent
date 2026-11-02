@@ -3,18 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
-import { registerHooks, registerHooksCommand } from "../../src/octocode/hooks/register.ts";
+import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { registerStopHook } from "../../src/octocode/hooks/register/stop.ts";
 import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
 import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { commandsFor, hookCalls, toolAliases } from "../../src/octocode/hooks/config/calls.ts";
 import { matchesHook } from "../../src/octocode/hooks/profiles.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 function project(hooks: unknown, file = path.join(".octocode", "hooks.json")): string {
 	const dir = tmp("octocode-hooks-");
@@ -22,7 +21,6 @@ function project(hooks: unknown, file = path.join(".octocode", "hooks.json")): s
 	fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
 	fs.writeFileSync(path.join(dir, file), JSON.stringify({ hooks }));
 	// The user trusted these hooks (`/trust`): Octocode's own trust never covers commands it did not show.
-	saveDecision(dir, fingerprint(projectConfigFiles(dir)), true);
 	return dir;
 }
 
@@ -87,7 +85,7 @@ describe("hooks config", () => {
 		const config = parseHooks(
 			{
 				hooks: {
-					SessionEnd: command("true"),
+					PostCompact: command("true"),
 					Stop: "invalid",
 					PreToolUse: [
 						{ matcher: 1, hooks: command("true") },
@@ -103,6 +101,13 @@ describe("hooks config", () => {
 		expect(commandsFor(config, "PreToolUse", ["Bash"])).toEqual([]);
 		expect(errors).toHaveLength(5);
 		expect(errors.every((error) => error.startsWith("fixture:"))).toBe(true);
+	});
+
+	it("accepts SessionEnd in native hook files", () => {
+		const errors: string[] = [];
+		const config = parseHooks({ hooks: { SessionEnd: command("true") } }, "fixture", undefined, errors);
+		expect(errors).toEqual([]);
+		expect(commandsFor(config, "SessionEnd", ["other"])).toHaveLength(1);
 	});
 
 	it("honors a disable switch across sources, but never reads an untrusted project switch", () => {
@@ -222,9 +227,13 @@ describe("hook runner", () => {
 			block: "fix lint",
 		});
 		expect(interpret("SessionStart", { ...deny, stdout: "plain context\n" })).toEqual({ context: "plain context" });
-		expect(interpret("PreToolUse", { ...deny, code: 2, stderr: "\u001b[31mno\u001b[0m rm\u0007" })).toEqual({
-			block: "\\u{1b}[31mno\\u{1b}[0m rm\\u{7}",
-		});
+		expect(interpret("PreToolUse", { ...deny, code: 2, stdout: "", stderr: "\u001b[31mno\u001b[0m rm\u0007" })).toEqual(
+			{
+				block: "\\u{1b}[31mno\\u{1b}[0m rm\\u{7}",
+			},
+		);
+		// Exit 2 blocks; a JSON blocking decision on stdout supplies the reason instead of stderr (Claude Code).
+		expect(interpret("PreToolUse", { ...deny, code: 2, stderr: "stderr loses" })).toMatchObject({ block: "nope" });
 		expect(
 			interpret("SessionStart", {
 				...deny,
@@ -597,7 +606,7 @@ describe("registerHooks", () => {
 		expect(off.summary()).toBe("off in this subagent (its profile does not set hooks: true)");
 		expect(off.report(cwd)).toMatch(/^Hooks: off in this subagent/);
 		expect(off.report(cwd)).toContain(`· ~${path.sep}${path.join(".claude", "settings.json")}`);
-		expect(off.report(cwd)).toMatch(/✓ .*hooks\.json \(project: loads only when trusted/);
+		expect(off.report(cwd)).toMatch(/✓ .*hooks\.json \(project\)/);
 
 		const { api, fire } = fakeHost();
 		const on = registerHooks(api, {}, home);
@@ -607,9 +616,11 @@ describe("registerHooks", () => {
 		expect(on.report(cwd)).toMatch(/Loaded \(1\):\n {2}PreToolUse \[Bash\] echo pre \(.*hooks\.json\)/);
 
 		const commands = new Subcommands();
-		registerHooksCommand(commands, on);
+		registerHarnessCommand(commands, on, api);
 		const notes: string[] = [];
-		await commands.get("hooks")!.handler("", { cwd, ui: { notify: (text: string) => notes.push(text) } } as never);
+		await commands
+			.get("harness")!
+			.handler("hooks", { cwd, ui: { notify: (text: string) => notes.push(text) } } as never);
 		expect(notes[0]).toBe(on.report(cwd));
 	});
 

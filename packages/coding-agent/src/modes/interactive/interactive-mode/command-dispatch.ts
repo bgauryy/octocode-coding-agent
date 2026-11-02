@@ -5,7 +5,6 @@ import { handleWorkflowCommand } from "./workflow-commands.ts";
  */
 
 import { getBuiltinCommand, parseSlashCommand } from "../../../core/slash-commands.ts";
-import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
 import { CommandSelectorComponent } from "../components/command-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
@@ -63,7 +62,6 @@ type CommandDispatchHost = Pick<
 	| "showSettingsSelector"
 	| "showStatus"
 	| "showTreeSelector"
-	| "showTrustSelector"
 	| "showUserMessageSelector"
 	| "showWarning"
 	| "shutdown"
@@ -80,7 +78,7 @@ export function handleStartupSubmit(host: CommandDispatchHost, text: string): vo
 function getNativeCommand(host: CommandDispatchHost, name: string) {
 	return host.session.extensionRunner
 		.getRegisteredCommands()
-		.find((command) => command.name === name && command.sourceInfo.path === NATIVE_FEATURE_PATH);
+		.find((command) => command.name === name && command.sourceInfo.owner === "native");
 }
 
 async function runNativeCommand(host: CommandDispatchHost, name: string, args = ""): Promise<boolean> {
@@ -126,21 +124,6 @@ async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
 	else if (choice === CREDENTIAL_CHECK) await runNativeCommand(host, "modelsettings", "check");
 	else if (choice === "Local llama.cpp models" && llama)
 		await llama.handler("", host.session.extensionRunner.createCommandContext());
-}
-
-async function showTrustMenu(host: CommandDispatchHost): Promise<void> {
-	if (!getNativeCommand(host, "trust")) {
-		host.showTrustSelector();
-		return;
-	}
-	const choice = await host.showExtensionSelector("Project trust", [
-		"Project resources",
-		"Native project configuration",
-		"Revoke native configuration trust",
-	]);
-	if (choice === "Project resources") host.showTrustSelector();
-	else if (choice === "Native project configuration") await runNativeCommand(host, "trust");
-	else if (choice === "Revoke native configuration trust") await runNativeCommand(host, "trust", "off");
 }
 
 async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
@@ -214,14 +197,6 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "queue":
 			host.showQueueManager();
-			return;
-		case "trust":
-			if (!args) await showTrustMenu(host);
-			else if (args === "project") host.showTrustSelector();
-			else if (args === "config" || args === "off") {
-				if (!(await runNativeCommand(host, "trust", args === "off" ? "off" : "")))
-					host.showWarning("Native project configuration is unavailable.");
-			} else host.showWarning("Usage: /trust [project|config|off]");
 			return;
 		case "login":
 			await host.handleLoginCommand(args || undefined);

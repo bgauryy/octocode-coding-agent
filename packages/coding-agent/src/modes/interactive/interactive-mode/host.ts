@@ -23,10 +23,9 @@ import type {
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
 	MarkdownTransformer,
-	ProjectTrustContext,
 	WorkingIndicatorOptions,
 	ToolRenderers,
-} from "../../../core/extensions/index.ts";
+} from "../../../core/features/index.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { MissingSessionCwdError } from "../../../core/session-cwd.ts";
@@ -78,7 +77,6 @@ export interface InteractiveModeMethods {
 	crashReportInstructions(): string;
 	createBaseAutocompleteProvider(): AutocompleteProvider;
 	createExtensionUIContext(): ExtensionUIContext;
-	createProjectTrustContext(cwd: string): ProjectTrustContext;
 	cycleModel(direction: "forward" | "backward"): Promise<void>;
 	cycleThinkingLevel(): void;
 	disposeActiveSelector(): void;
@@ -155,7 +153,6 @@ export interface InteractiveModeMethods {
 	init(): Promise<void>;
 	isExtensionCommand(text: string): boolean;
 	isPackageSource(sourceInfo?: SourceInfo): boolean;
-	maybeSaveImplicitProjectTrustAfterReload(): boolean;
 	maybeShowCacheMissNotice(message: AssistantMessage): void;
 	maybeShowInstallChangeWarning(): boolean;
 	maybeShowThinkingDropNotice(message: AssistantMessage): void;
@@ -235,7 +232,6 @@ export interface InteractiveModeMethods {
 	showStatus(message: StatusText): void;
 	showStatusIndicator(indicator: StatusIndicator): void;
 	showTreeSelector(initialSelectedId?: string): void;
-	showTrustSelector(): void;
 	showUserMessageSelector(): void;
 	showWarning(warningMessage: string): void;
 	showWorkingStatusIndicator(): void;

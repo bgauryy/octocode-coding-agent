@@ -35,7 +35,7 @@ export function hooksReport(
 		enabled ? "Hooks: on" : "Hooks: off in this subagent (its profile does not set hooks: true).",
 		...(enabled ? [`Loaded (${loaded.length}):`, ...(loaded.length > 0 ? loaded : ["  none"])] : []),
 		"",
-		'Hook files ({"hooks": {...}}; /hooks events lists what each profile accepts, /plugins switches them):',
+		'Hook files ({"hooks": {...}}; /harness hooks events lists what each profile accepts, /harness switches them):',
 		...configFileLines(hookFiles(cwd, true, home), hookFiles(cwd, false, home), home),
 		...(errors.length > 0 ? ["", "Hook configuration diagnostics:", ...errors.map((error) => `  ${error}`)] : []),
 	].join("\n");
@@ -43,7 +43,7 @@ export function hooksReport(
 
 const PROFILE_LABELS: Record<HookProtocol, string> = { octocode: "native", claude: "claude", codex: "codex" };
 
-/** `/hooks events`: the catalog as text: each event with the handler types every profile accepts there. */
+/** `/harness hooks events`: the catalog as text: each event with the handler types every profile accepts there. */
 export function hookEventsReport(): string {
 	const width = Math.max(...HOOK_EVENTS.map((event) => event.length));
 	const rows = HOOK_EVENTS.map((event) => {

@@ -6,10 +6,9 @@ import {
 	deriveEpicState,
 } from "@octocodeai/octocode-contracts/snapshot";
 import { type AgentDb, backlog, dbStamp } from "../agentdb/api.ts";
-import { withCurrentType } from "./entities.ts";
 import { TaskStore } from "./tasks/store.ts";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
-import type { AddInput, ListQuery, UpdateInput, WithLegacyType } from "./inputs.ts";
+import type { AddInput, ListQuery, UpdateInput } from "./inputs.ts";
 import {
 	audit as auditTrail,
 	comments as itemComments,
@@ -24,6 +23,7 @@ import {
 import { addItem, COMPLETION_GUIDANCE, removeItem, updateItem } from "./writes.ts";
 import { type ItemMarks, itemMarks, reviewNeeded } from "./marks.ts";
 import { archivedAudits } from "./history-archive.ts";
+import type { BacklogCounts } from "./counts.ts";
 
 export { BacklogError, COMPLETION_GUIDANCE, PRIORITIES, parseRef, priorityName };
 export { TaskError } from "./tasks/reads.ts";
@@ -103,7 +103,8 @@ export class BacklogStore {
 		return listItems(this.db, this.repo, query);
 	}
 
-	counts(): Record<State, number> {
+	/** Items per state and epics per derived state (`BacklogCounts`): what the footer shows and the board's header repeats. */
+	counts(): BacklogCounts {
 		return stateCounts(this.db, this.repo);
 	}
 
@@ -136,8 +137,8 @@ export class BacklogStore {
 		return countNotes(this.db, item);
 	}
 
-	add(input: WithLegacyType<AddInput>, actor: Actor = { id: input.createdBy }): Item {
-		return addItem(this.agentDb(), this.repo, this.now, withCurrentType(input), actor);
+	add(input: AddInput, actor: Actor = { id: input.createdBy }): Item {
+		return addItem(this.agentDb(), this.repo, this.now, input, actor);
 	}
 
 	/**
@@ -145,8 +146,8 @@ export class BacklogStore {
 	 * `ongoing` for `backlog`/`todo` releases it; `done` stamps `done_at`. While another live session holds an item,
 	 * others may only add a note (the user may force an edit). A subagent may only touch items its parent holds.
 	 */
-	update(ref: string, input: WithLegacyType<UpdateInput>, actor: Actor): Item {
-		return updateItem(this.agentDb(), this.repo, this.now, ref, withCurrentType(input), actor);
+	update(ref: string, input: UpdateInput, actor: Actor): Item {
+		return updateItem(this.agentDb(), this.repo, this.now, ref, input, actor);
 	}
 
 	/** Deletes an item and its notes. With `actor` (the agent), an item another live session holds is refused. */

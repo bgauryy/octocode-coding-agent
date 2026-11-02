@@ -1,6 +1,8 @@
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import { type State, deriveEpicState } from "@octocodeai/octocode-contracts/snapshot";
+import { type BacklogCounts, openEpics, summarizeCounts } from "./counts.ts";
 import { BOARD_ORDER, STATE_TITLE } from "./format.ts";
+import type { ItemMarks } from "./marks.ts";
 import type { Item } from "./store.ts";
 
 /** What the board shows, read once when it opens or refreshes: every item and the open tasks (todo, ongoing) of the repository. */
@@ -9,26 +11,28 @@ export interface BoardData {
 	tasks: BacklogTask[];
 	/** This session's id: its own session tasks get a section. */
 	session: string;
+	/** What each item waits on or whose claim ended, by ref (`BacklogStore.marks`); items without an entry have none. */
+	marks?: ReadonlyMap<string, ItemMarks>;
 }
 
 /** A line the user can select: an epic or item (`B12`) or a task (`T7`). */
 export type BoardRow =
-	| { kind: "item"; key: string; item: Item; shown: State; tasks: number }
+	| { kind: "item"; key: string; item: Item; shown: State; tasks: number; marks: ItemMarks }
 	| { kind: "task"; key: string; task: BacklogTask };
 
 type BoardEntry =
-	| { kind: "heading"; title: string; note?: string }
+	| { kind: "heading"; title: string; note?: string; state?: State }
 	| { kind: "empty" }
 	| { kind: "row"; row: BoardRow }
 	/** A line that explains the row above it (an epic's items) and cannot be selected. */
-	| { kind: "context"; text: string };
+	| { kind: "context"; text: string; state?: State };
 
 export interface BoardLayout {
 	entries: BoardEntry[];
 	/** The selectable rows, top to bottom. */
 	rows: BoardRow[];
-	/** Items per state, epics left out (the section headings' counts). */
-	counts: Record<State, number>;
+	/** The footer's counts (`summarizeCounts`): items per state, epics counted once by derived state. */
+	counts: BacklogCounts;
 }
 
 const DONE_SHOWN = 5;
@@ -71,7 +75,7 @@ function expandedItem(row: BoardRow | undefined): string | undefined {
  * session's own tasks. Pure and in memory: the board calls it when the selection or the data changes, not per frame.
  */
 export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout {
-	const { items, tasks, session } = data;
+	const { items, tasks, session, marks } = data;
 	const byItem = new Map<string, BacklogTask[]>();
 	for (const task of tasks)
 		if (task.owner.kind === "item") byItem.set(task.owner.ref, [...(byItem.get(task.owner.ref) ?? []), task]);
@@ -91,6 +95,7 @@ export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout 
 		item,
 		shown: shownState(item, items),
 		tasks: byItem.get(item.ref)?.length ?? 0,
+		marks: marks?.get(item.ref) ?? {},
 	});
 	const taskRow = (task: BacklogTask): BoardRow => ({ kind: "task", key: task.ref, task });
 
@@ -100,20 +105,24 @@ export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout 
 		: undefined;
 	const open = expandedItem(selected);
 
-	const openEpics = epics.filter((epic) => shownState(epic, items) !== "done");
+	const counts = summarizeCounts(
+		items.map((item) => ({
+			key: item.ref,
+			type: item.type,
+			state: item.state,
+			...(item.parentId ? { parent: item.parentId } : {}),
+		})),
+	);
+	const shownEpics = epics.filter((epic) => shownState(epic, items) !== "done");
 	if (epics.length > 0) {
-		entries.push({
-			kind: "heading",
-			title: `Epics (${openEpics.length})`,
-			note: `${epics.length - openEpics.length} done`,
-		});
-		if (openEpics.length === 0) entries.push({ kind: "empty" });
-		for (const epic of openEpics) {
+		entries.push({ kind: "heading", title: `Epics (${openEpics(counts)})`, note: `${counts.epics.done} done` });
+		if (shownEpics.length === 0) entries.push({ kind: "empty" });
+		for (const epic of shownEpics) {
 			row(itemRow(epic));
 			if (selectedKey !== epic.ref) continue;
 			const children = epicItems(epic, items);
 			for (const child of children.slice(0, EPIC_ITEMS_SHOWN))
-				entries.push({ kind: "context", text: `${child.ref} [${child.state}] ${child.title}` });
+				entries.push({ kind: "context", text: `${child.ref} ${child.title}`, state: child.state });
 			if (children.length > EPIC_ITEMS_SHOWN)
 				entries.push({ kind: "context", text: `${children.length - EPIC_ITEMS_SHOWN} more items` });
 			if (children.length === 0) entries.push({ kind: "context", text: "no items yet" });
@@ -121,13 +130,12 @@ export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout 
 	}
 
 	const listed = boardRows(plain);
-	const counts = Object.fromEntries(BOARD_ORDER.map((state) => [state, 0])) as Record<State, number>;
-	for (const item of plain) counts[item.state] += 1;
 	for (const state of BOARD_ORDER) {
 		const group = listed.filter((item) => item.state === state);
-		const total = counts[state];
+		const total = counts.items[state];
 		entries.push({
 			kind: "heading",
+			state,
 			title: `${STATE_TITLE[state]} (${total})`,
 			...(state === "done" && total > group.length ? { note: `latest ${group.length}` } : {}),
 		});
@@ -139,7 +147,7 @@ export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout 
 	}
 
 	if (own.length > 0) {
-		entries.push({ kind: "heading", title: `Session tasks (${own.length})`, note: "this session" });
+		entries.push({ kind: "heading", title: `Session steps (${own.length})`, note: "this session" });
 		for (const task of own) row(taskRow(task));
 	}
 	return { entries, rows, counts };

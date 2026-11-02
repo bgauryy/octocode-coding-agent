@@ -8,12 +8,15 @@ export interface McpServerListing {
 	entry: McpServerEntry;
 	/** Connection state; `connected` when the server's tools are registered. */
 	state: string;
-	/** The server's instructions as the prompt described them (`McpPresentation.describe`). */
-	instructions?: string;
 	/** Whether the block describes tools: some were declared when the prompt described the server. */
 	declared: boolean;
-	/** The server's generated TypeScript file restricted to the thin tools the block describes. */
-	file?: string;
+	/**
+	 * What the prompt described of the server (`McpPresentation.describe`): its instructions and each described tool's
+	 * description and schema.
+	 */
+	contract?: string;
+	/** The prompt described the server before its catalog was known (it had not connected yet). */
+	pending?: boolean;
 	/** Tools the block describes that are not declared now (hidden, or no longer offered). */
 	undeclared?: readonly string[];
 }
@@ -28,33 +31,44 @@ const listedServers = (servers: readonly McpServerListing[]) =>
 const attribute = (value: string): string => value.replace(/[<>"&\r\n]/g, "_");
 const oneLine = (value: string | undefined): string => value?.replace(/\s+/g, " ").trim() ?? "";
 
-/** One server's contract: its generated file, or the instructions once when declarations carry the full schemas. */
-function contractOf(server: McpServerListing): string {
-	if (server.file) return server.file;
-	const instructions = server.instructions?.trim();
-	return [
-		"Its tool declarations carry the full descriptions and schemas.",
-		...(instructions ? [instructions] : []),
-	].join("\n");
-}
+/** The one line of a block that has no contract: the server had not connected when the prompt described it, or none of its tools is enabled for this agent. */
+const NOT_CONNECTED = "Not connected yet: its instructions and tools are listed here once it connects.";
+const NO_TOOLS = "None of its tools is enabled for this agent.";
 
 /**
  * The `mcps` section: one block per enabled server in server order, each with its name, its tool prefix
- * (`mcp__<name>__*`), its one-line purpose (the configured description) and, when the block describes tools, its
- * contract: the generated file (instructions and typed signatures of its thin tools), or without a file (`json`
- * presentation, or tools the file does not describe) the instructions once, since the declarations then carry the full
- * schemas. A block never names connection state (`renderMcpStatusSection` does), so it changes only when its server
- * is added or removed, its description changes, or its catalog is first described or renewed (`McpPresentation`).
- * Undefined without an enabled server.
+ * (`mcp__<name>__*`) and its contract: the server's own instructions and, for each tool enabled for this agent, its
+ * description and schema (`McpPresentation.describe`; the same for every server, preset or configured). The one-line
+ * purpose (the configured description) is stated once: in the `tools` overview for a server with described tools
+ * (`mcpServerPurposes`), in its block otherwise. A server the prompt described before it connected says so in one
+ * line, as does a connected one with no tool enabled. A block never names connection state
+ * (`renderMcpStatusSection` does), so it changes only when its server is added or removed, its description changes,
+ * or its catalog is first described or renewed. Undefined without an enabled server.
  */
 export function renderMcpsSection(servers: readonly McpServerListing[]): string | undefined {
 	const blocks = listedServers(servers).map((server) => {
-		const purpose = oneLine(server.entry.config.description);
 		const open = `<mcp name="${attribute(server.entry.name)}" tools="${mcpNamespace(server.entry.name)}__*">`;
-		if (!server.declared) return `${open}${purpose}</mcp>`;
-		return [open, ...(purpose ? [purpose] : []), contractOf(server), "</mcp>"].join("\n");
+		if (!server.declared) {
+			const purpose = oneLine(server.entry.config.description);
+			return [open, ...(purpose ? [purpose] : []), server.pending ? NOT_CONNECTED : NO_TOOLS, "</mcp>"].join("\n");
+		}
+		return [open, ...(server.contract ? [server.contract] : []), "</mcp>"].join("\n");
 	});
 	return blocks.length > 0 ? blocks.join("\n") : undefined;
+}
+
+/**
+ * The purposes the `tools` overview carries (`BuildSystemPromptOptions.mcpServers`): each enabled server whose block
+ * describes tools and that has a description, keyed by tool namespace. It follows the same listing fact as the block
+ * (tools described, never connection state), so it changes exactly when the block does.
+ */
+export function mcpServerPurposes(servers: readonly McpServerListing[]): Record<string, string> {
+	return Object.fromEntries(
+		listedServers(servers).flatMap((server) => {
+			const purpose = oneLine(server.entry.config.description);
+			return server.declared && purpose ? [[mcpNamespace(server.entry.name), purpose]] : [];
+		}),
+	);
 }
 
 /**

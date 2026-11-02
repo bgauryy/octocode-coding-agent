@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, test, vi } from "vitest";
 import { type Component, Container, type Focusable, type TUI } from "../../tui/src/tui.ts";
 import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
-import type { AutocompleteProviderFactory } from "../src/core/extensions/types.ts";
+import type { AutocompleteProviderFactory } from "../src/core/features/types.ts";
 import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import { setMcpSessionStatus } from "../../mcp/src/status.ts";
 import type { QuietStartup } from "../src/core/settings-manager.ts";
@@ -737,6 +737,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		skillDiagnostics?: Array<{ type: "warning" | "error" | "collision"; message: string }>;
 		useRealScopeGroups?: boolean;
 		events?: EventBus;
+		extensionWarnings?: Array<{ path: string; warning: string; listedInContext?: boolean }>;
 	}) {
 		const fakeThis: any = {
 			options: { verbose: options.verbose ?? false },
@@ -746,6 +747,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 			chatContainer: new Container(),
 			settingsManager: {
 				getQuietStartup: () => options.quietStartup,
+				isProjectTrusted: () => true,
+				getSettings: () => ({}),
 			},
 			sessionManager: {
 				getCwd: () => options.cwd ?? "/tmp/project",
@@ -767,7 +770,12 @@ describe("InteractiveMode.showLoadedResources", () => {
 						diagnostics: options.skillDiagnostics ?? [],
 					}),
 					getPrompts: () => ({ prompts: [], diagnostics: [] }),
-					getExtensions: () => ({ extensions: options.extensions ?? [], errors: [], runtime: {} }),
+					getExtensions: () => ({
+						extensions: options.extensions ?? [],
+						errors: [],
+						warnings: options.extensionWarnings,
+						runtime: {},
+					}),
 					getThemes: () => ({ themes: [], diagnostics: [] }),
 				},
 			},
@@ -926,10 +934,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toMatch(/^Skills\s+1/m);
-		// Names are for ctrl+o: collapsed, the section is one count row.
-		expect(output).toMatch(/Skills\s+1\s+.* ?to list/);
+		// Names are for ctrl+o: collapsed, the section is one row with a count and where the skills came from.
+		expect(output).toMatch(/Skills\s+1\s+other 1/);
 		expect(output).not.toContain("commit");
-		expect(output).not.toContain("resource-list");
 	});
 
 	test("shows full resource listing when expanded", () => {
@@ -945,8 +952,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toMatch(/^Skills\s+1/m);
-		expect(output).toContain("resource-list");
-		expect(output).not.toContain("commit");
+		expect(output).toMatch(/commit\s+\/tmp\/skill\/SKILL\.md/);
 	});
 
 	test("shows full resource listing on verbose startup even when tool output is collapsed", () => {
@@ -963,8 +969,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toMatch(/^Skills\s+1/m);
-		expect(output).toContain("resource-list");
-		expect(output).not.toContain("commit");
+		expect(output).toMatch(/commit\s+\/tmp\/skill\/SKILL\.md/);
 	});
 
 	test("shows current MCP states after skills and repaints only that row when they change", () => {
@@ -1035,7 +1040,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index"`,
+			`
+			"Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1081,7 +1089,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  3  alpha/one, beta/one, gamma/one"`,
+			`
+			"Extensions  3  alpha/one, beta/one, gamma/one
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1109,7 +1120,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  1  plan-mode"`,
+			`
+			"Extensions  1  plan-mode
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1137,7 +1151,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  1  plan-mode"`,
+			`
+			"Extensions  1  plan-mode
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1174,7 +1191,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  2  plan-mode, webfetch.ts"`,
+			`
+			"Extensions  2  plan-mode, webfetch.ts
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1211,7 +1231,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  2  bar, foo"`,
+			`
+			"Extensions  2  bar, foo
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1248,7 +1271,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  2  alpha/tools, beta/tools"`,
+			`
+			"Extensions  2  alpha/tools, beta/tools
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1276,7 +1302,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  1  main.ts"`,
+			`
+			"Extensions  1  main.ts
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1307,7 +1336,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  1  pi-markdown-preview"`,
+			`
+			"Extensions  1  pi-markdown-preview
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1344,7 +1376,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  2  primary-package, primary-package:../sibling-package"`,
+			`
+			"Extensions  2  primary-package, primary-package:../sibling-package
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1384,7 +1419,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
-			`"Extensions  2  primary-package, primary-package:../sibling-package"`,
+			`
+			"Extensions  2  primary-package, primary-package:../sibling-package
+			( to expand)"
+		`,
 		);
 	});
 
@@ -1437,7 +1475,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
 		expect(output).toMatch(/^Context\s+\d/m);
-		expect(output).toContain("~/.octocode/agent/AGENTS.md, AGENTS.md");
+		expect(output).toContain("project AGENTS.md ×2");
 		expect(output).not.toContain(`${cwd.replace(/\\/g, "/")}/AGENTS.md`);
 	});
 
@@ -1457,7 +1495,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
 		expect(output).toMatch(/^Context\s+\d/m);
-		expect(output).toContain(".octocode/SYSTEM.md, .octocode/APPEND_SYSTEM.md, AGENTS.md");
+		expect(output).toContain("path SYSTEM.md · path APPEND_SYSTEM.md · project AGENTS.md");
 	});
 
 	test("shows full context paths when expanded", () => {
@@ -1481,7 +1519,38 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(output).toMatch(/^Context\s+\d/m);
 		expect(output).toContain("~/.octocode/agent/AGENTS.md");
 		expect(output).toContain("~/Development/octocodecode/AGENTS.md");
-		expect(output).not.toContain("~/.octocode/agent/AGENTS.md, AGENTS.md");
+		expect(output).toContain("project");
+	});
+
+	test("hints ctrl+o to expand while the listing is collapsed, and not once it is expanded", () => {
+		const contextFiles = [{ path: path.join(homedir(), ".octocode", "agent", "AGENTS.md") }];
+		const collapsed = createShowLoadedResourcesThis({ quietStartup: false, contextFiles });
+		loadedResources.showLoadedResources(createFakeHost(collapsed), { force: true });
+		expect(renderAll(collapsed.loadedResourcesContainer)).toMatch(/\(.*to expand\)/);
+		const expanded = createShowLoadedResourcesThis({ quietStartup: false, contextFiles, toolOutputExpanded: true });
+		loadedResources.showLoadedResources(createFakeHost(expanded), { force: true });
+		expect(renderAll(expanded.loadedResourcesContainer)).not.toContain("to expand");
+		// Toggling the transcript expansion updates the hint in place.
+		for (const child of collapsed.loadedResourcesContainer.children)
+			(child as { setExpanded?(expanded: boolean): void }).setExpanded?.(true);
+		expect(renderAll(collapsed.loadedResourcesContainer)).not.toContain("to expand");
+	});
+
+	test("lists a Pi extension that is not loaded once, without the extension issues block", () => {
+		const fakeThis = createShowLoadedResourcesThis({
+			quietStartup: false,
+			extensionWarnings: [
+				{ path: "/tmp/.pi/agent/extensions/legacy.ts", warning: "Pi extension, not loaded.", listedInContext: true },
+			],
+		});
+		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: true });
+		expect(renderAll(fakeThis.loadedResourcesContainer)).not.toContain("Extension issues");
+		const other = createShowLoadedResourcesThis({
+			quietStartup: false,
+			extensionWarnings: [{ path: "/tmp/pkg/ext.ts", warning: "Ignored extension shipped by package." }],
+		});
+		loadedResources.showLoadedResources(createFakeHost(other), { force: true });
+		expect(renderAll(other.loadedResourcesContainer)).toContain("Extension issues");
 	});
 
 	test("does not show verbose listing on quiet startup during reload", () => {

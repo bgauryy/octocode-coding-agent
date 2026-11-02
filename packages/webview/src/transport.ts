@@ -22,6 +22,12 @@ function record(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
+/**
+ * Connections in a row that may close before their first frame while the status still reads as connecting; after
+ * that the page says the session keeps dropping it (an error) rather than showing a skeleton that never finishes.
+ */
+const SILENT_CLOSE_LIMIT = 3;
+
 /** Transport lifecycle belongs to the view: closing a connection never sends abort. */
 export class BrowserConnection {
 	readonly stream = new ApplicationStream();
@@ -29,6 +35,8 @@ export class BrowserConnection {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private closed = false;
 	private authenticated = false;
+	/** Connections in a row that closed before delivering a frame. */
+	private silentCloses = 0;
 	private delay = 500;
 	private readonly token: string;
 	private readonly observer: Observer;
@@ -120,12 +128,16 @@ export class BrowserConnection {
 		};
 		socket.onclose = (event) => {
 			if (this.closed || socket !== this.socket) return;
+			// A connection that delivered a frame resets the count; one closed before any frame adds to it.
+			this.silentCloses = this.authenticated ? 0 : this.silentCloses + 1;
 			this.socket = undefined;
 			this.authenticated = false;
 			this.observer.status(
 				event.code === 1008
 					? "Access or protocol expired — reopen /web. Showing last received state."
-					: "Disconnected · reconnecting… If the session ended, open /web in a running terminal.",
+					: this.silentCloses >= SILENT_CLOSE_LIMIT
+						? "The session keeps closing the connection before sending anything. Still retrying; run /web again in the terminal if this stays."
+						: "Disconnected · reconnecting… If the session ended, open /web in a running terminal.",
 			);
 			if (event.code !== 1008) {
 				this.timer = setTimeout(() => this.open(), this.delay);

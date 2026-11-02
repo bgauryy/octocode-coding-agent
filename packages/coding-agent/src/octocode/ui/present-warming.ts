@@ -1,5 +1,5 @@
 import { CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS } from "../../core/cache-warmer/economics.ts";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 
 /** Whether the user is at the terminal, as the notifier sees it (focus reports, else keypresses). */
 export interface Presence {

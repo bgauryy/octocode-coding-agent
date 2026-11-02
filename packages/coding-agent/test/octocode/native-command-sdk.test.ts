@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
@@ -26,15 +26,13 @@ it("loads one native command per canonical name through the real SDK", async () 
 		cwd,
 		agentDir,
 		settingsManager,
-		additionalExtensionPaths: ["builtin:mcp", "builtin:llama.cpp"],
-		noExtensions: true,
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		resourceLoader,

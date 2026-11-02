@@ -1,11 +1,17 @@
 import { modelsAreEqual } from "@octocodeai/octocode-ai";
 import type { Args } from "../cli/args.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../core/agent-session-services.ts";
+import type { CreateSessionFromServicesOptions } from "../core/agent-session/create-session.ts";
 import { resolveCliModel, type ScopedModel } from "../core/model-resolver.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
-import type { CreateAgentSessionOptions } from "../core/sdk/types.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { isLocalPath, resolvePath } from "../../../common/src/paths.ts";
+
+/** Model, thinking and tool selection the command line resolves for the session it starts. */
+export type CliSessionOptions = Pick<
+	CreateSessionFromServicesOptions,
+	"model" | "thinkingLevel" | "scopedModels" | "noTools" | "tools" | "excludeTools" | "customTools"
+>;
 
 export function buildSessionOptions(
 	parsed: Args,
@@ -14,11 +20,11 @@ export function buildSessionOptions(
 	modelRuntime: ModelRuntime,
 	settingsManager: SettingsManager,
 ): {
-	options: CreateAgentSessionOptions;
+	options: CliSessionOptions;
 	cliThinkingFromModel: boolean;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
 } {
-	const options: CreateAgentSessionOptions = {};
+	const options: CliSessionOptions = {};
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
 	let cliThinkingFromModel = false;
 
@@ -94,7 +100,7 @@ export function buildSessionOptions(
 	}
 
 	// API key from CLI - set as a non-persistent runtime override
-	// (handled by caller before createAgentSession)
+	// (handled by caller before the session is created)
 
 	// Tools
 	if (parsed.noTools) {

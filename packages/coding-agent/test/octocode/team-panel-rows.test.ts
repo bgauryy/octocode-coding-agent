@@ -55,7 +55,7 @@ describe("agents panel rows", () => {
 
 	it("roots the tree at this session: its name and role, then the team's state, tokens and cost", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
-		expect(squash(lines[0])).toBe(" ● tidal-whale main 2 working · 1 idle · 527k tok · ≈$1.23");
+		expect(squash(lines[0])).toBe(" ● tidal-whale main claude-sonnet-4-5 2 working · 1 idle · 527k tok · ≈$1.23");
 		expect(lines.join("\n")).not.toMatch(/^ agents/m);
 	});
 

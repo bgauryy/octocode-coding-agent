@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { Type } from "typebox";
-import type { ToolInvocation, ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolInvocation, ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";

@@ -2,21 +2,24 @@ import {
 	type Completion,
 	EntityFields,
 	type EntityInput,
+	isItemType,
 	ITEM_TYPES,
-	itemTypeInput,
 } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText, visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
+import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
-import { entityFields, type LinkArgument, linkInput, withLegacyType } from "./tool-schema.ts";
+import { entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
+import { withReason } from "../shared/reason.ts";
 import { type Item, PRIORITIES } from "./store.ts";
 import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-text.ts";
+import { styleBacklogLines } from "./tool-style.ts";
 import { clip } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { DEFAULT_LIST_LIMIT, listFields, type ListParams, MAX_LIST_LIMIT, runList } from "./tool-list.ts";
@@ -111,9 +114,13 @@ export function registerBacklogTool(
 				name: "backlog",
 				label: "Backlog",
 				...prompt,
+				// A child declares `backlog` only when its task names the item it may update (BACKLOG_ITEM_ENV, set by the parent):
+				// without one it has nothing to update and puts follow-ups in its report. Registered either way, so the store
+				// rules and RPC callers are unchanged; the main session always declares it.
+				defaultActive: !subagent || Boolean((options.env ?? process.env)[BACKLOG_ITEM_ENV]),
 				parameters,
 				// One release still takes the old item type `task`: it is mapped in `execute`, which says so.
-				validationParameters: withLegacyType(parameters),
+				validationParameters: withReason(parameters),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
 					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
@@ -122,19 +129,15 @@ export function registerBacklogTool(
 						(key) => !Object.hasOwn(parameters.properties, key) && !Object.hasOwn(EntityFields, key),
 					);
 					if (unknown.length) throw new Error(`Unknown backlog fields: ${unknown.join(", ")}.`);
-					const legacy = rest.type === undefined ? undefined : itemTypeInput(rest.type);
-					if (rest.type !== undefined && !legacy)
+					if (rest.type !== undefined && !isItemType(rest.type))
 						throw new Error(`Unknown item type ${visibleControls(rest.type)}: use ${ITEM_TYPES.join(", ")}.`);
 					const backlog = openBacklog(ctx, options);
 					const result = run(backlog, {
 						...rest,
-						...(legacy ? { type: legacy.type } : {}),
 						...(links !== undefined ? { links: linkInput(links, backlog.store.repo) } : {}),
 					});
 					if (params.op !== "list" && params.op !== "get") options.changed?.(ctx);
-					if (!legacy?.legacy) return result;
-					const notice = `\nNote: type ${legacy.legacy} is now ${legacy.type}; use ${legacy.type}.`;
-					return { ...result, content: [{ type: "text" as const, text: contentText(result.content) + notice }] };
+					return result;
 				},
 				renderCall(args, theme, context) {
 					const target = [
@@ -156,9 +159,11 @@ export function registerBacklogTool(
 						? (text.split("\n", 1)[0] ?? "")
 						: backlogSummary(context.args?.op, details, text);
 					const firstIsSummary = context.isError || (context.args?.op !== "list" && context.args?.op !== "get");
+					const body = firstIsSummary ? text.split("\n").slice(1).join("\n") : text;
 					return resultBlock(theme, context, {
 						summary,
-						body: firstIsSummary ? text.split("\n").slice(1).join("\n") : text,
+						// Item and task lines get the board's colours; the text is the one the model read.
+						...(context.isError ? { body } : { lines: body ? styleBacklogLines(theme, body) : [] }),
 						...timingOf(result.details),
 					});
 				},

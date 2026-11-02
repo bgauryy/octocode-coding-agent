@@ -26,7 +26,7 @@ describe("native Octocode runtime", () => {
 			cwd: root,
 			agentDir: join(root, "agent"),
 			settingsManager: SettingsManager.inMemory(),
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 		});
 		for (let pass = 0; pass < 2; pass++) {
 			await loader.reload();

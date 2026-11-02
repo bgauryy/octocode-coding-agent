@@ -11,26 +11,30 @@ export function teamTask(task: string, parentId: string, others: Array<[string, 
 	return `${task}\n\n${renderInstruction("subagent/team.md", { parentId, teammates })}`;
 }
 
+/** The facts that identify one child to itself; the parent sets them at spawn and may change the assignment on resume. */
+export interface ChildIdentity {
+	id: string;
+	role?: string;
+	goal?: string;
+	/** Why the parent started this run: the `reason` of the agent call that started or resumed it. */
+	why?: string;
+	parentId?: string;
+	scratch?: string;
+	isolation?: { path: string; repo: string; cwd: string };
+	/** The backlog item the parent started it for: the only one it may update. */
+	item?: string;
+	/** The run mode: true for a background run, false for a foreground run; omitted, the identity names none. */
+	background?: boolean;
+}
+
 /**
- * The facts only this child has, and the report contract (`report.ts`), rendered from `subagent/identity.md`. They ride
- * in its task, not its system prompt, so every child of one profile shares a cached prompt prefix. `archive` is the
- * library of the parent's compacted history (`shared/archive.ts`), given only when the parent has one; the child reads
- * it with the `archive` tool, nothing may change it.
+ * The facts only this child has, and the report contract (`report.ts`), rendered from `subagent/identity.md` after the
+ * optional worktree note (`subagent/worktree.md`) and why it was started (`subagent/why.md`). It is the exact text `withIdentity` appends to a task, so it can be
+ * sent again on its own (after a compaction) without a second template. `archive` is the library of the parent's
+ * compacted history (`shared/archive.ts`), given only when the parent has one; the child reads it with the `archive`
+ * tool, nothing may change it.
  */
-export function withIdentity(
-	task: string,
-	identity: {
-		id: string;
-		role?: string;
-		goal?: string;
-		parentId?: string;
-		scratch?: string;
-		isolation?: { path: string; repo: string; cwd: string };
-		/** The backlog item the parent started it for: the only one it may update. */
-		item?: string;
-	},
-	archive?: { library: string },
-): string {
+export function identityBlock(identity: ChildIdentity, archive?: { library: string }): string {
 	const you = renderInstruction("subagent/identity.md", {
 		id: identity.id,
 		role: identity.role,
@@ -38,13 +42,33 @@ export function withIdentity(
 		parentId: identity.parentId,
 		scratch: identity.scratch ? shortPath(identity.scratch) : undefined,
 		item: identity.item,
+		runMode: identity.background !== undefined,
+		background: identity.background === true,
 		archive: Boolean(archive),
 		archiveDir: archive ? path.dirname(archive.library) : undefined,
 		libraryFile: LIBRARY_FILE,
 		archiveSearch: archive ? archiveSearch() : undefined,
 		report: reportContract(),
 	});
-	return `${task}${worktreeNote(identity.isolation)}\n\n${you}`;
+	const why = sentence(identity.why);
+	return [worktreeNote(identity.isolation), why ? renderInstruction("subagent/why.md", { why }) : "", you]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
+/** `text` on one line, ending as a sentence ends; undefined when blank. */
+function sentence(text: string | undefined): string | undefined {
+	const line = text?.replace(/\s+/g, " ").trim();
+	if (!line) return undefined;
+	return /[.!?]$/.test(line) ? line : `${line}.`;
+}
+
+/**
+ * A child's task followed by its identity (`identityBlock`). The identity rides in the task, not the system prompt, so
+ * every child of one profile shares a cached prompt prefix.
+ */
+export function withIdentity(task: string, identity: ChildIdentity, archive?: { library: string }): string {
+	return `${task}\n\n${identityBlock(identity, archive)}`;
 }
 
 /**
@@ -54,5 +78,5 @@ export function withIdentity(
 function worktreeNote(isolation: { path: string; repo: string; cwd: string } | undefined): string {
 	if (!isolation) return "";
 	const shown = rebasePath(isolation.cwd, { worktree: isolation.path, root: isolation.repo });
-	return `\n\n${renderInstruction("subagent/worktree.md", { cwd: isolation.cwd, shown })}`;
+	return renderInstruction("subagent/worktree.md", { cwd: isolation.cwd, shown });
 }

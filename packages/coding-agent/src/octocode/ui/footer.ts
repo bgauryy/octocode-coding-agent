@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText, styledLine } from "../../../../common/src/sanitize.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { StatusEntry } from "../../core/footer-data-provider.ts";
 import { paintStatus } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
@@ -19,7 +19,8 @@ import {
 	type UsageTotals,
 	unpricedModel,
 } from "../shared/util.ts";
-import { entrySpend, shortThinking } from "./footer/spend.ts";
+import { SpendScan } from "../shared/spend.ts";
+import { shortThinking } from "./footer/spend.ts";
 import { registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
 
 /**
@@ -290,7 +291,12 @@ export function registerFooter(api: ExtensionAPI): void {
 		version += 1;
 		repaint?.();
 	};
-	const addSummary = (entry: unknown, ctx: ExtensionContext) => add(entrySpend(entry), ctx);
+	const scan = new SpendScan();
+	const addEntry = (entry: unknown, ctx: ExtensionContext) => add(scan.entry(entry), ctx);
+	/** Spend recorded outside a reply (a compaction summary, a cache refresh, a side question) since the last look. */
+	const addRecorded = (ctx: ExtensionContext) => {
+		for (const spend of scan.recorded(ctx.sessionManager.getEntries())) add(spend, ctx);
+	};
 	const countCompactions = (ctx: ExtensionContext) => {
 		state.compactions = ctx.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
 	};
@@ -326,7 +332,8 @@ export function registerFooter(api: ExtensionAPI): void {
 		state.runMs = undefined;
 		countCompactions(ctx);
 		state.usage = emptyTotals();
-		for (const entry of ctx.sessionManager.getEntries()) add(entrySpend(entry), ctx);
+		scan.reset();
+		for (const entry of ctx.sessionManager.getEntries()) addEntry(entry, ctx);
 		sample(ctx);
 		ctx.ui.setFooter((tui, theme, data) => {
 			repaint = () => tui.requestRender();
@@ -358,12 +365,14 @@ export function registerFooter(api: ExtensionAPI): void {
 		const spend = spendOf(event.message);
 		add(spend, ctx);
 		// Context usage walks the session: only a reply changes it. A subagent's result or report only adds usage.
-		if (event.message.role === "assistant") sample(ctx);
-		else if (spend) repaint?.();
+		if (event.message.role === "assistant") {
+			addRecorded(ctx);
+			sample(ctx);
+		} else if (spend) repaint?.();
 	});
 	api.on("session_tree", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
-		addSummary(event.summaryEntry, ctx);
+		addEntry(event.summaryEntry, ctx);
 		await refresh(event, ctx);
 	});
 	api.on("model_select", refresh);
@@ -371,7 +380,8 @@ export function registerFooter(api: ExtensionAPI): void {
 	api.on("session_compact", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		countCompactions(ctx);
-		addSummary(event.compactionEntry, ctx);
+		addEntry(event.compactionEntry, ctx);
+		addRecorded(ctx);
 		await refresh(event, ctx);
 	});
 	api.on("agent_start", async (_event, ctx) => {
@@ -382,6 +392,9 @@ export function registerFooter(api: ExtensionAPI): void {
 	});
 	api.on("agent_settled", async () => stop());
 	api.on("session_shutdown", async () => stop());
-	api.on("agent_end", refresh);
+	api.on("agent_end", async (event, ctx) => {
+		if (ctx.hasUI && ctx.mode === "tui") addRecorded(ctx);
+		await refresh(event, ctx);
+	});
 	api.on("session_info_changed", refresh);
 }

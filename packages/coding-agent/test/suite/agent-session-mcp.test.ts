@@ -5,7 +5,7 @@ import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/c
 import { createInMemoryTransportPair } from "../../../mcp/src/client/testing/index.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
+import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import type { McpExposure, McpServerEntry } from "../../../mcp/src/config.ts";
 import type { McpPresentationMode } from "../../../mcp/src/presentation/index.ts";
@@ -239,6 +239,23 @@ describe("AgentSession MCP integration", () => {
 	function nestedToolNames(harness: Harness): string[] {
 		return harness.session.getCallableToolNames();
 	}
+
+	/** The provider declaration the model currently has for a tool. */
+	function declaredTool(harness: Harness, name: string) {
+		return getCurrentTools(harness.session.messages).find((tool) => tool.name === name);
+	}
+
+	/** A tool's block in `json` notation: its call name, its full description, and its schemas exactly as the server sent them. */
+	function plainToolBlock(server: string, tool: (typeof SERVER_TOOLS)[number] & { description: string }): string {
+		return [
+			`// mcp__${server}__${tool.name}`,
+			tool.description,
+			`Input schema (JSON Schema): ${JSON.stringify(tool.inputSchema)}`,
+			...("outputSchema" in tool ? [`Output schema (JSON Schema): ${JSON.stringify(tool.outputSchema)}`] : []),
+		].join("\n");
+	}
+
+	const NOT_CONNECTED = "Not connected yet: its instructions and tools are listed here once it connects.";
 
 	it("configures servers through slash subcommands and publishes enabled and connection state", async () => {
 		let api: ExtensionAPI | undefined;
@@ -509,11 +526,21 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.prompt("go");
 
 		const section = serversSection(harness);
+		// The block holds the instructions once, then every tool in plain form: description and JSON Schema as sent.
 		expect(section).toContain(
-			'<mcp name="docs" tools="mcp__docs__*">\nIts tool declarations carry the full descriptions and schemas.\nDocs search.\nLong guidance.',
+			'<mcp name="docs" tools="mcp__docs__*">\n// MCP server "docs" · call a tool by the name on its // line, with the input object.\nDocs search.\nLong guidance.\n',
 		);
+		for (const tool of SERVER_TOOLS) expect(section).toContain(plainToolBlock("docs", tool));
+		expect(section).not.toContain("Its tool declarations carry");
 		expect(section?.match(/Docs search\./g)).toHaveLength(1);
 		expect(section).not.toContain("tool_search");
+		expect(section).not.toContain("declare namespace");
+		// The provider declaration stays thin: the block, not the declaration, carries the full contract.
+		expect(declaredTool(harness, "mcp__docs__search")).toMatchObject({
+			description: "Search the docs.",
+			parameters: { type: "object", properties: { query: { type: "string" } }, additionalProperties: true },
+		});
+		expect(JSON.stringify(declaredTool(harness, "mcp__docs__search")?.parameters)).not.toContain("required");
 	});
 
 	it("places the `mcps` section in the base sections, ahead of the session's own sections", async () => {
@@ -528,7 +555,7 @@ describe("AgentSession MCP integration", () => {
 		expect(first?.sections?.[MCPS_SECTION]).toContain('<mcp name="docs" tools="mcp__docs__*">');
 	});
 
-	it("caches full default contracts and instructions without repeating them on an unchanged prompt (json)", async () => {
+	it("caches thin declarations, the plain tool blocks and instructions on an unchanged prompt (json)", async () => {
 		const instructions = `First rule.\n${"Detailed server guidance.\n".repeat(400)}FINAL_RULE`;
 		const description = `Search exactly.\n${"Full tool guidance.\n".repeat(60)}FINAL_DESCRIPTION`;
 		const tools = [{ ...SERVER_TOOLS[0], description }, ...SERVER_TOOLS.slice(1)];
@@ -542,17 +569,25 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.prompt("first");
 		const initial = harness.session.messages.filter((m): m is SystemMessage => m.role === "system");
 		const declarations = initial.flatMap((m) => m.toolsAdded ?? []);
+		// The declaration is thin in `json` mode too: the first sentence and the top-level field types.
 		const search = declarations.find((t) => t.name === "mcp__docs__search");
 		expect(search).toMatchObject({
-			description: `${description}\n\nServer result schema:\n${JSON.stringify(SERVER_TOOLS[0].outputSchema)}`,
-			parameters: SERVER_TOOLS[0].inputSchema,
+			description: "Search exactly.",
+			parameters: { type: "object", properties: { query: { type: "string" } }, additionalProperties: true },
 		});
+		expect(JSON.stringify(search)).not.toContain("FINAL_DESCRIPTION");
 		expect(declarations.map((t) => t.name)).not.toContain("mcp__docs__fail");
 		expect(declarations.map((t) => t.name)).not.toContain("mcp__docs__shot");
-		expect(serversSection(harness)).toContain(instructions);
-		expect(serversSection(harness)?.match(/FINAL_RULE/g)).toHaveLength(1);
-		expect(serversSection(harness)).not.toContain("tool_search");
-		expect(serversSection(harness)).not.toContain("declared: fail");
+		// The block carries the full description and schemas once, and the instructions once.
+		const section = serversSection(harness);
+		expect(section).toContain(instructions);
+		expect(section).toContain(plainToolBlock("docs", tools[0]));
+		expect(section?.match(/FINAL_RULE/g)).toHaveLength(1);
+		expect(section?.match(/FINAL_DESCRIPTION/g)).toHaveLength(1);
+		expect(section).not.toContain("// mcp__docs__fail");
+		expect(section).not.toContain("// mcp__docs__shot");
+		expect(section).not.toContain("tool_search");
+		expect(section).not.toContain("declared: fail");
 		await harness.session.prompt("second");
 		expect(harness.session.messages.filter((m) => m.role === "system")).toEqual(initial);
 	});
@@ -599,7 +634,7 @@ describe("AgentSession MCP integration", () => {
 	});
 
 	it.each([
-		["json", "Its tool declarations carry"],
+		["json", "// mcp__docs__search\nSearch the docs.\nInput schema (JSON Schema): "],
 		["compact", "function search("],
 	] as const)(
 		"keeps the block while one of the server's tools stays selected, and names the others in the status (%s)",
@@ -671,8 +706,9 @@ describe("AgentSession MCP integration", () => {
 		expect(Date.now() - started).toBeLessThan(1500);
 		expect(getAssistantTexts(harness)).toEqual(["ready"]);
 		const section = serversSection(harness);
-		expect(section).toContain('<mcp name="slow" tools="mcp__slow__*"></mcp>');
+		expect(section).toContain(`<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>`);
 		expect(section).not.toContain("declare namespace");
+		expect(section).not.toContain("// mcp__slow__");
 		expect(serversSection(harness, MCP_STATUS_SECTION)).toContain("- slow: connecting");
 		expect(notifications).toEqual(["MCP servers are still connecting; their tools become available once connected."]);
 	});
@@ -686,7 +722,9 @@ describe("AgentSession MCP integration", () => {
 
 		await harness.session.prompt("first");
 		const first = updates()[0].sections!;
-		expect(first[MCPS_SECTION]).toBe('<mcps>\n<mcp name="slow" tools="mcp__slow__*"></mcp>\n</mcps>');
+		expect(first[MCPS_SECTION]).toBe(
+			`<mcps>\n<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>\n</mcps>`,
+		);
 		expect(first[MCP_STATUS_SECTION]).toContain("- slow: connecting");
 		expect(Object.keys(first).at(-1)).toBe(MCP_STATUS_SECTION);
 
@@ -696,6 +734,8 @@ describe("AgentSession MCP integration", () => {
 		const filled = updates().at(-1)!.sections!;
 		expect(filled).toEqual({ [MCPS_SECTION]: expect.stringContaining("Slow docs. More."), [MCP_STATUS_SECTION]: null });
 		const block = filled[MCPS_SECTION];
+		expect(block).not.toContain(NOT_CONNECTED);
+		expect(block?.match(/Slow docs\./g)).toHaveLength(1);
 
 		// The transport drops: only the status changes; the block keeps its contract.
 		await transports.at(-1)!.close();
@@ -753,7 +793,7 @@ describe("AgentSession MCP integration", () => {
 		expect(section).not.toContain("connecting");
 	});
 
-	it("describes a server with only direct tools by its instructions and full declarations (json)", async () => {
+	it("describes a server with only direct tools by its instructions and plain tool blocks (json)", async () => {
 		const { harness } = await setupSlow(
 			{ exposure: "direct", instructions: "Slow docs.\nSearch, then read.", presentation: "json" },
 			0,
@@ -764,9 +804,16 @@ describe("AgentSession MCP integration", () => {
 
 		const section = serversSection(harness);
 		expect(section).toContain(
-			"Its tool declarations carry the full descriptions and schemas.\nSlow docs.\nSearch, then read.",
+			'<mcp name="slow" tools="mcp__slow__*">\n// MCP server "slow" · call a tool by the name on its // line, with the input object.\nSlow docs.\nSearch, then read.\n',
 		);
+		for (const tool of SERVER_TOOLS) expect(section).toContain(plainToolBlock("slow", tool));
+		expect(section).not.toContain("Its tool declarations carry");
+		expect(section?.match(/Slow docs\./g)).toHaveLength(1);
 		expect(section).not.toContain("tool_search");
+		expect(declaredTool(harness, "mcp__slow__search")).toMatchObject({
+			description: "Search the docs.",
+			parameters: { additionalProperties: true },
+		});
 	});
 
 	it("describes a server with only direct tools by its generated contract (compact)", async () => {
@@ -1019,7 +1066,7 @@ describe("AgentSession MCP tools after resume and reload", () => {
 		};
 		const harness = await createHarness({ resourceLoader, sessionManager });
 		harnesses.push(harness);
-		// A resumed session starts from its transcript, like `createAgentSession` does.
+		// A resumed session starts from its transcript, like `createTestSession` does.
 		if (sessionManager) harness.session.agent.state.messages = sessionManager.buildSessionContext().messages;
 		// `/reload` emits session_start only to bound extensions.
 		await harness.session.bindExtensions({ uiContext: createTestUiContext() });

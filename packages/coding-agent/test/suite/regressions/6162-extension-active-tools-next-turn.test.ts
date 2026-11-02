@@ -7,7 +7,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI, ExtensionFactory } from "../../../src/index.ts";
+import type { ExtensionAPI, ExtensionFactory } from "../../../src/core/features/index.ts";
 import { createHarness } from "../harness.ts";
 
 function getProviderToolNames(context: TranscriptContext): string[] {

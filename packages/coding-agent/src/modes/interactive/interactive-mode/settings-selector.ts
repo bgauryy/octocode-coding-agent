@@ -75,7 +75,6 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				treeFilterMode: host.settingsManager.getTreeFilterMode(),
 				showHardwareCursor: host.settingsManager.getShowHardwareCursor(),
 				showCacheMissNotices: host.settingsManager.getShowCacheMissNotices(),
-				defaultProjectTrust: host.settingsManager.getDefaultProjectTrust(),
 				editorPaddingX: host.settingsManager.getEditorPaddingX(),
 				outputPad: host.settingsManager.getOutputPad(),
 				autocompleteMaxVisible: host.settingsManager.getAutocompleteMaxVisible(),
@@ -194,9 +193,6 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				},
 				onQuietStartupChange: (quiet) => {
 					host.settingsManager.setQuietStartup(quiet);
-				},
-				onDefaultProjectTrustChange: (defaultProjectTrust) => {
-					host.settingsManager.setDefaultProjectTrust(defaultProjectTrust);
 				},
 				onDoubleEscapeActionChange: (action) => {
 					host.settingsManager.setDoubleEscapeAction(action);

@@ -6,6 +6,8 @@
  * Connections come from `sharedAgentDb` (one per process and file) or `openAgentDb`; transactions stay with
  * `AgentDb.transaction`.
  */
+export * as agentEvents from "./queries/agent-events.ts";
+export * as compactions from "./queries/compactions.ts";
 export * as agents from "./queries/agents.ts";
 export * as deliveries from "./queries/deliveries.ts";
 export * as leases from "./queries/leases.ts";
@@ -19,6 +21,7 @@ export * as commands from "./queries/commands.ts";
 export * as meta from "./queries/meta.ts";
 export * as configAudits from "./queries/config-audits.ts";
 export * as history from "./queries/history.ts";
+export * as trust from "./queries/trust.ts";
 export { type AgentDb, type Db, dbStamp, openAgentDb, sharedAgentDb } from "./db.ts";
 export { AgentDbError } from "./schema.ts";
 export { USER_AUTHOR } from "./author.ts";
@@ -32,3 +35,4 @@ export type { SessionLinks } from "./queries/session-links.ts";
 export type { CatalogEntry, CatalogRow, SessionExtra } from "./queries/sessions.ts";
 export type { ConfigAuditEntry } from "./queries/config-audits.ts";
 export type { HistoryTable } from "./queries/history.ts";
+export type { FolderDecision, FolderGrantRow, FolderIdentity } from "./queries/trust.ts";

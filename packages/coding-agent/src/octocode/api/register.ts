@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

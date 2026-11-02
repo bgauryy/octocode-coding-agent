@@ -1,4 +1,4 @@
-import { BASH_TOOL, READ_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
+import { BASH_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
 import { isOctocodeReader, isOctocodeSearch } from "../../../mcp/src/presets/octocode/names.ts";
 import { isMcpToolName } from "../../../mcp/src/servers.ts";
 /**
@@ -8,7 +8,6 @@ import { isMcpToolName } from "../../../mcp/src/servers.ts";
 import { getSystemMessageText } from "@octocodeai/octocode-ai";
 import { dirname } from "node:path";
 import { getReadmePath } from "../config.ts";
-import { policyRoutesSearchToOctocode } from "../octocode/instructions/policy.ts";
 import { renderInstruction } from "./prompt-template.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 import {
@@ -39,6 +38,13 @@ export interface BuildSystemPromptOptions {
 	 * tools, in declaration order, with or without a custom prompt.
 	 */
 	toolSnippets?: Record<string, string>;
+	/**
+	 * The one-line purpose of each MCP server whose tools are declared, keyed by tool namespace (`mcp__<server>`), from
+	 * the server's own description. Rendered in the `tools` section as `- mcp__<server>__*: purpose` after the native
+	 * tools, in key order, so the first list the model reads names every server. The producer (the MCP extension) sets
+	 * it for servers whose `mcps` block leaves the purpose out, so each purpose is stated once.
+	 */
+	mcpServers?: Record<string, string>;
 	/** Guideline bullets contributed by each tool, keyed by tool name. */
 	toolGuidelines?: Record<string, string[]>;
 	/** Additional guideline bullets appended to the default system prompt rules. */
@@ -71,6 +77,7 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 	selectedTools: string[];
 	hiddenTools: string[];
 	toolSnippets: Record<string, string>;
+	mcpServers: Record<string, string>;
 	toolGuidelines: Record<string, string[]>;
 	promptGuidelines: string[];
 	appendSystemPrompt: string;
@@ -104,6 +111,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		selectedTools: [...(input.selectedTools ?? [BASH_TOOL])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
 		toolSnippets: { ...input.toolSnippets },
+		mcpServers: { ...input.mcpServers },
 		toolGuidelines: Object.fromEntries(
 			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
 		),
@@ -156,15 +164,11 @@ function buildRules(
 
 /** The skill hint's file reader: the skill tool, then Octocode, then bash; `indirect` when only reachable through another tool. */
 function skillReader(selectedTools: string[], declaredTools: string[]): Parameters<typeof formatSkillsForPrompt>[1] {
-	// The skill tool loads a skill by name and needs no file reader, so it comes first. Octocode ships no `read` tool; an
-	// SDK session that declares its own file reader, or reaches one through a hidden tool, lists skills with a hint that
-	// names no tool.
+	// The skill tool loads a skill by name and needs no file reader, so it comes first. Octocode ships no `read` tool.
 	if (declaredTools.includes(SKILL_TOOL)) return SKILL_TOOL;
 	if (declaredTools.some(isOctocodeReader)) return "octocode";
 	if (declaredTools.includes(BASH_TOOL)) return "bash";
-	return declaredTools.includes(READ_TOOL) || selectedTools.includes(BASH_TOOL) || selectedTools.some(isOctocodeReader)
-		? "indirect"
-		: undefined;
+	return selectedTools.includes(BASH_TOOL) || selectedTools.some(isOctocodeReader) ? "indirect" : undefined;
 }
 
 /**
@@ -179,6 +183,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		selectedTools,
 		hiddenTools,
 		toolSnippets,
+		mcpServers,
 		toolGuidelines,
 		promptGuidelines,
 		appendSystemPrompt,
@@ -197,14 +202,21 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	const contents: Record<string, string> = { preamble: customPrompt || renderInstruction("system/preamble.md") };
 	// One line per declared tool that has a snippet, in the order requests declare them (a tool hidden from requests is
 	// left out). A snippet is a fact about the tool, like its declaration, so the list follows the tool set under a
-	// custom prompt too. MCP tools are described in `mcps`, so a snippet on one is ignored. A tool without a snippet is
-	// not listed and the section is absent when none has one: SDK sessions and extension tools set it optionally, while
-	// a test requires it of every native tool.
+	// custom prompt too. MCP tools are described in `mcps`, so a snippet on one is ignored; each server in `mcpServers`
+	// instead gets one `mcp__<server>__*` line after them. A tool without a snippet is not listed and the section is
+	// absent when none has one: SDK sessions and extension tools set it optionally, while a test requires it of every
+	// native tool.
 	const listedTools = declaredTools.filter((name) => !isMcpToolName(name) && !!toolSnippets[name]);
-	contents.tools = listedTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n");
-	// One predicate decides who owns code search: Octocode, when one of its search tools is declared or the policy's
-	// research section already routes search to it (a server still connecting); otherwise bash, when it is declared.
-	const octocodeSearch = declaredTools.some(isOctocodeSearch) || policyRoutesSearchToOctocode(customSections);
+	contents.tools = [
+		...listedTools.map((name) => `- ${name}: ${toolSnippets[name]}`),
+		...Object.entries(mcpServers)
+			.filter(([, purpose]) => purpose)
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			.map(([namespace, purpose]) => `- ${namespace}__*: ${purpose}`),
+	].join("\n");
+	// The default bash search rule shows only while no Octocode search tool is declared; once the server's tools are
+	// declared they carry their own descriptions and the prompt says nothing about code search.
+	const octocodeSearch = declaredTools.some(isOctocodeSearch);
 	contents.rules = buildRules(
 		declaredTools,
 		toolGuidelines,

@@ -1,7 +1,7 @@
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
 import { completeSimple } from "@octocodeai/octocode-ai/compat";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { GOAL_HEADING, summarySection } from "../../core/compaction/summary-format.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";

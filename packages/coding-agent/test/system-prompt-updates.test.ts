@@ -13,7 +13,7 @@ import {
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import {
@@ -21,7 +21,7 @@ import {
 	buildSystemPromptState,
 	diffSystemPromptSections,
 } from "../src/core/system-prompt.ts";
-import type { ExtensionFactory } from "../src/index.ts";
+import type { ExtensionFactory } from "../src/core/features/index.ts";
 import { createHarness } from "./suite/harness.ts";
 
 describe("system prompt updates", () => {
@@ -58,7 +58,7 @@ describe("system prompt updates", () => {
 		try {
 			const sessionManager = SessionManager.inMemory(tempDir);
 			sessionManager.appendMessage({ role: "user", content: "existing", timestamp: 1 });
-			const created = await createAgentSession({
+			const created = await createTestSession({
 				cwd: tempDir,
 				agentDir: join(tempDir, "agent"),
 				model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

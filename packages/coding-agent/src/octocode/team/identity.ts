@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText, storedText } from "../../../../common/src/sanitize.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -121,6 +121,19 @@ export function checkGoal(input: unknown): string {
 
 /** Longest one-line goal or activity stored for an agent (the panel and `coordinate list` clip further). */
 export const LINE_MAX = 200;
+
+/**
+ * A model as the team shows it: `provider/id:level` for a model that can think (`:off` when its thinking is off, so the
+ * row says what it runs at), `provider/id` for one that cannot (no level to show). Without a provider only the id.
+ */
+export function modelRoute(
+	model: { provider?: string | undefined; id: string; reasoning?: boolean | undefined } | undefined,
+	level: string | undefined,
+): string | undefined {
+	if (!model?.id) return undefined;
+	const name = model.provider ? `${model.provider}/${model.id}` : model.id;
+	return model.reasoning === false || !level ? name : `${name}:${level}`;
+}
 
 /**
  * The row a process joins the team with. A subagent's parent chose its name, role and goal and passed them in the

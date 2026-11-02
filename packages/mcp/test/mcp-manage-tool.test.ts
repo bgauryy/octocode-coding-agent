@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionToolContext } from "../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionToolContext } from "../../coding-agent/src/core/features/types.ts";
 import { createMcpManageTool, type ManagedMcpServer, type McpManageOperations } from "../src/manage-tool.ts";
 
 function setup(

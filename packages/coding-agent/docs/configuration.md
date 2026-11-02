@@ -19,7 +19,7 @@ See [models](models.md) and [environment variables](environment-variables.md).
 
 `octocode config` and the default resource loader use the same [built-in catalog](../src/core/resource-loader/builtins.ts). Existing selections keep the identities `builtin:mcp` and `builtin:llama.cpp`; for example, `-builtin:mcp` in the `extensions` setting disables the built-in MCP host. Global and trusted workspace resource selection still use the normal settings precedence.
 
-SDK hosts can supply a named built-in factory to replace its default implementation, or set `nativeFeatures: false` to omit the defaults. Explicit factories still load in that mode, including the public `createMcpExtension()` factory. See the [SDK reference](sdk.md) and [native feature guide](native-features.md) for tool selection and third-party extension behavior.
+Native features load by default. See the [native feature guide](native-features.md) for tool selection.
 
 ## Terminal images
 
@@ -68,23 +68,67 @@ order. Octocode configuration takes precedence:
 
 - `models.json`: providers missing from Octocode are read from Pi. An Octocode
   provider replaces the whole Pi provider, including credentials and models.
-- `settings.json`: missing settings are inherited. Native values win, including
-  nested settings. Saving settings writes the effective configuration to the
-  Octocode directory; the Pi files are unchanged. A native settings document
-  that is empty or whose root is not a JSON object is reported as invalid rather
-  than masked by fallback settings. Each save locks the read–merge–write operation,
-  including first creation, and replaces the target file atomically. The file is
-  parsed again during the save; invalid content introduced after startup is left
-  untouched and reported as a settings error. Repair it, then run `/reload`.
+- `settings.json`: missing settings are inherited, in this order of precedence
+  (lowest first): `~/.pi/` and `~/.pi/agent/settings.json`, in a trusted folder
+  `<project>/.pi/settings.json`, the Octocode global file, then the trusted
+  `.octocode/settings.json`. Resource keys (`packages`, `extensions`, `skills`,
+  `prompts`, `themes`) and per-install keys (`sessionDir`, `deviceId`,
+  `trackingId`, `enableAnalytics`, `defaultProjectTrust`) are not inherited, and a
+  project `.pi/settings.json` cannot set `remote.autoStart`. Pi settings are a
+  read-only layer: they feed the merged settings and are never copied into an
+  Octocode file. A save writes only the values Octocode itself holds (the
+  setting you changed, with the rest of the Octocode file as it was), and the Pi
+  files are unchanged. A Pi file that does not parse is a startup warning; it
+  does not stop Octocode's own settings from loading or saving. A native
+  settings document that is empty or whose root is not a JSON object is reported
+  as invalid rather than masked by fallback settings. Each save locks the
+  read–merge–write operation, including first creation, and replaces the target
+  file atomically. The file is parsed again during the save; invalid content
+  introduced after startup is left untouched and reported as a settings error.
+  Repair it, then run `/reload`.
 - `mcp.json`: Pi servers are inherited, followed by shared `~/.octocode/`
   and `~/.octocode/agent/` files, then the canonical agent directory.
   Enablement and exposure changes save native overrides. See [MCP](mcp.md#configure-servers)
   for the complete precedence and trust rules.
-- Extensions, skills, prompts and themes: default directories and configured
-  paths are read relative to their original Pi directory. An identically located
-  native resource wins. Existing package resources are supported; missing Pi
-  packages are not installed automatically. `--no-extensions` disables inherited
-  extensions too.
+- Discovery: `models.json`, `settings.json` and `mcp.json` are listed by the
+  `model`, `setting` and `mcp` kinds of the configuration-discovery service
+  (`core/discovery`), alongside subagent profiles (`agent`), hook files (`hook`)
+  and plugins (`plugin`), which `octocode/discovery/` registers. Each item records
+  its product (Octocode or Pi), scope, source file and, for a collection kind, the
+  item that shadows it. `models.json` and `settings.json` are layered files: every
+  file is read and its keys merge (Octocode over Pi), so none is shown as shadowed.
+  An MCP `enabled` or `exposure` entry without `command` or `url` is a control-only
+  override and is listed apart from definitions. `packages/mcp` owns the MCP file
+  list (it cannot import the host), so the host's `mcp` source reads the same list
+  its loader uses.
+- Skills, prompts and themes: default directories and configured paths are read
+  relative to their original Pi directory. An identically located native
+  resource wins. Existing package resources are supported; missing Pi packages
+  are not installed automatically.
+- Instruction files: `AGENTS.md` (or `CLAUDE.md`) in `~/.pi/agent/` loads as the
+  global context file only when the Octocode directory has none; `SYSTEM.md` and
+  `APPEND_SYSTEM.md` in `~/.pi/agent/` apply when no Octocode file does; and
+  `keybindings.json` in `~/.pi/agent/` is read beneath Octocode's own, action by
+  action. Project `AGENTS.md` and `CLAUDE.md` files are shared by both products.
+- Project `.pi/` folder: in a trusted folder, `.pi/skills/`, `.pi/prompts/`,
+  `.pi/themes/`, `.pi/SYSTEM.md` and `.pi/APPEND_SYSTEM.md` are read under the same
+  folder trust as `.octocode/`. Nothing in `.pi/` is read in an untrusted folder.
+- Pi code is never loaded. TypeScript in Pi's `extensions/` and `hooks/` folders
+  (global and project) and Pi extension packages are listed at startup as
+  "Pi extension, not loaded" with a hint to convert the behavior to a
+  `hooks.json` entry or a plugin; the files are not executed. `--no-extensions`
+  has nothing to disable.
+
+Names that exist in both products resolve by one rule. Collections (skills,
+prompts, themes): scope first, product second. A project copy beats a global one,
+and at the same scope the Octocode copy beats the Pi copy; for skills, a Pi
+project skill therefore beats an Octocode global skill with the same name. The
+losing Pi copy stays on disk and is reported as shadowed by discovery
+(`core/discovery/`). Single-valued files (global context file, `SYSTEM.md`,
+`APPEND_SYSTEM.md`): product first, scope second, so Octocode's project file, then
+Octocode's global file, then Pi's project file, then Pi's global file. A project
+`.pi/` item in an untrusted folder never shadows anything.
+
 - Extension packages may declare `octocode` or legacy `pi` resources in
   `package.json`; `octocode` wins when both are present. Extensions import host
   packages by their `@octocodeai/*` names.
@@ -93,33 +137,17 @@ The old `@octocodeai/pi-extension` package is not automatically loaded alongside
 the native features it duplicates. Other extensions can still register their
 own tools and commands; normal conflict diagnostics apply.
 
-Explicit home overrides and custom SDK directories disable automatic Pi fallback.
+An explicit home override (`OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR`) disables automatic Pi fallback.
 Pi sessions, trust decisions, device identity and telemetry consent are not imported.
 Pi authentication is not loaded automatically; `/login pi` offers an explicit,
 confirmed credential import. Pi model definitions remain fallback inputs. Existing
 directories are neither moved nor deleted. See [provider setup](providers.md#use-pi-configuration).
-Project trust decisions are saved by atomically replacing the native `trust.json`.
 The separate agents-communication service keeps its shared directory at
 `~/.octocode/agents-communication/`.
 
-## Historical migrations
-
-Run `octocode migrate` explicitly to convert older files in the active Octocode
-configuration directory and the current project's `.octocode/`. Normal startup
-does not run these conversions or wait for a migration acknowledgement.
-
-The command adds missing providers from `oauth.json` and `settings.json` API keys
-to `auth.json`, preserving existing providers. It merges credentials under the same `auth.json` lock that running
-sessions take and writes the file atomically, so a concurrent login or token refresh is neither lost nor torn; if
-another process holds the lock, the command fails without changing anything, so rerun it. It moves session files left at the root of the configuration directory into the folder the session listing reads for the resolved working directory in their header (a file whose target exists stays where it is), moves managed
-search binaries from `tools/` to `bin/`, rewrites historical keybinding names,
-and renames `commands/` to `prompts/` when the destination is absent. It reports
-deprecated extension directories for manual review. Existing old keybinding
-names still load in memory without rewriting the file.
-
-Back up historical files before conversion. This command does not import or
-modify the Pi fallback directories. Use `octocode migrate --help` for the active
-configuration path.
+Folder trust decisions live in the agent database (`trusted_folders`). A `trust.json` from an earlier release is not read; trust the folder again with `octocode trust add <path>`.
+The separate agents-communication service keeps its shared directory at
+`~/.octocode/agents-communication/`.
 
 ## Retries
 
@@ -132,7 +160,7 @@ A failed model response that looks transient (overload, rate limit, server or ne
 
 ## Compaction
 
-Automatic compaction is always enabled. `/compact` starts the same built-in summary flow manually. The CLI, SDK and RPC do not accept a custom summary focus or an automatic-compaction toggle. Legacy `compaction` settings, including per-model overrides, are ignored.
+Automatic compaction is always enabled. `/compact` starts the same built-in summary flow manually. The CLI and RPC do not accept a custom summary focus or an automatic-compaction toggle. Legacy `compaction` settings, including per-model overrides, are ignored.
 
 The built-in policy reserves room for summarization and responses and retains up to 20,000 recent tokens (one quarter of smaller windows). The reserve is the larger of 16,384 tokens (one eighth of smaller windows) and the active thinking budget plus 12,288 tokens of answer and safety room, capped at one sixth of the window, so a turn near the threshold keeps its thinking budget. For example, a 200,000-token window compacts at 183,616 tokens with thinking off and at 171,328 at `high`. The native context display and model-switch checks use the same policy.
 

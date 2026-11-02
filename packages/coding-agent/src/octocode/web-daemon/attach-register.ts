@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { openBacklog } from "../backlog/context.ts";
 import type { WorkspaceRuntime } from "../workspace/runtime.ts";
 import { startAttachServer, type AttachEndpoint } from "./attach-server.ts";

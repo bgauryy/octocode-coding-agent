@@ -1,4 +1,4 @@
-import type { ExtensionContext, SessionStartEvent } from "../../core/extensions/index.ts";
+import type { ExtensionContext, SessionStartEvent } from "../../core/features/index.ts";
 import { stoppedChildrenNotice, type StartNote } from "./handoff/stopped-notice.ts";
 import { pruneNotice } from "./prune-notice.ts";
 

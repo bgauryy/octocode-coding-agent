@@ -1,65 +1,50 @@
 import type { Args } from "../cli/args.ts";
-import { createProjectTrustContext } from "../cli/project-trust.ts";
 import type { CreateAgentSessionRuntimeFactory } from "../core/agent-session-runtime.ts";
 import { headlessCachePreferences } from "../core/cache-configuration.ts";
-import {
-	type AgentSessionRuntimeDiagnostic,
-	createAgentSessionFromServices,
-	createAgentSessionServices,
-} from "../core/agent-session-services.ts";
-import type { InlineExtension } from "../core/extensions/types.ts";
+import { type AgentSessionRuntimeDiagnostic, createAgentSessionServices } from "../core/agent-session-services.ts";
+import { createSessionFromServices } from "../core/agent-session/create-session.ts";
+import { warningsBesideListing } from "../core/resource-loader/feature-loading.ts";
 import { resolveModelScope } from "../core/model-resolver.ts";
-import { type AppMode, resolveProjectTrusted } from "../core/project-trust.ts";
+import type { FolderTrustResolver } from "../core/folder-trust.ts";
 import type { SkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { collectSettingsDiagnostics } from "../core/settings-diagnostics.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
-import { hasTrustRequiringProjectResources, type ProjectTrustStore } from "../core/trust-manager.ts";
 import { buildSessionOptions, resolveCliPaths } from "./session-options.ts";
+import type { AppMode } from "./startup.ts";
 
 /** What the CLI runtime factory needs from `main()`. */
 export interface CliRuntimeFactoryOptions {
 	parsed: Args;
 	/** The startup cwd that relative CLI resource paths resolve against. */
 	cwd: string;
-	trustStore: ProjectTrustStore;
-	startupSettingsManager: SettingsManager;
-	trustPromptMode: AppMode;
+	/** The stored folder-trust decision (`octocode/trust/port.ts`): the factory never asks and never records. */
+	folderTrust: FolderTrustResolver;
+	/**
+	 * True for a run that opens a session: a folder that is not trusted then throws before any project file is read. False
+	 * for `--help` and `--list-models`, which run without a session and load global configuration only.
+	 */
+	requireTrust: boolean;
 	/** The current app mode; piped stdin can switch interactive startup to print after the factory is created. */
 	getAppMode(): AppMode;
 	skillResourceSnapshot: SkillResourceSnapshot | undefined;
-	extensionFactories: InlineExtension[];
 }
 
 /** Create the factory that builds each CLI runtime, initially and after session switches. */
 export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): CreateAgentSessionRuntimeFactory {
-	const {
-		parsed,
-		cwd,
-		trustStore,
-		startupSettingsManager,
-		trustPromptMode,
-		getAppMode,
-		skillResourceSnapshot,
-		extensionFactories,
-	} = options;
-	const projectTrustByCwd = new Map<string, boolean>();
+	const { parsed, cwd, folderTrust, requireTrust, getAppMode, skillResourceSnapshot } = options;
 
-	const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
-	return async ({ cwd, agentDir, sessionManager, sessionStartEvent, projectTrustContext }) => {
-		const isInitialRuntime = sessionStartEvent === undefined;
-		const projectTrustDiagnostics: AgentSessionRuntimeDiagnostic[] = [];
-		const cachedProjectTrust = projectTrustByCwd.get(cwd);
-		const hasTrustRequiringResources = hasTrustRequiringProjectResources(cwd);
-		const shouldResolveProjectTrust =
-			parsed.projectTrustOverride === undefined && cachedProjectTrust === undefined && hasTrustRequiringResources;
-		const projectTrusted = shouldResolveProjectTrust
-			? false
-			: (cachedProjectTrust ??
-				parsed.projectTrustOverride ??
-				(!hasTrustRequiringResources || trustStore.get(cwd) === true));
+	return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+		// The startup gate decided the first folder before this runs. A session switch into another folder lands here
+		// without a gate: it must already be trusted, and nothing of an untrusted folder is read.
+		const trust = folderTrust(cwd);
+		const projectTrusted = trust.state === "trusted";
+		if (!projectTrusted && requireTrust)
+			throw new Error(
+				`${cwd} is not trusted, so Octocode did not open it. Run octocode in that folder to decide, or: octocode trust add ${cwd}`,
+			);
 		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
 		const services = await createAgentSessionServices({
 			cwd,
@@ -67,45 +52,20 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			settingsManager: runtimeSettingsManager,
 			modelRuntimeSignal: AbortSignal.timeout(15_000),
 			extensionFlagValues: parsed.unknownFlags,
-			resourceLoaderReloadOptions: shouldResolveProjectTrust
-				? {
-						resolveProjectTrust: async ({ extensionsResult }) => {
-							const trusted = await resolveProjectTrusted({
-								cwd,
-								trustStore,
-								trustOverride: parsed.projectTrustOverride,
-								defaultProjectTrust: startupSettingsManager.getDefaultProjectTrust(),
-								extensionsResult,
-								projectTrustContext:
-									projectTrustContext ??
-									createProjectTrustContext({
-										cwd,
-										mode: isInitialRuntime ? trustPromptMode : getAppMode(),
-										settingsManager: startupSettingsManager,
-										hasUI: isInitialRuntime && trustPromptMode === "interactive",
-									}),
-								onExtensionError: (message) => projectTrustDiagnostics.push({ type: "warning", message }),
-							});
-							projectTrustByCwd.set(cwd, trusted);
-							return trusted;
-						},
-					}
-				: undefined,
 			resourceLoaderOptions: {
 				skillResourceSnapshot,
-				additionalExtensionPaths: resolvedExtensionPaths,
 				additionalSkillPaths: resolvedSkillPaths,
 				additionalPromptTemplatePaths: resolvedPromptTemplatePaths,
 				additionalThemePaths: resolvedThemePaths,
-				noExtensions: parsed.noExtensions,
-				disabledBuiltinExtensions: parsed.noMcp ? ["mcp"] : undefined,
+				disabledFeatures: parsed.noMcp ? ["mcp"] : undefined,
 				noSkills: parsed.noSkills,
 				noPromptTemplates: parsed.noPromptTemplates,
 				noThemes: parsed.noThemes,
-				noContextFiles: parsed.noContextFiles,
+				// Project instructions load from the trust grant's folder down to the working folder, and only when trusted.
+				noContextFiles: parsed.noContextFiles || !projectTrusted,
+				contextRoot: trust.root,
 				systemPrompt: parsed.systemPrompt,
 				appendSystemPrompt: parsed.appendSystemPrompt,
-				extensionFactories,
 			},
 		});
 		const { settingsManager, modelRuntime, resourceLoader } = services;
@@ -115,16 +75,19 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			if (headless) settingsManager.applyOverrides(headless);
 		}
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
-			...projectTrustDiagnostics,
 			...services.diagnostics,
 			...collectSettingsDiagnostics(settingsManager),
 			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({
 				type: "error" as const,
-				message: `Failed to load extension "${path}": ${error}`,
+				message: `Failed to register feature "${path}": ${error}`,
 			})),
-			...(resourceLoader.getExtensions().warnings ?? []).map(({ path, warning }) => ({
+			// The interactive listing names code that is not loaded in its own row; the other modes have only this line.
+			...(getAppMode() === "interactive"
+				? warningsBesideListing(resourceLoader.getExtensions().warnings)
+				: (resourceLoader.getExtensions().warnings ?? [])
+			).map(({ path, warning }) => ({
 				type: "warning" as const,
-				message: `Extension package "${path}": ${warning}`,
+				message: `${path}: ${warning}`,
 			})),
 		];
 
@@ -157,7 +120,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			}
 		}
 
-		const created = await createAgentSessionFromServices({
+		const created = await createSessionFromServices({
 			services,
 			sessionManager,
 			sessionStartEvent,

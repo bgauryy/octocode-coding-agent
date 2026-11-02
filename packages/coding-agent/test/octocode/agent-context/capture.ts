@@ -11,9 +11,10 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { parseArgs } from "../../../src/cli/args.ts";
-import type { ExtensionFactory } from "../../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../../src/core/sdk.ts";
+import { createTestSession } from "../../helpers/session.ts";
+import { trustFolder } from "../helpers.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import {
 	captureSkillResourceSnapshot,
@@ -21,8 +22,11 @@ import {
 	type SkillResourceSnapshot,
 } from "../../../src/core/skill-resource-snapshot.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
+import { getSkillCommands } from "../../../src/core/skill-commands.ts";
+import type { SlashCommandInfo } from "../../../src/core/slash-commands.ts";
 import { writeRolePrompt } from "../../../src/octocode/instructions/role.ts";
 import { withIdentity } from "../../../src/octocode/instructions/task.ts";
+import { shortPath } from "../../../src/octocode/shared/format.ts";
 import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.ts";
 import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
@@ -58,7 +62,7 @@ export interface AgentContext {
 	messages: Array<{ role: string; text: string }>;
 }
 
-interface Fixture {
+export interface Fixture {
 	root: string;
 	cwd: string;
 	home: string;
@@ -68,7 +72,7 @@ interface Fixture {
 	replacements: Array<[string, string]>;
 }
 
-function fixture(): Fixture {
+export function fixture(): Fixture {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-context-"));
 	const dir = (name: string) => {
 		const made = path.join(root, name);
@@ -82,12 +86,14 @@ function fixture(): Fixture {
 	const scratch = path.join(cwd, ".octocode", "tmp", "agents", "child-example");
 	fs.mkdirSync(scratch, { recursive: true });
 	fs.writeFileSync(path.join(cwd, "AGENTS.md"), PROJECT_INSTRUCTIONS);
-	fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(root)]: true }));
 	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {} }));
-	const both = (target: string, shown: string): Array<[string, string]> => [
-		[target, shown],
-		[fs.realpathSync(target), shown],
-	];
+	// The absolute and real paths, and their `~/…` forms: a task shortens a path under HOME (`shortPath`), as it does the
+	// scratch folder when TMPDIR lies inside HOME.
+	const both = (target: string, shown: string): Array<[string, string]> => {
+		const forms = [target, fs.realpathSync(target)];
+		const homed = forms.map((form) => shortPath(form)).filter((form) => form.startsWith("~"));
+		return [...new Set([...forms, ...homed])].map((form): [string, string] => [form, shown]);
+	};
 	// Longest first, so a folder inside another is replaced before its parent.
 	const replacements = [
 		...both(cwd, "/workspace/project"),
@@ -97,11 +103,14 @@ function fixture(): Fixture {
 		...both(root, "/tmp/octocode-context"),
 		[PACKAGE_DIR, "<octocode package>"] as [string, string],
 	].sort((a, b) => b[0].length - a[0].length);
-	return { root, cwd, home, agentDir, octocodeHome, scratch, replacements };
+	const fx = { root, cwd, home, agentDir, octocodeHome, scratch, replacements };
+	// The user trusted this project: the child processes read the agent database under this Octocode home.
+	trustFolder(cwd, baseEnv(fx));
+	return fx;
 }
 
 /** The environment of a fresh Octocode process: nothing of the developer's own OCTOCODE_* settings or session. */
-function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
+export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = {};
 	for (const [key, value] of Object.entries(process.env)) if (!key.startsWith("OCTOCODE_")) env[key] = value;
 	return {
@@ -116,7 +125,7 @@ function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 }
 
 /** Runs `run` with `env` as the whole process environment, then puts the original back. */
-async function withEnv<T>(env: NodeJS.ProcessEnv, run: () => Promise<T>): Promise<T> {
+export async function withEnv<T>(env: NodeJS.ProcessEnv, run: () => Promise<T>): Promise<T> {
 	const saved = { ...process.env };
 	const replace = (next: NodeJS.ProcessEnv) => {
 		for (const key of Object.keys(process.env)) delete process.env[key];
@@ -131,9 +140,7 @@ async function withEnv<T>(env: NodeJS.ProcessEnv, run: () => Promise<T>): Promis
 }
 
 /** How a session is built: the main session takes the defaults, a child what its command line says. */
-interface SessionShape {
-	noExtensions?: boolean;
-	extensions?: string[];
+export interface SessionShape {
 	noMcp?: boolean;
 	noSkills?: boolean;
 	tools?: string[];
@@ -141,8 +148,15 @@ interface SessionShape {
 	skillResourceSnapshot?: SkillResourceSnapshot;
 }
 
-/** A real session on a scripted model; returns the system message, tools and messages of its first request. */
-async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
+/**
+ * A real session on the scripted model `faux/faux-1` (200,000-token window), built as the CLI builds it for `shape`, in
+ * `sessionManager` (in memory by default). The caller disposes it.
+ */
+export async function scriptedSession(
+	fx: Fixture,
+	shape: SessionShape,
+	sessionManager: SessionManager = SessionManager.inMemory(fx.cwd),
+) {
 	const faux = createFauxCore({
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
@@ -168,27 +182,36 @@ async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
 		agentDir: fx.agentDir,
 		settingsManager,
 		extensionFactories: [{ name: "faux-provider", factory: provider }],
-		noExtensions: shape.noExtensions,
-		additionalExtensionPaths: shape.extensions,
-		disabledBuiltinExtensions: shape.noMcp ? ["mcp"] : undefined,
+		disabledFeatures: shape.noMcp ? ["mcp"] : undefined,
 		noSkills: shape.noSkills,
 		skillResourceSnapshot: shape.skillResourceSnapshot,
 		noPromptTemplates: true,
 		noThemes: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd: fx.cwd,
 		agentDir: fx.agentDir,
 		resourceLoader,
 		settingsManager,
-		sessionManager: SessionManager.inMemory(fx.cwd),
+		sessionManager,
 		...(shape.tools ? { tools: shape.tools } : {}),
 		...(shape.excludeTools ? { excludeTools: shape.excludeTools } : {}),
 	});
 	try {
 		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
+	} catch (error) {
+		session.dispose?.();
+		throw error;
+	}
+	return { session, faux };
+}
+
+/** A real session on a scripted model; returns the system message, tools and messages of its first request. */
+async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
+	const { session, faux } = await scriptedSession(fx, shape);
+	try {
 		let captured: TranscriptContext | undefined;
 		faux.setResponses([
 			(context: TranscriptContext) => {
@@ -286,12 +309,19 @@ async function captureChild(name: string, roleName: string | undefined): Promise
 				cwd: fx.cwd,
 				agentDir: fx.agentDir,
 				settingsManager: SettingsManager.inMemory({}),
-				noExtensions: true,
+				disabledFeatures: ["mcp", "llama.cpp"],
 				noPromptTemplates: true,
 				noThemes: true,
 			});
 			await parent.reload();
-			return captureSkillResourceSnapshot(parent.getSkills(), skillPlan.names, []);
+			// Named skills resolve through the parent's skill commands, as `extension-bindings.ts` supplies them at runtime.
+			const commands: SlashCommandInfo[] = getSkillCommands(parent.getSkills().skills).map(({ skill, name }) => ({
+				name,
+				description: skill.description,
+				source: "skill",
+				sourceInfo: skill.sourceInfo,
+			}));
+			return captureSkillResourceSnapshot(parent.getSkills(), skillPlan.names, commands);
 		});
 		const snapshotFile = path.join(fx.octocodeHome, "skills-snapshot.json");
 		fs.writeFileSync(snapshotFile, JSON.stringify(snapshot), { mode: 0o600 });
@@ -316,8 +346,6 @@ async function captureChild(name: string, roleName: string | undefined): Promise
 			buildAgentArgs(profile, undefined, { dir: path.join(fx.scratch, "session"), id: identity.id }, []),
 		);
 		const shape: SessionShape = {
-			noExtensions: parsed.noExtensions,
-			extensions: parsed.extensions,
 			noMcp: parsed.noMcp,
 			noSkills: parsed.noSkills,
 			tools: parsed.tools,

@@ -48,9 +48,8 @@ describe("communication prompt contracts", () => {
 		const coordinate = fake.tools.get("coordinate");
 		const message = fake.tools.get("sendMessage");
 		expect(coordinate.promptGuidelines.join(" ")).toContain("`agent` type `coordinate`");
-		expect(coordinate.promptGuidelines.join(" ")).toContain("`action` list");
 		expect(coordinate.promptGuidelines.join(" ")).not.toContain("input.");
-		expect(teamTask("Inspect", "parent-1", [])).toContain("`action` `list`");
+		expect(teamTask("Inspect", "parent-1", [])).toContain("`agent` type `coordinate`");
 		expect(message.parameters.properties.to.description).toContain("exact id across parent trees");
 		expect(message.parameters.properties.to.description).toContain('"all" reaches only your tree');
 	});

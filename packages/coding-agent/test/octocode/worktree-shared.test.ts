@@ -15,6 +15,7 @@ import {
 	pruneWorktrees,
 	worktreesDir,
 } from "../../src/octocode/subagents/worktree.ts";
+import { allowWorktreeGrants } from "../../src/octocode/worktrees/approval.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -45,6 +46,7 @@ function orphan(worktreePath: string): void {
 
 let savedDb: string | undefined;
 beforeEach(() => {
+	allowWorktreeGrants(true); // these tests are about worktrees, not trust: a headless `--trust` run
 	savedDb = process.env.OCTOCODE_AGENT_DB;
 	process.env.OCTOCODE_AGENT_DB = path.join(tmp("octocode-wt-db-"), "octocode.db");
 });

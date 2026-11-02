@@ -1,5 +1,5 @@
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { contentText } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "../config/calls.ts";

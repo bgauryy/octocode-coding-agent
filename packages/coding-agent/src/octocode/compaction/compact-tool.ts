@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { MAX_COMPACTION_INSTRUCTIONS } from "../../core/compaction/manual-options.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";

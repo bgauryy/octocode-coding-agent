@@ -4,7 +4,6 @@ import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-polic
 import type { ScrollViewScrollbar, WheelScrollLines } from "@octocodeai/octocode-tui";
 import type {
 	CacheWarmingMode,
-	DefaultProjectTrust,
 	FullscreenExitOutput,
 	MermaidRenderingMode,
 	QuietStartup,
@@ -46,7 +45,6 @@ export interface SettingsConfig {
 	outputPad: 0 | 1;
 	autocompleteMaxVisible: number;
 	quietStartup: QuietStartup;
-	defaultProjectTrust: DefaultProjectTrust;
 	clearOnShrink: boolean;
 	showTerminalProgress: boolean;
 	reduceMotion: boolean | "auto";
@@ -89,7 +87,6 @@ export interface SettingsCallbacks {
 	onOutputPadChange: (padding: 0 | 1) => void;
 	onAutocompleteMaxVisibleChange: (maxVisible: number) => void;
 	onQuietStartupChange: (quiet: QuietStartup) => void;
-	onDefaultProjectTrustChange: (defaultProjectTrust: DefaultProjectTrust) => void;
 	onClearOnShrinkChange: (enabled: boolean) => void;
 	onShowTerminalProgressChange: (enabled: boolean) => void;
 	onReduceMotionChange: (value: boolean | "auto") => void;

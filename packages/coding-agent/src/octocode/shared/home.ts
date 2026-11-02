@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
-import { CONFIG_DIR_NAME, getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
-import { projectMcpConfigPaths as projectMcpFiles } from "../../../../common/src/mcp-paths.ts";
+import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
@@ -79,11 +78,11 @@ export function workspaceScratchDir(workspace: string, name: string): string {
 /**
  * Where Octocode keeps things. `.octocode` is the one place, at two levels:
  *   global     `OCTOCODE_HOME` or `~/.octocode/octocodecode`: user config and runtime state
- *              (trust decisions, team DB, logs, spilled output, checkpoints, worktrees)
- *   workspace  `<repo root>/.octocode`: project config (loads only when the project is trusted) and `tmp/` scratch
+ *              (team DB, logs, spilled output, checkpoints, worktrees; the agent database holds folder trust)
+ *   workspace  `<repo root>/.octocode`: project config (a session only starts in a trusted folder) and `tmp/` scratch
  * Workspace paths resolve from the repository root, so a session started in a subfolder reads the same files.
- * Other agents' files (`.claude/…`, `.codex/…`) are read too; their names live here as well so
- * the loaders and the trust fingerprint (src/shared/trust.ts) always agree on the list.
+ * Other agents' files (`.claude/…`, `.codex/…`) are read too; their names live here as well so the loaders agree on
+ * the list.
  */
 
 /** Entry names under the Octocode home. On-disk names are kept stable: existing files must keep resolving. */
@@ -91,8 +90,6 @@ export const HOME_NAMES = {
 	skills: "skills",
 	agents: "agents",
 	hooks: "hooks.json",
-	/** Not `trust.json`: that is the core `/trust` store (`ProjectTrustStore`), which lives in the same folder by default. */
-	trust: "pi-trust.json",
 	team: "team",
 	api: "api",
 	worktrees: "worktrees",
@@ -216,10 +213,6 @@ export function sessionOutputDir(kind: SessionFolder, env: NodeJS.ProcessEnv = p
 	return folder;
 }
 
-/** Octocode Code's configuration directory, optionally resolved for a supplied user home. */
-export const nativeAgentDir = (home?: string): string =>
-	home === undefined ? getAgentDir() : getOctocodeHome({}, home);
-
 interface WorkspacePaths {
 	/** The repository root every workspace path hangs from. */
 	root: string;
@@ -309,17 +302,17 @@ export function tildePath(file: string, home = os.homedir()): string {
 
 /**
  * One line per config file for a status report: `✓` when it exists, `·` when not; files missing from `userFiles` are
- * project files, which load only in a trusted project.
+ * project files.
  */
 export function configFileLines(files: string[], userFiles: string[], home = os.homedir()): string[] {
 	const user = new Set(userFiles);
 	return [...new Set(files)].map((file) => {
-		const note = user.has(file) ? "" : " (project: loads only when trusted, /trust)";
+		const note = user.has(file) ? "" : " (project)";
 		return `  ${fs.existsSync(file) ? "✓" : "·"} ${tildePath(file, home)}${note}`;
 	});
 }
 
-/** Claude source settings share the hook compatibility discovery and project trust boundary. */
+/** Claude source settings share the hook compatibility discovery and the folder trust boundary. */
 export function claudeSettingsSources(
 	cwd: string,
 	trusted: boolean,
@@ -335,6 +328,3 @@ export function claudeSettingsSources(
 			: []),
 	];
 }
-
-/** Project MCP files, lowest precedence first. All require project trust. */
-export const projectMcpConfigPaths = (cwd: string): string[] => projectMcpFiles(cwd, CONFIG_DIR_NAME);

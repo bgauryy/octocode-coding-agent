@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import { expandClaudeArguments, expandClaudeVariables } from "../../core/claude-arguments.ts";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, SKILLS_IN_TASK_ENV } from "../../../../common/src/env.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";

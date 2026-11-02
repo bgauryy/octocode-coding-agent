@@ -1,4 +1,5 @@
-import type { ExtensionAPI } from "../core/extensions/index.ts";
+import { archiveMutation } from "./shared/archive-operation.ts";
+import type { ExtensionAPI } from "../core/features/index.ts";
 import { sha256 } from "../../../common/src/atomic-file.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
@@ -26,7 +27,7 @@ const LOOP_REPEAT_EVERY = 3;
 export const LOOP_HALT_AT = 8;
 
 /** Tools whose repeated, identical calls are legitimate: messaging, questions and bookkeeping. */
-const EXEMPT = new Set(["agent", "askUser", "backlog", "coordinate", "memory", "steps"]);
+const EXEMPT = new Set(["agent", "askUser", "backlog", "coordinate", "steps"]);
 /**
  * A shell command that waits (polling a job, a log, a port) is expected to repeat: `sleep`, `wait` or `watch` run as a
  * command (at the start or after `;`, `&&`, `||`, `|`), or `tail -f`. The words inside an argument do not count.
@@ -50,6 +51,7 @@ export function loopNote(tool: string, count: number, failed: boolean): string |
 function loopCallKey(toolName: string, input: unknown): string | undefined {
 	if (EXEMPT.has(toolName)) return undefined;
 	const args = asRecord(input);
+	if (toolName === "archive" && archiveMutation(args)) return undefined;
 	if (toolName === "bash" && typeof args.command === "string" && WAITING.test(args.command)) return undefined;
 	const key = argumentsKey(withoutReasons(args) as Record<string, unknown>);
 	return key ? `${toolName}\0${key}` : undefined;

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import type { ExtensionToolContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionToolContext } from "../../src/core/features/index.ts";
 import { formatFeedback, inspectMutations } from "../../src/octocode/files/feedback/diagnostics.ts";
 import { currentMutationRevision, mutationEpoch } from "../../src/octocode/files/feedback/revisions.ts";
 import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "../../src/octocode/files/feedback/parse.ts";
@@ -70,6 +70,37 @@ it("coalesces repeated commits and distinguishes published empty from unpublishe
 	const wrong = fixture();
 	callable(wrong.ctx, { kind: "diagnostics", path: "/another/source.ts", matches: [], lsp: { serverAvailable: true } });
 	expect(await inspectMutations([wrong.receipt], wrong.ctx)).toMatchObject([{ state: "unavailable" }]);
+});
+
+it("reads issues from the current server row shape (operation, no status) and the kind-shaped row", async () => {
+	// The shape the research server returns today, captured from a live diagnostic call after a type-error edit.
+	const current = fixture();
+	callable(current.ctx, {
+		operation: "diagnostics",
+		matches: [
+			{
+				message: "Type 'string' is not assignable to type 'number'.",
+				severity: "error",
+				code: 2322,
+				source: "ts",
+				displayRange: { startLine: 1, startCharacter: 14, endLine: 1 },
+			},
+		],
+		lsp: { serverAvailable: true, provider: "diagnosticProvider", source: "lsp" },
+		workspaceRoot: ".",
+		path: "source.ts",
+	});
+	const results = await inspectMutations([current.receipt], current.ctx);
+	expect(results).toMatchObject([
+		{ state: "issues", issues: ["2322 :1 Type 'string' is not assignable to type 'number'."] },
+	]);
+	expect(formatFeedback(results)).toContain("diagnostics observed after edit");
+	const legacy = fixture();
+	callable(legacy.ctx, { kind: "diagnostics", path: "source.ts", matches: [{ message: "Legacy", code: 1 }] });
+	expect(await inspectMutations([legacy.receipt], legacy.ctx)).toMatchObject([{ state: "issues" }]);
+	const other = fixture();
+	callable(other.ctx, { operation: "references", path: "source.ts", matches: [{ message: "not a diagnostic" }] });
+	expect(await inspectMutations([other.receipt], other.ctx)).toMatchObject([{ state: "unavailable" }]);
 });
 
 it("resolves native workspace-relative row paths against the response root", () => {
@@ -216,6 +247,44 @@ it("says nothing when diagnostics or the parse prove nothing about the edit, and
 	expect(formatParseFeedback([{ path: "a.ts", state: "already-invalid" }])).toContain("already observed");
 });
 
+it("reads the current syntaxTree row, which omits the request's operation, and rejects a different operation", async () => {
+	const observe = async (operation: string | undefined, recovered: boolean) => {
+		const f = fixture();
+		// The live row after a syntax-error edit: no `operation`, no `status`, recovery in diagnostics and partialReasons.
+		const data = (flag: boolean) => ({
+			...(operation === undefined ? {} : { operation }),
+			path: "source.ts",
+			nodes: [{ node: "0 program 1:1-2:1" }],
+			...(flag
+				? {
+						isPartial: true,
+						terminalLimit: true,
+						partialReasons: ["parseRecovered"],
+						diagnostics: [{ code: "syntaxTree.parse.recovered", severity: "warning", stage: "parse" }],
+					}
+				: {}),
+		});
+		let flag = false;
+		Object.defineProperty(f.ctx, "tools", { value: [{ name: "mcp__octocode__astSearch" }] });
+		Object.defineProperty(f.ctx, "executeTool", {
+			value: vi.fn(async () => ({
+				isError: false,
+				result: {
+					content: [],
+					structuredContent: { results: [{ index: 0, data: data(flag) }], root: path.dirname(f.file) },
+				},
+			})),
+		});
+		const before = await captureParseBefore([f.file], f.ctx);
+		fs.writeFileSync(f.file, "const x = ;\n");
+		flag = recovered;
+		return inspectParseAfter([{ ...f.receipt, digest: sha256(fs.readFileSync(f.file)) }], before, f.ctx);
+	};
+	expect(await observe(undefined, true)).toMatchObject([{ state: "possible-regression" }]);
+	expect(formatParseFeedback(await observe(undefined, true))).toContain("possible parse regression");
+	expect(await observe("diagnostics", true)).not.toMatchObject([{ state: "possible-regression" }]);
+});
+
 it("labels issue diagnostics as unverified against committed bytes", () => {
 	expect(formatFeedback([{ path: "a.ts", state: "issues", issues: ["TS2307 :8 module missing"] }])).toContain(
 		"source version unverified",
@@ -349,7 +418,7 @@ it("keeps cancellation from claiming a clean result and waits for the server rat
 	expect((await captureParseBefore([slow.file], slow.ctx)).get(slow.file)?.state).toBe("parsed");
 });
 
-it("asks the server once about a file type it does not serve, then skips that type for the session", async () => {
+it("asks the server once about a file type it does not serve, then skips that type", async () => {
 	const f = fixture();
 	const doc = path.join(path.dirname(f.file), "notes.md");
 	const other = path.join(path.dirname(f.file), "more.md");
@@ -358,14 +427,15 @@ it("asks the server once about a file type it does not serve, then skips that ty
 	Object.defineProperty(f.ctx, "tools", {
 		value: [{ name: "mcp__octocode__astSearch" }, { name: "mcp__octocode__lspSearch" }],
 	});
-	const executeTool = vi.fn(async (tool: string) => ({
+	const executeTool = vi.fn(async (tool: string, args: { queries: [{ path: string }] }) => ({
 		isError: true,
 		result: {
 			content: [
 				{
 					type: "text",
-					text:
-						tool === "mcp__octocode__astSearch"
+					text: !args.queries[0].path.endsWith(".md")
+						? "Request timed out"
+						: tool === "mcp__octocode__astSearch"
 							? "No registered tree-sitter grammar for .md files"
 							: JSON.stringify({
 									results: [
@@ -403,6 +473,25 @@ it("asks the server once about a file type it does not serve, then skips that ty
 	expect(formatParseFeedback([{ path: doc, state: "unsupported" }])).toBe("");
 });
 
+it("does not ask again in a later session about a file type the server refused", async () => {
+	const f = fixture();
+	const doc = path.join(path.dirname(f.file), "guide.adoc");
+	fs.writeFileSync(doc, "= guide\n");
+	Object.defineProperty(f.ctx, "tools", { value: [{ name: "mcp__octocode__astSearch" }] });
+	const executeTool = vi.fn(async () => ({
+		isError: true,
+		result: { content: [{ type: "text", text: "No registered tree-sitter grammar for .adoc files" }] },
+	}));
+	Object.defineProperty(f.ctx, "executeTool", { value: executeTool });
+	let sessionId = "first-session";
+	Object.defineProperty(f.ctx.sessionManager, "getSessionId", { value: () => sessionId });
+	expect((await captureParseBefore([doc], f.ctx)).get(doc)?.state).toBe("unsupported");
+	sessionId = "second-session";
+	expect((await captureParseBefore([doc], f.ctx)).get(doc)?.state).toBe("unsupported");
+	// The server's grammars do not change with the session: one question per type for the process.
+	expect(executeTool).toHaveBeenCalledTimes(1);
+});
+
 it("records only committed queries and inspects the final repeated write", async () => {
 	const f = fixture();
 	const guard = new FileGuard();
@@ -434,8 +523,6 @@ it("checks the parse of each file a batch edits, however many times it edits the
 	const f = fixture();
 	const other = path.join(path.dirname(f.file), "other.ts");
 	fs.writeFileSync(other, "const y = 1;\n");
-	// Its own session: an earlier test records `.ts` as unserved for the shared fake session id.
-	Object.defineProperty(f.ctx.sessionManager, "getSessionId", { value: () => "parse-cap-session" });
 	const guard = new FileGuard();
 	guard.record(f.file);
 	guard.record(other);

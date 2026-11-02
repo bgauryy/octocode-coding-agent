@@ -1,7 +1,7 @@
 import type { Theme } from "../../theme/theme.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import type { InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
+import type { Feature, InlineExtension, LoadExtensionsResult } from "../features/types.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
 import type { SettingsManager } from "../settings-manager.ts";
@@ -12,10 +12,6 @@ export interface ResourceExtensionPaths {
 	skillPaths?: Array<{ path: string; metadata: PathMetadata }>;
 	promptPaths?: Array<{ path: string; metadata: PathMetadata }>;
 	themePaths?: Array<{ path: string; metadata: PathMetadata }>;
-}
-
-export interface ResourceLoaderReloadOptions {
-	resolveProjectTrust?: (input: { extensionsResult: LoadExtensionsResult }) => Promise<boolean>;
 }
 
 export interface ResourceLoader {
@@ -33,7 +29,7 @@ export interface ResourceLoader {
 	getAppendSystemPrompt(): string[];
 	getAppendSystemPromptSources(): Array<{ path: string }>;
 	extendResources(paths: ResourceExtensionPaths): void;
-	reload(options?: ResourceLoaderReloadOptions): Promise<void>;
+	reload(): Promise<void>;
 }
 
 export interface DefaultResourceLoaderOptions {
@@ -42,20 +38,23 @@ export interface DefaultResourceLoaderOptions {
 	agentDir: string;
 	settingsManager?: SettingsManager;
 	eventBus?: EventBus;
-	additionalExtensionPaths?: string[];
 	additionalSkillPaths?: string[];
 	additionalPromptTemplatePaths?: string[];
 	additionalThemePaths?: string[];
+	/** Features registered after the defaults: a bare factory, or one with a name. They count as `builtin`-owned. */
 	extensionFactories?: InlineExtension[];
-	/** Load the native agent features. Set false only when embedding the core with a custom tool policy. */
+	/** Register the native feature set and the default built-ins. Set false only for a session with its own tool policy. */
 	nativeFeatures?: boolean;
-	noExtensions?: boolean;
-	/** Built-in extensions not to load, by name (such as `mcp`), even when settings or `-e` enable them. */
-	disabledBuiltinExtensions?: string[];
+	/** Built-in features available to the session, instead of llama.cpp and MCP. Settings can still switch each off. */
+	builtinFeatures?: readonly Feature[];
+	/** Built-in features not to register, by id (such as `mcp`), even when settings enable them. */
+	disabledFeatures?: string[];
 	noSkills?: boolean;
 	noPromptTemplates?: boolean;
 	noThemes?: boolean;
 	noContextFiles?: boolean;
+	/** The folder a trust grant is on: AGENTS.md and CLAUDE.md load from it down to the working folder, none above it. */
+	contextRoot?: string;
 	systemPrompt?: string;
 	appendSystemPrompt?: string[];
 	extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;

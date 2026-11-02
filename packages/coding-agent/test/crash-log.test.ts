@@ -5,12 +5,11 @@ type StackExtension = Parameters<typeof findExtensionStackMatches>[1][number];
 
 function packageExtension(source: string, baseDir: string, entry = "extensions/index.ts"): StackExtension {
 	const normalizedBaseDir = baseDir.replace(/\\/g, "/");
-	const resolvedPath = `${normalizedBaseDir}/${entry}`;
+	const path = `${normalizedBaseDir}/${entry}`;
 	return {
-		path: resolvedPath,
-		resolvedPath,
+		path,
 		sourceInfo: {
-			path: resolvedPath,
+			path,
 			source,
 			scope: "user",
 			origin: "package",
@@ -48,7 +47,6 @@ describe("extension crash attribution", () => {
 	test("does not attribute sibling single-file packages", () => {
 		const extension = (name: string): StackExtension => ({
 			path: `/plugins/${name}.ts`,
-			resolvedPath: `/plugins/${name}.ts`,
 			sourceInfo: {
 				path: `/plugins/${name}.ts`,
 				source: `/plugins/${name}.ts`,
@@ -64,7 +62,7 @@ describe("extension crash attribution", () => {
 
 	test("ignores extension paths in the error message", () => {
 		const extension = packageExtension("npm:memory", "/tmp/node_modules/memory");
-		const stack = `Error: Failed to read ${extension.resolvedPath}\n    at run (file:///opt/octocode/dist/core.js:4:2)`;
+		const stack = `Error: Failed to read ${extension.path}\n    at run (file:///opt/octocode/dist/core.js:4:2)`;
 
 		expect(findExtensionStackMatches(stack, [extension])).toEqual([]);
 	});
@@ -72,7 +70,6 @@ describe("extension crash attribution", () => {
 	test("decodes frame paths independently from malformed error text", () => {
 		const extension: StackExtension = {
 			path: "/Users/reporter/.octocode/agent/extensions/local memory/index.ts",
-			resolvedPath: "/Users/reporter/.octocode/agent/extensions/local memory/index.ts",
 			sourceInfo: {
 				path: "/Users/reporter/.octocode/agent/extensions/local memory/index.ts",
 				source: "local",

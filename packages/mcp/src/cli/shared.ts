@@ -48,8 +48,7 @@ export function createConnection(
 		providerToken,
 		prepareLaunch: (entry, cwd) => {
 			const preset = findMcpPreset(options.presets, entry.name);
-			const prepared =
-				preset?.prepareLaunch?.(entry, cwd, hostTrust().directoryTrusted(options.agentDir, cwd)) ?? entry;
+			const prepared = preset?.prepareLaunch?.(entry, cwd, hostTrust().folderTrusted(cwd)) ?? entry;
 			return options.prepareLaunch?.(prepared, cwd) ?? prepared;
 		},
 		log: new McpServerLog(join(options.agentDir, "mcp.log")),

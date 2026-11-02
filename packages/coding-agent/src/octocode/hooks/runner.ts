@@ -63,14 +63,21 @@ export function runHook(
 		let child: ChildProcessWithoutNullStreams;
 		try {
 			if (hook.plugin) mkdirSync(hook.plugin.data, { recursive: true, mode: 0o700 });
-			child = spawn(executable ? expand(command) : command, executable ? hook.args!.map(expand) : [], {
-				cwd,
-				shell: !executable,
-				detached: leadsProcessGroup(),
-				env: environment,
-				stdio: ["pipe", "pipe", "pipe"],
-				windowsHide: true,
-			});
+			// Claude `shell: "powershell"` starts PowerShell directly; `args` (exec form) takes no shell at all.
+			const powershell = !executable && hook.shell === "powershell";
+			const program = powershell ? (process.platform === "win32" ? "powershell" : "pwsh") : command;
+			child = spawn(
+				executable ? expand(command) : program,
+				executable ? hook.args!.map(expand) : powershell ? ["-NoProfile", "-NonInteractive", "-Command", command] : [],
+				{
+					cwd,
+					shell: !executable && !powershell,
+					detached: leadsProcessGroup(),
+					env: environment,
+					stdio: ["pipe", "pipe", "pipe"],
+					windowsHide: true,
+				},
+			);
 		} catch (error) {
 			resolve({ code: null, stdout: "", stderr: errorMessage(error), timedOut: false });
 			return;
@@ -188,6 +195,20 @@ export function interpret(event: HookEvent, run: HookRun, protocol: HookProtocol
 	};
 }
 
+/** The reason of a blocking JSON decision (`decision: "block"` or a `permissionDecision` of `deny`) printed on stdout. */
+function blockingReason(stdout: string): string | undefined {
+	const json = parseJson(stdout);
+	if (!isRecord(json)) return undefined;
+	const specific = asRecord(json.hookSpecificOutput);
+	const reason =
+		json.decision === "block"
+			? json.reason
+			: specific.permissionDecision === "deny"
+				? specific.permissionDecisionReason
+				: undefined;
+	return typeof reason === "string" && reason.trim() ? reason : undefined;
+}
+
 function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): HookVerdict {
 	if (event === "PermissionRequest") return permissionOutput(run, protocol);
 	if (event === "Interrupt") {
@@ -216,6 +237,15 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 			? `\n[… ${formatSize(bytes)} more output not kept: a hook's output is read up to ${formatSize(HOOK_OUTPUT_MAX_BYTES)}]`
 			: "";
 	if (run.code === 2 && (event === "PostToolUseFailure" || event === "SubagentStart")) return {};
+	// Claude: a Stop hook whose script is missing exits 2 with the shell's message; that is a failure to run, not a block.
+	if (
+		run.code === 2 &&
+		protocol === "claude" &&
+		(event === "Stop" || event === "SubagentStop") &&
+		!run.stdout.trim() &&
+		/No such file or directory/i.test(run.stderr)
+	)
+		return {};
 	if (run.code === 2 && protocol === "codex" && event === "PreToolUse" && !run.stderr.trim())
 		return { error: "Codex PreToolUse exit 2 requires a blocking reason on stderr" };
 	if (run.code === 2)
@@ -223,7 +253,10 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 			...(protocol === "codex" && event === "PostToolUse"
 				? ({ replaceResult: true, rejectNested: true } as const)
 				: {}),
-			block: run.stderr.trim() ? `${run.stderr.trim()}${notKept(run.dropped?.stderr)}` : "Blocked by a hook.",
+			// A JSON blocking decision's reason wins over stderr (Claude Code); the exit code alone decides the block.
+			block:
+				(protocol !== "codex" ? blockingReason(run.stdout) : undefined) ??
+				(run.stderr.trim() ? `${run.stderr.trim()}${notKept(run.dropped?.stderr)}` : "Blocked by a hook."),
 		};
 	if (run.code !== 0) return {};
 	const value = parseJson(run.stdout);

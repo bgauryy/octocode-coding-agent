@@ -1,3 +1,4 @@
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,8 +15,14 @@ import {
 	TOTAL_BUDGET,
 } from "../../src/octocode/memory/inject.ts";
 import { ftsQuery, jaccard, normalizeTitle, parseMemoryId, terms } from "../../src/octocode/memory/query.ts";
-import { memoryStore, registerMemory } from "../../src/octocode/memory/register.ts";
-import { MemoryError, type MemoryInput, MemoryStore, memoryLine } from "../../src/octocode/memory/store.ts";
+import { registerMemory } from "../../src/octocode/memory/register.ts";
+import {
+	MemoryError,
+	type MemoryInput,
+	MemoryStore,
+	memoryLine,
+	memoryStore,
+} from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 
@@ -363,11 +370,17 @@ describe("memory tool", () => {
 	const setup = (isSubagent = false) => {
 		const fake = fakeHost();
 		const commands = new Subcommands();
-		registerMemory(fake.api, { commands, isSubagent, permission: fakePermission() });
-		return { ...fake, subcommands: commands, tool: fake.tools.get("memory") };
+		registerArchiveTool(fake.api, registerMemory(fake.api, { commands, isSubagent, permission: fakePermission() }));
+		return { ...fake, subcommands: commands, tool: fake.tools.get("archive") };
 	};
 	const run = (tool: any, params: Record<string, unknown>, ctx = ctxFor().ctx) =>
-		tool.execute("call", params, undefined, undefined, ctx);
+		tool.execute(
+			"call",
+			{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+			undefined,
+			undefined,
+			ctx,
+		);
 	const text = (result: any) => result.content[0].text as string;
 
 	it("says when a search has more matches than limit, and does not when every match is shown", async () => {
@@ -375,11 +388,11 @@ describe("memory tool", () => {
 		for (const title of ["Alpha rule", "Bravo habit", "Charlie trick"])
 			await run(tool, { op: "set", title, body: "gadget details" });
 		const capped = text(await run(tool, { op: "search", query: "gadget", limit: 2 }));
-		expect(capped.split("\n").filter((line) => line.startsWith("M"))).toHaveLength(2);
-		expect(capped).toMatch(/\n… more memories match; raise limit/);
+		expect(capped.split("\n").filter((line) => /^M\d+$/.test(line))).toHaveLength(2);
+		expect(capped).toContain("More records remain");
 		const all = text(await run(tool, { op: "search", query: "gadget", limit: 3 }));
-		expect(all.split("\n").filter((line) => line.startsWith("M"))).toHaveLength(3);
-		expect(all).not.toContain("more memories match");
+		expect(all.split("\n").filter((line) => /^M\d+$/.test(line))).toHaveLength(3);
+		expect(all).not.toContain("More records remain");
 	});
 
 	it("sets, searches, lists, gets and deletes", async () => {
@@ -392,24 +405,24 @@ describe("memory tool", () => {
 			keywords: "compile bundle",
 			kind: "procedure",
 		});
-		expect(text(saved)).toMatch(/^Saved M1 \(project, procedure, 0d\) Build with yarn/);
+		expect(text(saved)).toMatch(/^Saved M1 \(workspace, procedure, 0d\) Build with yarn/);
 		expect(text(await run(tool, { op: "search", query: "compile" }))).toContain(
-			"M1 (project, procedure, 0d) Build with yarn",
+			"M1 (workspace, procedure, 0d) Build with yarn",
 		);
-		expect(text(await run(tool, { op: "search", query: "nothing here" }))).toBe("No memory matches.");
+		expect(text(await run(tool, { op: "search", query: "nothing here" }))).toContain("memories: 0 matches");
 		expect(text(await run(tool, { op: "get", id: "M1" }))).toContain("keywords: compile bundle");
 		expect(text(await run(tool, { op: "list" }))).toContain("M1");
 		expect(
 			text(await run(tool, { op: "set", id: "M1", pinned: true }, ctxFor({ selects: ["Allow once"] }).ctx)),
-		).toMatch(/^Updated M1 \(project, procedure, pinned, 0d\)/);
+		).toMatch(/^Updated M1 \(workspace, procedure, pinned, 0d\)/);
 		await run(tool, { op: "set", title: "Second memory", scope: "global" }, ctxFor({ selects: ["Allow once"] }).ctx);
-		expect(text(await run(tool, { op: "list", limit: 1 }))).toContain("1 more; search, or raise limit");
+		expect(text(await run(tool, { op: "list", limit: 1 }))).toContain("More records remain");
 		expect(text(await run(tool, { op: "delete", id: "m1" }, ctxFor({ selects: ["Allow once"] }).ctx))).toMatch(
 			/^Deleted M1/,
 		);
 		await expect(run(tool, { op: "get", id: "M1" })).rejects.toThrow(/No memory M1/);
-		await expect(run(tool, { op: "get", id: "B1" })).rejects.toThrow(/not a memory id/);
-		await expect(run(tool, { op: "get" })).rejects.toThrow(/needs id/);
+		await expect(run(tool, { op: "get", id: "B1" })).rejects.toThrow(/No visible archive record/);
+		await expect(run(tool, { op: "get" })).rejects.toThrow(/requires a record id/);
 		await expect(run(tool, { op: "search" })).rejects.toThrow(/needs query/);
 		await expect(run(tool, { op: "set", title: "x", scope: "all" })).rejects.toThrow(/project or global/);
 		await expect(run(tool, { op: "set", title: "Key", body: `sk-${"a".repeat(40)}` })).rejects.toThrow(/secret/);
@@ -418,7 +431,7 @@ describe("memory tool", () => {
 		).rejects.toThrow(/Similar memory M2/);
 	});
 
-	it("saves a global or pinned memory in a trusted project once the user allows it, and never in an untrusted one", async () => {
+	it("saves a global or pinned memory once the user allows it", async () => {
 		const { tool } = setup();
 		// A save the store would refuse (a secret, no title) fails before any dialog.
 		const asked: string[] = [];
@@ -431,8 +444,8 @@ describe("memory tool", () => {
 		});
 		expect(
 			text(await run(tool, { op: "set", title: "Shown", body: "Line one\nLine two", pinned: true }, seen)),
-		).toMatch(/^Saved M1 \(project/);
-		expect(asked).toEqual([expect.stringMatching(/Save this shared memory\?[\s\S]*\(project, pinned\) Shown/)]);
+		).toMatch(/^Saved M1 \(workspace/);
+		expect(asked).toEqual([expect.stringMatching(/Save this shared memory\?[\s\S]*\(workspace, pinned\) Shown/)]);
 		await expect(
 			run(tool, { op: "set", title: "Key", body: `sk-${"a".repeat(40)}`, pinned: true }, seen),
 		).rejects.toThrow(/secret/);
@@ -444,52 +457,7 @@ describe("memory tool", () => {
 		expect(text(await run(tool, { op: "set", title: "Global one", scope: "global" }, seen))).toMatch(
 			/^Saved M2 \(global/,
 		);
-		expect(text(await run(tool, { op: "set", title: "Project one" }))).toMatch(/^Saved M3 \(project/);
-		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
-		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
-		const untrusted = () => ctxFor({ trusted: false, confirms: [true] }).ctx;
-		await expect(run(tool, { op: "set", title: "Sneaky", scope: "global" }, untrusted())).rejects.toThrow(
-			/untrusted project/,
-		);
-		await expect(run(tool, { op: "set", title: "Sneaky", pinned: true }, untrusted())).rejects.toThrow(
-			/untrusted project/,
-		);
-		await expect(run(tool, { op: "set", id: "M2", body: "changed" }, untrusted())).rejects.toThrow(/untrusted project/);
-		await expect(run(tool, { op: "delete", id: "M2" }, untrusted())).rejects.toThrow(/untrusted project/);
-		// A plain project save is no write-only row: the same project reads it back, with one line about injection.
-		const saved = text(await run(tool, { op: "set", title: "Plain project note" }, untrusted()));
-		expect(saved).toMatch(/^Saved M4 \(project[\s\S]*not auto-injected until the user runs \/trust/);
-		expect(saved).not.toMatch(/hidden|hides/);
-	});
-
-	it("reads, updates and deletes project memories in an untrusted project; only injection waits for trust", async () => {
-		const { tool } = setup();
-		expect(text(await run(tool, { op: "set", title: "Project one", body: "first note" }))).toMatch(/^Saved M1/);
-		const allow = ctxFor({ selects: ["Allow once"] }).ctx;
-		expect(text(await run(tool, { op: "set", title: "Global one", scope: "global" }, allow))).toMatch(
-			/^Saved M2 \(global/,
-		);
-		// A trusted project adds no note.
-		expect(text(await run(tool, { op: "list" }))).not.toMatch(/untrusted/);
-		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
-		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
-		const untrusted = () => ctxFor({ trusted: false }).ctx;
-		const note = /untrusted project: project memories are not auto-injected until the user runs \/trust/;
-		const listed = text(await run(tool, { op: "list" }, untrusted()));
-		expect(listed).toContain("M1");
-		expect(listed).toContain("M2");
-		expect(listed).toMatch(note);
-		expect(text(await run(tool, { op: "search", query: "project one" }, untrusted()))).toContain("M1");
-		expect(text(await run(tool, { op: "get", id: "M1" }, untrusted()))).toContain("first note");
-		expect(text(await run(tool, { op: "set", id: "M1", body: "corrected" }, untrusted()))).toMatch(/^Updated M1/);
-		expect(text(await run(tool, { op: "get", id: "M1" }, untrusted()))).toContain("corrected");
-		// A duplicate is named with the call that updates it, as in a trusted project.
-		await expect(run(tool, { op: "set", title: "Project one" }, untrusted())).rejects.toThrow(
-			/Similar memory M1 exists.*id:"M1"/,
-		);
-		expect(text(await run(tool, { op: "delete", id: "M1" }, untrusted()))).toMatch(/^Deleted M1/);
-		// What is missing says so without blaming trust.
-		await expect(run(tool, { op: "get", id: "M1" }, untrusted())).rejects.toThrow(/^No memory M1 here/);
+		expect(text(await run(tool, { op: "set", title: "Project one" }))).toMatch(/^Saved M3 \(workspace/);
 	});
 
 	it("counts a tool get and the hits of a search as use, but not a list", async () => {
@@ -546,42 +514,28 @@ describe("memory tool", () => {
 		}
 	});
 
-	it("renders the call and a collapsed result", () => {
+	it("renders public archive operations, sanitizes titles and shows saved notes and errors", async () => {
 		const { tool } = setup();
-		expect(rendered(tool.renderCall({ op: "search", query: "rewind flow" }, theme, {}))).toBe(
-			'○ Memory(search "rewind flow")',
+		expect(rendered(tool.renderCall({ op: "search", source: "memories", query: "rewind flow" }, theme, {}))).toBe(
+			"○ Archive(search memories rewind flow)",
 		);
-		expect(rendered(tool.renderCall({ op: "set", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}))).toBe(
-			'○ Memory(set "red text")',
-		);
-		expect(rendered(tool.renderCall({ op: "get", id: "M7" }, theme, {}))).toBe("○ Memory(get M7)");
-		expect(setup().tool.promptGuidelines.join(" ")).toMatch(/scope global or pinned only when the user asks/);
-		const hits = { content: [{ type: "text", text: "M1 a\nM2 b" }], details: { ids: [1, 2] } };
-		expect(
-			rendered(tool.renderResult(hits, { expanded: false }, theme, { args: { op: "search" }, expanded: false })),
-		).toBe("  ⎿  2 hits\n     M1 a\n     M2 b");
 		expect(
 			rendered(
-				tool.renderResult(
-					{ content: [{ type: "text", text: "No memory matches." }], details: { ids: [] } },
-					{ expanded: false },
-					theme,
-					{ args: { op: "search" } },
-				),
+				tool.renderCall({ op: "set", source: "memories", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}),
 			),
-		).toBe("  ⎿  No matches");
-		const listed = { content: [{ type: "text", text: "M1 a" }], details: { ids: [1], total: 4 } };
-		expect(rendered(tool.renderResult(listed, { expanded: false }, theme, { args: { op: "list" } }))).toBe(
-			"  ⎿  1 of 4 memories\n     M1 a",
+		).toBe("○ Archive(set memories red text)");
+		expect(rendered(tool.renderCall({ op: "get", source: "memories", id: "M7" }, theme, {}))).toBe(
+			"○ Archive(get memories M7)",
 		);
-		const saved = { content: [{ type: "text", text: "Saved M7 [project fact] title" }], details: { ids: [7] } };
-		expect(rendered(tool.renderResult(saved, { expanded: false }, theme, { args: { op: "set" } }))).toBe(
-			"  ⎿  Saved M7 [project fact] title",
+		const saved = await run(tool, { op: "set", title: "Render this note" });
+		expect(rendered(tool.renderResult(saved, { expanded: false }, theme, {}))).toContain("Saved M1 (workspace");
+		const listed = await run(tool, { op: "list" });
+		expect(rendered(tool.renderResult(listed, { expanded: true }, theme, { expanded: true }))).toContain(
+			"Render this note",
 		);
 		expect(
 			rendered(
 				tool.renderResult({ content: [{ type: "text", text: "set needs a title" }] }, { expanded: false }, theme, {
-					args: { op: "set" },
 					isError: true,
 				}),
 			),
@@ -592,14 +546,23 @@ describe("memory tool", () => {
 describe("memory lines the model reads", () => {
 	const setup = () => {
 		const fake = fakeHost();
-		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() });
-		return fake.tools.get("memory");
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() }),
+		);
+		return fake.tools.get("archive");
 	};
 	const run = (tool: any, params: Record<string, unknown>, ctx = ctxFor().ctx) =>
-		tool.execute("call", params, undefined, undefined, ctx);
+		tool.execute(
+			"call",
+			{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+			undefined,
+			undefined,
+			ctx,
+		);
 	const text = (result: any) => result.content[0].text as string;
 	const long = `${"sentence about gadgets. ".repeat(30)}the end`;
-	const pointer = "memory get M1";
+	const pointer = "archive op=get source=memories id=M1";
 
 	it("writes the whole body unless a caller asks for a clip, which the terminal views do", () => {
 		const memory = add(new MemoryStore(freshDb(), "repo-a"), { title: "Gadgets", body: long });
@@ -611,10 +574,10 @@ describe("memory lines the model reads", () => {
 		const tool = setup();
 		await run(tool, { op: "set", title: "Gadgets", body: long });
 		await run(tool, { op: "set", title: "Widgets", body: "short gadget note" });
-		for (const params of [{ op: "search", query: "gadgets" }, { op: "list" }]) {
+		for (const params of [{ op: "search", keywords: "gadgets" }, { op: "list" }]) {
 			const lines = text(await run(tool, params)).split("\n");
 			const gadgets = lines.find((line) => line.includes("Gadgets"))!;
-			expect(gadgets).toMatch(/… \(memory get M1\)$/);
+			expect(gadgets).toMatch(/… \(archive op=get source=memories id=M1\)$/);
 			expect(lines.find((line) => line.includes("Widgets"))).toMatch(/short gadget note$/);
 		}
 		// The call the line names returns the body exactly.
@@ -631,7 +594,7 @@ describe("memory lines the model reads", () => {
 		);
 		await run(tool, { op: "set", id: "M1", title: "Gadgets", body: long });
 		expect(text(await run(tool, { op: "delete", id: "M1" }, ctxFor({ selects: ["Allow once"] }).ctx))).toBe(
-			`Deleted M1 (project, fact) Gadgets — ${long}`,
+			`Deleted M1 (workspace, fact) Gadgets — ${long}`,
 		);
 	});
 });
@@ -639,7 +602,10 @@ describe("memory lines the model reads", () => {
 describe("memory auto-injection", () => {
 	const setup = (isSubagent = false) => {
 		const fake = fakeHost();
-		registerMemory(fake.api, { commands: new Subcommands(), isSubagent, permission: fakePermission() });
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, { commands: new Subcommands(), isSubagent, permission: fakePermission() }),
+		);
 		return fake;
 	};
 	const seed = () => {
@@ -666,16 +632,6 @@ describe("memory auto-injection", () => {
 		expect(store.get(global.id)?.useCount).toBe(1);
 		branch.push({ type: "custom_message", ...result.message });
 		expect(await fake.fire("before_agent_start", { prompt: "checkpoints again" }, ctx)).toBeUndefined();
-	});
-
-	it("injects only global memories in an untrusted project", async () => {
-		const fake = setup();
-		const { global } = seed();
-		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
-		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
-		const { ctx } = ctxFor({ trusted: false });
-		const result = (await fake.fire("before_agent_start", { prompt: "rewind checkpoints" }, ctx)) as any;
-		expect(result.message.details.ids).toEqual([global.id]);
 	});
 
 	it("is off with OCTOCODE_MEMORY_AUTO=0 or the stored setting, and survives a broken DB", async () => {
@@ -713,7 +669,10 @@ describe("/memory", () => {
 	const setup = () => {
 		const fake = fakeHost();
 		const commands = new Subcommands();
-		registerMemory(fake.api, { commands, isSubagent: false, permission: fakePermission() });
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, { commands, isSubagent: false, permission: fakePermission() }),
+		);
 		const command = commands.get("memory")!;
 		return { command, commands };
 	};
@@ -748,7 +707,7 @@ describe("/memory", () => {
 		await command.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toBe("Memories (auto on): none.");
 		await command.handler("add Deploy with care — run the smoke tests first", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Saved M1 \(project, fact\) Deploy with care — run the smoke/);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Saved M1 \(workspace, fact\) Deploy with care — run the smoke/);
 		memoryStore(cwd).set({ title: "Global pin", scope: "global", pinned: true, author: "user" });
 		await command.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toBe(
@@ -756,8 +715,8 @@ describe("/memory", () => {
 				"Memories (auto on):",
 				"Pinned:",
 				"  M2 (global, fact, pinned) Global pin",
-				"Project:",
-				"  M1 (project, fact) Deploy with care — run the smoke tests first",
+				"Workspace:",
+				"  M1 (workspace, fact) Deploy with care — run the smoke tests first",
 			].join("\n"),
 		);
 		await command.handler("search smoke", ctx);

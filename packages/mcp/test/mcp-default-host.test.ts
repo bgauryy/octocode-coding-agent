@@ -43,7 +43,11 @@ describe("default MCP in the shared host", () => {
 			join(cwd, ".octocode/mcp.json"),
 			JSON.stringify({ mcpServers: { octocode: { command: "replacement" } } }),
 		);
-		expect(loadMcpConfig(options).servers[0].config).toEqual({ command: "replacement" });
+		// The replacement keeps the preset's purpose, which the prompt shows; nothing else of the preset.
+		expect(loadMcpConfig(options).servers[0].config).toEqual({
+			command: "replacement",
+			description: defaults()[0].config.description,
+		});
 		expect(loadMcpConfig({ ...options, projectTrusted: false }).servers[0].config.enabled).toBe(false);
 	});
 	it("saves default enablement as a canonical global or trusted project override", async () => {
@@ -123,7 +127,7 @@ describe("default MCP in the shared host", () => {
 		await h.start();
 		await h.prompt();
 		const name = "mcp__octocode__localFetch";
-		const definition = { ...h.tools.get(name), sourceInfo: { path: "builtin:mcp" } };
+		const definition = { ...h.tools.get(name), sourceInfo: { path: "builtin:mcp", owner: "builtin" as const } };
 		const status = getMcpSessionStatus(h.api.events);
 		expect(planningRefusal({ toolName: name, input: {} }, definition, status)).toBeUndefined();
 		expect(

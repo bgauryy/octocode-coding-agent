@@ -5,7 +5,7 @@ import { setCapabilityOverrides, Text, type TUI, visibleWidth } from "@octocodea
 import { Type } from "typebox";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createToolHtmlRenderer } from "../../src/core/export-html/tool-renderer.ts";
-import type { ToolDefinition } from "../../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../../src/core/features/types.ts";
 import { ToolExecutionComponent } from "../../src/modes/interactive/components/tool-execution.ts";
 import { initTheme, loadThemeFromPath, setThemeInstance, theme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";

@@ -22,7 +22,7 @@ describe("native prompt section updates", () => {
 			{
 				entry: { name: "octocode", source: "default", config: { command: "test" } },
 				state: "connected",
-				instructions,
+				contract: instructions,
 				declared: true,
 			},
 		])!,
@@ -99,8 +99,8 @@ describe("native prompt section updates", () => {
 
 	it("gives writers blast-radius cleanup and only the main session diagrams and close-out", () => {
 		const root = octocodePrompt(input);
-		const writer = octocodePrompt({ ...input, canDelegate: false, canWrite: true });
-		const reader = octocodePrompt({ ...input, canDelegate: false, readOnlyRole: true });
+		const writer = octocodePrompt({ ...input, canDelegate: false });
+		const reader = octocodePrompt({ ...input, canDelegate: false, readOnly: true });
 		for (const prompt of [root, writer])
 			expect(prompt).toContain("map the blast radius (callers, exports, config, tests and docs that depend on it)");
 		expect(root).toContain("propose wider cleanups.");
@@ -109,10 +109,10 @@ describe("native prompt section updates", () => {
 		// Plain-text visuals the terminal shows as written (user request: no Mermaid); only the main session answers the user.
 		expect(root).toContain("draw it in plain text: a box-and-arrow sketch");
 		expect(root).toContain("do not use Mermaid.");
-		expect(root).toContain("Leave nothing open: finish or revert partial edits");
+		expect(root).toContain("Finish or revert partial edits and stop what you started.");
 		for (const prompt of [writer, reader]) {
 			expect(prompt).not.toContain("draw it in plain text");
-			expect(prompt).not.toContain("Leave nothing open");
+			expect(prompt).not.toContain("Finish or revert partial edits");
 		}
 	});
 

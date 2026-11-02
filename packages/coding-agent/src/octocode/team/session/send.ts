@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import { type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

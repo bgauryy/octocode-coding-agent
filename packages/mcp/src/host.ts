@@ -104,19 +104,10 @@ export interface McpImagePort {
 	fit(bytes: Uint8Array, mimeType: string, limits: ImageLimits & { maxBytes: number }): Promise<McpFittedImage | null>;
 }
 
-/** Trust decisions for project configuration. */
+/** The folder trust decision, for commands that run outside a session (a session reads `ctx.isProjectTrusted()`). */
 export interface McpTrustPort {
-	/** The directory decision `/trust` stored for `cwd` under `agentDir`. */
-	directoryTrusted(agentDir: string, cwd: string): boolean;
-	/** Whether the project's config files match the content trusted with `/trust`; undefined when no decision applies. */
-	contentTrusted(ctx: { cwd: string; isProjectTrusted(): boolean }): boolean | undefined;
-	/** Project MCP files that exist under `cwd`. */
-	projectMcpFiles(cwd: string): string[];
-	/**
-	 * Starts an edit of a project MCP file that cannot add a command. The returned function, called after the edit,
-	 * moves content trust to the edited files when the exact files were trusted before it; otherwise it does nothing.
-	 */
-	beginTrustPreservingEdit(root: string, file: string): () => void;
+	/** Whether the user trusted `cwd` (or a folder above it that covers it). */
+	folderTrusted(cwd: string): boolean;
 }
 
 /** Per-server OAuth state storage with a lock shared across processes. */

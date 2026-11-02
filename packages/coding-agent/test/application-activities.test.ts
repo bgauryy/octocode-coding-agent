@@ -9,7 +9,7 @@ import { ApplicationAssets } from "../src/core/application/assets.ts";
 import { APPLICATION_EVENT_ROUTES } from "../src/core/application/service/activity-data.ts";
 import { createHarness } from "./suite/harness.ts";
 import type { BashOperations } from "../src/core/tools/bash.ts";
-import type { ExtensionAPI } from "../src/index.ts";
+import type { ExtensionAPI } from "../src/core/features/index.ts";
 
 const services: ApplicationService[] = [];
 afterEach(() => {

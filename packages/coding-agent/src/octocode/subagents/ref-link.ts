@@ -1,5 +1,5 @@
 import type { WorkLink } from "@octocodeai/octocode-contracts/backlogs";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { mergeLinks } from "../backlog/evidence-links.ts";

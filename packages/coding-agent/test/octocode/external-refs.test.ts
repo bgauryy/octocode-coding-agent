@@ -56,6 +56,11 @@ async function connected(withReferences = true) {
 	return { ctx, backend, policy, context, manager, prompt };
 }
 
+// The tool is declared only when something is discoverable; these tests exercise it, not the machine's PATH.
+beforeEach(() => {
+	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
+});
+
 describe("external prompt refs", () => {
 	it("expands refs before the send hook and the permission dialog, so both see the text the peer gets", async () => {
 		const state = await connected();

@@ -331,38 +331,13 @@ describe("hierarchy: epic → item → task", () => {
 	});
 });
 
-describe("item type rename task → feature", () => {
-	it("defaults new items to feature and accepts the legacy name as input for one release", () => {
+describe("item types", () => {
+	it("defaults new items to feature and refuses the former name task like any unknown type", () => {
 		expect(add("Plain").type).toBe("feature");
-		const legacy = add("Legacy name", { type: "task" });
-		expect(legacy.type).toBe("feature");
-		expect(store.update(add("Switch", { type: "bug" }).ref, { type: "task" }, user).type).toBe("feature");
+		expect(() => add("Legacy name", { type: "task" })).toThrow(/Invalid backlog entity fields/);
+		const switched = add("Switch", { type: "bug" });
+		expect(() => store.update(switched.ref, { type: "task" } as never, user)).toThrow(/Invalid backlog entity fields/);
 		expect(() => add("Unknown", { type: "story" })).toThrow(/Invalid backlog entity fields/);
-	});
-
-	it("rewrites type 'task' rows of a database from before the rename when it is opened, keeping versions", () => {
-		const a = add("Old A");
-		const b = add("Old B", { type: "bug" });
-		// What an older build left: rows typed task (its column default), which reads already map to feature.
-		db.db.exec("UPDATE backlog SET type = 'task' WHERE type = 'feature'");
-		// ... and such a file has no mark that the rewrite ran.
-		db.db.exec("DELETE FROM meta WHERE key = 'backlog_type_task_renamed'");
-		expect(store.get(a.ref)!.type).toBe("feature");
-		const versions = backlog.listItems(db.db, { repo: "repo", states: ["backlog"] }, -1, 0).map((row) => row.version);
-		const updates = () =>
-			db.db.prepare("SELECT COUNT(*) AS n FROM backlog_audits WHERE entity = 'backlog' AND action = 'update'").get();
-		const auditedBefore = updates();
-		db.close();
-		db = openAgentDb(file);
-		const raw = (ref: number) =>
-			(db.db.prepare("SELECT type FROM backlog WHERE seq = ?").get(ref) as { type: string }).type;
-		expect([raw(a.seq), raw(b.seq)]).toEqual(["feature", "bug"]);
-		expect(backlog.listItems(db.db, { repo: "repo", states: ["backlog"] }, -1, 0).map((row) => row.version)).toEqual(
-			versions,
-		);
-		expect(backlog.hasLegacyItemType(db.db)).toBe(false);
-		// Reads showed `feature` before and after, so the rewrite is no change and writes no audit row.
-		expect(updates()).toEqual(auditedBefore);
 	});
 
 	it("adds the tasks table to a database that predates it, without touching its items", () => {

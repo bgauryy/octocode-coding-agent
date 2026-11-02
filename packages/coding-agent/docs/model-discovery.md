@@ -28,7 +28,7 @@ The `known` flag means an ID already has a configured model definition. Unknown 
 
 OpenAI API keys use the standard `data[].id` list. Sign in with ChatGPT uses the account's `models[].slug` list, preserves the vendor's order and display names, and includes only `visibility: "list"`. OAuth availability is restricted to IDs that also have trusted runtime metadata. Login saves the list; refresh can update it without mixing accounts. A list failure does not replace renewable credentials with guessed model access.
 
-The SDK exposes the same behavior without importing every provider:
+The `@octocodeai/octocode-ai` package exposes the same behavior without importing every provider:
 
 ```typescript
 import { discoverProviderModels } from "@octocodeai/octocode-ai/providers/discovery";

@@ -1,19 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { OctocodeApi } from "../../src/octocode/api/bridge.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { ExternalAgents } from "../../src/octocode/external/manager.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { EXTERNAL_SENDER } from "../../src/octocode/shared/messages.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 const cleanup: Array<() => unknown> = [];
 beforeEach(() => vi.stubEnv("OCTOCODE_HOME", tmp("octocode-message-integration-home-")));
@@ -26,7 +24,6 @@ async function hookRuntime(hooks: unknown) {
 	fs.mkdirSync(path.join(cwd, ".git"));
 	fs.mkdirSync(path.join(cwd, ".octocode"));
 	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
-	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	const view = registerHooks(fake.api, {}, tmp());

@@ -67,13 +67,12 @@ export function editorDefaults(it?: SnapshotItem, correction = false): EditorVal
 }
 
 /**
- * A tab-local draft over the editor defaults. Drafts saved before the editor used `why` and dropped the details field
- * keep their text: `reason` becomes `why`, and details the user changed join the note, so nothing typed is lost.
+ * A tab-local draft over the editor defaults. Drafts saved before the editor dropped the details field keep their
+ * text: details the user changed join the note, so nothing typed is lost.
  */
 export function restoreDraft(text: string, it?: SnapshotItem, correction = false): EditorValues {
-	const { reason, body, ...saved } = JSON.parse(text) as Partial<EditorValues> & { reason?: string; body?: string };
+	const { body, ...saved } = JSON.parse(text) as Partial<EditorValues> & { body?: string };
 	const values = { ...editorDefaults(it, correction), ...saved };
-	if (saved.why === undefined && typeof reason === "string") values.why = reason;
 	const details = typeof body === "string" ? body.trim() : "";
 	if (details && details !== (it?.body ?? "").trim())
 		values.note = [values.note.trim(), details].filter(Boolean).join("\n\n");

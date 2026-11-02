@@ -1,45 +1,67 @@
 /**
- * Description overrides a preset ships for its server, keyed per tool by the hash of the tool they were written for,
- * so a server release that changes some tools keeps the overrides of the others.
+ * Description overrides a preset ships for its server. Each override is keyed on the upstream text it replaces: the
+ * server instructions by their hash, a tool's description and trigger by the hash of its description, and each field
+ * by the hash of its description at a stable dotted path. A server release that rewrites some texts therefore
+ * drops only the overrides of those texts; every other override still applies, and a stale one fails open to the
+ * server's own text (`presetStatus` names it).
  */
 
-import { instructionsHash, toolHash } from "./render.ts";
+import { instructionsHash } from "./render.ts";
+import { fieldUpstreamTexts, toolDescriptionTexts, upstreamHash } from "./upstream.ts";
 import type { CompactServerInput, DescriptionOverrides } from "./types.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
-interface PresetToolOverrides {
-	/** {@link toolHash} of the tool the entries describe. */
-	hash: string;
+/** One hash, or the hashes a text had in the catalogs the override was written for (a server varies a field by configuration). */
+export type UpstreamHashes = string | string[];
+
+interface PresetFieldOverride {
+	/** {@link upstreamHash} of the description(s) the field has upstream at its path. */
+	upstream: UpstreamHashes;
+	text: string;
+}
+
+export interface PresetToolOverrides {
+	/** {@link upstreamHash} of the tool's description, which `description` and `trigger` were written for. */
+	descriptionHash?: UpstreamHashes;
 	description?: string;
 	trigger?: string;
-	fields?: Record<string, string>;
+	/** By dotted field path (`queries.path`, `output.results.path`). */
+	fields?: Record<string, PresetFieldOverride>;
 }
 
 export interface PresetOverrides {
 	/** The server text, for the instructions with this {@link instructionsHash}. */
 	server?: { instructionsHash: string; text: string };
-	/**
-	 * Per tool, the entry for the tool's hash; a list holds one entry per variant of the tool a server sends (the
-	 * Octocode server drops the `classification` field of its read and search tools without a classification key).
-	 */
-	tools?: Record<string, PresetToolOverrides | PresetToolOverrides[]>;
+	tools?: Record<string, PresetToolOverrides>;
 }
 
-const entriesOf = (entry: PresetToolOverrides | PresetToolOverrides[] | undefined): PresetToolOverrides[] =>
-	entry === undefined ? [] : Array.isArray(entry) ? entry : [entry];
+export const hashList = (hashes: UpstreamHashes): string[] => (Array.isArray(hashes) ? hashes : [hashes]);
 
-const isStringRecord = (value: unknown): value is Record<string, string> =>
-	isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
+const isHashes = (value: unknown): value is UpstreamHashes =>
+	typeof value === "string" || (Array.isArray(value) && value.every((entry) => typeof entry === "string"));
+
+const TOOL_KEYS = ["descriptionHash", "description", "trigger", "fields"];
+
+function fieldsError(name: string, fields: unknown): string | undefined {
+	if (!isRecord(fields)) return `tools.${name}.fields: must map field paths to entries`;
+	for (const [path, field] of Object.entries(fields)) {
+		if (!isRecord(field) || !isHashes(field.upstream) || typeof field.text !== "string")
+			return `tools.${name}.fields.${path}: needs "upstream" hash(es) and a "text" string`;
+		const unknown = Object.keys(field).filter((key) => key !== "upstream" && key !== "text");
+		if (unknown.length) return `tools.${name}.fields.${path}: unknown key ${unknown.join(", ")}`;
+	}
+	return undefined;
+}
 
 function toolError(name: string, value: unknown): string | undefined {
-	if (!isRecord(value) || typeof value.hash !== "string") return `tools.${name}: needs a "hash" string`;
-	const unknown = Object.keys(value).filter((key) => !["hash", "description", "trigger", "fields"].includes(key));
+	if (!isRecord(value)) return `tools.${name}: must be an object`;
+	const unknown = Object.keys(value).filter((key) => !TOOL_KEYS.includes(key));
 	if (unknown.length) return `tools.${name}: unknown key ${unknown.join(", ")}`;
 	for (const key of ["description", "trigger"] as const)
 		if (value[key] !== undefined && typeof value[key] !== "string") return `tools.${name}.${key}: must be a string`;
-	if (value.fields !== undefined && !isStringRecord(value.fields))
-		return `tools.${name}.fields: must map field paths to strings`;
-	return undefined;
+	if ((value.description !== undefined || value.trigger !== undefined) && !isHashes(value.descriptionHash))
+		return `tools.${name}: needs a "descriptionHash" string`;
+	return value.fields === undefined ? undefined : fieldsError(name, value.fields);
 }
 
 /** Validates preset overrides read from JSON; unknown keys are rejected so a typo does not pass silently. */
@@ -55,16 +77,18 @@ export function parsePresetOverrides(value: unknown): { overrides: PresetOverrid
 		return { error: '"server" needs "instructionsHash" and "text" strings' };
 	if (tools !== undefined) {
 		if (!isRecord(tools)) return { error: '"tools" must map tool names to entries' };
-		for (const [name, entry] of Object.entries(tools))
-			for (const variant of Array.isArray(entry) ? entry : [entry]) {
-				const error = toolError(name, variant);
-				if (error) return { error };
-			}
+		for (const [name, entry] of Object.entries(tools)) {
+			const error = toolError(name, entry);
+			if (error) return { error };
+		}
 	}
 	return { overrides: value };
 }
 
-/** The entries of `preset` that describe `input`: those of tools whose hash matches, the server text while the instructions do. */
+/**
+ * The entries of `preset` that still describe `input`: the server text while the instructions are unchanged, a tool's
+ * description and trigger while its description is, and each field while its upstream description at that path is.
+ */
 export function presetOverridesFor(
 	preset: PresetOverrides,
 	input: CompactServerInput,
@@ -73,12 +97,22 @@ export function presetOverridesFor(
 	const triggers: Record<string, string> = {};
 	const fields: Record<string, Record<string, string>> = {};
 	for (const tool of input.tools) {
-		const hash = toolHash(tool);
-		const entry = entriesOf(preset.tools?.[tool.name]).find((variant) => variant.hash === hash);
+		const entry = preset.tools?.[tool.name];
 		if (!entry) continue;
-		if (entry.description !== undefined) tools[tool.name] = entry.description;
-		if (entry.trigger !== undefined) triggers[tool.name] = entry.trigger;
-		if (entry.fields && Object.keys(entry.fields).length) fields[tool.name] = entry.fields;
+		if (
+			entry.descriptionHash !== undefined &&
+			hashList(entry.descriptionHash).includes(upstreamHash(toolDescriptionTexts(tool)))
+		) {
+			if (entry.description !== undefined) tools[tool.name] = entry.description;
+			if (entry.trigger !== undefined) triggers[tool.name] = entry.trigger;
+		}
+		if (!entry.fields) continue;
+		const upstream = fieldUpstreamTexts(tool);
+		for (const [path, field] of Object.entries(entry.fields)) {
+			const texts = upstream.get(path);
+			if (!texts || !hashList(field.upstream).includes(upstreamHash(texts))) continue;
+			(fields[tool.name] ??= {})[path] = field.text;
+		}
 	}
 	const overrides: DescriptionOverrides = {
 		...(preset.server && preset.server.instructionsHash === instructionsHash(input.instructions)
@@ -97,13 +131,21 @@ export function toPresetOverrides(overrides: DescriptionOverrides, input: Compac
 	for (const tool of [...input.tools].sort((a, b) => a.name.localeCompare(b.name))) {
 		const description = overrides.tools?.[tool.name];
 		const trigger = overrides.triggers?.[tool.name];
-		const fields = overrides.fields?.[tool.name];
-		if (description === undefined && trigger === undefined && !fields) continue;
+		const upstream = fieldUpstreamTexts(tool);
+		const fields = Object.fromEntries(
+			Object.entries(overrides.fields?.[tool.name] ?? {}).flatMap(([path, text]) => {
+				const texts = upstream.get(path);
+				return texts ? [[path, { upstream: upstreamHash(texts), text }]] : [];
+			}),
+		);
+		if (description === undefined && trigger === undefined && !Object.keys(fields).length) continue;
 		tools[tool.name] = {
-			hash: toolHash(tool),
+			...(description !== undefined || trigger !== undefined
+				? { descriptionHash: upstreamHash(toolDescriptionTexts(tool)) }
+				: {}),
 			...(description !== undefined ? { description } : {}),
 			...(trigger !== undefined ? { trigger } : {}),
-			...(fields ? { fields } : {}),
+			...(Object.keys(fields).length ? { fields } : {}),
 		};
 	}
 	return {

@@ -15,15 +15,15 @@ import {
 	discoverAndLoadExtensions,
 	loadExtensionFromFactory,
 	loadExtensions,
-} from "../src/core/extensions/loader.ts";
-import { ExtensionRunner, emitProjectTrustEvent } from "../src/core/extensions/runner.ts";
+} from "./helpers/features.ts";
+import { ExtensionRunner } from "../src/core/features/runner.ts";
 import type {
 	ExtensionActions,
 	ExtensionContextActions,
 	ExtensionFactory,
 	ExtensionUIContext,
 	ProviderConfig,
-} from "../src/core/extensions/types.ts";
+} from "../src/core/features/types.ts";
 import { KeybindingsManager, type KeyId } from "../src/core/keybindings.ts";
 import type { ModelRegistry } from "../src/core/model-registry.ts";
 import type { ScopedModel } from "../src/core/model-resolver.ts";
@@ -157,45 +157,6 @@ describe("ExtensionRunner", () => {
 			const scoped = [{ model: { id: "scoped-test" }, thinkingLevel: "high" }] as unknown as ScopedModel[];
 			runner.bindCore(extensionActions, { ...extensionContextActions, getScopedModels: () => scoped });
 			expect(runner.createContext().scopedModels).toBe(scoped);
-		});
-	});
-
-	describe("project_trust", () => {
-		it("continues past undecided handlers and returns the first yes/no decision", async () => {
-			const undecidedPath = path.join(extensionsDir, "undecided.ts");
-			const decidedPath = path.join(extensionsDir, "decided.ts");
-			fs.writeFileSync(
-				undecidedPath,
-				`export default function(api) {
-	api.on("project_trust", () => ({ trusted: "undecided", remember: true }));
-}`,
-			);
-			fs.writeFileSync(
-				decidedPath,
-				`export default function(api) {
-	api.on("project_trust", () => ({ trusted: "no", remember: true }));
-}`,
-			);
-
-			const extensionsResult = await loadExtensions([undecidedPath, decidedPath], tempDir);
-			const result = await emitProjectTrustEvent(
-				extensionsResult,
-				{ type: "project_trust", cwd: tempDir },
-				{
-					cwd: tempDir,
-					mode: "tui",
-					hasUI: false,
-					ui: {
-						select: async () => undefined,
-						confirm: async () => false,
-						input: async () => undefined,
-						notify: () => {},
-					},
-				},
-			);
-
-			expect(result.result).toEqual({ trusted: "no", remember: true });
-			expect(result.errors).toEqual([]);
 		});
 	});
 
@@ -519,7 +480,7 @@ describe("ExtensionRunner", () => {
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			result.extensions[0].commands.get("model")!.sourceInfo = {
 				...result.extensions[0].sourceInfo,
-				path: "<inline:octocode>",
+				owner: "native",
 			};
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
 			expect(runner.getCommand("model")?.invocationName).toBe("model");
@@ -1447,60 +1408,6 @@ describe("ExtensionRunner", () => {
 
 			expect(runner.hasHandlers("tool_call")).toBe(true);
 			expect(runner.hasHandlers("agent_end")).toBe(false);
-		});
-	});
-
-	describe("before_provider_headers", () => {
-		it("lets a handler mutate headers in place and preserves existing headers", async () => {
-			const extCode = `
-				export default function(api) {
-					api.on("before_provider_headers", (event) => {
-						event.headers["X-Turn-Index"] = "3";
-					});
-				}
-			`;
-			fs.writeFileSync(path.join(extensionsDir, "headers.ts"), extCode);
-
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-
-			expect(runner.hasHandlers("before_provider_headers")).toBe(true);
-
-			const headers = await runner.emitBeforeProviderHeaders({ "User-Agent": "kimchi/1.0" });
-			expect(headers["X-Turn-Index"]).toBe("3");
-			expect(headers["User-Agent"]).toBe("kimchi/1.0");
-		});
-
-		it("isolates a throwing handler and still applies the others", async () => {
-			const throwing = `
-				export default function(api) {
-					api.on("before_provider_headers", () => {
-						throw new Error("header handler boom");
-					});
-				}
-			`;
-			const good = `
-				export default function(api) {
-					api.on("before_provider_headers", (event) => {
-						event.headers["X-Good"] = "yes";
-					});
-				}
-			`;
-			fs.writeFileSync(path.join(extensionsDir, "a-throwing.ts"), throwing);
-			fs.writeFileSync(path.join(extensionsDir, "b-good.ts"), good);
-
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-			const errors: Array<{ event: string; error: string }> = [];
-			runner.onError((err) => errors.push(err));
-
-			const headers = await runner.emitBeforeProviderHeaders({ "User-Agent": "x" });
-
-			expect(headers["X-Good"]).toBe("yes");
-			expect(headers["User-Agent"]).toBe("x");
-			expect(errors).toHaveLength(1);
-			expect(errors[0].event).toBe("before_provider_headers");
-			expect(errors[0].error).toContain("header handler boom");
 		});
 	});
 });

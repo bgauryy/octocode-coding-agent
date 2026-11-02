@@ -5,7 +5,7 @@ import { registerFauxProvider } from "@octocodeai/octocode-ai/compat";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../../../src/core/agent-session-runtime.ts";
@@ -69,7 +69,7 @@ describe("issue #2753 reload stale resource settings", () => {
 				},
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,

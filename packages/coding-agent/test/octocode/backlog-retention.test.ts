@@ -281,10 +281,11 @@ describe("archived history readers", () => {
 		expect(store.audit("B1").map((event) => event.id)).toEqual([archived[0], archived[2], live]);
 		expect(store.audit(undefined, 2).map((event) => event.id)).toEqual([archived[2], live]);
 		expect(store.audit(undefined, 2, archived[2]).map((event) => event.id)).toEqual([archived[0], archived[1]]);
-		// The snapshot behind /backlog html and the web board carries the archived rows of each item.
+		// The board snapshot carries no audit rows (a large backlog's history made it too big to send): the page reads an
+		// item's history, archived rows included, from the audit route below.
 		store.add({ title: "B1 now", createdBy: "user" });
 		const item = backlogSnapshot(store, "repo", NOW).items.find((each) => each.ref === "B1")!;
-		expect(item.audits?.map((event) => event.id)).toEqual(expect.arrayContaining([archived[0], archived[2], live]));
+		expect(item).not.toHaveProperty("audits");
 	});
 
 	it("serves archived rows on the web Audit route", async () => {

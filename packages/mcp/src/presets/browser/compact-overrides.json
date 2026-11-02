@@ -5,148 +5,187 @@
 	},
 	"tools": {
 		"api-replay": {
-			"hash": "3b3a348cbfc57df0cc1c57cc6ee810649cacac89e6d6e7d1df3c4b96aa74c5bb",
+			"descriptionHash": "261bea59053cf342",
 			"trigger": "Use to replay a discovered request once and page the saved response.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"artifact": {
-			"hash": "0c03720c709e644fb7b8434fab6f580dd2a26effd2fc7fee6ab3bb67a3417807",
+			"descriptionHash": "e7e6e631a27d891a",
 			"trigger": "Use to page a saved JSON, text or binary capture; query filters JSON rows."
 		},
 		"cdp": {
-			"hash": "97e1ee4bd17dbd54e3c3c0619ee6163860046ac288e7a3f8a2233d50b3f2f67f",
+			"descriptionHash": "607274e02c701475",
 			"description": "Call any installed Domain.method with open params; protocol shows its installed contract.",
 			"trigger": "Use for a raw CDP Domain.method the plan operations do not cover; protocol shows its contract."
 		},
 		"check": {
-			"hash": "43488613f55925488df1b8417850361dab0511c4404fe44687d2b54297351c50",
+			"descriptionHash": "fec8a4492250f529",
 			"description": "Run a named capture recipe; schema (command: check) lists its options.",
 			"trigger": "Use for a named capture recipe: console and network, measures, actionability."
 		},
 		"cleanup": {
-			"hash": "cb87a13861c4d0395ea7c460614f8d55ba1577d94d09431c60df71472e038b20",
+			"descriptionHash": "ad6dcf2209fea8b9",
 			"trigger": "Use to stop the tracked isolated Chrome when browser work is done."
 		},
 		"cookies": {
-			"hash": "a9c6077572fefee1451cb9d406b9994096a2a60beac2700b8374675dd8ecb965",
+			"descriptionHash": "512c747e00a164de",
 			"trigger": "Use to transfer authorized session cookies.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"corpus-query": {
-			"hash": "e3c883856d0214322225c215d12226015694f1632df0b8c7dc3dbf5a2648a4ee",
+			"descriptionHash": "3bedd3008e86fa38",
 			"trigger": "Use to query captures with the optional scraping skill.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"har-ingest": {
-			"hash": "5eb9561f1af0cef749255eeb90d06acc8e7d880fdbcee750acad96730f619653",
+			"descriptionHash": "89a067ed6359411e",
 			"trigger": "Use to import a HAR into the optional scraping corpus.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"har-pager": {
-			"hash": "0ca952de55c630f764dedff1758b3fe689ca28f0a9e1c5a6243188d1dac4d0ae",
+			"descriptionHash": "710c87f0cb24fef5",
 			"trigger": "Use to page the requests of a saved HAR.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"har-redact": {
-			"hash": "944a961a5ffdb3741b6d9cd42b1b64c6cceeafa64ed3d8f25e02398ae6db1558",
+			"descriptionHash": "294ab116c0105ae1",
 			"trigger": "Use to redact a HAR before sharing it.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"measure-query": {
-			"hash": "82e73ef8b117f6bd72e3f0c78a33089f9175e5c35595704655475b2e84f05156",
+			"descriptionHash": "c609be3c6bed16ae",
 			"trigger": "Use to query saved health measurements.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"open": {
-			"hash": "aa29cc0bb075bf88b231fbba2c0e9abb03b8b1a5f8dd15f90f5685beced63f46",
+			"descriptionHash": "293da32941c533c3",
 			"trigger": "Use to launch or reuse Chrome (isolated profile by default) before other browser calls."
 		},
 		"protocol": {
-			"hash": "d0abc9e7204b5c774c88d379c9ecba6b2856f3656358d52cdd59d4cd7b85955b",
+			"descriptionHash": "921b883cb67768cc",
 			"trigger": "Use to save the installed CDP schema or one Domain.member before a cdp call."
 		},
 		"protocol-corpus": {
-			"hash": "1a6404b83f6906582ef416d098458f4121a11f2f739815f6e197f317b2d6b89a",
+			"descriptionHash": "2e80403876ff1135",
 			"trigger": "Use to build the optional offline protocol corpus.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"prune": {
-			"hash": "f1b0b90fa36bacfe806e68792eb4143ef9324509a7f1b861dd6270e7b8e80be6",
+			"descriptionHash": "75c1de634451d3fb",
 			"trigger": "Use to delete old artifacts; --dry-run previews retention.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"query": {
-			"hash": "85b74fe70990e847905b5a11796d2116baab6125b010938b291f15839c8944c5",
+			"descriptionHash": "fe419996afb33e21",
 			"trigger": "Use to filter saved JSON/JSONL rows before paging; artifact reads raw content."
 		},
 		"run": {
-			"hash": "6fa0d513789bafbcfe410f0571b60ad877e2e1e621507f3e905118a97fd0b9e4",
+			"descriptionHash": "86c272652fa8ec58",
 			"description": "Execute known transitions in one plan; stops at the first failure and returns read pages and acknowledgements. Operations: schema (command: run).",
 			"trigger": "Use to navigate, act, wait and extract in one plan; for a single operation, step.",
 			"fields": {
-				"plan": "An object with a nonempty steps array."
+				"plan": {
+					"upstream": "e04d337daf120457",
+					"text": "An object with a nonempty steps array."
+				}
 			}
 		},
 		"schema": {
-			"hash": "5c799acca96cbb6f8668e8debb2151337d9c5897309fc6de7b027a0b0563dff6",
+			"descriptionHash": "69c78a2e60505db8",
 			"description": "Discover plan, command and recipe contracts offline, without Chrome.",
 			"trigger": "Use to discover plan operations, command and recipe contracts without Chrome."
 		},
 		"screenshot": {
-			"hash": "1422ae5ec4d19ff31183ae07c2e6f4284a5a34f6ce2dbcf0ebbc35a35c564b63",
+			"descriptionHash": "57c3d37166dad18a",
 			"trigger": "Use to capture the viewport, an element or full-page tiles as images."
 		},
 		"script": {
-			"hash": "616295d05de504c81f58ebbc8b90d23db016a1587b03bffdef39c0bdcec2fec1",
+			"descriptionHash": "d9ac256edb002a39",
 			"trigger": "Use to run a custom module exporting async run(cdp) when plans and cdp cannot.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"skill": {
-			"hash": "a082bd32e13be5ef23e97593261b54c3160d82b8980b25bd10577557de80b5d4",
+			"descriptionHash": "349aed077d730f93",
 			"description": "Read the package's operating guidance or one topic, paged.",
 			"trigger": "Use to read the package's operating guidance by topic."
 		},
 		"snapshot": {
-			"hash": "ab088b4024a34e7cd21b78bd1ca92709c19c454e0613bf613719ababbf139d84",
+			"descriptionHash": "f8e6c720bcf5a26c",
 			"trigger": "Use to capture the page's controls, regions and frame refs before acting."
 		},
 		"snapshot-query": {
-			"hash": "82c22ad2cb0fd662978fd404be48b4789bb277ccbe90ed3fcaa5b26debf73b82",
+			"descriptionHash": "1c5df0409d6ec69e",
 			"trigger": "Use to page a saved snapshot without recapturing.",
 			"fields": {
-				"args": ""
+				"args": {
+					"upstream": "3acf07b8065263a6",
+					"text": ""
+				}
 			}
 		},
 		"step": {
-			"hash": "cad63cccf085b36686ea67aed79a08f9b9adcf5c03b4a27661979da7fa66833a",
+			"descriptionHash": "3c8479aa6bdcf7aa",
 			"description": "Execute one plan operation; prefer batching steps in run.",
 			"trigger": "Use for one plan operation when a run plan is not needed.",
 			"fields": {
-				"step": "One operation object."
+				"step": {
+					"upstream": "2ff9c530e9724028",
+					"text": "One operation object."
+				}
 			}
 		},
 		"targets": {
-			"hash": "2c9c33f3955af2bb63841c8d76205044c8c7a9f77d846e246c08a1e4a3cd21ec",
+			"descriptionHash": "f58ab22e02ecdc3d",
 			"description": "List targets; pick an exact id for later calls.",
 			"trigger": "Use to list tabs, workers and frames and pick an exact target id."
 		}

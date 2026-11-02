@@ -99,6 +99,16 @@ describe("the agent tool's goal", () => {
 		);
 	});
 
+	it("tells the child why it was started: the reason of the call that started it", async () => {
+		const s = setup();
+		const result = await s.run({ task: "report", goal: GOAL, reason: "The refresh  flow\nchanged in #42" });
+		const facts = reportOf(result.content[0].text as string);
+		expect(facts.task).toContain("Why you were started: The refresh flow changed in #42.\n\n## You\n");
+		expect(facts.task).toContain(`Your goal: ${GOAL}. You work for`);
+		const bare = reportOf((await s.run({ task: "report", goal: GOAL })).content[0].text as string);
+		expect(bare.task).not.toContain("Why you were started");
+	});
+
 	it("gives parallel children different names", async () => {
 		const s = setup();
 		const ids = await Promise.all(
@@ -206,6 +216,11 @@ describe("child identity", () => {
 		expect(bare.OCTOCODE_AGENT_ROLE).toBeUndefined();
 	});
 
+	it("keeps the why's own ending punctuation", () => {
+		const text = withIdentity("do it", { id: "inky-kraken", goal: GOAL, why: "Is the cache stale?" });
+		expect(text).toContain("Why you were started: Is the cache stale?\n\n## You\n");
+	});
+
 	it("tells the child its own name, role, goal, parent and scratch folder", () => {
 		expect(
 			withIdentity("do it", {
@@ -216,7 +231,7 @@ describe("child identity", () => {
 				scratch: "/tmp/s",
 			}),
 		).toBe(
-			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work for \`salty-squid\`. Your scratch folder, for handoff files and a long report, is \`/tmp/s\`.\n\n## Report\n${reportContract()}`,
+			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work for \`salty-squid\`. Your scratch folder is \`/tmp/s\`.\n\n## Report\n${reportContract()}`,
 		);
 	});
 
@@ -229,7 +244,7 @@ describe("child identity", () => {
 		const [you, report] = base.split("\n\n## Report\n");
 		expect(report).toBe(reportContract());
 		expect(withIdentity("do it", identity, { library })).toBe(
-			`${you}\nEarlier history of your parent session, compacted out of its context, is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}\n\n## Report\n${report}`,
+			`${you}\nEarlier history of your parent session is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}\n\n## Report\n${report}`,
 		);
 	});
 

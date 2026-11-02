@@ -28,18 +28,15 @@ const TOKEN_HEADER = "Bearer ${TOKEN}";
 
 describe("stdio launch configuration", () => {
 	afterEach(() => vi.unstubAllEnvs());
-	it("validates environment inheritance and rejects removed exposure values with the replacement", () => {
+	it("validates environment inheritance and rejects the former exposure values like any unknown one", () => {
 		expect(validateMcpServerConfig("python", { command: "python3", args: ["server.py"], inheritEnv: "no" })).toContain(
 			"inheritEnv must be a boolean",
 		);
 		for (const exposure of ["auto", "deferred", "codemode", "codemode-deferred"]) {
 			const server = validateMcpServerConfig("python", { command: "python3", exposure });
-			expect(server).toContain(
-				`server "python": exposure must be one of "direct", "hidden"; "${exposure}" was removed`,
-			);
-			expect(server).toContain('"defaultActive": false');
-			expect(validateMcpServerConfig("python", { command: "python3", toolExposure: { read: exposure } })).toContain(
-				`toolExposure "read" must be one of "direct", "hidden"; "${exposure}" was removed`,
+			expect(server).toBe('server "python": exposure must be one of "direct", "hidden"');
+			expect(validateMcpServerConfig("python", { command: "python3", toolExposure: { read: exposure } })).toBe(
+				'server "python": toolExposure "read" must be one of "direct", "hidden"',
 			);
 		}
 		expect(validateMcpServerConfig("python", { command: "python3", defaultActive: "no" })).toBe(
@@ -199,7 +196,7 @@ describe("MCP config", () => {
 		expect(errors).toEqual([expect.stringContaining('server "work_files" conflicts with "work-files"')]);
 	});
 
-	it("rejects removed exposure values and ignores the removed activation setting", () => {
+	it("rejects former exposure values and ignores the removed activation setting", () => {
 		const paths = setup(
 			{
 				autoEnableCodemode: false,
@@ -222,10 +219,8 @@ describe("MCP config", () => {
 		]);
 		expect(untrusted.servers[1].config.description).toBe("Docs search");
 		expect(untrusted.errors).toEqual([
-			expect.stringContaining('server "later": exposure must be one of "direct", "hidden"; "deferred" was removed'),
-			expect.stringContaining(
-				'server "scripts": toolExposure "a" must be one of "direct", "hidden"; "codemode-deferred" was removed',
-			),
+			expect.stringContaining('server "later": exposure must be one of "direct", "hidden"'),
+			expect.stringContaining('server "scripts": toolExposure "a" must be one of "direct", "hidden"'),
 			expect.stringContaining('server "wrong": exposure must be one of'),
 			expect.stringContaining('server "badDescription": description must be a string'),
 		]);

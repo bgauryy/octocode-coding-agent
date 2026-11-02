@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
@@ -12,6 +12,7 @@ import {
 	CORE_TOOLS,
 	DEFAULT_CHILD_TOOLS,
 	MCP_ACCESS_TOOLS,
+	SHELL_TOOLS,
 	loadProfiles,
 	parseProfile,
 } from "../../src/octocode/subagents/profiles.ts";
@@ -39,20 +40,17 @@ describe("linger front matter", () => {
 		const tools = allowed(browser.tools);
 		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "mcp__octocode__clasify"]);
 		expect(tools).not.toContain("browser");
+		// Core tools: commands (still read-only through the permission gate), communication and steps.
+		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "steps", "file"]));
+		expect(tools).not.toContain("task");
 	});
 
 	it("gives the browser role the page-awareness loop and the follow-up contract", () => {
 		const { prompt } = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
-		for (const part of [
-			"DOM rules first",
-			"one `clasify` row per screenshot",
-			"usable_content",
-			"elementFromPoint",
-			"CAPTCHA, MFA or a paywall",
-			"page map",
-			"Follow-ups",
-		])
+		for (const part of ["DOM rules first", "CAPTCHA, MFA or a paywall", "page map", "Follow-ups"])
 			expect(prompt).toContain(part);
+		// The browser and research servers explain their own tools: the role names none of them.
+		expect(prompt).not.toMatch(/mcp__|clasify|localSearch|`open`|`cleanup`/);
 	});
 });
 
@@ -70,25 +68,39 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
+			"steps",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
 		const args = parseArgs(buildAgentArgs(parsed, undefined, SESSION));
-		expect(args.tools).toEqual(["edit", "bash", "file", "agent", "archive", "skill", ...MCP_ACCESS_TOOLS, "mcp__*"]);
-		// A name already listed is not repeated.
-		expect(allowed(profile("tools: read,grep").tools)).toEqual([
-			"read",
-			"grep",
+		expect(args.tools).toEqual([
+			"edit",
+			"bash",
 			"file",
 			"agent",
+			"steps",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
-		expect(CORE_TOOLS).toEqual(["file", "agent", "archive"]);
+		// A name already listed is not repeated.
+		expect(allowed(profile("tools: read,grep").tools)).toEqual([
+			"read",
+			"grep",
+			"bash",
+			"file",
+			"agent",
+			"steps",
+			"archive",
+			"skill",
+			...MCP_ACCESS_TOOLS,
+			"mcp__*",
+		]);
+		expect(CORE_TOOLS).toEqual(["file", "agent", "steps", "archive"]);
+		expect(SHELL_TOOLS).toEqual(["bash"]);
 		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
 
@@ -97,6 +109,8 @@ describe("core tools of a subagent profile", () => {
 		expect(allowed(profile('tools: "agent*,file"').tools)).toEqual([
 			"agent*",
 			"file",
+			"bash",
+			"steps",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -106,8 +120,10 @@ describe("core tools of a subagent profile", () => {
 
 	it("gives an empty allowlist the core tools: it still reaches its parent", () => {
 		expect(allowed(profile('tools: ","').tools)).toEqual([
+			"bash",
 			"file",
 			"agent",
+			"steps",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -119,7 +135,9 @@ describe("core tools of a subagent profile", () => {
 		const parsed = profile("excludeTools: browser");
 		expect(parsed.tools).toBeUndefined();
 		expect(parseArgs(buildAgentArgs(parsed, undefined, SESSION)).tools).toEqual(
-			[...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`),
+			[...SHELL_TOOLS, ...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map(
+				(name) => `+${name}`,
+			),
 		);
 	});
 
@@ -140,6 +158,8 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: mcp__octocode__localFetch", ["mcp__octocode__localFetch"]],
 		['excludeTools: "agent,browser"', ["agent"]],
 		["excludeTools: archive", ["archive"]],
+		["excludeTools: steps", ["steps"]],
+		["tools: -steps", ["steps"]],
 		['excludeTools: "*"', [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS]],
 		['excludeTools: "agent*"', ["agent"]],
 		['tools: "-archive"', ["archive"]],
@@ -164,8 +184,10 @@ describe("core tools of a subagent profile", () => {
 		expect(profiles.has("blind")).toBe(false);
 		expect(allowed(profiles.get("fine")?.tools)).toEqual([
 			"edit",
+			"bash",
 			"file",
 			"agent",
+			"steps",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -183,7 +205,6 @@ describe("core tools of a subagent profile", () => {
 		fs.mkdirSync(agentDir);
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		vi.stubEnv("OCTOCODE_MCP", "0");
-		const launch = parseArgs(buildAgentArgs(profile("tools: file"), undefined, SESSION));
 		const activeTools = async (tools: string | undefined) => {
 			const settingsManager = SettingsManager.inMemory({
 				retry: { enabled: false },
@@ -192,15 +213,14 @@ describe("core tools of a subagent profile", () => {
 				cwd,
 				agentDir,
 				settingsManager,
-				noExtensions: true,
-				additionalExtensionPaths: launch.extensions,
+				disabledFeatures: ["llama.cpp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
 				noContextFiles: true,
 			});
 			await resourceLoader.reload();
-			const { session } = await createAgentSession({
+			const { session } = await createTestSession({
 				cwd,
 				agentDir,
 				resourceLoader,

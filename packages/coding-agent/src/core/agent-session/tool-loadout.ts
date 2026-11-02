@@ -9,10 +9,9 @@ import {
 	type ToolInfo,
 	type ToolLoadout,
 	wrapRegisteredTools,
-} from "../extensions/index.ts";
+} from "../features/index.ts";
 import { createToolNameMatcher, isMcpToolName } from "../../../../mcp/src/servers.ts";
-import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
-import { applyToolModifiers, currentToolName } from "../settings-manager.ts";
+import { applyToolModifiers } from "../settings-manager.ts";
 import {
 	buildSystemPrompt,
 	buildSystemPromptSections,
@@ -115,9 +114,8 @@ export class SessionToolLoadout {
 		}));
 	}
 
-	/** A renamed tool's old name finds the current tool, so an old transcript's calls (`task`) render with it (`steps`). */
 	getToolDefinition(name: string): ToolDefinition | undefined {
-		return (this._toolDefinitions.get(name) ?? this._toolDefinitions.get(currentToolName(name)))?.definition;
+		return this._toolDefinitions.get(name)?.definition;
 	}
 
 	setActiveToolsByName(toolNames: string[]): void {
@@ -326,8 +324,8 @@ export class SessionToolLoadout {
 		const current = getCurrentSystemMessage(this.host.session.sessionManager.buildSessionContext().messages);
 		if (!current) return;
 		const names = applyToolModifiers(
-			(current.toolsAdded ?? []).map((tool) => currentToolName(tool.name)),
-			modifiers.map(currentToolName),
+			(current.toolsAdded ?? []).map((tool) => tool.name),
+			modifiers,
 		);
 		this._pendingToolNames = new Set(names.filter((name) => this._isAllowedTool(name)));
 		this.setActiveTools(names);
@@ -371,7 +369,7 @@ export class SessionToolLoadout {
 			}
 		} else if (options?.includeAllExtensionTools) {
 			for (const tool of allCustomTools) {
-				if (tool.sourceInfo.path !== NATIVE_FEATURE_PATH && this._isActivatedOnRegistration(tool.definition.name))
+				if (tool.sourceInfo.owner !== "native" && this._isActivatedOnRegistration(tool.definition.name))
 					nextActiveToolNames.push(tool.definition.name);
 			}
 		} else if (!options?.activeToolNames) {

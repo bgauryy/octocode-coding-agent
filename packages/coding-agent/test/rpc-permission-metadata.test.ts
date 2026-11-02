@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionContext } from "../src/core/extensions/types.ts";
+import type { ExtensionContext } from "../src/core/features/types.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "../src/modes/rpc/rpc-mode/ui-context.ts";
 import type { RpcExtensionUIRequest } from "../src/modes/rpc/rpc-types.ts";
 import { askReview } from "../src/octocode/files/review.ts";

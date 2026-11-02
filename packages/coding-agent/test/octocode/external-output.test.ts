@@ -29,6 +29,11 @@ async function apiClient(externalCall: () => Promise<unknown>) {
 	return new ApiClient(api.instance!);
 }
 
+// The tool is declared only when something is discoverable; these tests exercise it, not the machine's PATH.
+beforeEach(() => {
+	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
+});
+
 describe("external evidence boundaries", () => {
 	it("redacts structured tool details as well as the rendered evidence", async () => {
 		const fake = fakeHost();

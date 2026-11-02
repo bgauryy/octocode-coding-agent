@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-storage.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { getMcpAddedServers } from "../src/session-servers.ts";
+import { getMcpSessionHandoff } from "../src/session-servers.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../src/runtime.ts";
@@ -91,7 +91,11 @@ describe("shared MCP host capabilities", () => {
 			{ entry: { name: "file", source: "mcp.json", scope: "global", config } },
 		];
 		registerMcpManageTool(state);
-		expect(getMcpAddedServers(fake.api.events)).toEqual({ plugin: config });
+		// The stopped server is not handed over as an addition, but its name is, so children skip it too.
+		expect(getMcpSessionHandoff(fake.api.events)).toEqual({
+			servers: { plugin: config },
+			stopped: [stopped.entry.name],
+		});
 		await stopped.close();
 	});
 

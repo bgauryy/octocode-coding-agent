@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 

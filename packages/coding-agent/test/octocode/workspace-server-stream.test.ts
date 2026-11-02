@@ -163,4 +163,27 @@ describe("workspace WebSocket handlers without network I/O", () => {
 			receipts: [expect.objectContaining({ id: command.id })],
 		});
 	});
+
+	it("delivers every first frame of a board larger than the send buffer, and ends only a page that stopped reading", async () => {
+		// A board whose first snapshot alone is over the 1 MiB buffer limit.
+		for (let index = 0; index < 300; index++)
+			app.store.add({ title: `Item ${index}`, plan: "p".repeat(4_000), createdBy: "user" });
+		const socket = app.upgrade().client!;
+		// This page reads nothing: every byte the server queues stays unsent.
+		const send = socket.send.bind(socket);
+		socket.send = (text: string) => {
+			socket.bufferedAmount += Buffer.byteLength(text);
+			send(text);
+		};
+		socket.hello({ token: app.token, protocolVersion: 1 });
+		await vi.waitFor(() => expect(socket.frames()[0]?.type).toBe("snapshot"));
+		expect(socket.packets.slice(0, 2).map((packet) => packet.type)).toEqual(["snapshot", "workspace"]);
+		expect(socket.bufferedAmount).toBeGreaterThan(1048576);
+		expect(socket.closed).toBeUndefined();
+		// Still unread long afterwards: the next board update ends the connection instead of queueing more.
+		const later = Date.now() + 11_000;
+		vi.spyOn(Date, "now").mockReturnValue(later);
+		app.store.add({ title: "Later", createdBy: "user" });
+		await vi.waitFor(() => expect(socket.closed?.code).toBe(1006), { timeout: 3_000 });
+	});
 });

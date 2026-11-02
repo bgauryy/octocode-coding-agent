@@ -51,7 +51,6 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 export { isSkillEnabledBySettings } from "./package-manager/patterns.ts";
 export type {
-	PackageManager,
 	PathMetadata,
 	ProgressCallback,
 	ProgressEvent,

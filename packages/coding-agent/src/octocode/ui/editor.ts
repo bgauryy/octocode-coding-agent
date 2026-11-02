@@ -6,7 +6,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
 

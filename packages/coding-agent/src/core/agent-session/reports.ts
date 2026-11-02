@@ -3,7 +3,7 @@
 import { contentText } from "@octocodeai/octocode-ai";
 import { getThemeByName, theme } from "../../theme/theme.ts";
 import type { ToolHtmlRenderer } from "../export-html/index.ts";
-import type { ToolDefinition } from "../extensions/index.ts";
+import type { ToolDefinition } from "../features/index.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { SessionPublic } from "./host.ts";
 

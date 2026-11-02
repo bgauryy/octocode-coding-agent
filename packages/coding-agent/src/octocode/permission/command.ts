@@ -1,5 +1,5 @@
 import type { registerPlanning } from "../plan/register.ts";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { PERMISSION_ENV } from "../../../../common/src/env.ts";
 import { shortcutText } from "../shared/keys.ts";

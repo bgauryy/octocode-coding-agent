@@ -244,10 +244,19 @@ describe("server-level compaction", () => {
 		expect(text).not.toContain("operation?:");
 	});
 
-	it("renders the Octocode catalog with lspSearch line and astSearch operation required", () => {
+	it("renders the Octocode catalog's per-operation notes as variants: astSearch operation required, lspSearch line conditional", () => {
 		const text = renderServer(octocode);
-		expect(toolBlock(text, "lspSearch")).toMatch(/\bline: number;/);
-		expect(toolBlock(text, "astSearch")).not.toMatch(/\boperation\?:/);
+		const lsp = toolBlock(text, "lspSearch") ?? "";
+		// The server's flat schema states in each field's doc which operations take or need it; the file groups them.
+		expect(lsp).not.toMatch(/Required except with operation/);
+		expect(lsp).toMatch(
+			/operation\?: "definition" \| "typeDefinition" \| "implementation";(?:\n[^\n]*)*?\n\t+line: number;/,
+		);
+		expect(lsp).toMatch(/operation\?: "documentSymbols" \| "diagnostic";\n\t+path: string;\n\t+\} \|/);
+		const ast = toolBlock(text, "astSearch") ?? "";
+		expect(ast).toMatch(/\boperation: "syntaxTree";(?:\n[^\n]*)*?\*\/ line\?: number;/);
+		expect(ast).not.toMatch(/\boperation\?:/);
+		expect(ast).not.toMatch(/Only with operation/);
 		expect(checkFidelity(octocode, text).problems).toEqual([]);
 	});
 

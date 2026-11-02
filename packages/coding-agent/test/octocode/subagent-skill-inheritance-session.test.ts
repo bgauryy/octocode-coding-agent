@@ -13,10 +13,10 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, trustFolder } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 async function fixture() {
 	const root = tmp("child-skill-inheritance-"),
@@ -103,6 +103,7 @@ async function fixture() {
 		OCTOCODE_SUBAGENT_LINGER_SECONDS: "0",
 	}))
 		vi.stubEnv(key, value);
+	trustFolder(cwd);
 	const modelOnly = path.join(root, "model-only", "SKILL.md");
 	fs.mkdirSync(path.dirname(modelOnly));
 	fs.writeFileSync(
@@ -174,7 +175,7 @@ async function fixture() {
 		cwd,
 		agentDir,
 		settingsManager,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -199,7 +200,7 @@ async function fixture() {
 		],
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		settingsManager,
@@ -417,7 +418,7 @@ it.each([[["review-kit:review"]], [[]]])(
 			const child = JSON.stringify(f.requests[0]);
 			// Explicit skills ride in the task; with none, no catalog is listed anywhere (the declared skill tool's own
 			// description still names the <available_skills> block).
-			if (skills.length === 0) expect(child).not.toContain("The following skills provide specialized instructions");
+			if (skills.length === 0) expect(child).not.toContain("to load it when the task matches its description");
 			for (const name of ["model-only", "review-kit:review", "collision", "argument-kit:arguments", "aliased"])
 				if (skills.includes(name)) expect(child).toContain(`<name>${name}</name>`);
 				else expect(child).not.toContain(`<name>${name}</name>`);

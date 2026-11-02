@@ -2,9 +2,6 @@ import type { EntityInput, ItemType } from "@octocodeai/octocode-contracts/backl
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import type { backlog } from "../agentdb/api.ts";
 
-/** What the store's `add` and `update` take: the input, with `type` also allowed to be the former name `task` of `feature` for one release (mapped by `withCurrentType`). */
-export type WithLegacyType<T extends { type?: ItemType }> = Omit<T, "type"> & { type?: ItemType | "task" };
-
 export interface AddInput extends EntityInput {
 	note?: string;
 	title: string;

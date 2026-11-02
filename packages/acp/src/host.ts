@@ -169,6 +169,11 @@ export interface AcpServerHost {
 	nodeRuntime(): string;
 	/** The session directory the settings of `cwd` choose, when they choose one. */
 	configuredSessionDir(cwd: string): string | undefined;
+	/**
+	 * Whether the user trusts the folder a session would open in. A client cannot grant trust, so an untrusted folder is
+	 * a per-session error; `command` is what the user can run to trust it. Nothing of the folder is read.
+	 */
+	folderTrust(cwd: string): { trusted: true } | { trusted: false; message: string; command: string };
 	/** Saved sessions of `cwd` (or of every directory) in `sessionDir`, newest first. */
 	listSessions(cwd: string | undefined, sessionDir: string | undefined): Promise<AcpSessionInfo[]>;
 	/** The current branch of the transcript at `path`; throws when it cannot be read. */
@@ -188,5 +193,11 @@ export interface AcpServerHost {
 /** The part of the host the broker itself uses: identity, saved sessions and the compaction summary format. */
 export type AcpBrokerHost = Pick<
 	AcpServerHost,
-	"version" | "sessionDirEnv" | "configuredSessionDir" | "listSessions" | "openTranscript" | "compactionSummaryText"
+	| "version"
+	| "sessionDirEnv"
+	| "configuredSessionDir"
+	| "folderTrust"
+	| "listSessions"
+	| "openTranscript"
+	| "compactionSummaryText"
 >;

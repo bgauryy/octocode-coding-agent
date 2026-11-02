@@ -1,15 +1,15 @@
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { bashSessionEnv, maxOutputTokensParameter } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
-import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { type Subcommands, say } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
-import { formatDuration, shortPath } from "../shared/format.ts";
+import { formatDuration } from "../shared/format.ts";
 import { toolHeader } from "../shared/render.ts";
 import { STATUS } from "../shared/status.ts";
-import { contentText, firstLine, wholeSeconds } from "../shared/util.ts";
+import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
 import { foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
 import { foregroundPlan } from "./bash/auto.ts";
@@ -34,13 +34,14 @@ import {
 	verificationSchema,
 } from "./bash/verification.ts";
 import { recordShellMutation } from "./bash/mutation.ts";
-import { plural } from "../shared/render/text.ts";
+import { reasonSchema } from "../shared/reason.ts";
 import { timedTool } from "../shared/render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { jobDetails, jobReport } from "./bash-jobs/report.ts";
 import { reapOrphanJobs } from "./bash-jobs/records.ts";
+import { registerJobsCommand, reloadNotice } from "./bash-jobs/command.ts";
 import { type ShellSettings, shellSettings, shellScript } from "./bash-jobs/shell.ts";
 
 /**
@@ -130,17 +131,7 @@ export function registerBashTool(
 		closing = false;
 		// Octocode has no hook before a reload: the jobs it stopped are named here, from the note the shutdown left.
 		const reloaded = event?.reason === "reload" ? jobs.takeReloadNote() : [];
-		if (reloaded.length > 0)
-			say(
-				ctx,
-				[
-					`/reload stopped ${plural(reloaded.length, "background bash job")}:`,
-					...reloaded.map(
-						(job) => `  ${job.id} · ${firstLine(job.command).slice(0, 80)}\n    log: ${shortPath(job.log)}`,
-					),
-				].join("\n"),
-				"warning",
-			);
+		if (reloaded.length > 0) say(ctx, reloadNotice(reloaded), "warning");
 		// Subagents leave this to the top-level Octocode.
 		if (envFlag(process.env, SUBAGENT_ENV)) return;
 		const orphans = await reapOrphanJobs(jobs.recordDirs());
@@ -169,31 +160,7 @@ export function registerBashTool(
 		renderJobMessage(contentText(message.content), expanded, theme, outputPad ?? 1),
 	);
 
-	commands?.add("jobs", {
-		description: "List or stop background bash jobs",
-		handler: async (args, ctx) => {
-			const [sub = "", id = ""] = args.split(/\s+/);
-			if (!sub) return say(ctx, jobs.describe(), "info");
-			if (sub !== "kill") return say(ctx, "Usage: /jobs [kill <id>]", "warning");
-			if (!jobs.stop(id, "user")) return say(ctx, `No background bash job "${id}".\n${jobs.describe()}`, "warning");
-			say(ctx, `Stopping ${id}…`, "info");
-		},
-		complete: (prefix) => {
-			if (!prefix.startsWith("kill "))
-				return (
-					wordCompletions([["kill", "kill <id> — stop a background job"]], prefix)?.map((item) => ({
-						...item,
-						value: "kill ",
-					})) ?? null
-				);
-			return (
-				wordCompletions([...jobs.jobs.keys()], prefix.slice(5).trimStart())?.map((item) => ({
-					...item,
-					value: `kill ${item.value}`,
-				})) ?? null
-			);
-		},
-	});
+	if (commands) registerJobsCommand(commands, jobs);
 
 	api.registerTool(
 		timedTool({
@@ -201,8 +168,9 @@ export function registerBashTool(
 			label: "bash",
 			description:
 				"Run a command in the working directory. Foreground calls return combined output. " +
-				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message. To wait in the foreground instead, set background: false with a timeout; the command is then stopped at the timeout. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
-			promptSnippet: "Run builds, tests, git, formatters and other CLIs",
+				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
+			promptSnippet:
+				"Run builds, tests, git, formatters and other CLIs; search and read code with the declared search and read tools; narrow output with CLI flags and pipes (tail, head, sort, jq); change file contents with `file`, not sed",
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined
@@ -216,7 +184,7 @@ export function registerBashTool(
 			// A pipe such as `cmd | tail` exits with the last command's status, so a failing build would read as passing.
 			promptGuidelines: [
 				...(builtin.promptGuidelines ?? []),
-				"Output over the budget is trimmed (head, tail, matched error lines) and saved in full: search or read that file by line range instead of rerunning, or pass a smaller maxOutputTokens. Put `set -o pipefail;` before an explicit pipe so a failing command is not hidden by the last command's status.",
+				"Trimmed output is saved in full: read that file by line range instead of rerunning, or pass a smaller maxOutputTokens. Put `set -o pipefail;` before an explicit pipe so a failing command is not hidden by the last command's status.",
 			],
 			parameters: Type.Object({
 				type: Type.Optional(
@@ -243,6 +211,8 @@ export function registerBashTool(
 							"Record a verification receipt tied to the current edits; a later edit makes it stale, and a zero exit proves only that the command succeeded.",
 					}),
 				),
+				// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.
+				reason: reasonSchema(),
 			}),
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
@@ -257,6 +227,7 @@ export function registerBashTool(
 						env: bashSessionEnv(ctx),
 						shell: settings,
 						verification,
+						reason: params.reason,
 					});
 					if (verification) verification.startedAt = job.startedAt;
 					const timeout = job.timeout;
@@ -303,7 +274,8 @@ export function registerBashTool(
 						movable
 							? (child, output, startedAt, reason) => {
 									movedFor = reason;
-									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, { output, startedAt, verification });
+									const moved = { output, startedAt, verification, reason: params.reason };
+									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, moved);
 									if (verification) verification.startedAt = startedAt;
 									showJobs();
 									return adopted;

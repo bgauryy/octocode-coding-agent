@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Container } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../src/core/features/index.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { registerMessageRenderer } from "../src/octocode/team/tools/messages.ts";

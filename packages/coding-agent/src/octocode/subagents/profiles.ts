@@ -1,18 +1,19 @@
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "../../cli/args.ts";
-import { getSubagentsDir } from "../../config.ts";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
+import { type PluginProfileOptions, translateAgentFields } from "../../core/plugin-agent-fields.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { selectsToolPrefix } from "../../core/agent-session/tool-selection.ts";
-import { applyToolModifiers, currentToolName, SettingsManager } from "../../core/settings-manager.ts";
+import { applyToolModifiers, SettingsManager } from "../../core/settings-manager.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { Permission } from "../permission/ask.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
-import { globalPaths, nativeAgentDir, projectAgentDirs } from "../shared/home.ts";
-import { FILE_TOOL, LEGACY_CHANGE_TOOLS } from "../../core/tools/tool-names.ts";
+import { installOctocodeDiscovery } from "../discovery/index.ts";
+import { globalPaths } from "../shared/home.ts";
+import { CORE_TOOLS, DEFAULT_CHILD_TOOLS, LEAN_FLOOR, MCP_ACCESS_TOOLS, mcpFloor, SHELL_TOOLS } from "./core-tools.ts";
 import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 
@@ -58,58 +59,64 @@ export interface AgentProfile {
 }
 
 /** A lean profile's tools when its front matter names none. */
-const LEAN_DEFAULT_TOOLS = "bash,file";
+const LEAN_DEFAULT_TOOLS = "bash,agent,steps,file";
 
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";
 
-/** Every child can save files, communicate and recover history; local research is added separately. */
-export const CORE_TOOLS = ["file", "agent", "archive"] as const;
-/**
- * Tools every child gets by default, unlike `CORE_TOOLS` a profile may remove them (`excludeTools` or a `-` entry):
- * `skill` loads a listed skill by name, and stays out of requests while the child has none.
- */
-export const DEFAULT_CHILD_TOOLS = ["skill"] as const;
-/** `mcp` restarts the child's own MCP servers. */
-export const MCP_ACCESS_TOOLS = ["mcp"] as const;
-
-const BUNDLED_DIR = getSubagentsDir();
+export { CORE_TOOLS, DEFAULT_CHILD_TOOLS, MCP_ACCESS_TOOLS, SHELL_TOOLS };
 
 /**
- * Profiles by name: bundled, user configuration, runtime home, then trusted project.
- * A shared configuration/runtime directory is read once. A project file that replaces a profile loaded from an
+ * Profiles by name: bundled, the Octocode home (`OCTOCODE_HOME`, else `<home>/.octocode/octocodecode`), then trusted project. A project file that replaces a profile loaded from an
  * earlier source (a bundled role included) is reported through `onShadow`: the project's prompt, tools and flags win.
+ * `options.plugins` add `<plugin>:<agent>` profiles; they load first, so any other profile of that name replaces one (`onNote`).
  */
 export function loadProfiles(
 	cwd: string,
 	home = os.homedir(),
 	projectTrusted = true,
 	env: NodeJS.ProcessEnv = process.env,
-	onSkip: (file: string, error: unknown) => void = () => undefined,
+	onSkip: (file: string, error: unknown, name?: string) => void = () => undefined,
 	onShadow: (name: string, file: string, replaced: string) => void = () => undefined,
+	options: PluginProfileOptions = {},
 ): Map<string, AgentProfile> {
 	const profiles = new Map<string, AgentProfile>();
 	const loadedFrom = new Map<string, string>();
-	const projectDirs = new Set(projectTrusted ? projectAgentDirs(cwd) : []);
-	const dirs = [BUNDLED_DIR, path.join(nativeAgentDir(home), "agents"), globalPaths(env, home).agents, ...projectDirs];
-	for (const dir of new Set(dirs)) {
-		let files: string[];
+	const pluginFiles = new Map<string, string>();
+	installOctocodeDiscovery();
+	const input = discoveryInput({
+		cwd,
+		agentDir: globalPaths(env, home).home,
+		home,
+		projectTrusted,
+		env,
+		piRoots: [],
+		...(options.plugins ? { plugins: options.plugins } : {}),
+	});
+	// Discovery lists the highest precedence first; reading it backwards loads bundled, then global, then project, so a later
+	// profile replaces an earlier one of the same name and each replacement is reported here.
+	const files = configDiscovery
+		.discover("agent", input)
+		.filter((item) => !item.provenance.notLoaded)
+		.reverse();
+	for (const { name: scoped, provenance } of files) {
+		const file = provenance.path;
+		const plugin = provenance.origin.startsWith("plugin:");
+		// Bad YAML or an unreadable entry skips that profile only; the rest still load.
 		try {
-			files = fs.readdirSync(dir).filter((file) => file.endsWith(".md"));
-		} catch {
-			continue;
-		}
-		for (const file of files) {
-			// Bad YAML or an unreadable entry skips that profile only; the rest still load.
-			try {
-				const profile = parseProfile(profileFileName(file), fs.readFileSync(path.join(dir, file), "utf8"));
-				const replaced = loadedFrom.get(profile.name);
-				if (replaced && projectDirs.has(dir)) onShadow(profile.name, path.join(dir, file), replaced);
-				profiles.set(profile.name, profile);
-				loadedFrom.set(profile.name, dir === BUNDLED_DIR ? "bundled" : path.join(dir, file));
-			} catch (error) {
-				onSkip(path.join(dir, file), error);
-			}
+			const text = fs.readFileSync(file, "utf8");
+			const note = (keys: string[]) =>
+				options.onNote?.(`${scoped}: unsupported frontmatter ignored in ${file}: ${keys.join(", ")}`);
+			const profile = parseProfile(plugin ? scoped : profileFileName(file), text, plugin ? note : undefined);
+			const replaced = loadedFrom.get(profile.name);
+			if (replaced && !plugin && replaced === pluginFiles.get(profile.name))
+				options.onNote?.(`${profile.name}: the plugin agent ${replaced} is not used; ${file} has the same name`);
+			else if (replaced && provenance.scope === "project") onShadow(profile.name, file, replaced);
+			profiles.set(profile.name, profile);
+			loadedFrom.set(profile.name, provenance.scope === "builtin" ? "bundled" : file);
+			if (plugin) pluginFiles.set(profile.name, file);
+		} catch (error) {
+			onSkip(file, error, plugin ? scoped : undefined);
 		}
 	}
 	return profiles;
@@ -118,8 +125,17 @@ export function loadProfiles(
 /** The name a profile file answers to when its front matter names none: the file name without `.md`. */
 export const profileFileName = (file: string): string => path.basename(file, ".md");
 
-export function parseProfile(fallbackName: string, text: string): AgentProfile {
-	const { frontmatter, body } = parseFrontmatter(text);
+/** A profile from its file. With `onUnsupported` it is a Claude plugin agent named `fallbackName`: its frontmatter is translated (`core/plugin-agent-fields.ts`) and what has no equivalent is reported and ignored. */
+export function parseProfile(
+	fallbackName: string,
+	text: string,
+	onUnsupported?: (unsupported: string[]) => void,
+): AgentProfile {
+	const parsed = parseFrontmatter(text);
+	const translated = onUnsupported ? translateAgentFields(parsed.frontmatter) : undefined;
+	if (translated && translated.unsupported.length > 0) onUnsupported!(translated.unsupported);
+	const frontmatter = translated ? { ...translated.frontmatter, name: fallbackName } : parsed.frontmatter;
+	const { body } = parsed;
 	const field = (key: string) => (typeof frontmatter[key] === "string" ? frontmatter[key].trim() : undefined);
 	for (const key of ["tools", "excludeTools"]) {
 		if (frontmatter[key] !== undefined && frontmatter[key] !== null && typeof frontmatter[key] !== "string")
@@ -155,7 +171,7 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 		name,
 		description: field("description") ?? "",
 		prompt: body.trim(),
-		...(lean ? { lean: true as const, tools: tools ?? LEAN_DEFAULT_TOOLS } : {}),
+		...(lean ? { lean: true as const, tools: leanTools(name, tools) } : {}),
 		...(tools && !lean ? { tools: withCoreTools(tools, selected) } : {}),
 		...(skills ? { skills } : {}),
 		...(excludeTools ? { excludeTools } : {}),
@@ -171,11 +187,11 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 	};
 }
 
-/** A profile's comma-separated tool list; a renamed tool's old name (`task`) selects the current one for one release. */
+/** A profile's comma-separated tool list. */
 const toolList = (list: string | undefined): string[] =>
 	(list ?? "")
 		.split(",")
-		.map((name) => currentToolName(name.trim()))
+		.map((name) => name.trim())
 		.filter(Boolean);
 
 /** Octocode owns selector validation. Its matcher is private; only `*` is special in a tool-name pattern. */
@@ -209,14 +225,15 @@ function skillNames(value: unknown): string[] | undefined {
 	throw new Error("skills must be a comma-separated string or a list of skill names");
 }
 
-/** A lean profile's tool list: explicit names only, since a relative selector would inherit the full default set. */
+/** A lean profile's tool list: explicit names only, since a relative selector would inherit the full default set; `LEAN_FLOOR` is added. */
 function leanTools(profile: string, tools: string | undefined): string {
 	const list = tools ?? LEAN_DEFAULT_TOOLS;
 	if (isRelative(selectedTools(list)))
 		throw new Error(
 			`Profile "${profile}" is lean: give it an explicit tool list such as ${LEAN_DEFAULT_TOOLS}, without + or - entries.`,
 		);
-	return list;
+	const selected = selectedTools(list);
+	return [...toolList(list), ...LEAN_FLOOR.filter((name) => !matchesTool(selected ?? [], name))].join(",");
 }
 
 const mcpRequired = (name: string): string =>
@@ -229,12 +246,7 @@ const mcpRequired = (name: string): string =>
 function withCoreTools(tools: string, selected: readonly string[] | undefined): string {
 	if (isRelative(selected)) return tools;
 	// An allowlist without MCP entries implicitly keeps all MCP servers. Preserve that reach when adding local tools.
-	const required = [
-		...CORE_TOOLS,
-		...DEFAULT_CHILD_TOOLS,
-		...MCP_ACCESS_TOOLS,
-		...(selected?.some(isMcpToolName) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"]),
-	];
+	const required = [...SHELL_TOOLS, ...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...mcpFloor(selected)];
 	return [...toolList(tools), ...required.filter((name) => !matchesTool(selected ?? [], name))].join(",");
 }
 
@@ -264,17 +276,21 @@ export function profileTools(profile?: AgentProfile): string {
 	return !selected || isRelative(selected)
 		? [
 				...(selected ?? []),
-				...[...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map(
-					(name) => `+${name}`,
-				),
+				...[
+					// A `-bash` entry keeps the shell out: the profile swaps it for another one.
+					...SHELL_TOOLS.filter((name) => !selected?.includes(`-${name}`)),
+					...CORE_TOOLS,
+					...DEFAULT_CHILD_TOOLS,
+					...MCP_ACCESS_TOOLS,
+					...LOCAL_RESEARCH_TOOLS,
+				].map((name) => `+${name}`),
 			].join(",")
 		: withCoreTools(profile!.tools!, selected);
 }
 
-/** Excluding our file tool also excludes the native tools it replaces, including when a pattern matches it. */
+/** The tools a profile excludes, as a list. */
 export function profileExcludes(excludeTools: string | undefined): string[] {
-	const excluded = toolList(excludeTools);
-	return [...new Set(matchesTool(excluded, FILE_TOOL) ? [...excluded, ...LEGACY_CHANGE_TOOLS] : excluded)];
+	return toolList(excludeTools);
 }
 
 export function profileSelectsTool(

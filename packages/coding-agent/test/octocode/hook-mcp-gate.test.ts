@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import type { ToolAnnotations, ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolAnnotations, ToolCallEvent } from "../../src/core/features/index.ts";
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { boundMcpHookCaller } from "../../src/octocode/hooks/mcp-gate.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";

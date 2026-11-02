@@ -2,7 +2,7 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { orderToolNames } from "../../src/core/agent-session/tool-definitions.ts";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
+import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
 const register = (api: ExtensionAPI, name: string, namespace?: string) =>
@@ -72,8 +72,8 @@ describe("orderToolNames", () => {
 	});
 
 	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
-		const invariant = ["bash", "file", "web", "archive", "mcp"];
-		const variant = ["backlog", "steps", "memory", "debug", "askUser", "agent", "skill"];
+		const invariant = ["bash", "file", "web", "mcp"];
+		const variant = ["backlog", "steps", "archive", "debug", "askUser", "agent", "skill", "models", "compact"];
 		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
 		const arrivals = [
 			[...variant, ...invariant, ...octocode, "mcp__a__x"],
@@ -84,14 +84,14 @@ describe("orderToolNames", () => {
 	});
 
 	it("gives a child and its parent the same declaration prefix up to the first role-variant tool", () => {
-		const shared = ["bash", "file", "web", "archive", "mcp"];
+		const shared = ["bash", "file", "web", "mcp"];
 		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
 		// The parent also has debug, the browser server, askUser and a skill tool; a read-only child has none of them.
 		const parent = orderToolNames(
-			["skill", "debug", "askUser", "agent", "memory", "backlog", ...octocode, "mcp__a__x", ...shared],
+			["skill", "debug", "askUser", "agent", "archive", "backlog", ...octocode, "mcp__a__x", ...shared],
 			namespaceOf,
 		);
-		const child = orderToolNames(["agent", "memory", "backlog", ...octocode, ...shared], namespaceOf);
+		const child = orderToolNames(["agent", "archive", "backlog", ...octocode, ...shared], namespaceOf);
 		expect(parent.slice(0, shared.length + octocode.length)).toEqual([...shared, ...octocode]);
 		expect(child.slice(0, shared.length + octocode.length)).toEqual([...shared, ...octocode]);
 	});

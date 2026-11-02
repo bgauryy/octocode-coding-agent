@@ -1,6 +1,6 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { sendMessage } from "../../src/octocode/api/bridge/send.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { SendReceipts } from "../../src/octocode/api/receipts.ts";

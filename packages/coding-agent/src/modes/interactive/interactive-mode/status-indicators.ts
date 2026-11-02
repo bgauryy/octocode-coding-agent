@@ -5,7 +5,7 @@
 
 import { hyperlink, Spacer } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";

@@ -14,7 +14,7 @@ import {
 	serializeConversation,
 } from "./compaction/index.ts";
 import type { CrashRecord } from "./crash-log.ts";
-import type { Extension } from "./extensions/types.ts";
+import type { Extension } from "./features/types.ts";
 import { convertToLlm } from "./messages.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { ReadonlySessionManager } from "./session-manager.ts";

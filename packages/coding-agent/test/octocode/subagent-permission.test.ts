@@ -143,13 +143,6 @@ describe("an isolated child in a worktree of its parent's repository", () => {
 		return permission.mode;
 	};
 
-	it("keeps the parent's full mode: the parent's trust covers its own repository's worktree", () => {
-		const { repo, tree } = worktree();
-		expect(start({ OCTOCODE_SUBAGENT: "1", OCTOCODE_TRUST_ROOT: repo, OCTOCODE_PERMISSION: "full" }, tree)).toBe(
-			"full",
-		);
-	});
-
 	it("runs in the mode its parent set, wherever it works; without one it starts in the default full", () => {
 		const { tree } = worktree();
 		expect(start({ OCTOCODE_SUBAGENT: "1", OCTOCODE_PERMISSION: "workspace" }, tree)).toBe("workspace");

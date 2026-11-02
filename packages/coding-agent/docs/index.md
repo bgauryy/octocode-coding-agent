@@ -32,10 +32,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 ## Tools and customization
 
 - [MCP](mcp.md)
-- [Codemode migration](codemode.md)
 - [Optional native debugger](debugging.md)
-- [Extensions](extensions.md)
-- [Extension contracts: events, tools, MCP, state, UI and errors](extension-contracts.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
 - [Hook events: what each source profile accepts](hook-events.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
@@ -48,7 +45,6 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Keybindings](keybindings.md)
 - [Terminal UI](tui.md)
 - [Running inside tmux: setup, features and checks](tmux.md)
-- [SDK](sdk.md)
 - [RPC mode: control a headless session over stdin and stdout](rpc.md)
 - [Agent Client Protocol: expose Octocode to editors and connect to peers](acp.md)
 - [Local session API: send messages to running agents](session-api.md)
@@ -67,7 +63,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 | Package        | Reference                                                             |
 | -------------- | --------------------------------------------------------------------- |
-| coding-agent   | [CLI, sessions, native features and SDK](../README.md)                |
+| coding-agent   | [CLI, sessions and native features](../README.md)                     |
 | agent          | [Agent loop, events and tool execution](../../agent/README.md)        |
 | ai             | [Provider APIs, authentication and model catalog](../../ai/README.md) |
 | tui            | [Terminal components and rendering](../../tui/README.md)              |

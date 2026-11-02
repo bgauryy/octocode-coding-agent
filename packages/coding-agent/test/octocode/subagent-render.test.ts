@@ -319,3 +319,34 @@ describe("subagent renderers", () => {
 		}
 	});
 });
+
+describe("the call row names the model and level the child runs on", () => {
+	// One row: the call and its result share `state`, as the host passes them.
+	const row = (resultDetails: RunDetails, args: Record<string, unknown> = { goal: "audit auth" }) => {
+		const shared = ctx({ args, state: {}, invalidate: () => undefined });
+		renderAgentResult(
+			{ content: [], details: resultDetails },
+			{ isPartial: resultDetails.status === "running", expanded: false },
+			theme,
+			ctx({ args, state: (shared as { state: unknown }).state, isPartial: resultDetails.status === "running" }),
+		);
+		return rendered(renderAgentCall(args, theme, shared));
+	};
+
+	it("shows the resolved model without its provider, with the level the profile or default gave it", () => {
+		const running = details({ status: "running", model: "anthropic/claude-haiku-5-5:low" });
+		expect(row(running)).toContain("Agent(audit auth · claude-haiku-5-5:low)");
+		// A purpose or bare id in the call is replaced by what it resolved to.
+		expect(row(running, { goal: "audit auth", model: "small" })).toContain("Agent(audit auth · claude-haiku-5-5:low)");
+		expect(row(running, { goal: "audit auth", model: "small" })).not.toContain("small");
+	});
+
+	it("keeps the requested model until the run reports its route", () => {
+		expect(rendered(renderAgentCall({ goal: "g", model: "openai/gpt-5" }, theme, ctx()))).toContain(
+			"Agent(g · openai/gpt-5)",
+		);
+		expect(row(details({ status: "running" }), { goal: "g", model: "openai/gpt-5" })).toContain(
+			"Agent(g · openai/gpt-5)",
+		);
+	});
+});

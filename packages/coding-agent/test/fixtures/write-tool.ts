@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Static, Type } from "typebox";
-import type { ToolDefinition } from "../../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../../src/core/features/types.ts";
 import { resolveToCwd } from "../../src/core/tools/path-utils.ts";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
 

@@ -3,9 +3,9 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { getApplicationPort } from "../../src/core/application/index.ts";
@@ -77,7 +77,7 @@ describe("Delivery with the native Octocode session queue", () => {
 				agentDir,
 				settingsManager,
 				extensionFactories: [{ name: "delivery-test", factory }],
-				noExtensions: true,
+				disabledFeatures: ["mcp", "llama.cpp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -85,7 +85,7 @@ describe("Delivery with the native Octocode session queue", () => {
 			});
 			await resourceLoader.reload();
 			const sessionManager = SessionManager.inMemory(cwd);
-			const { session } = await createAgentSession({
+			const { session } = await createTestSession({
 				cwd,
 				agentDir,
 				resourceLoader,

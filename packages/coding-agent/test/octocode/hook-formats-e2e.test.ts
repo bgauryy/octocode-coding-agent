@@ -3,16 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
-import { inspectPluginHooks } from "../../src/core/plugin-hooks.ts";
-import { inspectPluginMcp } from "../../src/core/plugin-mcp.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { buildInventory, renderInventory } from "../../src/core/extensibility/inventory.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
+import { trustFolder } from "./helpers.ts";
 import { PROFILE_EVENTS, writeExtensions, writeHookFiles, writePlugins, writeSkills } from "./fixtures/hook-formats.ts";
 
 // Hermetic: a run from inside an Octocode subagent or a customized shell would change discovery.
@@ -37,7 +34,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 	let hookFiles: ReturnType<typeof writeHookFiles>;
 	let plugins: ReturnType<typeof writePlugins>;
 	let skills: string[];
-	let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
+	let session: Awaited<ReturnType<typeof createTestSession>>["session"];
 	let loader: DefaultResourceLoader;
 	let lines: string[][] = [];
 
@@ -52,22 +49,15 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		plugins = writePlugins(path.join(root, "plugins"), log);
 		skills = writeSkills(home, cwd);
 		const { packageDir } = writeExtensions(agentDir, root, log);
-		// The user trusted this project with /trust (core resources) and accepted its hook files (native trust).
-		fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [root]: true }));
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
+		// The user trusted this project folder (/trust).
+		trustFolder(cwd);
 		// Keep the built-in research server off; plugin servers still register.
 		fs.writeFileSync(
 			path.join(agentDir, "mcp.json"),
 			JSON.stringify({ mcpServers: { octocode: { command: "false", enabled: false } } }),
 		);
-		const reviewed = plugins.map(({ path: pluginPath, protocol }) => {
-			const entry = { path: pluginPath, protocol };
-			return {
-				...entry,
-				hooksFingerprint: inspectPluginHooks(entry).fingerprint,
-				mcpFingerprint: inspectPluginMcp(entry).fingerprint,
-			};
-		});
+		// Enabling a plugin approves its hooks and MCP servers.
+		const reviewed = plugins.map(({ path: pluginPath, protocol }) => ({ path: pluginPath, protocol }));
 
 		const faux = createFauxCore({
 			provider: "faux",
@@ -98,7 +88,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			noContextFiles: true,
 		});
 		await loader.reload();
-		({ session } = await createAgentSession({
+		({ session } = await createTestSession({
 			cwd,
 			agentDir,
 			resourceLoader: loader,
@@ -173,12 +163,12 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			.getSkills()
 			.diagnostics.filter((diagnostic) => diagnostic.type === "warning")
 			.map((diagnostic) => diagnostic.message);
-		expect(warnings).toContain("claude-kit: not loaded by Octocode yet: agents");
+		expect(warnings).toContain("claude-kit: not loaded by Octocode yet: lspServers");
 		expect(warnings).toContain("codex-kit: not loaded by Octocode yet: apps");
 		expect(warnings.some((message) => message.startsWith("portable-kit:"))).toBe(false);
 	});
 
-	it("lists every plugin, extension and hook per host in the /plugins inventory", async () => {
+	it("lists every plugin, extension and hook per host in the /harness inventory", async () => {
 		const settings = session.settingsManager.getSettings();
 		// This SDK session keeps its settings in memory; the CLI resolves packages from the same files it loaded.
 		const manager = SettingsManager.inMemory(settings);
@@ -197,20 +187,24 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		// Every hook file the session ran (nine standalone, one per plugin) appears once.
 		expect(inventory.items.filter((item) => item.kind === "hook-file").length).toBe(hookFiles.length + plugins.length);
 		expect(text).toContain("claude-kit (plugin, claude manifest)");
-		expect(text).toMatch(/claude-kit[^\n]*hooks approved[^\n]*not loaded: agents/);
+		expect(text).toMatch(/claude-kit[^\n]*hooks loads[^\n]*not loaded: lspServers/);
 		expect(text).toContain("portable-kit (plugin, portable manifest)");
 		expect(inventory.items.every((item) => item.on)).toBe(true);
 		expect(inventory.stale).toEqual([]);
 	});
 
 	it("registers reviewed plugin MCP servers", () => {
-		const servers = lines.find(([source, event]) => source === "extension-dir" && event === "mcp_servers")?.[2] ?? "";
-		for (const { name } of plugins) expect(servers.split(",")).toContain(`plugin:${name}:echo`);
+		const { runtime } = loader.getExtensions();
+		for (const { name } of plugins) expect(runtime.mcpServers.get(`plugin:${name}:echo`), name).toBeDefined();
 	});
 
-	it("loads native extensions from the extensions folder and from a local package", () => {
-		expect(eventsOf("extension-dir")).toContain("tool_call");
-		expect(eventsOf("package")).toContain("tool_call");
+	it("lists but never runs code extensions in the extensions folder and in a local package", () => {
+		// User code extensions are removed: the files are reported as ignored and no handler of theirs reached an event.
+		expect(eventsOf("extension-dir")).toEqual([]);
+		expect(eventsOf("package")).toEqual([]);
+		const warnings = loader.getExtensions().warnings ?? [];
+		expect(warnings.length).toBeGreaterThan(0);
+		for (const warning of warnings) expect(warning.warning).toMatch(/^Ignored extension\b.*not supported/);
 	});
 
 	it("discovers skills from Octocode, Agent Skills, Claude and Codex folders", () => {

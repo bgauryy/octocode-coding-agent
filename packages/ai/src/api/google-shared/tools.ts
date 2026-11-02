@@ -15,20 +15,51 @@ const JSON_SCHEMA_META_DECLARATIONS = new Set([
 	"definitions", // pre-draft-2019-09 equivalent of $defs
 ]);
 
+/** Keywords whose value maps names (property names or patterns) to schemas; the names are data. */
+const SCHEMA_MAP_KEYWORDS = new Set(["properties", "patternProperties", "dependentSchemas", "dependencies"]);
+
+/** Keywords whose value is one schema or a list of schemas. */
+const SCHEMA_KEYWORDS = new Set([
+	"anyOf",
+	"oneOf",
+	"allOf",
+	"not",
+	"if",
+	"then",
+	"else",
+	"items",
+	"prefixItems",
+	"additionalItems",
+	"contains",
+	"additionalProperties",
+	"propertyNames",
+	"unevaluatedProperties",
+	"unevaluatedItems",
+]);
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
- * Strip meta-declarations from a schema obj
+ * Strip meta-declarations from a schema node and the schemas nested in it. A name map keeps every name, also `$id` or
+ * `__proto__`; literal data (`const`, `enum`, `default`, `examples`) and other annotations are copied untouched.
+ * `Object.fromEntries` defines own properties, so no name sets a prototype.
  */
 function sanitizeForOpenApi(schema: unknown): unknown {
-	if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
-		return schema;
-	}
+	if (!isPlainObject(schema)) return schema;
+	return Object.fromEntries(
+		Object.entries(schema)
+			.filter(([key]) => !JSON_SCHEMA_META_DECLARATIONS.has(key))
+			.map(([key, value]) => [key, sanitizeKeyword(key, value)]),
+	);
+}
 
-	const result: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(schema)) {
-		if (JSON_SCHEMA_META_DECLARATIONS.has(key)) continue;
-		result[key] = sanitizeForOpenApi(value);
+function sanitizeKeyword(key: string, value: unknown): unknown {
+	if (SCHEMA_MAP_KEYWORDS.has(key) && isPlainObject(value)) {
+		return Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, sanitizeForOpenApi(entry)]));
 	}
-	return result;
+	if (!SCHEMA_KEYWORDS.has(key)) return value;
+	return Array.isArray(value) ? value.map(sanitizeForOpenApi) : sanitizeForOpenApi(value);
 }
 
 /**

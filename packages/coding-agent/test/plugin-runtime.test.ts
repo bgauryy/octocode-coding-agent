@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { expandPromptTemplate } from "../src/core/prompt-templates.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { inspectPluginHooks } from "../src/core/plugin-hooks.ts";
 import { loadHooks } from "../src/octocode/hooks/config.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { commandsFor } from "../src/octocode/hooks/config/calls.ts";
@@ -231,7 +230,7 @@ it("uses one plugin data identity for skills, commands and reviewed hooks", asyn
 		JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 	);
 	fs.writeFileSync(path.join(f.plugin, "commands/data.md"), "${CLAUDE_PLUGIN_DATA} | $0");
-	const entry = { ...f.settings.plugins[0], hooksFingerprint: inspectPluginHooks(f.settings.plugins[0]).fingerprint };
+	const entry = f.settings.plugins[0];
 	fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify({ plugins: [entry] }));
 	const loader = new DefaultResourceLoader({
 		settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),

@@ -282,8 +282,8 @@ describe("backlog schemas", () => {
 });
 
 describe("workspace protocol schemas", () => {
-	it("backlog mutation still accepts the former reason (the host maps it to why) and no longer accepts body", () => {
-		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", reason: "r" })).toBe(true);
+	it("backlog mutation takes why and refuses the removed reason and body names", () => {
+		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", reason: "r" })).toBe(false);
 		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", why: "w" })).toBe(true);
 		expect(Value.Check(BacklogMutationSchema, { op: "add", title: "t", body: "b" })).toBe(false);
 	});

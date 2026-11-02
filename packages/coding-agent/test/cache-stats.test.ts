@@ -14,7 +14,7 @@ const zeroCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 
 const models: ModelPriceSource = {
 	// $/million tokens; used as cache-read price fallback on full-miss turns
-	getModel: () => ({ cost: { cacheRead: 0.3 } }),
+	getModel: () => ({ cost: { input: 0, output: 0, cacheRead: 0.3, cacheWrite: 0 } }),
 };
 
 function assistant(options: {
@@ -293,5 +293,32 @@ describe("cacheMissLabel", () => {
 			"Cache miss after model switch",
 		);
 		expect(cacheMissLabel({ ...miss, promptChanged: true })).toBe("Cache miss after instruction or tool update");
+	});
+});
+
+describe("dated cache-read price", () => {
+	const dated: ModelPriceSource = {
+		getModel: () => ({
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				until: "2026-12-31",
+				after: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+			},
+		}),
+	};
+	const missAt = (timestamp: number) =>
+		detectCacheMiss(
+			[entry(assistant({ cacheWrite: 100_000, cost: { cacheWrite: 0.375 }, timestamp: timestamp - 600_000 }))],
+			assistant({ cacheWrite: 100_000, cost: { cacheWrite: 0.375 }, timestamp }),
+			dated,
+		);
+
+	it("prices the avoided read at the rate in effect when the message was billed", () => {
+		// 100k tokens paid at $3.75/M; the read costs $0 during the intro price and $0.30/M after it.
+		expect(missAt(Date.parse("2026-12-31T12:00:00Z"))?.missedCost).toBeCloseTo(0.375, 5);
+		expect(missAt(Date.parse("2027-01-02T12:00:00Z"))?.missedCost).toBeCloseTo(0.345, 5);
 	});
 });

@@ -7,15 +7,18 @@ import type { McpContext } from "./host/types.ts";
 import { type McpServerEntry, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
 import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
+import { registerMcpSwitch, switchMcpServer } from "./switch.ts";
 import { reportProblems } from "./report.ts";
 import { say } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isSelected } from "./exposure.ts";
+import { isParentStopped } from "./session-servers.ts";
 import {
 	MCP_STATUS_SECTION,
 	MCPS_SECTION,
 	type McpServerListing,
+	mcpServerPurposes,
 	renderMcpStatusSection,
 	renderMcpsSection,
 } from "./section.ts";
@@ -50,9 +53,9 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 			{
 				entry: server.entry,
 				state: connectionState,
-				...(described.instructions ? { instructions: described.instructions } : {}),
 				declared: described.tools.size > 0,
-				...(described.file ? { file: described.file } : {}),
+				...(described.contract ? { contract: described.contract } : {}),
+				pending: described.pending,
 				...(undeclared.length > 0 ? { undeclared } : {}),
 			},
 		];
@@ -60,15 +63,21 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 }
 
 /**
- * Write the `mcps` base section and the `mcp_status` section for one request. Describing comes first: a thin
+ * Write the `mcps` base section, the server purposes of the `tools` overview (`mcpServers`) and the `mcp_status`
+ * section for one request. Describing comes first: a thin
  * declaration needs the block that describes it (`McpPresentation.isThin`), so connected servers re-register after.
  */
 function describeServers(
 	state: McpExtensionState,
-	options: { baseSections: Record<string, string>; sections: Record<string, string> },
+	options: {
+		baseSections: Record<string, string>;
+		sections: Record<string, string>;
+		mcpServers?: Record<string, string>;
+	},
 ): void {
 	const listings = serverListings(state);
 	for (const connection of state.connections()) if (connection.state === "connected") registerTools(state, connection);
+	options.mcpServers = mcpServerPurposes(listings);
 	const mcps = renderMcpsSection(listings);
 	if (mcps) options.baseSections[MCPS_SECTION] = mcps;
 	else delete options.baseSections[MCPS_SECTION];
@@ -101,6 +110,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.modelRegistry = ctx.modelRegistry;
 		state.session = new AbortController();
 		const { signal } = state.session;
+		state.unregisterSwitch?.();
+		state.unregisterSwitch = registerMcpSwitch(api.events, (request) => switchMcpServer(state, request));
 		state.unregisterHookCaller?.();
 		state.unregisterHookCaller = registerMcpHookCaller(api.events, async (request) => {
 			const callSignal = AbortSignal.any([signal, request.signal]);
@@ -138,6 +149,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				.filter(
 					(entry) => !registered.servers.some((server) => mcpNamespace(server.entry.name) === mcpNamespace(entry.name)),
 				)
+				.filter((entry) => !isParentStopped(state.parentStopped, entry.name, state.api))
 				.map((entry) => ({ entry })),
 			...registered.servers,
 		];
@@ -237,6 +249,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			.filter(
 				(entry) =>
 					entry.scope === "default" &&
+					!isParentStopped(state.parentStopped, entry.name, state.api) &&
 					!registered.servers.some((server) => mcpNamespace(server.entry.name) === mcpNamespace(entry.name)),
 			)
 			.map((entry) => ({ entry }));
@@ -278,6 +291,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	api.on("session_shutdown", async () => {
 		state.unregisterHookCaller?.();
 		state.unregisterHookCaller = undefined;
+		state.unregisterSwitch?.();
+		state.unregisterSwitch = undefined;
 		state.session.abort();
 		const closing = state.connections();
 		state.servers = [];

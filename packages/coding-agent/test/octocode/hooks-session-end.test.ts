@@ -52,6 +52,9 @@ describe("source SessionEnd hooks", () => {
 	});
 	it.each([
 		["claude", undefined, 1500],
+		["octocode", undefined, 1500],
+		["octocode", 30, 30_000],
+		["octocode", 90, 60_000],
 		["codex", undefined, 1000],
 		["codex", 30, 3000],
 	] as const)("uses %s end timeout %s -> %s", (protocol, timeout, expected) => {
@@ -64,6 +67,32 @@ describe("source SessionEnd hooks", () => {
 			protocol,
 		);
 		expect(commandsFor(config, "SessionEnd", ["other"])[0]?.timeoutMs).toBe(expected);
+	});
+	it("lets a plugin SessionEnd hook run past the 1.5 s default when its own timeout is longer", async () => {
+		const home = tmp();
+		vi.stubEnv("OCTOCODE_HOME", tmp());
+		const plugin = tmp();
+		const marker = path.join(tmp(), "slow-end.txt");
+		fs.mkdirSync(path.join(plugin, ".claude-plugin"));
+		fs.mkdirSync(path.join(plugin, "hooks"));
+		fs.writeFileSync(path.join(plugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: "slow-end" }));
+		const script = path.join(tmp(), "slow.cjs");
+		fs.writeFileSync(script, `setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(marker)},'done'),2200)`);
+		fs.writeFileSync(
+			path.join(plugin, "hooks/hooks.json"),
+			JSON.stringify({
+				hooks: {
+					SessionEnd: [{ hooks: [{ type: "command", command: `${process.execPath} ${script}`, timeout: 10 }] }],
+				},
+			}),
+		);
+		const f = fakeHost();
+		f.api.getSettings = () => ({ plugins: [{ path: plugin, protocol: "claude" }] });
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+		registerHooks(f.api, {}, home);
+		await f.fire("session_start", { reason: "startup" }, ctx);
+		await f.fire("session_shutdown", { reason: "quit" }, ctx);
+		expect(fs.readFileSync(marker, "utf8")).toBe("done");
 	});
 	it.each(["claude", "codex"] as const)("discards %s SessionEnd decision output", (protocol) => {
 		expect(

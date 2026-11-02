@@ -98,7 +98,7 @@ describe("backlog audit rows carry a change", () => {
 		expect(triggers.n).toBe(1);
 	});
 
-	it("files the legacy type rename as no change: reads already show `feature`", () => {
+	it("reads a stored `task` row as `feature` without rewriting it or adding an audit row", () => {
 		const s = store();
 		s.add({ ...base, title: "one", state: "todo" });
 		const raw = sharedAgentDb().db;
@@ -108,7 +108,7 @@ describe("backlog audit rows carry a change", () => {
 		expect(store().get("B1")!.type).toBe("feature");
 		expect(itemAudits("B1")).toHaveLength(rows);
 		expect(sharedAgentDb().db.prepare("SELECT type FROM backlog WHERE repo_key = ?").get(REPO)).toMatchObject({
-			type: "feature",
+			type: "task",
 		});
 	});
 });

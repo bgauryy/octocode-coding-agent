@@ -1,6 +1,6 @@
 import { CombinedAutocompleteProvider, type EditorTheme, TuiMainScreen, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { CustomEditor, ExtensionSelectorComponent } from "../../src/modes/interactive/components/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";

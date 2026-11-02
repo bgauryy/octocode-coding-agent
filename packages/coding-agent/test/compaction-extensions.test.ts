@@ -18,11 +18,11 @@ import {
 	type SessionBeforeCompactEvent,
 	type SessionCompactEvent,
 	type SessionEvent,
-} from "../src/core/extensions/index.ts";
+} from "../src/core/features/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
-import { createBashTool } from "../src/index.ts";
+import { createBashTool } from "../src/core/tools/bash.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
 const API_KEY = process.env.ANTHROPIC_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
@@ -75,7 +75,8 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 
 		return {
 			path: "test-extension",
-			resolvedPath: "/test/test-extension.ts",
+			id: "test",
+			owner: "builtin",
 			sourceInfo: createSyntheticSourceInfo("<inline:octocode>", { source: "test" }),
 			handlers,
 			tools: new Map(),
@@ -233,7 +234,8 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 	it("should continue with default compaction if extension throws error", async () => {
 		const throwingExtension: Extension = {
 			path: "throwing-extension",
-			resolvedPath: "/test/throwing-extension.ts",
+			id: "test",
+			owner: "builtin",
 			sourceInfo: createSyntheticSourceInfo("<test:throwing-extension>", { source: "test" }),
 			handlers: new Map<string, ((event: any, ctx: any) => Promise<any>)[]>([
 				[
@@ -282,7 +284,8 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 
 		const extension1: Extension = {
 			path: "extension1",
-			resolvedPath: "/test/extension1.ts",
+			id: "test",
+			owner: "builtin",
 			sourceInfo: createSyntheticSourceInfo("<test:extension1>", { source: "test" }),
 			handlers: new Map<string, ((event: any, ctx: any) => Promise<any>)[]>([
 				[
@@ -313,7 +316,8 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 
 		const extension2: Extension = {
 			path: "extension2",
-			resolvedPath: "/test/extension2.ts",
+			id: "test",
+			owner: "builtin",
 			sourceInfo: createSyntheticSourceInfo("<test:extension2>", { source: "test" }),
 			handlers: new Map<string, ((event: any, ctx: any) => Promise<any>)[]>([
 				[

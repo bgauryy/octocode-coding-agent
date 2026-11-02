@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../../../../../common/src/env.ts";
 import { commandsFor, hookCalls } from "../config/calls.ts";
@@ -32,13 +32,15 @@ export function registerSessionEndHook(
 ): void {
 	api.on("session_shutdown", async (event, ctx) => {
 		if (event.reason === "reload") return;
-		const run = async (protocol: "claude" | "codex", reason: string) => {
+		// Native and Claude-format hooks (from settings, hook files and plugins) share one budget: 1.5 s, raised to the
+		// longest hook timeout up to 60 s. Codex keeps its own 3 s.
+		const run = async (protocol: "octocode" | "claude" | "codex", reason: string) => {
 			const configuredBudget = Math.min(
 				60_000,
 				Math.max(
 					1500,
 					...session.config.SessionEnd.flatMap((group) =>
-						group.hooks.filter((hook) => hook.protocol === "claude" && !hook.plugin).map((hook) => hook.timeoutMs),
+						group.hooks.filter((hook) => hook.protocol !== "codex").map((hook) => hook.timeoutMs),
 					),
 				),
 			);
@@ -46,13 +48,20 @@ export function registerSessionEndHook(
 			const abort = new AbortController();
 			const timer = setTimeout(() => abort.abort(), budget);
 			try {
-				await dispatch(ctx, "SessionEnd", [reason], () => ({ reason }), abort.signal, protocol);
+				await dispatch(
+					ctx,
+					"SessionEnd",
+					[reason],
+					() => ({ reason }),
+					abort.signal,
+					protocol === "codex" ? "codex" : ["octocode", "claude"],
+				);
 			} finally {
 				clearTimeout(timer);
 			}
 		};
 		await Promise.all([
-			run("claude", event.reason === "new" ? "clear" : event.reason === "resume" ? "resume" : "other"),
+			run("octocode", event.reason === "new" ? "clear" : event.reason === "resume" ? "resume" : "other"),
 			...(event.reason === "quit" && !envFlag(env, SUBAGENT_ENV) ? [run("codex", "other")] : []),
 		]);
 	});

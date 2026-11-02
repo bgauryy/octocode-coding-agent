@@ -63,7 +63,7 @@ async function fixture() {
 		cwd,
 		agentDir,
 		nativeFeatures: false,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,

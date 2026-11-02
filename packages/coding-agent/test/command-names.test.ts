@@ -2,7 +2,6 @@ import { expect, it, vi } from "vitest";
 import { createHarness } from "./suite/harness.ts";
 import { getPromptCommands } from "../src/core/prompt-templates.ts";
 import { getSkillCommands } from "../src/core/skill-commands.ts";
-import { NATIVE_FEATURE_PATH } from "../src/core/native-tools.ts";
 
 it("gives each command one name, refuses aliases and keeps colliding extensions, skills and prompts reachable", async () => {
 	const native = vi.fn(async () => {});
@@ -11,7 +10,8 @@ it("gives each command one name, refuses aliases and keeps colliding extensions,
 	const harness = await createHarness({
 		extensionFactories: [
 			{
-				path: NATIVE_FEATURE_PATH,
+				owner: "native",
+				path: "<inline:octocode>",
 				factory: (api) => {
 					api.registerCommand("agents", { handler: native });
 				},

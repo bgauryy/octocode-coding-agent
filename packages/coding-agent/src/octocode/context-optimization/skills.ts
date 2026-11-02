@@ -10,7 +10,7 @@
 
 import path from "node:path";
 import { getNativeSkillsDir } from "../../config.ts";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import type { Skill } from "../../core/skills.ts";
 import { notify } from "../shared/commands.ts";
 import { contextOptimizationDirs, inContextProject } from "../shared/home.ts";

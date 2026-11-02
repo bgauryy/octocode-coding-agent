@@ -13,7 +13,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
@@ -60,7 +60,7 @@ describe("session request cache policy", () => {
 		await runtime.refresh({ allowNetwork: false });
 		const virtual = runtime.getModel("router", "auto")!;
 		const routed = runtime.getModel("claude-faux", "claude-routed")!;
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			model: virtual,

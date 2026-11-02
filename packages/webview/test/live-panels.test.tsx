@@ -335,6 +335,32 @@ describe("AuditView", () => {
 	});
 });
 
+describe("ItemActivity audit history", () => {
+	it("reads the item's history from the audit route only when its panel opens", async () => {
+		const event: BacklogAudit = {
+			id: 9,
+			backlogId: "B2",
+			at: 0,
+			actor: { id: "user" },
+			action: "update",
+			entity: "backlog",
+			before: { title: "Old" },
+			after: { title: "New" },
+		};
+		renderLive(<ItemActivity item={item("B2")} />);
+		const panel = screen.getByText("Audit history").closest("details")!;
+		// The board snapshot carries no audit rows, and a closed panel asks for none.
+		expect(requests.filter((request) => request.url.startsWith("/api/audit"))).toEqual([]);
+		replies = [{ body: { events: [event] } }];
+		// Opening a <details> fires its toggle event, as a click on the summary would.
+		panel.open = true;
+		fireEvent(panel, new Event("toggle"));
+		await within(panel).findByText(/Item changed/);
+		expect(within(panel).getByText("Audit history (1 recent events)")).toBeInTheDocument();
+		expect(requests.map((request) => request.url)).toContain("/api/audit?backlogId=B2");
+	});
+});
+
 describe("ItemActivity comments", () => {
 	it("posts a comment with the item version, clears it and reloads the board", async () => {
 		replies = [{ body: { item: item("B2") } }, { body: backlog }];

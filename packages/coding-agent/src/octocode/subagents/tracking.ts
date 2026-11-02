@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { existingLibrary } from "../shared/archive.ts";

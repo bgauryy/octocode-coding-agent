@@ -248,7 +248,7 @@ describe("AgentSession compaction characterization", () => {
 		expect(harness.session.messages[1]?.role).toBe("compactionSummary");
 	});
 
-	it("checkpoints the replayed system state and folds summarized and retained system patches into it", async () => {
+	it("checkpoints the summarized system state and replays retained system patches in place", async () => {
 		const harness = await createHarness({
 			extensionFactories: [
 				(api) => {
@@ -296,9 +296,19 @@ describe("AgentSession compaction characterization", () => {
 		harness.sessionManager.appendCompaction("compacted", firstKeptEntryId, 100);
 
 		const messages = harness.sessionManager.buildSessionContext().messages;
-		// The head stays the message the provider cached; one update after the summary reaches the checkpointed state.
-		expect(messages.map((message) => message.role)).toEqual(["system", "compactionSummary", "system", "user", "user"]);
+		// The head stays the message the provider cached; one update after the summary reaches the checkpointed state
+		// (the summarized patch), and the retained patch replays once, where it was.
+		expect(messages.map((message) => message.role)).toEqual([
+			"system",
+			"compactionSummary",
+			"system",
+			"user",
+			"system",
+			"user",
+		]);
 		expect(messages[0]).toEqual(declared);
+		expect(messages[2]).toMatchObject({ content: "summarized instruction", toolsRemoved: [{ name: "bash" }] });
+		expect(messages[4]).toMatchObject({ content: "retained instruction", toolsRemoved: [{ name: "retired_tool" }] });
 		const checkpoint = getCurrentSystemMessage(messages);
 		if (!checkpoint) throw new Error("expected checkpoint system message");
 		expect(checkpoint.content).toBe("summarized instruction\n\nretained instruction");
@@ -558,10 +568,11 @@ describe("AgentSession compaction characterization", () => {
 
 	// Regression coverage for #9740: an oversized trailing tool result must still produce a cut point.
 	it("compacts after an oversized tool result in the same run", async () => {
-		// About 2,100 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
-		// With the system prompt and tool declarations the request estimate lands near 2,870 tokens, over the 2,800-token
-		// threshold (3,200 window less the 400-token reserve) and under the window; shrinking the prompt moves it, so keep margin.
-		const toolResult = `large-tool-result:${"x".repeat(6300)}`;
+		// About 2,300 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
+		// The previous request's usage (about 690 tokens, mostly system prompt and tool declarations, whose size depends on
+		// the checkout path and temp folder) plus this result lands near 3,000 tokens: about 200 over the 2,800-token
+		// threshold (3,200 window less the 400-token reserve) and under the window. Prompt changes move it, so keep margin.
+		const toolResult = `large-tool-result:${"x".repeat(6900)}`;
 		const largeTool: AgentTool = {
 			name: "large_result",
 			label: "Large result",

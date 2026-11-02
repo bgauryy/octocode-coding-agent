@@ -4,10 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Team } from "../../src/octocode/team/session.ts";
 import octocode from "../../src/octocode/index.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
@@ -35,7 +33,6 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
@@ -68,7 +65,6 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
@@ -108,7 +104,6 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);

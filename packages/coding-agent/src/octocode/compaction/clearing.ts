@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import {
 	CLEARED_RESULTS_TYPE,
 	contextMessages,

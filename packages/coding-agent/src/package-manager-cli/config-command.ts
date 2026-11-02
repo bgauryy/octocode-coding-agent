@@ -2,20 +2,17 @@ import chalk from "chalk";
 import { selectConfig } from "../cli/config-selector.ts";
 import { APP_NAME, getAgentDir, getBundledSkillsDir } from "../config.ts";
 import { DefaultPackageManager } from "../core/package-manager.ts";
-import { resolveExtensionFactories } from "../core/resource-loader/builtins.ts";
+import { BUILTIN_FEATURE_IDS } from "../core/features/builtin-ids.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { CONFIG_COMMAND_USAGE, printConfigCommandHelp } from "./help.ts";
 import {
 	createCommandSettingsManager,
-	type PackageCommandRuntimeOptions,
+	FOLDER_NOT_TRUSTED_HINT,
 	reportProjectTrustWarnings,
 	reportSettingsErrors,
 } from "./settings.ts";
 
-export async function handleConfigCommand(
-	args: string[],
-	runtimeOptions: PackageCommandRuntimeOptions = {},
-): Promise<boolean> {
+export async function handleConfigCommand(args: string[]): Promise<boolean> {
 	const [command, ...rest] = args;
 	if (command !== "config") {
 		return false;
@@ -27,14 +24,12 @@ export async function handleConfigCommand(
 	}
 
 	let local = false;
-	let projectTrustOverride: boolean | undefined;
+	let trust = false;
 	for (const arg of rest) {
 		if (arg === "-l" || arg === "--local") {
 			local = true;
-		} else if (arg === "-a" || arg === "--approve") {
-			projectTrustOverride = true;
-		} else if (arg === "-na" || arg === "--no-approve") {
-			projectTrustOverride = false;
+		} else if (arg === "--trust") {
+			trust = true;
 		} else if (arg.startsWith("-")) {
 			console.error(chalk.red(`Unknown option ${arg} for "config".`));
 			console.error(chalk.dim(`Use "${APP_NAME} --help" or "${CONFIG_COMMAND_USAGE}".`));
@@ -50,21 +45,19 @@ export async function handleConfigCommand(
 
 	const cwd = process.cwd();
 	const agentDir = getAgentDir();
-	const { settingsManager, projectTrustWarnings } = await createCommandSettingsManager({
+	const { settingsManager, projectTrustWarnings } = createCommandSettingsManager({
 		cwd,
 		agentDir,
-		projectTrustOverride,
-		extensionFactories: runtimeOptions.extensionFactories,
+		trust,
 	});
 	reportProjectTrustWarnings(projectTrustWarnings);
 	if (local && !settingsManager.isProjectTrusted()) {
-		console.error(chalk.red("Project is not trusted. Use --approve to modify local resource config."));
+		console.error(chalk.red(`${FOLDER_NOT_TRUSTED_HINT} Project resource config was not changed.`));
 		process.exitCode = 1;
 		return true;
 	}
 	reportSettingsErrors(settingsManager, "config command");
-	const { builtinExtensions: builtins } = resolveExtensionFactories(runtimeOptions.extensionFactories);
-	const builtinExtensions = [...builtins.keys()];
+	const builtinExtensions = [...BUILTIN_FEATURE_IDS];
 	const globalSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	const builtinSkillsDir = getBundledSkillsDir();
 	const globalResolvedPaths = await new DefaultPackageManager({

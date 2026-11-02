@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SessionBeforeCompactEvent } from "../../src/core/extensions/index.ts";
+import type { SessionBeforeCompactEvent } from "../../src/core/features/index.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
 function seedHistory(harness: Harness, totalTokens = 650): string {

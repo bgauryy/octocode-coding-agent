@@ -5,8 +5,8 @@ import { ConfigSnapshotSchema, type ConfigSnapshot } from "@octocodeai/octocode-
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeychainBackend } from "../../src/core/auth-storage/keychain.ts";
-import { ProjectTrustStore } from "../../src/core/trust-manager.ts";
 import { buildConfigSnapshot } from "../../src/octocode/web-daemon/config-status.ts";
+import { trustFolder } from "./helpers.ts";
 
 const SECRET = "SENTINEL-SECRET-4f9c";
 const PROVIDER_VARS = [
@@ -48,6 +48,8 @@ beforeEach(() => {
 	agentDir = path.join(root, "agent");
 	fs.mkdirSync(agentDir);
 	marker = path.join(root, "command-ran");
+	// Its own agent database: the suite's default one trusts the whole temp folder, which would trust every workspace here.
+	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 	for (const name of PROVIDER_VARS) vi.stubEnv(name, "");
 });
 afterEach(() => {
@@ -207,7 +209,7 @@ describe("settings and trust", () => {
 			JSON.stringify({ defaultProvider: "openai", defaultModel: "gpt-a" }),
 		);
 		fs.writeFileSync(path.join(cwd, ".octocode", "settings.json"), JSON.stringify({ defaultModel: "gpt-b" }));
-		new ProjectTrustStore(agentDir).set(cwd, true);
+		trustFolder(cwd);
 
 		const snapshot = await buildConfigSnapshot({ agentDir, cwd, keychain: null });
 		expect(snapshot.settings).toEqual([
@@ -233,7 +235,7 @@ describe("settings and trust", () => {
 		const file = path.join(agentDir, "settings.json");
 		const content = `{ "defaultProvider": ${SECRET}`;
 		fs.writeFileSync(file, content);
-		new ProjectTrustStore(agentDir).set(cwd, true);
+		trustFolder(cwd);
 
 		const snapshot = await buildConfigSnapshot({ agentDir, cwd, keychain: null });
 		expect(snapshot.settingsErrors).toEqual([{ scope: "global", message: expect.stringContaining("invalid") }]);

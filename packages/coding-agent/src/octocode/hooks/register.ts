@@ -2,8 +2,8 @@ import type { FileInputReplacement } from "../shared/claude-file.ts";
 import type { SourcePermissionUpdate } from "../shared/permission-updates.ts";
 import { registerBackgroundHooks } from "./background.ts";
 import { parsePatch } from "../shared/codex-patch/patch.ts";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { type Subcommands, say } from "../shared/commands.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
+import { say } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "./config/calls.ts";
@@ -24,7 +24,7 @@ import {
 import { notificationHook, registerMessageHooks } from "./register/messages.ts";
 import { registerPostToolUseHook } from "./register/post-tool-use.ts";
 import { preToolUseGate } from "./register/pre-tool-use.ts";
-import { hookCount, hookEventsReport, hooksReport } from "./register/report.ts";
+import { hookCount, hooksReport } from "./register/report.ts";
 import { registerSessionStartHooks } from "./register/session-start.ts";
 import { registerStopHook, registerStopRenderer } from "./register/stop.ts";
 import { registerSubagentHooks } from "./register/subagent.ts";
@@ -37,7 +37,7 @@ import type { HookFailureSink, HookHostMetadata, HookSession, HookTiming, HooksV
  * only), Stop → `agent_before_settle` (a block makes the agent continue with the reason), Notification → when Octocode asks
  * the user something or an answer waits (side effects only). Each source keeps its own profile: `.claude` files the
  * Claude rules, `.codex` files the Codex rules, Octocode files the native contract. Project files load only after
- * `/trust`, plugin hooks only with a reviewed fingerprint, and any loaded `disableAllHooks: true` turns them all off.
+ * `/trust`, plugin hooks once the plugin is added or enabled, and any loaded `disableAllHooks: true` turns them all off.
  * Octocode's PreMessageSend gates team/API/external sends; PostMessageReceive observes actual delivery without changing
  * the body or requesting a reply.
  */
@@ -223,21 +223,4 @@ export function registerHooks(
 	registerPostToolBatchHook(api, runner.dispatch);
 	registerSessionEndHook(api, session, runner.dispatch, env);
 	return view;
-}
-/** `/hooks`: what loaded, from where, and the events each profile supports. */
-export function registerHooksCommand(commands: Subcommands, hooks: HooksView): void {
-	commands.add("hooks", {
-		description: "Inspect loaded hooks and supported events",
-		handler: async (args, ctx) => {
-			const arg = args.trim();
-			if (arg === "events") return say(ctx, hookEventsReport());
-			if (arg)
-				return say(
-					ctx,
-					'Usage: /hooks [events] (inspection only). Switch hooks on or off with /plugins; "disableAllHooks": true in a hook file turns them all off.',
-					"warning",
-				);
-			say(ctx, hooks.report(ctx.cwd));
-		},
-	});
 }

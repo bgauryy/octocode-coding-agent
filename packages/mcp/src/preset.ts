@@ -9,8 +9,8 @@ export interface McpServerPreset {
 	prepareLaunch?: (entry: McpServerEntry, cwd: string, trusted: boolean) => McpServerEntry;
 	defineTool?: typeof createMcpToolDefinition;
 	/**
-	 * Description overrides for the server's generated file that still describe this catalog: the preset ships them per
-	 * tool with the hash of the tool they were written for (`presetOverridesFor`), so changed tools get none.
+	 * Description overrides for the server's generated file that still describe this catalog: each one ships with the hash
+	 * of the upstream text it replaces (`presetOverridesFor`), so a text the server rewrote gets none.
 	 */
 	compactOverrides?: (input: CompactServerInput) => DescriptionOverrides | undefined;
 	/** Warnings raised while preparing launches since the last call, for the host to show the user. */

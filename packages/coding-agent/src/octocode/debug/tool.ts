@@ -1,6 +1,6 @@
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { timedTool } from "../shared/render/rows.ts";
 import { DebugSession, STOP_WAIT_MS } from "./session.ts";
 
@@ -63,7 +63,7 @@ function checkDebugInput(params: {
 
 // Sent with every request: keep it to what decides a call. The adapter recipes are rare, so `launch` without an adapter
 // returns them (`LAUNCH_HELP`) instead; docs/debugging.md holds the detail.
-const DESCRIPTION = `Source-level debugger over DAP: line breakpoints, exception stops and stepping; no attach, evaluation or conditional breakpoints. launch without adapter returns the adapter recipes (lldb-dap, debugpy, js-debug) and runs nothing; launch with one runs the program (needs permission). Actions that run the program wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, frame and output. At a stop, pass the latest generation to scopes with frame.id, then variables; a resume replaces them. While running, call output again, pause or terminate; after ended, launch again.`;
+const DESCRIPTION = `Source-level debugger over DAP: line breakpoints, exception stops and stepping; no attach, evaluation or conditional breakpoints. launch without adapter returns the adapter recipes (lldb-dap, debugpy, js-debug) and runs nothing; launch with one runs the program (needs permission). Actions that run the program wait up to ${STOP_WAIT_MS / 1000}s, then return state, generation, frame and output. While running, call output again, pause or terminate; after ended, launch again.`;
 
 /** What `launch` without an adapter returns: how to launch each supported adapter, and the limits a launch is checked against. */
 const LAUNCH_HELP = [
@@ -93,7 +93,9 @@ export function registerDebugTool(api: ExtensionAPI): void {
 			{
 				name: "debug",
 				label: "Debugger",
-				defaultActive: true,
+				// Opt-in (`--tools +debug` or `defaultTools`), like `ollama`: it is used in few sessions, and its declaration and
+				// `<tools>` line cost every request while it is active.
+				defaultActive: false,
 				promptSnippet:
 					"When logs and test output cannot explain a failure and you need to stop at a line and inspect state",
 				description: DESCRIPTION,

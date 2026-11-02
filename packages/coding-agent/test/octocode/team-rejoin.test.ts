@@ -9,7 +9,12 @@ import { tmp } from "./helpers.ts";
 /** One session file's custom entries, as the host persists `appendEntry` calls. */
 const asEntries = (log: Array<{ customType: string; data: unknown }>) =>
 	log.map((entry, index) => ({ type: "custom" as const, id: `e${index}`, parentId: null, timestamp: "", ...entry }));
-const ctx = () => ({ cwd: tmp(), sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true }) as never;
+const ctx = () =>
+	({
+		cwd: tmp(),
+		sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+		isIdle: () => true,
+	}) as never;
 const started: Team[] = [];
 const team = (env: NodeJS.ProcessEnv) => {
 	const host = fakeHost();
@@ -80,7 +85,11 @@ describe("resuming a session rejoins the team", () => {
 		});
 		const resumed = team({ OCTOCODE_AGENT_DB: file });
 		resumed.team.start(
-			{ cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never,
+			{
+				cwd,
+				sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+				isIdle: () => true,
+			} as never,
 			"inky-kraken",
 		);
 		const id = resumed.team.id;
@@ -99,7 +108,12 @@ describe("resuming a session rejoins the team", () => {
 	it("records the session a main agent runs, follows a switch to another session, and leaves a subagent's row without one", () => {
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
 		const cwd = tmp();
-		const session = (id: string) => ({ cwd, sessionManager: { getSessionId: () => id }, isIdle: () => true }) as never;
+		const session = (id: string) =>
+			({
+				cwd,
+				sessionManager: { getSessionId: () => id, getSessionFile: () => undefined },
+				isIdle: () => true,
+			}) as never;
 		const main = team(env);
 		main.team.start(session("sess-a"));
 		const id = main.team.join("ship it").id;

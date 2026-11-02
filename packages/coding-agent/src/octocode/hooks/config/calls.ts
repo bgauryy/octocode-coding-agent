@@ -97,6 +97,7 @@ export function hookIdentity(hook: HookHandler): string {
 						"command",
 						hook.command,
 						hook.args ?? null,
+						hook.shell ?? null,
 						hook.commandWindows ?? null,
 						hook.async ?? false,
 						hook.asyncRewake ?? false,

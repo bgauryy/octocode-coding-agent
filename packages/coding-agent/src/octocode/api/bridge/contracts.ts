@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
 
 /** What the API needs from the team (kept as an interface so the API domain stays independent of it). */

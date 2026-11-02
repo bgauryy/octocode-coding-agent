@@ -69,13 +69,14 @@ describe("bash tool", () => {
 			"maxOutputTokens",
 			"background",
 			"verify",
+			"reason",
 		]);
 		// The OCTOCODE_* variables are still set; the prompt no longer carries a rule with no action for them.
 		expect(tool.promptGuidelines).not.toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
 		// The result header carries exit code, time and size itself; the rule says only what trimmed output needs, and no rule asks for `| tail -n 50`.
-		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Output over the budget"));
+		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Trimmed output is saved in full"));
 		expect(guideline).not.toContain("Each result starts with");
 		expect(guideline).toContain("maxOutputTokens");
 		expect(guideline).toContain("`set -o pipefail;` before an explicit pipe");

@@ -12,7 +12,19 @@ The official SDK owns JSON-RPC validation, serialization, handshake, dispatch an
 
 The low-level client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
 
-The host declares every tool of a selected server up front: each server's generated TypeScript file (`src/compact/`, `src/presentation/`) goes in its own cached prompt section, and provider declarations are thin stubs validated against the server's schema. `hidden` and per-tool settings withdraw tools; a server with `defaultActive: false` reaches only the agents whose tool selection names it, which is how the `browser` preset reaches only the browser subagent. The Octocode preset declares its whole catalog and ships per-tool description overrides (`src/presets/octocode/compact-overrides.json`).
+The host declares every tool of a selected server up front: each server's generated TypeScript file (`src/compact/`, `src/presentation/`) goes in its own cached prompt section, and provider declarations are thin stubs validated against the server's schema. `hidden` and per-tool settings withdraw tools; a server with `defaultActive: false` reaches only the agents whose tool selection names it, which is how the `browser` preset reaches only the browser subagent. The Octocode preset declares its whole catalog and ships description overrides (`src/presets/octocode/compact-overrides.json`; the browser preset has its own).
+
+### Preset overrides and the generate:compact command
+
+Each override is keyed on the upstream text it replaces: the server text on the hash of the instructions, a tool's description and trigger on the hash of its description, and every field on the hash of its description at a stable dotted path (`queries.limit`; array items and union variants are transparent). The hash covers that text only, so a rebuild of the server that reformats the schema, reorders fields, adds `$defs` or documents other fields leaves every override in force. An override whose upstream text changed, or whose tool or field is gone, is dropped for that field alone and the server's own text shows; `presetStatus` names it as `<tool>.<field>`, and the drift tests (`test/mcp-octocode-override-drift.test.ts`, `test/mcp-browser-override-drift.test.ts`) fail with that list.
+
+After the linked sibling `octocode-mcp` or the browser server is rebuilt, run one command:
+
+```sh
+yarn workspace @octocodeai/octocode-mcp run generate:compact [--accept <tool.field>]... [--accept-all] [--check]
+```
+
+It reads the catalogs the servers send (an empty home, with and without a classification key, as the drift tests read them), refreshes the Octocode catalog fixtures in `test/fixtures/compact/`, and prints each stale override with its upstream text before (from the previous fixtures) and after. Read each one. If the override is still true, `--accept <tool.field>` re-points its hash; if the upstream meaning changed, edit its `text` in the JSON first, then accept it. `--accept-all` re-points every stale override and drops those whose field is gone; `--check` changes no file. The command exits 1 while an override stays stale. Then run `yarn run generate:prompts` in `packages/coding-agent`, which rewrites the rendered agent contexts, and check that `rendered/README.md` shows the `mcps` size and that the e2e prompt-size ceiling holds. Authoring new override text still goes through the `octocode-context-optimization` skill and `octocode mcp compact preset`, which prints the per-field form.
 
 ## Usage
 

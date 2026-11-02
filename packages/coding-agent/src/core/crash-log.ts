@@ -5,7 +5,7 @@ import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE } from "../../../common/src/file-mode.ts";
 import { lockSyncWithRetry } from "../../../common/src/file-write-lock.ts";
 import { getAgentDir, VERSION } from "../config.ts";
-import type { Extension } from "./extensions/types.ts";
+import type { Extension } from "./features/types.ts";
 import { isSyntheticPath } from "./source-info.ts";
 
 export interface CrashRecord {
@@ -87,7 +87,7 @@ function updateCrashLog(path: string, update: (records: CrashRecord[]) => CrashR
 	}
 }
 
-type ExtensionStackMetadata = Pick<Extension, "path" | "resolvedPath" | "sourceInfo">;
+type ExtensionStackMetadata = Pick<Extension, "path" | "sourceInfo">;
 
 function normalizeStackPath(value: string): string {
 	return value.replace(/\\/g, "/").replace(/\/+$/u, "");
@@ -133,7 +133,7 @@ export function findExtensionStackMatches(
 	const seen = new Set<string>();
 
 	for (const extension of extensions) {
-		const resolvedPath = normalizeStackPath(extension.resolvedPath);
+		const resolvedPath = normalizeStackPath(extension.path);
 		const singleFilePackage =
 			extension.sourceInfo.origin === "package" &&
 			!/^(?:npm:|git:|https?:\/\/|ssh:\/\/)/u.test(extension.sourceInfo.source) &&

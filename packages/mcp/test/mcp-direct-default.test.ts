@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { octocodePreset } from "../src/presets/octocode/index.ts";
 import { McpExtensionState } from "../src/state.ts";

@@ -1,4 +1,4 @@
-import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai";
+import { activeRates, type AssistantMessage, type ModelCost, type Usage } from "@octocodeai/octocode-ai";
 import type { SessionEntry } from "./session-manager.ts";
 import { customMessageUsage } from "./usage-totals.ts";
 
@@ -58,7 +58,13 @@ interface CacheWasteTotals {
 
 /** Minimal pricing lookup, satisfied by ModelRuntime. Cost is $/million tokens. */
 export interface ModelPriceSource {
-	getModel(provider: string, modelId: string): { cost: { cacheRead: number } } | undefined;
+	getModel(provider: string, modelId: string): { cost: ModelCost } | undefined;
+}
+
+/** The model's cache-read price per token at the time `message` was billed, 0 when the model is unknown. */
+export function cacheReadRatePerToken(models: ModelPriceSource, message: AssistantMessage): number {
+	const model = models.getModel(message.provider, message.model);
+	return model ? activeRates(model.cost, message.timestamp).cacheRead / 1_000_000 : 0;
 }
 
 /** The last request seen by the scan; everything in its prompt should be cached. */
@@ -114,9 +120,7 @@ function detectMiss(
 	const paidTokens = usage.input + usage.cacheWrite;
 	const paidPerToken = paidTokens > 0 ? (usage.cost.input + usage.cost.cacheWrite) / paidTokens : 0;
 	const readPerToken =
-		usage.cacheRead > 0
-			? usage.cost.cacheRead / usage.cacheRead
-			: (models.getModel(message.provider, message.model)?.cost.cacheRead ?? 0) / 1_000_000;
+		usage.cacheRead > 0 ? usage.cost.cacheRead / usage.cacheRead : cacheReadRatePerToken(models, message);
 
 	return {
 		missedTokens,

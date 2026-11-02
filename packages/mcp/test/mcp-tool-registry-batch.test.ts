@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import type { McpServerConnection } from "../src/runtime.ts";
 import { McpExtensionState } from "../src/state.ts";

@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Context, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { getApplicationPort } from "../../src/core/application/index.ts";

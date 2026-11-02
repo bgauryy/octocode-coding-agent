@@ -1,5 +1,4 @@
 import {
-	type Keybinding,
 	type KeybindingDefinitions,
 	type KeybindingsConfig,
 	type KeyId,
@@ -7,9 +6,9 @@ import {
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@octocodeai/octocode-tui";
 import { existsSync } from "fs";
-import { join } from "path";
 import { Compile } from "typebox/compile";
 import { getAgentDir } from "../config.ts";
+import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { KeybindingValueSchema } from "./key-id-schema.ts";
 import { readJsonFile } from "../../../common/src/json.ts";
 
@@ -215,72 +214,6 @@ export const KEYBINDINGS = {
 	...APP_KEYBINDINGS,
 } as const satisfies KeybindingDefinitions;
 
-const KEYBINDING_NAME_MIGRATIONS = {
-	cursorUp: "tui.editor.cursorUp",
-	cursorDown: "tui.editor.cursorDown",
-	cursorLeft: "tui.editor.cursorLeft",
-	cursorRight: "tui.editor.cursorRight",
-	cursorWordLeft: "tui.editor.cursorWordLeft",
-	cursorWordRight: "tui.editor.cursorWordRight",
-	cursorLineStart: "tui.editor.cursorLineStart",
-	cursorLineEnd: "tui.editor.cursorLineEnd",
-	jumpForward: "tui.editor.jumpForward",
-	jumpBackward: "tui.editor.jumpBackward",
-	pageUp: "tui.editor.pageUp",
-	pageDown: "tui.editor.pageDown",
-	deleteCharBackward: "tui.editor.deleteCharBackward",
-	deleteCharForward: "tui.editor.deleteCharForward",
-	deleteWordBackward: "tui.editor.deleteWordBackward",
-	deleteWordForward: "tui.editor.deleteWordForward",
-	deleteToLineStart: "tui.editor.deleteToLineStart",
-	deleteToLineEnd: "tui.editor.deleteToLineEnd",
-	yank: "tui.editor.yank",
-	yankPop: "tui.editor.yankPop",
-	undo: "tui.editor.undo",
-	newLine: "tui.input.newLine",
-	submit: "tui.input.submit",
-	tab: "tui.input.tab",
-	copy: "tui.input.copy",
-	selectUp: "tui.select.up",
-	selectDown: "tui.select.down",
-	selectPageUp: "tui.select.pageUp",
-	selectPageDown: "tui.select.pageDown",
-	selectConfirm: "tui.select.confirm",
-	selectCancel: "tui.select.cancel",
-	interrupt: "app.interrupt",
-	clear: "app.clear",
-	exit: "app.exit",
-	suspend: "app.suspend",
-	cycleThinkingLevel: "app.thinking.cycle",
-	cycleModelForward: "app.model.cycleForward",
-	cycleModelBackward: "app.model.cycleBackward",
-	selectModel: "app.model.select",
-	expandTools: "app.tools.expand",
-	toggleThinking: "app.thinking.toggle",
-	toggleSessionNamedFilter: "app.session.toggleNamedFilter",
-	externalEditor: "app.editor.external",
-	followUp: "app.message.followUp",
-	dequeue: "app.message.dequeue",
-	pasteImage: "app.clipboard.pasteImage",
-	newSession: "app.session.new",
-	tree: "app.session.tree",
-	fork: "app.session.fork",
-	resume: "app.session.resume",
-	treeFoldOrUp: "app.tree.foldOrUp",
-	treeUnfoldOrDown: "app.tree.unfoldOrDown",
-	treeEditLabel: "app.tree.editLabel",
-	treeToggleLabelTimestamp: "app.tree.toggleLabelTimestamp",
-	toggleSessionPath: "app.session.togglePath",
-	toggleSessionSort: "app.session.toggleSort",
-	renameSession: "app.session.rename",
-	deleteSession: "app.session.delete",
-	deleteSessionNoninvasive: "app.session.deleteNoninvasive",
-} as const satisfies Record<string, Keybinding>;
-
-function isLegacyKeybindingName(key: string): key is keyof typeof KEYBINDING_NAME_MIGRATIONS {
-	return key in KEYBINDING_NAME_MIGRATIONS;
-}
-
 const validateKeybindingValue = Compile(KeybindingValueSchema);
 
 function toKeybindingsConfig(value: Record<string, unknown>): KeybindingsConfig {
@@ -290,46 +223,6 @@ function toKeybindingsConfig(value: Record<string, unknown>): KeybindingsConfig 
 		if (validateKeybindingValue.Check(binding)) config[key] = binding;
 	}
 	return config;
-}
-
-export function migrateKeybindingsConfig(rawConfig: Record<string, unknown>): {
-	config: Record<string, unknown>;
-	migrated: boolean;
-} {
-	const config: Record<string, unknown> = {};
-	let migrated = false;
-
-	for (const [key, value] of Object.entries(rawConfig)) {
-		const nextKey = isLegacyKeybindingName(key) ? KEYBINDING_NAME_MIGRATIONS[key] : key;
-		if (nextKey !== key) {
-			migrated = true;
-		}
-		if (key !== nextKey && Object.hasOwn(rawConfig, nextKey)) {
-			migrated = true;
-			continue;
-		}
-		config[nextKey] = value;
-	}
-
-	return { config: orderKeybindingsConfig(config), migrated };
-}
-
-function orderKeybindingsConfig(config: Record<string, unknown>): Record<string, unknown> {
-	const ordered: Record<string, unknown> = {};
-	for (const keybinding of Object.keys(KEYBINDINGS)) {
-		if (Object.hasOwn(config, keybinding)) {
-			ordered[keybinding] = config[keybinding];
-		}
-	}
-
-	const extras = Object.keys(config)
-		.filter((key) => !Object.hasOwn(ordered, key))
-		.sort();
-	for (const key of extras) {
-		ordered[key] = config[key];
-	}
-
-	return ordered;
 }
 
 function loadRawConfig(path: string): Record<string, unknown> | undefined {
@@ -344,32 +237,37 @@ function loadRawConfig(path: string): Record<string, unknown> | undefined {
 }
 
 export class KeybindingsManager extends TuiKeybindingsManager {
-	private configPath: string | undefined;
+	private readBindings: (() => KeybindingsConfig) | undefined;
 
-	constructor(userBindings: KeybindingsConfig = {}, configPath?: string) {
+	constructor(userBindings: KeybindingsConfig = {}, readBindings?: () => KeybindingsConfig) {
 		super(KEYBINDINGS, userBindings);
-		this.configPath = configPath;
+		this.readBindings = readBindings;
 	}
 
+	/** User bindings from Octocode's `keybindings.json`, over Pi's (`~/.pi/agent`) action by action. */
 	static create(agentDir: string = getAgentDir()): KeybindingsManager {
-		const configPath = join(agentDir, "keybindings.json");
-		const userBindings = KeybindingsManager.loadFromFile(configPath);
-		return new KeybindingsManager(userBindings, configPath);
+		const read = () => KeybindingsManager.loadUserBindings(agentDir);
+		return new KeybindingsManager(read(), read);
 	}
 
 	reload(): void {
-		if (!this.configPath) return;
-		this.setUserBindings(KeybindingsManager.loadFromFile(this.configPath));
+		if (this.readBindings) this.setUserBindings(this.readBindings());
 	}
 
 	getEffectiveConfig(): KeybindingsConfig {
 		return this.getResolvedBindings();
 	}
 
-	private static loadFromFile(path: string): KeybindingsConfig {
-		const rawConfig = loadRawConfig(path);
-		if (!rawConfig) return {};
-		return toKeybindingsConfig(migrateKeybindingsConfig(rawConfig).config);
+	private static loadUserBindings(agentDir: string): KeybindingsConfig {
+		const files = configDiscovery.discover(
+			"keybinding",
+			discoveryInput({ cwd: process.cwd(), agentDir, projectTrusted: false }),
+		);
+		// Discovery lists Octocode's file first; later files override earlier ones.
+		return files.reduceRight<KeybindingsConfig>((merged, item) => {
+			const rawConfig = loadRawConfig(item.provenance.path);
+			return rawConfig ? { ...merged, ...toKeybindingsConfig(rawConfig) } : merged;
+		}, {});
 	}
 }
 

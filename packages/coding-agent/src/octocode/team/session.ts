@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { peerDbPath, peerRegistryDir } from "../shared/home.ts";
 import { interactive } from "../shared/interactive.ts";
@@ -8,7 +8,7 @@ import type { Ask } from "./asks.ts";
 import { Delivery } from "./delivery.ts";
 import type { EditLog } from "./edits.ts";
 import { HeldLeases } from "./held.ts";
-import { agentName, LINE_MAX } from "./identity.ts";
+import { agentName, LINE_MAX, modelRoute } from "./identity.ts";
 import { Mail } from "./mail.ts";
 import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
 import { PeerLeases } from "./peer-leases.ts";
@@ -86,6 +86,7 @@ export class Team {
 			db: () => this.database.current,
 			held: this.held,
 			mail: this.mail,
+			route: () => modelRoute(this.ctx?.model, api.getThinkingLevel()),
 		});
 		this.delivery = new Delivery(
 			{
@@ -389,6 +390,8 @@ export class Team {
 			return undefined;
 		});
 	}
+
+	readonly setModel = (route: string | undefined): void => this.activity.setModel(route);
 
 	/** One reply's usage; `model` wrote it (it changes when the user switches models); `unpriced`: that model has no pricing. */
 	onUsage(usage: unknown, model: string | undefined, unpriced: boolean): void {

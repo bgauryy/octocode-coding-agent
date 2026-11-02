@@ -88,8 +88,13 @@ describe("task tool", () => {
 		expect(await t.task({ op: "update", id: "T1", state: "done", result: "in config.ts" })).toBe(
 			"Updated T1 [done] Read the loader (session) — in config.ts",
 		);
+		// One step in detail shows its own why; a list stays one line per step.
+		expect(await t.task({ op: "list", id: "T1" })).toBe(
+			"T1 [done] Read the loader (session) — in config.ts\n  why: Config is read twice",
+		);
 		expect(await t.task({ op: "list" })).toBe("T2 [ongoing] Patch it (session)");
 		expect(await t.task({ op: "list", state: "done" })).toBe("T1 [done] Read the loader (session) — in config.ts");
+		await t.task({ op: "update", id: "T2", why: "The loader drops overrides" });
 		expect(await t.task({ op: "move", id: "T2", position: 0 })).toContain("to position 0");
 		await expect(t.task({ op: "update", id: "T2" })).rejects.toThrow(/needs something to change/);
 		await expect(t.task({ op: "add" })).rejects.toThrow(/needs a goal/);
@@ -100,7 +105,7 @@ describe("task tool", () => {
 		expect(t.store().get("B1")).toMatchObject({ goal: "Patch lands in main", createdBy: SESSION });
 		await expect(t.task({ op: "promote", id: "T2" })).rejects.toThrow(/already belongs to B1/);
 		const detail = await t.backlog({ op: "get", id: "B1" });
-		expect(detail).toContain("Tasks (1):\n- T2 [ongoing] Patch it");
+		expect(detail).toContain("Steps (1):\n- T2 [ongoing] Patch it\n  why: The loader drops overrides");
 	});
 
 	it("puts a task under the one item the session holds, and asks for item when it holds several", async () => {
@@ -221,23 +226,26 @@ describe("task tool", () => {
 		);
 	});
 
-	it("accepts the old item type task, maps it to feature and says so", async () => {
+	it("refuses the former item type task like any unknown type", async () => {
 		const t = setup();
 		const backlogTool = t.tools.get("backlog");
-		// The model sees the new types only; validation still takes `task` for one release.
 		expect(JSON.stringify(backlogTool.parameters)).not.toContain('"task"');
-		const call = { name: "backlog", arguments: { op: "add", title: "Old", type: "task", reason: "r", ...READY } };
+		const call = { name: "backlog", arguments: { op: "add", title: "Old", type: "feature", reason: "r", ...READY } };
 		expect(() => validateToolArguments(backlogTool, { type: "toolCall", id: "1", ...call } as never)).not.toThrow();
-		expect(() =>
-			validateToolArguments(backlogTool, {
-				type: "toolCall",
-				id: "1",
-				...call,
-				arguments: { ...call.arguments, type: "nope" },
-			} as never),
-		).toThrow();
-		const text = await t.backlog({ op: "add", title: "Old", type: "task", ...READY });
-		expect(text).toBe("Added B1 [backlog p2] Old\nNote: type task is now feature; use feature.");
+		for (const type of ["task", "nope"]) {
+			expect(() =>
+				validateToolArguments(backlogTool, {
+					type: "toolCall",
+					id: "1",
+					...call,
+					arguments: { ...call.arguments, type },
+				} as never),
+			).toThrow();
+		}
+		await expect(t.backlog({ op: "add", title: "Old", type: "task", ...READY })).rejects.toThrow(
+			/Unknown item type task/,
+		);
+		expect(await t.backlog({ op: "add", title: "New", type: "feature", ...READY })).toBe("Added B1 [backlog p2] New");
 		expect(t.store().get("B1")!.type).toBe("feature");
 		expect(await t.backlog({ op: "update", id: "B1", type: "bug" })).not.toContain("Note:");
 		await expect(t.backlog({ op: "add", title: "Bad", type: "nope", ...READY })).rejects.toThrow(

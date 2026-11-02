@@ -1,3 +1,4 @@
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { parseTemplate } from "../../src/octocode/memory/command.ts";
 import { MEMORY_HEADER } from "../../src/octocode/memory/inject.ts";
-import { memoryStore, registerMemory } from "../../src/octocode/memory/register.ts";
+import { registerMemory } from "../../src/octocode/memory/register.ts";
+import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
@@ -34,13 +36,16 @@ afterEach(() => {
 function setup(options: { isSubagent?: boolean; goal?: string } = {}) {
 	const fake = fakeHost();
 	const commands = new Subcommands();
-	registerMemory(fake.api, {
-		commands,
-		isSubagent: options.isSubagent ?? false,
-		permission: fakePermission(),
-		goal: options.goal,
-	});
-	return { ...fake, tool: fake.tools.get("memory"), command: commands.get("memory") };
+	registerArchiveTool(
+		fake.api,
+		registerMemory(fake.api, {
+			commands,
+			isSubagent: options.isSubagent ?? false,
+			permission: fakePermission(),
+			goal: options.goal,
+		}),
+	);
+	return { ...fake, tool: fake.tools.get("archive"), command: commands.get("memory") };
 }
 
 function ctxFor(options: { trusted?: boolean; hasUI?: boolean; branch?: unknown[] } = {}) {
@@ -51,13 +56,15 @@ function ctxFor(options: { trusted?: boolean; hasUI?: boolean; branch?: unknown[
 }
 
 const run = async (tool: any, params: Record<string, unknown>, ctx = ctxFor()) =>
-	(await tool.execute("call", params, undefined, undefined, ctx)).content[0].text as string;
-
-/** Makes `cwd` an untrusted project: a hooks file nobody approved. */
-function untrust(): void {
-	fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
-	fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
-}
+	(
+		await tool.execute(
+			"call",
+			{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+			undefined,
+			undefined,
+			ctx,
+		)
+	).content[0].text as string;
 
 describe("memory tool guidance", () => {
 	it("declares identical description bytes for every role and splits when-to-save from when-to-read", () => {
@@ -65,14 +72,14 @@ describe("memory tool guidance", () => {
 		const child = setup({ isSubagent: true }).tool;
 		expect(child.description).toBe(main.description);
 		expect(child.promptSnippet).toBe(main.promptSnippet);
-		// Questions about earlier sessions belong to `archive`; memory is for saved preferences and decisions.
-		expect(main.promptSnippet).toMatch(/recall or remember/);
-		expect(main.promptSnippet).not.toMatch(/earlier session|always search/);
+		// The public Archive capability owns both history and memory.
+		expect(main.promptSnippet).toMatch(/recalling preferences/);
+		expect(main.promptSnippet).toMatch(/earlier sessions/);
 		const guidance = main.promptGuidelines.join("\n");
 		expect(guidance).toMatch(/corrects your approach, confirms a non-obvious one, or asks you to remember/);
 		expect(guidance).toMatch(/Don't save what code, git history, AGENTS\.md, skills or the backlog/);
 		expect(guidance).toMatch(/update or delete one that proves wrong/);
-		expect(guidance).toMatch(/When a report proposes something to remember, decide and save it/);
+		expect(guidance).toMatch(/and when a report proposes something to remember/);
 		expect(child.promptGuidelines).toEqual([
 			expect.stringMatching(/^Memory is read-only here.*report one that proves wrong\.$/),
 		]);
@@ -87,10 +94,10 @@ describe("memory age labels", () => {
 			Date.now() - 12 * DAY_MS - 1000,
 		);
 		expect(await run(tool, { op: "search", query: "checkpoints" })).toMatch(
-			/^M1 \(project, decision, 12d\) Rewind keeps checkpoints/,
+			/^M1 \(workspace, decision, 12d\) Rewind keeps checkpoints/m,
 		);
 		const result = (await fire("before_agent_start", { prompt: "rewind checkpoints" }, ctxFor())) as any;
-		expect(result.message.content.split("\n")[1]).toMatch(/^M1 \(project, decision, 12d\) \(agent-written\) Rewind/);
+		expect(result.message.content.split("\n")[1]).toMatch(/^M1 \(workspace, decision, 12d\) \(agent-written\) Rewind/);
 	});
 });
 
@@ -104,31 +111,6 @@ describe("memory notices (UI only)", () => {
 		expect(ctx.ui.notes).toEqual([]);
 		await fire("message_end", { message: { role: "custom", ...result.message } }, ctx);
 		expect(ctx.ui.notes).toEqual([{ message: "Recalled M1 (/memory last shows them)", type: "info" }]);
-	});
-
-	it("says once per session that an untrusted project's memories are not injected", async () => {
-		const { fire } = setup();
-		const store = memoryStore(cwd);
-		store.set({ title: "Rewind keeps checkpoints", author: "agent" });
-		store.set({ title: "Parser rules", author: "agent" });
-		untrust();
-		const ctx = ctxFor({ trusted: false });
-		expect(await fire("before_agent_start", { prompt: "rewind checkpoints" }, ctx)).toBeUndefined();
-		await fire("before_agent_start", { prompt: "parser" }, ctx);
-		expect(ctx.ui.notes).toEqual([
-			{
-				message: "2 project memories are not injected: this project is not trusted. /trust shows what it would load.",
-				type: "warning",
-			},
-		]);
-	});
-
-	it("stays quiet in a trusted project and without project memories", async () => {
-		const { fire } = setup();
-		untrust();
-		const ctx = ctxFor({ trusted: false });
-		await fire("before_agent_start", { prompt: "anything" }, ctx);
-		expect(ctx.ui.notes).toEqual([]);
 	});
 });
 
@@ -201,8 +183,8 @@ describe("/memory review", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toBe(
 			[
 				"Memories never used or not updated in 30 days:",
-				`  M${old.id} (project, fact) Old used note (updated 40d ago)`,
-				`  M${unused.id} (project, fact) Fresh unused note (never used, updated 1d ago)`,
+				`  M${old.id} (workspace, fact) Old used note (updated 40d ago)`,
+				`  M${unused.id} (workspace, fact) Fresh unused note (never used, updated 1d ago)`,
 				"Edit or delete one in the TUI: /memory, then pick it.",
 			].join("\n"),
 		);
@@ -251,11 +233,13 @@ describe("reference kind", () => {
 				body: "https://example.com/releases",
 				kind: "reference",
 			}),
-		).toMatch(/^Saved M1 \(project, reference, 0d\) Release dashboard/);
+		).toMatch(/^Saved M1 \(workspace, reference, 0d\) Release dashboard/);
 		expect(memoryStore(cwd).get(1)?.kind).toBe("reference");
-		expect(await run(tool, { op: "set", id: "M1", kind: "decision" })).toMatch(/^Updated M1 \(project, decision, 0d\)/);
+		expect(await run(tool, { op: "set", id: "M1", kind: "decision" })).toMatch(
+			/^Updated M1 \(workspace, decision, 0d\)/,
+		);
 		expect(await run(tool, { op: "set", id: "M1", kind: "reference" })).toMatch(
-			/^Updated M1 \(project, reference, 0d\)/,
+			/^Updated M1 \(workspace, reference, 0d\)/,
 		);
 		expect(parseTemplate("kind: reference\n---\n").kind).toBe("reference");
 	});

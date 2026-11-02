@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../../../src/core/extensions/loader.ts";
-import type { ExtensionAPI, ProviderConfig } from "../../../src/core/extensions/types.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "../../helpers/features.ts";
+import type { ExtensionAPI, ProviderConfig } from "../../../src/core/features/types.ts";
 
 const providerConfig = {
 	baseUrl: "https://provider.test/v1",

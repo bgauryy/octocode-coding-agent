@@ -195,7 +195,7 @@ function* writeSteps(
  * other processes also write (the trust store) needs its caller to re-read, merge and verify.
  */
 export function atomicWriteFileSync(file: string, data: string | Uint8Array, options: AtomicWriteOptions = {}): void {
-	const steps = writeSteps(syncIo, file, data, options);
+	const steps = writeSteps(syncIo, file, data, options, options.beforeCommit);
 	// A synchronous step has already run (or thrown inside the generator) when it is yielded: pass its value back.
 	for (let step = steps.next(); !step.done; step = steps.next(step.value));
 }

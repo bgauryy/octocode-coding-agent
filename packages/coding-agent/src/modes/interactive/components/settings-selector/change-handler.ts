@@ -4,22 +4,11 @@ import type { ScrollViewScrollbar } from "@octocodeai/octocode-tui";
 import { HTTP_IDLE_TIMEOUT_CHOICES } from "../../../../core/http-dispatcher.ts";
 import type {
 	CacheWarmingMode,
-	DefaultProjectTrust,
 	FullscreenExitOutput,
 	MermaidRenderingMode,
 	TuiMode,
 } from "../../../../core/settings-manager.ts";
 import type { SettingsCallbacks } from "./types.ts";
-
-export const DEFAULT_PROJECT_TRUST_LABELS: Record<DefaultProjectTrust, string> = {
-	ask: "Ask",
-	always: "Always trust",
-	never: "Never trust",
-};
-
-const DEFAULT_PROJECT_TRUST_BY_LABEL = new Map(
-	Object.entries(DEFAULT_PROJECT_TRUST_LABELS).map(([value, label]) => [label, value as DefaultProjectTrust]),
-);
 
 /** Route a changed settings-list value to its callback. */
 export function applySettingChange(callbacks: SettingsCallbacks, id: string, newValue: string): void {
@@ -80,13 +69,6 @@ export function applySettingChange(callbacks: SettingsCallbacks, id: string, new
 		case "install-telemetry":
 			callbacks.onEnableInstallTelemetryChange(newValue === "true");
 			break;
-		case "default-project-trust": {
-			const defaultProjectTrust = DEFAULT_PROJECT_TRUST_BY_LABEL.get(newValue);
-			if (defaultProjectTrust) {
-				callbacks.onDefaultProjectTrustChange(defaultProjectTrust);
-			}
-			break;
-		}
 		case "double-escape-action":
 			callbacks.onDoubleEscapeActionChange(newValue as "fork" | "tree");
 			break;

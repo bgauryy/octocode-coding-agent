@@ -7,25 +7,30 @@ import { getBuiltinProviders, getBuiltinModels } from "@octocodeai/octocode-ai/p
 import { MCP_COMMANDS } from "../../../mcp/src/cli/commands.ts";
 import { loadMcpConfig } from "../../../mcp/src/config.ts";
 import { MCP_EXPOSURES, MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
-import { ProjectTrustStore } from "../core/trust-manager.ts";
+import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 import { getNativeToolNames } from "../octocode/permission/native-tools.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { FLAG_SPECS } from "./args/flags.ts";
 
 /** Top-level flags, from the same table the parser and `--help` read. */
-export const CLI_FLAGS = [...FLAG_SPECS.flatMap((spec) => [spec.name, ...(spec.short ? [spec.short] : [])]), "--"];
+export const CLI_FLAGS = [
+	...FLAG_SPECS.filter((spec) => !spec.hidden).flatMap((spec) => [spec.name, ...(spec.short ? [spec.short] : [])]),
+	"--",
+];
 /** Subcommands and their actions. A first argument named here is a command, not a prompt. */
 const commands: Record<string, readonly string[]> = {
 	models: ["discover"],
 	auth: ["check", "print-api-key", "print-bearer-token"],
 	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
+	trust: ["list", "add", "remove"],
+	marketplace: ["add", "list", "update", "remove"],
+	plugin: ["install", "update", "remove", "list"],
 	install: [],
 	remove: [],
 	update: ["self"],
 	list: [],
 	config: [],
-	migrate: [],
 	research: [],
 	native: [],
 	completion: ["bash", "zsh", "fish"],
@@ -35,6 +40,7 @@ export const isSubcommand = (args: readonly string[]): boolean =>
 	args[0] !== undefined && Object.hasOwn(commands, args[0]);
 // Subcommand options (`mcp`, `auth`, …) complete alongside the top-level table.
 const values: Record<string, readonly string[]> = {
+	"--scope": ["folder", "parent", "grandparent"],
 	...Object.fromEntries(FLAG_SPECS.filter((spec) => spec.values).map((spec) => [spec.name, spec.values!])),
 	"--exposure": MCP_EXPOSURES,
 };
@@ -115,7 +121,7 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 		const agentDir = getAgentDir();
 		try {
 			return filter(
-				loadMcpConfig({ agentDir, cwd, projectTrusted: new ProjectTrustStore(agentDir).get(cwd) === true }).servers.map(
+				loadMcpConfig({ agentDir, cwd, projectTrusted: resolveFolderTrust(cwd).state === "trusted" }).servers.map(
 					(server) => server.name,
 				),
 			);
@@ -163,7 +169,13 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 					"--",
 				);
 		}
-		if (["install", "remove", "config", "list", "update"].includes(command)) flags.push("--approve", "--no-approve");
+		if (["install", "remove", "config", "list", "update"].includes(command)) flags.push("--trust");
+		if (command === "plugin" && ["install", "update"].includes(action)) flags.push("--yes");
+		if (command === "trust") {
+			if (action === "list") flags.push("--json");
+			if (action === "add") flags.push("--scope", "--yes");
+			if (action === "remove") flags.push("--yes");
+		}
 		if (["install", "remove", "config"].includes(command)) flags.push("--local", "-l");
 		if (command === "update") flags.push("--self", "--extensions", "--models", "--all", "--extension", "--force");
 		return prefix.startsWith("-") ? filter(flags) : [];

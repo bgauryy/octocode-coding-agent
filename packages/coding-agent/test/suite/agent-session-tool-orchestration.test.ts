@@ -2,7 +2,7 @@ import { fauxAssistantMessage, fauxToolCall, getCurrentTools, type TranscriptCon
 import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../src/core/features/types.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
 /**

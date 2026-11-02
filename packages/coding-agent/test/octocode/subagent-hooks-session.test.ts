@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, trustFolder } from "./helpers.ts";
 import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 import type { Identity } from "../../src/octocode/subagents/process/env.ts";
 
@@ -121,6 +121,8 @@ async function fixture(
 		CODEX_HOME: path.join(home, ".codex"),
 	}))
 		vi.stubEnv(key, value);
+	// The real `main` below refuses a folder the user has not trusted: record the decision a user would have made.
+	trustFolder(cwd);
 	fs.mkdirSync(path.join(home, ".codex"));
 	fs.mkdirSync(path.join(home, ".claude"));
 	const captured = path.join(root, "hooks.jsonl"),

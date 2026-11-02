@@ -1,3 +1,4 @@
+import * as events from "./agent-events.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../rows.ts";
@@ -20,7 +21,13 @@ const processRow = (row: Row): MemberProcess => ({
 });
 
 /** The heartbeat's `UPDATE`: matches the row only while it still names this process (and records its `checkout` and session); whether it did. */
-export function refresh(db: DatabaseSync, member: Member, checkout: string): boolean {
+export function refresh(
+	db: DatabaseSync,
+	member: Member,
+	checkout: string,
+	context?: events.LifecycleContext,
+): boolean {
+	const before = events.member(db, member.id);
 	const { changes } = db
 		.prepare(
 			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, checkout = ?, session_id = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
@@ -44,6 +51,22 @@ export function refresh(db: DatabaseSync, member: Member, checkout: string): boo
 			member.pid,
 			member.started ?? null,
 		);
+	if (changes > 0) {
+		events.registerMember(db, member.id, context, member.updatedAt);
+		const after = events.member(db, member.id)!;
+		const fields = ["task", "model", "session_id", "role", "parent_id", "lifecycle_session_id"];
+		const changed = fields.filter((key) => before?.[key] !== after[key]);
+		if (before?.registration_id && changed.length)
+			events.recordMember(
+				db,
+				after,
+				"update",
+				{
+					changes: Object.fromEntries(changed.map((key) => [key, { before: before[key], after: after[key] }])),
+				},
+				member.updatedAt,
+			);
+	}
 	return changes > 0;
 }
 
@@ -51,7 +74,13 @@ export function refresh(db: DatabaseSync, member: Member, checkout: string): boo
  * Adds the row of `team` (the git common dir) working in `checkout` (its worktree root) unless the id is taken
  * (`ON CONFLICT DO NOTHING`, so a name held by another process is never overwritten); whether it was added.
  */
-export function insert(db: DatabaseSync, team: string, checkout: string, member: Member): boolean {
+export function insert(
+	db: DatabaseSync,
+	team: string,
+	checkout: string,
+	member: Member,
+	context?: events.LifecycleContext,
+): boolean {
 	const row = db
 		.prepare(
 			`INSERT INTO agents (id, workspace, checkout, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced, session_id)
@@ -81,11 +110,14 @@ export function insert(db: DatabaseSync, team: string, checkout: string, member:
 			member.unpriced ? 1 : 0,
 			member.sessionId ?? null,
 		);
+	if (row) events.registerMember(db, member.id, context, member.updatedAt);
 	return row !== undefined;
 }
 
 /** Deletes the row of `id`. */
-export function remove(db: DatabaseSync, id: string): void {
+export function remove(db: DatabaseSync, id: string, reason = "removed", now = Date.now()): void {
+	const row = events.member(db, id);
+	if (row) events.recordMember(db, row, "delete", { reason }, now);
 	db.prepare("DELETE FROM agents WHERE id = ?").run(id);
 }
 
@@ -130,4 +162,9 @@ export function touchSeenSince(db: DatabaseSync, team: string, floor: number, no
 /** How long this connection waits for a lock held by another process before it fails with "database is locked". */
 export function setBusyTimeout(db: DatabaseSync, ms: number): void {
 	db.exec(`PRAGMA busy_timeout=${ms}`);
+}
+
+/** Live presence of this checkout only; legacy/nonpersistent registrations keep their existing names. */
+export function inWorkspace(db: DatabaseSync, workspace: string): Row[] {
+	return db.prepare("SELECT * FROM agents WHERE checkout = ? ORDER BY id").all(workspace);
 }

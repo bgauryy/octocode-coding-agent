@@ -1,10 +1,11 @@
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
-import { MemoryStore } from "../../src/octocode/memory/store.ts";
-import { registerMemoryTool } from "../../src/octocode/memory/tool.ts";
+import { memoryStore, MemoryStore } from "../../src/octocode/memory/store.ts";
+import { sharedAgentDb } from "../../src/octocode/agentdb/api.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -12,35 +13,42 @@ import { tmp } from "./helpers.ts";
 afterEach(() => {
 	closeSharedAgentDb();
 	vi.restoreAllMocks();
+	vi.unstubAllEnvs();
 });
 
 describe("memory retrieval and write boundaries", () => {
-	it("caps list and search results at 100", async () => {
-		const db = openAgentDb(path.join(tmp(), "agent.db"));
-		try {
-			const store = new MemoryStore(db, "repo");
-			const insert = db.db.prepare(
-				"INSERT INTO memories(scope, repo_key, kind, title, body, keywords, pinned, author, created_at, updated_at) VALUES ('project', 'repo', 'fact', ?, '', '', 0, 'test', 1, 1)",
-			);
-			for (let i = 0; i < 105; i++) insert.run(`retrieval item ${i}`);
-			const fake = fakeHost();
-			registerMemoryTool(fake.api, () => store, { isSubagent: false, permission: fakePermission() });
-			const tool = fake.tools.get("memory");
-			const ctx = fakeCtx({ cwd: tmp() });
-			Object.assign(ctx, { isProjectTrusted: () => true });
-			for (const op of ["list", "search"]) {
+	it("bounds public list/search pages and reaches every record with cursors", async () => {
+		const cwd = tmp();
+		vi.stubEnv("OCTOCODE_AGENT_DB", path.join(tmp(), "agent.db"));
+		const db = sharedAgentDb();
+		const store = memoryStore(cwd);
+		const insert = db.db.prepare(
+			"INSERT INTO memories(scope, repo_key, kind, title, body, keywords, pinned, author, created_at, updated_at) VALUES ('project', ?, 'fact', ?, '', '', 0, 'test', 1, 1)",
+		);
+		for (let i = 0; i < 105; i++) insert.run(store.repoKey, `retrieval item ${i}`);
+		const fake = fakeHost();
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() }),
+		);
+		const tool = fake.tools.get("archive");
+		for (const op of ["list", "search"]) {
+			let cursor: string | undefined;
+			const ids: string[] = [];
+			do {
 				const result = await tool.execute(
 					"call",
-					{ op, query: "retrieval", limit: 100_000 },
+					{ goal: "Recall", reason: "saved facts", op, source: "memories", query: "retrieval", limit: 100_000, cursor },
 					undefined,
 					undefined,
-					ctx,
+					fakeCtx({ cwd }),
 				);
-				expect(result.details.ids).toHaveLength(100);
-				expect(result.content[0].text).not.toContain("raise limit");
-			}
-		} finally {
-			db.close();
+				expect(result.details.hits).toBeLessThanOrEqual(50);
+				ids.push(...(result.content[0].text.match(/^M\d+$/gm) ?? []));
+				cursor = result.details.nextCursor;
+			} while (cursor);
+			expect(ids).toHaveLength(105);
+			expect(new Set(ids).size).toBe(105);
 		}
 	});
 
@@ -94,7 +102,10 @@ describe("memory retrieval and write boundaries", () => {
 		fs.writeFileSync(broken, "not sqlite");
 		const env = { OCTOCODE_AGENT_DB: broken, OCTOCODE_MEMORY_AUTO: "1" };
 		const fake = fakeHost();
-		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env });
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env }),
+		);
 		const ctx = fakeCtx({ cwd: root });
 		Object.assign(ctx.sessionManager, { getBranch: () => [] });
 		for (let i = 0; i < 2; i++) expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();

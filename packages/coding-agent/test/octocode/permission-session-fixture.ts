@@ -5,14 +5,11 @@ import { vi } from "vitest";
 import { Type } from "typebox";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { isNativeTool } from "../../src/octocode/permission/native-tools.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { createReadTool } from "../fixtures/read-tool.ts";
-import { createWriteTool } from "../fixtures/write-tool.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { tmp } from "./helpers.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 type Options = {
@@ -23,7 +20,6 @@ type Options = {
 	projectTrusted?: boolean;
 	readTool?: boolean;
 	fileReadTool?: boolean;
-	fileWriteTool?: boolean;
 	nestedMcp?: boolean;
 	nestedBash?: boolean;
 	output?: unknown;
@@ -112,8 +108,6 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 		fs.mkdirSync(path.join(cwd, ".claude"));
 		fs.writeFileSync(path.join(cwd, ".claude/settings.json"), JSON.stringify({ permissions: options.projectRules }));
 	}
-	if (options.projectRules && options.projectTrusted !== undefined)
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), options.projectTrusted);
 	const mcpCapture = path.join(root, "mcp.jsonl");
 	if (options.nestedMcp) {
 		const serverFile = path.join(root, "mcp.cjs");
@@ -147,8 +141,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 			cwd,
 			agentDir,
 			settingsManager,
-			noExtensions: true,
-			...(options.nestedMcp ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
+			disabledFeatures: options.nestedMcp ? ["llama.cpp"] : ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -234,18 +227,16 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 	let resourceLoader = makeResourceLoader();
 	await resourceLoader.reload();
 	const makeSession = async () => {
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd,
 			agentDir,
 			settingsManager,
 			resourceLoader,
 			...(options.readTool
 				? { tools: ["read"], customTools: [createReadTool(cwd)] }
-				: options.fileWriteTool
-					? { customTools: [createWriteTool(cwd)] }
-					: options.fileReadTool
-						? { customTools: [createReadTool(cwd)] }
-						: {}),
+				: options.fileReadTool
+					? { customTools: [createReadTool(cwd)] }
+					: {}),
 			sessionManager: SessionManager.create(cwd, path.join(root, "sessions")),
 		});
 		await session.bindExtensions({

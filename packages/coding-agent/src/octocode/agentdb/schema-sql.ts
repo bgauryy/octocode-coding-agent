@@ -28,7 +28,12 @@
  * lets a subagent verify a message the user typed, see `team/proof.ts`; `deliveries.forwarded_by`: the agent that
  * forwarded the stored message to this recipient; `deliveries.relay_to`: a child's message to an agent it cannot reach,
  * held for its parent process to resume that agent with it; `deliveries.note`: the forwarder's note, or why a relay
- * failed; see `team/store/refs.ts`).
+ * failed; see `team/store/refs.ts`), and folder trust (`trusted_folders`: the user's decision about a folder, one live row
+ * per folder; `decision` is `trusted` or `refused` (a recorded "Do not trust"); `scope` `folder` covers that folder only,
+ * `subtree` covers it and everything under it; a folder is identified by `dev`, `ino` (decimal text, so a 64-bit number
+ * is exact) and `birth` (the birth time in nanoseconds as text, `'0'` when the platform has none), never by `path`, which
+ * only shows where the folder was last seen; `source`, `surface`, `decided_by`, `decided_at` and `from_path` are the
+ * provenance; a revoked or superseded row keeps its data with `revoked_at` set, and a new decision replaces the live row).
  */
 export const SCHEMA = `
 CREATE TABLE sessions (
@@ -217,8 +222,22 @@ CREATE TABLE agents (
   status TEXT NOT NULL CHECK(status IN ('idle','working')), task TEXT, activity TEXT,
   joined_at INTEGER NOT NULL, seen_at INTEGER NOT NULL,
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT, checkout TEXT, tmux_pane TEXT, session_id TEXT);
+  cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT, checkout TEXT, tmux_pane TEXT, session_id TEXT,
+  registration_id TEXT, persist_events INTEGER NOT NULL DEFAULT 0, activation_id TEXT, lifecycle_session_id TEXT, parent_registration_id TEXT);
 CREATE INDEX agents_scope ON agents(workspace, joined_at);
+CREATE TABLE agent_events (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, workspace TEXT NOT NULL, time TEXT NOT NULL,
+  name TEXT, parent_id TEXT, session_id TEXT, type TEXT NOT NULL, data TEXT NOT NULL, version INTEGER NOT NULL,
+  event_key TEXT UNIQUE);
+CREATE INDEX agent_events_workspace ON agent_events(workspace, seq DESC);
+CREATE INDEX agent_events_agent ON agent_events(workspace, name, seq DESC);
+CREATE INDEX agent_events_session ON agent_events(workspace, session_id, seq DESC);
+CREATE TABLE compaction_summaries (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace TEXT NOT NULL, session_id TEXT NOT NULL, entry_id TEXT NOT NULL,
+  summary TEXT NOT NULL, committed_at INTEGER, origin_verified INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT NOT NULL DEFAULT '{}', detail_file TEXT, detail_state TEXT NOT NULL DEFAULT 'missing',
+  UNIQUE(session_id, entry_id));
+CREATE INDEX compaction_summaries_workspace ON compaction_summaries(workspace, seq DESC);
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL,
   reply_required INTEGER NOT NULL DEFAULT 1, reply_to INTEGER REFERENCES messages(id) ON DELETE SET NULL,
@@ -239,6 +258,14 @@ CREATE INDEX leases_owner ON leases(owner);
 CREATE TABLE edits (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace TEXT NOT NULL, path TEXT NOT NULL, agent TEXT NOT NULL, tool TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX edits_recent ON edits(workspace, at);
+CREATE TABLE trusted_folders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL,
+  dev TEXT NOT NULL, ino TEXT NOT NULL, birth TEXT NOT NULL DEFAULT '0',
+  decision TEXT NOT NULL DEFAULT 'trusted' CHECK(decision IN ('trusted','refused')),
+  scope TEXT NOT NULL CHECK(scope IN ('folder','subtree')),
+  source TEXT NOT NULL, surface TEXT NOT NULL, decided_by TEXT NOT NULL, decided_at INTEGER NOT NULL,
+  from_path TEXT, revoked_at INTEGER, revoked_by TEXT);
+CREATE UNIQUE INDEX trusted_folders_live ON trusted_folders(dev, ino) WHERE revoked_at IS NULL;
 `;
 
 /** The optional full-text index over memories: its table and triggers, owned by `ensureFts`, not by the reconcile. */

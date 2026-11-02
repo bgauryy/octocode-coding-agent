@@ -14,7 +14,8 @@ import { RotatingLog } from "../shared/rotating-log.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
 import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
-import type { BashJob, JobExit, VerificationReceipt } from "./bash-jobs/types.ts";
+import type { BashJob, JobExit, ReloadedJob, VerificationReceipt } from "./bash-jobs/types.ts";
+import { jobWhyLine } from "./bash-jobs/message.ts";
 import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
 /**
@@ -56,11 +57,13 @@ export class BashJobs {
 			shell: settings = {},
 			maxLogBytes = MAX_JOB_LOG_BYTES,
 			verification,
+			reason,
 		}: {
 			env?: NodeJS.ProcessEnv;
 			shell?: ShellSettings;
 			maxLogBytes?: number;
 			verification?: VerificationReceipt;
+			reason?: string;
 		} = {},
 	): Promise<BashJob> {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
@@ -75,7 +78,7 @@ export class BashJobs {
 				`Could not start a background shell (${shell.shell}): ${errorMessage(cause)}. Nothing is running.`,
 			);
 		}
-		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification });
+		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification, reason });
 	}
 
 	/**
@@ -94,10 +97,18 @@ export class BashJobs {
 			startedAt,
 			maxLogBytes = MAX_JOB_LOG_BYTES,
 			verification,
-		}: { output: Buffer; startedAt: number; maxLogBytes?: number; verification?: VerificationReceipt },
+			reason,
+		}: {
+			output: Buffer;
+			startedAt: number;
+			maxLogBytes?: number;
+			verification?: VerificationReceipt;
+			reason?: string;
+		},
 	): BashJob {
 		if (child.pid === undefined) throw new Error("The command has no process to move");
-		return this.register(child, child.pid, command, cwd, onExit, { maxLogBytes, output, startedAt, verification });
+		const options = { maxLogBytes, output, startedAt, verification, reason };
+		return this.register(child, child.pid, command, cwd, onExit, options);
 	}
 
 	/** Records and watches a running shell as a job: log, owner record, exit handling. */
@@ -113,12 +124,14 @@ export class BashJobs {
 			output: earlier,
 			startedAt = Date.now(),
 			verification,
+			reason,
 		}: {
 			timeout?: number;
 			maxLogBytes: number;
 			output?: Buffer;
 			startedAt?: number;
 			verification?: VerificationReceipt;
+			reason?: string;
 		},
 	): BashJob {
 		const dir = this.logDir();
@@ -192,7 +205,9 @@ export class BashJobs {
 				wait();
 			});
 		});
-		const job: BashJob = { id, command, cwd, pid, log, startedAt, ...(timeout ? { timeout } : {}), verification, done };
+		const job: BashJob = { id, command, cwd, pid, log, startedAt, verification, done };
+		if (reason) job.reason = reason;
+		if (timeout) job.timeout = timeout;
 		state.job = job;
 		if (timeout) {
 			timer = setTimeout(() => this.stop(id, "timeout"), timeout * 1000);
@@ -253,7 +268,7 @@ export class BashJobs {
 		try {
 			atomicWriteFileSync(
 				this.reloadNote(),
-				JSON.stringify(stopped.map(({ id, command, log }) => ({ id, command, log }))),
+				JSON.stringify(stopped.map(({ id, command, reason, log }): ReloadedJob => ({ id, command, reason, log }))),
 				{ mode: PRIVATE_FILE_MODE },
 			);
 		} catch {
@@ -262,10 +277,10 @@ export class BashJobs {
 	}
 
 	/** The jobs the last /reload of this process stopped (read once). */
-	takeReloadNote(): Array<Pick<BashJob, "id" | "command" | "log">> {
+	takeReloadNote(): ReloadedJob[] {
 		const file = this.reloadNote();
 		try {
-			const jobs = JSON.parse(fs.readFileSync(file, "utf8")) as Array<Pick<BashJob, "id" | "command" | "log">>;
+			const jobs = JSON.parse(fs.readFileSync(file, "utf8")) as ReloadedJob[];
 			return Array.isArray(jobs) ? jobs : [];
 		} catch {
 			return [];
@@ -278,13 +293,13 @@ export class BashJobs {
 		return path.join(this.logDir(), `reload-${process.pid}.json`);
 	}
 
-	/** One line per running job, for `/jobs`. */
+	/** One entry per running job, for `/jobs`: what it runs, why, and its log. */
 	describe(now = Date.now()): string {
 		if (this.jobs.size === 0) return "No background bash jobs are running.";
 		return [...this.jobs.values()]
 			.map(
 				(job) =>
-					`${job.id} · ${formatDuration(now - job.startedAt)}${job.timeout ? ` of ${formatDuration(job.timeout * 1000)}` : ""} · pid ${job.pid} · ${firstLine(job.command).slice(0, 80)}\n  log: ${shortPath(job.log)}`,
+					`${job.id} · ${formatDuration(now - job.startedAt)}${job.timeout ? ` of ${formatDuration(job.timeout * 1000)}` : ""} · pid ${job.pid} · ${firstLine(job.command).slice(0, 80)}\n${jobWhyLine(job, "  ")}  log: ${shortPath(job.log)}`,
 			)
 			.join("\n");
 	}

@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import ignore from "ignore";
 import { addIgnoreRules } from "../../utils/ignore.ts";
-import { discoverExtensionsInDir } from "../extensions/loader/discovery.ts";
+import { discoverExtensionsInDir } from "./extension-discovery.ts";
 import { collectFiles, collectSkillEntries, readDirectoryEntries } from "./discovery.ts";
-import { FILE_PATTERNS, type ResourceType } from "./types.ts";
+import { FILE_PATTERNS, type ResourceType } from "./resource-types.ts";
 
 /** Top-level files of `dir` whose names end with `extension`, honoring ignore files. */
 function collectTopLevelFiles(dir: string, extension: string): string[] {

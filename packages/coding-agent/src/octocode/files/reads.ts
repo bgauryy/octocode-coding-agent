@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { partText } from "../shared/util.ts";
@@ -242,20 +242,28 @@ interface ChangedFile {
 	edit?: { lineDelta?: number };
 }
 
+/**
+ * The outcomes of a `file` result that changed a file: each applied (`ok`) outcome with the path it names, whether the
+ * call used `queries` or `patch`. The one rule for which paths a `file` call changed.
+ */
+export function appliedFileOutcomes(details: unknown): Array<Record<string, unknown> & { path: string }> {
+	const outcomes = isRecord(details) && Array.isArray(details.outcomes) ? details.outcomes : [];
+	return outcomes.filter(
+		(outcome): outcome is Record<string, unknown> & { path: string } =>
+			isRecord(outcome) && outcome.ok === true && typeof outcome.path === "string",
+	);
+}
+
 /** The files a `file` result changed, each with the first line its diff shows changed (`+12 …` or `-12 …`). */
 function changedFiles(details: unknown, cwd: string): ChangedFile[] {
-	const outcomes = isRecord(details) && Array.isArray(details.outcomes) ? details.outcomes : [];
-	return outcomes.flatMap((outcome) => {
-		if (!isRecord(outcome) || outcome.ok !== true || typeof outcome.path !== "string") return [];
+	return appliedFileOutcomes(details).map((outcome) => {
 		const changed = typeof outcome.diff === "string" ? /^[+-]\s*(\d+) /m.exec(outcome.diff) : null;
 		const lineDelta = typeof outcome.lineDelta === "number" ? outcome.lineDelta : undefined;
-		return [
-			{
-				file: resolveToolPath(cwd, outcome.path),
-				line: changed ? Number(changed[1]) : undefined,
-				...(outcome.type === "edit" ? { edit: lineDelta !== undefined ? { lineDelta } : {} } : {}),
-			},
-		];
+		return {
+			file: resolveToolPath(cwd, outcome.path),
+			line: changed ? Number(changed[1]) : undefined,
+			...(outcome.type === "edit" ? { edit: lineDelta !== undefined ? { lineDelta } : {} } : {}),
+		};
 	});
 }
 

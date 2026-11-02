@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";

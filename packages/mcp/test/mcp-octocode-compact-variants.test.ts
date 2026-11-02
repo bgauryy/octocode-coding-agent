@@ -1,6 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkFidelity, type CompactServerInput, renderServer } from "../src/compact/index.ts";
+import { checkFidelity, type CompactServerInput, renderServer, resolveServerFile } from "../src/compact/index.ts";
 import { octocodeCompactOverrides } from "../src/presets/octocode/compact-overrides.ts";
 
 const read = (name: string) =>
@@ -47,4 +49,30 @@ describe("Octocode preset overrides for the catalog without a classification key
 		expect(fetched(keyed)["queries.classification"]).toBeDefined();
 		expect(fetched(keyless)["queries.classification"]).toBeUndefined();
 	});
+
+	it.each(["ts/js, py, c/c++, go, java", "ts/js, py, rust, c/c++, go, java, csharp"])(
+		"keeps the compact catalog through runtime fidelity checks with %s installed",
+		(servers) => {
+			const hosted = {
+				...keyless,
+				tools: keyless.tools.map((tool) => ({
+					...tool,
+					description: tool.description?.replace(/Servers found here: ([^.<]*)\./, `Servers found here: ${servers}.`),
+				})),
+			};
+			const dir = mkdtempSync(path.join(os.tmpdir(), "compact-host-"));
+			try {
+				const preset = octocodeCompactOverrides(hosted);
+				const first = resolveServerFile(dir, "octocode", hosted, { preset });
+				expect(first.meta.overrides).toEqual(preset);
+				expect(first.text).toContain(`Servers: ${servers}.`);
+				expect(first.text.length).toBeLessThan(renderServer(hosted).length - 2000);
+				const cached = resolveServerFile(dir, "octocode", hosted, { preset });
+				expect(cached.rendered).toBe(false);
+				expect(cached.text).toBe(first.text);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		},
+	);
 });

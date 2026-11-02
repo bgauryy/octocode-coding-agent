@@ -13,13 +13,9 @@ import type {
 	CreateAgentSessionRuntimeFactory,
 	CreateAgentSessionRuntimeResult,
 } from "./agent-session-runtime/types.ts";
-import type {
-	ProjectTrustContext,
-	ReplacedSessionContext,
-	SessionShutdownEvent,
-	SessionStartEvent,
-} from "./extensions/index.ts";
-import { emitSessionShutdownEvent } from "./extensions/runner.ts";
+import type { ReplacedSessionContext, SessionShutdownEvent, SessionStartEvent } from "./features/index.ts";
+import { emitSessionShutdownEvent } from "./features/runner.ts";
+import { FolderAdmission } from "./folder-trust.ts";
 import { assertSessionCwdExists, resolveSessionCwd } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
 
@@ -34,13 +30,11 @@ export type {
 } from "./agent-session-runtime/types.ts";
 
 /**
- * Owns the current AgentSession plus its cwd-bound services.
- *
- * Session replacement methods tear down the current runtime first, then create
- * and apply the next runtime. If creation fails, the error is propagated to the
- * caller. The caller is responsible for user-facing error handling.
+ * Owns the current AgentSession plus its cwd-bound services. Replacement methods tear down the current runtime, then
+ * create and apply the next; a creation failure propagates to the caller, who reports it.
  */
 export class AgentSessionRuntime {
+	readonly folderAdmission = new FolderAdmission();
 	private rebindSession?: (session: AgentSession) => Promise<void>;
 	private beforeSessionInvalidate?: () => void;
 	private _session: AgentSession;
@@ -160,7 +154,6 @@ export class AgentSessionRuntime {
 		cwd: string,
 		reason: SessionStartEvent["reason"],
 		previousSessionFile: string | undefined,
-		projectTrustContext?: ProjectTrustContext,
 	): Promise<void> {
 		this.apply(
 			await this.createRuntime({
@@ -168,7 +161,6 @@ export class AgentSessionRuntime {
 				agentDir: this.services.agentDir,
 				sessionManager,
 				sessionStartEvent: { type: "session_start", reason, previousSessionFile },
-				projectTrustContext,
 			}),
 		);
 	}
@@ -187,7 +179,6 @@ export class AgentSessionRuntime {
 		options?: {
 			cwdOverride?: string;
 			withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
-			projectTrustContextFactory?: (cwd: string) => ProjectTrustContext;
 		},
 	): Promise<{ cancelled: boolean }> {
 		const beforeResult = await this.emitBeforeSwitch("resume", sessionPath);
@@ -198,14 +189,9 @@ export class AgentSessionRuntime {
 		const previousSessionFile = this.session.sessionFile;
 		const sessionManager = SessionManager.open(sessionPath, undefined, options?.cwdOverride);
 		assertSessionCwdExists(sessionManager, this.cwd);
+		await this.folderAdmission.check(sessionManager.getCwd());
 		await this.teardownCurrent("resume", sessionManager.getSessionFile());
-		await this.replaceSession(
-			sessionManager,
-			sessionManager.getCwd(),
-			"resume",
-			previousSessionFile,
-			options?.projectTrustContextFactory?.(sessionManager.getCwd()),
-		);
+		await this.replaceSession(sessionManager, sessionManager.getCwd(), "resume", previousSessionFile);
 		await this.finishSessionReplacement(options?.withSession);
 		return { cancelled: false };
 	}
@@ -214,7 +200,6 @@ export class AgentSessionRuntime {
 		previousName?: string;
 		parentSession?: string;
 		cwd?: string;
-		projectTrustContextFactory?: (cwd: string) => ProjectTrustContext;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 		withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
 	}): Promise<{ cancelled: boolean }> {
@@ -227,6 +212,7 @@ export class AgentSessionRuntime {
 		if (beforeResult.cancelled) {
 			return beforeResult;
 		}
+		if (cwd !== this.cwd) await this.folderAdmission.check(cwd);
 		const previousSessionFile = this.session.sessionFile;
 		const sessionDir = previousManager.getSessionDir();
 		// Another folder's session lives with that folder's sessions, unless a custom session directory is set.
@@ -239,8 +225,7 @@ export class AgentSessionRuntime {
 		}
 
 		await this.teardownCurrent("new", sessionManager.getSessionFile());
-		const trust = options?.projectTrustContextFactory?.(cwd);
-		await this.replaceSession(sessionManager, cwd, "new", previousSessionFile, trust);
+		await this.replaceSession(sessionManager, cwd, "new", previousSessionFile);
 		if (options?.setup) {
 			await options.setup(this.session.sessionManager);
 			this.session.refreshContext();
@@ -352,6 +337,7 @@ export class AgentSessionRuntime {
 			cwdOverride,
 			cwd: this.cwd,
 		});
+		await this.folderAdmission.check(sessionManager.getCwd());
 		await this.teardownCurrent("resume", sessionManager.getSessionFile());
 		await this.replaceSession(sessionManager, sessionManager.getCwd(), "resume", previousSessionFile);
 		await this.finishSessionReplacement();
@@ -393,8 +379,6 @@ export async function createAgentSessionRuntime(
 export {
 	type AgentSessionRuntimeDiagnostic,
 	type AgentSessionServices,
-	type CreateAgentSessionFromServicesOptions,
-	type CreateAgentSessionServicesOptions,
-	createAgentSessionFromServices,
 	createAgentSessionServices,
 } from "./agent-session-services.ts";
+export { createSessionFromServices } from "./agent-session/create-session.ts";

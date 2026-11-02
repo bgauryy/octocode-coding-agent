@@ -28,5 +28,7 @@ export interface BashSyntax {
 	wholeAllow: boolean;
 	commands: BashCommand[];
 	incomplete: boolean;
+	/** Why the parse is incomplete: the first construct it does not model (a node type such as `heredoc_redirect`) or the parse limit it hit. */
+	unsupported?: string;
 	targets: BashFileTarget[];
 }

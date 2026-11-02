@@ -28,8 +28,8 @@ export interface Args {
 	excludeTools?: string[];
 	noTools?: boolean;
 	noBuiltinTools?: boolean;
-	extensions?: string[];
-	noExtensions?: boolean;
+	/** Removed flags the command line used (`-e`, `--extension`, `--no-extensions`); the run exits with status 2. */
+	removedFlags?: string[];
 	noMcp?: boolean;
 	print?: boolean;
 	export?: string;
@@ -45,7 +45,8 @@ export interface Args {
 	offline?: boolean;
 	tuiMode?: TuiMode;
 	verbose?: boolean;
-	projectTrustOverride?: boolean;
+	/** `--trust`: record the user's grant for the working folder, then run. */
+	trust?: boolean;
 	messages: string[];
 	fileArgs: string[];
 	/** Unknown flags (potentially extension flags) - map of flag name to value */
@@ -60,6 +61,8 @@ export interface Args {
  * cannot be parsed but undocumented, documented but unparsed, or missing from completion.
  */
 export interface FlagSpec {
+	/** Parsed so its value is consumed, but left out of help and completion; used by removed flags. */
+	hidden?: boolean;
 	name: `--${string}`;
 	short?: `-${string}`;
 	/**

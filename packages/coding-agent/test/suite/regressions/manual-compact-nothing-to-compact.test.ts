@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NothingToCompactError } from "../../../src/core/agent-session/compaction-control.ts";
-import type { SessionCompactFailedEvent } from "../../../src/core/extensions/index.ts";
+import type { SessionCompactFailedEvent } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 describe("manual compaction with nothing to compact", () => {

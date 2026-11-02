@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../src/core/agent-session.ts";
 import { getApplicationPort } from "../../src/core/application/index.ts";
-import { UIPromptTracker } from "../../src/core/extensions/runner/ui-prompt.ts";
-import type { ExtensionContext, ExtensionUIContext } from "../../src/core/extensions/types.ts";
+import { UIPromptTracker } from "../../src/core/features/runner/ui-prompt.ts";
+import type { ExtensionContext, ExtensionUIContext } from "../../src/core/features/types.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "../../src/modes/rpc/rpc-mode/ui-context.ts";
 import { externalPermissionDialog } from "../../src/octocode/external/permission-dialog.ts";
 import { DENY_NOTE, selectAnswer } from "../../src/octocode/permission/ask/text.ts";

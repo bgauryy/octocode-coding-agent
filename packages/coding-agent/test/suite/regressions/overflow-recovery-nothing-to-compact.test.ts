@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SessionCompactFailedEvent } from "../../../src/core/extensions/index.ts";
+import type { SessionCompactFailedEvent } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 describe("overflow recovery with nothing to compact", () => {

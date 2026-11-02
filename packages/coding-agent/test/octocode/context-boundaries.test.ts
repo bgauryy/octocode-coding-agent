@@ -13,7 +13,6 @@ describe("agent context boundaries", () => {
 			OCTOCODE_PARENT_ID: "old-parent",
 			OCTOCODE_AGENT_GOAL: "old-task",
 			OCTOCODE_AGENT_SCRATCH: "/old",
-			OCTOCODE_TRUST_ROOT: "/old-trust",
 			OCTOCODE_SUBAGENT_HOOKS: "1",
 			OCTOCODE_MCP: "0",
 			PATH: "/bin",
@@ -30,7 +29,6 @@ describe("agent context boundaries", () => {
 			"OCTOCODE_PROMPT_CACHE_KEY",
 			"OCTOCODE_AGENT_GOAL",
 			"OCTOCODE_AGENT_SCRATCH",
-			"OCTOCODE_TRUST_ROOT",
 			"OCTOCODE_SUBAGENT_HOOKS",
 		]) {
 			expect(child).not.toHaveProperty(key);
@@ -101,7 +99,7 @@ describe("agent context boundaries", () => {
 			return Object.values(allSections(event)).join("\n\n");
 		};
 		const inactive = await prompt(["read"]);
-		expect(inactive).not.toContain("Use Octocode MCP");
+		expect(inactive).toContain("no lookup tool is available");
 		expect(inactive).not.toContain("# Delegation");
 		expect(inactive).not.toContain("# Subagent");
 		const active = ["read", "agent", "mcp__octocode__localSearch"];

@@ -35,6 +35,8 @@ export interface HookCommand extends HookBase {
 	type?: "command";
 	command: string;
 	args?: string[];
+	/** Claude `shell`: the shell that runs `command`; ignored when `args` is set. Bash is the default. */
+	shell?: "bash" | "powershell";
 	commandWindows?: string;
 	async?: boolean;
 	asyncRewake?: boolean;

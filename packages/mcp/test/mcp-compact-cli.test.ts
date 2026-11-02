@@ -200,7 +200,7 @@ describe("octocode mcp compact", () => {
 		expect(printed.exitCode).toBe(0);
 		const preset = JSON.parse(printed.output);
 		expect(preset.tools.echo).toMatchObject({ description: "Echo the text.", trigger: "Use to echo." });
-		expect(preset.tools.echo.hash).toMatch(/^[0-9a-f]{64}$/);
+		expect(preset.tools.echo.descriptionHash).toMatch(/^[0-9a-f]{16}$/);
 		const bad = write("bad.json", { triggers: { echo: "Two\nlines." } });
 		expect((await run(["compact", "preset", "fixture", "--overrides", bad, "--catalog", catalog])).exitCode).toBe(1);
 	});

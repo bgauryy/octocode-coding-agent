@@ -198,20 +198,27 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: (a, v) => void (a.thinking = v as ThinkingLevel),
 	},
 	{
+		hidden: true,
 		name: "--extension",
 		short: "-e",
 		kind: "list",
 		arg: "<path>",
 		completion: "path",
-		help: ["Load an extension file or builtin:<name> (can be used multiple times)"],
-		apply: (a, v) => void (a.extensions = push(a.extensions, v!)),
+		help: ["Removed: user code extensions are not supported"],
+		// A parent from an earlier release launches its subagents with `--no-extensions -e builtin:mcp` (a running session
+		// spawns children from the updated binary). A `builtin:<id>` value names a built-in feature, which is on by default,
+		// so it is accepted; a code path is refused.
+		apply: (a, v) =>
+			void (/^builtin:[\w.-]+$/.test(v!) ? undefined : (a.removedFlags = push(a.removedFlags, "--extension"))),
 	},
 	{
+		hidden: true,
 		name: "--no-extensions",
 		short: "-ne",
 		kind: "boolean",
-		help: ["Disable extension discovery and built-in extensions (explicit -e paths still work)"],
-		apply: set((a) => (a.noExtensions = true)),
+		// Accepted and ignored: no user code extension ever loads, so the flag asks for what always happens.
+		help: ["Ignored: user code extensions are not supported"],
+		apply: () => undefined,
 	},
 	{
 		name: "--no-mcp",
@@ -311,18 +318,10 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: (a, v) => void (a.tuiMode = v as TuiMode),
 	},
 	{
-		name: "--approve",
-		short: "-a",
+		name: "--trust",
 		kind: "boolean",
-		help: ["Trust project-local files for this run"],
-		apply: set((a) => (a.projectTrustOverride = true)),
-	},
-	{
-		name: "--no-approve",
-		short: "-na",
-		kind: "boolean",
-		help: ["Ignore project-local files for this run"],
-		apply: set((a) => (a.projectTrustOverride = false)),
+		help: ["Trust this folder: record your grant, then run (an untrusted folder otherwise stops headless runs)"],
+		apply: set((a) => (a.trust = true)),
 	},
 	{
 		name: "--offline",
@@ -365,7 +364,7 @@ export const looksLikeFlag = (word: string): boolean => word.startsWith("--") ||
 
 /** The Options section of `--help`, one row per flag in table order. */
 export function flagHelpRows(): string[] {
-	return FLAG_SPECS.flatMap((spec) => {
+	return FLAG_SPECS.filter((spec) => !spec.hidden).flatMap((spec) => {
 		const head = `  ${spec.name}${spec.short ? `, ${spec.short}` : ""}${spec.arg ? ` ${spec.arg}` : ""}`;
 		const [first, ...rest] = spec.help;
 		return [`${head.padEnd(33)}${first}`, ...rest.map((line) => `${" ".repeat(33)}${line}`)];

@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { withDialog } from "../shared/locks.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../theme/status.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
@@ -102,7 +102,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 				"When you need the user's answer to continue: a decision, a preference, approval of a step you propose, a fact tools cannot discover, or what only they can confirm (what they see), including a subagent's question",
 			description:
 				"Put one or more questions to the user and get the answers this turn; use it instead of ending a reply or report with a question. Batch related, self-contained questions. " +
-				"Decisions: 2-4 options (none for free text), each clear on its own, the supported recommendation first, labelled ' (Recommended)'; the UI adds a write-in, so never add \"Other\".",
+				"Decisions: 2-4 options (none for free text), each clear on its own, the recommendation your evidence and project instructions support, first, labelled ' (Recommended)'; the UI adds a write-in, so never add \"Other\".",
 			parameters: Type.Object({
 				questions: Type.Array(
 					Type.Object({

@@ -6,7 +6,7 @@ import { isDirectory, isFile } from "../../utils/fs-probe.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 
-/** A plugin another host installed: `/plugins` lists it, and switching it on adds it to Octocode's `plugins`. */
+/** A plugin another host installed: `/harness` lists it, and switching it on adds it to Octocode's `plugins`. */
 export interface HostPlugin {
 	host: "claude" | "codex";
 	/** `name@marketplace`, as the host names it. */

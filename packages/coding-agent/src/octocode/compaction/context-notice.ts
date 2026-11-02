@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { MessageRef } from "../files/reads.ts";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { autoCompactAt } from "../shared/tokens.ts";

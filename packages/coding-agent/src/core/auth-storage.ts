@@ -24,7 +24,6 @@ import {
 } from "./auth-storage/backends.ts";
 import { detectKeychain, type KeychainBackend } from "./auth-storage/keychain.ts";
 import { resolveConfigValue } from "./config-value.ts";
-import { readJsonFile } from "../../../common/src/json.ts";
 
 export {
 	type AuthStorageBackend,
@@ -328,21 +327,5 @@ export class AuthStorage implements CredentialStore {
 		return entries
 			.filter(([, credential]) => isActiveCredential(credential))
 			.map(([providerId, credential]) => ({ providerId, type: credential.type }));
-	}
-}
-
-/**
- * One-off synchronous read of a stored credential from an auth.json file,
- * without instantiating a store or resolving configured key values.
- */
-export function readStoredCredential(
-	providerId: string,
-	authPath: string = join(getAgentDir(), "auth.json"),
-): Credential | undefined {
-	try {
-		const data = readJsonFile(normalizePath(authPath)) as AuthStorageData;
-		return ownCredential(data, providerId);
-	} catch {
-		return undefined;
 	}
 }

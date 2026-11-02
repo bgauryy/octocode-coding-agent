@@ -1,4 +1,5 @@
-import { functionNames, OUTPUT_FIELD_PREFIX, toolBlock } from "./render.ts";
+import { toolBlock } from "./file.ts";
+import { functionNames, OUTPUT_FIELD_PREFIX, renderServer } from "./render.ts";
 import { isShapeless, schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides, JsonSchema } from "./types.ts";
 
@@ -148,4 +149,21 @@ export function checkFidelity(
 		}
 	}
 	return { ok: problems.length === 0, problems };
+}
+
+/**
+ * The fidelity of `text`, the file rendered with `overrides`, counting only what the overrides could change. A tool the
+ * renderer cannot express (a schema with unreachable definitions, say) fails the plain file too: its sessions declare
+ * it in full (`McpPresentation`), and it must not void the overrides of the tools that render faithfully. Those
+ * problems come back as `inherent`.
+ */
+export function checkOverrides(
+	input: CompactServerInput,
+	text: string,
+	overrides: DescriptionOverrides,
+): { ok: boolean; problems: string[]; inherent: string[] } {
+	const plain = new Set(checkFidelity(input, renderServer(input)).problems);
+	const found = checkFidelity(input, text, overrides).problems;
+	const problems = found.filter((problem) => !plain.has(problem));
+	return { ok: problems.length === 0, problems, inherent: found.filter((problem) => plain.has(problem)) };
 }

@@ -16,7 +16,7 @@ import type { AgentSession } from "../src/core/agent-session.ts";
 import {
 	type AgentSessionRuntime,
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../src/core/agent-session-runtime.ts";
@@ -54,7 +54,7 @@ describe.skipIf(!API_KEY)("AgentSession forking", () => {
 			agentDir: tempDir,
 			authStorage,
 			resourceLoaderOptions: {
-				noExtensions: true,
+				disabledFeatures: ["mcp", "llama.cpp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -66,7 +66,7 @@ describe.skipIf(!API_KEY)("AgentSession forking", () => {
 				cwd,
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,

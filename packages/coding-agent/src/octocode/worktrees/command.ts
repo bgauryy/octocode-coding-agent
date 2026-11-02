@@ -1,11 +1,12 @@
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hasTmuxSession } from "@octocodeai/octocode-tui";
 import { type Subcommand, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { gitQuiet } from "../shared/git.ts";
 import { listTmuxPanes, type TmuxPane } from "../terminal-launch/tmux.ts";
+import { worktreeTrustTitle } from "./approval.ts";
 import { describeWorktree, ensureWorktree } from "./create.ts";
 import { worktreeNames } from "./names.ts";
 import {
@@ -124,7 +125,11 @@ const launch = (
 ) => openInTmux(name, folder, placement, ctx, { ...deps, inTmux: hasTmuxSession(deps.env ?? process.env) });
 
 async function create(name: string, ctx: ExtensionCommandContext, deps: WorktreeCommandDependencies): Promise<void> {
-	const info = await ensureWorktree(ctx.cwd, name);
+	const info = await ensureWorktree(
+		ctx.cwd,
+		name,
+		ctx.hasUI ? (request) => ctx.ui.confirm(worktreeTrustTitle(request), "") : undefined,
+	);
 	say(ctx, describeWorktree(info));
 	const skipped = info.include.skipped.map((item) => `${item.path} (${item.reason})`);
 	if (skipped.length > 0) say(ctx, `Not copied from .worktreeinclude: ${skipped.join(", ")}`, "warning");

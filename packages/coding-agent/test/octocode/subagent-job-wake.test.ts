@@ -45,9 +45,12 @@ async function run(subagent: boolean) {
 	});
 	harnesses.push(harness);
 	harness.setResponses([
-		fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 0.2; echo built", background: true }), {
-			stopReason: "toolUse",
-		}),
+		fauxAssistantMessage(
+			fauxToolCall("bash", { command: "sleep 0.2; echo built", background: true, reason: "build it" }),
+			{
+				stopReason: "toolUse",
+			},
+		),
 		fauxAssistantMessage(fauxToolCall("outlast", {}), { stopReason: "toolUse" }),
 		fauxAssistantMessage("final answer"),
 		fauxAssistantMessage("woken by the job report"),

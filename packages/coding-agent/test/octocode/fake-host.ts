@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../src/core/features/index.ts";
 import type { ModelRegistry } from "../../src/core/model-registry.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";

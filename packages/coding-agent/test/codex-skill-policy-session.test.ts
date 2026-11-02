@@ -6,7 +6,7 @@ import path from "node:path";
 import { fauxAssistantMessage, getCurrentSystemPrompt } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createReadTool } from "./fixtures/read-tool.ts";
+import { createBashTool } from "../src/core/tools/bash.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createHarness, getMessageText } from "./suite/harness.ts";
 
@@ -46,7 +46,7 @@ async function fixture(
 		cwd,
 		agentDir,
 		nativeFeatures: false,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noSkills: !options.plugin,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -59,7 +59,8 @@ async function fixture(
 	await loader.reload();
 	const harness = await createHarness({
 		resourceLoader: loader,
-		tools: [createReadTool(cwd)],
+		// A tool the catalog can name as the skill reader: a plain `read` tool no longer lists skills.
+		tools: [createBashTool(cwd)],
 		settings: { retry: { enabled: false } },
 	});
 	return {
@@ -238,7 +239,7 @@ it("does not execute or connect declared dependencies during resource loading or
 			}),
 		]);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
-		expect(f.harness.session.getActiveToolNames()).toEqual(["read"]);
+		expect(f.harness.session.getActiveToolNames()).toEqual(["bash"]);
 		expect(fs.existsSync(sentinel)).toBe(false);
 		expect(connections).toBe(0);
 	} finally {

@@ -7,7 +7,12 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 
 const roots: string[] = [];
-const resourceLoaderOptions = { noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true };
+const resourceLoaderOptions = {
+	disabledFeatures: ["mcp", "llama.cpp"],
+	noSkills: true,
+	noPromptTemplates: true,
+	noThemes: true,
+};
 
 function fixture() {
 	const root = mkdtempSync(join(tmpdir(), "octocode-credential-startup-"));

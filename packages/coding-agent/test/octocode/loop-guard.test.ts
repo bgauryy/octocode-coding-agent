@@ -115,7 +115,7 @@ describe("repeated-call loop guard", () => {
 
 	it("exempts messaging and bookkeeping tools, nested calls and waiting shell commands", async () => {
 		const { call } = guard();
-		for (const tool of ["agent", "askUser", "backlog", "coordinate", "memory"])
+		for (const tool of ["agent", "askUser", "backlog", "coordinate"])
 			for (let i = 0; i < 6; i++) expect(await call(tool, { op: "list" })).toBeUndefined();
 		for (let i = 0; i < 6; i++) expect(await call("bash", { command: "sleep 30; tail -n 5 job.log" })).toBeUndefined();
 		for (let i = 0; i < 6; i++) expect(await call("bash", { command: "tail -f job.log" })).toBeUndefined();

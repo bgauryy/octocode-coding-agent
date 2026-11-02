@@ -1,4 +1,4 @@
-import type { ContextEditEntryDraft } from "../../core/extensions/index.ts";
+import type { ContextEditEntryDraft } from "../../core/features/index.ts";
 import { imageExtension, saveContentCopy } from "../shared/spill.ts";
 import { partText, stringOrEmpty } from "../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

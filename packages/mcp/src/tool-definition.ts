@@ -6,7 +6,7 @@ import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import { hostRender, hostUi } from "./host.ts";
 import type { McpExposure } from "./config.ts";
-import { firstSentence, thinParameters } from "./presentation/declaration.ts";
+import { declaresReason, firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
 import {
 	type McpToolCaller,
@@ -18,14 +18,10 @@ import {
 
 const OUTPUT_PREVIEW_LINES = 5;
 
-const declaresReason = (schema: Record<string, unknown>): boolean => {
-	const properties = schema.properties;
-	return typeof properties === "object" && properties !== null && "reason" in properties;
-};
-
 /**
  * Every native tool takes a required `reason`, so models add one to MCP calls too; a server schema that forbids extra
- * keys then rejects the call. The server never sees the key, so dropping it changes no request it could accept.
+ * keys then rejects the call. The server never sees the key, so dropping it changes no request it could accept. A
+ * server that declares `reason` (at its root or in a root alternative) keeps it.
  */
 const dropReason = <T>(args: T): T => {
 	if (typeof args !== "object" || args === null || Array.isArray(args) || !("reason" in args)) return args;
@@ -59,7 +55,7 @@ export interface McpToolDefinitionOptions {
 	getClient: () => Promise<McpToolCaller>;
 	/**
 	 * Declare the tool as a thin stub: `summary` (else the description's first sentence) and an open input object. The
-	 * model reads the tool's typed signature in its server's system prompt section; calls are validated against the
+	 * model reads the tool's description and schema (a typed signature, or the JSON Schema in plain form) in its server's block of the system prompt; calls are validated against the
 	 * server's own input schema, and a failed validation shows `signature()`.
 	 */
 	compact?: { signature: () => string | undefined; summary?: string };

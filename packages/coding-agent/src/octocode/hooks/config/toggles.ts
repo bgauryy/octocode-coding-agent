@@ -22,7 +22,7 @@ export function hookToggleIds(event: HookEvent, matcher: string, hook: HookHandl
 	];
 }
 
-/** Whether `/plugins` left this handler on; a project key only reaches handlers whose file is in the repository. */
+/** Whether `/harness` left this handler on; a project key only reaches handlers whose file is in the repository. */
 export function hookSwitchedOn(
 	event: HookEvent,
 	matcher: string,
@@ -51,5 +51,5 @@ export function applyHookToggles(
 				hooks: group.hooks.filter((hook) => hookSwitchedOn(event, group.matcher, hook, toggles, cwd, home) || !++off),
 			}))
 			.filter((group) => group.hooks.length > 0);
-	if (off) errors.push(`${off} hook${off === 1 ? "" : "s"} switched off in /plugins`);
+	if (off) errors.push(`${off} hook${off === 1 ? "" : "s"} switched off in /harness`);
 }

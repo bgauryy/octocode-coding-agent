@@ -12,7 +12,7 @@ import {
 	estimateTokens,
 	finalizeCompactionResult,
 } from "./compaction/index.ts";
-import type { ExtensionRunner } from "./extensions/index.ts";
+import type { ExtensionRunner } from "./features/index.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 
 export type CompactionReason = "manual" | "threshold" | "overflow";

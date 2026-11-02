@@ -303,7 +303,7 @@ describe("a lingering background subagent", () => {
 		const t = setup("full");
 		let servers: Record<string, unknown> = { old: { command: "echo", env: { TOKEN: "SECRET-PARKED-123" } } };
 		Object.assign(t.f.api, {
-			events: { on: () => () => undefined, emit: (_name: string, reply: (added: unknown) => void) => reply(servers) },
+			events: { on: () => () => undefined, emit: (_name: string, reply: (handoff: unknown) => void) => reply({ servers, stopped: [] }) },
 		});
 		try {
 			const id = await t.start("linger with servers");

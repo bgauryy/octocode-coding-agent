@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { archivePointer } from "../../src/octocode/compaction/archive.ts";
-import { registerArchiveTool } from "../../src/octocode/compaction/archive-tool.ts";
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { forkLineage, sessionRecordOf } from "../../src/octocode/compaction/archive/session-record.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
@@ -81,11 +81,35 @@ function tool(cwd: string) {
 const why = { goal: "find the login fix", reason: "the user asked what was decided last week" };
 
 describe("the archive tool", () => {
+	it.each([{}, { op: "list", source: "sessions" }])("keeps other workspaces out of history for %j", async (form) => {
+		const cwd = repo();
+		const other = tmp();
+		fileFor("local", "local decision", cwd);
+		fileFor("elsewhere", "foreign decision", cwd);
+		setCurrentSession("elsewhere");
+		writeSessionRecord({
+			session: "elsewhere",
+			repository: fs.realpathSync(cwd),
+			workspace: other,
+			goal: { role: "user", text: "foreign decision" },
+			ending: [],
+			toolCalls: 0,
+		});
+		setCurrentSession("me");
+		const call = tool(cwd);
+		const list = await call({ ...why, ...form });
+		expect(list.text).toContain("local");
+		expect(list.text).not.toContain("elsewhere");
+		await expect(call({ ...why, ...form, file: archiveFolder("elsewhere") })).rejects.toThrow(/not in the history/);
+		setSessionLineage(["elsewhere"]);
+		expect((await call({ ...why, ...form })).text).toContain("elsewhere");
+	});
+
 	it("owns questions about earlier sessions, and says what query does with errors", () => {
 		const fake = fakeHost();
 		registerArchiveTool(fake.api);
 		const archive = fake.tools.get("archive");
-		expect(archive.promptSnippet).toMatch(/what was said or done in earlier sessions/);
+		expect(archive.promptSnippet).toMatch(/earlier sessions/);
 		expect(archive.parameters.properties.query.description).toMatch(/With errors: filters by tool name or error text/);
 	});
 

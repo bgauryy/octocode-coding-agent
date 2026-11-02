@@ -1,4 +1,11 @@
-import type { Api, Model, ModelCost, OpenAICompletionsCompat, OpenAIResponsesCompat } from "../../src/types.ts";
+import type {
+	Api,
+	Model,
+	ModelCost,
+	ModelCostRates,
+	OpenAICompletionsCompat,
+	OpenAIResponsesCompat,
+} from "../../src/types.ts";
 
 /** Provider URLs, compat settings, thinking-level maps and model ID lists the generator applies. */
 
@@ -278,6 +285,35 @@ export const OPENAI_STANDARD_COSTS: Record<string, ModelCost> = {
 	"gpt-6-sol": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
 	"gpt-6.1-sol": { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
 };
+
+// gpt-5.6-sol is on OpenAI's promotional price (4/20/0.4/5), "available at least through November 21, 2026".
+// OpenAI publishes no post-promo rate and no firm end date (checked 2026-11-01), so the price carries no
+// `until`/`after` window; add one here once OpenAI publishes the regular rate.
+// https://developers.openai.com/api/docs/pricing
+
+/** Official Gemini API cached-input rates (USD per million tokens) that models.dev omits. Filled only when none is listed. */
+// https://ai.google.dev/gemini-api/docs/pricing
+export const GOOGLE_MISSING_CACHE_READ_COSTS: Record<string, number> = {
+	"gemini-3.1-flash-lite-image": 0.025,
+};
+
+const GEMINI_FLASH_INTRO_COST: ModelCostRates = { input: 0.75, output: 3.75, cacheRead: 0.075, cacheWrite: 0 };
+const GEMINI_FLASH_REGULAR_COST: ModelCostRates = { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite: 0 };
+
+/**
+ * Gemini Flash models on an introductory price: charged through `until` (UTC, inclusive), then `after`.
+ * Applied only while the catalog still lists exactly the `listed` rates, so a catalog that has moved on wins.
+ */
+// https://cloud.google.com/model-garden/pricing
+export const GOOGLE_TIME_LIMITED_COSTS: Record<
+	string,
+	{ listed: ModelCostRates; until: string; after: ModelCostRates }
+> = Object.fromEntries(
+	["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"].map((id) => [
+		id,
+		{ listed: GEMINI_FLASH_INTRO_COST, until: "2026-12-31", after: GEMINI_FLASH_REGULAR_COST },
+	]),
+);
 
 export const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
 	"gpt-5.1",

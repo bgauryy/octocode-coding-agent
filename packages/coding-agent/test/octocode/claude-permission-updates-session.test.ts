@@ -476,11 +476,10 @@ it.skipIf(process.getuid?.() === 0)(
 	},
 );
 
-for (const standalone of [false, true]) {
-	it(`external source denial during settings write blocks ${standalone ? "SDK Write" : "native Bash"}`, async () => {
+for (const fileTool of [false, true]) {
+	it(`external source denial during settings write blocks ${fileTool ? "native file write" : "native Bash"}`, async () => {
 		const f = await fixture("claude", {
 			projectRules: {},
-			fileWriteTool: standalone,
 			output: decision({
 				behavior: "allow",
 				updatedPermissions: [update("addRules", "node -p 42", "allow", "userSettings")],
@@ -514,15 +513,17 @@ for (const standalone of [false, true]) {
 				});
 			restoreObserver = () => observer.mockRestore();
 			const command = "printf MUST_NOT_RUN > raced-effect.txt";
-			pending = standalone
-				? f.run("write", { path: "raced-effect.txt", content: "MUST_NOT_RUN" })
+			pending = fileTool
+				? f.run("file", {
+						queries: [{ type: "write", path: "raced-effect.txt", content: "MUST_NOT_RUN", reason: "Race" }],
+					})
 				: f.run("bash", { command });
 			await vi.waitFor(() => expect(contended).toBe(true), { timeout: 5000 });
 			fs.writeFileSync(
 				path.join(f.cwd, ".claude/settings.json"),
 				JSON.stringify({
 					permissions: {
-						deny: [standalone ? "Write(./raced-effect.txt)" : "Bash(printf MUST_NOT_RUN*)"],
+						deny: [fileTool ? "Write(./raced-effect.txt)" : "Bash(printf MUST_NOT_RUN*)"],
 					},
 				}),
 			);

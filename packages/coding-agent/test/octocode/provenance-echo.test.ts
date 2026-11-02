@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ToolCallEvent, ToolResultEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 
 const cwd = "/tmp/provenance-fixture-with-a-long-shared-parent/project";

@@ -1,7 +1,7 @@
 import { APP_NAME } from "../config.ts";
 import type { SourceInfo } from "./source-info.ts";
 
-export type SlashCommandSource = "extension" | "prompt" | "skill";
+type SlashCommandSource = "extension" | "prompt" | "skill";
 
 export interface SlashCommandInfo {
 	name: string;
@@ -108,12 +108,6 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "clone", description: "Duplicate this session" },
 	{ name: "queue", description: "Edit queued messages" },
-	{
-		name: "trust",
-		description: "Manage project and config trust",
-		argumentHint: "<project|config|off>",
-		argumentValues: ["project", "config", "off"],
-	},
 	{
 		name: "login",
 		description: "Connect AI providers",

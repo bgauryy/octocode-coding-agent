@@ -4,13 +4,13 @@
 
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../../config.ts";
-import type { ExtensionFlag } from "../../core/extensions/types.ts";
+import type { ExtensionFlag } from "../../core/features/types.ts";
 import { flagHelpRows } from "./flags.ts";
 
 export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 	const extensionFlagsText =
 		extensionFlags && extensionFlags.length > 0
-			? `\n${chalk.bold("Extension CLI Flags:")}\n${extensionFlags
+			? `\n${chalk.bold("Feature CLI Flags:")}\n${extensionFlags
 					.map((flag) => {
 						const value = flag.type === "string" ? " <value>" : "";
 						const description = flag.description ?? `Registered by ${flag.extensionPath}`;
@@ -24,17 +24,18 @@ ${chalk.bold("Usage:")}
   ${APP_NAME} [options] [--] [@files...] [messages...]
 
 ${chalk.bold("Commands:")}
-  ${APP_NAME} install <source> [-l]     Install extension source and add to settings
-  ${APP_NAME} remove <source> [-l]      Remove extension source from settings
-  ${APP_NAME} update [source|self]      Update Octocode, extensions, or model catalogs
-  ${APP_NAME} list                      List installed extensions from settings
+  ${APP_NAME} install <source> [-l]     Install a package (skills, prompts, themes) and add it to settings
+  ${APP_NAME} remove <source> [-l]      Remove a package from settings
+  ${APP_NAME} update [source|self]      Update Octocode, packages, or model catalogs
+  ${APP_NAME} list                      List installed packages from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
   ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
   ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
   ${APP_NAME} context <command>         Show and store the skill descriptions agents read
+  ${APP_NAME} marketplace <command>     Add, list, update or remove plugin marketplaces (path, owner/repo, git URL)
+  ${APP_NAME} plugin <command>          Install, update or remove plugins from a marketplace (plugin@marketplace)
   ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
-  ${APP_NAME} migrate                   Convert historical configuration in the active Octocode home and project
   ${APP_NAME} research <args...>        Run the installed Octocode research CLI
   ${APP_NAME} native <args...>          Run the installed Octocode native CLI
   ${APP_NAME} <command> --help          Show command-specific help
@@ -43,7 +44,7 @@ ${chalk.bold("Options:")}
 ${flagHelpRows().join("\n")}
 ${"  --".padEnd(33)}End option parsing; treat remaining arguments as messages/files
 
-Extensions can register additional flags.${extensionFlagsText}
+Native features can register additional flags.${extensionFlagsText}
 
 ${chalk.bold("Examples:")}
   # Print a provider API key for an external client
@@ -165,8 +166,7 @@ ${chalk.bold("Built-in Tool Names:")}
   bash       - Execute commands (type: bash or powershell)
   file       - Guarded file edits, writes and deletions
   backlog    - Track tasks and progress
-  memory     - Store and retrieve durable notes
-  archive    - Retrieve compacted conversation history
+  archive    - Recall history and lifecycle events; store and retrieve workspace memories
   web        - Search and fetch public web content
   browser    - Inspect and interact with browser pages
   agent      - Task, external-agent, coordination and message modes

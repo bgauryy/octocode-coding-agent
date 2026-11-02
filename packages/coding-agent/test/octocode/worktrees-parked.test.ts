@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
 import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { scratchRoot } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { allParked, writeParked, type ParkedWorker } from "../../src/octocode/subagents/parked.ts";
+import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
+import { allowWorktreeGrants } from "../../src/octocode/worktrees/approval.ts";
 import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import { ensureWorktree } from "../../src/octocode/worktrees/create.ts";
 import { GIT_TEST_ENV, makeRepo, type TestRepo } from "./worktree-fixture.ts";
@@ -21,6 +23,7 @@ const contextAt = (cwd: string) =>
 	}) as unknown as ExtensionCommandContext;
 
 beforeEach(() => {
+	allowWorktreeGrants(true); // these tests are about worktrees, not trust: a headless `--trust` run
 	for (const [key, value] of Object.entries(GIT_TEST_ENV)) vi.stubEnv(key, value);
 	vi.stubEnv("OCTOCODE_HOME", tmp("octocode-wt-parked-home-"));
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(tmp("octocode-wt-parked-db-"), "octocode.db"));
@@ -49,8 +52,6 @@ function park(session: string, id: string, workspace: string, until: number): vo
 	} as unknown as ParkedWorker;
 	writeParked(session, [worker]);
 }
-
-const origins = () => readFileSync(path.join(process.env.OCTOCODE_HOME ?? "", "worktree-origins.json"), "utf8");
 
 describe("/worktree remove with parked children", () => {
 	it("refuses while a session keeps a finished child reachable there, names it, and --force removes", async () => {
@@ -97,15 +98,16 @@ describe("/worktree remove with parked children", () => {
 	});
 });
 
-describe("/worktree remove forgets the trust record", () => {
-	it("deletes the removed worktree's origin and keeps the others", async () => {
+describe("/worktree remove revokes the trust grant", () => {
+	it("revokes the removed worktree's grant and keeps the others", async () => {
 		const feat = await ensureWorktree(repo.root, "feat");
 		const keep = await ensureWorktree(repo.root, "keep");
-		const before = JSON.parse(origins()) as Record<string, unknown>;
-		expect(Object.keys(before).sort()).toEqual([realpathSync(feat.path), realpathSync(keep.path)].sort());
+		expect(resolveFolderTrust(feat.path).state).toBe("trusted");
+		expect(resolveFolderTrust(keep.path).state).toBe("trusted");
 
 		await worktreeCommand({ env: { ...process.env } }).handler("remove feat", contextAt(repo.root));
 		expect(existsSync(feat.path)).toBe(false);
-		expect(Object.keys(JSON.parse(origins()) as Record<string, unknown>)).toEqual([realpathSync(keep.path)]);
+		expect(resolveFolderTrust(keep.path).state).toBe("trusted");
+		expect(resolveFolderTrust(realpathSync(repo.root)).state).not.toBe("trusted");
 	});
 });

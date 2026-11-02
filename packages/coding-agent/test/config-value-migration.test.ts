@@ -2,13 +2,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ENV_AGENT_DIR } from "../src/config.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { runMigrations } from "../src/migrations.ts";
 
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
 
-describe("config value env var syntax migration", () => {
+describe("config values written as uppercase literals", () => {
 	const tempDirs: string[] = [];
 
 	afterEach(() => {
@@ -24,21 +22,7 @@ describe("config value env var syntax migration", () => {
 		return agentDir;
 	}
 
-	function withAgentDir(agentDir: string, fn: () => void): void {
-		const previousAgentDir = process.env[ENV_AGENT_DIR];
-		process.env[ENV_AGENT_DIR] = agentDir;
-		try {
-			fn();
-		} finally {
-			if (previousAgentDir === undefined) {
-				delete process.env[ENV_AGENT_DIR];
-			} else {
-				process.env[ENV_AGENT_DIR] = previousAgentDir;
-			}
-		}
-	}
-
-	it("leaves uppercase auth.json API key values unchanged", () => {
+	it("reads uppercase auth.json API key values as they are", async () => {
 		const agentDir = createAgentDir();
 		fs.writeFileSync(
 			path.join(agentDir, "auth.json"),
@@ -54,30 +38,20 @@ describe("config value env var syntax migration", () => {
 			)}\n`,
 			"utf-8",
 		);
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const auth = AuthStorage.create(path.join(agentDir, "auth.json"));
 
-		withAgentDir(agentDir, () => runMigrations(agentDir));
-
-		const migrated = JSON.parse(fs.readFileSync(path.join(agentDir, "auth.json"), "utf-8")) as Record<
-			string,
-			Record<string, unknown>
-		>;
-		expect(migrated.anthropic.key).toBe("ANTHROPIC_API_KEY");
-		expect(migrated.openai.key).toBe("$OPENAI_API_KEY");
-		expect(migrated.opencode.key).toBe("public");
-		expect(migrated.github.access).toBe("ACCESS_TOKEN");
-		expect(logSpy).not.toHaveBeenCalled();
+		expect(await auth.read("anthropic")).toMatchObject({ key: "ANTHROPIC_API_KEY" });
+		expect(await auth.read("opencode")).toMatchObject({ key: "public" });
+		expect(await auth.read("github")).toMatchObject({ access: "ACCESS_TOKEN" });
 	});
 
 	it.each([
 		["malformed", '{\n  "providers": {\n'],
 		["blank", ""],
-	])("does not throw on %s models.json during migrations", async (_name, content) => {
+	])("reports a %s models.json without rewriting it", async (_name, content) => {
 		const agentDir = createAgentDir();
 		const modelsPath = path.join(agentDir, "models.json");
 		fs.writeFileSync(modelsPath, content, "utf-8");
-
-		withAgentDir(agentDir, () => expect(() => runMigrations(agentDir)).not.toThrow());
 
 		expect(fs.readFileSync(modelsPath, "utf-8")).toBe(content);
 		const registry = await createModelRegistry(AuthStorage.create(path.join(agentDir, "auth.json")), modelsPath);
@@ -126,10 +100,6 @@ describe("config value env var syntax migration", () => {
 				)}\n`,
 				"utf-8",
 			);
-			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-			withAgentDir(agentDir, () => runMigrations(agentDir));
-
 			const migrated = JSON.parse(fs.readFileSync(path.join(agentDir, "models.json"), "utf-8")) as {
 				providers: Record<
 					string,
@@ -147,7 +117,6 @@ describe("config value env var syntax migration", () => {
 			expect(provider.headers?.["x-literal"]).toBe("literal");
 			expect(provider.models?.[0]?.headers?.["x-model-key"]).toBe("MODEL_API_KEY");
 			expect(provider.modelOverrides?.["model-b"]?.headers?.["x-override-key"]).toBe("OVERRIDE_API_KEY");
-			expect(logSpy).not.toHaveBeenCalled();
 
 			const registry = await createModelRegistry(
 				AuthStorage.create(path.join(agentDir, "auth.json")),

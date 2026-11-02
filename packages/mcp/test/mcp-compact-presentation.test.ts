@@ -137,16 +137,22 @@ describe("compact MCP presentation", () => {
 		expect(contract).not.toContain("state=");
 	});
 
-	it("keeps JSON declarations and writes nothing when mcpPresentation is json", async () => {
+	it("describes tools in plain form, declares them thin and writes nothing when mcpPresentation is json", async () => {
 		const dir = generatedDir(isolatedAgentDir());
 		const h = host({ presentation: "json" });
 		await h.start();
 		const { mcps: section } = await h.prompt();
 		const shout = h.tools.get("mcp__octocode__shout");
-		expect(shout.parameters).toMatchObject({ type: "object", properties: { text: { type: "string" } } });
-		expect(shout.validationParameters).toBeUndefined();
-		expect(section).toContain("full descriptions and schemas");
+		// The section holds the description and the server's JSON Schema; the declaration is not a second copy.
+		expect(section).toContain("// mcp__octocode__shout\nUppercase the given text\nInput schema (JSON Schema): {");
+		expect(section).toContain('"required":["text"]');
 		expect(section).not.toContain("declare namespace");
+		expect(shout.parameters).toEqual({
+			type: "object",
+			properties: { text: { type: "string" } },
+			additionalProperties: true,
+		});
+		expect(shout.validationParameters).toMatchObject({ properties: { text: { type: "string" } }, required: ["text"] });
 		expect(existsSync(join(dir, "octocode.txt"))).toBe(false);
 	});
 
@@ -155,8 +161,7 @@ describe("compact MCP presentation", () => {
 		const h = host();
 		h.api.getSettings = () => ({ mcpPresentation: "json" }) as never;
 		await h.start();
-		await h.prompt();
-		expect(h.tools.get("mcp__octocode__shout").validationParameters).toBeUndefined();
+		expect((await h.prompt()).mcps).toContain("Input schema (JSON Schema): {");
 	});
 
 	it("regenerates when a tool is hidden by configuration", async () => {
@@ -179,10 +184,22 @@ describe("McpPresentation", () => {
 		inputSchema: { type: "object" as const, properties: { id: { type: "string" } } },
 	});
 
-	it("is a no-op in json mode and survives an unwritable store", () => {
+	it("renders no file in json mode and survives an unwritable store", () => {
 		const off = new McpPresentation({ agentDir: tmp, mode: () => "json" });
 		off.sync("s", "s", undefined, [tool("a")]);
 		expect(off.isThin("s", tool("a"))).toBe(false);
+		const described = off.describe("s", ["a"], "Be careful.", true);
+		expect(described.file).toBeUndefined();
+		expect(described.contract).toBe(
+			[
+				'// MCP server "s" \u00b7 call a tool by the name on its // line, with the input object.',
+				"Be careful.",
+				"// mcp__s__a",
+				"Does work.",
+				'Input schema (JSON Schema): {"type":"object","properties":{"id":{"type":"string"}}}',
+			].join("\n"),
+		);
+		expect(off.isThin("s", tool("a"))).toBe(true);
 		const blocked = new McpPresentation({ agentDir: () => "/dev/null/x", mode: () => "compact" });
 		const a = tool("a");
 		blocked.sync("s", "s", undefined, [a]);
@@ -192,37 +209,85 @@ describe("McpPresentation", () => {
 		expect(blocked.signature("s", "a")).toContain("function a(");
 	});
 
-	it("freezes the prompt copy until rebuild, and a changed tool stops being thin", () => {
+	it("keeps the prompt copy through reconnects, new and withdrawn tools, and renews it when the contract changes", () => {
 		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
 		const a = tool("a");
 		presentation.sync("s", "s", "Be careful.", [a]);
-		const describe = (tools: string[]) => presentation.describe("s", tools, "Be careful.", true);
+		const describe = (tools: string[], instructions = "Be careful.") =>
+			presentation.describe("s", tools, instructions, true);
 		const frozen = describe(["a"]).file;
 		expect(frozen).toContain("Be careful.");
-		const changed = tool("a", "Does other work.");
-		presentation.sync("s", "s", "Be careful.", [changed, tool("b")]);
+		// A new tool is declared in full; the block stays.
+		presentation.sync("s", "s", "Be careful.", [a, tool("b")]);
 		expect(describe(["a", "b"]).file).toBe(frozen);
 		expect(presentation.isThin("s", a)).toBe(true);
-		expect(presentation.isThin("s", changed)).toBe(false);
 		expect(presentation.isThin("s", tool("b"))).toBe(false);
 		expect(presentation.signature("s", "b")).toContain("function b(");
 		// A dropped connection withdraws the catalog; the description stays.
 		presentation.sync("s", "s", undefined, []);
 		expect(describe([]).file).toBe(frozen);
+		// A reconnect with an equal catalog (new objects, a new latest file) and a withdrawn tool keep it too.
+		presentation.sync("s", "s", "Be careful.", [tool("a"), tool("b")]);
+		expect(describe(["a", "b"]).file).toBe(frozen);
+		presentation.sync("s", "s", "Be careful.", [tool("b")]);
+		expect(describe(["b"]).file).toBe(frozen);
+		// A changed description renews the copy, with the tools declared now; the changed tool is thin again.
+		const changed = tool("a", "Does other work.");
 		presentation.sync("s", "s", "Be careful.", [changed, tool("b")]);
-		presentation.rebuild();
-		expect(describe(["a"]).file).toContain("Does other work.");
+		const renewed = describe(["a", "b"]).file;
+		expect(renewed).toContain("Does other work.");
+		expect(renewed).toContain("function b(");
 		expect(presentation.isThin("s", changed)).toBe(true);
+		expect(presentation.isThin("s", a)).toBe(false);
+		expect(describe(["a", "b"]).file).toBe(renewed);
+		// So do changed instructions, a changed input schema and a changed output schema.
+		presentation.sync("s", "s", "Be very careful.", [changed, tool("b")]);
+		expect(describe(["a", "b"], "Be very careful.").file).toContain("Be very careful.");
+		const schema = { ...changed, inputSchema: { type: "object" as const, properties: { id: { type: "number" } } } };
+		presentation.sync("s", "s", "Be very careful.", [schema, tool("b")]);
+		expect(describe(["a", "b"], "Be very careful.").file).toMatch(/id\?: number/);
+		expect(presentation.isThin("s", schema)).toBe(true);
+		const output = { ...schema, outputSchema: { type: "object" as const, properties: { hits: { type: "number" } } } };
+		presentation.sync("s", "s", "Be very careful.", [output, tool("b")]);
+		describe(["a", "b"], "Be very careful.");
+		expect(presentation.isThin("s", output)).toBe(true);
+		expect(presentation.isThin("s", schema)).toBe(false);
+		presentation.rebuild();
+		expect(describe(["a"], "Be very careful.").file).toContain("Does other work.");
+		expect(presentation.isThin("s", output)).toBe(true);
 	});
 
-	it("describes a server first seen without its catalog once more when it connects, then freezes", () => {
+	it("keeps a tool thin when only fields outside its contract change, and counts a title that stands in for the description", () => {
+		for (const mode of ["compact", "json"] as const) {
+			const presentation = new McpPresentation({ agentDir: tmp, mode: () => mode });
+			presentation.sync("s", "s", undefined, [tool("a"), { ...tool("b", ""), title: "Old title" }]);
+			const block = presentation.describe("s", ["a", "b"], undefined, true).contract;
+			const retitled = { ...tool("a"), title: "Work", execution: { taskSupport: "optional" as const } };
+			presentation.sync("s", "s", undefined, [retitled, { ...tool("b", ""), title: "Old title" }]);
+			expect(presentation.describe("s", ["a", "b"], undefined, true).contract).toBe(block);
+			expect(presentation.isThin("s", retitled)).toBe(true);
+			// Without a description the plain form shows the title, so a new title is a new contract.
+			const b = { ...tool("b", ""), title: "New title" };
+			presentation.sync("s", "s", undefined, [retitled, b]);
+			const renewed = presentation.describe("s", ["a", "b"], undefined, true).contract;
+			if (mode === "json") expect(renewed).toContain("New title");
+			else expect(renewed).toBe(block);
+			expect(presentation.isThin("s", b)).toBe(true);
+		}
+	});
+
+	it("describes a server first seen without its catalog once more when it connects, then keeps it until the contract changes", () => {
 		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
 		expect(presentation.describe("s", [], undefined, false).file).toBeUndefined();
 		presentation.sync("s", "s", undefined, [tool("a")]);
 		const connected = presentation.describe("s", ["a"], undefined, true).file;
 		expect(connected).toContain("function a(");
-		presentation.sync("s", "s", undefined, [tool("a", "Changed.")]);
+		presentation.sync("s", "s", undefined, [tool("a")]);
 		expect(presentation.describe("s", ["a"], undefined, true).file).toBe(connected);
+		// While the server is not connected the copy stays, even with a changed catalog.
+		presentation.sync("s", "s", undefined, [tool("a", "Changed.")]);
+		expect(presentation.describe("s", ["a"], undefined, false).file).toBe(connected);
+		expect(presentation.describe("s", ["a"], undefined, true).file).toContain("Changed.");
 	});
 
 	it("reuses a stored file whose hash matches and drops overrides of an older catalog", () => {

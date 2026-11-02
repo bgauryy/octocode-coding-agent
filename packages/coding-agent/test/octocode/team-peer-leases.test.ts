@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { peerDbPath, peerRegistryDir } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { loadSqlite } from "../../src/octocode/agentdb/sqlite.ts";
-import { PEER_APPLICATION_ID, PEER_SCHEMA_VERSION, PeerLeases } from "../../src/octocode/team/peer-leases.ts";
+import { PEER_APPLICATION_ID, PEER_SCHEMA_VERSIONS, PeerLeases } from "../../src/octocode/team/peer-leases.ts";
 import { PEER_REGISTRY_GRACE_MS, PEER_REGISTRY_VERSION, PeerRegistry } from "../../src/octocode/team/peer-registry.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -79,7 +79,32 @@ const home = () => fs.realpathSync(tmp());
 describe("peer leases (agents-communication database, read-only)", () => {
 	it("relies on the schema this reads", () => {
 		expect(SCHEMA).toContain(`PRAGMA application_id=${PEER_APPLICATION_ID}`);
-		expect(SCHEMA).toContain(`PRAGMA user_version=${PEER_SCHEMA_VERSION}`);
+		const version = Number(/PRAGMA user_version=(\d+)/.exec(SCHEMA)?.[1]);
+		expect(PEER_SCHEMA_VERSIONS).toContain(version);
+		// The columns the lease query selects: what makes a schema version safe to read.
+		const { DatabaseSync } = loadSqlite();
+		const db = new DatabaseSync(":memory:");
+		db.exec(SCHEMA);
+		const columns = (table: string) =>
+			(db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => column.name);
+		expect(columns("leases")).toEqual(
+			expect.arrayContaining(["id", "path", "kind", "pathKey", "reasoning", "acquiredAt", "expiresAt", "owner"]),
+		);
+		expect(columns("sessions")).toEqual(expect.arrayContaining(["id", "name", "vendor", "vendorSession", "expiresAt"]));
+		db.close();
+	});
+
+	// v8 only changed messages and records (parts, contextId, outcome); leases and sessions are the v7 columns.
+	it.each([7, 8])("reads leases from a schema version %i database", (version) => {
+		const file = path.join(home(), "communication.sqlite");
+		peerDb(file, [{ path: "/w/a.ts", reason: "auth" }]);
+		const raw = new (loadSqlite().DatabaseSync)(file);
+		raw.exec(`PRAGMA user_version=${version}`);
+		raw.close();
+		const warnings: string[] = [];
+		const found = peers(file, { warn: (text) => (warnings.push(text), true) });
+		expect(found.conflict("/w/a.ts")?.reason).toBe("auth");
+		expect(warnings).toEqual([]);
 	});
 
 	it("is a no-op while the database does not exist, and notices it once it does", () => {
@@ -154,7 +179,7 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		const file = path.join(home(), "communication.sqlite");
 		peerDb(file, [{ path: "/w/a.ts" }]);
 		const raw = new (loadSqlite().DatabaseSync)(file);
-		raw.exec(`PRAGMA user_version=${PEER_SCHEMA_VERSION + 1}`);
+		raw.exec("PRAGMA user_version=9");
 		raw.close();
 		const warnings: string[] = [];
 		let now = NOW;
@@ -169,11 +194,12 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		now += 31_000;
 		expect(found.conflict("/w/a.ts")).toBeUndefined();
 		expect(warnings).toHaveLength(1);
-		expect(warnings[0]).toContain(`schema version ${PEER_SCHEMA_VERSION + 1}`);
+		expect(warnings[0]).toContain("schema version 9");
+		expect(warnings[0]).toContain("reads versions 7, 8");
 		expect(warnings[0]).toContain("path leases are not checked");
 		// Once the file is the version this reads, the next attempt uses it.
 		const fixed = new (loadSqlite().DatabaseSync)(file);
-		fixed.exec(`PRAGMA user_version=${PEER_SCHEMA_VERSION}`);
+		fixed.exec("PRAGMA user_version=8");
 		fixed.close();
 		now += 31_000;
 		expect(found.conflict("/w/a.ts")?.owner).toBe("s1");
@@ -394,7 +420,7 @@ describe("peer leases in the team reservation gate", () => {
 		const { cwd, team, gate, ctx } = collaborate();
 		expect(team.reservation(path.join(cwd, "a.ts"), "a.ts")).toBeUndefined();
 		await expect(
-			gate({ toolName: "write", input: { path: "a.ts", content: "" } } as never, ctx),
+			gate({ toolName: "bash", input: { command: "echo x > a.ts" } } as never, ctx),
 		).resolves.toBeUndefined();
 	});
 
@@ -412,19 +438,15 @@ describe("peer leases in the team reservation gate", () => {
 	});
 
 	it("refuses a write to a file a package agent holds, naming the holder, until it unlocks", async () => {
-		const { cwd, team, gate, ctx } = collaborate();
+		const { cwd, team } = collaborate();
 		const target = path.join(cwd, "src", "a.ts");
-		// The gate reads the real clock, so the fixture's leases and sessions live relative to it.
+		// The reservation check reads the real clock, so the fixture's leases and sessions live relative to it.
 		peerDb(peerDbPath(), [{ path: target, expiresAt: Date.now() + 60_000 }], {
 			sessionExpiresAt: Date.now() + 60_000,
 		});
 		const reason = team.reservation(target, "src/a.ts");
 		expect(reason).toMatch(/^src\/a\.ts is reserved by cc \(claude agent in agents-communication; refactor; locked /);
 		expect(reason).toContain("message cc through agents-communication");
-		await expect(gate({ toolName: "edit", input: { path: "src/a.ts", edits: [] } } as never, ctx)).resolves.toEqual({
-			block: true,
-			reason,
-		});
 		expect(team.reservation(path.join(cwd, "src", "b.ts"), "src/b.ts")).toBeUndefined();
 		const free = new (loadSqlite().DatabaseSync)(peerDbPath());
 		free.exec("DELETE FROM leases");

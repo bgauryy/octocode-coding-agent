@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectConfig } from "../src/cli/config-selector.ts";
 import { ENV_AGENT_DIR } from "../src/config.ts";
-import type { InlineExtension } from "../src/core/extensions/types.ts";
+import type { InlineExtension } from "../src/core/features/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { main } from "../src/main.ts";
@@ -42,7 +42,7 @@ describe("built-in composition", () => {
 
 	it.each(["main", "config"])("shows default built-ins through %s without injected factories", async (entry) => {
 		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
-		const args = ["config", "--no-approve"];
+		const args = ["config"];
 		await expect(entry === "main" ? main(args) : handleConfigCommand(args)).rejects.toBe(exited);
 
 		const options = vi.mocked(selectConfig).mock.calls[0]?.[0];
@@ -54,29 +54,13 @@ describe("built-in composition", () => {
 		}
 	});
 
-	it("shows caller built-ins once alongside defaults", async () => {
-		const factory = vi.fn();
-		await expect(
-			handleConfigCommand(["config", "--no-approve"], {
-				extensionFactories: [
-					{ name: "mcp", builtin: true, factory },
-					{ name: "custom", builtin: true, factory },
-				],
-			}),
-		).rejects.toBe(exited);
-		const paths = vi.mocked(selectConfig).mock.calls[0][0].resolvedPaths.global.extensions.map((item) => item.path);
-		expect(paths.filter((path) => path === "builtin:mcp")).toHaveLength(1);
-		expect(paths).toContain("builtin:custom");
-		expect(factory).not.toHaveBeenCalled();
-	});
-
 	it("uses the caller's built-in factory once and respects disabled defaults", async () => {
 		const replacement = vi.fn();
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
 			settingsManager: SettingsManager.inMemory({ extensions: ["-builtin:llama.cpp"] }),
-			extensionFactories: [{ name: "mcp", builtin: true, factory: replacement }],
+			builtinFeatures: [{ id: "mcp", owner: "builtin", register: replacement }],
 		});
 		await loader.reload();
 		expect(loader.getExtensions().errors).toEqual([]);

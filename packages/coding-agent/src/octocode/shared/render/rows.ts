@@ -1,6 +1,6 @@
 import { animationClock, MOTION } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
-import type { ToolDefinition } from "../../../core/extensions/index.ts";
+import type { ToolDefinition } from "../../../core/features/index.ts";
 import { formatDuration } from "../format.ts";
 import { exclusive, takeTiming } from "../locks.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";

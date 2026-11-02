@@ -1,4 +1,4 @@
-import type { ExtensionContext, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext, ExtensionCommandContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../agentdb/api.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { repoKey } from "../shared/home/repo.ts";

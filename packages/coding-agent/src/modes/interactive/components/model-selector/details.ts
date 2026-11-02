@@ -1,9 +1,12 @@
-import type { Model } from "@octocodeai/octocode-ai";
+import { activeRates, type Model } from "@octocodeai/octocode-ai";
 
-/** Catalog estimates belong to the selected provider; account billing and service tiers may differ. */
-export function modelDetails(model: Model<any>): string {
+/**
+ * Catalog estimates belong to the selected provider; account billing and service tiers may differ. Rates are the ones
+ * in effect at `now`, so a time-limited price stops showing once it ends.
+ */
+export function modelDetails(model: Model<any>, now: Date | number = Date.now()): string {
 	const rate = (value: number) => (Number.isFinite(value) && value >= 0 ? `$${value}` : "unknown");
-	const cost = model.cost;
+	const cost = activeRates(model.cost, now);
 	const cache = model.promptCache
 		? Object.entries(model.promptCache)
 				.map(([tier, seconds]) => `${tier} ${seconds}s`)

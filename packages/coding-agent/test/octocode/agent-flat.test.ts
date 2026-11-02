@@ -1,4 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { writeFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { hookCalls } from "../../src/octocode/hooks/config/calls.ts";
 import octocode from "../../src/octocode/index.ts";
 import { initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
@@ -8,8 +10,19 @@ import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 beforeAll(initializeBashSyntax);
+afterEach(() => vi.unstubAllEnvs());
 
-async function mainSession() {
+/** A main session whose PATH holds one fake ACP adapter (`acp`, default) or no agent at all: `external` is declared only for the first. */
+async function mainSession(options: { acp?: boolean } = {}) {
+	const bin = tmp();
+	if (options.acp === false) vi.stubEnv("PATH", bin);
+	else {
+		writeFileSync(join(bin, "codex-acp"), "#!/bin/sh\n", { mode: 0o755 });
+		vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH ?? ""}`);
+	}
+	// A home with no agent database, as before any session collaborated: the suite's own holds a trust decision, and a
+	// team that finds a database opens it, which needs the session to have started.
+	vi.stubEnv("OCTOCODE_HOME", tmp());
 	const fake = fakeHost();
 	await octocode(fake.api);
 	return { fake, agent: fake.tools.get("agent")!, ctx: fakeCtx({ cwd: tmp() }) };
@@ -21,13 +34,25 @@ describe("agent with flat fields in a main session", () => {
 		const properties = agent.parameters.properties as Record<string, { description?: string }>;
 		expect(properties.type).toMatchObject({ enum: ["coordinate", "message", "task", "external"] });
 		for (const field of ["externalAction", "connection", "externalModel", "promptText", "subagent", "joinGoal"])
-			expect(properties[field]?.description).toMatch(/^Only for: (external|coordinate)\./);
+			expect(properties[field]?.description).toMatch(/^(external|coordinate)(: | only)/);
 		for (const gone of ["input", "query", "check", "scope", "id", "text"]) expect(properties).not.toHaveProperty(gone);
-		expect(properties.task.description).toMatch(/^Only for: task\./);
+		expect(properties.task.description).toMatch(/^task: /);
 		expect(agent.promptSnippet).not.toContain("model");
 		const models = fake.tools.get("models")!;
 		expect(models.promptSnippet).toMatch(/^[^\n]+$/);
 		expect(models.parameters.required).toEqual(["reason"]);
+	});
+
+	it("declares the external type only when an ACP agent or Octocode instance is discoverable", async () => {
+		const { agent, fake } = await mainSession({ acp: false });
+		const properties = agent.parameters.properties as Record<string, unknown>;
+		expect((properties.type as { enum: string[] }).enum).toEqual(["coordinate", "message", "task"]);
+		for (const field of ["externalAction", "connection", "externalModel", "promptText"])
+			expect(properties).not.toHaveProperty(field);
+		expect(String(agent.promptSnippet)).not.toContain("outside agent");
+		expect(fake.tools.has("externalAgent")).toBe(false);
+		const { agent: found } = await mainSession();
+		expect((found.parameters.properties.type as { enum: string[] }).enum).toContain("external");
 	});
 
 	it("runs coordinate and refuses fields of another type or the old envelope", async () => {

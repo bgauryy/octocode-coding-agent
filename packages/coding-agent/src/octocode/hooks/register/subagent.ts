@@ -2,7 +2,7 @@ import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor } from "../config/calls.ts";
 import type { HookVerdict } from "../contracts.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "../../../../../common/src/env.ts";
 import { contentText } from "../../shared/util.ts";

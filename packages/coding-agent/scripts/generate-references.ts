@@ -105,7 +105,7 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 			{
 				heading: "Model overrides",
 				intro:
-					"Each `modelOverrides` key is the ID of a built-in or extension model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it.",
+					"Each `modelOverrides` key is the ID of a built-in or extension model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it. A `cost` override that sets any rate or `tiers` also drops the model's built-in `until`/`after` price window, so your rates stay in force after the built-in date; set `until` and `after` in the override to give it a window of its own.",
 				schema: ModelsJsonSchemas.modelOverride,
 				links: { inputLimits: "#input-limits", compat: "#compatibility" },
 			},

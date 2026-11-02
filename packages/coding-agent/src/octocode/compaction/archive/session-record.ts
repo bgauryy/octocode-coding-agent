@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import type { RecordMessage, SessionRecord } from "../../shared/archive/record.ts";
 import { repoKey } from "../../shared/home/repo.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

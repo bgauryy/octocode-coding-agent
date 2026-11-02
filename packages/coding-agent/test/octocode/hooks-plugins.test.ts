@@ -11,7 +11,7 @@ import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 describe("plugin hooks through session registration", () => {
 	afterEach(() => vi.unstubAllEnvs());
 	it.each(["claude", "codex"] as const)(
-		"runs reviewed %s hooks and revokes approval when the definition changes",
+		"runs %s hooks of an enabled plugin and follows later changes",
 		async (protocol) => {
 			const home = tmp();
 			const plugin = tmp();
@@ -26,17 +26,13 @@ describe("plugin hooks through session registration", () => {
 					hooks: { PreToolUse: [{ hooks: [{ type: "command", command: `echo "$CLAUDE_PLUGIN_ROOT" >&2; exit 2` }] }] },
 				}),
 			);
-			const entry = { path: plugin, protocol, hooksFingerprint: undefined as string | undefined };
+			const entry = { path: plugin, protocol };
 			const f = fakeHost();
 			f.api.getSettings = () => ({ plugins: [entry] });
 			const hooks = registerHooks(f.api, {}, home);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const event = { toolName: "bash", toolCallId: "plugin-call", input: { command: "true" } };
 			await f.fire("session_start", { reason: "startup" }, ctx);
-			expect(await hooks.preToolUse(event as never, ctx)).toBeUndefined();
-			expect(hooks.report(ctx.cwd)).toContain("review");
-			entry.hooksFingerprint = inspectPluginHooks(entry).fingerprint!;
-			await f.fire("session_start", { reason: "reload" }, ctx);
 			expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({
 				block: true,
 				reason: expect.stringContaining(plugin),
@@ -48,8 +44,11 @@ describe("plugin hooks through session registration", () => {
 				}),
 			);
 			await f.fire("session_start", { reason: "reload" }, ctx);
-			expect(await hooks.preToolUse(event as never, ctx)).toBeUndefined();
-			expect(hooks.report(ctx.cwd)).toContain("review");
+			// Enabling approves the declarations as they stand, so the changed hook loads as written.
+			expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({
+				block: true,
+				reason: expect.stringContaining("changed"),
+			});
 		},
 	);
 	it("keeps identical commands from different plugin identities and honors the global disable switch", () => {
@@ -65,8 +64,7 @@ describe("plugin hooks through session registration", () => {
 				path.join(root, "hooks/hooks.json"),
 				JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 			);
-			const entry = { path: root, protocol: "claude" as const };
-			return { ...entry, hooksFingerprint: inspectPluginHooks(entry).fingerprint! };
+			return { path: root, protocol: "claude" as const };
 		});
 		expect(
 			commandsFor(loadHooks(tmp(), false, home, { plugins: entries }).config, "PreToolUse", ["Bash"]),
@@ -77,15 +75,21 @@ describe("plugin hooks through session registration", () => {
 		).toHaveLength(0);
 	});
 
-	it("does not issue an approvable fingerprint for malformed hook files", () => {
+	it("loads no hooks from malformed hook files", () => {
 		const plugin = tmp();
 		fs.mkdirSync(path.join(plugin, ".claude-plugin"));
 		fs.mkdirSync(path.join(plugin, "hooks"));
 		fs.writeFileSync(path.join(plugin, ".claude-plugin/plugin.json"), '{"name":"bad-hooks"}');
 		fs.writeFileSync(path.join(plugin, "hooks/hooks.json"), "{}");
 		const result = inspectPluginHooks({ path: plugin, protocol: "claude" });
-		expect(result.fingerprint).toBeUndefined();
 		expect(result.errors).toContainEqual(expect.stringContaining("hooks"));
+		expect(
+			commandsFor(
+				loadHooks(tmp(), false, tmp(), { plugins: [{ path: plugin, protocol: "claude" }] }).config,
+				"PreToolUse",
+				["Bash"],
+			),
+		).toEqual([]);
 	});
 	it.each([{}, [null], [{}]].map((plugins) => ({ plugins })))(
 		"reports malformed plugin settings in hook loading: %j",
@@ -96,14 +100,13 @@ describe("plugin hooks through session registration", () => {
 		},
 	);
 
-	it("reports modules in mixed hook files instead of approving an incomplete plugin", () => {
+	it("reports modules in mixed hook files instead of loading an incomplete plugin", () => {
 		const plugin = tmp();
 		fs.mkdirSync(path.join(plugin, ".claude-plugin"));
 		fs.mkdirSync(path.join(plugin, "hooks"));
 		fs.writeFileSync(path.join(plugin, ".claude-plugin/plugin.json"), '{"name":"mixed"}');
 		fs.writeFileSync(path.join(plugin, "hooks/hooks.json"), JSON.stringify({ hooks: {}, modules: ["./policy.mjs"] }));
 		const result = inspectPluginHooks({ path: plugin, protocol: "claude" });
-		expect(result.fingerprint).toBeUndefined();
 		expect(result.errors).toContainEqual(expect.stringContaining("modules"));
 	});
 });

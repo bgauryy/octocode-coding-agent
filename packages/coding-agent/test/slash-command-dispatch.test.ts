@@ -55,7 +55,7 @@ describe("built-in slash commands", () => {
 			"Unknown command /thinking. Search commands with /help thinking.",
 			"Unknown command /providers. Search commands with /help providers.",
 			"Unknown command /exit. Search commands with /help exit.",
-			"Unknown command /config. Search commands with /help config.",
+			"Unknown command /config. Did you mean /reload?",
 			"Unknown command /stats. Did you mean /status?",
 		]);
 		expect(instance.editor.setText).toHaveBeenLastCalledWith("/stats");
@@ -189,9 +189,9 @@ describe("built-in slash commands", () => {
 		instance.session.extensionRunner = {
 			createCommandContext: () => context,
 			getRegisteredCommands: () => [
-				{ name: "status", sourceInfo: { path: "/foreign.ts" }, handler: foreign },
-				{ name: "status", sourceInfo: { path: "<inline:octocode>" }, handler: status },
-				{ name: "resume", sourceInfo: { path: "<inline:octocode>" }, handler: resume },
+				{ name: "status", sourceInfo: { owner: "builtin", path: "builtin:foreign" }, handler: foreign },
+				{ name: "status", sourceInfo: { owner: "native", path: "<inline:octocode>" }, handler: status },
+				{ name: "resume", sourceInfo: { owner: "native", path: "<inline:octocode>" }, handler: resume },
 			],
 		};
 		await instance.defaultEditor.onSubmit("/status");
@@ -212,26 +212,8 @@ describe("built-in slash commands", () => {
 		expect(instance.showSessionSelector).toHaveBeenCalledOnce();
 	});
 
-	it("keeps both trust scopes accessible and cancellation does not change either", async () => {
-		const instance = mode();
-		instance.showTrustSelector = vi.fn();
-		instance.showExtensionSelector = vi
-			.fn()
-			.mockResolvedValueOnce(undefined)
-			.mockResolvedValueOnce("Project resources")
-			.mockResolvedValueOnce("Native project configuration");
-		const trust = vi.fn();
-		instance.session.extensionRunner.getRegisteredCommands = () => [
-			{ name: "trust", sourceInfo: { path: "<inline:octocode>" }, handler: trust },
-		];
-		await instance.defaultEditor.onSubmit("/trust");
-		expect(trust).not.toHaveBeenCalled();
-		expect(instance.showTrustSelector).not.toHaveBeenCalled();
-		await instance.defaultEditor.onSubmit("/trust");
-		await instance.defaultEditor.onSubmit("/trust");
-		await instance.defaultEditor.onSubmit("/trust off");
-		expect(instance.showTrustSelector).toHaveBeenCalledOnce();
-		expect(trust.mock.calls.map(([args]) => args)).toEqual(["", "off"]);
+	it("has no built-in /trust: the one command is the native one", () => {
+		expect(getBuiltinCommand("trust")).toBeUndefined();
 	});
 
 	it("keeps model cycling and the catalog reachable from the same manager", async () => {
@@ -243,7 +225,7 @@ describe("built-in slash commands", () => {
 			.mockResolvedValueOnce("Model catalog — prices, capabilities and agent routing");
 		const catalog = vi.fn();
 		instance.session.extensionRunner.getRegisteredCommands = () => [
-			{ name: "modelsettings", sourceInfo: { path: "<inline:octocode>" }, handler: catalog },
+			{ name: "modelsettings", sourceInfo: { owner: "native", path: "<inline:octocode>" }, handler: catalog },
 		];
 		instance.session.extensionRunner.getCommand = () => undefined;
 		await instance.defaultEditor.onSubmit("/modelsettings");
@@ -279,7 +261,7 @@ describe("command picker", () => {
 	});
 });
 
-it("keeps native resume hints and built-in trust options visible in the TUI", () => {
+it("keeps native resume hints visible in the TUI", () => {
 	const instance: any = {};
 	instance.skillCommands = new Map();
 	const complete = vi.fn(() => [{ value: "all", label: "all" }]);
@@ -292,12 +274,6 @@ it("keeps native resume hints and built-in trust options visible in the TUI", ()
 		},
 	});
 	const commands: any[] = getSlashCommands(createFakeHost(instance), false);
-	expect(
-		commands
-			.find((command: any) => command.name === "trust")
-			.getArgumentCompletions("")
-			.map((item: any) => item.value),
-	).toEqual(["project", "config", "off"]);
 	expect(commands.find((command: any) => command.name === "resume").getArgumentCompletions("")).toEqual([
 		{ value: "all", label: "all" },
 	]);

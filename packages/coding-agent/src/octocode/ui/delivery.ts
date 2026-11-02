@@ -1,5 +1,5 @@
 import { GLYPH } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { plural } from "../shared/render/text.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";

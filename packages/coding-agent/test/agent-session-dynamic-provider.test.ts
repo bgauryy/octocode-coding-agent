@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import type { ExtensionFactory } from "../src/core/extensions/index.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import type { ExtensionFactory } from "../src/core/features/index.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -67,7 +67,7 @@ describe("AgentSession dynamic provider registration", () => {
 		});
 		await resourceLoader.reload();
 
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

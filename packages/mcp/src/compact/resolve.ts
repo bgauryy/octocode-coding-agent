@@ -3,7 +3,7 @@
  * matches, else a new render that keeps every override still describing the catalog.
  */
 
-import { checkFidelity } from "./fidelity.ts";
+import { checkOverrides } from "./fidelity.ts";
 import {
 	catalogHash,
 	COMPACT_GENERATOR_VERSION,
@@ -127,7 +127,7 @@ export function resolveServerFile(
 	const candidate = mergeOverrides(options.preset, carried);
 	const withOverrides = candidate && renderServer(input, candidate);
 	const overrides =
-		candidate && withOverrides && checkFidelity(input, withOverrides, candidate).ok ? candidate : undefined;
+		candidate && withOverrides && checkOverrides(input, withOverrides, candidate).ok ? candidate : undefined;
 	const text = overrides && withOverrides ? withOverrides : renderServer(input);
 	// "preset" marks overrides from the preset alone; carried overrides keep their writer, also when it is unnamed.
 	const optimizedBy = !overrides

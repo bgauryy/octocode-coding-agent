@@ -41,7 +41,7 @@ it("composes a child role once alongside discovered user and project instruction
 		cwd,
 		agentDir,
 		nativeFeatures: false,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 	});
 	await loader.reload();
@@ -83,8 +83,9 @@ it("updates the named policy section when selected research tools change", async
 	const unchanged = await render(["read", "mcp__octocode__localSearch"]);
 	expect(diffSystemPromptSections(first, unchanged)).toBeUndefined();
 	const removed = await render(["read"]);
-	expect(first.octocode_research).toContain("Use Octocode MCP");
-	expect(removed.octocode_research).not.toContain("Use Octocode MCP");
+	// With the research server's tools selected the section leaves research to the server; without them it names the fallback.
+	expect(first.octocode_research).not.toContain("no lookup tool is available");
+	expect(removed.octocode_research).toContain("no lookup tool is available");
 	expect(diffSystemPromptSections(first, removed)).toHaveProperty("octocode_research", removed.octocode_research);
 	expect(removed.preamble).toBe(first.preamble);
 });
@@ -121,8 +122,8 @@ it("sends the updated policy to the model through the real session pipeline", as
 		harness.session.setActiveToolsByName(["read"]);
 		await harness.session.prompt("second");
 		expect(requests).toHaveLength(2);
-		expect(getCurrentSystemPrompt(requests[0].messages)).toContain("Use Octocode MCP");
-		expect(getCurrentSystemPrompt(requests[1].messages)).not.toContain("Use Octocode MCP");
+		expect(getCurrentSystemPrompt(requests[0].messages)).not.toContain("no lookup tool is available");
+		expect(getCurrentSystemPrompt(requests[1].messages)).toContain("no lookup tool is available");
 		expect(requests[1].messages[0]).toEqual(requests[0].messages[0]);
 	} finally {
 		harness.cleanup();

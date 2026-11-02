@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "../audit.ts";
 import { auditLine, auditLines } from "../effect.ts";
 import {

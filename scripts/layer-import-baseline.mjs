@@ -1,6 +1,6 @@
 /**
  * Layering rules inside coding-agent: `core/` and `octocode/` are hosts of the terminal, web and RPC adapters, so they
- * must not import terminal components under `modes/`, and `core/` (the session and SDK layer) must not import the
+ * must not import terminal components under `modes/`, and `core/` (the session layer) must not import the
  * `octocode/` feature layer or the MCP workspace (by package name or by a relative path into its sources; `to` may
  * list several prefixes). Each baseline lists the files (relative to `packages/`) that already do. A new import
  * fails `check:boundaries`, and so does a listed file that no longer imports the layer: remove it from the list.
@@ -31,8 +31,6 @@ export const LAYER_RULES = [
 			"coding-agent/src/core/plugin-context.ts",
 			"coding-agent/src/core/plugin-mcp.ts",
 			"coding-agent/src/core/resource-loader/builtins.ts",
-			"coding-agent/src/core/resource-loader/extension-loading.ts",
-			"coding-agent/src/core/system-prompt.ts",
 		],
 	},
 	{
@@ -40,18 +38,18 @@ export const LAYER_RULES = [
 		from: "coding-agent/src/core/",
 		to: ["@octocodeai/octocode-mcp", "mcp/src/"],
 		baseline: [
+			"coding-agent/src/core/agent-session/create-session.ts",
 			"coding-agent/src/core/agent-session/pending-mcp-tools.ts",
 			"coding-agent/src/core/agent-session/tool-definitions.ts",
 			"coding-agent/src/core/agent-session/tool-loadout.ts",
-			"coding-agent/src/core/extensions/loader/api.ts",
-			"coding-agent/src/core/extensions/loader/runtime.ts",
-			"coding-agent/src/core/extensions/types/api.ts",
-			"coding-agent/src/core/extensions/types/runtime.ts",
-			"coding-agent/src/core/extensions/types/session-events.ts",
+			"coding-agent/src/core/features/api.ts",
+			"coding-agent/src/core/features/runtime.ts",
+			"coding-agent/src/core/features/types/api.ts",
+			"coding-agent/src/core/features/types/runtime.ts",
+			"coding-agent/src/core/features/types/session-events.ts",
 			"coding-agent/src/core/native-tools.ts",
 			"coding-agent/src/core/plugin-mcp.ts",
 			"coding-agent/src/core/resource-loader/builtins.ts",
-			"coding-agent/src/core/sdk.ts",
 			"coding-agent/src/core/system-prompt.ts",
 		],
 	},

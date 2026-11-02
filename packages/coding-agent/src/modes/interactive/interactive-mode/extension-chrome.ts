@@ -4,7 +4,7 @@
  */
 
 import { type Component, Container, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
-import type { EditorFactory, ExtensionWidgetOptions } from "../../../core/extensions/index.ts";
+import type { EditorFactory, ExtensionWidgetOptions } from "../../../core/features/index.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
@@ -68,7 +68,7 @@ export function bindEditorHandlers(host: Pick<InteractiveModeHost, "defaultEdito
 	host.editor.onChange = (text) => host.defaultEditor.onChange?.(text);
 
 	// If extending CustomEditor, copy app-level handlers
-	// Use duck typing since instanceof fails across jiti module boundaries
+	// Duck typing: a feature may supply any editor component, not only a CustomEditor subclass
 	const customEditor = host.editor as unknown as Record<string, unknown>;
 	if ("actionHandlers" in customEditor && customEditor.actionHandlers instanceof Map) {
 		if (!customEditor.onEscape) {

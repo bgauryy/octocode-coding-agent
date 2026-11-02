@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import { contentText } from "../../shared/util.ts";
 import { MAX_FRAME_BYTES } from "../protocol.ts";
 import { boundedText } from "./bounded.ts";

@@ -3,12 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFauxCore, fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, trustFolder } from "./helpers.ts";
 
 /**
  * A headless Octocode session (no UI, as print and JSON mode run) in a fresh git repository, driven by a scripted model.
@@ -65,6 +65,8 @@ export interface HeadlessOptions {
 	env?: Record<string, string>;
 	/** Runs in the repository before the session starts (files, symlinks, commits). */
 	setup?: (paths: { root: string; cwd: string; home: string; outside: string }) => void;
+	/** Loads AGENTS.md files and the skills under these folders (each a folder of `<name>/SKILL.md`), which a headless run skips by default. */
+	resources?: { contextFiles?: boolean; skillPaths?: string[] };
 }
 
 export async function headless(options: HeadlessOptions = {}) {
@@ -95,7 +97,7 @@ export async function headless(options: HeadlessOptions = {}) {
 		options.env ?? {},
 	);
 	fs.mkdirSync(path.join(root, "agent"), { recursive: true });
-	fs.writeFileSync(path.join(root, "agent", "trust.json"), JSON.stringify({ [root]: true }));
+	trustFolder(cwd);
 
 	const faux = createFauxCore({
 		provider: "faux",
@@ -122,10 +124,11 @@ export async function headless(options: HeadlessOptions = {}) {
 		],
 		noPromptTemplates: true,
 		noThemes: true,
-		noContextFiles: true,
+		noContextFiles: !options.resources?.contextFiles,
+		...(options.resources?.skillPaths ? { additionalSkillPaths: options.resources.skillPaths } : {}),
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		resourceLoader,
@@ -137,12 +140,15 @@ export async function headless(options: HeadlessOptions = {}) {
 	await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 
 	const turns: ToolResult[][] = [];
+	/** The transcript each request carried, oldest request first (for comparing what two requests share). */
+	const contexts: TranscriptContext[] = [];
 	/** Prompts once with scripted replies; returns the tool results each reply saw (the first sees none). */
 	const run = async (prompt: string, replies: Array<() => ReturnType<typeof fauxAssistantMessage>>) => {
 		const start = turns.length;
 		faux.setResponses(
 			replies.map((reply): Reply => (context) => {
 				turns.push(toolResults(context));
+				contexts.push(context);
 				return reply();
 			}),
 		);
@@ -158,5 +164,5 @@ export async function headless(options: HeadlessOptions = {}) {
 					? [entry.data as { action: string; allowed: boolean; via: string; mode: string }]
 					: [],
 			);
-	return { root, cwd, home, outside, run, session, audit };
+	return { root, cwd, home, outside, run, session, audit, contexts };
 }

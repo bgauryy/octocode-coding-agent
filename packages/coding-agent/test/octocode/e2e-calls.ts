@@ -1,7 +1,7 @@
 import { fauxToolCall } from "@octocodeai/octocode-ai";
 
 /**
- * A scripted call to a native Octocode tool (`file`, `bash`, `web`, `agent`, `askUser`, `backlog`, `memory`). The
+ * A scripted call to a native Octocode tool (`file`, `bash`, `web`, `agent`, `askUser`, `backlog`, `archive`). The
  * registry requires the top-level `reason` every native call carries (`src/octocode/shared/reason.ts`) and rejects the
  * call without it, so the fixture states one unless the test names its own.
  */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { dispatchToolCall } from "../src/core/extensions/runner/emit-events.ts";
-import type { RunnerHost } from "../src/core/extensions/runner/types.ts";
-import type { ToolCallEvent, ToolCallEventResult } from "../src/core/extensions/types.ts";
+import { dispatchToolCall } from "../src/core/features/runner/emit-events.ts";
+import type { RunnerHost } from "../src/core/features/runner/types.ts";
+import type { ToolCallEvent, ToolCallEventResult } from "../src/core/features/types.ts";
 
 type Handler = (event: ToolCallEvent) => Promise<ToolCallEventResult | undefined>;
 

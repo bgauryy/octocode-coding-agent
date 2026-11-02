@@ -26,12 +26,6 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 	options?: MistralOptions,
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
-	// Mistral rejects a user message after a tool result ("Unexpected role 'user' after role 'tool'"). A later
-	// system update therefore never rewrites the leading prompt: it follows an assistant turn or merges into the
-	// next user message.
-	const normalizedContext = resolveTranscript(context, model.compat?.supportsMidConvoSystemMessages, {
-		holdAfterToolResult: true,
-	});
 
 	(async () => {
 		const output = createPendingAssistantMessage(model);
@@ -43,11 +37,22 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 			}
 
 			const normalizeMistralToolCallId = createMistralToolCallIdNormalizer();
-			const transformedMessages = transformMessages(normalizedContext.messages, model, (id) =>
-				normalizeMistralToolCallId(id),
+			const transformedMessages = transformMessages(context.messages, model, (id) => normalizeMistralToolCallId(id));
+			// Harness-generated system updates use a conservative placement policy after tool results. This does not
+			// prohibit actual user input after a tool result: mistral-common and the Ministral 3 template allow that
+			// order, including after an interrupted turn; hosted endpoint compatibility is not established by them.
+			// An update that changes the prompt right after a tool result is folded into the leading prompt, so its text
+			// reaches the model in the same request as the tools it describes; this rewrites the cached head once per
+			// such update. Other updates follow an assistant turn or merge into the next user message. Updates are
+			// placed after the transform, which drops errored and aborted turns and answers orphaned calls: placed
+			// before it, an update after such a turn would land right after a tool result.
+			const normalizedContext = resolveTranscript(
+				{ messages: transformedMessages } as TranscriptContext,
+				model.compat?.supportsMidConvoSystemMessages,
+				{ holdAfterToolResult: true },
 			);
 
-			let payload = buildChatPayload(model, normalizedContext, transformedMessages, options);
+			let payload = buildChatPayload(model, normalizedContext, normalizedContext.messages, options);
 			const nextPayload = await options?.onPayload?.(payload, model);
 			if (nextPayload !== undefined) {
 				payload = nextPayload as MistralChatPayload;

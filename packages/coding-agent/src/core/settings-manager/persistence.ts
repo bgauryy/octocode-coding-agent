@@ -1,8 +1,8 @@
 import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
-import { describeIgnoredKey, ignoredSettingsKeys, removedToolWarnings } from "./ignored-keys.ts";
+import { describeIgnoredKey, ignoredSettingsKeys } from "./ignored-keys.ts";
 import { migrateSettings } from "./load.ts";
-import { mergeScopedSettings } from "./merge.ts";
+import { mergeAllSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
 
@@ -64,9 +64,6 @@ export class SettingsPersistence {
 		const path = this.state.settingsPaths[scope];
 		for (const key of ignoredSettingsKeys(settings)) {
 			this.state.warnings.push({ scope, ...(path ? { path } : {}), message: describeIgnoredKey(key) });
-		}
-		for (const message of removedToolWarnings(settings)) {
-			this.state.warnings.push({ scope, ...(path ? { path } : {}), message });
 		}
 	}
 
@@ -135,7 +132,7 @@ export class SettingsPersistence {
 
 	save(): void {
 		const state = this.state;
-		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
+		state.settings = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
 
 		if (state.globalSettingsLoadError) {
 			return;
@@ -154,7 +151,7 @@ export class SettingsPersistence {
 		const state = this.state;
 		this.assertProjectTrustedForWrite();
 		state.projectSettings = structuredClone(settings);
-		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
+		state.settings = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
 
 		if (state.projectSettingsLoadError) {
 			return;

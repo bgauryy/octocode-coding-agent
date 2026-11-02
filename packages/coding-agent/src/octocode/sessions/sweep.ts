@@ -1,3 +1,4 @@
+import { expireArchiveDetails, mayRemoveArchive } from "../archive/retention.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { getSessionsDir } from "../../config.ts";
@@ -142,6 +143,7 @@ export async function sweepSessions(
 		// Claimed before the work, so concurrent session starts do not sweep twice; a failed listing gives the claim back.
 		const last = claimSweep(index.agent, now, options.force ?? false);
 		if (last === undefined) return removed;
+		await expireArchiveDetails(index.agent, env, now);
 		const dirs = index.sessionDirs();
 		const unreadable = await unreadableDirs(dirs);
 		let ids: Set<string>;
@@ -171,7 +173,7 @@ export async function sweepSessions(
 					? // A `_pid-<n>` folder names its process; no session row (or team row) exists for a session-less process.
 						pid !== process.pid && !processAlive(pid) && now - (await lastWrite(dir)) > outputMs
 					: !listed.has(name) && !running(extra) && now - (await lastWrite(dir)) > outputMs;
-			if (stale) {
+			if (stale && (await mayRemoveArchive(index.agent, path.join(dir, "archive"), env, now))) {
 				await remove(dir);
 				if (extra) index.forget(extra.id);
 				removed.push(name);

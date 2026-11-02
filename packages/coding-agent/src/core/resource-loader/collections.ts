@@ -69,8 +69,8 @@ export class ResourceCollections {
 		const { additionalSkillPaths, additionalPromptTemplatePaths, additionalThemePaths } = this.config;
 		// Paths named for this run (`--skill`) come first: on a name collision they win over installed skills.
 		const skillPaths = this.config.noSkills
-			? this.mergePaths(additionalSkillPaths, enabled.cliSkills)
-			: this.mergePaths(additionalSkillPaths, [...enabled.cliSkills, ...enabled.skills]);
+			? this.mergePaths(additionalSkillPaths, [])
+			: this.mergePaths(additionalSkillPaths, enabled.skills);
 
 		this.lastSkillPaths = skillPaths;
 		this.updateSkillsFromPaths(skillPaths, metadataByPath);
@@ -89,8 +89,8 @@ export class ResourceCollections {
 
 		// Like `--skill`, `--prompt-template` paths win a name collision.
 		const promptPaths = this.config.noPromptTemplates
-			? this.mergePaths(additionalPromptTemplatePaths, enabled.cliPrompts)
-			: this.mergePaths(additionalPromptTemplatePaths, [...enabled.cliPrompts, ...enabled.prompts]);
+			? this.mergePaths(additionalPromptTemplatePaths, [])
+			: this.mergePaths(additionalPromptTemplatePaths, enabled.prompts);
 
 		this.lastPromptPaths = promptPaths;
 		this.updatePromptsFromPaths(promptPaths, metadataByPath);
@@ -108,8 +108,8 @@ export class ResourceCollections {
 		}
 
 		const themePaths = this.config.noThemes
-			? this.mergePaths(enabled.cliThemes, additionalThemePaths)
-			: this.mergePaths([...enabled.cliThemes, ...enabled.themes], additionalThemePaths);
+			? this.mergePaths([], additionalThemePaths)
+			: this.mergePaths(enabled.themes, additionalThemePaths);
 
 		this.lastThemePaths = themePaths;
 		this.updateThemesFromPaths(themePaths, metadataByPath);

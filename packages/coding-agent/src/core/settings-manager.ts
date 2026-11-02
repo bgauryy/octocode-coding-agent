@@ -2,18 +2,14 @@ import { mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-polic
 import { join } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
-import { ProjectTrustStore } from "./trust-manager.ts";
 import type { Settings } from "./settings-schema.ts";
 
 export type {
 	CacheWarmingMode,
-	DefaultProjectTrust,
 	FullscreenExitOutput,
-	ImageSettings,
 	MermaidRenderingMode,
 	PackageSource,
 	QuietStartup,
-	RetrySettings,
 	Settings,
 	TuiMode,
 	WarningSettings,
@@ -23,7 +19,7 @@ export { CACHE_WARMING_MODES } from "./settings-manager/constants.ts";
 import { DisplaySettingsAccessors } from "./settings-manager/accessors/display.ts";
 import type { SettingsManagerApi } from "./settings-manager/api.ts";
 import { migrateSettings, tryLoadSettingsFromStorage } from "./settings-manager/load.ts";
-import { deepMergeSettings, mergeScopedSettings } from "./settings-manager/merge.ts";
+import { deepMergeSettings, mergeAllSettings } from "./settings-manager/merge.ts";
 import { SettingsPersistence } from "./settings-manager/persistence.ts";
 import type { SettingsState } from "./settings-manager/state.ts";
 import {
@@ -45,7 +41,6 @@ export {
 } from "./settings-manager/storage.ts";
 export {
 	applyToolModifiers,
-	currentToolName,
 	DEFAULT_TOOL_NAMES,
 	getToolListError,
 	isToolModifier,
@@ -68,9 +63,10 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 	) {
 		const state: SettingsState = {
 			storage,
+			inheritedSettings: {},
 			globalSettings: initialGlobal,
 			projectSettings: initialProject,
-			settings: mergeScopedSettings(initialGlobal, initialProject),
+			settings: mergeAllSettings({}, initialGlobal, initialProject),
 			cacheOverrides: {},
 			projectTrusted,
 			globalSettingsLoadError: globalLoadError,
@@ -84,13 +80,15 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 
 	/** Create a SettingsManager that loads from files */
 	/**
-	 * Settings for startup decisions made before project trust is resolved (where sessions are stored): a project's
-	 * settings apply only when the user already trusted that project.
+	 * Settings for startup decisions made before a session exists (where sessions are stored): a project's settings
+	 * apply only when the host already knows the user trusts that folder (`projectTrusted`, from the folder-trust port).
 	 */
-	static createForStartup(cwd: string, agentDir: string = getAgentDir()): SettingsManager {
-		return SettingsManager.create(cwd, agentDir, {
-			projectTrusted: new ProjectTrustStore(agentDir).get(cwd) === true,
-		});
+	static createForStartup(
+		cwd: string,
+		agentDir: string = getAgentDir(),
+		projectTrusted: boolean = false,
+	): SettingsManager {
+		return SettingsManager.create(cwd, agentDir, { projectTrusted });
 	}
 
 	static create(
@@ -142,7 +140,22 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		);
 		manager.persistence.recordIgnoredKeys("global", globalLoad.settings);
 		manager.persistence.recordIgnoredKeys("project", projectLoad.settings);
+		manager.refreshInherited();
 		return manager;
+	}
+
+	/**
+	 * Read the settings another product (Pi) left, under global and project settings. They only feed `getSettings()`:
+	 * the scope settings that are saved never hold them. A file that does not parse is a warning, not a load error.
+	 */
+	private refreshInherited(): void {
+		const state = this.state;
+		const inherited = state.storage.loadInherited?.(state.projectTrusted);
+		state.warnings = state.warnings.filter((warning) => !warning.message.startsWith("Pi settings were not read"));
+		if (inherited) state.warnings.push(...inherited.warnings);
+		// Pi's values never stand in for Octocode's own file while that file is invalid.
+		state.inheritedSettings = inherited && !state.globalSettingsLoadError ? migrateSettings(inherited.settings) : {};
+		state.settings = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
 	}
 
 	/** Create an in-memory SettingsManager (no file I/O) */
@@ -181,7 +194,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		if (!trusted) {
 			state.projectSettings = {};
 			state.projectSettingsLoadError = null;
-			state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
+			this.refreshInherited();
 			return;
 		}
 
@@ -193,7 +206,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		} else {
 			this.persistence.recordIgnoredKeys("project", projectLoad.settings);
 		}
-		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
+		this.refreshInherited();
 	}
 
 	async reload(): Promise<void> {
@@ -222,7 +235,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			this.persistence.recordError("project", projectLoad.error);
 		}
 
-		state.settings = mergeScopedSettings(state.globalSettings, state.projectSettings);
+		this.refreshInherited();
 	}
 
 	applyOverrides(overrides: Partial<Settings>): void {

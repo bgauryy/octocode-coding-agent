@@ -1,5 +1,5 @@
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
-import { getLegacyConfigDirs } from "../../../config.ts";
+import { discoveryInput } from "../../../core/discovery/service.ts";
 import {
 	listPiProviderCredentials,
 	listPiModelProviders,
@@ -16,7 +16,9 @@ export async function showPiProviders(
 ): Promise<void> {
 	try {
 		const directory = host.session.modelRuntime.getConfigurationDirectory();
-		const dirs = directory ? getLegacyConfigDirs(directory) : [];
+		const dirs = directory
+			? [...discoveryInput({ cwd: process.cwd(), agentDir: directory, projectTrusted: false }).piRoots]
+			: [];
 		const [entries, definitions] = await Promise.all([listPiProviderCredentials(dirs), listPiModelProviders(dirs)]);
 		const ids = [...new Set([...entries.map((entry) => entry.providerId), ...definitions.keys()])];
 		if (!ids.length) {

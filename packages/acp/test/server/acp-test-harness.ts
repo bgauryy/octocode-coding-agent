@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import { afterEach, vi } from "vitest";
 import { AcpBroker, type AcpWorker } from "../../src/server/broker.ts";
-import type { AcpUiRequest, AcpUiResponse, AcpWorkerEvent, AcpWorkerState } from "../../src/host.ts";
+import type { AcpServerHost, AcpUiRequest, AcpUiResponse, AcpWorkerEvent, AcpWorkerState } from "../../src/host.ts";
 import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 
 export const usage = {
@@ -108,6 +108,8 @@ export function harness(
 		cancelTimeoutMs?: number;
 		createWorker?: (cwd: string, servers: McpServer[], sessionPath?: string) => Promise<Worker>;
 		permission?: (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>;
+		/** The user's folder-trust decision; defaults to trusted, since the suite's folder is not in the isolated trust records. */
+		folderTrust?: AcpServerHost["folderTrust"];
 	} = {},
 ) {
 	const workers: FakeWorker[] = [];
@@ -129,7 +131,7 @@ export function harness(
 	});
 	const toClient = new TransformStream<AnyMessage, AnyMessage>();
 	const broker = new AcpBroker({
-		host: acpServerHost,
+		host: { ...acpServerHost, folderTrust: options.folderTrust ?? (() => ({ trusted: true })) },
 		createWorker,
 		maxSessions: options.maxSessions,
 		cancelTimeoutMs: options.cancelTimeoutMs,

@@ -8,8 +8,9 @@ import type { BashJob, JobExit } from "./types.ts";
 import { verificationLine } from "../bash/verification.ts";
 import { cutText } from "../../../../../common/src/text.ts";
 import { logTail } from "./tail.ts";
+import { JOB_WHY_PREFIX, jobWhy } from "./message.ts";
 
-/** The report a finished job sends: how it ended and the tail of its log. */
+/** The report a finished job sends: how it ended and the tail of its log (its text format: `message.ts`). */
 
 /** The first line of a report, shaped like a foreground result's: `[exit 1 · 61s · 48,213 lines · 2.1 MB · log: <path>]`. */
 function jobHeader(job: BashJob, exit: JobExit, lines: number): string {
@@ -74,6 +75,7 @@ export function jobReport(job: BashJob, exit: JobExit): string {
 	return [
 		jobHeader(job, exit, lines),
 		`Background bash ${job.id} ${how} after ${formatDuration(exit.seconds * 1000)}: ${cutText(firstLine(job.command), 120, { chars: true })}`,
+		jobWhy(job) ? `${JOB_WHY_PREFIX}${jobWhy(job)}` : "",
 		job.verification ? verificationLine(job.verification) : "",
 		!available ? "Log unavailable; output could not be inspected" : "",
 		rotated,

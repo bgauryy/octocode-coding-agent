@@ -26,7 +26,7 @@ export function summarySection(summary: string, heading: string): string[] {
 export const SUMMARY_CHECKPOINT_FORMAT = `Write these sections, in this order, with the headings as given:
 
 ${GOAL_HEADING}
-[What the user is trying to accomplish; several items when the session covers different tasks]
+[What the user is trying to accomplish and why: the reason they gave or the problem it solves, left out when nothing shows it; several items when the session covers different tasks]
 
 ## Constraints & Preferences
 - [Constraints, preferences or requirements the user stated, or "(none)"]

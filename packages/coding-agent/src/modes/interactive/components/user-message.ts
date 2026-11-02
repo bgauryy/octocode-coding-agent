@@ -1,6 +1,6 @@
 import { Container, GLYPH, Markdown, type MarkdownTheme } from "@octocodeai/octocode-tui";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
-import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 import {

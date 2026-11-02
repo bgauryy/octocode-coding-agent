@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { MutationReceipt } from "../render.ts";
@@ -22,7 +22,7 @@ type ParseFeedback = {
 /**
  * The parser's view of `path` now, or undefined when nothing can be claimed. The call is bounded by the caller's
  * signal and the research server's own request timeout, never by a deadline of this tool: an answer that arrives late
- * is still the parser's answer. A file type the server already refused in this session is not asked again.
+ * is still the parser's answer. A file type the server already refused in this process is not asked again (`support.ts`).
  */
 async function observe(
 	path: string,
@@ -39,14 +39,14 @@ async function observe(
 	)
 		return undefined;
 	const digest = sha256(before);
-	if (knownUnsupported(sessionId, TOOL, path)) return { digest, state: "unsupported" };
+	if (knownUnsupported(TOOL, path)) return { digest, state: "unsupported" };
 	try {
 		// Only schema-declared fields: the tool's query schema rejects unknown fields, and the row carries the
 		// parse evidence (diagnostics, partialReasons) by itself.
 		const outcome = await ctx.executeTool(TOOL, { queries: [{ operation: "syntaxTree", path }] }, { signal });
 		if (ctx.sessionManager.getSessionId() !== sessionId) return undefined;
 		if (outcome.isError || signal?.aborted) {
-			if (outcome.isError && saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
+			if (outcome.isError && saysUnsupported(outcome)) noteUnsupported(TOOL, path);
 			return { digest, state: "unsupported" };
 		}
 		const after = await fs.readFile(path).catch(() => undefined);
@@ -67,10 +67,12 @@ async function observe(
 			!data ||
 			row.status === "error" ||
 			!matchesResponsePath(value, row, path, ctx.cwd) ||
-			data.operation !== "syntaxTree" ||
+			// The server repeats a request field in a row only when it changed, so an absent `operation` is the
+			// `syntaxTree` this call sent; a different one is not a parse observation.
+			(data.operation !== undefined && data.operation !== "syntaxTree") ||
 			!Array.isArray(data.nodes)
 		) {
-			if (row && row.status === "error" && saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
+			if (row && row.status === "error" && saysUnsupported(outcome)) noteUnsupported(TOOL, path);
 			return { digest, state: "unsupported" };
 		}
 		const reasons = Array.isArray(data.partialReasons) ? data.partialReasons : [];

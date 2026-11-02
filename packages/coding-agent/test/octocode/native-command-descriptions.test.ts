@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp } from "./helpers.ts";
@@ -26,15 +26,13 @@ it("gives every native and bundled extension command a short description with it
 		cwd,
 		agentDir,
 		settingsManager,
-		additionalExtensionPaths: ["builtin:mcp", "builtin:llama.cpp"],
-		noExtensions: true,
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		resourceLoader,
@@ -59,7 +57,7 @@ it("gives every native and bundled extension command a short description with it
 		expect(hints.get("plan")).toContain("--approve <revision>");
 		expect(hints.get("resume")).toBe("[all] [<query>|B<n>]");
 		expect(hints.get("archive")).toBe("[<n>]");
-		expect(hints.get("trust")).toBe("[off]");
+		expect(hints.get("trust")).toBe("[list|add|remove]");
 		expect(hints.get("modelsettings")).toBe("[check]");
 		expect(hints.get("backlog")).toContain("add <title>");
 		expect(session.extensionRunner.getCommand("resume")?.argumentHint).toBe("[all] [<query>|B<n>]");

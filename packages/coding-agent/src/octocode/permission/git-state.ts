@@ -1,4 +1,4 @@
-import type { ExtensionContext, ToolCallEvent } from "../../core/extensions/index.ts";
+import type { ExtensionContext, ToolCallEvent } from "../../core/features/index.ts";
 import { optionalString } from "../shared/util.ts";
 import type { GateVerdict } from "./gate.ts";
 import { SHELL_TOOLS } from "./shell.ts";

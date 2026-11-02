@@ -8,11 +8,9 @@ import { FTS, FTS_OBJECTS, SCHEMA } from "./schema-sql.ts";
  * adds what `SCHEMA` has and the file lacks (tables, columns, indexes, triggers), and never removes anything. Builds
  * of different ages share one file (every running Octocode opens it), so an older build must not drop a newer build's
  * columns or tables, nor a newer one rebuild an older one's: schema changes are additive (a new table, a column with
- * a default, an index). The only rewrites of existing rows are the data migrations `openAgentDb` runs after
- * this reconcile (`queries/backlog.ts`: notes copied to comments once, item type `task` renamed `feature` on every open that
- * finds one); none of them
- * changes a table's shape, so `backlog.type` still has no CHECK constraint (an older build may write `task` again,
- * which the next open rewrites and every read maps to `feature`). Behavior an existing trigger cannot get (the reconcile
+ * a default, an index). The only rewrite of existing rows is the data migration `openAgentDb` runs after
+ * this reconcile (`queries/backlog.ts`: notes copied to comments once); it
+ * changes no table's shape, so `backlog.type` has no CHECK constraint. Behavior an existing trigger cannot get (the reconcile
  * compares names only) comes from a new trigger beside it: `backlog_audits_skip_noop` drops an `update` audit row whose
  * before and after differ only in time, version or the legacy `task` type, whichever build wrote it. A file that is not
  * ours is refused and never touched.

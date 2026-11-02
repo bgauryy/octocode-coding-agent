@@ -3,6 +3,16 @@ import os from "node:os";
 import path from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";
 import type { Fetched } from "../../src/octocode/web/fetch.ts";
+import { grantFolder } from "../../src/octocode/trust/grants.ts";
+
+/**
+ * Records the decision a user would have made for a fixture's project folder, in the agent database `env` selects (the
+ * process's by default; call it after the test has pointed OCTOCODE_HOME at its own). A real `octocode` process started in
+ * the folder then passes the trust gate; the production code has no test-only switch.
+ */
+export function trustFolder(dir: string, env: NodeJS.ProcessEnv = process.env): void {
+	grantFolder(dir, "folder", { source: "command", surface: "cli" }, { env });
+}
 
 const created: string[] = [];
 

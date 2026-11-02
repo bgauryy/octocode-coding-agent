@@ -14,7 +14,7 @@ import { providerHealth } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
 import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
-import { failedNext, foregroundExtras, PERMISSION_STOP, reportMessage, stoppedError } from "./report-text.ts";
+import { failedNext, foregroundExtras, PERMISSION_STOP, ranOn, reportMessage, stoppedError } from "./report-text.ts";
 import { unavailableResult } from "./result-schema.ts";
 import type { RunDetails } from "./run-types.ts";
 import { stopFacts } from "./stop-facts.ts";
@@ -106,7 +106,8 @@ export function startBackground(
 			reports.add({
 				content: reportMessage(head, body, [
 					...(typedFailure ? [`Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.`] : []),
-					next,
+					// A failure's `next` already names the route.
+					next || ranOn(run.route),
 					...runFooter(details, Boolean(outcome.error)),
 					shot,
 					note,
@@ -139,7 +140,7 @@ export function startBackground(
 					: reportMessage(
 							`Background subagent ${who} stopped${citable(identity.id)}`,
 							[errorMessage(error), ...noticeLines(details)].join("\n\n"),
-							[...runFooter(details, true), note, reachable],
+							[ranOn(run.route), ...runFooter(details, true), note, reachable],
 						),
 				details: {
 					id: identity.id,
@@ -246,7 +247,11 @@ export async function runForeground(
 				text: reportMessage(
 					`${heading || `Subagent ${identity.id} finished`}${citable(identity.id)}`,
 					withShot(details, outcome.text || "(subagent returned no text)"),
-					[typedFailure ? `Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : "", note],
+					[
+						typedFailure ? `Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : "",
+						ranOn(run.route),
+						note,
+					],
 				),
 			},
 		],

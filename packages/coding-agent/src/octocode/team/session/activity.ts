@@ -16,6 +16,8 @@ interface ActivityHost {
 	db(): TeamStore | undefined;
 	readonly held: Pick<HeldLeases, "holding" | "lost">;
 	readonly mail: Pick<Mail, "notice">;
+	/** The model and level this session runs now (`modelRoute`), or undefined without a model. */
+	route(): string | undefined;
 }
 
 /** This agent's row as it works: status, tool counts and usage change in memory and reach the database on the heartbeat. */
@@ -45,6 +47,14 @@ export class Activity {
 	joined(me: Member): void {
 		this.activeAt = me.joinedAt;
 		this.takeEarlyUsage(me);
+		// What it runs on at the join, the level included: a row would otherwise show the bare model id until the first reply.
+		const route = this.host.route();
+		if (route) me.model = storedText(route, LINE_MAX);
+	}
+
+	/** The model or thinking level changed: the row names the new route now, not with the next reply. */
+	setModel(route: string | undefined): void {
+		if (route) this.update((me) => void (me.model = storedText(route, LINE_MAX)));
 	}
 
 	/** One reply's usage; `model` wrote it (it changes when the user switches models); `unpriced`: that model has no pricing. */

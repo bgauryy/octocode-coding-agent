@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { SessionEntry, SessionInfo, SessionTreeNode } from "../src/core/session-manager.ts";
 import { SessionSelectorComponent } from "../src/modes/interactive/components/session-selector.ts";
-import { TrustSelectorComponent } from "../src/modes/interactive/components/trust-selector.ts";
+import { folderTrustPrompt, worktreeTrustPrompt } from "../src/modes/interactive/components/folder-trust-prompt.ts";
 import { TreeSelectorComponent } from "../src/modes/interactive/components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../src/modes/interactive/components/user-message-selector.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -162,18 +162,25 @@ describe("selectors drawing untrusted text", () => {
 		expect(unsafe(lines)).toEqual([]);
 	});
 
-	it("the /trust selector draws the folder, its parent and the saved decision's path without terminal controls", () => {
-		const cwd = `/work/${HOSTILE}/project`;
-		const selector = new TrustSelectorComponent({
-			cwd,
-			savedDecision: { path: `/elsewhere/${HOSTILE}`, decision: false },
-			projectTrusted: false,
-			onSelect: () => {},
-			onCancel: () => {},
-		});
-		const lines = selector.render(200);
-		expect(lines.join("\n")).toContain("Trust parent folder");
-		expect(lines.join("\n")).toContain("inherited from");
+	it("the trust prompt draws the folder, its parents and the project file names without terminal controls", () => {
+		const prompt = folderTrustPrompt(
+			{
+				path: `/work/${HOSTILE}/project`,
+				parent: `/work/${HOSTILE}`,
+				grandparent: `/work/${HOSTILE}2`,
+				projectFiles: [`AGENTS.md${HOSTILE}`],
+			},
+			() => {},
+		);
+		const lines = prompt.render(200);
+		expect(lines.join("\n")).toContain("Trust this folder");
+		expect(lines.join("\n")).toContain("Found here: AGENTS.mdABCDEF");
+		expect(unsafe(lines)).toEqual([]);
+	});
+
+	it("the worktree question draws the worktree and its source without terminal controls", () => {
+		const lines = worktreeTrustPrompt({ path: `/wt/${HOSTILE}`, from: `/repo/${HOSTILE}` }, () => {}).render(200);
+		expect(lines.join("\n")).toContain("Trust new worktree");
 		expect(unsafe(lines)).toEqual([]);
 	});
 });

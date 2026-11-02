@@ -23,7 +23,9 @@ describe("browser MCP server in a subagent", () => {
 
 	it("keeps its research servers and excludes only the browser server", () => {
 		const args = buildAgentArgs(profiles().get("researcher"), undefined, { dir: "/s", id: "a" }, []).join(" ");
-		expect(args).toContain("--no-extensions -e builtin:mcp");
+		// The built-in MCP host is on by default, so the child is not told to enable it.
+		expect(args).not.toContain("builtin:mcp");
+		expect(args).not.toContain("--no-extensions");
 		expect(args).not.toContain("--no-mcp");
 	});
 

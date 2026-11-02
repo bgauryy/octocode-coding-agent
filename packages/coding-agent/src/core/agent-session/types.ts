@@ -14,7 +14,7 @@ import type {
 	SessionStartEvent,
 	ShutdownHandler,
 	ToolDefinition,
-} from "../extensions/index.ts";
+} from "../features/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionEntry, SessionManager, SessionNameSource } from "../session-manager.ts";

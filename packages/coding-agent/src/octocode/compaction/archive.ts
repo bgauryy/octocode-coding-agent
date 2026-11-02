@@ -1,4 +1,4 @@
-import type { ExtensionAPI, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { CompactionEntry } from "../../core/session-manager.ts";
 import { GOAL_HEADING, summarySection as section, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import {

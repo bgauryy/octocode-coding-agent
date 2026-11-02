@@ -10,7 +10,7 @@ Internal Team mail, worker RPC, the native process API and ACP have distinct del
 | A local process talks to a running Octocode host | [Local session API](../packages/coding-agent/docs/session-api.md), `src/octocode/api/` | Discover an opted-in instance, guard its conversation ID, send and observe results.                      |
 | Octocode launches an external coding agent       | Native `agent`, `type: "external"`, `transport: "acp"`; `src/octocode/external/`       | The connection owns its peer process tree and returns each prompt's reply.                               |
 | Octocode attaches to an existing peer            | Native `agent`, `type: "external"`, `transport: "octocode"`                            | Uses the peer's local API and an idle-only guarded message; disconnect does not terminate the peer host. |
-| An embedding host controls a native worker       | [SDK/RPC](../packages/coding-agent/docs/sdk.md#process-clients), `src/modes/rpc/`      | The host owns process lifetime, request correlation and explicit cancellation.                           |
+| An embedding host controls a native worker       | [RPC](../packages/coding-agent/docs/rpc.md), `src/modes/rpc/`                           | The host owns process lifetime, request correlation and explicit cancellation.                           |
 
 ACP updates and local API events are observations, not Team-mail acknowledgments. A peer can answer an outbound ACP prompt; to initiate an independent message to a running Octocode host, it uses that host's enabled local API. Both directions retain native tool permission checks. A remote HTTP ACP service and A2A are not implemented by the local API.
 

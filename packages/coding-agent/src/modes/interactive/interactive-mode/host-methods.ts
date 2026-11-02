@@ -28,7 +28,6 @@ import * as resourceGroups from "./resource-groups.ts";
 import * as resourcePaths from "./resource-paths.ts";
 import * as sessionBinding from "./session-binding.ts";
 import * as sessionCommands from "./session-commands.ts";
-import * as trustCommands from "./trust-commands.ts";
 import * as sessionNavigation from "./session-navigation.ts";
 import * as sessionRender from "./session-render.ts";
 import * as settingsSelector from "./settings-selector.ts";
@@ -66,7 +65,6 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	crashReportInstructions: crashReporting.crashReportInstructions,
 	createBaseAutocompleteProvider: autocomplete.createBaseAutocompleteProvider,
 	createExtensionUIContext: extensionContext.createExtensionUIContext,
-	createProjectTrustContext: extensionContext.createProjectTrustContext,
 	cycleModel: modelControls.cycleModel,
 	cycleThinkingLevel: modelControls.cycleThinkingLevel,
 	disposeActiveSelector: viewState.disposeActiveSelector,
@@ -137,7 +135,6 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	init: startup.init,
 	isExtensionCommand: messageQueue.isExtensionCommand,
 	isPackageSource: (_host, sourceInfo) => resourceGroups.isPackageSource(sourceInfo),
-	maybeSaveImplicitProjectTrustAfterReload: trustCommands.maybeSaveImplicitProjectTrustAfterReload,
 	maybeShowCacheMissNotice: sessionRender.maybeShowCacheMissNotice,
 	maybeShowInstallChangeWarning: crashReporting.maybeShowInstallChangeWarning,
 	maybeShowThinkingDropNotice: sessionRender.maybeShowThinkingDropNotice,
@@ -200,7 +197,6 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	showStatus: statusIndicators.showStatus,
 	showStatusIndicator: statusIndicators.showStatusIndicator,
 	showTreeSelector: sessionNavigation.showTreeSelector,
-	showTrustSelector: trustCommands.showTrustSelector,
 	showUserMessageSelector: sessionNavigation.showUserMessageSelector,
 	showWarning: display.showWarning,
 	showWorkingStatusIndicator: statusIndicators.showWorkingStatusIndicator,

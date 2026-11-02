@@ -1,6 +1,6 @@
 import type { BoundMcpHookCaller, McpHookCaller } from "../../../../mcp/src/hook-caller.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { getMcpHookCaller } from "../../../../mcp/src/hook-caller.ts";
 
 /**

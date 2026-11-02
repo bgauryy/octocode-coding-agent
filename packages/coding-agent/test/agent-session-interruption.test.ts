@@ -1,7 +1,7 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
-import type { AgentInterruptedEvent } from "../src/core/extensions/types.ts";
+import type { AgentInterruptedEvent } from "../src/core/features/types.ts";
 import { createHarness } from "./suite/harness.ts";
 
 it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(

@@ -6,7 +6,7 @@ import { inspectPluginMcp, loadConfiguredPluginMcp } from "../src/core/plugin-mc
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createMcpExtension } from "../../mcp/src/index.ts";
 import { getMcpHookCaller } from "../../mcp/src/hook-caller.ts";
-import type { ExtensionAPI } from "../src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../src/core/features/types.ts";
 import { createInMemoryTransportPair } from "../../mcp/src/client/testing/index.ts";
 import { LATEST_PROTOCOL_VERSION } from "../../mcp/src/client/index.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
@@ -40,13 +40,11 @@ function fixture(protocol: "claude" | "codex" = "claude", declarations?: unknown
 	);
 	return { root, plugin, entry: { path: plugin, protocol } };
 }
-it("requires independent MCP review, expands plugin paths and invalidates approval on changes", () => {
+it("loads the servers of an enabled plugin and expands plugin paths", () => {
 	const f = fixture();
 	const inspection = inspectPluginMcp(f.entry);
 	expect(inspection.errors).toEqual([]);
-	expect(inspection.fingerprint).toMatch(/^[a-f0-9]{64}$/);
-	expect(loadConfiguredPluginMcp([f.entry], f.root).servers).toEqual([]);
-	const entry = { ...f.entry, mcpFingerprint: inspection.fingerprint };
+	const entry = f.entry;
 	const loaded = loadConfiguredPluginMcp([entry], f.root);
 	expect(loaded.errors).toEqual([]);
 	expect(loaded.servers).toContainEqual(
@@ -62,7 +60,13 @@ it("requires independent MCP review, expands plugin paths and invalidates approv
 		path.join(f.plugin, ".mcp.json"),
 		JSON.stringify({ mcpServers: { check: { command: "different" } } }),
 	);
-	expect(loadConfiguredPluginMcp([entry], f.root).servers).toEqual([]);
+	// Enabling approves the declarations as they stand: a later change loads as written.
+	expect(loadConfiguredPluginMcp([entry], f.root).servers).toContainEqual(
+		expect.objectContaining({
+			name: "plugin:review-kit:check",
+			config: expect.objectContaining({ command: "different" }),
+		}),
+	);
 });
 it.each(["claude", "codex"] as const)("uses source-specific default merging for %s", (protocol) => {
 	const f = fixture(protocol, { second: { command: "node" } });
@@ -70,29 +74,26 @@ it.each(["claude", "codex"] as const)("uses source-specific default merging for 
 	expect(found.errors).toEqual([]);
 	expect(found.servers.map((server) => server.name)).toEqual(protocol === "claude" ? ["check", "second"] : ["second"]);
 });
-it("rejects escaping configuration symlinks and unsupported transports before approval", () => {
+it("rejects escaping configuration symlinks and unsupported transports", () => {
 	const f = fixture();
 	const outside = path.join(f.root, "outside.json");
 	fs.writeFileSync(outside, '{"mcpServers":{"escape":{"command":"node"}}}');
 	fs.unlinkSync(path.join(f.plugin, ".mcp.json"));
 	fs.symlinkSync(outside, path.join(f.plugin, ".mcp.json"));
-	expect(inspectPluginMcp(f.entry).fingerprint).toBeUndefined();
 	expect(inspectPluginMcp(f.entry).errors.join()).toContain("escapes");
 	fs.unlinkSync(path.join(f.plugin, ".mcp.json"));
 	fs.writeFileSync(
 		path.join(f.plugin, ".mcp.json"),
 		'{"mcpServers":{"ws":{"type":"ws","url":"wss://example.invalid"}}}',
 	);
-	expect(inspectPluginMcp(f.entry).fingerprint).toBeUndefined();
+	expect(inspectPluginMcp(f.entry).errors.length).toBeGreaterThan(0);
+	expect(loadConfiguredPluginMcp([f.entry], f.root).servers).toEqual([]);
 });
-it("registers reviewed plugin servers through the existing resource runtime and removes them on reload", async () => {
+it("registers enabled plugin servers through the existing resource runtime and removes them on reload", async () => {
 	const f = fixture();
 	const agentDir = path.join(f.root, "agent");
 	fs.mkdirSync(agentDir);
-	const entry = {
-		...f.entry,
-		mcpFingerprint: inspectPluginMcp(f.entry).fingerprint,
-	};
+	const entry = f.entry;
 	const settingsFile = path.join(agentDir, "settings.json");
 	fs.writeFileSync(settingsFile, JSON.stringify({ plugins: [entry] }));
 	const loader = new DefaultResourceLoader({
@@ -113,16 +114,11 @@ it("registers reviewed plugin servers through the existing resource runtime and 
 	expect(loader.getExtensions().runtime.mcpServers.list()).toEqual([]);
 });
 
-it("connects a reviewed plugin server through the MCP owner and makes it callable by hooks", async () => {
+it("connects an enabled plugin server through the MCP owner and makes it callable by hooks", async () => {
 	const f = fixture();
 	const agentDir = path.join(f.root, "agent");
 	fs.mkdirSync(agentDir);
-	fs.writeFileSync(
-		path.join(agentDir, "settings.json"),
-		JSON.stringify({
-			plugins: [{ ...f.entry, mcpFingerprint: inspectPluginMcp(f.entry).fingerprint }],
-		}),
-	);
+	fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ plugins: [f.entry] }));
 	const pair = createInMemoryTransportPair();
 	pair.server.onMessage((message) => {
 		if (!("id" in message) || !("method" in message)) return;
@@ -189,12 +185,7 @@ it("loads project plugin servers only after project settings are trusted", async
 	const agentDir = path.join(f.root, "agent");
 	fs.mkdirSync(agentDir);
 	fs.mkdirSync(path.join(f.root, ".octocode"));
-	fs.writeFileSync(
-		path.join(f.root, ".octocode/settings.json"),
-		JSON.stringify({
-			plugins: [{ ...f.entry, mcpFingerprint: inspectPluginMcp(f.entry).fingerprint }],
-		}),
-	);
+	fs.writeFileSync(path.join(f.root, ".octocode/settings.json"), JSON.stringify({ plugins: [f.entry] }));
 	const settingsManager = SettingsManager.create(f.root, agentDir);
 	settingsManager.setProjectTrusted(false);
 	const loader = new DefaultResourceLoader({
@@ -240,7 +231,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
 	fs.mkdirSync(agentDir);
 	vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
 	const settings = SettingsManager.inMemory({
-		plugins: [{ ...f.entry, mcpFingerprint: inspectPluginMcp(f.entry).fingerprint }],
+		plugins: [f.entry],
 	});
 	let api!: ExtensionAPI;
 	const loader = new DefaultResourceLoader({

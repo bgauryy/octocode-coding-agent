@@ -1,3 +1,4 @@
+import { itemCounts } from "./counts-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -105,7 +106,7 @@ describe("backlog store", () => {
 		expect(store.add({ ...READY, title: "idea", createdBy: "agent", goal: "g" }).state).toBe("backlog");
 		store.update(low.ref, { state: "ongoing" }, { id: "s1" });
 		expect(store.list({ states: ["todo", "ongoing"] }).items.map((item) => item.title)).toEqual(["low", "high"]);
-		expect(store.counts()).toEqual({ backlog: 1, todo: 1, ongoing: 1, done: 0 });
+		expect(store.counts().items).toEqual({ backlog: 1, todo: 1, ongoing: 1, done: 0 });
 		expect(store.list({ query: "hig" }).items.map((item) => item.title)).toEqual(["high"]);
 		expect(store.list({ query: "%" }).items).toEqual([]);
 	});
@@ -429,7 +430,7 @@ describe("backlog tool", () => {
 		await expect(
 			t.call({ op: "add", why: "Required work", title: "idea", goal: "it works", note: "context" }),
 		).rejects.toThrow(/note only with state ongoing or done/);
-		expect(storeFor(fs.realpathSync(t.cwd)).counts()).toMatchObject({ backlog: 0, todo: 0, done: 0 });
+		expect(storeFor(fs.realpathSync(t.cwd)).counts().items).toMatchObject({ backlog: 0, todo: 0, done: 0 });
 		expect(
 			await t.text({
 				op: "add",
@@ -736,10 +737,10 @@ describe("backlog tool", () => {
 
 describe("backlog status", () => {
 	it("names every open state and keeps the web hint when there are no open items", () => {
-		expect(countsText({ ongoing: 2, todo: 4, backlog: 1, done: 9 })).toBe(
+		expect(countsText(itemCounts({ ongoing: 2, todo: 4, backlog: 1, done: 9 }))).toBe(
 			"/web · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
 		);
-		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("/web · backlogs & activity");
+		expect(countsText(itemCounts({ ongoing: 0, todo: 0, backlog: 0, done: 3 }))).toBe("/web · backlogs & activity");
 	});
 
 	it("shows the web workspace hint at session start before any item exists", async () => {
@@ -872,7 +873,7 @@ describe("/backlog", () => {
 		expect(sent.message).toContain("The form hangs.");
 		expect(sent.message).toContain("from: B1");
 		expect(sent.message).toContain("Mark it done only after verifying its goal");
-		expect(sent.message).toContain("If blocked, record the blocker as SBAR instead.");
+		expect(sent.message).toContain("If blocked, record what is blocked, why, and what you need from whom instead.");
 		expect(sent.message).toContain("Follow existing permissions");
 		expect(storeFor(fs.realpathSync(t.cwd)).get("B1")).toMatchObject({
 			state: "ongoing",
@@ -1023,11 +1024,11 @@ describe("/backlog", () => {
 		expect(at("Backlog (triage) (1)")).toBeLessThan(at("Todo (1)"));
 		expect(at("Todo (1)")).toBeLessThan(at("Ongoing (0)"));
 		expect(at("Ongoing (0)")).toBeLessThan(at("Done (0)"));
-		expect(frames[0]).toMatch(/› B2 p2 beta/);
-		expect(frames[1]).toMatch(/› B1 p2 alpha/);
+		expect(frames[0]).toMatch(/› [▶☐⧗] B2 p2 beta/);
+		expect(frames[1]).toMatch(/› [▶☐⧗] B1 p2 alpha/);
 		// → moves alpha from todo to ongoing; ← would move it back.
 		expect(frames[2]).toContain("Ongoing (1)");
-		expect(frames[2]).toMatch(/› B1 p2 alpha/);
+		expect(frames[2]).toMatch(/› [▶☐⧗] B1 p2 alpha/);
 		expect(frames[2]).toContain("left/right move state");
 		expect(store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
 		expect(t.sent.at(-1)!.message).toMatch(/^Implement backlog item B1\n/);

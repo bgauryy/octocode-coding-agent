@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ToolInvocation } from "../../src/core/extensions/types.ts";
+import type { ToolInvocation } from "../../src/core/features/types.ts";
 import { expect, it, vi } from "vitest";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";

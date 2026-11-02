@@ -1,6 +1,6 @@
 import { Marked, type Token } from "@octocodeai/octocode-tui";
 import { type MermaidArt, render, type Span } from "grok-mermaid";
-import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import type { MermaidRenderingMode } from "../../../core/settings-manager.ts";
 import type { Theme } from "../../../theme/theme.ts";
 

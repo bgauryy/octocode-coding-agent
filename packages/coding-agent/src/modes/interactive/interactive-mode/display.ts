@@ -5,7 +5,7 @@
 
 import { GLYPH, type MarkdownTheme, Spacer } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import type { MarkdownTransformer, ToolRenderers } from "../../../core/extensions/index.ts";
+import type { MarkdownTransformer, ToolRenderers } from "../../../core/features/index.ts";
 import { withBuiltInRenderers } from "../../../core/tools/renderers/index.ts";
 import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
 import { ThemedText } from "../components/themed-text.ts";

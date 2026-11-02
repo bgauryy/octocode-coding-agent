@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { appendReadDigests, completedLocalReads, type snapshotLocalReads } from "../shared/local-reads.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 

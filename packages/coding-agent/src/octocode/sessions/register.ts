@@ -4,10 +4,11 @@ import { Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { getAgentDir } from "../../config.ts";
 import { cleanTitle } from "../../core/session-manager/title.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../agentdb/api.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
+import { SpendScan } from "../shared/spend.ts";
 import { currentSessionId } from "../shared/home.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { expandKey, plural } from "../shared/render/text.ts";
@@ -17,7 +18,7 @@ import {
 	addUsage,
 	contentText,
 	emptyUsage,
-	entryMessage,
+	type Spend,
 	type ModelLookup,
 	modelLookup,
 	spendOf,
@@ -59,19 +60,21 @@ type Entry = {
 /**
  * Cost and tokens of a session, read once at start; later replies are added as they end. A fork (or clone) starts with
  * its parent's history copied in, entries keeping their original times: those were paid for in the parent, so with a
- * `parentSession` only entries from the fork's own start (its header time) on count. The footer's entries count
- * (`spendOf`): replies, a foreground subagent's `agent` result and a background subagent's report.
+ * `parentSession` only entries from the fork's own start (its header time) on count. The footer's and /session's entries
+ * count (`SpendScan`): replies, a foreground subagent's `agent` result, a background subagent's report, `usage` entries
+ * (compaction summaries, cache refreshes, side questions) and compaction and branch summaries.
  */
 function totals(
 	entries: readonly Entry[],
 	header: { timestamp?: string; parentSession?: string } | null | undefined,
 	find: ModelLookup,
+	scan: SpendScan,
 ): { usage: ReturnType<typeof emptyUsage>; unpriced: boolean } {
 	const forkedAt = header?.parentSession ? Date.parse(header.timestamp ?? "") : Number.NaN;
 	const usage = emptyUsage();
 	let unpriced = false;
 	for (const entry of entries) {
-		const spend = spendOf(entryMessage(entry));
+		const spend = scan.entry(entry);
 		if (!spend) continue;
 		if (Number.isFinite(forkedAt) && Date.parse(entry.timestamp ?? "") < forkedAt) continue;
 		addUsage(usage, spend.usage);
@@ -188,6 +191,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	let pending: Omit<BriefInput, "git"> | undefined;
 	/** This session's running cost and tokens, and whether part of it came from a model without pricing. */
 	let usage = emptyUsage();
+	const scan = new SpendScan();
 	let unpriced = false;
 	let gitRevision = 0;
 	const index = () => new SessionIndex(sharedAgentDb());
@@ -236,7 +240,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		pending = undefined;
 		const id = ctx.sessionManager.getSessionId();
 		const entries = (ctx.sessionManager.getEntries?.() ?? []) as readonly Entry[];
-		({ usage, unpriced } = totals(entries, ctx.sessionManager.getHeader?.(), modelLookup(ctx)));
+		({ usage, unpriced } = totals(entries, ctx.sessionManager.getHeader?.(), modelLookup(ctx), (scan.reset(), scan)));
 		safely(ctx, (sessions) => {
 			const previous = sessions.get(id);
 			const resumed = event?.reason === "resume" || (event?.reason === "startup" && hasUserMessage(entries));
@@ -279,11 +283,26 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		void recordGit(ctx, id);
 	});
 
-	api.on("message_end", async (event, ctx) => {
-		const spend = spendOf(event.message);
-		if (!spend) return undefined;
+	const add = (spend: Spend | undefined, ctx: ExtensionContext) => {
+		if (!spend) return;
 		addUsage(usage, spend.usage);
 		unpriced ||= unpricedModel(spend, modelLookup(ctx)) !== undefined;
+	};
+	/** Spend recorded outside a reply (a compaction summary request, a cache refresh, a side question) since the last look. */
+	const addRecorded = (ctx: ExtensionContext) => {
+		for (const spend of scan.recorded(ctx.sessionManager.getEntries())) add(spend, ctx);
+	};
+	api.on("message_end", async (event, ctx) => {
+		add(spendOf(event.message), ctx);
+		return undefined;
+	});
+	api.on("session_compact", async (event, ctx) => {
+		add(scan.entry(event.compactionEntry), ctx);
+		addRecorded(ctx);
+		return undefined;
+	});
+	api.on("session_tree", async (event, ctx) => {
+		add(scan.entry(event.summaryEntry), ctx);
 		return undefined;
 	});
 
@@ -306,6 +325,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	});
 
 	api.on("agent_end", async (_event, ctx) => {
+		addRecorded(ctx);
 		const id = ctx.sessionManager.getSessionId();
 		const stats = {
 			cost: usage.cost.total,

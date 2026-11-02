@@ -1,3 +1,4 @@
+import type { WorktreeTrustAsk } from "./approval.ts";
 import { ensureWorktree, type WorktreeInfo } from "./create.ts";
 
 /**
@@ -5,8 +6,8 @@ import { ensureWorktree, type WorktreeInfo } from "./create.ts";
  * the worktree. Rejects before changing anything when the name is invalid or the directory is not in a repository.
  * The CLI startup that calls this is `cli/worktree-startup.ts`.
  */
-export async function enterWorktree(name: string, cwd = process.cwd()): Promise<WorktreeInfo> {
-	const info = await ensureWorktree(cwd, name);
+export async function enterWorktree(name: string, cwd = process.cwd(), ask?: WorktreeTrustAsk): Promise<WorktreeInfo> {
+	const info = await ensureWorktree(cwd, name, ask);
 	process.chdir(info.path);
 	return info;
 }

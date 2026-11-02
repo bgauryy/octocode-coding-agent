@@ -92,31 +92,36 @@ interface UsageCostBreakdownEntry {
 	tokens: number;
 }
 
+const TOOLS_AND_SUMMARIES = "Tools/summaries";
+
+/**
+ * The spend a session entry carries and its cost-breakdown bucket: a reply's or a `usage` entry's under `provider/model`;
+ * a tool result's (a foreground subagent), a compaction or branch summary's and a background subagent report's under
+ * "Tools/summaries". The /session totals and its breakdown both read entries through this, so they count the same ones.
+ */
+export function entryUsage(entry: SessionEntry): { key: string; usage: Usage } | undefined {
+	if (entry.type === "message") {
+		const message = entry.message;
+		if (message.role === "assistant")
+			return { key: `${message.provider}/${message.responseModel ?? message.model}`, usage: message.usage };
+		if (message.role === "toolResult" && message.usage) return { key: TOOLS_AND_SUMMARIES, usage: message.usage };
+		return undefined;
+	}
+	if (entry.type === "usage") return { key: `${entry.provider}/${entry.model}`, usage: entry.usage };
+	if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage)
+		return { key: TOOLS_AND_SUMMARIES, usage: entry.usage };
+	const usage = customMessageUsage(entry);
+	return usage ? { key: TOOLS_AND_SUMMARIES, usage } : undefined;
+}
+
 /** Group model-attributed usage by model and all other usage into a separate bucket. */
 export function getUsageCostBreakdown(entries: SessionEntry[]): UsageCostBreakdownEntry[] {
 	const totalsByKey = new Map<string, UsageTotals>();
 
 	for (const entry of entries) {
-		let key: string | undefined;
-		let usage: Usage | undefined;
-		if (entry.type === "message" && entry.message.role === "assistant") {
-			key = `${entry.message.provider}/${entry.message.responseModel ?? entry.message.model}`;
-			usage = entry.message.usage;
-		} else if (entry.type === "usage") {
-			key = `${entry.provider}/${entry.model}`;
-			usage = entry.usage;
-		} else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.usage) {
-			key = "Tools/summaries";
-			usage = entry.message.usage;
-		} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
-			key = "Tools/summaries";
-			usage = entry.usage;
-		} else if (entry.type === "custom_message") {
-			key = "Tools/summaries";
-			usage = customMessageUsage(entry);
-		}
-		if (!key || !usage) continue;
-
+		const spend = entryUsage(entry);
+		if (!spend) continue;
+		const { key, usage } = spend;
 		let totals = totalsByKey.get(key);
 		if (!totals) {
 			totals = createUsageTotals();

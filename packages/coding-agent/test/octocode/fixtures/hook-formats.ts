@@ -68,8 +68,9 @@ export function writePlugins(root: string, log: string) {
 		write(path.join(dir, "skills/hello/SKILL.md"), SKILL("hello"));
 		write(path.join(dir, "hooks/hooks.json"), jsonHooks(log, `plugin-${name}`, protocol));
 		write(path.join(dir, ".mcp.json"), { mcpServers: { echo: { command: "node", args: [ECHO_MCP] } } });
-		// Components no Octocode owner loads: reported as warnings, never silently dropped.
+		// Claude agents load as subagent profiles. Components no Octocode owner loads are reported as warnings, never silently dropped.
 		if (protocol === "claude") write(path.join(dir, "agents/reviewer.md"), "---\nname: reviewer\n---\n\nReview.\n");
+		if (protocol === "claude") write(path.join(dir, ".lsp.json"), {});
 		if (name === "codex-kit") write(path.join(dir, ".app.json"), { apps: {} });
 		if (protocol === "claude") write(path.join(dir, "commands/greet.md"), "---\ndescription: Greet\n---\n\nGreet $ARGUMENTS\n");
 		return { path: dir, protocol, name };

@@ -1,12 +1,12 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { describe, expect, it } from "vitest";
-import { cloneMessages } from "../src/core/extensions/runner/clone-messages.ts";
-import { dispatchContext } from "../src/core/extensions/runner/emit-transforms.ts";
-import type { Extension } from "../src/core/extensions/types.ts";
+import { cloneMessages } from "../src/core/features/runner/clone-messages.ts";
+import { dispatchContext } from "../src/core/features/runner/emit-transforms.ts";
+import type { Extension } from "../src/core/features/types.ts";
 
 type Handler = (event: { messages: AgentMessage[] }) => unknown;
 
-function host(handlers: { context?: Handler; context_with_system?: Handler }) {
+function host(handlers: { context?: Handler }) {
 	const map = new Map<string, Handler[]>();
 	for (const [event, handler] of Object.entries(handlers)) map.set(event, [handler]);
 	const extension = { path: "test", handlers: map } as unknown as Extension;
@@ -33,23 +33,20 @@ describe("dispatchContext copies", () => {
 		expect(result[0]).toBe(messages[0]);
 	});
 
-	it.each(["context", "context_with_system"] as const)(
-		"keeps a handler's edits away from the caller (%s)",
-		async (event) => {
-			const messages = transcript();
-			const result = await dispatchContext(
-				host({
-					[event]: (e: { messages: AgentMessage[] }) => {
-						(e.messages[1] as { content: unknown }).content = "edited";
-					},
-				}),
-				messages,
-			);
-			expect(result[1]).toMatchObject({ content: "edited" });
-			expect(messages[1]).toMatchObject({ content: "hello" });
-			expect(result[0]).not.toBe(messages[0]);
-		},
-	);
+	it("keeps a handler's edits away from the caller", async () => {
+		const messages = transcript();
+		const result = await dispatchContext(
+			host({
+				context: (e: { messages: AgentMessage[] }) => {
+					(e.messages[1] as { content: unknown }).content = "edited";
+				},
+			}),
+			messages,
+		);
+		expect(result[1]).toMatchObject({ content: "edited" });
+		expect(messages[1]).toMatchObject({ content: "hello" });
+		expect(result[0]).not.toBe(messages[0]);
+	});
 });
 
 describe("cloneMessages", () => {

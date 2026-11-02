@@ -15,7 +15,11 @@ type LoadedResourcesContext = {
 	loadedResourcesContainer: Container;
 	chatContainer: Container;
 	options: { verbose?: boolean };
-	settingsManager: { getQuietStartup: () => boolean };
+	settingsManager: {
+		getQuietStartup: () => boolean;
+		isProjectTrusted: () => boolean;
+		getSettings: () => Record<string, never>;
+	};
 	sessionManager: { getCwd: () => string };
 	session: {
 		promptTemplates: [];
@@ -179,7 +183,7 @@ function createLoadedResourcesContext(): LoadedResourcesContext {
 		loadedResourcesContainer: new Container(),
 		chatContainer: new Container(),
 		options: { verbose: true },
-		settingsManager: { getQuietStartup: () => false },
+		settingsManager: { getQuietStartup: () => false, isProjectTrusted: () => true, getSettings: () => ({}) },
 		sessionManager: { getCwd: () => "/repo" },
 		session: {
 			promptTemplates: [],

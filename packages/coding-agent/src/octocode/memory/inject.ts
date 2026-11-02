@@ -154,7 +154,7 @@ export function selectInjection(
 	const note =
 		heldBack > 0
 			? [
-					`[${heldBack} more pinned ${heldBack === 1 ? "memory" : "memories"} did not fit here; call memory with op "list" to read them.]`,
+					`[${heldBack} more pinned ${heldBack === 1 ? "memory" : "memories"} did not fit here; call archive with op "list", source "memories" to read them.]`,
 				]
 			: [];
 	return { content: [MEMORY_HEADER, ...lines, ...note].join("\n"), ids, updated };

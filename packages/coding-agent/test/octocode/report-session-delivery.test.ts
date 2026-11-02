@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { createHarness } from "../suite/harness.ts";

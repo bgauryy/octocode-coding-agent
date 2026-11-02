@@ -9,7 +9,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
@@ -85,11 +85,10 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			agentDir,
 			settingsManager,
 			additionalSkillPaths: [winner, loser, modelOnly],
-			noExtensions: true,
+			disabledFeatures: ["llama.cpp"],
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			additionalExtensionPaths: ["builtin:mcp"],
 			extensionFactories: [
 				{
 					name: "faux",
@@ -110,7 +109,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			],
 		});
 		await resourceLoader.reload();
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd,
 			agentDir,
 			resourceLoader,

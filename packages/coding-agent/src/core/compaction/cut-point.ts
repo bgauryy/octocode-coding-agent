@@ -67,7 +67,7 @@ function findValidCutPoints(entries: SessionEntry[], startIndex: number, endInde
  * Find the context-visible user-role message that starts the turn containing the given entry index.
  * Returns -1 if no turn start found before the index.
  */
-export function findTurnStartIndex(entries: SessionEntry[], entryIndex: number, startIndex: number): number {
+function findTurnStartIndex(entries: SessionEntry[], entryIndex: number, startIndex: number): number {
 	for (let i = entryIndex; i >= startIndex; i--) {
 		if (isTurnStartEntry(entries[i])) {
 			return i;

@@ -6,7 +6,7 @@
 import path from "node:path";
 import { Spacer } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import type { ExtensionCommandContext } from "../../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../../core/features/index.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { SessionManager } from "../../../core/session-manager.ts";
 import { sessionFileRunningPid } from "../../../octocode/agentdb/api.ts";
@@ -16,6 +16,7 @@ import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts"
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../components/user-message-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { warnRefusedSwitch } from "./trust-switch.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Redraws the chat after a /tree navigation and puts the navigated entry's text in the editor when it is empty. */
@@ -40,7 +41,6 @@ type SessionNavigationHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "clearStatusIndicator"
-	| "createProjectTrustContext"
 	| "defaultEditor"
 	| "editor"
 	| "flushCompactionQueue"
@@ -332,7 +332,6 @@ export async function handleResumeSession(
 		const result = await host.runtimeHost.switchSession(sessionPath, {
 			...(cwdOverride ? { cwdOverride } : {}),
 			withSession: options?.withSession,
-			projectTrustContextFactory: (cwd) => host.createProjectTrustContext(cwd),
 		});
 		if (!result.cancelled) host.showStatus(cwdOverride ? "Resumed session in current cwd" : "Resumed session");
 		return result;
@@ -351,6 +350,7 @@ export async function handleResumeSession(
 			return await resume(selectedCwd);
 		}
 	} catch (error: unknown) {
+		if (warnRefusedSwitch(host, error)) return { cancelled: true };
 		return host.handleFatalRuntimeError("Failed to resume session", error);
 	}
 }

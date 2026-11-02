@@ -2,7 +2,7 @@
 
 Stateful agent with tool execution and event streaming. Built on `@octocodeai/octocode-ai`.
 
-This package receives models, tools and policy from its host. For the coding-agent application's files and settings, use [CONFIGURATIONS.md](../../CONFIGURATIONS.md); for session/resource lifecycle use the [SDK guide](../coding-agent/docs/sdk.md).
+This package receives models, tools and policy from its host. For the coding-agent application's files and settings, use [CONFIGURATIONS.md](../../CONFIGURATIONS.md).
 
 ## Installation
 

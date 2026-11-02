@@ -1,4 +1,5 @@
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import { activationId } from "../../shared/activation.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import { newMember } from "../identity.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { type TeamStore } from "../store.ts";
@@ -21,6 +22,9 @@ export function claimName(
 	newName: (lost: string[]) => string,
 	recorded?: SessionTeamName,
 ): Member {
+	db.lifecycle = ctx.sessionManager.getSessionFile()
+		? { activationId: activationId(ctx.sessionManager), sessionId: ctx.sessionManager.getSessionId() }
+		: undefined;
 	const chosen = env[AGENT_ID_ENV];
 	const lost: string[] = [];
 	for (let attempt = 0; attempt < JOIN_ATTEMPTS; attempt += 1) {

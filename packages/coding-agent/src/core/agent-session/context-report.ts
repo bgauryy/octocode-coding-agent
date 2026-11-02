@@ -1,11 +1,11 @@
 import { contentText, getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { parseSkillBlock } from "./prompt-expansion.ts";
-import type { ContextUsage } from "../extensions/index.ts";
+import type { ContextUsage } from "../features/index.ts";
 import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts";
 import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
 
-export interface ContextContributor {
+interface ContextContributor {
 	name: string;
 	tokens: number;
 }

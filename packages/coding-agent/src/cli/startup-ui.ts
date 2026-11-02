@@ -113,7 +113,7 @@ function queryStartupTerminalColors(ui: TUI, onColors: () => void): void {
 	});
 }
 
-async function clearStartupTui(ui: TUI): Promise<void> {
+export async function clearStartupTui(ui: TUI): Promise<void> {
 	ui.clear();
 	ui.requestRender();
 	await new Promise((resolve) => setTimeout(resolve, 25));

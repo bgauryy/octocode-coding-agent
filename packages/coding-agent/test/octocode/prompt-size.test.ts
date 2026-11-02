@@ -1,4 +1,5 @@
 import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
+import { BACKLOG_ITEM_ENV } from "../../../common/src/env.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { reportContractSentences } from "../../src/octocode/instructions/report.ts";
@@ -48,7 +49,16 @@ interface Size {
  * Octocode's base prompt/tools, MCP, skill metadata, repository instructions and snippets. e2e.test.ts also budgets the real
  * default Octocode + MCP prefix. `exclude` mirrors a subagent profile's `excludeTools`.
  */
-async function promptSize(options: { subagent: boolean; exclude?: string[]; readOnly?: boolean }): Promise<Size> {
+async function promptSize(options: {
+	subagent: boolean;
+	exclude?: string[];
+	readOnly?: boolean;
+	/** The backlog item a child's task names: without one a child does not declare `backlog`. */
+	item?: string;
+}): Promise<Size> {
+	delete process.env[BACKLOG_ITEM_ENV];
+	delete process.env.OCTOCODE_SUBAGENT;
+	if (options.item) process.env[BACKLOG_ITEM_ENV] = options.item;
 	if (options.subagent) process.env.OCTOCODE_SUBAGENT = "1";
 	if (options.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
 	const fake = fakeHost();
@@ -194,7 +204,9 @@ const BACKLOG_ENTITIES_CEILING = 1_500;
 // 34_300 (2026-10-31, measured 34_053 without entity fields; B338/B340/B343/B344): lowered to the measurement after
 // the graph tools were deleted, native tool text was re-authored, `agent` lost its input envelope, the `models` tool
 // (856) replaced its agent type, and the prompt sections moved to one registry.
-const MAIN_CEILING = 34_300;
+// 32_000 (2026-11-02, measured 31_807 without entity fields; B452 prompt review): `debug` is opt-in and the `agent`
+// tool declares `external` only when an outside agent is reachable, against the added status, referent and MCP lines.
+const MAIN_CEILING = 32_000;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -232,7 +244,9 @@ const MAIN_CEILING = 34_300;
 // follows the measurement instead of the 32_800 it exceeded by 332.
 // 23_400 (2026-10-31, measured 23_216 without entity fields; B338/B340/B343/B344): lowered to the measurement after the
 // same graph-tool removal and tool-text, agent and section changes.
-const SPECIALIST_CEILING = 23_400;
+// 20_500 (2026-11-02, measured 20_265 without entity fields, now with a backlog item so the backlog tool is declared;
+// B452): the child communication section and the report contract's resume sentence left, and `debug` is opt-in.
+const SPECIALIST_CEILING = 20_500;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -245,7 +259,8 @@ describe("prompt size", () => {
 		expect(size.perTool.browser).toBeUndefined();
 		expect(size.perTool.graphQuery).toBeUndefined();
 		expect(size.perTool.graphBuild).toBeUndefined();
-		expect(size.perTool.debug).toBeGreaterThan(0);
+		// `debug` is opt-in (`--tools +debug`): it is not declared by default.
+		expect(size.perTool.debug).toBeUndefined();
 		expect(size.backlogEntities).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);
 		expect(
@@ -255,7 +270,7 @@ describe("prompt size", () => {
 	});
 
 	it("specialist with shared file and communication tools", async () => {
-		const size = await promptSize({ subagent: true, exclude: ["browser"] });
+		const size = await promptSize({ subagent: true, exclude: ["browser"], item: "B1" });
 		console.log(
 			`specialist: ${size.total} chars (prompt ${size.prompt}, entities ${size.backlogEntities}); ${JSON.stringify(size.perTool)}`,
 		);
@@ -268,6 +283,16 @@ describe("prompt size", () => {
 			size.total - size.backlogEntities,
 			`specialist without new entity fields measured ${size.total - size.backlogEntities} (policy ${size.prompt})`,
 		).toBeLessThan(SPECIALIST_CEILING);
+	});
+
+	it("a child declares backlog only when its task names an item", async () => {
+		const without = await promptSize({ subagent: true, exclude: ["browser"] });
+		const named = await promptSize({ subagent: true, exclude: ["browser"], item: "B1" });
+		expect(without.perTool.backlog).toBeUndefined();
+		expect(named.perTool.backlog).toBeGreaterThan(0);
+		expect(named.total - without.total).toBeGreaterThan(3_000);
+		// The main session declares it whatever the environment says.
+		expect((await promptSize({ subagent: false })).perTool.backlog).toBeGreaterThan(0);
 	});
 
 	it.each(["implementer", "reviewer"])("%s keeps its working tools", async (name) => {

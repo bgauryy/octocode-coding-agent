@@ -1,10 +1,9 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import {
 	client,
 	methods,
@@ -17,52 +16,28 @@ import { expect, it, vi } from "vitest";
 import { getCliInvocation } from "../src/config.ts";
 import { ApiClient } from "../src/octocode/api/client.ts";
 import { apiDir, listInstances } from "../src/octocode/api/registry.ts";
+import { SCRIPTED_MODEL_ARGS, startModelServer, writeScriptedProvider } from "./helpers/feature-host-cli.ts";
+import { trustFolder } from "./octocode/helpers.ts";
 
 it("exchanges API messages on an ACP session and refuses overlapping ACP work without losing the session", async () => {
 	const directory = mkdtempSync(join(tmpdir(), "octocode-acp-api-"));
-	const extension = join(directory, "provider.mjs");
-	const started = join(directory, "started");
-	const release = join(directory, "release");
-	const invocations = join(directory, "invocations");
-	const streamModule = fileURLToPath(new URL("../../ai/src/utils/event-stream.ts", import.meta.url));
-	writeFileSync(
-		extension,
-		`import { appendFileSync, existsSync, writeFileSync } from "node:fs";
-import { createAssistantMessageEventStream } from ${JSON.stringify(streamModule)};
-export default function(api) {
-  api.registerProvider("acp-api-fixture", {
-    api: "openai-completions", baseUrl: "https://example.invalid", apiKey: "fixture-key",
-    models: [{ id: "fixture", name: "Fixture", reasoning: false, input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096 }],
-    streamSimple(model, _context, options) {
-	  appendFileSync(${JSON.stringify(invocations)}, "model\\n");
-      const stream = createAssistantMessageEventStream();
-      const message = { role: "assistant", content: [{ type: "text", text: "API fixture reply" }],
-        api: model.api, provider: model.provider, model: model.id, stopReason: "stop", timestamp: Date.now(),
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
-      writeFileSync(${JSON.stringify(started)}, "started");
-      const timer = setInterval(() => {
-        if (!existsSync(${JSON.stringify(release)}) && !options?.signal?.aborted) return;
-        clearInterval(timer);
-        if (options?.signal?.aborted) {
-          message.stopReason = "aborted";
-          stream.push({ type: "error", reason: "aborted", error: message });
-        } else stream.push({ type: "done", reason: "stop", message });
-      }, 10);
-      return stream;
-    }
-  });
-}
-`,
-	);
+	// The project is a subfolder: HOME is the temp directory, and Octocode refuses to open or trust a home folder.
+	const project = join(directory, "project");
+	mkdirSync(project);
+	// A scripted OpenAI-compatible endpoint stands in for the model; `hold()` keeps a turn in flight until `release()`.
+	const reply = { text: "API fixture reply" };
+	const model = await startModelServer([reply, reply, reply, reply]);
+	const agentDir = join(directory, "home");
+	mkdirSync(agentDir);
+	writeScriptedProvider({ agentDir }, model);
+	model.hold();
 	const env = {
 		PATH: [dirname(process.execPath), process.env.PATH ?? ""].join(process.platform === "win32" ? ";" : ":"),
 		HOME: directory,
 		USERPROFILE: directory,
 		TMPDIR: tmpdir(),
-		OCTOCODE_HOME: join(directory, "home"),
-		OCTOCODE_CODING_AGENT_DIR: join(directory, "home"),
+		OCTOCODE_HOME: agentDir,
+		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		OCTOCODE_AGENT_DB: join(directory, "agent.sqlite"),
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MCP: "0",
@@ -72,6 +47,7 @@ export default function(api) {
 		OCTOCODE_PERMISSION: "full",
 		OCTOCODE_MEMORY_AUTO: "0",
 	};
+	trustFolder(project, env);
 	const invocation = getCliInvocation();
 	const child = spawn(
 		invocation.command,
@@ -80,18 +56,13 @@ export default function(api) {
 			"--mode",
 			"acp",
 			"--no-mcp",
-			"--extension",
-			extension,
 			"--no-skills",
 			"--no-context-files",
 			"--offline",
-			"--provider",
-			"acp-api-fixture",
-			"--model",
-			"fixture",
+			...SCRIPTED_MODEL_ARGS,
 		],
 		{
-			cwd: directory,
+			cwd: project,
 			stdio: ["pipe", "pipe", "pipe"],
 			env,
 		},
@@ -114,7 +85,7 @@ export default function(api) {
 			protocolVersion: PROTOCOL_VERSION,
 			clientCapabilities: {},
 		});
-		const session = await connection.agent.request(methods.agent.session.new, { cwd: directory, mcpServers: [] });
+		const session = await connection.agent.request(methods.agent.session.new, { cwd: project, mcpServers: [] });
 		const instances = listInstances(apiDir(env));
 		expect(instances, diagnostics).toHaveLength(1);
 		const api = new ApiClient(instances[0]);
@@ -163,9 +134,9 @@ export default function(api) {
 			(value) => ({ value }),
 			(error: unknown) => ({ error }),
 		);
-		await vi.waitFor(() => expect(readFileSync(started, "utf8")).toBe("started"));
+		await vi.waitFor(() => expect(model.requests).toHaveLength(1));
 		await expect(prompt("must not interrupt the external turn"), diagnostics).rejects.toThrow();
-		writeFileSync(release, "finish");
+		model.release();
 		const result = await outcome;
 		expect(result, diagnostics).toEqual({
 			value: expect.objectContaining({ text: expect.stringContaining("API fixture reply") }),
@@ -181,8 +152,7 @@ export default function(api) {
 			diagnostics,
 		).toBe(true);
 		await expect(promptWhenReady("ACP remains usable"), diagnostics).resolves.toMatchObject({ stopReason: "end_turn" });
-		rmSync(started);
-		rmSync(release);
+		model.hold();
 		const cancelled = api.call("message.send", {
 			text: "Wait for cancellation",
 			from: "acp-api-test",
@@ -190,26 +160,27 @@ export default function(api) {
 			key: "api-cancellation",
 			expectedSessionId: session.sessionId,
 		});
-		await vi.waitFor(() => expect(readFileSync(started, "utf8")).toBe("started"));
+		await vi.waitFor(() => expect(model.requests).toHaveLength(3));
 		await connection.agent.notify(methods.agent.session.cancel, { sessionId: session.sessionId });
 		await expect(cancelled, diagnostics).resolves.toMatchObject({ stopReason: "aborted" });
-		expect(readFileSync(invocations, "utf8").trim().split("\n")).toHaveLength(3);
-		writeFileSync(release, "finish");
+		expect(model.requests).toHaveLength(3);
+		model.release();
 		await expect(promptWhenReady("ACP remains usable after cancellation"), diagnostics).resolves.toMatchObject({
 			stopReason: "end_turn",
 		});
-		expect(readFileSync(invocations, "utf8").trim().split("\n")).toHaveLength(4);
+		expect(model.requests).toHaveLength(4);
 		await connection.agent.request(methods.agent.session.close, { sessionId: session.sessionId });
 		expect(listInstances(apiDir(env))).toEqual([]);
 	} catch (error) {
 		throw new Error(`ACP/API integration failed. Worker diagnostics:\n${diagnostics}`, { cause: error });
 	} finally {
-		writeFileSync(release, "finish");
+		model.release();
 		watchAbort.abort();
 		await watching?.catch(() => {});
 		connection.close();
 		child.stdin.end();
 		await exited;
+		await model.close();
 		rmSync(directory, { recursive: true, force: true });
 	}
 }, 60_000);

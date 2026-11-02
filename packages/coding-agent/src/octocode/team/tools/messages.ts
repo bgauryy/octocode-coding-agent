@@ -1,6 +1,6 @@
 import { Box, Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { formatClock } from "../../shared/format.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock, toolHeader } from "../../shared/render.ts";

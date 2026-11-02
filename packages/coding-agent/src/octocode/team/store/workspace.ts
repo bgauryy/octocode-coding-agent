@@ -1,6 +1,6 @@
 import path from "node:path";
 import { canonicalPath, repoKey } from "../../shared/home/repo.ts";
-import { TEAM_WORKSPACE_ENV } from "../../../../../common/src/env.ts";
+import { sessionWorkspace } from "../../shared/home/workspace.ts";
 import { leaseKey } from "../lease-key.ts";
 
 /**
@@ -9,9 +9,7 @@ import { leaseKey } from "../lease-key.ts";
  * log, scratch folders and lock advice. Worktrees of one repository are different checkouts of one team (`teamScope`).
  */
 export function teamWorkspace(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
-	const override = env[TEAM_WORKSPACE_ENV];
-	if (override && path.isAbsolute(override)) return canonicalPath(override);
-	return repoKey(cwd).root;
+	return sessionWorkspace(cwd, env);
 }
 
 /**

@@ -517,7 +517,7 @@ describe("the pointer in the summary and after a default summary", () => {
 });
 
 describe("archive wiring in the session", () => {
-	function session() {
+	function session(persistent = true) {
 		const f = fakeHost();
 		const sendMessage = vi.fn();
 		(f.api as unknown as { sendMessage: unknown }).sendMessage = sendMessage;
@@ -536,7 +536,7 @@ describe("archive wiring in the session", () => {
 				getSessionId: () => "inky-kraken",
 				getBranch: () => [],
 				buildSessionProjection: () => ({ entries: [], messages: [] }),
-				getSessionFile: () => undefined,
+				getSessionFile: () => (persistent ? path.join(tmp(), "session.jsonl") : undefined),
 				getHeader: () => null,
 			},
 		};
@@ -556,6 +556,14 @@ describe("archive wiring in the session", () => {
 			f.fire("session_compact", { reason: "manual", fromExtension: false, compactionEntry: entry }, ctx);
 		return { f, ctx, notices, sendMessage, before, compacted };
 	}
+
+	it("keeps a nonpersistent session's compaction out of the durable archive", async () => {
+		const s = session(false);
+		await s.before();
+		await s.compacted();
+		expect(fs.existsSync(archiveFolder())).toBe(false);
+		expect(s.sendMessage).not.toHaveBeenCalled();
+	});
 
 	it("archives a compaction that succeeded with Octocode's default summary, and points the model at it with one hidden message", async () => {
 		const s = session();

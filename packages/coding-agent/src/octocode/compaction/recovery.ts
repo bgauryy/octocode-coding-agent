@@ -1,5 +1,5 @@
 import { type AssistantMessage, isContextOverflow } from "@octocodeai/octocode-ai";
-import type { AgentActivityOutcome, ContextEditEntryDraft, ExtensionContext } from "../../core/extensions/index.ts";
+import type { AgentActivityOutcome, ContextEditEntryDraft, ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { type ContextEntry, contextChars, isRequestTooLarge, planTooLargeRecovery } from "./images.ts";
 

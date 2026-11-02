@@ -6,7 +6,7 @@ import { APP_NAME, getExportTemplateDir } from "../../config.ts";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import { compactionSummaryDisplay } from "../messages.ts";
-import type { ToolDefinition } from "../extensions/types.ts";
+import type { ToolDefinition } from "../features/types.ts";
 import type { SessionEntry } from "../session-manager.ts";
 import { SessionManager } from "../session-manager.ts";
 import { writeSessionExport } from "../export-target.ts";

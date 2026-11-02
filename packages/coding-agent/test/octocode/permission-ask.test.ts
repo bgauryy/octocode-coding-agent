@@ -153,7 +153,7 @@ describe("Permission.check", () => {
 		);
 		const child = setup({ isSubagent: true, env: { [PERMISSION_ENV]: "manual" }, selects: ["Allow once"] });
 		const denied = await child.permission.check(child.ctx, shell());
-		expect(denied.allowed ? "" : denied.message).toMatch(/report it to your parent/);
+		expect(denied.allowed ? "" : denied.message).toMatch(/report to your parent what is blocked/);
 		expect(child.ctx.ui.selects).toEqual(["Allow once"]);
 	});
 

@@ -50,7 +50,7 @@ export function parseHooks(
 			continue;
 		}
 		const defaultTimeout =
-			protocol === "claude" && event === "SessionEnd"
+			protocol !== "codex" && event === "SessionEnd"
 				? (claudeSessionEndOverride() ?? 1500) / 1000
 				: (support.timeout ?? PROFILE_TIMEOUT_S[protocol]);
 		const maxTimeout = support.maxTimeout ?? HOOK_MAX_TIMEOUT_S;
@@ -169,8 +169,15 @@ export function parseHooks(
 					return invalidHandler(`${event} requires a command hook with a non-empty command`);
 				}
 				const accepted = PROFILE_COMMAND_FIELDS[protocol];
-				const unsupported = Object.keys(hook).filter((key) => !accepted.includes(key));
+				const unsupported = Object.keys(hook).filter(
+					(key) => !accepted.includes(key) && !(protocol === "claude" && key === "if"),
+				);
 				const invalid: string[] = [];
+				// Claude's `if` filters by permission rule; running such a hook unfiltered would widen it, so it is skipped.
+				if (protocol === "claude" && hook.if !== undefined)
+					invalid.push('"if" conditions are not supported by Octocode; remove "if" or filter in the hook script');
+				if (protocol === "claude" && hook.shell !== undefined && hook.shell !== "bash" && hook.shell !== "powershell")
+					invalid.push('shell must be "bash" or "powershell"');
 				if (
 					protocol === "codex" &&
 					hook.additionalContextLimit != null &&
@@ -230,6 +237,9 @@ export function parseHooks(
 							? { asyncRewake: hook.asyncRewake }
 							: {}),
 						...(protocol === "claude" && Array.isArray(hook.args) ? { args: hook.args as string[] } : {}),
+						...(protocol === "claude" && (hook.shell === "bash" || hook.shell === "powershell")
+							? { shell: hook.shell }
+							: {}),
 						...(protocol === "claude" && (hook.onFailure === "block" || hook.onFailure === "continue")
 							? { onFailure: hook.onFailure }
 							: {}),

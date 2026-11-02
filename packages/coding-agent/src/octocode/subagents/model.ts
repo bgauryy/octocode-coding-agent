@@ -1,3 +1,5 @@
+import { activeRates } from "@octocodeai/octocode-ai";
+import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
 import { DAY_MS } from "../shared/util.ts";
 import { type Catalog, listedCost, lookup } from "./catalog.ts";
 
@@ -5,9 +7,32 @@ import { type Catalog, listedCost, lookup } from "./catalog.ts";
 export interface ModelRef {
 	provider: string;
 	id: string;
-	cost?: { input: number; output: number };
+	/** A time-limited price also carries its last day (`until`) and the rates that follow it (`after`). */
+	cost?: { input: number; output: number; until?: string; after?: { input: number; output: number } };
 	contextWindow?: number;
 	input?: readonly string[];
+}
+
+/** The input and output rates in effect at `now` (`activeRates`): a time-limited price gives way to its `after` rates. */
+export function currentPrice(
+	cost: ModelRef["cost"],
+	now: Date | number = Date.now(),
+): { input: number; output: number } | undefined {
+	if (!cost) return undefined;
+	const rates = ({ input, output }: { input: number; output: number }) => ({
+		input,
+		output,
+		cacheRead: 0,
+		cacheWrite: 0,
+	});
+	return activeRates(
+		{
+			...rates(cost),
+			...(cost.until !== undefined ? { until: cost.until } : {}),
+			...(cost.after ? { after: rates(cost.after) } : {}),
+		},
+		now,
+	);
 }
 
 /**
@@ -46,7 +71,8 @@ const STALE_AFTER_MS = 548 * DAY_MS;
 /** Octocode's metadata, with what it lacks from models.dev. Price: three input tokens to one output, as agent turns spend. */
 function facts(ref: ModelRef, catalog: Catalog | undefined): Facts {
 	const known = lookup(catalog, ref.provider, ref.id);
-	const cost = ref.cost && ref.cost.input + ref.cost.output > 0 ? ref.cost : listedCost(catalog, ref.provider, ref.id);
+	const own = currentPrice(ref.cost);
+	const cost = own && own.input + own.output > 0 ? own : listedCost(catalog, ref.provider, ref.id);
 	// An id like `anthropic/claude-x` (a router's) names its lab when models.dev does not.
 	const slash = ref.id.indexOf("/");
 	return {
@@ -138,20 +164,80 @@ export function resolveTier(
 /** The `:<level>` suffixes Octocode's `--model <pattern>` accepts. */
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
+/** The `:<level>` suffix a model value or purpose ends with (`:low`), or "" without one. */
+function thinkingSuffix(value: string | undefined): string {
+	const colon = value ? value.lastIndexOf(":") : -1;
+	return value && colon > 0 && THINKING_LEVELS.has(value.slice(colon + 1)) ? value.slice(colon) : "";
+}
+
+/** Thinking level of a child whose call and profile name none. */
+export const SUBAGENT_THINKING_ENV = "OCTOCODE_SUBAGENT_THINKING";
+
+/**
+ * A child's level when neither its call nor its profile names one. Never the parent's: the coordinator thinks hard and
+ * a worker spends only what its task needs, so the user's `defaultThinkingLevel` (the coordinator's) does not reach it.
+ */
+export const SUBAGENT_DEFAULT_THINKING = "medium";
+
+/** The level `OCTOCODE_SUBAGENT_THINKING` names, else `SUBAGENT_DEFAULT_THINKING` (a value that is not a level is ignored). */
+export function subagentThinking(env: NodeJS.ProcessEnv = process.env): string {
+	const value = env[SUBAGENT_THINKING_ENV]?.trim().toLowerCase();
+	return value && THINKING_LEVELS.has(value) ? value : SUBAGENT_DEFAULT_THINKING;
+}
+
+/** A route's `:thinking` level (`low` in `p/m:low`), or undefined without one. */
+const routeThinking = (model: string | undefined): string | undefined => thinkingSuffix(model).slice(1) || undefined;
+
+/** The route with its level replaced by `level`. */
+const withThinking = (model: string, level: string): string =>
+	`${model.slice(0, model.length - thinkingSuffix(model).length)}:${level}`;
+
+/**
+ * The route at the level the child will run at: a registry model without that level (no reasoning, no `xhigh`) clamps it
+ * as the child's session does, so what the coordinator is told is what runs.
+ */
+export function supportedThinking(model: string, available: readonly ModelRef[]): string {
+	const level = routeThinking(model);
+	const target = routedModel(model, available) as Parameters<typeof clampThinkingLevel>[0] | undefined;
+	if (!level || !target) return model;
+	const clamped = clampThinkingLevel(target, level as Parameters<typeof clampThinkingLevel>[1]);
+	return clamped === level ? model : withThinking(model, clamped);
+}
+
+/** A route as the coordinator reads it: `provider/id, low thinking`. */
+function routeText(model: string | undefined): string {
+	if (!model) return "this session's model";
+	const level = routeThinking(model);
+	return level ? `${model.slice(0, model.length - level.length - 1)}, ${level} thinking` : model;
+}
+
+/** A run's route and what chose it: `p/m, low thinking (profile researcher: small:low)`. */
+export function routeSummary(route: { model?: string; via?: string; fallback?: string; refusedBy?: string }): string {
+	const why = route.via ?? (route.fallback ? fallbackNote(route.fallback, route.refusedBy) : "this session's model");
+	return `${routeText(route.model)} (${why})`;
+}
+
 /**
  * Which model a subagent runs on. `model` goes to `--model`; `fallback` names the profile's preferred model when it is
  * unavailable (the child then runs on the parent's model), and `refusedBy` its provider when that provider is configured
- * but refused its credential recently; `error` refuses an explicit request.
+ * but refused its credential recently; `error` refuses an explicit request. `thinking` is the level of a route with no
+ * model to suffix (this session has none): the child starts with `--thinking`.
  */
-export type ModelRoute = { model?: string; fallback?: string; refusedBy?: string } | { error: string };
+export type ModelRoute =
+	| { model?: string; thinking?: string; fallback?: string; refusedBy?: string }
+	| { error: string };
 
 /** Why a profile's preferred model was not used: `p/m unavailable`, or `p/m: p refused its credential`. */
 export const fallbackNote = (fallback: string, refusedBy?: string): string =>
 	refusedBy ? `${fallback}: ${refusedBy} refused its credential` : `${fallback} unavailable`;
 
+/** A route without its provider: `claude-haiku-5-5:low` for `anthropic/claude-haiku-5-5:low`. */
+export const withoutProvider = (model: string | undefined): string | undefined =>
+	model?.slice(model.lastIndexOf("/") + 1);
+
 /** The model a run is on without its provider (`claude-haiku-5-5:low`), with why it is the parent's when the profile's preference was not used. */
 export function modelLabel(details: { model?: string; fallback?: string; refusedBy?: string }): string {
-	const model = details.model?.slice(details.model.lastIndexOf("/") + 1);
+	const model = withoutProvider(details.model);
 	return details.fallback
 		? `${model ?? "parent model"} (${fallbackNote(details.fallback, details.refusedBy)})`
 		: (model ?? "");
@@ -215,6 +301,8 @@ interface RouteInput {
 	 * skips them; an explicit model and the parent's own provider (its session proves the credential) are kept.
 	 */
 	refused?: ((provider: string) => boolean) | undefined;
+	/** Level for a route whose call and profile carry no `:thinking` suffix (`subagentThinking()`). */
+	thinking?: string | undefined;
 }
 
 /** The listed model a route's `provider/id[:thinking]` names, or undefined without a route or a listed match. */
@@ -247,7 +335,24 @@ function tierRoute(
 	return parentModel.model ? { model: `${parentModel.model}${thinking}` } : {};
 }
 
+/**
+ * The route of a child, with its thinking level: the call's `:thinking` suffix, else the profile's (a role's effort holds
+ * on whichever model the call picks), else `input.thinking` (`subagentThinking()`), never the parent's current level.
+ * A route with no model (the session has none) carries the level as `thinking`, from a purpose's suffix, the profile's, or the default.
+ */
 export function routeModel(input: RouteInput): ModelRoute {
+	const route = routeWithoutThinking(input);
+	if ("error" in route) return route;
+	if (route.model && thinkingSuffix(route.model)) return route;
+	const thinking =
+		(route.model ? "" : thinkingSuffix(input.explicit)) ||
+		thinkingSuffix(input.preferred) ||
+		(input.thinking ? `:${input.thinking}` : "");
+	if (!thinking) return route;
+	return route.model ? { ...route, model: `${route.model}${thinking}` } : { ...route, thinking: thinking.slice(1) };
+}
+
+function routeWithoutThinking(input: RouteInput): ModelRoute {
 	const { explicit, preferred, parent, refused } = input;
 	const usable = usableModels(input.available, parent, refused);
 	const all = input.available;

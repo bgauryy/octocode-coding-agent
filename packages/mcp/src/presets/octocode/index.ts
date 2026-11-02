@@ -1,6 +1,5 @@
 import type { McpServerPreset } from "../../preset.ts";
 import { envFlag, MCP_ENV } from "../../../../common/src/env.ts";
-import { hostTrust } from "../../host.ts";
 import { octocodeCompactOverrides } from "./compact-overrides.ts";
 import { OCTOCODE_SERVER } from "./names.ts";
 import { octocodeLaunch } from "./launch.ts";
@@ -26,13 +25,7 @@ export function octocodePreset(
 		takeWarnings: takeOctocodeWarnings,
 		prepareLaunch(entry, cwd, trusted) {
 			if (entry.scope === "default") {
-				const launch = octocodeLaunch(
-					cwd,
-					env,
-					undefined,
-					skillDirectories(),
-					trusted && hostTrust().contentTrusted({ cwd, isProjectTrusted: () => trusted }) === true,
-				);
+				const launch = octocodeLaunch(cwd, env, undefined, skillDirectories(), trusted);
 				// The launch values are paths, not configuration: keep `${}` and `!` resolution away from them.
 				return { ...entry, config: { ...entry.config, ...launch, env: literalConfigEnv(launch.env) } };
 			}

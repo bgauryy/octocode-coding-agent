@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ToolCallEvent, ToolCallEventResult } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent, ToolCallEventResult } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { PERMISSION_ENV } from "../../../common/src/env.ts";

@@ -1,18 +1,18 @@
 # Hooks
 
-A hook is an event handler, separate from a [plugin container](plugins.md), an instruction-based [skill](skills.md), or an in-process [extension](extensions.md).
+A hook is an event handler, separate from a [plugin container](plugins.md) and an instruction-based [skill](skills.md).
 
 Command hooks run shell commands at selected lifecycle events. They receive JSON on stdin and return exit codes or supported JSON output. Octocode reads a subset of Claude/Codex-style JSON configuration; it does not implement either host's complete protocol.
 
-Use [extensions](extensions.md) for in-process TypeScript behavior and terminal UI. Use [packages](packages.md) to distribute extensions and other resources. Native extension events and provider callbacks are separate from the command-hook subsystem.
+Use [packages](packages.md) to distribute skills, prompts and themes. The native event handlers the runtime registers for itself are separate from the command-hook subsystem.
 
 ## Enable and inspect
 
 Hooks are on in every main session; no startup flag enables or disables them. Each source keeps its own profile: `.claude` files use the Claude profile, `.codex` files and Codex TOML use the Codex profile, and Octocode files (`<Octocode home>/hooks.json`, `.octocode/hooks.json`) use the native contract. The Claude and Codex profiles are partial compatibility layers, not full host support; the sections below state what each implements.
 
-Execution still requires valid configuration, native configuration trust for project files and a reviewed fingerprint for plugin hooks. To turn all hooks off, set `"disableAllHooks": true` in any loaded hook file; see [Discovery](#discovery). To turn off one host's hooks, one file or one hook without editing it, use `/plugins` (the `toggles` setting); see [plugins](plugins.md#inspect-and-switch-plugins-extensions-and-hooks). The [Claude permission rules](permissions.md#claude-permission-rules) from the same settings files also always apply. Native extensions and skill discovery have their own loaders.
+Execution still requires valid configuration, native configuration trust for project files; plugin hooks load once the plugin is added or enabled (see [plugins](plugins.md)). To turn all hooks off, set `"disableAllHooks": true` in any loaded hook file; see [Discovery](#discovery). To turn off one host's hooks, one file or one hook without editing it, use `/harness` (the `toggles` setting); see [plugins](plugins.md#inspect-and-switch-plugins-extensions-and-hooks). The [Claude permission rules](permissions.md#claude-permission-rules) from the same settings files also always apply. Native extensions and skill discovery have their own loaders.
 
-Run `/hooks` to inspect loaded commands, source files, timing and configuration diagnostics. Each loaded command shows its source dialect and runtime profile. `/hooks events` lists every implemented event and the handler types each profile accepts there. Both are inspection commands: `/hooks enable`, `/hooks on` and `/hooks off` are not supported.
+Run `/harness hooks` to inspect loaded commands, source files, timing and configuration diagnostics. Each loaded command shows its source dialect and runtime profile. `/harness hooks events` lists every implemented event and the handler types each profile accepts there. Both are inspection only: switch hooks with `/harness enable` and `/harness disable`.
 
 For project hooks, open `/trust` and review native project configuration. Project resource trust and native configuration trust are distinct controls. Accepted native configuration is fingerprinted; changed project files need renewed trust. Trusting configuration reloads the runtime. The review lists what those files would run (commands, URLs, MCP-tool calls) and the environment variables they would send: `${NAME}` references in headers and `env`, and bare `$NAME` in headers, which HTTP hooks expand for names in `allowedEnvVars`. After editing user hook files, use `/reload` or restart.
 
@@ -26,7 +26,7 @@ Claude `onFailure: "block"` denies failed pre-tool hooks; `"continue"` retains f
 
 Explicit timeout capping, tool payloads, other lifecycle timing and remaining result semantics are still governed by the limitations below.
 
-Claude simple matchers support exact names separated by `|` or `,`; patterns containing other characters use unanchored JavaScript regexes. Codex matchers use unanchored regexes. Native matchers retain whole-name matching. Identical command text from different profiles runs separately; duplicates within a profile merge. Review the sources shown by `/hooks` when the same script is configured for several hosts.
+Claude simple matchers support exact names separated by `|` or `,`; patterns containing other characters use unanchored JavaScript regexes. Codex matchers use unanchored regexes. Native matchers retain whole-name matching. Identical command text from different profiles runs separately; duplicates within a profile merge. Review the sources shown by `/harness hooks` when the same script is configured for several hosts.
 
 ### Claude asynchronous command preview
 
@@ -34,7 +34,7 @@ Claude-profile command handlers can set `async: true` to start without delaying 
 
 After successful completion, string-valued `systemMessage` and `hookSpecificOutput.additionalContext` become hidden context once, at the next prompt or a naturally continuing tool boundary. Completion does not start another model turn. The response can be a JSON object alone on stdout, including pretty-printed JSON, or the last JSON object on its own line among log lines. Incorrectly typed context fields are dropped. Captured output is limited to 64 KiB and pending context to 16 KiB, using the existing context spill mechanism.
 
-`asyncRewake: true` also runs in the background, but retains its configured timeout even when `async` is set. Exit code 2 queues a hidden follow-up and can wake an idle agent; stderr takes precedence over stdout. Successful JSON context still waits for a natural prompt or tool boundary. Background execution timing appears in `/hooks` without warnings claiming the foreground waited for it.
+`asyncRewake: true` also runs in the background, but retains its configured timeout even when `async` is set. Exit code 2 queues a hidden follow-up and can wake an idle agent; stderr takes precedence over stdout. Successful JSON context still waits for a natural prompt or tool boundary. Background execution timing appears in `/harness hooks` without warnings claiming the foreground waited for it.
 
 Session replacement and shutdown cancel running background processes and discard undelivered context. An already-cancelled invocation cannot start a new process, and an already-cancelled prompt does not consume pending context. Notification observers also stop with their session while remaining independent of foreground cancellation. This preview does not implement asynchronous `SessionEnd`, verbose completion notices or upstream diagnostic messages for dropped fields. Native handlers reject both async fields. Codex accepts `async` with the distinct behavior below and rejects `asyncRewake`.
 
@@ -52,13 +52,13 @@ Context over the handler's limit is saved to an owner-only file in Octocode's ex
 
 Both source profiles accept `mcp_tool` handlers targeting servers registered with the existing MCP owner. Calls do not dispatch hooks again, but Octocode's permission gate decides them like a model's MCP call, except from a `PermissionRequest` hook (see [Hook-initiated MCP calls](permissions.md#hook-initiated-mcp-calls)). Codex requires an existing connection, attempts startup callbacks without waiting for servers, and excludes `SessionEnd`. Its whole-value placeholders preserve JSON types, embedded placeholders become text, and missing fields fail the callback before invoking a tool. Claude retains string substitution and skips startup/resume/fork callbacks; clear and compact callbacks can run.
 
-Errors remain hook failures; explicit supported decisions use the profile's output decoder. Calls use the shorter server or hook deadline. The local hook deadline currently includes time spent in MCP elicitation; Codex excludes that time upstream, so this transport remains partial. Normal native sessions load the built-in MCP owner. SDK sessions that disable native features or sessions that replace/disable that extension must supply a compatible owner. The separately owned automatic Octocode research server is not exposed through this bridge. See the [Codex MCP contract](https://learn.chatgpt.com/docs/hooks#mcp-tool-hooks).
+Errors remain hook failures; explicit supported decisions use the profile's output decoder. Calls use the shorter server or hook deadline. The local hook deadline currently includes time spent in MCP elicitation; Codex excludes that time upstream, so this transport remains partial. Sessions load the built-in MCP owner; with MCP disabled (`--no-mcp`) the bridge has no owner. The separately owned automatic Octocode research server is not exposed through this bridge. See the [Codex MCP contract](https://learn.chatgpt.com/docs/hooks#mcp-tool-hooks).
 
 ### Claude HTTP preview
 
 Claude-profile `type: "http"` handlers run for the supported events except SessionStart. They POST the event JSON and use the existing decision decoder. Header environment interpolation requires the handler's `allowedEnvVars`; trusted Claude settings can further restrict it with `httpHookAllowedEnvVars`. Their `allowedHttpHookUrls` arrays merge across loaded settings, with `*` wildcard patterns; an empty merged list permits no destinations. Untrusted project settings cannot expand either policy.
 
-Responses must be empty or JSON objects with a successful status. Transport errors, invalid responses, and timeouts follow `onFailure`. Responses are limited to 64 KiB and redirects are rejected. These limits and redirect behavior are local compatibility constraints. Configuration diagnostics appear in `/hooks`; the inspector hides HTTP URL paths and headers. Invalid URLs retain their failure policy: a required gate denies matching calls without sending a request. HTTP handlers run only for Claude sources, not native or Codex sources. See the [upstream HTTP contract](https://code.claude.com/docs/en/hooks#http-hook-fields) and [allowlist policy](https://code.claude.com/docs/en/settings-reference#allowedhttphookurls).
+Responses must be empty or JSON objects with a successful status. Transport errors, invalid responses, and timeouts follow `onFailure`. Responses are limited to 64 KiB and redirects are rejected. These limits and redirect behavior are local compatibility constraints. Configuration diagnostics appear in `/harness hooks`; the inspector hides HTTP URL paths and headers. Invalid URLs retain their failure policy: a required gate denies matching calls without sending a request. HTTP handlers run only for Claude sources, not native or Codex sources. See the [upstream HTTP contract](https://code.claude.com/docs/en/hooks#http-hook-fields) and [allowlist policy](https://code.claude.com/docs/en/settings-reference#allowedhttphookurls).
 
 ### Claude prompt evaluation preview
 
@@ -115,7 +115,7 @@ Save this configuration in `<repository-root>/.octocode/hooks.json`:
 }
 ```
 
-Start with hooks enabled, trust the native project configuration, and inspect `/hooks`. The command's stdout becomes hidden model context on the next prompt, not a terminal notification. The example requires Node on PATH. Its exact JSON and command are exercised by [the discovery tests](../test/octocode/hooks-discovery.test.ts).
+Start with hooks enabled, trust the native project configuration, and inspect `/harness hooks`. The command's stdout becomes hidden model context on the next prompt, not a terminal notification. The example requires Node on PATH. Its exact JSON and command are exercised by [the discovery tests](../test/octocode/hooks-discovery.test.ts).
 
 ## Discovery
 
@@ -137,7 +137,7 @@ Missing files are normal. Unreadable files, invalid JSON and malformed hook cont
 
 `CLAUDE_CONFIG_DIR` selects the directory containing user `settings.json`. It does not change project locations or load the default user file as a fallback. Use an absolute path; Octocode resolves relative values from its process working directory without shell or tilde expansion. Skill discovery uses the same Claude directory resolver.
 
-Any loaded file with `disableAllHooks: true` disables all loaded hooks, including required gates. A later `false` does not override it. This is Octocode's conservative switch, not Claude settings precedence. An untrusted project cannot supply this switch because its files are not loaded. `/hooks` can report the subsystem enabled with zero loaded commands and a disable diagnostic.
+Any loaded file with `disableAllHooks: true` disables all loaded hooks, including required gates. A later `false` does not override it. This is Octocode's conservative switch, not Claude settings precedence. An untrusted project cannot supply this switch because its files are not loaded. `/harness hooks` can report the subsystem enabled with zero loaded commands and a disable diagnostic.
 
 ## Supported contract
 
@@ -177,7 +177,7 @@ Upstream differences that matter: Codex defaults most command timeouts to 600 se
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | JSON configuration     | Accepts nested event → matcher group → command handler; ignores unrelated top-level settings                                            | Basic command entries can migrate. Successful parsing alone does not prove semantic compatibility.                                                      |
 | Discovery and trust    | Only the seven paths above; native project fingerprint approval                                                                         | No managed-policy, plugin manifest, skill-frontmatter or inline TOML import. Host trust decisions are not imported.                                     |
-| Command fields         | `type`, `command`, `timeout`, `failClosed`; `statusMessage` accepted but not displayed                                                  | `commandWindows`, `command_windows`, `additionalContextLimit`, `async`, `if`, `args` and other handler fields reject the entry.                         |
+| Command fields         | `type`, `command`, `timeout`, `failClosed`; `statusMessage` accepted but not displayed                                                  | `commandWindows`, `command_windows`, `additionalContextLimit`, `async`, `if`, `args`, `shell` and other handler fields reject the entry.                |
 | Timeouts               | Default 60 seconds; maximum 600                                                                                                         | Set an explicit supported timeout when migrating.                                                                                                       |
 | Matchers               | Whole-name JavaScript regex; aliases also match                                                                                         | Partial/unanchored patterns are not portable. A nonempty Stop matcher matches no names and prevents execution; omit it.                                 |
 | Common input           | `session_id`, `transcript_path`, `cwd`, `hook_event_name`                                                                               | No `permission_mode`, `model`, `turn_id`, prompt or agent metadata. Missing transcript is an empty string; an existing transcript is Octocode's format. |
@@ -196,7 +196,7 @@ Upstream differences that matter: Codex defaults most command timeouts to 600 se
 
 The native profile accepts only the events marked for it in [Hook events](hook-events.md); the parser reports the others. That table is the complete allowlist, not a sample. `PreMessageSend` and `PostMessageReceive` are Octocode-specific.
 
-**Porting check:** review `/hooks` diagnostics, inspect the actual input consumed by each script, choose an explicit timeout, and exercise allow/deny/error/timeout outcomes before relying on a gate. Use only the documented rewrite and plugin adapters; unsupported reverse translations deny the rewritten call rather than executing an unsanitized input. Verify the resulting tool input and permission decision in a fixture before migrating a policy.
+**Porting check:** review `/harness hooks` diagnostics, inspect the actual input consumed by each script, choose an explicit timeout, and exercise allow/deny/error/timeout outcomes before relying on a gate. Use only the documented rewrite and plugin adapters; unsupported reverse translations deny the rewritten call rather than executing an unsanitized input. Verify the resulting tool input and permission decision in a fixture before migrating a policy.
 
 The regression suite checks Stop termination in both command orders and in a single conflicting response, alongside discovery, denial, approval, context, failure and cancellation tests. These are local contract tests. Eleven isolated Claude Code 2.1.309 permission cases and pinned Codex parser comparisons provide narrow differential evidence, recorded in the matrix; neither complete upstream CLI/session contract has passed conformance. Future host adapters need pinned fixtures for discovery, input, output and aggregation before advertising full compatibility.
 
@@ -206,7 +206,7 @@ Hooks execute with the launching user's privileges. They are not sandboxed. The 
 
 Pre-tool/message hooks normally fail open after a crash, timeout or malformed JSON result. Set `failClosed: true` on a required gate command to deny on those failures. Failures are audited; UI warnings are shown once per hook. Required command-configuration errors also deny matching calls. This does not turn arbitrary malformed configuration into a blocking policy.
 
-If a hook does not run, check `/hooks` in this order: startup enablement, discovered path, native project trust, disable diagnostics, event/type/field support, matcher, and command availability. Configuration changes take effect on reload/session start, not through a file watcher. Use `/trust` again when project configuration changed. Do not remove safety checks just to make an unsupported configuration execute.
+If a hook does not run, check `/harness hooks` in this order: startup enablement, discovered path, native project trust, disable diagnostics, event/type/field support, matcher, and command availability. Configuration changes take effect on reload/session start, not through a file watcher. Use `/trust` again when project configuration changed. Do not remove safety checks just to make an unsupported configuration execute.
 
 #### Prompt submission in the source profiles
 
@@ -240,9 +240,9 @@ Vendor internal agents, vendor transcript formats, parent background-task invent
 
 #### Session termination in the source profiles
 
-Claude `SessionEnd` runs for session replacement or quit: new sessions map to `clear`, resume to `resume`, and other termination to `other`. Runtime reload does not emit SessionEnd. Codex emits it only for main-session quit with `reason: "other"`; switching sessions and subagent shutdown do not emit it. Octocode does not provide the vendor's idle/archive service events.
+Native, Claude-format and plugin `SessionEnd` hooks run for session replacement or quit: new sessions map to `clear`, resume to `resume`, and other termination to `other`. Runtime reload does not emit SessionEnd. Codex emits it only for main-session quit with `reason: "other"`; switching sessions and subagent shutdown do not emit it. Octocode does not provide the vendor's idle/archive service events.
 
-SessionEnd is observational. Claude defaults to 1.5 seconds per command. The shared budget follows the largest configured non-plugin hook timeout, capped at 60 seconds, unless `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` overrides it. That override also supplies the default per-command timeout. Plugin timeouts do not increase the shared budget. Codex defaults to one second and caps explicit timeouts at three seconds. Cleanup uses a fresh shutdown cancellation scope, so an already-aborted turn does not suppress it.
+SessionEnd is observational. Native and Claude hooks default to 1.5 seconds per command. The shared budget follows the largest configured native, Claude-format or plugin hook timeout, capped at 60 seconds, unless `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` overrides it. That override also supplies the default per-command timeout. Codex defaults to one second and caps explicit timeouts at three seconds. Cleanup uses a fresh shutdown cancellation scope, so an already-aborted turn does not suppress it.
 
 ### Codex post-tool result preview
 

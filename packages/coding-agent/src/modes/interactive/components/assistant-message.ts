@@ -12,7 +12,7 @@ import {
 	Text,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { ApplicationAssets } from "../../../core/application/assets.ts";
 import { normalizeApplicationMessage } from "../../../core/application/normalize.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";

@@ -33,7 +33,8 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import type { Settings } from "../src/core/settings-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import type { InlineExtension, ResourceLoader } from "../src/index.ts";
+import type { InlineExtension } from "../src/core/features/index.ts";
+import type { ResourceLoader } from "../src/core/resource-loader/types.ts";
 import {
 	type CreateTestExtensionsResultInput,
 	createTestExtensionsResult,

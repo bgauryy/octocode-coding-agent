@@ -5,12 +5,7 @@ import { repoKey } from "../octocode/shared/home/repo.ts";
 import { validateMcpServerConfig, type McpServerConfig } from "../../../mcp/src/servers.ts";
 import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 import { pluginContext } from "./plugin-context.ts";
-import {
-	resolveConfiguredPlugin,
-	resolvePluginPath,
-	startPluginFingerprint,
-	type PluginManifest,
-} from "./plugin-manifest.ts";
+import { resolveConfiguredPlugin, resolvePluginPath, type PluginManifest } from "./plugin-manifest.ts";
 import { configuredPlugins } from "./plugin-settings.ts";
 import type { Settings } from "./settings-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -18,10 +13,9 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 type PluginEntry = NonNullable<Settings["plugins"]>[number];
 type Server = { name: string; config: McpServerConfig };
 
-/** Read and fingerprint declarations without connecting servers or running package code. */
+/** Read declarations without connecting servers or running package code; non-empty `errors` means none load. */
 export function inspectPluginMcp(entry: PluginEntry): {
 	manifest?: PluginManifest;
-	fingerprint?: string;
 	servers: Server[];
 	errors: string[];
 } {
@@ -34,7 +28,6 @@ export function inspectPluginMcp(entry: PluginEntry): {
 		result.errors.push(...errors);
 		if (!manifest) throw new Error(failure);
 		result.manifest = manifest;
-		const hash = startPluginFingerprint(manifest);
 		const servers = new Map<string, McpServerConfig>();
 		const add = (value: unknown, source: string) => {
 			if (!isRecord(value)) throw new Error(`${source}: expected an MCP server map`);
@@ -63,7 +56,6 @@ export function inspectPluginMcp(entry: PluginEntry): {
 			const source = resolvePluginPath(manifest.root, relative);
 			if (path.extname(source) !== ".json") throw new Error(`${relative}: MCP bundles are not supported`);
 			const text = readFileSync(source, "utf8");
-			hash.update(JSON.stringify([source, text]));
 			const value: unknown = JSON.parse(stripBom(text));
 			if (!isRecord(value) || !isRecord(value.mcpServers)) throw new Error(`${source}: expected an mcpServers object`);
 			add(value.mcpServers, source);
@@ -79,7 +71,6 @@ export function inspectPluginMcp(entry: PluginEntry): {
 			}
 		}
 		result.servers = [...servers].map(([name, config]) => ({ name, config }));
-		if (!result.errors.length) result.fingerprint = hash.digest("hex");
 	} catch (error) {
 		result.errors.push(String(error));
 	}
@@ -95,7 +86,7 @@ function expand(value: unknown, variables: Record<string, string>): unknown {
 	return value;
 }
 
-/** Activate reviewed declarations through the existing MCP registry; the transport owner manages connections. */
+/** Activate the declarations of enabled plugins (enabling approves them) through the existing MCP registry; the transport owner manages connections. */
 export function loadConfiguredPluginMcp(
 	entries: Settings["plugins"],
 	projectRoot: string,
@@ -109,11 +100,7 @@ export function loadConfiguredPluginMcp(
 		if (entry.enabled === false) continue;
 		const inspected = inspectPluginMcp(entry);
 		result.errors.push(...inspected.errors);
-		if (!inspected.manifest || !inspected.fingerprint || !inspected.servers.length) continue;
-		if (entry.mcpFingerprint !== inspected.fingerprint) {
-			result.errors.push(`${entry.path}: plugin MCP servers require review; mcpFingerprint=${inspected.fingerprint}`);
-			continue;
-		}
+		if (!inspected.manifest || inspected.errors.length || !inspected.servers.length) continue;
 		const context = pluginContext(inspected.manifest);
 		const variables = {
 			CLAUDE_PLUGIN_ROOT: context.root,

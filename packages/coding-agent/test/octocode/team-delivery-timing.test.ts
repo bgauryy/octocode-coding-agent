@@ -129,7 +129,7 @@ describe.runIf(process.platform !== "win32")("foreground bash while a peer's mai
 		live.faux.setResponses([
 			(context) => {
 				live.record(context);
-				return fauxAssistantMessage([fauxToolCall("bash", { command: "echo going; sleep 8" })], {
+				return fauxAssistantMessage([fauxToolCall("bash", { command: "echo going; sleep 8", reason: "long work" })], {
 					stopReason: "toolUse",
 				});
 			},

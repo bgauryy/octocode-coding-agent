@@ -1,26 +1,13 @@
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
 
-/** Item types, epic first; the one source for schemas, filters and editors. `feature` was called `task` before tasks became their own entity. */
+/** Item types, epic first; the one source for schemas, filters and editors. */
 export const ITEM_TYPES = ["epic", "feature", "bug", "research"] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 /** The type an item gets when none is named. */
 export const DEFAULT_ITEM_TYPE: ItemType = "feature";
-/**
- * Names an older build or caller used for an item type, with the type each means now. Accepted as input for one
- * release (`itemTypeInput`); never stored or returned.
- */
-export const LEGACY_ITEM_TYPES: Readonly<Record<string, ItemType>> = { task: "feature" };
-/**
- * An item type as input: a current type as it is, a legacy name mapped to its replacement (`legacy` names the old
- * name so the caller can tell the user), anything else undefined. The `task` tool and the store both accept
- * `task` through this for one release.
- */
-export function itemTypeInput(type: string): { type: ItemType; legacy?: string } | undefined {
-	if ((ITEM_TYPES as readonly string[]).includes(type)) return { type: type as ItemType };
-	const current = Object.hasOwn(LEGACY_ITEM_TYPES, type) ? LEGACY_ITEM_TYPES[type] : undefined;
-	return current ? { type: current, legacy: type } : undefined;
-}
+/** Whether `type` names an item type. */
+export const isItemType = (type: string): type is ItemType => (ITEM_TYPES as readonly string[]).includes(type);
 
 /** Task states: `todo` and `ongoing` are open; `done` and `dropped` are closed. */
 export const TASK_STATES = ["todo", "ongoing", "done", "dropped"] as const;

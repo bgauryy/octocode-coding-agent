@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { USER_AUTHOR } from "../agentdb/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -6,6 +6,7 @@ import { lastInjection } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
 import {
 	MEMORY_KINDS,
+	describeMemory,
 	type Memory,
 	MemoryError,
 	type MemoryInput,
@@ -14,7 +15,6 @@ import {
 	memoryAge,
 	memoryLine,
 } from "./store.ts";
-import { describeMemory } from "./tool.ts";
 
 const LIST_LIMIT = 100;
 const ADD = "+ Add a memory";
@@ -28,7 +28,7 @@ export function memoryTemplate(
 	return [
 		`title: ${memory?.title ?? ""}`,
 		`kind: ${memory?.kind ?? "fact"}  # ${MEMORY_KINDS.join(" | ")}`,
-		`scope: ${memory?.scope ?? "project"}  # project | global`,
+		`scope: ${memory?.scope ?? "workspace"}  # workspace | project | global`,
 		`keywords: ${memory?.keywords ?? ""}`,
 		`pinned: ${memory?.pinned ? "yes" : "no"}`,
 		"---",
@@ -61,20 +61,28 @@ export function parseTemplate(text: string): MemoryInput {
 			if (!(MEMORY_KINDS as readonly string[]).includes(value))
 				throw new MemoryError(`kind must be one of ${MEMORY_KINDS.join(", ")}.`);
 			input.kind = value as MemoryKind;
-		} else if (value !== "project" && value !== "global") throw new MemoryError("scope must be project or global.");
+		} else if (value !== "workspace" && value !== "project" && value !== "global")
+			throw new MemoryError("scope must be workspace, project or global.");
 		else input.scope = value;
 	}
 	return input;
 }
 
-const section = (memory: Memory) => (memory.pinned ? "Pinned" : memory.scope === "project" ? "Project" : "Global");
+const section = (memory: Memory) =>
+	memory.pinned
+		? "Pinned"
+		: memory.scope === "workspace"
+			? "Workspace"
+			: memory.scope === "project"
+				? "Project"
+				: "Global";
 
 /** One picker option: `Pinned · M3 (project, decision, pinned) Title — body…`. */
 const optionOf = (memory: Memory) => `${section(memory)} · ${memoryLine(memory, 80)}`;
 
 /** Pinned, then project, then global memories, newest first within each. */
 function grouped(memories: readonly Memory[]): Memory[] {
-	const order = { Pinned: 0, Project: 1, Global: 2 };
+	const order = { Pinned: 0, Workspace: 1, Project: 2, Global: 3 };
 	return [...memories].sort((a, b) => order[section(a)] - order[section(b)] || b.updatedAt - a.updatedAt);
 }
 
@@ -200,7 +208,7 @@ async function add(ctx: ExtensionCommandContext, store: MemoryStore, text: strin
 	const saved = await editUntilValid(
 		ctx,
 		"New memory",
-		memoryTemplate({ title: text, kind: "fact", keywords: "", scope: "project", body: "", pinned: false }),
+		memoryTemplate({ title: text, kind: "fact", keywords: "", scope: "workspace", body: "", pinned: false }),
 		(edited) => store.set({ ...parseTemplate(edited), author: USER_AUTHOR, sourceSession }).memory,
 	);
 	if (saved) say(ctx, `Saved ${memoryLine(saved, 60)}`, "info");
@@ -259,7 +267,7 @@ async function act(
 	const actions = [
 		"Edit",
 		memory.pinned ? "Unpin" : "Pin",
-		memory.scope === "project" ? "Move to global" : "Move to this project",
+		memory.scope !== "global" ? "Move to global" : "Move to this workspace",
 		"Delete",
 		"Show",
 	];
@@ -288,7 +296,7 @@ async function act(
 		const input: MemoryInput =
 			action === "Pin" || action === "Unpin"
 				? { pinned: action === "Pin" }
-				: { scope: memory.scope === "project" ? "global" : "project" };
+				: { scope: memory.scope !== "global" ? "global" : "workspace" };
 		updated = store.set({ ...input, id: memory.id, author: USER_AUTHOR }).memory;
 	}
 	say(ctx, `Updated ${memoryLine(updated, 60)}`, "info");

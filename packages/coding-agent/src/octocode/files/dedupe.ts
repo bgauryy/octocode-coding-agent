@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { BranchIndex } from "../shared/branch-index.ts";
 import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
 import { OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";

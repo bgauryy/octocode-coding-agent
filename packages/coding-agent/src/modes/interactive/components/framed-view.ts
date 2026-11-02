@@ -9,7 +9,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
-import type { ExtensionCommandContext } from "../../../core/extensions/types.ts";
+import type { ExtensionCommandContext } from "../../../core/features/types.ts";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";

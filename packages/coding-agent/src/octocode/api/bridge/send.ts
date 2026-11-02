@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../../shared/fence.ts";

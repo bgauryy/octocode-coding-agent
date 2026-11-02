@@ -1,12 +1,7 @@
 import path from "node:path";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-	ToolCallEvent,
-	ToolCallEventResult,
-} from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
 import { reservationPath, resolveToolPath } from "../shared/home.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
@@ -19,11 +14,12 @@ import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "./store/workspace.ts";
-import { checkGoal } from "./identity.ts";
+import { checkGoal, modelRoute } from "./identity.ts";
 import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
 import { teamNameToResume } from "./session/rejoin.ts";
 import { registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
+import { registerRecordedSpend } from "./tools/spend.ts";
 
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
 const POWERSHELL_HELD =
@@ -76,10 +72,11 @@ export function registerCollab(
 	registerCoordinateTool(api, team, options.stopAgent, options.registerTool);
 	registerSendMessageTool(api, team, options.registerTool);
 	registerTeamEvents(api, team, options.beforeLeave, options.shellChanges);
+	registerRecordedSpend(api, team);
 	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
 	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
-	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers Octocode's own edit and write.
+	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers `bash` writes.
 	// A `..` after a symlink stays in the path (`reservationPath`): the shell reads it past the link, not before it.
 	const refusal = (file: string, cwd: string) => team.reservation(reservationPath(cwd, file), file);
 	const reservationGate = async (
@@ -136,7 +133,7 @@ function registerCoordinateTool(
 			description:
 				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/tmp/` scratch are per worktree.",
 			promptGuidelines: [
-				"Other agents may be editing this repository. Before overlapping edits, use `agent` type `coordinate`: `action` list, lock your paths (the call's `reason` tells others what you will change), then unlock when done. When a check fails in a file you did not change, `changes` shows who did. Resolve conflicts with the owner.",
+				"Other agents may be editing this repository. Before overlapping edits, lock your paths with `agent` type `coordinate` (the call's `reason` tells others what you will change), then unlock when done. A check failing in a file you did not change: `changes` shows who did; resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {
@@ -306,23 +303,18 @@ function registerTeamEvents(
 		team.onContext(summarized);
 		return undefined;
 	});
-	// Who changed which file, for `coordinate changes`: Octocode's edit/write by their arguments, `file` by its outcomes (a
-	// batch can partly fail), `bash` by the paths its parse names. Arguments are only on the start event, so they wait here
-	// for the end; a blocked or failed call ends as an error and records nothing.
-	const pending = new Map<string, string[]>();
+	// Who changed which file, for `coordinate changes`: `file` by its outcomes (a batch can partly fail), `bash` by the
+	// paths its parse names. A command is only on the start event, so it waits here for the end; a blocked or failed call
+	// ends as an error and records nothing.
 	const commands = new Map<string, string>();
 	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) team.onToolStart();
-		if (event.toolName === "edit" || event.toolName === "write")
-			pending.set(event.toolCallId, mutatedPaths(event.toolName, event.args));
-		else if (event.toolName === "bash" && shellChanges && isRecord(event.args) && event.args.type !== "powershell") {
+		if (event.toolName === "bash" && shellChanges && isRecord(event.args) && event.args.type !== "powershell") {
 			const command = optionalString(event.args.command);
 			if (command !== undefined) commands.set(event.toolCallId, command);
 		}
 	});
 	api.on("tool_execution_end", async (event, ctx) => {
-		const args = pending.get(event.toolCallId);
-		pending.delete(event.toolCallId);
 		const command = commands.get(event.toolCallId);
 		commands.delete(event.toolCallId);
 		if (event.isError) return;
@@ -342,7 +334,7 @@ function registerTeamEvents(
 			? outcomes.flatMap((outcome) =>
 					isRecord(outcome) && outcome.ok === true && typeof outcome.path === "string" ? [outcome.path] : [],
 				)
-			: [...(args ?? []), ...written];
+			: written;
 		if (files.length === 0) return;
 		try {
 			team.editLog()?.record(
@@ -354,12 +346,21 @@ function registerTeamEvents(
 			// A missing record only makes `coordinate changes` less complete.
 		}
 	});
+	// `provider/id:thinking`: `coordinate list` and the panel show every agent's route and effort, so a coordinator sees what each child runs on.
 	api.on("message_end", async (event, ctx) => {
-		if (event.message.role === "assistant")
-			team.onUsage(
-				event.message.usage,
-				event.message.model,
-				unpricedModel(event.message, modelLookup(ctx)) !== undefined,
-			);
+		if (event.message.role !== "assistant") return;
+		const { provider, model } = event.message;
+		const same = ctx.model?.id === model ? ctx.model : undefined;
+		team.onUsage(
+			event.message.usage,
+			model ? modelRoute({ provider, id: model, reasoning: same?.reasoning }, api.getThinkingLevel()) : undefined,
+			unpricedModel(event.message, modelLookup(ctx)) !== undefined,
+		);
+	});
+	api.on("model_select", async (event) => {
+		team.setModel(modelRoute(event.model, api.getThinkingLevel()));
+	});
+	api.on("thinking_level_select", async (event, ctx) => {
+		team.setModel(modelRoute(ctx.model, event.level));
 	});
 }

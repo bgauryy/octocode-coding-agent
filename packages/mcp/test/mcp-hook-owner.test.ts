@@ -1,7 +1,7 @@
 import { type JsonRpcMessage, LATEST_PROTOCOL_VERSION, McpSessionExpiredError } from "../src/client/index.ts";
 import { createInMemoryTransportPair } from "../src/client/testing/index.ts";
 import { expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
 import { getMcpHookCaller } from "../src/hook-caller.ts";
 import { createMcpExtension } from "../src/index.ts";
 import { createHarness } from "../../coding-agent/test/suite/harness.ts";

@@ -1,6 +1,6 @@
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SessionShutdownEvent } from "../src/index.ts";
+import type { SessionShutdownEvent } from "../src/core/features/index.ts";
 import { runPrintMode } from "../src/modes/print-mode.ts";
 
 type EmitEvent = SessionShutdownEvent;

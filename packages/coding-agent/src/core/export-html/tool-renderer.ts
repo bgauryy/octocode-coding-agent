@@ -9,7 +9,7 @@ import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { Component } from "@octocodeai/octocode-tui";
 import { reasonRow } from "../../modes/interactive/components/tool-execution/reason.ts";
 import type { Theme } from "../../theme/theme.ts";
-import type { ToolRenderContext, ToolRenderers } from "../extensions/types.ts";
+import type { ToolRenderContext, ToolRenderers } from "../features/types.ts";
 import { ansiLinesToHtml } from "./ansi-to-html.ts";
 import type { ToolHtmlRenderer } from "./index.ts";
 

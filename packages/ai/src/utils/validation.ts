@@ -4,10 +4,10 @@ import type { Tool, ToolCall } from "../types.ts";
 import { parseStringifiedContainers } from "./stringified-containers.ts";
 import { formatValidationFailure } from "./validation-errors.ts";
 import { inferSchemaTypes, parseJsonContainer, resolveLocalRef } from "./json-schema-shape.ts";
+import { getToolValidator, getValidator } from "./validation-compiler.ts";
 
 export { formatValidationPath } from "./validation-errors.ts";
 
-const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
 /** Validators for sub-schemas compiled with their root's `$defs`, so a `$ref` inside an alternative resolves. */
 const scopedValidatorCache = new WeakMap<object, WeakMap<object, ReturnType<typeof Compile> | null>>();
 const TYPEBOX_KIND = Symbol.for("TypeBox.Kind");
@@ -305,17 +305,6 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
 	}
 }
 
-function getValidator(schema: Tool["parameters"]): ReturnType<typeof Compile> {
-	const key = schema;
-	const cached = validatorCache.get(key);
-	if (cached) {
-		return cached;
-	}
-	const validator = Compile(schema);
-	validatorCache.set(key, validator);
-	return validator;
-}
-
 /**
  * Finds a tool by name and validates the tool call arguments against its TypeBox schema
  * @param tools Array of tool definitions
@@ -350,7 +339,7 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	}
 	const schema = tool.validationParameters ?? tool.parameters;
 	let args = structuredClone(toolCall.arguments);
-	const validator = getValidator(schema);
+	const validator = getToolValidator(schema, tool.name);
 	normalizeOptionalNulls(args, schema);
 	Value.Convert(schema, args);
 

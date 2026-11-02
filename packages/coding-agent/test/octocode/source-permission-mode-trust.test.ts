@@ -2,9 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-vi.mock("../../src/octocode/shared/trust.ts", () => ({
-	projectTrustForContents: async () => false,
-}));
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
@@ -38,7 +35,7 @@ async function editInManualMode(settingsFile: "settings.json" | "settings.local.
 		);
 	}
 	const fake = fakeHost();
-	const ctx = fakeCtx({ cwd, hasUI: false });
+	const ctx = { ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => false };
 	const policy = registerSourcePolicy(fake.api, home);
 	await policy.refresh(ctx);
 	const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });

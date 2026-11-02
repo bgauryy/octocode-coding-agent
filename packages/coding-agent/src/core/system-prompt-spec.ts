@@ -38,8 +38,6 @@ export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSectionSpec[] = [
 	section("docs", "base", "core/system-prompt", "drop"),
 	section(MCPS_SECTION, "base", "mcp/section"),
 	section("addendum", "session", "core/system-prompt (APPEND_SYSTEM.md)"),
-	section("project_context", "session", "core/system-prompt (AGENTS.md)"),
-	section("skills", "session", "core/skills"),
 	section("cwd", "session", "core/system-prompt"),
 	section("octocode_work", "session", "octocode/instructions/policy"),
 	section("octocode_research", "session", "octocode/instructions/policy"),
@@ -47,6 +45,9 @@ export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSectionSpec[] = [
 	section("octocode_safety", "session", "octocode/instructions/policy"),
 	section("octocode_communication", "session", "octocode/instructions/policy"),
 	section("octocode_lean", "session", "octocode/instructions/lean"),
+	// After the policy, not before it: a long AGENTS.md then sits with the closing instructions, and the role still ends the session tier.
+	section("project_context", "session", "core/system-prompt (AGENTS.md)"),
+	section("skills", "session", "core/skills"),
 	section("role", "session", "octocode/turn (subagent role)"),
 	section("environment", "volatile", "core/system-prompt (currentEnvironment)"),
 	section("planning", "volatile", "octocode/plan"),

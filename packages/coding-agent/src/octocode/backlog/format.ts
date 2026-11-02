@@ -6,6 +6,7 @@ import { type Note, STATES, type State } from "@octocodeai/octocode-contracts/sn
 import type { BacklogTask, TaskTally, WorkLink } from "@octocodeai/octocode-contracts/backlogs";
 import { taskBlock, taskLine } from "./task-format.ts";
 import { refuseExportSecrets } from "./export-secrets.ts";
+import { type BacklogCounts, openEpics } from "./counts.ts";
 import type { ItemMarks } from "./marks.ts";
 
 export const STATE_TITLE: Record<State, string> = {
@@ -219,7 +220,7 @@ export function boardText(store: BacklogStore, self?: string): string {
 				];
 	});
 	if (own.length > 0)
-		sections.push(`Session tasks (${own.length})`, ...own.map((task) => `  ${taskLine(task, { owner: false })}`));
+		sections.push(`Session steps (${own.length})`, ...own.map((task) => `  ${taskLine(task, { owner: false })}`));
 	return sections.join("\n");
 }
 
@@ -232,11 +233,14 @@ export function openTaskCount(store: BacklogStore, self: string): number {
 }
 
 /** Keep the web workspace discoverable even when there are no open items; append live backlog counts and this session's open tasks. */
-export function countsText(counts: Record<State, number>, tasks = 0): string {
+export function countsText(counts: BacklogCounts, tasks = 0): string {
+	const { items } = counts;
+	const epics = openEpics(counts);
 	const parts = [
-		counts.ongoing ? `${counts.ongoing} ongoing` : "",
-		counts.todo ? `${counts.todo} todo` : "",
-		counts.backlog ? `${counts.backlog} to triage` : "",
+		items.ongoing ? `${items.ongoing} ongoing` : "",
+		items.todo ? `${items.todo} todo` : "",
+		items.backlog ? `${items.backlog} to triage` : "",
+		epics ? `${epics} epic${epics === 1 ? "" : "s"}` : "",
 		tasks ? `${tasks} task${tasks === 1 ? "" : "s"}` : "",
 	].filter(Boolean);
 	return ["/web · backlogs & activity", ...parts].join(" · ");

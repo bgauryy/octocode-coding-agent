@@ -2,10 +2,10 @@
 
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { resetApiProviders } from "@octocodeai/octocode-ai/compat";
-import { ExtensionRunner, type ToolDefinition } from "../extensions/index.ts";
-import { emitSessionShutdownEvent } from "../extensions/runner.ts";
+import { ExtensionRunner, type ToolDefinition } from "../features/index.ts";
+import { emitSessionShutdownEvent } from "../features/runner.ts";
 import { ModelRegistry } from "../model-registry.ts";
-import { defaultToolNames, NATIVE_FEATURE_PATH } from "../native-tools.ts";
+import { defaultToolNames } from "../native-tools.ts";
 import { applyToolModifiers } from "../settings-manager.ts";
 import { createBashToolDefinition } from "../tools/index.ts";
 import { createToolDefinitionFromAgentTool } from "../tools/tool-definition-wrapper.ts";
@@ -36,9 +36,7 @@ export function buildExtensionRuntime(host: ExtensionRuntimeHost, options: Build
 	const shellCommandPrefix = session.settingsManager.getShellCommandPrefix();
 	const shellPath = session.settingsManager.getShellPath();
 	const extensionsResult = session.resourceLoader.getExtensions();
-	const hasNativeTools = extensionsResult.extensions.some(
-		(extension) => extension.sourceInfo.path === NATIVE_FEATURE_PATH,
-	);
+	const hasNativeTools = extensionsResult.extensions.some((extension) => extension.sourceInfo.owner === "native");
 	const baseToolDefinitions = host.baseToolsOverride
 		? Object.fromEntries(
 				Object.entries(host.baseToolsOverride).map(([name, tool]) => [name, createToolDefinitionFromAgentTool(tool)]),

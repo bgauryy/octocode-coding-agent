@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../../src/index.ts";
+import type { ExtensionAPI } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 describe("regression #5996: session names do not contain newlines", () => {

@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../../src/index.ts";
+import type { ExtensionFactory } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 type SessionWithCompactionInternals = {

@@ -8,8 +8,8 @@ import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-cor
 import type { AssistantMessage, Model, RetryCallbacks } from "@octocodeai/octocode-ai/compat";
 import type { BashResult } from "../bash-executor.ts";
 import type { CacheWarmer } from "../cache-warmer.ts";
-import type { ExtensionRunner } from "../extensions/index.ts";
-import type { BeforeAgentStartTrigger } from "../extensions/runner.ts";
+import type { ExtensionRunner } from "../features/index.ts";
+import type { BeforeAgentStartTrigger } from "../features/runner.ts";
 import type { CompactionHost } from "../session-compaction.ts";
 import type { AgentEventsHost } from "./agent-events.ts";
 import {

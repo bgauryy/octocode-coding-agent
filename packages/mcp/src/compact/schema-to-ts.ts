@@ -29,8 +29,8 @@ export interface SchemaToTsOptions {
 	sharedDocs?: ReadonlyMap<string, string>;
 	/** Called with each field's name and doc text ("" for none), so a first pass can find docs shared across tools. */
 	onDoc?: (field: string, doc: string) => void;
-	/** Called with each field's dotted path (as `fieldDocs` addresses it) and whether that occurrence is required. */
-	onField?: (path: string, required: boolean) => void;
+	/** Called with each field's dotted path (as `fieldDocs` addresses it), whether it is required here and its schema description ("" for none). */
+	onField?: (path: string, required: boolean, description: string) => void;
 	/**
 	 * Called with each object-typed field's name, its type rendered at top level and its schema node, to find types
 	 * repeated by tools or within one.
@@ -92,6 +92,10 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		const description = options.fieldDocs?.[path] ?? (isNode(node) ? node.description : undefined);
 		const noteList = notes(schema);
 		return [oneLine(description), noteList.length ? `(${oneLine(noteList.join(", "))})` : ""].filter(Boolean).join(" ");
+	};
+	const upstreamDoc = (schema: unknown) => {
+		const node = deref(schema);
+		return isNode(node) && typeof node.description === "string" ? node.description : "";
 	};
 	/** A union branch or tuple item's type, after its own description. */
 	const described = (schema: unknown, type: string) => {
@@ -270,9 +274,11 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 						// A key this branch alone requires, as a placeholder or only in its `required` (`{ required: [matchString] }`):
 						// show the parent's field as required here. Type only: the shared field above already carries its doc.
 						for (const key of branchRequired) {
-							if (key in own || sharedRequired.has(key) || !(key in sharedProperties)) continue;
+							// The field may be this union's own or, for a union nested in a variant, an outer one's.
+							const source = key in sharedProperties ? sharedProperties[key] : (inheritable.properties as Node)[key];
+							if (key in own || sharedRequired.has(key) || source === undefined) continue;
 							// A bare `$ref` stays one, so the restated field names the shared alias instead of writing the type again.
-							const typed = shapeOnly(sharedProperties[key]);
+							const typed = shapeOnly(source);
 							if (isNode(typed)) restated.add(typed);
 							own[key] = typed;
 						}
@@ -351,14 +357,14 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 			if (isShapeless(property) && inherited !== undefined && !isShapeless(inherited)) {
 				// "As on the parent": an optional field adds nothing to the intersection; a required one says so, untyped.
 				if (!required.has(key)) continue;
-				options.onField?.(fieldPath, true);
+				options.onField?.(fieldPath, true, "");
 				out += `${inner}${identifier(key)}: unknown;\n`;
 				continue;
 			}
 			const doc = docText(property, fieldPath);
 			const placeholder = !doc && placeholders?.has(key);
 			if (!placeholder && (!isNode(property) || !restated.has(property))) options.onDoc?.(key, doc);
-			options.onField?.(fieldPath, required.has(key));
+			options.onField?.(fieldPath, required.has(key), upstreamDoc(property));
 			const shown = doc && options.sharedDocs?.get(key) !== doc ? `/** ${doc} */ ` : "";
 			out += `${inner}${shown}${identifier(key)}${required.has(key) ? "" : "?"}: ${fieldType(property, inner, fieldPath, key)};\n`;
 		}
@@ -368,11 +374,21 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 
 	/** A field's type, or the server-level alias for it when tools repeat the same object type. */
 	function fieldType(property: unknown, indent: string, path: string, key: string): string {
-		if (!options.onObject && !options.hoisted) return render(property, indent, path);
 		const node = deref(property);
-		if (!isNode(node) || !(isNode(node.properties) || isNode(node.additionalProperties)))
-			return render(property, indent, path);
+		const branches = isNode(node) ? (Array.isArray(node.anyOf) ? node.anyOf : node.oneOf) : undefined;
+		const shaped =
+			isNode(node) &&
+			(isNode(node.properties) ||
+				isNode(node.additionalProperties) ||
+				(Array.isArray(branches) &&
+					branches.some((branch) => isNode(deref(branch)) && isNode((deref(branch) as Node).properties))));
+		if (!shaped) return render(property, indent, path);
 		const topLevel = unaliased(() => render(property, "", path));
+		// A shape written inline that a definition of this schema spells out the same way (a server that sends a rule
+		// both inline and as a recursive definition) is that definition.
+		const same = [...aliases].find(([, body]) => body === topLevel);
+		if (same) return aliasName(same[0]);
+		if (!options.onObject && !options.hoisted) return render(property, indent, path);
 		options.onObject?.(key, topLevel, property as object);
 		return aliased()?.get(topLevel) ?? render(property, indent, path);
 	}

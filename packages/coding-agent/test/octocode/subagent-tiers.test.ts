@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SlashCommandInfo } from "../../src/core/slash-commands.ts";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkillsFromDir } from "../../src/core/skills.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
@@ -33,13 +34,16 @@ afterEach(() => {
 });
 
 describe("lean profiles", () => {
-	it("run exactly their own tools, bash and file by default, without the specialist floor", () => {
+	it("run their own tools plus bash, agent and steps by default, without the specialist floor", () => {
 		const lean = parseProfile("lean", "---\nlean: true\n---\nDo the task.");
-		expect(lean).toMatchObject({ lean: true, tools: "bash,file" });
-		expect(profileTools(lean)).toBe("bash,file");
+		expect(lean).toMatchObject({ lean: true, tools: "bash,agent,steps,file" });
+		expect(profileTools(lean)).toBe("bash,agent,steps,file");
 		expect(profileReach(lean)).toEqual(["file.workspace", "shell"]);
 		const cli = parseProfile("cli", "---\nlean: true\ntools: bash\n---\n");
-		expect(profileTools(cli)).toBe("bash");
+		expect(profileTools(cli)).toBe("bash,agent,steps");
+		// A list that omits the floor gets it; one that names it is not repeated; archive and MCP never join.
+		expect(profileTools(parseProfile("r", "---\nlean: true\ntools: read\n---\n"))).toBe("read,bash,agent,steps");
+		expect(profileTools(parseProfile("s", "---\nlean: true\ntools: steps,bash,agent\n---\n"))).toBe("steps,bash,agent");
 		expect(profileReach(cli)).toEqual(["shell"]);
 	});
 
@@ -50,9 +54,10 @@ describe("lean profiles", () => {
 	it("start without MCP or extensions and mark the child lean", () => {
 		const lean = parseProfile("lean", "---\nlean: true\n---\n");
 		const args = buildAgentArgs(lean, undefined, session, []);
-		expect(args).toEqual(expect.arrayContaining(["--no-extensions", "--no-mcp", "--tools", "bash,file"]));
+		expect(args).toEqual(expect.arrayContaining(["--no-mcp", "--tools", "bash,agent,steps,file"]));
 		expect(args).not.toContain("builtin:mcp");
-		expect(buildAgentArgs(undefined, undefined, session, [])).toEqual(expect.arrayContaining(["-e", "builtin:mcp"]));
+		expect(args).not.toContain("--no-extensions");
+		expect(buildAgentArgs(undefined, undefined, session, [])).not.toContain("--no-mcp");
 		expect(subagentProcessEnv(lean, { PATH: "/bin" }, { id: "c" })).toMatchObject({
 			OCTOCODE_LEAN: "1",
 			OCTOCODE_MEMORY_AUTO: "0",
@@ -80,7 +85,7 @@ describe("lean profiles", () => {
 		await fake.emit("before_agent_start", event, {});
 		const text = Object.values(allSections(event)).join("\n");
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("octocode_lean");
-		expect(text).toContain("your task names your goal, parent, scratch folder and how to report");
+		expect(text).toContain("You are a subagent: do exactly the task, then stop.");
 		expect(text).not.toContain("Start it with one word");
 		expect(text).not.toContain("# Work and verification");
 		expect(text).not.toContain("Octocode MCP");
@@ -109,6 +114,23 @@ describe("per-task skills", () => {
 		expect(taskSkillPlan(specialist, ["beta"])).toEqual({ names: ["beta"], inTask: true, inline: false });
 		expect(taskSkillPlan(lean, undefined)).toEqual({ names: [], inTask: true, inline: true });
 		expect(taskSkillPlan(lean, ["alpha"])).toEqual({ names: ["alpha"], inTask: true, inline: true });
+	});
+
+	it("leave out a role skill the session cannot load, but pass the task's own names through", () => {
+		const skill = (name: string) =>
+			({ name, source: "skill", sourceInfo: { path: `/s/${name}/SKILL.md` } }) as unknown as SlashCommandInfo;
+		const prompt = {
+			name: "alpha",
+			source: "prompt",
+			sourceInfo: { path: "/p/alpha.md" },
+		} as unknown as SlashCommandInfo;
+		expect(taskSkillPlan(specialist, undefined, [skill("alpha")])).toEqual({
+			names: ["alpha"],
+			inTask: true,
+			inline: false,
+		});
+		expect(taskSkillPlan(specialist, undefined, [prompt])).toEqual({ names: [], inTask: true, inline: false });
+		expect(taskSkillPlan(specialist, ["beta"], [])).toEqual({ names: ["beta"], inTask: true, inline: false });
 	});
 
 	it("are listed for the skill tool, or inlined whole for a lean child", () => {

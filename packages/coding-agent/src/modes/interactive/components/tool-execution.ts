@@ -11,7 +11,7 @@ import {
 	type TUI,
 	type TuiMouseEvent,
 } from "@octocodeai/octocode-tui";
-import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/extensions/types.ts";
+import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
 
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { rowMark, uiStateOf } from "../../../octocode/shared/render/motion.ts";

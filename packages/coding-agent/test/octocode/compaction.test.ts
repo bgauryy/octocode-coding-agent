@@ -29,7 +29,12 @@ describe("compaction", () => {
 					{ type: "edit", path: "c.ts" },
 					{ type: "delete", path: "a.ts" },
 				]),
-				result("1", false, { outcomes: [{ ok: true }, { ok: true }] }),
+				result("1", false, {
+					outcomes: [
+						{ ok: true, path: "c.ts" },
+						{ ok: true, path: "a.ts" },
+					],
+				}),
 				{
 					role: "assistant",
 					content: [
@@ -41,9 +46,12 @@ describe("compaction", () => {
 						},
 					],
 				},
-				result("2", false, { outcomes: [{ ok: true }] }),
+				result("2", false, { outcomes: [{ ok: true, path: "d.ts" }] }),
 			],
-			[call("3", "file", [{ type: "write", path: "e.ts" }]), result("3", false, { outcomes: [{ ok: true }] })],
+			[
+				call("3", "file", [{ type: "write", path: "e.ts" }]),
+				result("3", false, { outcomes: [{ ok: true, path: "e.ts" }] }),
+			],
 			["b.ts"],
 		);
 		addFileToolOps(preparation);
@@ -57,7 +65,12 @@ describe("compaction", () => {
 				{ type: "edit", path: "ok.ts" },
 				{ type: "edit", path: "rejected.ts" },
 			]),
-			result("1", false, { outcomes: [{ ok: true }, { ok: false }] }),
+			result("1", false, {
+				outcomes: [
+					{ ok: true, path: "ok.ts" },
+					{ ok: false, path: "rejected.ts" },
+				],
+			}),
 			call("2", "file", [{ type: "edit", path: "failed-call.ts" }]),
 			result("2", true),
 			call("3", "file", [{ type: "edit", path: "unanswered.ts" }]),
@@ -72,11 +85,30 @@ describe("compaction", () => {
 		const preparation = prepare([
 			call("a", "file", [{ type: "edit", path: "one.ts" }]),
 			call("b", "file", [{ type: "edit", path: "two.ts" }]),
-			result("b", false, { outcomes: [{ ok: true }] }),
+			result("b", false, { outcomes: [{ ok: true, path: "two.ts" }] }),
 			result("a", true),
 		]);
 		addFileToolOps(preparation);
 		expect([...preparation.fileOps.edited]).toEqual(["two.ts"]);
+	});
+
+	it("adds the paths a file patch changed, read from its outcomes", () => {
+		const preparation = prepare([
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "p",
+						name: "file",
+						arguments: { reason: "r", patch: "*** Begin Patch\n*** Update File: x.ts\n@@\n-a\n+b\n*** End Patch" },
+					},
+				],
+			},
+			result("p", false, { outcomes: [{ ok: true, path: "x.ts", type: "edit" }] }),
+		]);
+		addFileToolOps(preparation);
+		expect([...preparation.fileOps.edited]).toEqual(["x.ts"]);
 	});
 });
 
@@ -115,7 +147,7 @@ describe("summaries", () => {
 					toolName: "file",
 					isError: false,
 					content: [],
-					details: { outcomes: [{ ok: true }] },
+					details: { outcomes: [{ ok: true, path: "todo.txt" }] },
 				},
 			],
 			turnPrefixMessages: [],

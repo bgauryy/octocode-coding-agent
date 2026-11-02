@@ -3,14 +3,22 @@
 
 The conversation of the first request. A subagent's first message is its task as `subagents/tool.ts` builds it (`childTaskInput`, `withIdentity`): the parent's task is a placeholder, the identity and `## Report` contract are the real text.
 
-## 1. user (1,115 chars)
+## 1. user (1,284 chars)
 
 ```text
 [The parent's task: objective, scope, known facts and acceptance checks]
 
+## Skills
+
+Use the skill tool with a skill's name to load it when the task matches its description.
+
+<available_skills>
+  <skill><name>octocode-research</name><description>Investigate codebases, packages and changes: callers, usage, impact, history, PR safety, versions and CVEs. Use exact source, AST, LSP, graph and history evidence to settle the claim at the required depth.</description></skill>
+</available_skills>
+
 ## You
-Your name is `child-example` (researcher). Your goal: [the goal the parent named for this child]. You work for `parent-example`. Your scratch folder, for handoff files and a long report, is `/workspace/project/.octocode/tmp/agents/child-example`.
+Your name is `child-example` (researcher). Your goal: [the goal the parent named for this child]. You work for `parent-example`. Your scratch folder is `/workspace/project/.octocode/tmp/agents/child-example`.
 
 ## Report
-Your final answer is your report and reaches your parent by itself. Start it with one word: done (acceptance checks met), partial (ended before the Definition of Done, usable as it is, no answer pending), blocked (a decision or access from your parent would let you continue) or failed (could not proceed), then the result, verification and open questions. For partial or blocked work, include current state, evidence, blockers and the next action. End a `blocked` report with its question. Only a non-isolated background run can continue by message while it remains reachable; foreground runs need an explicit task resume, and isolated runs need a new agent with recovery context. Your parent keeps the first 8 KB and gets the path of the whole report in your scratch folder.
+Your final answer is your report and reaches your parent by itself. Start it with one word: done (acceptance checks met), partial (ended before the Definition of Done, usable as it is, no answer pending), blocked (a decision or access from your parent would let you continue) or failed (could not proceed), then the result, verification and open questions. For partial or blocked work, include current state, evidence, blockers and the next action. End a `blocked` report with its question. Your parent keeps the first 8 KB and gets the path of the whole report.
 ```

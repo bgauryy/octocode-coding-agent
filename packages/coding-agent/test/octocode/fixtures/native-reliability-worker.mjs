@@ -16,7 +16,13 @@ Object.assign(process.env, {
   OCTOCODE_API: '1', OCTOCODE_API_HTTP: '0', OCTOCODE_MCP: '0',
   OCTOCODE_MEMORY_AUTO: '0', OCTOCODE_EXTRA_SKILLS: '0', OCTOCODE_NOTIFY: 'off', OCTOCODE_PERMISSION: 'full',
 });
-const sdk = await import('@octocodeai/octocodecode');
+// The package root exports only the CLI and RPC, so the session pieces come from the compiled modules, as the runner's bundle does.
+const compiled = (file) => new URL(`../../../dist/core/${file}`, import.meta.url).href;
+const { SettingsManager } = await import(compiled('settings-manager.js'));
+const { DefaultResourceLoader } = await import(compiled('resource-loader.js'));
+const { SessionManager } = await import(compiled('session-manager.js'));
+const { ModelRuntime } = await import(compiled('model-runtime.js'));
+const { createSessionFromServices } = await import(compiled('agent-session/create-session.js'));
 const { fauxProvider, fauxAssistantMessage } = await import('@octocodeai/octocode-ai');
 const { apiDir, listInstances, OctocodeBackend } = await import(bundle);
 const entry = fileURLToPath(bundle);
@@ -47,16 +53,19 @@ async function boot() {
     return fauxAssistantMessage(`ACK ${name} NONCE=${nonce}`);
   };
   faux.setResponses(Array.from({ length: 256 }, () => response));
-  const settingsManager = sdk.SettingsManager.create(cwd, agentDir);
-  const loader = new sdk.DefaultResourceLoader({
+  const settingsManager = SettingsManager.create(cwd, agentDir);
+  const loader = new DefaultResourceLoader({
     cwd, agentDir, settingsManager,
     extensionFactories: [(api) => api.registerProvider(faux.provider)],
     noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
   });
   await loader.reload();
   if (loader.getExtensions().errors.length) throw new Error(JSON.stringify(loader.getExtensions().errors));
-  ({ session } = await sdk.createAgentSession({ cwd, agentDir, settingsManager, resourceLoader: loader,
-    sessionManager: sdk.SessionManager.create(cwd, path.join(root, name, 'sessions')) }));
+  const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, 'auth.json'), modelsPath: path.join(agentDir, 'models.json') });
+  ({ session } = await createSessionFromServices({
+    services: { cwd, agentDir, modelRuntime, settingsManager, resourceLoader: loader, diagnostics: [] },
+    sessionManager: SessionManager.create(cwd, path.join(root, name, 'sessions')),
+  }));
   session.subscribe((event) => {
     if (event.type === 'agent_settled') send({ kind: 'settled', name, generation, aborted: event.aborted ?? false });
   });

@@ -1,3 +1,4 @@
+import { archiveMutation } from "../shared/archive-operation.ts";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../../../../common/src/env.ts";
 import { mutatedPaths } from "../shared/file-input.ts";
@@ -77,6 +78,7 @@ export function readOnlyRoleRefusal(
 ): string | undefined {
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
+	if (event.toolName === "archive" && archiveMutation(input)) return refusal("Saving shared memory");
 	if (event.toolName === "debug" && input.action !== "terminate")
 		return refusal("Debugging (the adapter can execute code)");
 	if (browserMcpTool(event.toolName) !== undefined) {

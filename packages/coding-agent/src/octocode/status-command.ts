@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../core/extensions/index.ts";
+import type { ExtensionAPI } from "../core/features/index.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
 

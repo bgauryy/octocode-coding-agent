@@ -89,16 +89,13 @@ export type { BacklogCommand } from "./workspace-command.ts";
 export const BacklogMutationSchema = Type.Object(
 	{
 		...EntityFields,
-		/** The item types, and the former name `task` of `feature`, still accepted for one release (the store maps it). */
-		type: Type.Optional(StringEnum([...ITEM_TYPES, "task"] as const)),
+		type: Type.Optional(StringEnum(ITEM_TYPES)),
 		op: StringEnum(["add", "update", "remove", "comment"] as const),
 		id: Type.Optional(Type.String()),
 		title: Type.Optional(Type.String()),
 		goal: Type.Optional(Type.String()),
 		plan: Type.Optional(Type.String()),
 		why: Type.Optional(Type.String()),
-		/** The former name of `why`, still accepted from older clients: the host maps it to `why` and refuses a conflict. */
-		reason: Type.Optional(Type.String()),
 		paths: Type.Optional(Type.Array(Type.String())),
 		evidence: Type.Optional(Type.Array(Type.String())),
 		tags: Type.Optional(Type.Array(Type.String())),

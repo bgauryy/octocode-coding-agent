@@ -1,15 +1,13 @@
-import { UsagePersistenceError } from "../../core/usage-totals.ts";
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import {
 	type CompactionPreparation,
 	type CompactionResult,
-	CheckpointPersistenceError,
 	compact,
 	inlineSummaryTokens,
 	persistCheckpointText,
 } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../shared/archive.ts";
@@ -27,6 +25,7 @@ import {
 	userMessagesSection,
 } from "./checkpoint-text.ts";
 import { RECOVERY_HEADING, splitSummary } from "../../core/compaction/summary-view.ts";
+import { carriedUserMessages, type FallbackContinuity, persistenceFailure } from "./continuity.ts";
 import { recordCompactionNote } from "./record.ts";
 import {
 	carriedSavedResults,
@@ -47,7 +46,8 @@ export { SUMMARIZER_RESULT_CHARS, summarizerView, USER_MESSAGE_CHARS, USER_MESSA
  * and cached as the session's requests are. Code, not the model, then appends the files Octocode saved from the
  * summarized results (`saved-results.ts`, carried like the file lists), the user's messages word for word (newest
  * first within a budget, carried across compactions), and the transcript that still holds every detail. Any failure
- * returns nothing, and Octocode writes its default summary, which has none of these additions.
+ * returns nothing, and Octocode writes its default summary; the same additions then follow it as one message
+ * (`continuity.ts`).
  */
 
 /**
@@ -75,7 +75,7 @@ const USER_REFERENCE_CHARS = 1_000;
  * format the request already carries, and what code appends after the summary (the user's messages, file lists, saved
  * results, recovery pointers) is not asked for.
  */
-export const SUMMARY_FOCUS = `This summary becomes the only record of the conversation above: the next model will not see those messages, and what the summary leaves out it will not know to look for. Code appends the user's messages word for word after your summary, so do not quote them; state what they asked for, decided and corrected. Condense the assistant's own reasoning and narration, but keep what the work found exactly: numbers, sizes, lists, names, states, error strings and conclusions. Detail that can be fetched again (a file, a command's output, a page) needs only a pointer: its path, command or URL. Images do not reach you: where the messages show an image was read, attached or captured, keep its path and what was said about it. Write only what the messages show; never guess.`;
+export const SUMMARY_FOCUS = `This summary becomes the only record of the conversation above: the next model will not see those messages, and what the summary leaves out it will not know to look for. Code appends the user's messages word for word after your summary, so do not quote whole messages; state what they asked for, decided and corrected, and keep each limit, number, path, identifier and prohibition the user set exactly as written. Condense the assistant's own reasoning and narration, but keep what the work found exactly: numbers, sizes, lists, names, states, error strings and conclusions. Detail that can be fetched again (a file, a command's output, a page) needs only a pointer: its path, command or URL. Images do not reach you: where the messages show an image was read, attached or captured, keep its path and what was said about it. Write only what the messages show; never guess.`;
 
 /**
  * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed: the
@@ -99,7 +99,9 @@ export function transcriptNote(
 				]
 			: []),
 		...(backlog
-			? ["Record follow-ups that must outlive this session with `backlog`; list open tasks as they stand."]
+			? [
+					"Record a follow-up that must outlive this session with `backlog`, with its goal and why; `steps list` shows open steps.",
+				]
 			: []),
 	];
 	return lines.length > 0 ? `\n\n${RECOVERY_HEADING}\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
@@ -188,7 +190,57 @@ function paidKey(model: Model<Api>, preparation: CompactionPreparation, instruct
 	]);
 }
 
-/** Octocode's compaction result, or undefined to let Octocode write its default summary (the reason is recorded in the session). */
+/**
+ * What code appends after `summary` (the model's text): the saved-results block, the user's messages word for word
+ * (the previous checkpoint's, then the summarized ones, newest first within the budget) and the Recovery note. Sized for
+ * the window the summary lands in (this session's model; after a downshift, the smaller one), and for what the inline
+ * summary has left: messages that do not fit are saved whole behind a reference, so the summary itself stays inline
+ * instead of the whole checkpoint becoming a file reference.
+ */
+function codeSections(
+	api: Pick<ExtensionAPI, "getActiveTools">,
+	event: SessionBeforeCompactEvent,
+	ctx: Pick<ExtensionContext, "model" | "sessionManager">,
+	summary: string,
+	previous: { messages: string[]; omitted: number },
+	segment: number,
+	saveText: ((text: string) => string | undefined) | null,
+): { saved: string[]; body: string; messages: string; note: string } {
+	const summarized = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages];
+	const added = summarized.flatMap((message) => userText(message) ?? []);
+	const note = transcriptNote(
+		ctx.sessionManager.getSessionFile(),
+		api.getActiveTools().includes("backlog"),
+		archivePointer(segment),
+	);
+	// Every file saved from the summarized results (and by earlier summaries), named once, like the file lists.
+	const saved = savedResultPaths(
+		summarized,
+		clearedResults(event.branchEntries),
+		carriedSavedResults(event.branchEntries),
+	);
+	const body = `${withoutModelSavedResults(summary)}${savedResultsBlock(saved)}`;
+	const reserveTokens = event.preparation.settings.reserveTokens;
+	const inlineRoom = inlineSummaryTokens(reserveTokens) * CHARS_PER_TOKEN - body.length - note.length;
+	const total = Math.min(
+		windowBudget(ctx.model?.contextWindow, reserveTokens, USER_MESSAGES_SHARE, USER_MESSAGES_CHARS),
+		Math.max(USER_REFERENCE_CHARS, inlineRoom),
+	);
+	const messages = userMessagesSection(
+		previous.messages,
+		previous.omitted,
+		added,
+		{ total, perMessage: Math.min(USER_MESSAGE_CHARS, Math.max(500, Math.floor(total / 4))) },
+		segment,
+		saveText,
+	);
+	return { saved, body, messages, note };
+}
+
+/**
+ * Octocode's compaction result, or undefined to let Octocode write its default summary (the reason is recorded in the
+ * session). When Octocode's summary requests failed, `fallback` holds the sections code appends, for that summary.
+ */
 export async function writeSummary(
 	api: Pick<
 		ExtensionAPI,
@@ -201,6 +253,7 @@ export async function writeSummary(
 	 * `cacheCold` (the session's prompt cache is past its lifetime) no longer changes the choice: the session's next
 	 * request rewrites the prefix anyway, so the shared request pays that write once and the next request reads it.
 	 */
+	fallback?: FallbackContinuity,
 ): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
@@ -209,6 +262,15 @@ export async function writeSummary(
 		recordCompactionNote(api, "default-summary", "no model is selected for the summary");
 		return undefined;
 	}
+	// The archive writes this compaction's messages as the next segment once it succeeds (`register.ts`).
+	const segment = nextSegment();
+	// An in-memory session has no file to save to: long texts stay inline, cut with a marker.
+	const sessionFile = ctx.sessionManager.getSessionFile();
+	const saveText = sessionFile ? (text: string) => persistCheckpointText(text, sessionFile) : null;
+	// The model updates only its own part of the previous summary; code carries the user messages and the note.
+	const previous =
+		event.preparation.previousSummary === undefined ? undefined : splitSummary(event.preparation.previousSummary);
+	const kept = carriedUserMessages(previous, event.branchEntries);
 	try {
 		// Through the model registry, as Octocode's own session streams: request-time auth, and providers an extension registered.
 		const recordUsage = api.createUsageRecorder("compaction_attempt");
@@ -224,14 +286,6 @@ export async function writeSummary(
 		const instructions = event.customInstructions
 			? `${SUMMARY_FOCUS}\n\nAdditional user focus:\n${event.customInstructions}`
 			: SUMMARY_FOCUS;
-		// The archive writes this compaction's messages as the next segment once it succeeds (`register.ts`).
-		const segment = nextSegment();
-		// An in-memory session has no file to save to: long texts stay inline, cut with a marker.
-		const sessionFile = ctx.sessionManager.getSessionFile();
-		const saveText = sessionFile ? (text: string) => persistCheckpointText(text, sessionFile) : null;
-		// The model updates only its own part of the previous summary; code carries the user messages and the note.
-		const previous =
-			event.preparation.previousSummary === undefined ? undefined : splitSummary(event.preparation.previousSummary);
 		// The standalone request's view of the messages: long tool results are saved whole and shown as references. Only
 		// that request reads it (the shared one reads the session's own messages), so it is built only when it is sent.
 		const standalonePreparation = () => ({
@@ -297,38 +351,7 @@ export async function writeSummary(
 			paid.set(ctx.sessionManager, paidSummary);
 		}
 		const { result, method } = paidSummary;
-		const added = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages].flatMap(
-			(message) => userText(message) ?? [],
-		);
-		const note = transcriptNote(
-			ctx.sessionManager.getSessionFile(),
-			api.getActiveTools().includes("backlog"),
-			archivePointer(segment),
-		);
-		// Every file saved from the summarized results (and by earlier summaries), named once, like the file lists.
-		const saved = savedResultPaths(
-			[...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages],
-			clearedResults(event.branchEntries),
-			carriedSavedResults(event.branchEntries),
-		);
-		const body = `${withoutModelSavedResults(result.summary)}${savedResultsBlock(saved)}`;
-		// Sized for the window the summary lands in (this session's model; after a downshift, the smaller one), and for
-		// what the inline summary has left: messages that do not fit are saved whole behind a reference, so the summary
-		// itself stays inline instead of the whole checkpoint becoming a file reference.
-		const reserveTokens = event.preparation.settings.reserveTokens;
-		const inlineRoom = inlineSummaryTokens(reserveTokens) * CHARS_PER_TOKEN - body.length - note.length;
-		const total = Math.min(
-			windowBudget(ctx.model?.contextWindow, reserveTokens, USER_MESSAGES_SHARE, USER_MESSAGES_CHARS),
-			Math.max(USER_REFERENCE_CHARS, inlineRoom),
-		);
-		const messages = userMessagesSection(
-			previous?.messages ?? [],
-			previous?.omitted ?? 0,
-			added,
-			{ total, perMessage: Math.min(USER_MESSAGE_CHARS, Math.max(500, Math.floor(total / 4))) },
-			segment,
-			saveText,
-		);
+		const { saved, body, messages, note } = codeSections(api, event, ctx, result.summary, kept, segment, saveText);
 		const details = {
 			...asRecord(result.details),
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),
@@ -343,13 +366,21 @@ export async function writeSummary(
 			},
 		};
 	} catch (error) {
-		if (error instanceof CheckpointPersistenceError || error instanceof UsagePersistenceError) {
-			recordCompactionNote(api, "checkpoint-not-saved", error.message);
-			if (ctx.hasUI) notify(ctx.ui, error.message, "error");
-			// Not the user's cancel: a failure, so the automatic failure limit counts it.
-			return { cancel: true, failure: error.message };
-		}
+		const failed = persistenceFailure(api, ctx, error);
+		if (failed) return failed;
 		if (event.signal.aborted) return undefined;
+		// Octocode's default summary has none of what code appends: built now, from the same inputs and budgets, it follows
+		// that summary as one message (`continuity.ts`). Saving its long texts can fail like Octocode's summary does.
+		if (fallback) {
+			try {
+				const { body, messages, note } = codeSections(api, event, ctx, "", kept, segment, saveText);
+				fallback.hold(event.preparation.firstKeptEntryId, `${body}${messages}${note}`);
+			} catch (sectionsError) {
+				const sectionsFailed = persistenceFailure(api, ctx, sectionsError);
+				if (sectionsFailed) return sectionsFailed;
+				fallback.discard();
+			}
+		}
 		recordCompactionNote(api, "default-summary", `Octocode's compaction summary failed (${errorMessage(error)})`);
 		if (ctx.hasUI)
 			notify(

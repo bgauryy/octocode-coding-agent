@@ -17,7 +17,6 @@ const banner =
 	'import { createRequire as __octocodeCreateRequire } from "node:module"; const require = __octocodeCreateRequire(import.meta.url);';
 const allowedExternalPackages = new Set([
 	"@silvia-odwyer/photon-node",
-	"jiti",
 	// Optional native accelerators. Their callers fall back to JavaScript when absent.
 	"bufferutil",
 	"utf-8-validate",
@@ -27,34 +26,7 @@ const allowedExternalPackages = new Set([
 	"supports-color",
 ]);
 
-const LAZY_JITI = "\0lazy-jiti";
 const HTTPS_PROXY_AGENT = "\0https-proxy-agent-named-export";
-
-// The source uses jiti/static so Bun embeds its Babel transform. The Node package replaces it with a synchronous lazy
-// require so jiti loads only when importing an extension; Babel remains deferred until a cache miss needs transformation.
-const lazyJitiPlugin = {
-	name: "lazy-jiti-transform",
-	resolveId(source) {
-		if (source === "jiti/static") return LAZY_JITI;
-	},
-	load(id) {
-		if (id !== LAZY_JITI) return;
-		return {
-			code: `
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-let createJitiImpl;
-
-export function createJiti(...args) {
-	createJitiImpl ??= require("jiti").createJiti;
-	return createJitiImpl(...args);
-}
-`,
-			moduleType: "js",
-		};
-	},
-};
 
 // A dynamic import of https-proxy-agent gets a module with the named export, whatever the package's module format.
 const httpsProxyAgentNamedExportPlugin = {
@@ -84,7 +56,7 @@ async function bundle(input, output, unresolved) {
 		// resolve the same package entries as an installed npm package.
 		tsconfig: false,
 		transform: { target: "node24", define: { OCTOCODE_BUNDLED_NODE: "true" } },
-		plugins: [lazyJitiPlugin, httpsProxyAgentNamedExportPlugin],
+		plugins: [httpsProxyAgentNamedExportPlugin],
 		onLog(level, log, defaultHandler) {
 			if (log.code === "UNRESOLVED_IMPORT" && log.exporter) {
 				unresolved.add(log.exporter);

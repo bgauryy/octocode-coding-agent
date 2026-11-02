@@ -77,3 +77,20 @@ it("shows provider catalog rates and limits without promising account billing", 
 	expect(details).toContain("Pricing tiers above 200,000");
 	expect(details).toContain("billing may differ");
 });
+
+it("shows the rates in effect at the given time for a dated price", () => {
+	const selected = model("proxy", "dated");
+	selected.cost = {
+		input: 0.75,
+		output: 3.75,
+		cacheRead: 0.075,
+		cacheWrite: 0,
+		until: "2026-12-31",
+		after: { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite: 0 },
+	};
+	const during = modelDetails(selected, new Date("2026-12-31T23:59:59Z"));
+	expect(during).toContain("input $0.75 · output $3.75 · cache read $0.075");
+	const after = modelDetails(selected, new Date("2027-01-01T00:00:00Z"));
+	expect(after).toContain("input $1.5 · output $7.5 · cache read $0.15");
+	expect(after).not.toContain("$0.75");
+});

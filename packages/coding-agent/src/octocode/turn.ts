@@ -1,13 +1,14 @@
-import type { ExtensionAPI } from "../core/extensions/index.ts";
+import type { ExtensionAPI } from "../core/features/index.ts";
 import type { Skill } from "../core/skills.ts";
 import { currentEnvironment } from "../core/system-prompt.ts";
-import { FILE_CHANGING_TOOLS } from "../core/tools/tool-names.ts";
+import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
+import { AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { isOctocodeTool, OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
 import { browserMcpTool } from "../../../common/src/browser-mcp.ts";
@@ -24,7 +25,7 @@ export function registerTurnSetup(
 	let prompt: Record<string, string> | undefined;
 	let promptKey: string | undefined;
 	const role = options.isSubagent ? readRolePrompt() : undefined;
-	const readOnlyRole = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
+	const readOnly = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
 	const lean = options.isSubagent && envFlag(process.env, LEAN_ENV);
 	// Skills the parent chose ride in the task (`subagents/task-skills.ts`), so the cached prompt does not depend on them.
 	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
@@ -35,20 +36,25 @@ export function registerTurnSetup(
 		const servers = getMcpSessionStatus(api.events);
 		const server = servers.find((server) => server.name === OCTOCODE_SERVER);
 		// The built-in browser server selected for this agent, declared or still connecting, means this agent can browse
-		// itself. Only enablement and selection count, not connection state or the declared tools, so the delegation text
-		// is the same before and after the server connects. By default only the browser subagent selects it.
+		// itself, so the delegation text names no browser specialist. Only enablement and selection count, not connection
+		// state or the declared tools, so that text is the same before and after the server connects. By default only the
+		// browser subagent selects it.
 		const browserServer = servers.find((server) => server.name === BROWSER_SERVER);
 		const browserMcp =
 			(browserServer?.enabled === true && browserServer.state !== "unselected") ||
 			selected.some((name) => browserMcpTool(name) !== undefined);
-		// Only enablement and selection count, never connection state: the prompt says how to recover when a tool turns
-		// out to be missing, so a server that is still connecting, or that failed or stopped later, keeps the same policy
-		// bytes and the cached prefix. The `mcps` section carries the state. The native `mcp` tool is always selected where MCP
-		// is allowed, so the answer does not change when the server's own tools appear.
-		const octocode = selected.some(isOctocodeTool) || (server?.enabled === true && canReachMcp(selected));
-		// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
-		const canWrite = !readOnlyRole && FILE_CHANGING_TOOLS.some((name) => selected.includes(name));
+		// Only enablement and selection count, never connection state, so a server that is still connecting, or that
+		// failed or stopped later, keeps the same policy bytes and the cached prefix. The `mcp_status` section carries the
+		// state. The native `mcp` tool is always selected where MCP is allowed, so the answer does not change when the
+		// server's own tools appear.
+		const octocode =
+			selected.some(isOctocodeTool) ||
+			(server?.enabled === true && server.state !== "unselected" && canReachMcp(selected));
 		const profiles = [...options.profiles().values()];
+		// A child whose profile declares `browser.control` and that holds the browser server drives its own isolated
+		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
+		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
+		const browserControl = browserMcp && ownProfile?.permissions?.includes("browser.control") === true;
 		const inputs = {
 			octocode,
 			profiles: profiles.map(({ name, description }) => ({ name, description })),
@@ -56,28 +62,27 @@ export function registerTurnSetup(
 				!options.isSubagent && selected.includes("agent") && !browserMcp
 					? profiles.filter(profileSelectsBrowser).map(({ name }) => name)
 					: [],
-			canBrowse: browserMcp,
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
-			canAsk: selected.includes("askUser"),
-			canWrite,
-			readOnlyRole,
-			canSave: FILE_CHANGING_TOOLS.some((name) => selected.includes(name)),
+			readOnly,
+			// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
+			canSave: selected.includes(FILE_TOOL),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: canReachMcp(selected),
+			browserControl,
 		};
 		const key = JSON.stringify(inputs);
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
 			prompt = lean
-				? leanPromptSections({ canShell: inputs.canShell, canSave: inputs.canSave, readOnly: readOnlyRole })
+				? leanPromptSections({ canShell: inputs.canShell, canSave: inputs.canSave, readOnly })
 				: octocodePromptSections(inputs);
 		}
 		// A named section (not a whole-prompt override) lets Octocode record a small transcript delta. The policy and the
-		// role stay session sections, after project context: the profile list and a project-defined role are project
-		// specific, and project instructions keep their place after the policy.
+		// role stay session sections: the profile list and a project-defined role are project specific, and project
+		// instructions follow the policy (`core/system-prompt-spec.ts`).
 		Object.assign(event.systemPromptOptions.sections, prompt);
 		if (role !== undefined) event.systemPromptOptions.sections.role = role;
 		// Checked at every prompt: a new day changes only this section.

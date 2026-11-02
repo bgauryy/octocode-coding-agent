@@ -11,13 +11,8 @@ import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import type {
-	Extension,
-	ExtensionFactory,
-	InlineExtension,
-	LoadExtensionsResult,
-} from "../src/core/extensions/index.ts";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
+import type { Extension, ExtensionFactory, InlineExtension, LoadExtensionsResult } from "../src/core/features/index.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
 import type { ResourceLoader } from "../src/core/resource-loader.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -98,6 +93,8 @@ export interface TestSessionContext {
 export interface CreateTestExtensionsResultInput {
 	factory: ExtensionFactory;
 	path?: string;
+	/** `native` marks the feature the host treats as the Octocode feature set; default `builtin`. */
+	owner?: "native" | "builtin";
 }
 
 type TestExtensionInput = InlineExtension | CreateTestExtensionsResultInput;
@@ -117,7 +114,8 @@ export async function createTestExtensionsResult(
 		const factory = isObject ? input.factory : input;
 		const extensionPath = hasName ? `<inline:${input.name}>` : hasPath ? input.path : `<inline:${index + 1}>`;
 
-		extensions.push(await loadExtensionFromFactory(factory, cwd, eventBus, runtime, extensionPath));
+		const owner = isObject && "owner" in input ? input.owner : undefined;
+		extensions.push(await loadExtensionFromFactory(factory, cwd, eventBus, runtime, extensionPath, owner));
 	}
 
 	return {

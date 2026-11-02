@@ -140,9 +140,10 @@ export function bashSyntax(source: string): BashSyntax {
 		incomplete: false,
 		targets: [],
 	};
-	const unresolved = (): BashSyntax => ({
+	const unresolved = (reason: string): BashSyntax => ({
 		...result,
 		incomplete: true,
+		unsupported: result.unsupported ?? reason,
 		targets: [
 			...result.targets,
 			{
@@ -159,7 +160,12 @@ export function bashSyntax(source: string): BashSyntax {
 			},
 		],
 	});
-	if (!language || Buffer.byteLength(source) > MAX_BYTES) return unresolved();
+	if (!language) return unresolved("Bash parser not loaded");
+	if (Buffer.byteLength(source) > MAX_BYTES) return unresolved(`command over ${MAX_BYTES} bytes`);
+	const incomplete = (reason: string) => {
+		result.incomplete = true;
+		result.unsupported ??= reason;
+	};
 	const parser = new Parser();
 	let tree: ReturnType<Parser["parse"]> = null;
 	try {
@@ -168,21 +174,23 @@ export function bashSyntax(source: string): BashSyntax {
 		tree = parser.parse(source, undefined, {
 			progressCallback: () => performance.now() > deadline,
 		});
-		if (!tree || !onlyMisreadHerestrings(tree.rootNode)) return unresolved();
+		if (!tree || !onlyMisreadHerestrings(tree.rootNode)) return unresolved("parse unavailable");
 		const pending: Array<{ node: Node; depth: number }> = [{ node: tree.rootNode, depth: 0 }];
 		let count = 0;
 		const directoryChanges: number[] = [];
 		const states = directoryStates(tree.rootNode, staticWord);
 		while (pending.length) {
 			const { node, depth } = pending.pop()!;
-			if (++count > MAX_NODES || depth > MAX_DEPTH || performance.now() > deadline) return unresolved();
+			if (++count > MAX_NODES || depth > MAX_DEPTH || performance.now() > deadline)
+				return unresolved("parse size, depth or time limit");
 			if (["pipeline", "subshell", "command_substitution", "process_substitution"].includes(node.type))
 				result.wholeAllow = false;
-			if (node.isMissing || (node.isError && !herestringError(node)) || (!node.isError && !known.has(node.type)))
-				result.incomplete = true;
+			if (node.isMissing) incomplete(`missing ${node.type}`);
+			else if (node.isError && !herestringError(node)) incomplete("syntax error");
+			else if (!node.isError && !known.has(node.type)) incomplete(node.type);
 			if (node.type === "command") {
 				const name = node.childForFieldName("name");
-				if (!name || staticWord(name) === undefined) result.incomplete = true;
+				if (!name || staticWord(name) === undefined) incomplete("computed program name");
 				const movesDirectory = directoryCommand(node, staticWord) !== undefined;
 				if (movesDirectory) {
 					let scope = node.parent;
@@ -362,10 +370,10 @@ export function bashSyntax(source: string): BashSyntax {
 			)
 				target.uncertain = RELATIVE_AFTER_CD;
 		}
-		if (!result.commands.length) result.incomplete = true;
+		if (!result.commands.length) incomplete("no command");
 		return result;
 	} catch {
-		return unresolved();
+		return unresolved("parse unavailable");
 	} finally {
 		tree?.delete();
 		parser.delete();

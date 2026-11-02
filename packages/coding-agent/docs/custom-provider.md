@@ -1,5 +1,8 @@
 # Custom Providers
 
+> **Removed API.** Octocode no longer supports user code extensions, and the package root exports no extension API. This page describes the extension loader's last behavior and is removed with it.
+
+
 A provider extension connects Octocode to a model service that needs custom authentication, model discovery, request handling, or streaming. If the service already speaks a supported API, configure it in `models.json` instead.
 
 Provider extensions run inside Octocode and can inspect credentials, prompts, tool definitions, model responses, and usage. Treat them as trusted code and avoid logging secrets or provider payloads.
@@ -14,7 +17,6 @@ Provider extensions run inside Octocode and can inspect credentials, prompts, to
 | Add a `/login` flow                             | A provider with native or legacy OAuth configuration       |
 | Implement an unsupported wire protocol          | A provider with `stream` or `streamSimple`                 |
 
-A provider extension is an [extension](extensions.md), so it follows the same loading, trust, reload, and error behavior.
 
 ## Register a provider
 

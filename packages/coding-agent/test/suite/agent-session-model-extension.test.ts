@@ -9,7 +9,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import type { BuildSystemPromptOptions, ExtensionAPI } from "../../src/index.ts";
+import type { BuildSystemPromptOptions, ExtensionAPI } from "../../src/core/features/index.ts";
 import { createHarness, getAssistantTexts, type Harness } from "./harness.ts";
 
 describe("AgentSession model and extension characterization", () => {

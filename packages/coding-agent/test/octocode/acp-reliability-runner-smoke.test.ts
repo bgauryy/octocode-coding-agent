@@ -35,7 +35,9 @@ it.skipIf(process.platform === "win32")(
 			expect(report.error).toBeUndefined();
 			expect(report.mode).toBe("fixture");
 			expect(report.cloudPromptAttempts).toBe(0);
-			expect(report.runtime.codingAgent).toBe(pathToFileURL(join(packageRoot, "src/index.ts")).href);
+			expect(report.runtime.codingAgent).toBe(
+				pathToFileURL(join(packageRoot, "src/core/agent-session/create-session.ts")).href,
+			);
 			expect(report.runtime.ai).toBe(pathToFileURL(join(packageRoot, "../ai/src/index.ts")).href);
 			expect(report.hashes[runnerPath]).toBe(
 				createHash("sha256")

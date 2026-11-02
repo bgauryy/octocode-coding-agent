@@ -1,16 +1,19 @@
 /**
- * Renders a session into the chat: messages, tool results, usage and cache notices, the thinking-drop notice and the
- * project-trust warning.
+ * Renders a session into the chat: messages, tool results, usage and cache notices and the thinking-drop notice.
  */
 
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
-import { CONFIG_DIR_NAME } from "../../../config.ts";
-import { type CacheMiss, cacheMissLabel, collectCacheMisses, detectCacheMiss } from "../../../core/cache-stats.ts";
+import {
+	type CacheMiss,
+	cacheMissLabel,
+	cacheReadRatePerToken,
+	collectCacheMisses,
+	detectCacheMiss,
+} from "../../../core/cache-stats.ts";
 import { formatCacheWarmingUsage } from "../../../core/cache-warmer.ts";
 import { getPromptCacheTtlMs } from "../../../core/cache-warmer/economics.ts";
 import { type SessionEntry, sessionEntryToContextMessages, type UsageEntry } from "../../../core/session-manager.ts";
-import { hasTrustRequiringProjectResources } from "../../../core/trust-manager.ts";
 import { formatCost, formatTokens } from "../../../octocode/shared/format.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { ToolExecutionComponent } from "../components/tool-execution.ts";
@@ -312,7 +315,7 @@ export function idleWarmingHint(
 	const readPerToken =
 		usage.cacheRead > 0
 			? usage.cost.cacheRead / usage.cacheRead
-			: (host.session.modelRuntime.getModel(message.provider, message.model)?.cost.cacheRead ?? 0) / 1_000_000;
+			: cacheReadRatePerToken(host.session.modelRuntime, message);
 	const refresh = (usage.cacheRead + miss.missedTokens) * readPerToken;
 	if (refresh <= 0) return ' · cacheWarming "idle" keeps it warm';
 	return ` · cacheWarming "idle" would have kept it for ${formatCost({ cost: refresh, unpriced: false })}`;
@@ -324,7 +327,6 @@ export function renderInitialMessages(host: SessionRenderHost): void {
 		updateFooter: true,
 		populateHistory: true,
 	});
-	renderProjectTrustWarningIfNeeded(host);
 
 	// Show compaction info if session was compacted
 	const allEntries = host.sessionManager.getEntries();
@@ -333,23 +335,6 @@ export function renderInitialMessages(host: SessionRenderHost): void {
 		const times = compactionCount === 1 ? "1 time" : `${compactionCount} times`;
 		host.showStatus(`Session compacted ${times}`);
 	}
-}
-
-function renderProjectTrustWarningIfNeeded(host: SessionRenderHost): void {
-	if (host.settingsManager.isProjectTrusted() || !hasTrustRequiringProjectResources(host.sessionManager.getCwd())) {
-		return;
-	}
-
-	if (host.chatContainer.children.length > 0) {
-		host.chatContainer.addChild(new Spacer(1));
-	}
-	host.chatContainer.addChild(
-		noticeLine(
-			"warning",
-			`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart octocode.`,
-			host.outputPad,
-		),
-	);
 }
 
 export function rebuildChatFromMessages(host: SessionRenderHost): void {

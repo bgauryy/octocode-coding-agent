@@ -129,16 +129,7 @@ export interface PackageFilter {
 	themes?: string[];
 }
 
-export type ResourceType = "extensions" | "skills" | "prompts" | "themes";
-
-export const RESOURCE_TYPES: ResourceType[] = ["extensions", "skills", "prompts", "themes"];
-
-export const FILE_PATTERNS: Record<ResourceType, RegExp> = {
-	extensions: /\.(ts|js)$/,
-	skills: /\.md$/,
-	prompts: /\.md$/,
-	themes: /\.json$/,
-};
+export { RESOURCE_TYPES, type ResourceType } from "./resource-types.ts";
 
 export function getHomeDir(): string {
 	return process.env.HOME || homedir();

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
-import { getLegacyConfigDirs } from "../../config.ts";
+import { getAgentDir } from "../../config.ts";
+import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
 import { ModelConfig } from "../model-config.ts";
 import { resolveConfigValue } from "../config-value.ts";
@@ -9,8 +10,13 @@ export interface PiProviderCredential extends CredentialInfo {
 	authPath: string;
 }
 
+/** Pi's read-only roots, from the same rule discovery uses (none when an explicit home is set). */
+function piDirs(): string[] {
+	return discoveryInput({ cwd: process.cwd(), agentDir: getAgentDir(), projectTrusted: false }).piRoots.slice();
+}
+
 /** Inspect Pi's credential metadata only. Import is an explicit, separate user action. */
-export async function listPiProviderCredentials(dirs = getLegacyConfigDirs()): Promise<PiProviderCredential[]> {
+export async function listPiProviderCredentials(dirs = piDirs()): Promise<PiProviderCredential[]> {
 	const entries = new Map<string, PiProviderCredential>();
 	for (const dir of dirs) {
 		const authPath = join(dir, "auth.json");
@@ -45,10 +51,17 @@ export async function readPiProviderCredential(entry: PiProviderCredential, reso
 }
 
 /** Provider definitions use the same schema and precedence as normal model discovery. */
-export async function listPiModelProviders(dirs = getLegacyConfigDirs()): Promise<Map<string, string>> {
+export async function listPiModelProviders(dirs?: string[]): Promise<Map<string, string>> {
 	const providers = new Map<string, string>();
-	for (const dir of dirs) {
-		const path = join(dir, "models.json");
+	// Pi's model files as discovery lists them (existing files, in precedence order), unless the caller names the folders.
+	const input = discoveryInput({ cwd: process.cwd(), agentDir: getAgentDir(), projectTrusted: false });
+	const files = dirs
+		? dirs.map((dir) => join(dir, "models.json"))
+		: configDiscovery
+				.discover("model", input)
+				.filter((item) => item.provenance.product === "pi")
+				.map((item) => item.provenance.path);
+	for (const path of files) {
 		const config = await ModelConfig.load(path);
 		if (config.getError()) throw new Error(`Could not load Pi model definitions from ${path}. Check models.json.`);
 		for (const id of config.getProviderIds()) if (!providers.has(id)) providers.set(id, path);

@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
-import { ExtensionRunner } from "../src/core/extensions/runner.ts";
-import type { SessionBeforeCompactEvent } from "../src/core/extensions/types.ts";
-import { NATIVE_FEATURE_PATH } from "../src/core/native-tools.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
+import { ExtensionRunner } from "../src/core/features/runner.ts";
+import type { SessionBeforeCompactEvent } from "../src/core/features/types.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { createInMemoryModelRegistry } from "./model-runtime-test-utils.ts";
 
@@ -34,7 +33,8 @@ describe("built-in compaction ownership", () => {
 			createEventBus(),
 			runtime,
 		);
-		native.sourceInfo.path = NATIVE_FEATURE_PATH;
+		native.owner = "native";
+		native.sourceInfo.owner = "native";
 		const runner = new ExtensionRunner(
 			[external, native, external],
 			runtime,

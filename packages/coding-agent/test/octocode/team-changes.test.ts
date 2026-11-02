@@ -61,10 +61,14 @@ describe("recent changes by agent", () => {
 		await agent.emit("tool_execution_end", { toolCallId, toolName, result, isError }, agent.ctx);
 	}
 
+	/** A change by Octocode's `file` tool: it reports each change as an outcome, which the log records under the tool `file`. */
+	const wrote = (agent: ReturnType<typeof member>, file: string, ok = true) =>
+		toolCall(agent, "file", { queries: [] }, { details: { outcomes: [{ type: "write", path: file, ok }] } });
+
 	const changes = (agent: ReturnType<typeof member>, params: Record<string, unknown> = {}) =>
 		agent.tools.get("coordinate").execute("c", { action: "changes", ...params }, undefined, undefined, agent.ctx);
 
-	it("records successful file, edit and write calls with their agent, newest first, and skips failed ones", async () => {
+	it("records successful file calls with their agent, newest first, and skips failed ones", async () => {
 		const { a, b, cwd } = await pair();
 		const idA = a.team.join("refactor").id;
 		const idB = b.team.join("tests").id;
@@ -81,8 +85,8 @@ describe("recent changes by agent", () => {
 				},
 			},
 		);
-		await toolCall(b, "edit", { path: path.join(cwd, "src/b.ts") }, {});
-		await toolCall(b, "write", { path: "docs/c.md" }, {}, true);
+		await wrote(b, path.join(cwd, "src/b.ts"));
+		await wrote(b, "docs/c.md", false);
 		await toolCall(
 			a,
 			"file",
@@ -94,7 +98,7 @@ describe("recent changes by agent", () => {
 		const lines = listed.split("\n");
 		expect(lines[0]).toMatch(/^Files changed by agents in the last 60m \(newest first\):/);
 		expect(lines[1]).toMatch(new RegExp(`^- src/a\\.ts · ${idA} via file · \\d+s ago · 2 changes$`));
-		expect(lines[2]).toMatch(new RegExp(`^- src/b\\.ts · ${idB} \\(you\\) via edit · \\d+s ago$`));
+		expect(lines[2]).toMatch(new RegExp(`^- src/b\\.ts · ${idB} \\(you\\) via file · \\d+s ago$`));
 		expect(listed).not.toContain("fail.ts");
 		expect(listed).not.toContain("c.md");
 	});
@@ -103,12 +107,12 @@ describe("recent changes by agent", () => {
 		const { a, b } = await pair();
 		const idA = a.team.join("one").id;
 		const idB = b.team.join("two").id;
-		await toolCall(a, "write", { path: "src/shared.ts" }, {});
+		await toolCall(a, "bash", { command: "echo x >> src/shared.ts" }, {});
 		await toolCall(b, "file", { queries: [] }, { details: { outcomes: [{ path: "src/shared.ts", ok: true }] } });
 		await toolCall(a, "file", { queries: [] }, { details: { outcomes: [{ path: "src/shared.ts", ok: true }] } });
 		const line = text(await changes(b)).split("\n")[1];
 		expect(line).toMatch(
-			new RegExp(`^- src/shared\\.ts · ${idA}, ${idB} \\(you\\) via file, write · \\d+s ago · 3 changes$`),
+			new RegExp(`^- src/shared\\.ts · ${idA}, ${idB} \\(you\\) via file, bash · \\d+s ago · 3 changes$`),
 		);
 		// The agent filter keeps only that agent's rows for a file (the stop report lists a run's files this way).
 		const mine = b.team.editLog()!.changes({ withinMs: 60_000, agent: idB });
@@ -134,18 +138,18 @@ describe("recent changes by agent", () => {
 		const { a, b } = await pair();
 		b.team.join("peer");
 		// `b` joined, so the database exists; `a` writes first as an unnamed session.
-		await toolCall(a, "write", { path: "src/early.ts" }, {});
-		expect(text(await changes(b))).toContain(`src/early.ts · pid ${process.pid} via write`);
+		await wrote(a, "src/early.ts");
+		expect(text(await changes(b))).toContain(`src/early.ts · pid ${process.pid} via file`);
 		const idA = a.team.join("late").id;
 		const listed = text(await changes(b));
-		expect(listed).toContain(`src/early.ts · ${idA} via write`);
+		expect(listed).toContain(`src/early.ts · ${idA} via file`);
 		expect(listed).not.toContain("pid ");
 	});
 
 	it("filters by path prefix, limits the rows and bounds the time window", async () => {
 		const { a, b } = await pair();
 		a.team.join();
-		for (const file of ["src/one.ts", "src/two.ts", "lib/three.ts"]) await toolCall(a, "write", { path: file }, {});
+		for (const file of ["src/one.ts", "src/two.ts", "lib/three.ts"]) await wrote(a, file);
 		expect(text(await changes(b, { paths: ["src/"] }))).not.toContain("lib/three.ts");
 		const limited = text(await changes(b, { limit: 1 }));
 		expect(limited.split("\n").filter((line) => line.startsWith("- "))).toHaveLength(1);
@@ -159,7 +163,7 @@ describe("recent changes by agent", () => {
 	it("says changes are kept a day when a longer window is asked for, and searches that day", async () => {
 		const { a, b } = await pair();
 		a.team.join();
-		await toolCall(a, "write", { path: "src/one.ts" }, {});
+		await wrote(a, "src/one.ts");
 		const listed = text(await changes(b, { withinMinutes: 10_080 }));
 		expect(listed).toMatch(/^Files changed by agents in the last 1440m \(newest first\):/);
 		expect(listed).toContain("src/one.ts");
@@ -177,7 +181,7 @@ describe("recent changes by agent", () => {
 		const solo = member(db, cwd);
 		started.push(solo);
 		await solo.emit("session_start", {}, solo.ctx);
-		await toolCall(solo, "write", { path: "x.ts" }, {});
+		await wrote(solo, "x.ts");
 		expect(fs.existsSync(db)).toBe(false);
 		expect(text(await changes(solo))).toMatch(/^No agent changed files in the last 60m/);
 		expect(fs.existsSync(db)).toBe(false);

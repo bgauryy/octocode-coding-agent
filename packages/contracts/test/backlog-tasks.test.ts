@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ITEM_TYPE, ITEM_TYPES, isOpenTask, itemTypeInput, TASK_STATES } from "../src/backlogs.ts";
+import { DEFAULT_ITEM_TYPE, ITEM_TYPES, isItemType, isOpenTask, TASK_STATES } from "../src/backlogs.ts";
 import { STATES, deriveEpicState } from "../src/snapshot.ts";
 
 describe("item types", () => {
@@ -8,11 +8,9 @@ describe("item types", () => {
 		expect(DEFAULT_ITEM_TYPE).toBe("feature");
 	});
 
-	it("maps the legacy name task to feature and reports the old name", () => {
-		expect(itemTypeInput("task")).toEqual({ type: "feature", legacy: "task" });
-		expect(itemTypeInput("bug")).toEqual({ type: "bug" });
-		expect(itemTypeInput("story")).toBeUndefined();
-		expect(itemTypeInput("toString")).toBeUndefined();
+	it("names only the current types: the former name task is not one", () => {
+		expect(isItemType("bug")).toBe(true);
+		for (const name of ["task", "story", "toString"]) expect(isItemType(name), name).toBe(false);
 	});
 });
 

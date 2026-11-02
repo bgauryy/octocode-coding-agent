@@ -1,17 +1,22 @@
 /**
- * What the model reads of an MCP server: a generated TypeScript file per server (see `../compact`). The file is
- * rendered when the server's catalog changes and stored under `<agentDir>/context-optimization/mcp/` (a
- * workspace-defined server: the project's folder, `serverGeneratedDir`). Providers get thin tool
- * declarations; calls are still validated against the server's own JSON Schema.
- *
- * A tool whose block fails the fidelity check (`checkToolBlock`: a part the renderer cannot express) keeps its full
- * JSON declaration, so the generated file never stands in for a contract it does not carry.
+ * What the model reads of an MCP server: its own instructions and, for each tool declared to the agent, the tool's
+ * description and schema, in one block of the system prompt (`describe`). Every server takes the same path. The
+ * notation is a generated TypeScript file per server (see `../compact`), rendered when the server's catalog changes and
+ * stored under `<agentDir>/context-optimization/mcp/` (a workspace-defined server: the project's folder,
+ * `serverGeneratedDir`); a preset's overrides refine its wording, nothing more. A tool whose block fails the fidelity
+ * check (`checkToolBlock`: a part the renderer cannot express), and every tool when the mode is `json`, is described
+ * in plain form instead: the server's description and JSON Schema as sent (`jsonToolBlock`). Providers get thin tool
+ * declarations in both forms; calls are still validated against the server's own JSON Schema.
  *
  * Two copies of a server's file exist per session. The `latest` one follows the server (validation hints read it). The
  * `described` one is what the system prompt's block says of the server (`describe`): taken when the prompt first
- * describes the server's catalog, kept while the server reconnects, fails or drops, and renewed only when the loadout is
- * rebuilt (`rebuild`) or the server goes away (`forget`). Thin declarations follow it, so the block and the declarations
- * built from it never change mid-run.
+ * describes the server's catalog, kept while the server reconnects, fails or drops, and renewed when the loadout is
+ * rebuilt (`rebuild`), the server goes away (`forget`), or the server's contract changes (`changedContract`): its
+ * instructions, or a described tool's description or schemas. Thin declarations follow it, so a reconnect or a
+ * withdrawn tool changes neither the block nor the declarations built from it, and a changed contract reaches the
+ * model as one patch of the section with the changed tool thin again in the same request. What the model already
+ * has is the transcript's business: the prompt sections are diffed against the replayed ones, so the patch is sent
+ * once and holds across compaction, resume and fork.
  */
 
 import { isDeepStrictEqual } from "node:util";
@@ -28,6 +33,7 @@ import {
 	unoptimizedTools,
 } from "../compact/index.ts";
 import { firstSentence } from "./declaration.ts";
+import { jsonContract, jsonToolBlock } from "./json-block.ts";
 
 import { DEFAULT_MCP_PRESENTATION, type McpPresentationMode } from "./mode.ts";
 
@@ -52,24 +58,31 @@ interface GeneratedServer {
 	blocks: ReadonlyMap<string, string>;
 	/** Each tool's function name in `text`, by the server's tool name. */
 	functions: ReadonlyMap<string, string>;
+	/** The name the model calls each tool by, by the server's tool name. */
+	calls: ReadonlyMap<string, string>;
 	/** The names the model calls the tools by, which the text was rendered with. */
 	toolNames: Readonly<Record<string, string>>;
 }
 
 /** What the prompt's block describes of one server. */
 export interface DescribedServer {
-	/** The file restricted to the thin tools the block describes; undefined without one (`json`, or no faithful block). */
+	/** The generated file restricted to the tools it renders faithfully; undefined without one (`json`, or no faithful block). */
 	file: string | undefined;
+	/**
+	 * What the block holds: the server's instructions and each described tool's description and schema (the file, plus
+	 * the plain form of tools it does not carry). Undefined when no tool is described and no instructions exist.
+	 */
+	contract: string | undefined;
 	/** The server's instructions when the block was described. */
 	instructions: string | undefined;
 	/** The server's tool names the block describes: the ones declared when it was described. */
 	tools: ReadonlySet<string>;
+	/** Described before the server's catalog was known, so the block holds no contract yet. */
+	pending: boolean;
 }
 
 interface Described extends DescribedServer {
 	generated: GeneratedServer | undefined;
-	/** Described before the server's catalog was known; the first connected description replaces it once. */
-	pending: boolean;
 }
 
 const sameCatalog = (
@@ -83,6 +96,34 @@ const sameCatalog = (
 	generated.tools.size === tools.length &&
 	tools.every((tool) => generated.tools.get(tool.name) === tool);
 
+/** The text the block shows as a tool's description: its own, else its title (`jsonToolBlock`). */
+const shownDescription = (tool: McpTool) => (tool.description?.trim() ? tool.description : tool.title?.trim());
+
+/**
+ * What the block says of a tool: its description and schemas. Other fields the catalog keeps (`title` beside a
+ * description, `execution`) are not part of it, so they neither renew the block nor undo a thin declaration.
+ */
+const sameContract = (left: McpTool, right: McpTool) =>
+	left === right ||
+	(shownDescription(left) === shownDescription(right) &&
+		isDeepStrictEqual(left.inputSchema, right.inputSchema) &&
+		isDeepStrictEqual(left.outputSchema, right.outputSchema));
+
+/**
+ * Whether the latest catalog changes what the block says: the server's instructions, or the description or schemas
+ * of a tool it describes that the server still offers. A tool the server no longer offers or one it newly offers is
+ * not a change of the block (the status names the first, the second is declared in full), nor is a reconnect, whose
+ * catalog keeps the same tools (`McpCatalogCache`).
+ */
+const changedContract = (described: GeneratedServer, latest: GeneratedServer, tools: ReadonlySet<string>) =>
+	described !== latest &&
+	((described.instructions ?? "") !== (latest.instructions ?? "") ||
+		[...tools].some((name) => {
+			const before = described.tools.get(name);
+			const now = latest.tools.get(name);
+			return before !== undefined && now !== undefined && !sameContract(before, now);
+		}));
+
 export class McpPresentation {
 	readonly #options: McpPresentationOptions;
 	readonly #latest = new Map<string, GeneratedServer>();
@@ -94,16 +135,16 @@ export class McpPresentation {
 		this.#options = options;
 	}
 
-	/** Whether servers are presented through generated files; false (`json`) leaves every declaration as the server sent it. */
+	/** Whether servers are rendered as generated TypeScript files; false (`json`) describes every tool in plain form. */
 	get enabled(): boolean {
 		return this.#options.mode() !== "json";
 	}
 
 	/**
-	 * Bring the server's file up to date with its catalog (`resolveServerFile`): the stored file while it matches, else a
-	 * new render that keeps the overrides of unchanged tools. `name` is the configured server name, `callName` what tool
-	 * names carry after `mcp__`, `names` the registered tool name of each tool. Never throws: without a file the server
-	 * keeps its JSON declarations.
+	 * Bring the server's catalog up to date: in `compact` mode its file (`resolveServerFile`): the stored file while it
+	 * matches, else a new render that keeps the overrides of unchanged tools. `name` is the configured server name,
+	 * `callName` what tool names carry after `mcp__`, `names` the registered tool name of each tool. Never throws:
+	 * without a catalog the server keeps its full JSON declarations.
 	 */
 	sync(
 		name: string,
@@ -113,7 +154,7 @@ export class McpPresentation {
 		names: ReadonlyMap<string, string> = new Map(),
 	): void {
 		// A dropped connection withdraws its catalog; what the prompt describes stays until `forget` or `rebuild`.
-		if (!this.enabled || tools.length === 0) {
+		if (tools.length === 0) {
 			this.#latest.delete(name);
 			return;
 		}
@@ -137,25 +178,31 @@ export class McpPresentation {
 				})),
 				...(Object.keys(toolNames).length ? { toolNames } : {}),
 			};
-			// The stored files are a cache for the next session and for tooling; this session reads the text from memory, so
-			// a failed write changes nothing here.
-			const dir = this.#options.dir?.(name) ?? generatedDir(this.#options.agentDir());
-			const file = resolveServerFile(dir, name, input, {
-				preset: this.#options.presetOverrides?.(name, input),
-			});
-			const { text } = file;
-			const { overrides } = file.meta;
-			if (file.rendered) {
-				const plain = unoptimizedTools(input, overrides);
-				if (plain.length) this.#unoptimized.set(name, plain);
-				else this.#unoptimized.delete(name);
-			}
-			// The plain render is checked too: a tool it cannot express keeps its JSON declaration (see `isThin`).
-			const functions = new Map([...functionNames(input)].map(([tool, { fn }]) => [tool, fn]));
+			const names = functionNames(input);
+			const functions = new Map([...names].map(([tool, { fn }]) => [tool, fn]));
+			const calls = new Map([...names].map(([tool, { call }]) => [tool, call]));
+			let text = "";
+			let overrides: DescriptionOverrides | undefined;
 			const blocks = new Map<string, string>();
-			for (const tool of input.tools) {
-				const block = toolBlock(text, functions.get(tool.name) ?? tool.name);
-				if (block && checkToolBlock(tool, block).length === 0) blocks.set(tool.name, block);
+			if (this.enabled) {
+				// The stored files are a cache for the next session and for tooling; this session reads the text from memory,
+				// so a failed write changes nothing here.
+				const dir = this.#options.dir?.(name) ?? generatedDir(this.#options.agentDir());
+				const file = resolveServerFile(dir, name, input, {
+					preset: this.#options.presetOverrides?.(name, input),
+				});
+				text = file.text;
+				overrides = file.meta.overrides;
+				if (file.rendered) {
+					const plain = unoptimizedTools(input, overrides);
+					if (plain.length) this.#unoptimized.set(name, plain);
+					else this.#unoptimized.delete(name);
+				}
+				// The plain render is checked too: a tool it cannot express is described in plain form (see `describe`).
+				for (const tool of input.tools) {
+					const block = toolBlock(text, functions.get(tool.name) ?? tool.name);
+					if (block && checkToolBlock(tool, block).length === 0) blocks.set(tool.name, block);
+				}
 			}
 			const generated: GeneratedServer = {
 				callName,
@@ -165,6 +212,7 @@ export class McpPresentation {
 				tools: new Map(tools.map((tool) => [tool.name, tool])),
 				blocks,
 				functions,
+				calls,
 				toolNames,
 			};
 			this.#latest.set(name, generated);
@@ -212,22 +260,39 @@ export class McpPresentation {
 	 * What the prompt describes of the server, fixed by the first call: `tools` are the server's tool names declared now,
 	 * `ready` whether its catalog is known (the server is connected). A description taken before the catalog was known
 	 * is replaced once by the first ready one, so a server that connects late gets its contract once; after that the
-	 * description stays while the server reconnects, fails or drops, until `rebuild` or `forget`.
+	 * description stays while the server reconnects, fails or drops, until `rebuild` or `forget`, and is taken again
+	 * when the connected server's contract changes (`changedContract`).
 	 */
 	describe(name: string, tools: readonly string[], instructions: string | undefined, ready: boolean): DescribedServer {
 		const known = this.#frozen.get(name);
-		if (known && !(known.pending && ready)) return known;
-		const generated = this.enabled ? this.#latest.get(name) : undefined;
-		const thin = generated ? tools.filter((tool) => generated.blocks.has(tool)) : [];
+		const generated = this.#latest.get(name);
+		const renewed =
+			ready && known?.generated !== undefined && generated !== undefined
+				? changedContract(known.generated, generated, known.tools)
+				: false;
+		if (known && !(known.pending && ready) && !renewed) return known;
+		const faithful = generated ? tools.filter((tool) => generated.blocks.has(tool)) : [];
+		const plain = generated ? tools.filter((tool) => generated.tools.has(tool) && !generated.blocks.has(tool)) : [];
+		const file =
+			generated && faithful.length > 0
+				? selectTools(
+						generated.text,
+						faithful.map((tool) => generated.functions.get(tool) ?? tool),
+					).trimEnd()
+				: undefined;
+		// One contract per server: the file (its header carries the instructions), then the tools it cannot carry in plain form.
+		const plainBlocks = generated
+			? plain.map((tool) => jsonToolBlock(generated.calls.get(tool) ?? tool, generated.tools.get(tool) as McpTool))
+			: [];
+		const contract = file
+			? [file, ...plainBlocks].join("\n")
+			: generated && plainBlocks.length > 0
+				? jsonContract(generated.callName, instructions, plainBlocks)
+				: instructions?.trim() || undefined;
 		const described: Described = {
 			generated,
-			file:
-				generated && thin.length > 0
-					? selectTools(
-							generated.text,
-							thin.map((tool) => generated.functions.get(tool) ?? tool),
-						).trimEnd()
-					: undefined,
+			file,
+			contract,
 			instructions,
 			tools: new Set(tools),
 			pending: !ready,
@@ -236,13 +301,12 @@ export class McpPresentation {
 		return described;
 	}
 
-	/** Whether the tool is declared as a thin stub: the prompt's block describes exactly this tool with its file. */
+	/** Whether the tool is declared as a thin stub: the prompt's block describes this tool's contract, in either form. */
 	isThin(name: string, tool: McpTool): boolean {
-		const frozen = this.#frozen.get(name);
-		if (!this.enabled || !frozen?.file || !frozen.tools.has(tool.name) || !frozen.generated?.blocks.has(tool.name))
-			return false;
-		const described = frozen.generated.tools.get(tool.name);
-		return described === tool || isDeepStrictEqual(described, tool);
+		const described = this.#frozen.get(name);
+		if (!described?.contract || !described.tools.has(tool.name)) return false;
+		const before = described.generated?.tools.get(tool.name);
+		return before !== undefined && sameContract(before, tool);
 	}
 
 	/**

@@ -40,7 +40,6 @@ export interface BacklogAudit {
 
 export interface SnapshotItem {
 	comments?: BacklogComment[];
-	audits?: BacklogAudit[];
 	type?: ItemType;
 	parentId?: string;
 	dependsOn?: BacklogRef[];

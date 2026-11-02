@@ -2,11 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
-import subagentExtension from "../../../examples/extensions/subagent/index.ts";
-import type { ExtensionUIContext } from "../../../src/core/extensions/index.ts";
+import subagentExtension from "../../fixtures/extensions/subagent/index.ts";
+import type { ExtensionUIContext } from "../../../src/core/features/index.ts";
 import { createHarness, getMessageText } from "../harness.ts";
 
-vi.mock("@octocodeai/octocodecode", () => ({
+vi.mock("../../helpers/host-api.ts", () => ({
 	CONFIG_DIR_NAME: ".octocode",
 	getAgentDir: () => "/missing-user-agent-dir",
 	getMarkdownTheme: () => ({}),

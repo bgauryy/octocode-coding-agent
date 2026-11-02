@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionContext } from "../../coding-agent/src/core/features/types.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-storage.ts";
 import { registerMcpHost } from "../src/index.ts";

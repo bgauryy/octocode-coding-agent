@@ -200,7 +200,7 @@ describe("triggers", () => {
 describe("preset overrides", () => {
 	const input = catalog([tool("a"), tool("b")]);
 
-	it("round-trip through the per-tool form and keep entries of unchanged tools only", () => {
+	it("round-trip through the per-field form and keep the overrides of unchanged texts only", () => {
 		const preset = toPresetOverrides(overrides, input);
 		expect(Object.keys(preset.tools ?? {})).toEqual(["a", "b"]);
 		expect(presetOverridesFor(preset, input)).toEqual(overrides);
@@ -215,7 +215,10 @@ describe("preset overrides", () => {
 	it("reject unknown keys and malformed entries", () => {
 		expect(parsePresetOverrides({ catalogHash: "x" })).toEqual({ error: "unknown key catalogHash" });
 		expect(parsePresetOverrides({ tools: { a: { description: "No hash." } } })).toEqual({
-			error: 'tools.a: needs a "hash" string',
+			error: 'tools.a: needs a "descriptionHash" string',
+		});
+		expect(parsePresetOverrides({ tools: { a: { fields: { text: { text: "No hash." } } } } })).toEqual({
+			error: 'tools.a.fields.text: needs "upstream" hash(es) and a "text" string',
 		});
 		expect(parsePresetOverrides({ server: { text: "No hash." } })).toEqual({
 			error: '"server" needs "instructionsHash" and "text" strings',

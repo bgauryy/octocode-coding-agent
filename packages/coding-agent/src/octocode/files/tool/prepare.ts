@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tools/edit-diff.ts";
 import { splitBom } from "../../../../../common/src/text.ts";
-import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";

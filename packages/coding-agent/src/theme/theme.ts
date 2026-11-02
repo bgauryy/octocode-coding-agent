@@ -14,8 +14,8 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 // Types & Schema
 // ============================================================================
 
-export type { ThemeAppearance, ThemeBg, ThemeColor, ThemeToken } from "./theme-types.ts";
-export { Theme, type ThemeStyle } from "./theme-class.ts";
+export type { ThemeAppearance, ThemeToken } from "./theme-types.ts";
+export { Theme } from "./theme-class.ts";
 export { theme } from "./theme-global.ts";
 export {
 	getAvailableThemes,

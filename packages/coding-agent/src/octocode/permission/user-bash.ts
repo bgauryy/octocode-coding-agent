@@ -1,11 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import type {
-	ExtensionContext,
-	ToolCallEvent,
-	UserBashEvent,
-	UserBashEventResult,
-} from "../../core/extensions/index.ts";
+import type { ExtensionContext, ToolCallEvent, UserBashEvent, UserBashEventResult } from "../../core/features/index.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { Permission } from "./ask.ts";
 import type { GateVerdict } from "./gate.ts";

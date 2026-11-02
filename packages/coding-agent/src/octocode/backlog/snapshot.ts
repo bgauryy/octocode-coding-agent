@@ -22,7 +22,6 @@ function snapshotItem(
 		...(item.type === "epic" ? { epicState: store.epicState(item) } : {}),
 		ref: item.ref,
 		comments: store.comments(item.ref),
-		audits: store.audit(item.ref, 50),
 		type: item.type,
 		parentId: item.parentId,
 		dependsOn: item.dependsOn,
@@ -60,12 +59,12 @@ function snapshotItem(
 
 /**
  * Refuses a snapshot with a credential-looking string in any of its text: what both exports carry
- * (`refuseExportSecrets`), plus the page's comments, audit rows and tasks.
+ * (`refuseExportSecrets`), plus the page's comments and tasks. Audit rows are not part of it: the page loads an item's
+ * history from the audit route when its panel opens, so a large backlog's board stays small enough to send.
  */
 function refuseSecrets(snapshot: Snapshot): void {
 	refuseExportSecrets(snapshot.repo, snapshot.items, "/backlog html", (item) => ({
 		comments: item.comments,
-		audits: item.audits,
 	}));
 	for (const task of [...snapshot.items.flatMap((item) => item.tasks ?? []), ...(snapshot.sessionTasks ?? [])]) {
 		const hit = storedSecret({ goal: task.goal, reason: task.reason, result: task.result });

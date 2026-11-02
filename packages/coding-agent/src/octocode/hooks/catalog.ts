@@ -42,7 +42,18 @@ export const PROFILE_TIMEOUT_S: Record<HookProtocol, number> = { octocode: 60, c
 /** Command-handler fields each profile accepts. */
 export const PROFILE_COMMAND_FIELDS: Record<HookProtocol, readonly string[]> = {
 	octocode: ["type", "command", "timeout", "failClosed", "statusMessage"],
-	claude: ["type", "command", "timeout", "failClosed", "statusMessage", "args", "onFailure", "async", "asyncRewake"],
+	claude: [
+		"type",
+		"command",
+		"timeout",
+		"failClosed",
+		"statusMessage",
+		"args",
+		"shell",
+		"onFailure",
+		"async",
+		"asyncRewake",
+	],
 	codex: [
 		"type",
 		"command",
@@ -124,6 +135,7 @@ export const HOOK_CATALOG = {
 	SessionEnd: {
 		behavior: "Observes supported termination reasons within a separate cleanup deadline.",
 		profiles: {
+			octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 },
 			claude: claude(OBSERVER, { timeout: 1.5, synchronous: true }),
 			codex: { handlers: [], input: [], timeout: 1, maxTimeout: 3 },
 		},

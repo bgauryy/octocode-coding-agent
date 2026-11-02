@@ -14,9 +14,10 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 	const { api } = state;
 	/** Servers the `mcp` tool added for this session; only these can be removed through it. */
 	const addedHere = new Map<string, McpServerConfig>();
-	// Children inherit enabled extension registrations, including session additions; stopped servers stay out.
-	registerMcpAddedServers(api.events, () =>
-		Object.fromEntries(
+	// Children inherit enabled extension registrations, including session additions, and the names of servers stopped
+	// for this session (they skip those unless their own tool selection names the server; see `session-servers.ts`).
+	registerMcpAddedServers(api.events, () => ({
+		servers: Object.fromEntries(
 			state.servers
 				.filter(
 					(server) =>
@@ -26,7 +27,8 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 				)
 				.map((server) => [server.entry.name, server.entry.config]),
 		),
-	);
+		stopped: state.servers.filter((server) => server.connection?.isStopped).map((server) => server.entry.name),
+	}));
 	// Inactive on registration: the default tool selection includes it (`core/native-tools.ts`), so `noTools` and `--tools` apply.
 	api.registerTool({
 		defaultActive: false,

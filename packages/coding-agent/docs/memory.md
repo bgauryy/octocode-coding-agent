@@ -1,28 +1,52 @@
-# Memory
+# Memory and Archive
 
 Part of the [native feature guide](native-features.md).
 
-Memories are short notes that later sessions reuse: a rule for this repository, a decision and its reason, a gotcha. They live in the user's agent database, not in the repository.
+`archive` is the model's tool for saved knowledge, earlier conversations, complete compaction summaries and agent lifecycle events. `/memory` remains the user's command for editing notes and controlling automatic recall. There is no separately registered `memory` tool.
 
-**Kinds.** `preference`, `fact` (the default), `decision`, `gotcha`, `procedure` and `reference` (a URL, dashboard or ticket). `reference` is stored in the additive `extended_kind` column with `kind` set to `fact`, so older builds read it as a fact.
+## Workspace notes
 
-**Scope and pinning.** A `project` memory (the default) belongs to this repository; a `global` one reaches every repository. A **pinned** memory, of either scope, is injected before every prompt instead of waiting for a search hit, so keep pinned ones few and short.
+Notes live in the existing agent database selected by `OCTOCODE_AGENT_DB`. New notes default to `workspace`: the canonical checkout root, or the parent's checkout inherited by an isolated child. Independent worktrees have separate workspace notes. Outside Git, the starting directory supplies the workspace. No marker file is needed.
 
-**Save, pin and unpin.**
+Existing `project` notes stay shared across the repository's worktrees; `global` notes remain available everywhere. Reads with scope `all` see this workspace, this repository's project notes and global notes. Moving a workspace does not automatically transfer its notes. IDs remain `M<n>`.
 
-- You: in the terminal, `/memory add [title]` opens an editor template with `title`, `kind`, `scope`, `keywords` and `pinned: yes|no` lines above the body. Without a terminal UI, `/memory add <title> — <body>` saves a plain project memory. `/memory` (or `/memory list`) opens the browser: pick a memory for Edit, Pin or Unpin, Move to global or Move to this project, Delete and Show. There is no `/memory pin` subcommand, and without a terminal UI `/memory` only prints lists, so pin from the browser or the editor template.
-- The agent: ask it to remember something. It calls the `memory` tool with `op: "set"`; to pin or unpin it passes `id` and `pinned: true` or `false`, and `scope: "global"` makes a memory global. The other ops are `search`, `get`, `list` and `delete`; a subagent has only `search`, `get` and `list`.
-- Global and pinned memories reach every later session, untrusted projects included. When the agent saves, changes or deletes one, the project must be trusted, and the permission check then asks the user as it does for a change outside the workspace (manual and workspace modes ask; full mode allows it). A denial refuses the change, and a session that cannot ask (no UI) refuses it with the reason. A plain project memory saves in an untrusted project too, since the same project can read, change and delete it. Saving a plain project memory, unpinning one, or moving a global memory into the project does not ask. `/memory` is the user's own command and never asks.
-- The duplicate check compares title, keywords and body words. Moving a memory to another scope with `set` runs the same check against that scope and is refused when it already holds a near-duplicate. A successful save names up to two related memories so the agent can merge them, and a body over 500 characters is kept with a warning to shorten it. `/memory review [days]` lists memories never used or not updated in 30 days (or `days`) for editing or deleting.
+For compatibility, workspace notes use a reserved `workspace:v1:<encoded-root>` repository key under the existing database constraint. Older builds cannot see or change them through their memory tool. Existing rows are not rewritten.
 
-**What the model sees.** Before each prompt, memories are injected as a hidden message, within fixed budgets. Pinned memories come first, up to 1,200 characters; a subagent gets none (its task brief carries none; it can read them with `memory`). Then up to 5 search hits for the prompt (3 in a subagent, searched by its goal when it has one) follow, all within 2,400 characters in total, and one memory's line is cut at 600 characters with the `memory get` call that reads it whole. Pinned memories that do not fit are not cut: the injection says how many were held back, and they arrive with later prompts or through `memory` with op `list`. Every memory line the model reads (injection, search, list, save) shows the memory's age since its last update, as in `M3 (project, decision, 12d)`. Once an injection is committed the user sees `Recalled M3, M7`; no model tokens are spent on it, and `/memory last` shows the text. `get` and the hits a `search` returns count as use (`/memory review`, "used N×"); `list` does not. Memory search and list calls are capped at 100 results. If automatic retrieval fails, the session displays a warning once until retrieval recovers. Questions about what was said or done in earlier sessions belong to `archive`, not `memory`.
+Kinds are `preference`, `fact`, `decision`, `gotcha`, `procedure` and `reference`. `reference` retains its existing additive `extended_kind` representation. A pinned note is eligible for automatic injection in its scope; pin only short, durable knowledge.
 
-**Why wasn't my memory used?** Check in this order:
+## Agent calls
 
-1. **Injection is off.** `OCTOCODE_MEMORY_AUTO=0` or `/memory auto off` stops it; `/memory auto` alone reports the state.
-2. **The project is not trusted.** Only injection waits for trust: project memories are injected when `/trust project` holds and, where the repository has hook, MCP, agent or skill config files, `/trust config` has approved their current content. Otherwise only global memories are injected, and the user is told once per session how many project memories were skipped. The `memory` tool still lists, searches, reads, updates and deletes project memories whatever the trust state; its results carry a line saying they are not auto-injected until `/trust`. So ask the agent to search memory, or fix trust.
-3. **The prompt did not match.** A hit needs two distinct prompt words of three or more letters in its body, or one in its title or keywords, and a score of at least 30% of the best hit. Add `keywords` with the terms you would type, or pin the memory.
-4. **It was already injected.** Memories injected earlier on the branch are skipped until they are edited; a compaction drops injections before its first kept entry, so those memories can arrive again.
-5. **The budget held it back.** Only 5 hits (3 in a subagent) and 2,400 characters go in per prompt, and pinned memories beyond 1,200 characters wait for later prompts.
-6. **A subagent is asking.** A subagent gets no pinned memories and fewer hits; it can call `memory`.
-7. **It is another repository's project memory**, or it was deleted. `/memory search <words>` shows what this repository can see.
+Every call includes `goal` and `reason`. Use `op: list | search | get | set | delete` and `source: all | sessions | compactions | memories | agents | events`. Explicit reads default to `all`; set/delete require `source: memories`.
+
+```json
+{
+	"goal": "Remember the deployment preference",
+	"reason": "The user requested it",
+	"op": "set",
+	"source": "memories",
+	"title": "Use the staging rollout first",
+	"body": "Validate the staging rollout before production."
+}
+```
+
+Use `id: "M1"` with set to edit a note, with get to read it, or with delete to remove it. New notes default to workspace; an edit keeps its scope unless a scope is supplied. `keywords` stores retrieval terms on set; on search it ranks topic matches within each scanned page. `query` is a case-insensitive regex. Returned cursors continue the same source and filters, including older records beyond the recent workspace file. Long records are read by id and page.
+
+Global and pinned changes keep the existing permission check: manual/workspace modes ask; full mode allows them. Headless sessions cannot satisfy an approval request. Plan mode and subagents may read but cannot save or delete notes. Secret rejection, duplicate detection, source-provenance checks and the warning for long bodies remain in place. History and notes are data, not instructions.
+
+Legacy Archive calls without op/source retain query, keywords, file, line, page and error-analysis behavior. Both call forms search the current workspace and inherited session history (fork sources and parent); other workspaces in the same repository are excluded unless inherited. Error analysis reads original transcripts; expiration of an archive copy does not erase those transcripts. Update tool selectors and RPC scripts from `memory` to `archive`, adding source and goal. Historical tool results remain readable.
+
+## User commands and automatic recall
+
+`/memory add [title]` opens an editor with title, kind, scope, keywords and pinning fields. Headless `/memory add <title> — <body>` saves a workspace note. `/memory` browses or prints notes; its editor supports explicit project/global/workspace scopes. `/memory search <words>`, `/memory last`, `/memory review [days]` and `/memory auto on|off` retain their purposes. User commands do not add permission dialogs.
+
+Before each prompt, automatic recall considers pinned and relevant notes. Existing budgets remain: 1,200 characters for pins and 2,400 overall, up to five relevant hits for a main agent and three for a child. Children receive no pins. An unchanged note already injected on the branch is skipped; editing or compaction can make it eligible again. Committed injections and get/search hits count as use; listing does not.
+
+`OCTOCODE_MEMORY_AUTO=0` disables automatic recall in the process. `/memory auto off` disables it in the shared database. A retrieval failure reports a warning without blocking the prompt. Notes are not deleted by age.
+
+## Lifecycle and compaction history
+
+Built-in hooks record init, create, update, delete and committed compaction events in the same database. Each activation, including resume and reload, receives its own init event. Repeated delivery is idempotent. Registration IDs distinguish reused agent names; heartbeat counters and activity text do not generate audit events. Nonpersistent agents do not produce automatic durable events.
+
+`.octocode/agents.txt` is a generated JSON Lines view of the latest 50 workspace events. Each line has time, event id, name, parentId, sessionId, type, data and schema version. Older events remain in the database and available through Archive. The first writer binds the view to its configured database via data.storeKey; a different database or malformed file is refused. Remove this generated file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused. Projection failure does not undo database commits.
+
+Complete compaction summaries survive indefinitely. Detailed archive copies expire according to `OCTOCODE_CLEANUP_DAYS` (default 30, zero disables), measured from committed compaction time, not reads, resume or file mtime. A copy is removed only after its full summary and trustworthy timestamp have been retained. Unverifiable legacy copies stay. Forks reference source compactions; repair never recreates expired copies. Original transcripts remain available for resume and branching. `--no-session` skips automatic lifecycle/compaction persistence; explicitly saving a memory retains its existing behavior.

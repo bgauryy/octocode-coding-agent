@@ -2,7 +2,7 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { nativeHost } from "../../src/octocode/shared/host-api.ts";
-import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../src/core/features/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, type Harness } from "./harness.ts";
 

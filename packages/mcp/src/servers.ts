@@ -40,9 +40,6 @@ export const DEFAULT_MCP_EXPOSURE = "direct";
 export const MCP_EXPOSURES = ["direct", "hidden"] as const;
 export type McpExposure = (typeof MCP_EXPOSURES)[number];
 
-/** Exposure values that no longer exist; a config that still uses one gets an error naming the replacement. */
-const REMOVED_EXPOSURES: ReadonlySet<string> = new Set(["auto", "deferred", "codemode", "codemode-deferred"]);
-
 interface McpServerConfigBase {
 	/** Default: `direct`. */
 	exposure?: McpExposure;
@@ -208,13 +205,8 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
 	return config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
-/** The error for an exposure value that is not `direct` or `hidden`; a removed value names its replacement. */
-function exposureError(value: unknown): string {
-	const allowed = `must be one of ${MCP_EXPOSURES.map((exposure) => `"${exposure}"`).join(", ")}`;
-	return typeof value === "string" && REMOVED_EXPOSURES.has(value)
-		? `${allowed}; "${value}" was removed (assign the server to the agents that need it with "defaultActive": false and a tool selector such as mcp__<server>__*)`
-		: allowed;
-}
+/** The error for an exposure value that is not `direct` or `hidden`. */
+const exposureError = (): string => `must be one of ${MCP_EXPOSURES.map((exposure) => `"${exposure}"`).join(", ")}`;
 
 /** Validate one server entry of the `mcpServers` shape. Returns the config, or an error message. */
 export function validateMcpServerConfig(name: string, value: unknown): McpServerConfig | string {
@@ -222,12 +214,11 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 		return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
 	if (!isRecord(value)) return `server "${name}" must be an object`;
 	const { type, exposure, enabled, defaultActive, timeout, toolExposure, description } = value;
-	if (exposure !== undefined && !isMcpExposure(exposure))
-		return `server "${name}": exposure ${exposureError(exposure)}`;
+	if (exposure !== undefined && !isMcpExposure(exposure)) return `server "${name}": exposure ${exposureError()}`;
 	if (toolExposure !== undefined) {
 		if (!isRecord(toolExposure)) return `server "${name}": toolExposure must map tool names to exposures`;
 		for (const [tool, entry] of Object.entries(toolExposure)) {
-			if (!isMcpExposure(entry)) return `server "${name}": toolExposure "${tool}" ${exposureError(entry)}`;
+			if (!isMcpExposure(entry)) return `server "${name}": toolExposure "${tool}" ${exposureError()}`;
 		}
 	}
 	if (enabled !== undefined && typeof enabled !== "boolean") return `server "${name}": enabled must be a boolean`;

@@ -170,7 +170,9 @@ describe.runIf(posix)("a user message queued during a foreground command", () =>
 		await harness.session.bindExtensions({});
 		let secondRequest: string[] = [];
 		harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("bash", { command: "echo working; sleep 30" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage([fauxToolCall("bash", { command: "echo working; sleep 30", reason: "long work" })], {
+				stopReason: "toolUse",
+			}),
 			(context) => {
 				secondRequest = context.messages.map((message) => getMessageText(message));
 				return fauxAssistantMessage("the command runs in the background");

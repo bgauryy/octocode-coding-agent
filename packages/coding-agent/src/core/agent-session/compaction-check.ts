@@ -14,7 +14,7 @@ import {
 	estimateTokens,
 	shouldCompact,
 } from "../compaction/index.ts";
-import type { SessionCompactFailedEvent } from "../extensions/index.ts";
+import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type ContextEditEntry, getLatestCompactionEntry } from "../session-manager.ts";
 import type { SessionInternals } from "./host.ts";
 

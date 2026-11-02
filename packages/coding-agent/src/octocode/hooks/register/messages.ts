@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";

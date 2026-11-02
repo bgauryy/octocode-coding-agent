@@ -25,7 +25,6 @@ import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost, rendered, theme } f
 import { tmp } from "./helpers.ts";
 import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { exitReason, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
-import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
@@ -113,11 +112,14 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 	commands.add("agents", control.command);
 	commands.register(f.api);
 	const ctx = fakeCtx({ cwd, hasUI });
+	// An isolated child needs a new worktree: the parent asks "Trust new worktree?" and the user says yes.
+	Object.assign(ctx.ui, { confirm: async () => true });
 	// The parent's models: `faux/model` is the session's, `faux/other` and `alt/shared` are also available.
+	// They reason, so a route keeps the thinking level it names.
 	const models = [
-		{ provider: "faux", id: "model" },
-		{ provider: "faux", id: "other" },
-		{ provider: "alt", id: "shared" },
+		{ provider: "faux", id: "model", reasoning: true },
+		{ provider: "faux", id: "other", reasoning: true },
+		{ provider: "alt", id: "shared", reasoning: true },
 		// Authenticated only by this session's --api-key: a child cannot receive that key.
 		{ provider: "session-only", id: "keyed" },
 	];
@@ -303,9 +305,9 @@ describe("agent tool with a scripted child", () => {
 				"--session-id",
 				facts.id,
 				"--model",
-				"faux/model",
+				"faux/model:medium",
 				"--tools",
-				"read,bash,file,agent,archive,skill,mcp,mcp__*",
+				"read,bash,file,agent,steps,archive,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser,mcp__browser__*",
 			]),
@@ -319,12 +321,12 @@ describe("agent tool with a scripted child", () => {
 			output: 20,
 			cost: 0.01,
 			unpriced: false,
-			model: "faux/model",
+			model: "faux/model:medium",
 			firstTurnTokens: 100,
 		});
 		// The child's own facts ride in its task (after the task text), not in its system prompt.
 		expect(facts.task).toBe(
-			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work for \`${s.team.id}\`. Your scratch folder, for handoff files and a long report, is \`${facts.scratch}\`.\n\n## Report\n${reportContract()}`,
+			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work for \`${s.team.id}\`. Your scratch folder is \`${facts.scratch}\`. You run in the foreground: your parent reads your messages only with your report, so put a decision or approval you need in a \`blocked\` report; do not wait for an answer.\n\n## Report\n${reportContract()}`,
 		);
 		expect(result.usage.cost.total).toBeCloseTo(0.01);
 		expect(fs.existsSync(result.details.shot)).toBe(true);
@@ -353,7 +355,7 @@ describe("agent tool with a scripted child", () => {
 		);
 		expect(partial).toContain("→ bash ls -la");
 		expect(partial).toContain("📷");
-		expect(partial).toMatch(/^ {2}⎿ {2}[a-z]+-[a-z]+ · 1 tool call · ↑100 ↓20 · ≈\$0\.01 · model\n/);
+		expect(partial).toMatch(/^ {2}⎿ {2}[a-z]+-[a-z]+ · 1 tool call · ↑100 ↓20 · ≈\$0\.01 · model:medium\n/);
 		const failed = rendered(
 			s.agent.renderResult(
 				{ content: [{ type: "text", text: "Subagent x failed\ndetail" }] },
@@ -389,8 +391,8 @@ describe("agent tool with a scripted child", () => {
 			expect(modelArg(await run({ task: "report", profile: "scout" }))).toBe("alt/shared:high");
 			// An unavailable preference runs on the parent's current model, pinned with --model; the render and details say so.
 			const fallback = await s.run({ task: "report", profile: "absent" });
-			expect(modelArg(reportOf(fallback.content[0].text))).toBe("faux/model");
-			expect(fallback.details).toMatchObject({ model: "faux/model", fallback: "claude-haiku-5-5" });
+			expect(modelArg(reportOf(fallback.content[0].text))).toBe("faux/model:medium");
+			expect(fallback.details).toMatchObject({ model: "faux/model:medium", fallback: "claude-haiku-5-5" });
 			expect(
 				rendered(
 					s.agent.renderResult(fallback, { isPartial: false, expanded: true }, theme, {
@@ -398,9 +400,10 @@ describe("agent tool with a scripted child", () => {
 						expanded: true,
 					}),
 				),
-			).toContain("model (claude-haiku-5-5 unavailable)");
+			).toContain("model:medium (claude-haiku-5-5 unavailable)");
 			// The explicit parameter beats the profile and is strict.
-			expect(modelArg(await run({ task: "report", profile: "scout", model: "other" }))).toBe("faux/other");
+			// The call's model takes the profile's level when it names none.
+			expect(modelArg(await run({ task: "report", profile: "scout", model: "other" }))).toBe("faux/other:high");
 			await expect(s.run({ task: "report", profile: "scout", model: "faux/mdoel" })).rejects.toThrow(
 				/Model "faux\/mdoel" is not available\. .*faux\/model, faux\/other/,
 			);
@@ -429,9 +432,9 @@ describe("agent tool with a scripted child", () => {
 		profiles.set("scout", { name: "scout", description: "", prompt: "", model: "shared" });
 		try {
 			const refused = await s.run({ task: "auth error please", profile: "scout" });
-			expect(refused).toMatchObject({ isError: true, details: { status: "failed", model: "alt/shared" } });
+			expect(refused).toMatchObject({ isError: true, details: { status: "failed", model: "alt/shared:medium" } });
 			const footer = fencedParts(refused.content[0].text)?.footer ?? "";
-			expect(footer).toContain("Ran on alt/shared (profile scout: shared).");
+			expect(footer).toContain("Ran on alt/shared, medium thinking (profile scout: shared).");
 			expect(footer).toContain('model: "faux/model"');
 			expect(footer).toContain("/login");
 			expect(footer).not.toContain("narrower task");
@@ -439,18 +442,20 @@ describe("agent tool with a scripted child", () => {
 			await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 			const report = String(s.sent[0].message.content);
 			// The first run's credential refusal steers routing away from `alt` (B347 P2-5): the report names where it ran instead.
-			expect(report).toContain("Ran on faux/model (shared: alt refused its credential).");
+			expect(report).toContain("Ran on faux/model, medium thinking (shared: alt refused its credential).");
 			expect(report).toContain("fix the faux credential with /login");
 			expect(report).not.toContain("narrower task");
 			// On this session's own model, switching to it cannot help: the credential is the fix.
 			const own = await s.run({ task: "auth error please" });
 			const ownFooter = fencedParts(own.content[0].text)?.footer ?? "";
-			expect(ownFooter).toContain("Ran on faux/model (this session's model).");
+			expect(ownFooter).toContain("Ran on faux/model, medium thinking (this session's model).");
 			expect(ownFooter).toContain("/login");
 			expect(ownFooter).not.toContain('model: "faux/model"');
 			// Any other failure keeps the usual advice and still names the model.
 			const down = await s.run({ task: "error please", model: "other" });
-			expect(fencedParts(down.content[0].text)?.footer).toContain("Ran on faux/other (model argument: other).");
+			expect(fencedParts(down.content[0].text)?.footer).toContain(
+				"Ran on faux/other, medium thinking (model argument: other).",
+			);
 		} finally {
 			profiles.delete("scout");
 		}
@@ -535,7 +540,7 @@ describe("agent tool with a scripted child", () => {
 				"body",
 			);
 			const library = existingLibrary()!;
-			const earlier = `Earlier history of your parent session, compacted out of its context, is archived in ${path.dirname(library)} (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}`;
+			const earlier = `Earlier history of your parent session is archived in ${path.dirname(library)} (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}`;
 			const withLibrary = reportOf((await s.run({ task: "report back" })).content[0].text as string);
 			// One line after the identity, in the task and not in the system prompt: the child's facts stay the same shape.
 			expect(line(withLibrary.task)).toEqual([earlier]);
@@ -771,7 +776,10 @@ describe("agent tool with a scripted child", () => {
 	it("runs in the background, delivers the answer as a message, and /agents kill stops one", async () => {
 		const started = await s.run({ task: "report from the background", background: true });
 		expect(started.content[0].text).toMatch(/^Started [a-z]+-[a-z]+ \(general: check things\) in the background/);
-		expect(started.content[0].text).toMatch(/its report arrives as a message\.$/);
+		// The coordinator learns the child's model and thinking level as it starts.
+		expect(started.content[0].text).toMatch(
+			/its report arrives as a message\. Runs on faux\/model, medium thinking \(this session's model\)\.$/,
+		);
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
 		const answer = s.sent[0];
 		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
@@ -780,7 +788,7 @@ describe("agent tool with a scripted child", () => {
 		);
 		// The child's words end inside the fence; the footer after it is the parent's.
 		expect(String(answer.message.content)).toMatch(
-			/\nuntrusted-[0-9a-f]{16}>>>\nSession [^:\n]+: [^\n]+\.jsonl\n\n\(Last screenshot: /,
+			/\nuntrusted-[0-9a-f]{16}>>>\nRan on faux\/model, medium thinking \(this session's model\)\.\n\nSession [^:\n]+: [^\n]+\.jsonl\n\n\(Last screenshot: /,
 		);
 		const renderer = s.renderers.get("octocode-agent-result");
 		// The report starts with no outcome word: its outcome is unknown, which is not a failure.
@@ -1136,12 +1144,11 @@ describe("isolated subagents share the leading prompt", () => {
 });
 
 describe("trust for isolated subagents", () => {
-	it("hands the repository to an isolated child only when this session trusts its project config", async () => {
+	it("never hands trust down by environment, and a session nobody can ask creates no worktree", async () => {
 		const trusted = repo();
 		const s = setup(trusted);
 		const facts = reportOf((await s.run({ task: "report", isolate: true })).content[0].text);
-		expect(facts).toMatchObject({ workspace: trusted, trustRoot: trusted });
-		expect(reportOf((await s.run({ task: "report" })).content[0].text).trustRoot).toBeUndefined();
+		expect(facts).toMatchObject({ workspace: trusted });
 
 		const undecided = repo();
 		fs.mkdirSync(path.join(undecided, ".claude"));
@@ -1154,21 +1161,11 @@ describe("trust for isolated subagents", () => {
 		const u = setup(undecided);
 		const child = reportOf((await u.run({ task: "report", isolate: true })).content[0].text);
 		expect(child).toMatchObject({ workspace: undecided });
-		expect(child.trustRoot).toBeUndefined();
-	}, 30_000);
 
-	it("never passes an inherited trust root on, and sets one only when asked", () => {
-		const inherited = subagentProcessEnv(
-			undefined,
-			{ OCTOCODE_TRUST_ROOT: "/elsewhere" },
-			{ id: "general-1234", workspace: "/repo" },
-		);
-		expect(inherited).toMatchObject({ OCTOCODE_TEAM_WORKSPACE: "/repo" });
-		expect(inherited).not.toHaveProperty("OCTOCODE_TRUST_ROOT");
-		expect(
-			subagentProcessEnv(undefined, {}, { id: "general-1234", workspace: "/repo", trustRoot: "/repo" }),
-		).toMatchObject({ OCTOCODE_TRUST_ROOT: "/repo" });
-	});
+		// No UI to ask and no `--trust`: the worktree is refused before it is created.
+		const headless = setup(repo(), false);
+		await expect(headless.run({ task: "report", isolate: true })).rejects.toThrow(/--trust/u);
+	}, 30_000);
 });
 
 describe("orphaned worktrees at session start", () => {
@@ -1177,7 +1174,11 @@ describe("orphaned worktrees at session start", () => {
 		const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 		git(dir, "update-ref", "refs/octocode/orphan-7", "HEAD");
 		const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
-		const [saved, stuck] = [await createWorktree(dir, "orphan-7"), await createWorktree(dir, "stuck-7")];
+		const yes = async () => true;
+		const [saved, stuck] = [
+			await createWorktree(dir, "orphan-7", undefined, false, undefined, yes),
+			await createWorktree(dir, "stuck-7", undefined, false, undefined, yes),
+		];
 		for (const worktree of [saved, stuck]) {
 			fs.writeFileSync(path.join(worktree.path, `${worktree.agentId}.txt`), "work\n");
 			const meta = `${worktree.path}.json`;
@@ -1756,10 +1757,12 @@ describe("a child bound to a backlog item", () => {
 		expect(facts.item).toBe("B1");
 		expect(facts.task).toContain("## You\n");
 		expect(facts.task).toContain(
-			" Your backlog item is `B1`: note progress on it, track its steps under it (`steps`), and close it when its goal is verified; you may update no other item.",
+			" Your backlog item is `B1`: note progress on it and close it when its goal is verified; you may update no other item.",
 		);
 		// The parent's own line, after the fence, says the report was noted.
-		expect(text).toMatch(/>>>\nNoted on B1\.\n\nSession [^:\n]+: [^\n]+\.jsonl$/);
+		expect(text).toMatch(
+			/>>>\nRan on faux\/model, medium thinking \(this session's model\)\.\n\nNoted on B1\.\n\nSession [^:\n]+: [^\n]+\.jsonl$/,
+		);
 		const notes = () => backlog.store.notes(backlog.store.get("B1")!, -1).filter((note) => note.kind === "note");
 		expect(notes().map((note) => note.text)).toEqual([`Report from ${facts.id}: no outcome word.`]);
 

@@ -1,5 +1,5 @@
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { withDialog } from "../shared/locks.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
@@ -8,7 +8,7 @@ import { capOutputToFile } from "../shared/spill.ts";
 import { referenceContext } from "../shared/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { describeExternal, describeExternalFailure, externalRows } from "./describe.ts";
-import { ExternalAgents, type ExternalPolicy } from "./manager.ts";
+import { ExternalAgents, type ExternalFactories, type ExternalPolicy } from "./manager.ts";
 import { externalModelView } from "./model-view.ts";
 import { ExternalParamsSchema } from "./protocol.ts";
 
@@ -37,8 +37,11 @@ export function registerExternal(
 	commands: Subcommands,
 	policy: ExternalPolicy,
 	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
+	factories?: Partial<ExternalFactories>,
 ): ExternalAgents {
-	const agents = new ExternalAgents(policy);
+	const agents = new ExternalAgents(policy, factories);
+	// Declared only when an agent or instance can be reached: the type costs about 1.8k of every request otherwise.
+	const declare: ExtensionAPI["registerTool"] = agents.discoverable() ? registerTool : () => undefined;
 	const render = (data: unknown) =>
 		fenceUntrusted(
 			"External agent response",
@@ -75,7 +78,7 @@ export function registerExternal(
 				: "info";
 		say(ctx, [...notes.map((note) => note.text), "", ...rows].join("\n"), level);
 	};
-	registerTool({
+	declare({
 		name: "externalAgent",
 		label: "External agent",
 		description:

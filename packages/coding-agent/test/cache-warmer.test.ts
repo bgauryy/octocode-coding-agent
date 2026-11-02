@@ -26,9 +26,9 @@ import {
 	isReplayable,
 } from "../src/core/cache-warmer.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
-import { ExtensionRunner } from "../src/core/extensions/runner.ts";
-import type { ExtensionFactory } from "../src/core/extensions/types.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
+import { ExtensionRunner } from "../src/core/features/runner.ts";
+import type { ExtensionFactory } from "../src/core/features/types.ts";
 import { type SessionEntry, SessionManager, type UsageEntry } from "../src/core/session-manager.ts";
 import type { CacheWarmingMode } from "../src/core/settings-manager.ts";
 import { createInMemoryModelRegistry } from "./model-runtime-test-utils.ts";

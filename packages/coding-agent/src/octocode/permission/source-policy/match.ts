@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import ignore from "ignore";
-import type { ToolInvocation } from "../../../core/extensions/types.ts";
+import type { ToolInvocation } from "../../../core/features/types.ts";
 import { agentCall } from "../../shared/agent-call.ts";
 import { fileChanges } from "../../shared/file-input.ts";
 import { resolveToolPath } from "../../shared/home.ts";

@@ -19,14 +19,22 @@ const skill = (name: string, disableModelInvocation = false): Skill => ({
 });
 
 describe("Octocode research routing in the policy", () => {
-	it("tells the agent how to call undeclared Octocode tools through native discovery, without naming server tools", () => {
-		const prompt = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
-		expect(prompt).toContain("Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it");
-		expect(prompt).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
-		expect(prompt).toContain("(instead of answering from memory)");
-		expect(prompt).not.toContain("generic web search");
-		for (const name of ["localSearch", "ghSearchCode", "lspSearch", "structureSearch"])
-			expect(prompt).not.toContain(name);
+	it("leaves research to the server's own text: no server, tool or routing line, and no native fallback", () => {
+		for (const canDelegate of [true, false]) {
+			const prompt = octocodePrompt({ octocode: true, profiles: [], canDelegate });
+			expect(prompt).not.toMatch(/mcp__octocode|mcp__browser|Octocode MCP|<mcps>/);
+			expect(prompt).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
+			expect(prompt).not.toContain("Search with bash");
+			expect(prompt).not.toContain("no lookup tool is available");
+			for (const name of ["localSearch", "localFetch", "ghSearchCode", "lspSearch", "structureSearch"])
+				expect(prompt).not.toContain(name);
+		}
+	});
+
+	it("names the native research fallbacks only without the research server", () => {
+		const fallback = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		expect(fallback).toContain("Search with bash (`rg`, `fd`)");
+		expect(fallback).not.toMatch(/mcp__octocode|mcp__browser|Octocode MCP/);
 	});
 
 	it("omits the codemode route when every Octocode tool is declared", () => {
@@ -39,13 +47,13 @@ describe("Octocode research routing in the policy", () => {
 		expect(root).toContain("verify reports against acceptance checks");
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
-		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
+		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false });
 		// The skills section (`core/skills.ts`) says when to load a skill; the policy does not restate it.
 		for (const prompt of [root, child]) expect(prompt).not.toMatch(/load (that|a|the|any named) skill|skill first/i);
 		expect(child).not.toContain("contract.md");
 	});
 
-	it("drops the base bash search rule whenever the policy routes search to Octocode, declared tools or not", async () => {
+	it("shows the base bash search rule only while no Octocode search tool is declared", async () => {
 		const fake = fakeHost();
 		for (const name of ["bash", "file", "mcp"]) fake.tools.set(name, { name, exposure: "direct" });
 		fake.api.events = createEventBus();
@@ -60,15 +68,18 @@ describe("Octocode research routing in the policy", () => {
 			await fake.emit("before_agent_start", event, {});
 			return buildSystemPrompt({ cwd: "/tmp", selectedTools, contextFiles: [], sections: allSections(event) });
 		};
-		// Connecting: no Octocode search tool is declared yet, but the policy already routes search to Octocode.
+		// Connecting: no Octocode search tool is declared yet, so the base rule stands; the policy says nothing about the server.
 		const connecting = await build(["bash", "file", "mcp"]);
-		expect(connecting).toContain("Use Octocode MCP");
-		expect(connecting).not.toContain("Use bash for file operations");
+		expect(connecting).toContain("Use bash for file operations");
+		expect(connecting).not.toContain("Search with bash");
+		expect(connecting).not.toContain("Use Octocode MCP");
+		// Declared: the tools carry their own descriptions, so the prompt gives no rule about code search at all.
 		const declared = await build(["bash", "file", "mcp", "mcp__octocode__localSearch"]);
-		expect(declared).toContain("Use Octocode MCP");
 		expect(declared).not.toContain("Use bash for file operations");
-		// A server that failed later keeps the same policy bytes (its state is in the `mcps` section, and the policy says how to
-		// recover when a tool is missing); only a server that is not enabled gives the base rule.
+		expect(declared).not.toContain("Search with bash");
+		expect(declared).not.toContain("Use Octocode MCP");
+		// A server that failed later keeps the same bytes (its state is in the `mcp_status` section); only a server that is not
+		// enabled also gets the native research fallback.
 		setMcpSessionStatus(fake.api.events, [
 			{ name: "octocode", enabled: true, state: "failed", toolCount: 0, source: "mcp.json", exposure: "direct" },
 		]);
@@ -78,7 +89,7 @@ describe("Octocode research routing in the policy", () => {
 			{ name: "octocode", enabled: false, state: "disabled", toolCount: 0, source: "mcp.json", exposure: "direct" },
 		]);
 		const disabled = await build(["bash", "file", "mcp"]);
-		expect(disabled).not.toContain("Use Octocode MCP");
+		expect(disabled).toContain("Search with bash (`rg`, `fd`)");
 		expect(disabled).toContain("Use bash for file operations like ls, rg, find");
 	});
 });
@@ -116,7 +127,8 @@ describe("registerTurnSetup routing and child trim", () => {
 
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", "mcp__octocode__ghSearchCode"] });
-		expect(sections.octocode).toContain("Use Octocode MCP");
+		expect(sections.octocode).not.toContain("Search with bash");
+		expect(sections.octocode_research).not.toMatch(/mcp__octocode|mcp__browser|Octocode MCP/);
 		expect(sections.octocode).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
 		expect(sections.octocode).not.toContain("Search first, then fetch.");
 		expect(sections.docs).toBeUndefined();
@@ -132,16 +144,14 @@ describe("registerTurnSetup routing and child trim", () => {
 		]);
 		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", "mcp"] });
-		expect(sections.octocode).toContain("Use Octocode MCP");
+		expect(sections.octocode).not.toContain("Search with bash");
 		const disabled = fakeHost();
 		for (const name of ["bash", "file", "mcp"]) disabled.tools.set(name, { name, exposure: "direct" });
 		registerTurnSetup(disabled.api, {
 			isSubagent: true,
 			profiles: () => new Map(),
 		});
-		expect((await run(disabled, { selectedTools: ["bash", "file", "mcp"] })).octocode).not.toContain(
-			"Use Octocode MCP",
-		);
+		expect((await run(disabled, { selectedTools: ["bash", "file", "mcp"] })).octocode).toContain("Search with bash");
 	});
 
 	it("falls back to shell research guidance when no Octocode tool or mcp is selected", async () => {
@@ -155,7 +165,7 @@ describe("registerTurnSetup routing and child trim", () => {
 
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash"] });
-		expect(sections.octocode).not.toContain("Use Octocode MCP");
+		expect(sections.octocode).toContain("Search with bash");
 	});
 
 	it("rebuilds lookup guidance when tools change without recommending unavailable tools", async () => {
@@ -213,7 +223,7 @@ describe("registerTurnSetup routing and child trim", () => {
 				profiles: () => new Map(),
 			});
 			const { octocode } = await run(fake, { selectedTools: ["mcp__octocode__localFetch"] });
-			expect(octocode).toContain("A permission refusal is not a reason to retry through another tool.");
+			expect(octocode).toContain("A permission refusal is not a reason to retry through another tool");
 			expect(octocode).toContain("exact recovery identifiers");
 			expect(octocode).toContain("state truncation or coverage gaps");
 			expect(octocode).toContain("Fetch only the evidence the next decision needs");
@@ -249,7 +259,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			setMcpSessionStatus(fake.api.events, status("connected", 4));
 			const after = await run(fake, { selectedTools: [...natives, ...octocodeTools, ...browserTools] });
 			// Every named section the prompt carries keeps its exact bytes, so the cached prefix survives the connection.
-			expect(before.octocode_research).toContain("Use Octocode MCP");
+			expect(before.octocode_research).not.toMatch(/mcp__octocode|mcp__browser|Search with bash/);
 			expect(after.octocode_research).toBe(before.octocode_research);
 			expect(after.octocode_delegation).toBe(before.octocode_delegation);
 			expect(after.octocode_work).toBe(before.octocode_work);
@@ -317,7 +327,8 @@ describe("registerTurnSetup routing and child trim", () => {
 		expect(prompt).not.toContain("<docs>");
 		expect(prompt).toContain("<name>research</name>");
 		expect(prompt).toContain("<description>");
-		expect(prompt).toContain("Use Octocode localFetch to load a skill file when the task matches its description.");
+		expect(prompt).toContain("Load a skill's file when the task matches its description.");
+		expect(prompt).not.toContain("Use Octocode localFetch");
 	});
 
 	it("keeps descriptions and the original trigger in a parent's list", () => {

@@ -96,7 +96,7 @@ describe("workspace HTTP handlers without network I/O", () => {
 			op: "add",
 			title: "Persist before refreshing views",
 			goal: "Keep the accepted result",
-			reason: "A view failure must not invite duplicate work",
+			why: "A view failure must not invite duplicate work",
 		});
 		expect(saved).toMatchObject({ status: 200, body: { item: { ref: "B1" } } });
 		const item = app.store.get("B1")!;

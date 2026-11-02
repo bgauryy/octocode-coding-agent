@@ -128,9 +128,9 @@ export function add(
 		return 1;
 	}
 	log(`${replaced ? "Replaced" : "Added"} ${scope} MCP server "${name}" in ${path}.`);
-	if (project && !hostTrust().directoryTrusted(options.agentDir, options.cwd)) {
+	if (project && !hostTrust().folderTrusted(options.cwd)) {
 		log(
-			`The project is not trusted, so ${path} is ignored until you start ${hostIdentity().appName} in the project and trust it.`,
+			`The folder is not trusted, so ${path} is ignored until you trust it: run \`${hostIdentity().appName} trust add\` in it, or start ${hostIdentity().appName} there.`,
 		);
 	}
 	// HTTP servers without an Authorization header may use OAuth.

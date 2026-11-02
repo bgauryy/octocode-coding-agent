@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { unknownToolMessage } from "../src/core/agent-session/tool-calls.ts";
-import type { ToolInfo } from "../src/core/extensions/types.ts";
+import type { ToolInfo } from "../src/core/features/types.ts";
 
 const session = (tools: Array<Pick<ToolInfo, "name" | "exposure">>) => ({
 	getAllTools: () => tools as ToolInfo[],

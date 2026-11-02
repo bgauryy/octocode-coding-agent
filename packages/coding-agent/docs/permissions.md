@@ -19,7 +19,7 @@ Tool output reaches the model unredacted. To redact secrets from it, add a `tool
 
 ### Project trust
 
-`/trust project` decides whether Octocode loads this project's resources; the choice is saved and takes effect after a restart. `/trust config` approves the exact current content of the project's hook, MCP, agent and skill files (it asks again when any of them changes) and reloads; it needs the interactive terminal and project trust first, and `/trust off` revokes it. Plain `/trust` opens a menu of both. See [native features](memory.md#memory) for how trust affects memory injection.
+A session only starts in a folder you trusted, so the permission layers below apply after trust and never decide it. Trust lives in the agent database: Octocode asks once per folder on first open, `/trust` and `octocode trust` list, add and remove decisions, and trusting a folder trusts its future contents (no fingerprints, no re-ask when files change). See the [trust paragraph in CONFIGURATIONS.md](../../../CONFIGURATIONS.md) for the gate, `--trust`, worktrees and subagents. Once the session runs, in order: the mode table above, then read-only and isolated-tree refusals, the state-folder refusal, shell and file classification, provenance, source policy (Claude-compatible `permissions` rules), hook asks, network and browser checks, session grants and the ask dialog, and the audit trail.
 
 A mode change that makes some action ask where it was allowed clears the session grants and stops every running subagent; their stop reports name the reason, the last activity and the files each changed. In an interactive session `/permissions <mode>` and the editor's cycle shortcut first name the running subagents and ask; declining keeps the current mode. Without a UI the change applies at once. Widening never asks.
 
@@ -100,7 +100,7 @@ Executable names can be statically unquoted. Argument spelling and redirect posi
 | `nice -n3`, spaced or long `stdbuf` options                                  | Retain outer matching                                                                                          |
 | Exec wrappers and effectful `find`                                           | An outer wildcard allowance cannot bypass the detected execution hazard; supported exact rules remain separate |
 
-Full wrapper-option and assignment support, control-flow/heredoc semantics and PowerShell parsing remain incomplete. Unsupported restricted syntax is refused with a diagnostic; this differs from upstream for some malformed or unsupported constructs.
+Full wrapper-option and assignment support, control-flow/heredoc semantics and PowerShell parsing remain incomplete. Syntax the parser does not model (`for`, `if`, heredocs, `export`, a computed program name, malformed input) is refused only under a restriction: a scoped Bash `deny` or `ask` rule, or a `Read`/`Edit` deny. The refusal names the construct and that rule's file. Under allow-only rules the same command gets no source grant, and the permission mode decides; only a broad `Bash` or `Bash(*)` allowance still grants it. This differs from upstream for some malformed or unsupported constructs.
 
 ## Shell file targets
 

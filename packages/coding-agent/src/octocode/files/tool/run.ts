@@ -3,7 +3,7 @@ import path from "node:path";
 import { generateDiffString, normalizeToLF } from "../../../core/tools/edit-diff.ts";
 import { splitBom } from "../../../../../common/src/text.ts";
 import { FileLockReleaseError, withFileWriteLock } from "../../../../../common/src/file-write-lock.ts";
-import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";

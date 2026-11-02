@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backlog } from "../../src/octocode/agentdb/api.ts";
 import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -156,41 +155,4 @@ describe("the board snapshot's session tasks", () => {
 		expect(items.find((item) => item.ref === a.ref)?.tasks?.map((task) => task.goal)).toEqual(["For A"]);
 		expect(items.find((item) => item.ref === b.ref)?.tasks?.map((task) => task.goal)).toEqual(["For B"]);
 	});
-});
-
-describe("the legacy item type rewrite", () => {
-	it("runs on every open that finds a stray task type, and reads map it meanwhile", () => {
-		const item = add("Old");
-		db.close();
-		db = openAgentDb(file);
-		// An older build still running writes `task` again, after the first open's rewrite.
-		db.db.exec("UPDATE backlog SET type = 'task'");
-		store = new BacklogStore(
-			() => db,
-			"repo",
-			() => ++clock,
-		);
-		expect(store.get(item.ref)!.type).toBe("feature");
-		db.close();
-		db = openAgentDb(file);
-		expect((db.db.prepare("SELECT type FROM backlog").get() as { type: string }).type).toBe("feature");
-	});
-
-	it("does not fail the open when the file is locked past the busy timeout", () => {
-		add("Old");
-		db.close();
-		const raw = openAgentDb(file);
-		raw.db.exec("UPDATE backlog SET type = 'task'");
-		raw.db.exec("BEGIN IMMEDIATE");
-		try {
-			// Another connection holds the write lock: the rewrite is skipped and the open still succeeds.
-			const second = openAgentDb(file);
-			second.close();
-		} finally {
-			raw.db.exec("ROLLBACK");
-			raw.close();
-		}
-		db = openAgentDb(file);
-		expect(backlog.hasLegacyItemType(db.db)).toBe(false);
-	}, 20_000);
 });

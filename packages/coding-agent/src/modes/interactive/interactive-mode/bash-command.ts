@@ -3,7 +3,7 @@
  */
 
 import { getApplicationPort } from "../../../core/application/index.ts";
-import type { UserBashEventResult } from "../../../core/extensions/index.ts";
+import type { UserBashEventResult } from "../../../core/features/index.ts";
 import type { TruncationResult } from "../../../core/tools/truncate.ts";
 import { BashExecutionComponent } from "../components/bash-execution.ts";
 import type { InteractiveModeHost } from "./host.ts";

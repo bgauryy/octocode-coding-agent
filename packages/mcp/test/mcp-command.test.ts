@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ProjectTrustStore } from "../../coding-agent/src/core/trust-manager.ts";
+import { grantFolder } from "../../coding-agent/src/octocode/trust/grants.ts";
 import { runMcpCommand } from "../src/cli.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
@@ -160,7 +160,7 @@ describe("octocode mcp", () => {
 				.every((file: { ignored: boolean }) => file.ignored),
 		).toBe(true);
 		expect(result.output).not.toContain("private-token");
-		new ProjectTrustStore(result.agentDir).set(result.agentDir, true);
+		grantFolder(result.agentDir, "folder", { source: "command", surface: "test" });
 		const trusted = await run(["config"], undefined, result.agentDir);
 		expect(trusted.output).not.toContain("ignored until trusted");
 		expect(trusted.output).toContain("later entries override earlier ones");
@@ -202,8 +202,8 @@ describe("octocode mcp", () => {
 			remote: { url: "https://example.test/mcp", headers: { Authorization: "secret" } },
 		});
 		expect(initial.exitCode).toBe(1);
-		expect(initial.output).toContain("trusted project");
-		new ProjectTrustStore(initial.agentDir).set(initial.agentDir, true);
+		expect(initial.output).toContain("requires a trusted folder");
+		grantFolder(initial.agentDir, "folder", { source: "command", surface: "test" });
 		expect((await run(["disable", "remote", "--local"], undefined, initial.agentDir)).exitCode).toBe(0);
 		const project = join(initial.agentDir, ".octocode", "mcp.json");
 		expect(readConfig(project)).toEqual({ mcpServers: { remote: { enabled: false } } });
@@ -315,7 +315,7 @@ describe("octocode mcp", () => {
 
 	it("adds and removes project servers", async () => {
 		const added = await run(["add", "-l", "local", "--", "node", "server.js"], undefined);
-		expect(added.output).toContain("The project is not trusted");
+		expect(added.output).toContain("The folder is not trusted");
 		const projectConfig = join(added.agentDir, ".octocode", "mcp.json");
 		expect(readConfig(projectConfig)).toEqual({ mcpServers: { local: { command: "node", args: ["server.js"] } } });
 

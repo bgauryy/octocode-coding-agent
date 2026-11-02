@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../../../src/core/extensions/loader.ts";
-import type { ExtensionAPI, ExtensionFactory, ResourceLoader } from "../../../src/index.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "../../helpers/features.ts";
+import type { ExtensionAPI, ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { ResourceLoader } from "../../../src/core/resource-loader/types.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 describe("issue #7193 extension event-bus lifecycle", () => {

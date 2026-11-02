@@ -1,7 +1,6 @@
-import { type TSchema, Type } from "typebox";
+import { Type } from "typebox";
 import { StringEnum } from "@octocodeai/octocode-ai";
-import { type EntityInput, ITEM_TYPES, LEGACY_ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
-import { withReason } from "../shared/reason.ts";
+import { type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { parseRef } from "./item.ts";
 
 /** A link as the model may write it: `target` is a reference object or a shorthand string (`tool.ts` `linkInput`). */
@@ -75,17 +74,6 @@ export function entityFields(subagent: boolean) {
 		dependsOn: Type.Optional(Type.Array(Type.String(), { description: "list only: items needing any of these" })),
 	};
 	return { type, ...listOnly, links, completion: done, version } as unknown as typeof full;
-}
-
-/**
- * The schema a call is validated against: the declared one, except that `type` also takes the item type `task` of the
- * last release (`itemTypeInput`), which the tool maps to `feature` and says so. The call's `reason` is added as the
- * registry does for the declared schema.
- */
-export function withLegacyType<T extends TSchema>(parameters: T): TSchema {
-	const { properties } = parameters as unknown as { properties: Record<string, TSchema> };
-	const type = Type.Optional(StringEnum([...ITEM_TYPES, ...Object.keys(LEGACY_ITEM_TYPES)] as [string, ...string[]]));
-	return withReason({ ...parameters, properties: { ...properties, type } });
 }
 
 /**

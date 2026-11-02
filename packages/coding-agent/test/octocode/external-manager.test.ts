@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { AcpError } from "../../../acp/src/client/client.ts";
 import {
 	ExternalAgents,
@@ -85,6 +85,31 @@ function setup() {
 afterEach(async () => {
 	await Promise.all(managers.splice(0).map((manager) => manager.reset()));
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("external discovery", () => {
+	it("is discoverable only with an installed ACP agent or another live instance", () => {
+		const policy = {
+			authorize: vi.fn(),
+			beforeSend: vi.fn(),
+			afterReceive: vi.fn(),
+			permission: vi.fn(),
+			sender: () => "s",
+		};
+		const agent = { vendor: "codex", command: "codex-acp", args: [], path: "/bin/codex-acp" };
+		vi.restoreAllMocks();
+		vi.stubEnv("OCTOCODE_HOME", mkdtempSync(join(tmpdir(), "external-discovery-")));
+		try {
+			expect(new ExternalAgents(policy as never, { discover: () => [] }).discoverable()).toBe(false);
+			expect(new ExternalAgents(policy as never, { discover: () => [agent] }).discoverable()).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+});
+
+beforeEach(() => {
+	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
 });
 
 describe("external manager policy and lifecycle", () => {

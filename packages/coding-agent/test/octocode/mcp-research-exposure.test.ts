@@ -5,9 +5,9 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
@@ -64,7 +64,7 @@ async function declaredTools(
 				factory: createMcpExtension({ presets: [octocodePreset()], logPath: path.join(root, "mcp.log") }),
 			},
 		],
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -80,7 +80,7 @@ async function declaredTools(
 						id: "exposure",
 					}),
 				);
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		resourceLoader,

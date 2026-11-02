@@ -6,7 +6,7 @@ import { tildePath } from "../shared/home.ts";
 import { stringOrEmpty } from "../shared/util.ts";
 import { type ChildFiles, childFiles } from "../shared/session-children.ts";
 import { describeFiles } from "../subagents/children.ts";
-import { flatLine } from "./store.ts";
+import { flatLine, shownLine } from "./store.ts";
 
 /**
  * Background work recorded in a session's entries: `bash` calls with `background: true` (result `details.job` and
@@ -21,6 +21,8 @@ interface BackgroundWork {
 	label: string;
 	/** The label is the subagent's goal, not its task. */
 	goal?: boolean;
+	/** Why it was started: the starting call's `reason`, on one line and capped. */
+	why?: string;
 	/** A bash job's log file. */
 	log?: string;
 	/** A subagent's saved conversation and report, as its start recorded them (`details.session`). */
@@ -30,6 +32,15 @@ interface BackgroundWork {
 /** Bash job ids restart with each extension instance; the log path (id plus start time) is unique. */
 const jobKey = (id: string, log: string | undefined) => (log ? `log:${log}` : `id:${id}`);
 const agentKey = (id: string, runId: unknown) => `agent:${id}${typeof runId === "string" ? `:${runId}` : ""}`;
+
+/** Characters kept of a start's reason, as the brief keeps of an item's why. */
+const WHY_CHARS = 160;
+
+/** The call's reason as `why`, or nothing when it gave none. */
+function whyOf(input: Record<string, unknown>): { why?: string } {
+	const why = typeof input.reason === "string" ? shownLine(input.reason, WHY_CHARS) : "";
+	return why ? { why } : {};
+}
 
 /** The unreported work in `entries`, oldest first; with `since` (ms), only work started at or after it. */
 export function unreportedWork(entries: readonly unknown[], since?: number): BackgroundWork[] {
@@ -67,6 +78,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 				kind: "bash",
 				id: details.job,
 				label: flatLine(stringOrEmpty(input.command)),
+				...whyOf(input),
 				...(log ? { log } : {}),
 			});
 		} else if (message.toolName === "agent" && details.status === "background" && typeof details.id === "string") {
@@ -86,6 +98,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 				kind: "agent",
 				id: details.id,
 				...(goal ? { label: goal, goal: true } : { label: flatLine(stringOrEmpty(task.task)) }),
+				...whyOf(input),
 				...(Object.keys(files).length > 0 ? { files } : {}),
 			});
 		}
@@ -94,12 +107,14 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 }
 
 /**
- * One item per line part: `bash-3 (`yarn test`, log ~/…/bash-3-….log)`, `general-ab12 (goal "…", transcript folder ~/…)`
- * or, without a goal, `(task "…")`. A log that is gone (the retention sweep removed it) is not offered.
+ * One item per line part: what runs and why, then where its output is: `bash-3 (`yarn test`, why "…", log ~/…/bash-3-….log)`,
+ * `general-ab12 (goal "…", why "…", transcript folder ~/…)` or, without a goal, `(task "…")`. A log that is gone (the
+ * retention sweep removed it) is not offered.
  */
 export function describeWork(work: BackgroundWork, checkLog = true): string {
+	const why = work.why ? `, why "${work.why}"` : "";
 	if (work.kind === "agent")
-		return `${work.id} (${work.goal ? "goal" : "task"} "${work.label}"${describeFiles(work.files ?? {})})`;
+		return `${work.id} (${work.goal ? "goal" : "task"} "${work.label}"${why}${describeFiles(work.files ?? {})})`;
 	const log = work.log ? (!checkLog || fs.existsSync(work.log) ? `, log ${tildePath(work.log)}` : ", log deleted") : "";
-	return `${work.id} (\`${work.label}\`${log})`;
+	return `${work.id} (\`${work.label}\`${why}${log})`;
 }

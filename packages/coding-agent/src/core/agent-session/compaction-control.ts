@@ -9,7 +9,7 @@ import { type Model, type RetryCallbacks, streamSimple } from "@octocodeai/octoc
 import { formatNoModelSelectedMessage } from "../auth-guidance.ts";
 import type { CacheWarmer } from "../cache-warmer.ts";
 import { type CompactionPreparation, type CompactionResult, compact, prepareCompaction } from "../compaction/index.ts";
-import type { SessionCompactFailedEvent } from "../extensions/index.ts";
+import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type CompactionHost, type CompactionReason, runCompaction } from "../session-compaction.ts";
 import { createSessionUsageRecorder } from "../usage-totals.ts";
 import type { SessionInternals, SessionPublic } from "./host.ts";

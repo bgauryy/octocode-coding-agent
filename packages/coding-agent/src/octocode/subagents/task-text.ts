@@ -33,16 +33,24 @@ export async function taskReferences(
 	return referencedContentBlock(resolved);
 }
 
+/** A browser child's mode line; empty for any other child. */
+export function browserModeLine(browserMode: boolean | undefined): string {
+	return browserMode === undefined ? "" : `Browser mode: headless=${browserMode}.`;
+}
+
+/** How the child returns the structured result its parent asked for (`resultSchema`); empty without one. */
+export function resultContractBlock(resultContract: ResultContract | undefined): string {
+	return resultContract
+		? `Result contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
+		: "";
+}
+
 /** The task text before the child's identity: the parent's task, its referenced content, browser mode, skills and result contract. */
 export function childTaskInput(
 	task: string,
 	parts: { referenced: string; browserMode: boolean | undefined; skillText: string; resultContract?: ResultContract },
 ): string {
 	const { referenced, browserMode, skillText, resultContract } = parts;
-	const input = [task, referenced, browserMode === undefined ? "" : `Browser mode: headless=${browserMode}.`, skillText]
-		.filter(Boolean)
-		.join("\n\n");
-	return resultContract
-		? `${input}\n\nResult contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
-		: input;
+	const input = [task, referenced, browserModeLine(browserMode), skillText].filter(Boolean).join("\n\n");
+	return resultContract ? `${input}\n\n${resultContractBlock(resultContract)}` : input;
 }

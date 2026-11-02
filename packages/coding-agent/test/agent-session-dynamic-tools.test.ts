@@ -5,7 +5,7 @@ import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createBashTool } from "../src/core/tools/bash.ts";
@@ -62,7 +62,7 @@ describe("AgentSession dynamic tool registration", () => {
 		await resourceLoader.reload();
 
 		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model,
@@ -123,7 +123,7 @@ describe("AgentSession dynamic tool registration", () => {
 		});
 		await resourceLoader.reload();
 
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
@@ -171,7 +171,7 @@ describe("AgentSession dynamic tool registration", () => {
 		});
 		await resourceLoader.reload();
 
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
@@ -182,7 +182,7 @@ describe("AgentSession dynamic tool registration", () => {
 				{
 					name: "sdk_tool",
 					label: "SDK Tool",
-					description: "Tool registered through createAgentSession",
+					description: "Tool registered through createTestSession",
 					parameters: Type.Object({}),
 					execute: async () => ({
 						content: [{ type: "text", text: "ok" }],
@@ -231,7 +231,7 @@ describe("AgentSession dynamic tool registration", () => {
 		});
 		await resourceLoader.reload();
 
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

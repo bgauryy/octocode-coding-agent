@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionAPI, ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../src/core/features/index.ts";
 import { registerWorktreeFooter, worktreeFooterText } from "../../src/octocode/worktrees/footer.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
 

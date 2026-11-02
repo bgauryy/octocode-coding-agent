@@ -2,17 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-const trust = vi.hoisted(() => ({ check: vi.fn(async () => true) }));
-vi.mock("../../src/octocode/shared/trust.ts", () => ({
-	projectTrustForContents: trust.check,
-}));
 import { nativeHost } from "../../src/octocode/shared/host-api.ts";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 const roots: string[] = [];
 afterEach(() => {
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
-	trust.check.mockReset().mockResolvedValue(true);
 	vi.unstubAllEnvs();
 });
 function setup() {
@@ -44,21 +39,10 @@ const invocation = {
 	toolName: "bash",
 	input: { command: "true" },
 };
-it("never publishes project allowances changed across the trust snapshot", async () => {
+it("loads restrictive project rules in an untrusted session but excludes allowances", async () => {
 	const f = setup();
-	fs.writeFileSync(f.project, JSON.stringify({ permissions: { allow: [] } }));
-	trust.check.mockImplementationOnce(async () => {
-		fs.writeFileSync(f.project, JSON.stringify({ permissions: { allow: ["Bash"] } }));
-		return true;
-	});
-	await f.owner.refresh(f.ctx);
-	expect(f.owner.evaluate(invocation, f.cwd).decision).toBe("unsupported");
-});
-it("loads restrictive project rules without trust but excludes allowances", async () => {
-	const f = setup();
-	trust.check.mockResolvedValue(false);
 	fs.writeFileSync(f.project, JSON.stringify({ permissions: { allow: ["Bash"], deny: ["Read"] } }));
-	await f.owner.refresh(f.ctx);
+	await f.owner.refresh({ ...f.ctx, isProjectTrusted: () => false });
 	expect(f.owner.evaluate(invocation, f.cwd).decision).toBe("none");
 	expect(f.owner.evaluate({ ...invocation, toolName: "read", input: { path: "a" } }, f.cwd).decision).toBe("deny");
 });

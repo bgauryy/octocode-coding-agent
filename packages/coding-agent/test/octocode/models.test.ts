@@ -232,8 +232,9 @@ describe("model purposes", () => {
 	});
 
 	it("groups models by provider, cheapest first within each group, with purposes and profiles", () => {
+		const reasons = (model: ModelRef) => ({ ...model, reasoning: true }) as ModelRef;
 		const text = describeModels(
-			[opus, haiku, sonnet],
+			[opus, haiku, sonnet].map(reasons),
 			opus,
 			new Map([["researcher", { name: "researcher", model: "small" } as never]]),
 			indexCatalog(api, 1),
@@ -244,7 +245,20 @@ describe("model purposes", () => {
 		expect(lines[5]).toMatch(/^● p\/opus/);
 		expect(text).toContain("small: p/haiku");
 		expect(text).toContain("medium: p/sonnet");
-		expect(text).toContain("researcher: p/haiku (small, a purpose)");
+		expect(text).toContain("researcher: p/haiku:medium (small, a purpose)");
+		expect(text).toContain(
+			"thinking when the call and profile name none: medium (built in; OCTOCODE_SUBAGENT_THINKING sets another), never this session's level",
+		);
 		expect(describeModels([], undefined, new Map(), undefined)).toBe("No models are configured.");
+	});
+
+	it("prices a time-limited model at the rates in effect today: an expired intro price neither wins small nor shows", () => {
+		const after = { input: 3, output: 15 };
+		const expired = m("p", "promo", 0.01, 0.05, { cost: { input: 0.01, output: 0.05, until: "2020-01-01", after } });
+		const current = m("p", "promo", 0.01, 0.05, { cost: { input: 0.01, output: 0.05, until: "2999-12-31", after } });
+		expect(resolveTier("small", [opus, sonnet, haiku, expired], opus)).toBe(haiku);
+		expect(resolveTier("small", [opus, sonnet, haiku, current], opus)).toBe(current);
+		expect(describeModels([opus, expired], opus, new Map(), undefined)).toContain("p/promo · $3/$15 per M in/out");
+		expect(describeModels([opus, current], opus, new Map(), undefined)).toContain("p/promo · $0.01/$0.05 per M in/out");
 	});
 });

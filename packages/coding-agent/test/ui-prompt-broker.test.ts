@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionUIContext, ExtensionUIDialogOptions } from "../src/core/extensions/types.ts";
-import { UIPromptTracker } from "../src/core/extensions/runner/ui-prompt.ts";
+import type { ExtensionUIContext, ExtensionUIDialogOptions } from "../src/core/features/types.ts";
+import { UIPromptTracker } from "../src/core/features/runner/ui-prompt.ts";
 
 /** A mode whose dialogs resolve when the test says, and close (resolve undefined/false) when their signal aborts. */
 function fakeUi() {

@@ -8,7 +8,6 @@ import { shellParserReady } from "../../src/octocode/permission/shell/mutation.t
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { readPlan, PLAN_ENTRY } from "../../src/octocode/plan/state.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
 import { createHarness, getUserTexts, type Harness } from "../suite/harness.ts";
 
 let harness: Harness;
@@ -19,7 +18,8 @@ it("persists revisions, rejects stale approvals and restores planning on branch 
 	harness = await createHarness({
 		extensionFactories: [
 			{
-				path: NATIVE_FEATURE_PATH,
+				owner: "native",
+				path: "<inline:octocode>",
 				factory: (api) => {
 					const commands = new Subcommands();
 					registerPlanning(api, commands, stop);
@@ -62,7 +62,8 @@ it("does not announce planning if stopping work fails, and can retry", async () 
 	harness = await createHarness({
 		extensionFactories: [
 			{
-				path: NATIVE_FEATURE_PATH,
+				owner: "native",
+				path: "<inline:octocode>",
 				factory: (api) => {
 					const commands = new Subcommands();
 					registerPlanning(api, commands, stop);
@@ -78,24 +79,26 @@ it("does not announce planning if stopping work fails, and can retry", async () 
 });
 
 it("allows only host-owned reads; read-only annotations and similarly named tools cannot bypass it", () => {
-	const definition = (name: string, path = NATIVE_FEATURE_PATH) =>
-		({ name, sourceInfo: { path }, annotations: { readOnlyHint: true } }) as never;
+	const definition = (name: string, path = "<inline:octocode>", owner: "native" | "builtin" = "native") =>
+		({ name, sourceInfo: { path, owner }, annotations: { readOnlyHint: true } }) as never;
 	for (const name of ["web", "askUser", "archive", "skill"])
 		expect(planningRefusal({ toolName: name, input: {} }, definition(name))).toBeUndefined();
 	for (const name of ["file", "bash", "execute", "agent", "browser", "debug", "mcp__untrusted__reader"])
 		expect(planningRefusal({ toolName: name, input: {} }, definition(name))).toContain("Plan mode blocks");
-	expect(planningRefusal({ toolName: "web", input: {} }, definition("web", "/project/fake.ts"))).toContain("blocks");
+	expect(planningRefusal({ toolName: "web", input: {} }, definition("web", "/project/fake.ts", "builtin"))).toContain(
+		"blocks",
+	);
 	expect(
 		planningRefusal(
 			{ toolName: "mcp__octocode__localFetch", input: {} },
-			definition("mcp__octocode__localFetch", "builtin:mcp"),
+			definition("mcp__octocode__localFetch", "builtin:mcp", "builtin"),
 		),
 	).toContain("blocks");
 });
 
 it("lets the planner inspect the repository with read-only shell commands and nothing else", async () => {
 	await shellParserReady();
-	const bash = { name: "bash", sourceInfo: { path: NATIVE_FEATURE_PATH } } as never;
+	const bash = { name: "bash", sourceInfo: { owner: "native", path: "<inline:octocode>" } } as never;
 	const refusal = (input: Record<string, unknown>) =>
 		planningRefusal({ toolName: "bash", input }, bash, [], planReadOnly);
 	for (const command of [
@@ -145,7 +148,7 @@ it("gates a native bash call through the host's classifier once it is injected",
 		new Subcommands(),
 		vi.fn(async () => {}),
 	);
-	fake.tools.set("bash", { name: "bash", sourceInfo: { path: NATIVE_FEATURE_PATH } });
+	fake.tools.set("bash", { name: "bash", sourceInfo: { owner: "native", path: "<inline:octocode>" } });
 	const ctx = fakeCtx({ cwd: "/repo" });
 	Object.assign(ctx, {
 		sessionManager: {
@@ -218,7 +221,8 @@ it("restores a saved plan before an SDK control without lifecycle bindings", asy
 	harness = await createHarness({
 		extensionFactories: [
 			{
-				path: NATIVE_FEATURE_PATH,
+				owner: "native",
+				path: "<inline:octocode>",
 				factory: (api) => {
 					const commands = new Subcommands();
 					registerPlanning(api, commands, stop);
@@ -244,7 +248,8 @@ it("approves the exact saved plan even when its original assistant message is ab
 	harness = await createHarness({
 		extensionFactories: [
 			{
-				path: NATIVE_FEATURE_PATH,
+				owner: "native",
+				path: "<inline:octocode>",
 				factory: (api) => {
 					const commands = new Subcommands();
 					registerPlanning(api, commands, async () => {});
@@ -275,7 +280,8 @@ it("treats a slash-prefixed planning task as literal user text rather than execu
 	harness = await createHarness({
 		extensionFactories: [
 			{
-				path: NATIVE_FEATURE_PATH,
+				owner: "native",
+				path: "<inline:octocode>",
 				factory: (api) => {
 					const commands = new Subcommands();
 					registerPlanning(api, commands, async () => {});

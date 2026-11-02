@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { registerArchiveTool } from "../../src/octocode/compaction/archive-tool.ts";
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { writeSessionRecord } from "../../src/octocode/shared/archive/record.ts";
 import { errorSignature } from "../../src/octocode/shared/history-errors.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";

@@ -11,7 +11,7 @@ import { repoKey } from "../../octocode/shared/home/repo.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { expandClaudeArguments, expandClaudeVariables } from "../claude-arguments.ts";
-import type { ExtensionRunner, InputSource } from "../extensions/index.ts";
+import type { ExtensionRunner, InputSource } from "../features/index.ts";
 import { expandPromptTemplate, parseCommandArgs } from "../prompt-templates.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import { getSkillCommands } from "../skill-commands.ts";

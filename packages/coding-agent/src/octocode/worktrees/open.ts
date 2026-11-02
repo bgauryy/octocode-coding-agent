@@ -1,5 +1,5 @@
 import { APP_NAME, getCliInvocation } from "../../config.ts";
-import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say } from "../shared/commands.ts";
 import {

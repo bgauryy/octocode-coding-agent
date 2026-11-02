@@ -1,12 +1,15 @@
 # Terminal UI
 
+> **Removed API.** Octocode no longer supports user code extensions, and the package root exports no extension API. This page describes the extension loader's last behavior and is removed with it.
+
+
 For user-facing command navigation, `/help` opens a searchable command picker and `/skills` filters it to loaded skills. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for command names and the combined status, models, and trust menus.
 
 The built-in footer reserves its own line for the coordinator's provider/model and thinking level. On narrower terminals it separates model identity from thinking so usage totals cannot hide either. Models without reasoning support show `thinking unavailable`; virtual selections additionally show the latest physical route. `/effort` changes reasoning effort, and `/context size` chooses a session context budget. Extension-provided replacement footers control their own layout.
 
 `@octocodeai/octocode-tui` provides the terminal component system used by Octocode. Extensions use it when built-in dialogs, notifications, status text, and widgets are not enough for the interaction they need.
 
-Start with `ctx.ui` methods from an [extension](extension-contracts.md#ui-and-modes). Build a custom component only when the UI needs its own rendering, keyboard or mouse input, focus, layout, or lifecycle.
+Start with `ctx.ui` methods. Build a custom component only when the UI needs its own rendering, keyboard or mouse input, focus, layout, or lifecycle.
 
 ## Choose an integration point
 
@@ -198,4 +201,4 @@ The checked extension examples cover the main patterns:
 - `widget-placement.ts` places persistent content around the editor.
 - `doom-overlay/` demonstrates a continuously rendered overlay.
 
-The public exports are defined in [`packages/tui/src/index.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/tui/src/index.ts). See [Extensions](extensions.md) for extension lifecycle, state, tools, events, and mode behavior.
+The public exports are defined in [`packages/tui/src/index.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/tui/src/index.ts).

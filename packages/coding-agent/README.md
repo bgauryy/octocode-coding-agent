@@ -1,6 +1,6 @@
 # octocode-code agent
 
-The CLI and SDK for [octocode-code](../../README.md), a fork of [Pi](https://github.com/earendil-works/pi) with the former Octocode Pi extension integrated into the runtime.
+The CLI and RPC server for [octocode-code](../../README.md), a fork of [Pi](https://github.com/earendil-works/pi) with the former Octocode Pi extension integrated into the runtime.
 
 Follow the [root setup instructions](../../README.md#run-from-source) for prerequisites and development commands. The package is `@octocodeai/octocodecode`; its executables are `octocode` and `octocode-api`. Registry publication is blocked while local sibling dependencies are configured.
 
@@ -8,9 +8,9 @@ Follow the [root setup instructions](../../README.md#run-from-source) for prereq
 
 Native sessions read source files through Octocode MCP local tools, use `file` for guarded writes, edits and deletions, and `bash` for shell commands and background jobs. The unified `agent` tool handles delegation, external agents and team communication. `web` provides search and retrieval; the `browser` specialist handles browser interaction. Native features also include checkpoints, memory, backlog, hooks and session recovery. Run `/help` to discover commands available in the current session.
 
-Octocode ships no separate `read`, `edit`, `write`, `grep`, `find`, `ls` or `powershell` tools. PowerShell uses `bash` with `type: "powershell"`. The only core tool, and the only SDK tool factory, is `bash` (`createBashTool()` and `createBashToolDefinition()`); third-party extensions and SDK callers register their own tools.
+Octocode ships no separate `read`, `edit`, `write`, `grep`, `find`, `ls` or `powershell` tools. PowerShell uses `bash` with `type: "powershell"`. The only core tool is `bash`.
 
-See [native features](docs/native-features.md) for ownership and migration details and the [documentation index](docs/index.md) for configuration, providers, extensions and embedding.
+See [native features](docs/native-features.md) for ownership and migration details and the [documentation index](docs/index.md) for configuration, providers and RPC.
 
 ## Command hints
 
@@ -90,7 +90,7 @@ yarn node packages/coding-agent/src/octocode/api/cli.ts send --to <id> --wait --
 
 Installed builds expose the same commands through `octocode-api`. Within the agent, `/api on` and `/api off` control the API. See the [local session API guide](docs/session-api.md) for session guards, message keys, event watching, external peers and runnable checks, and [environment variables](docs/environment-variables.md) for opt-in transport settings.
 
-The native SDK supports one active `AgentSession` per process. Sequential CLI/RPC reloads are supported; concurrent native sessions share session and database state and are not isolated.
+A native session supports one active `AgentSession` per process. Sequential CLI/RPC reloads are supported; concurrent native sessions share session and database state and are not isolated.
 
 For an existing session, `getApplicationPort(session)` returns the shared application service. Its `getSnapshot()` and `subscribeState(listener)` methods expose copied runtime snapshots through the `ApplicationStateSource` contract. Read once for the initial value, then unsubscribe when the view closes. The service's Zustand vanilla store also supplies terminal semantic events and serialized web snapshots. Commands still pass through the service and execution owners. See [interface architecture](../../docs/INTERFACE_ARCHITECTURE.md#runtime-state-and-database-ownership) for state lifetimes and [runtime storage](docs/configuration.md#runtime-storage) for persistence.
 

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import triggerCompactExtension from "../examples/extensions/trigger-compact.ts";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../src/core/extensions/index.ts";
+import triggerCompactExtension from "./fixtures/extensions/trigger-compact.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../src/core/features/index.ts";
 
 function createContext(tokens: number | null, compact = vi.fn()): ExtensionContext {
 	return {

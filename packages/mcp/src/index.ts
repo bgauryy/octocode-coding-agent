@@ -7,6 +7,7 @@ import type { McpExtensionApi, McpExtensionFactory } from "./host/types.ts";
 import { registerMcpCommand } from "./command.ts";
 import { registerSessionEvents } from "./events.ts";
 import { registerMcpManageTool } from "./manage-tool-wiring.ts";
+import { registerAcpClientMcpServers } from "./acp-session-servers.ts";
 import { registerInheritedMcpServers } from "./session-servers.ts";
 import { McpExtensionState, type McpExtensionOptions } from "./state.ts";
 import { createMcpToolRenderers } from "./tool-definition.ts";
@@ -22,7 +23,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): McpExtens
 
 export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptions = {}): McpExtensionState {
 	const state = new McpExtensionState(api, options);
-	registerInheritedMcpServers(api);
+	state.parentStopped = new Set(registerInheritedMcpServers(api));
+	registerAcpClientMcpServers(api);
 
 	// A resumed session renders calls to MCP tools before their server connected, if it ever does.
 	api.registerToolRenderer((toolName, next) => {

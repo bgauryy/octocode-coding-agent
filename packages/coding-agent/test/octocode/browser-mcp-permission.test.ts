@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { browserMcpEscalations, browserMcpUrls } from "../../../common/src/browser-mcp.ts";

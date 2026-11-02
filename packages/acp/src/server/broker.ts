@@ -14,6 +14,9 @@ import { AcpSession, type AcpWorker } from "./session.ts";
 import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay } from "./history.ts";
 
 export type { AcpWorker } from "./session.ts";
+/** JSON-RPC server-error code for a session in a folder the user has not trusted. */
+const FOLDER_NOT_TRUSTED = -32002;
+
 interface AcpBrokerOptions {
 	host: AcpBrokerHost;
 	createWorker: (cwd: string, mcpServers: McpServer[], sessionPath?: string) => Promise<AcpWorker>;
@@ -168,6 +171,9 @@ export class AcpBroker {
 		let session: AcpSession | undefined;
 		try {
 			const directory = await canonicalDirectory(cwd);
+			const trust = this.options.host.folderTrust(directory);
+			if (!trust.trusted)
+				throw new RequestError(FOLDER_NOT_TRUSTED, trust.message, { path: directory, command: trust.command });
 			const replaySaved =
 				replay && path && expectedId ? prepareHistoryReplay(this.options.host, path, expectedId, client) : undefined;
 			const worker = await this.options.createWorker(directory, servers, path);

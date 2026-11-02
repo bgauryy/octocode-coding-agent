@@ -1,5 +1,6 @@
 import { lstatSync, statSync } from "node:fs";
 import path from "node:path";
+import { type PluginAgentFile, scanPluginAgents } from "./plugin-agents.ts";
 import { type PluginManifest, resolvePluginPath } from "./plugin-manifest.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
@@ -14,7 +15,7 @@ type PluginCommand =
 
 /**
  * Components a plugin can declare, per host, that Octocode does not load: the manifest key and the default location
- * that announce one. Skills, Claude commands, hooks and MCP servers have owners; everything here is reported instead
+ * that announce one. Skills, Claude commands and agents, hooks and MCP servers have owners; everything here is reported instead
  * of silently ignored. Checked 2026-10-29 against the Claude Code plugin manifest reference and Codex `main` 3535c22b.
  */
 const UNSUPPORTED_PLUGIN_COMPONENTS: Record<
@@ -22,7 +23,6 @@ const UNSUPPORTED_PLUGIN_COMPONENTS: Record<
 	ReadonlyArray<{ key: string; path?: string }>
 > = {
 	claude: [
-		{ key: "agents", path: "./agents" },
 		{ key: "lspServers", path: "./.lsp.json" },
 		{ key: "outputStyles", path: "./output-styles" },
 		{ key: "workflows", path: "./workflows" },
@@ -58,6 +58,8 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 	skills: string[];
 	commands: PluginCommand[];
 	hooks: PluginComponent[];
+	/** Claude plugin agents: the manifest `agents` files, which replace the default recursive `agents/` scan. */
+	agents: PluginAgentFile[];
 	/** Declared components Octocode does not load (see `UNSUPPORTED_PLUGIN_COMPONENTS`). */
 	unsupported: string[];
 	errors: string[];
@@ -67,7 +69,7 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 	const paths = (
 		field: string,
 		value: unknown,
-		kind: "directory" | "json" | "markdown",
+		kind: "directory" | "json" | "markdown" | "markdownFile",
 		optional = false,
 	): string[] => {
 		const result: string[] = [];
@@ -90,6 +92,8 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 					throw new Error("expected a JSON file");
 				if (kind === "markdown" && !(stat.isDirectory() || (stat.isFile() && path.extname(resolved) === ".md")))
 					throw new Error("expected a Markdown file or directory");
+				if (kind === "markdownFile" && !(stat.isFile() && path.extname(resolved) === ".md"))
+					throw new Error("expected a Markdown file (directories are not accepted)");
 				result.push(resolved);
 			} catch (error) {
 				errors.push(`${manifest.name}: ${field}: ${String(error)}`);
@@ -137,6 +141,12 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 				commands.push({ kind: "path", path: item });
 		}
 	}
+	const agents: PluginAgentFile[] = [];
+	if (manifest.protocol === "claude") {
+		if (settings.agents === undefined) agents.push(...scanPluginAgents(manifest, errors));
+		else
+			for (const file of new Set(paths("agents", settings.agents, "markdownFile"))) agents.push({ file, folders: [] });
+	}
 	const hooks: PluginComponent[] = [];
 	const seen = new Set<string>();
 	const hookPaths = (entry: unknown, optional = false) => {
@@ -168,5 +178,5 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 				} else hookPaths(entry);
 			}
 	}
-	return { skills: [...skills], commands, hooks, unsupported: unsupportedComponents(manifest), errors };
+	return { skills: [...skills], commands, hooks, agents, unsupported: unsupportedComponents(manifest), errors };
 }

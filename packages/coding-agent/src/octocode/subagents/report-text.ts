@@ -2,7 +2,7 @@ import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
 import type { RunRoute } from "./claim.ts";
-import { fallbackNote } from "./model.ts";
+import { routeSummary } from "./model.ts";
 import type { RunDetails } from "./run-types.ts";
 import { runFooter } from "./tracking.ts";
 
@@ -27,6 +27,9 @@ export const foregroundExtras = (details: RunDetails, failed: boolean): string =
 	const lines = [...noticeLines(details), ...runFooter(details, failed)].filter(Boolean);
 	return lines.length > 0 ? `\n\n${lines.join("\n")}` : "";
 };
+
+/** The model and thinking level a run used and what chose them: `Ran on p/m, low thinking (profile researcher: small:low).` */
+export const ranOn = (route: RunRoute): string => (route.model ? `Ran on ${routeSummary(route)}.` : "");
 
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
 export const FAILED_NEXT = "Retry with a narrower task or do the work yourself.";
@@ -53,9 +56,7 @@ const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("
  * (its credential works) or the credential to fix.
  */
 export function failedNext(route: RunRoute, error: string, partial: boolean): string {
-	const ran = route.model
-		? `Ran on ${route.model} (${route.via ?? (route.fallback ? fallbackNote(route.fallback, route.refusedBy) : "this session's model")}).`
-		: "";
+	const ran = ranOn(route);
 	const unverified = partial ? PARTIAL_UNVERIFIED : "";
 	if (RATE_LIMITED.test(error) && !MODEL_REFUSED.test(error))
 		return [`${RATE_LIMIT_NEXT}${unverified}`, ran].filter(Boolean).join("\n");

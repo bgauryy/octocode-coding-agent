@@ -4,7 +4,7 @@ import type {
 	CacheWarmingDecisionEventResult,
 	ExtensionAPI,
 	ExtensionContext,
-} from "../../core/extensions/index.ts";
+} from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { interactive } from "../shared/interactive.ts";

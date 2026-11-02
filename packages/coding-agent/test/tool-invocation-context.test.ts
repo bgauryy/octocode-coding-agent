@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { wrapToolDefinition } from "../src/core/tools/tool-definition-wrapper.ts";
-import type { ExtensionToolContext } from "../src/core/extensions/types.ts";
+import type { ExtensionToolContext } from "../src/core/features/types.ts";
 import { Type } from "typebox";
 
 it("provides immutable execution identity on a fresh context and revokes it after completion", async () => {

@@ -6,7 +6,7 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai/compat";
-import type { AgentActivityOutcome, BoundaryContextPreview, SessionBoundaryDraft } from "../extensions/index.ts";
+import type { AgentActivityOutcome, BoundaryContextPreview, SessionBoundaryDraft } from "../features/index.ts";
 import { convertToLlm, type CustomMessage } from "../messages.ts";
 import { type SessionEntry, SessionManager } from "../session-manager.ts";
 import type { SessionInternals } from "./host.ts";

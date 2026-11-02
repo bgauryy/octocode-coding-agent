@@ -1,10 +1,7 @@
 import chalk from "chalk";
-import { createProjectTrustContext } from "../cli/project-trust.ts";
-import type { InlineExtension } from "../core/extensions/types.ts";
-import { type AppMode, resolveProjectTrusted } from "../core/project-trust.ts";
-import { DefaultResourceLoader } from "../core/resource-loader.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
-import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../core/trust-manager.ts";
+import { grantFolder } from "../octocode/trust/grants.ts";
+import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 
 export function reportSettingsErrors(settingsManager: SettingsManager, context: string): void {
 	const errors = settingsManager.drainErrors();
@@ -19,17 +16,9 @@ export function reportSettingsErrors(settingsManager: SettingsManager, context: 
 	}
 }
 
-export interface PackageCommandRuntimeOptions {
-	extensionFactories?: InlineExtension[];
-}
-
 interface CommandSettingsResult {
 	settingsManager: SettingsManager;
 	projectTrustWarnings: string[];
-}
-
-function getCommandAppMode(): AppMode {
-	return process.stdin.isTTY && process.stdout.isTTY ? "interactive" : "print";
 }
 
 export function reportProjectTrustWarnings(warnings: readonly string[]): void {
@@ -38,50 +27,34 @@ export function reportProjectTrustWarnings(warnings: readonly string[]): void {
 	}
 }
 
-export async function createCommandSettingsManager(options: {
+/** Why a command that needs project scope stopped: the folder is not trusted. */
+export const FOLDER_NOT_TRUSTED_HINT =
+	"This folder is not trusted. Run again with --trust to record your trust, or run octocode trust add.";
+
+/**
+ * Settings for a package or config command. Project scope applies only in a folder the user trusted (the agent
+ * database decides, as at session start). `--trust` records the grant first, like `octocode --trust`; the command never
+ * asks, and an untrusted folder simply has no project scope.
+ */
+export function createCommandSettingsManager(options: {
 	cwd: string;
 	agentDir: string;
-	projectTrustOverride?: boolean;
-	useSavedProjectTrustOnly?: boolean;
-	extensionFactories?: InlineExtension[];
-}): Promise<CommandSettingsResult> {
-	const settingsManager = SettingsManager.create(options.cwd, options.agentDir, { projectTrusted: false });
+	trust?: boolean;
+}): CommandSettingsResult {
 	const projectTrustWarnings: string[] = [];
-	const trustStore = new ProjectTrustStore(options.agentDir);
-	if (options.useSavedProjectTrustOnly) {
-		const savedProjectTrusted = trustStore.get(options.cwd) === true;
-		settingsManager.setProjectTrusted(options.projectTrustOverride ?? savedProjectTrusted);
-		return { settingsManager, projectTrustWarnings };
+	let trusted = resolveFolderTrust(options.cwd).state === "trusted";
+	if (!trusted && options.trust) {
+		try {
+			grantFolder(options.cwd, "folder", { source: "flag", surface: "print" });
+			trusted = resolveFolderTrust(options.cwd).state === "trusted";
+		} catch (error) {
+			projectTrustWarnings.push(
+				`Could not record trust for ${options.cwd}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
-
-	const appMode = getCommandAppMode();
-	const extensionsResult =
-		options.projectTrustOverride === undefined && hasTrustRequiringProjectResources(options.cwd)
-			? await new DefaultResourceLoader({
-					cwd: options.cwd,
-					agentDir: options.agentDir,
-					settingsManager,
-					extensionFactories: options.extensionFactories,
-				}).loadProjectTrustExtensions()
-			: undefined;
-	for (const error of extensionsResult?.errors ?? []) {
-		projectTrustWarnings.push(`Failed to load extension "${error.path}": ${error.error}`);
-	}
-
-	const projectTrusted = await resolveProjectTrusted({
-		cwd: options.cwd,
-		trustStore,
-		trustOverride: options.projectTrustOverride,
-		defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
-		extensionsResult,
-		projectTrustContext: createProjectTrustContext({
-			cwd: options.cwd,
-			mode: appMode,
-			settingsManager,
-			hasUI: appMode === "interactive",
-		}),
-		onExtensionError: (message) => projectTrustWarnings.push(message),
-	});
-	settingsManager.setProjectTrusted(projectTrusted);
-	return { settingsManager, projectTrustWarnings };
+	return {
+		settingsManager: SettingsManager.create(options.cwd, options.agentDir, { projectTrusted: trusted }),
+		projectTrustWarnings,
+	};
 }

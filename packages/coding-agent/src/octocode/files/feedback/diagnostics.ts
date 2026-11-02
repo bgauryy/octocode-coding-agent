@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { MutationReceipt } from "../render.ts";
@@ -43,7 +43,9 @@ function describe(row: Record<string, unknown>, path: string): DiagnosticFeedbac
 	const partial = data.isPartial === true || row.isPartial === true;
 	const reasons = Array.isArray(data.partialReasons) ? data.partialReasons : [];
 	if (reasons.includes("diagnosticsNotPublished")) return { path, state: "unpublished" };
-	if (data.kind !== "diagnostics" && !(row.status === "empty" && data.category === "noDiagnostics"))
+	// The research server names the row's operation in `operation`; rows shaped with `kind` are still accepted.
+	const diagnostics = data.operation === "diagnostics" || data.kind === "diagnostics";
+	if (!diagnostics && !(row.status === "empty" && data.category === "noDiagnostics"))
 		return { path, state: "unavailable" };
 	if (row.status === "error") return { path, state: "unavailable" };
 	if (partial) return { path, state: "unavailable" };
@@ -66,7 +68,7 @@ function describe(row: Record<string, unknown>, path: string): DiagnosticFeedbac
  * Coalesce repeated writes, then inspect a bounded number of final surviving targets outside file locks. Each call is
  * bounded by the caller's signal and the research server's own request and language-server timeouts, never by a
  * deadline of this tool, so a server still warming up answers the next edit instead of being cut off on every one.
- * A file type the server already said it has no language server for is not asked again in this session.
+ * A file type the server already said it has no language server for is not asked again in this process (`support.ts`).
  */
 export async function inspectMutations(
 	receipts: readonly MutationReceipt[],
@@ -102,7 +104,7 @@ export async function inspectMutations(
 			results.push({ path, state: "unavailable" });
 			continue;
 		}
-		if (knownUnsupported(sessionId, TOOL, path)) {
+		if (knownUnsupported(TOOL, path)) {
 			results.push({ path, state: "unsupported" });
 			continue;
 		}
@@ -116,7 +118,7 @@ export async function inspectMutations(
 				continue;
 			}
 			if (outcome.isError) {
-				if (saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
+				if (saysUnsupported(outcome)) noteUnsupported(TOOL, path);
 				results.push({ path, state: "unavailable" });
 				continue;
 			}
@@ -131,7 +133,7 @@ export async function inspectMutations(
 				}
 			}
 			const row = rowOf(parsed);
-			if (row && saysUnsupported(outcome)) noteUnsupported(sessionId, TOOL, path);
+			if (row && saysUnsupported(outcome)) noteUnsupported(TOOL, path);
 			results.push(
 				row && matchesResponsePath(parsed, row, path, ctx.cwd) ? describe(row, path) : { path, state: "unavailable" },
 			);

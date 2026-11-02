@@ -1,5 +1,5 @@
 import type { EditorTheme } from "@octocodeai/octocode-tui";
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 
 export type DialogTheme = Parameters<Parameters<ExtensionContext["ui"]["custom"]>[0]>[1];
 

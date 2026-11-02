@@ -7,7 +7,7 @@
 
 import type { ConfigSettingCommand } from "@octocodeai/octocode-contracts/config";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import { ProjectTrustStore } from "../../core/trust-manager.ts";
+import { resolveFolderTrust } from "../trust/resolve.ts";
 
 /** A refused or failed write. `message` is fixed text; it never quotes file content. */
 export class ConfigWriteError extends Error {
@@ -36,7 +36,7 @@ export async function writeConfigSetting(command: ConfigSettingCommand, options:
 	const workspace = command.scope === "workspace";
 	if (workspace) {
 		if (options.cwd === undefined) throw new ConfigWriteError(400, "Choose a workspace to change its settings.");
-		if (new ProjectTrustStore(options.agentDir, () => {}).get(options.cwd) !== true)
+		if (resolveFolderTrust(options.cwd).state !== "trusted")
 			throw new ConfigWriteError(
 				403,
 				"This workspace is not trusted, so its settings cannot be changed. Trust it with /trust in a terminal session.",

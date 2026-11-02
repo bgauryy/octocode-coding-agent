@@ -6,7 +6,9 @@ import {
 	BranchSummarySettingsSchema,
 	ImageSettingsSchema,
 	MarkdownSettingsSchema,
+	MarketplaceRecordSchema,
 	PackageSourceSchema,
+	PluginInstallSourceSchema,
 	RetrySettingsSchema,
 	SkillsInputSchema,
 	TerminalSettingsSchema,
@@ -82,12 +84,6 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.quietStartup,
 			}),
 		),
-		defaultProjectTrust: Type.Optional(
-			Type.Union([Type.Literal("ask"), Type.Literal("always"), Type.Literal("never")], {
-				description: "Global setting only.",
-				default: SETTINGS_DEFAULTS.defaultProjectTrust,
-			}),
-		),
 		shellCommandPrefix: Type.Optional(
 			Type.String({ description: "Prefix prepended to every bash command, for example to enable shell aliases." }),
 		),
@@ -110,7 +106,7 @@ export const SettingsSchema = Type.Object(
 		mcpPresentation: Type.Optional(
 			Type.Union([Type.Literal("compact"), Type.Literal("json")], {
 				description:
-					'How MCP tools reach the model. "compact" shows each server as a generated TypeScript file in the cached system prompt, declares its tools with a one-line trigger and the top-level field types, and validates calls against the server\'s own JSON Schema. "json" declares every tool with its full JSON Schema and ignores the generated files.',
+					'How the cached system prompt describes MCP tools: every enabled server\'s instructions and each enabled tool\'s description and schema, in one block per server. "compact" writes them as a generated TypeScript file (a tool it cannot express faithfully is described in plain form); "json" describes every tool in plain form, as the server sent it. Provider declarations are thin either way: a one-line trigger and the top-level field types, with calls validated against the server\'s own JSON Schema.',
 				default: SETTINGS_DEFAULTS.mcpPresentation,
 			}),
 		),
@@ -161,31 +157,26 @@ export const SettingsSchema = Type.Object(
 						path: Type.String({ description: "Absolute local plugin directory." }),
 						protocol: Type.Union([Type.Literal("claude"), Type.Literal("codex")]),
 						enabled: Type.Optional(Type.Boolean({ default: true })),
-						hooksFingerprint: Type.Optional(
-							Type.String({
-								pattern: "^[a-f0-9]{64}$",
-								description: "SHA-256 of reviewed plugin hook declarations. Changed definitions require review again.",
-							}),
-						),
-						mcpFingerprint: Type.Optional(
-							Type.String({
-								pattern: "^[a-f0-9]{64}$",
-								description: "SHA-256 of reviewed plugin MCP declarations. Changed definitions require review again.",
-							}),
-						),
+						source: Type.Optional(PluginInstallSourceSchema),
 					},
-					{ additionalProperties: false },
+					{ additionalProperties: true },
 				),
 				{
 					description:
-						"Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters.",
+						"Local compatibility plugins. Activates namespaced skills, supported prompt commands, hooks and MCP servers; adding or enabling a plugin approves its hooks and MCP servers. Other components require their own adapters.",
 				},
 			),
+		),
+		marketplaces: Type.Optional(
+			Type.Record(Type.String(), MarketplaceRecordSchema, {
+				description:
+					"Plugin marketplaces by name, as `octocode marketplace add` writes them. Global only: project settings cannot register one.",
+			}),
 		),
 		toggles: Type.Optional(
 			Type.Record(Type.String(), Type.Boolean(), {
 				description:
-					"Plugin and hook switches by ID, as `/plugins` writes them: `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
+					"Plugin and hook switches by ID, as `/harness` writes them: `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
 			}),
 		),
 		packages: Type.Optional(
@@ -193,7 +184,12 @@ export const SettingsSchema = Type.Object(
 				description: "npm or git package sources, as strings or objects with resource filtering.",
 			}),
 		),
-		extensions: Type.Optional(Type.Array(Type.String(), { description: "Local extension file paths or directories." })),
+		extensions: Type.Optional(
+			Type.Array(Type.String(), {
+				description:
+					"`builtin:<id>` entries switch a built-in feature on (llama.cpp, mcp). Other entries are ignored: user code extensions are not supported.",
+			}),
+		),
 		deviceId: Type.Optional(
 			Type.String({
 				description: "Stable installation UUID, generated when authentication first needs it. Global only.",
@@ -379,12 +375,10 @@ export const SettingsSchema = Type.Object(
 
 type SettingsInput = Static<typeof SettingsSchema>;
 
-export interface RetrySettings extends Omit<Static<typeof RetrySettingsSchema>, "maxDelayMs"> {}
-export interface ImageSettings extends Static<typeof ImageSettingsSchema> {}
+interface RetrySettings extends Omit<Static<typeof RetrySettingsSchema>, "maxDelayMs"> {}
 export interface ThinkingBudgetsSettings extends Static<typeof ThinkingBudgetsSettingsSchema> {}
 export type MermaidRenderingMode = NonNullable<Static<typeof MarkdownSettingsSchema>["mermaid"]>;
 export interface WarningSettings extends Static<typeof WarningSettingsSchema> {}
-export type DefaultProjectTrust = NonNullable<SettingsInput["defaultProjectTrust"]>;
 export type QuietStartup = NonNullable<SettingsInput["quietStartup"]>;
 export type TransportSetting = NonNullable<SettingsInput["transport"]>;
 export type PackageSource = Static<typeof PackageSourceSchema>;

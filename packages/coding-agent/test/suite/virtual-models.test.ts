@@ -2,7 +2,7 @@ import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type FauxResponseStep, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { type ModelRoute, type ModelRouteRequest, VIRTUAL_MODEL_STATE_ENTRY } from "../../src/core/virtual-models.ts";
 import { createHarness, type Harness, type HarnessOptions } from "./harness.ts";
 

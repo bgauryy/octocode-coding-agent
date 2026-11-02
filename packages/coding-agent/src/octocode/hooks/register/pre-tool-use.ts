@@ -1,10 +1,9 @@
 import { rewriteClaudeBash } from "../../shared/claude-bash.ts";
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import { validateFileInput } from "../../shared/file-input.ts";
-import { PATH_INPUT_TOOLS } from "../../../core/tools/tool-names.ts";
 import { rewriteCodexCommand } from "../rewrite.ts";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { rewriteFileQuery } from "../../shared/claude-file.ts";
 import { say } from "../../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -119,11 +118,7 @@ export const preToolUseGate =
 		const rewrite = firstRewrite(verdicts);
 		let rewritten = false;
 		if (rewrite?.updatedInput) {
-			if (
-				event.origin === "user" ||
-				PATH_INPUT_TOOLS.includes(event.toolName) ||
-				(event.toolName !== "file" && calls.length !== 1)
-			)
+			if (event.origin === "user" || (event.toolName !== "file" && calls.length !== 1))
 				return {
 					block: true,
 					reason: "Input rewrite requires an unavailable reverse adapter for this tool; call not executed",

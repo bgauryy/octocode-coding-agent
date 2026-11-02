@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, trustFolder } from "./helpers.ts";
 import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 import type { Identity } from "../../src/octocode/subagents/process/env.ts";
 afterEach(() => vi.unstubAllEnvs());
@@ -138,6 +138,7 @@ async function fixture(
 		OCTOCODE_SUBAGENT_LINGER_SECONDS: "0",
 	}))
 		vi.stubEnv(key, value);
+	trustFolder(cwd);
 	const script = path.join(root, "hook.cjs");
 	fs.writeFileSync(
 		script,

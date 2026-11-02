@@ -1,5 +1,6 @@
 import {
 	type AgentDb,
+	type agentEvents,
 	type Db,
 	agents,
 	dbStamp,
@@ -29,6 +30,7 @@ import {
 	reachableMembers,
 	reapMember,
 	resumeMembers,
+	saveMember,
 	retireOwned,
 } from "./store/members.ts";
 import { asks, deadLetters, insertMessage, pending, pendingUrgent, recent, type SignProof } from "./store/mail.ts";
@@ -162,6 +164,7 @@ export class TeamStore {
 		this.prunedAt = now;
 	}
 
+	lifecycle: agentEvents.LifecycleContext | undefined;
 	// ── agents ────────────────────────────────────────────────────────────────
 
 	/**
@@ -171,7 +174,7 @@ export class TeamStore {
 	 */
 	save(member: Member): boolean {
 		this.prune(member.updatedAt);
-		return agents.refresh(this.db, member, this.workspace) || agents.insert(this.db, this.team, this.workspace, member);
+		return this.transaction(() => saveMember(this.db, this.team, this.workspace, member, this.lifecycle));
 	}
 
 	/**
@@ -180,7 +183,7 @@ export class TeamStore {
 	 * retired first (its unread mail becomes dead letters) and the name is taken over.
 	 */
 	join(member: Member): boolean {
-		return this.transaction(() => claimMember(this.db, this.team, this.workspace, member));
+		return this.transaction(() => claimMember(this.db, this.team, this.workspace, member, this.lifecycle));
 	}
 
 	/**

@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryAuthStorageBackend } from "../../src/core/auth-storage.ts";
-import { emitSessionShutdownEvent } from "../../src/core/extensions/runner.ts";
+import { emitSessionShutdownEvent } from "../../src/core/features/runner.ts";
 import { runMcpCommand } from "../../../mcp/src/cli.ts";
 import type { McpOAuthConfig, McpServerEntry } from "../../../mcp/src/config.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";

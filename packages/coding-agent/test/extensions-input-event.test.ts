@@ -3,8 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { discoverAndLoadExtensions } from "../src/core/extensions/loader.ts";
-import { ExtensionRunner } from "../src/core/extensions/runner.ts";
+import { discoverAndLoadExtensions } from "./helpers/features.ts";
+import { ExtensionRunner } from "../src/core/features/runner.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 
 import { createInMemoryModelRegistry } from "./model-runtime-test-utils.ts";

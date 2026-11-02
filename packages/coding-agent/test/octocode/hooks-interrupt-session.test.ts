@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
 import { afterEach, expect, it, vi } from "vitest";
 import { getCliInvocation } from "../../src/config.ts";
-import { tmp } from "./helpers.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { tmp, trustFolder } from "./helpers.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -178,6 +178,7 @@ async function fixture(
 		OCTOCODE_EXTRA_SKILLS: "0",
 		OCTOCODE_SUBAGENT: options.subagent ? "1" : "0",
 	};
+	trustFolder(cwd, env);
 	const launch = getCliInvocation();
 	const child = spawn(
 		launch.command,
@@ -467,14 +468,14 @@ it("captures the current permission and persisted turn through direct AgentSessi
 		cwd: f.cwd,
 		agentDir: f.agentDir,
 		settingsManager,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd: f.cwd,
 		agentDir: f.agentDir,
 		settingsManager,

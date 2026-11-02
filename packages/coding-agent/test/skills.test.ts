@@ -286,6 +286,10 @@ describe("skills", () => {
 			expect(result).toContain("<name>test-skill</name>");
 			expect(result).toContain("<description>A test skill.</description>");
 			expect(result).toContain("<location>/path/to/skill/SKILL.md</location>");
+			// One line per skill: name, description as written, and the file a file reader loads.
+			expect(result).toContain(
+				"  <skill><name>test-skill</name><description>A test skill.</description><location>/path/to/skill/SKILL.md</location></skill>",
+			);
 		});
 
 		it("omits file paths when the skill tool loads skills by name", () => {
@@ -320,9 +324,10 @@ describe("skills", () => {
 			const xmlStart = result.indexOf("<available_skills>");
 			const introText = result.substring(0, xmlStart);
 
-			expect(introText).toContain("The following skills provide specialized instructions");
-			// Octocode ships no `read` tool; bash is the default loader.
-			expect(introText).toContain("Use bash to load a skill's file");
+			// One intro line, the load instruction. Octocode ships no `read` tool; bash is the default loader.
+			expect(introText.trim().split("\n")[0]).toBe(
+				"Use bash to load a skill's file when the task matches its description.",
+			);
 		});
 
 		it("should escape XML special characters", () => {
@@ -427,8 +432,8 @@ describe("skills", () => {
 				const result = formatSkillsForPrompt(many(10), "bash", { budgetChars: 2000 });
 				expect(entries(result).length).toBeLessThanOrEqual(2000 + "<available_skills>".length);
 				expect(result).toContain("<name>skill-9</name>");
-				expect(result).toMatch(/<name>skill-0<\/name>\n\s+<description>/);
-				expect(result).toMatch(/<name>skill-9<\/name>\n\s+<location>/);
+				expect(result).toMatch(/<name>skill-0<\/name><description>/);
+				expect(result).toMatch(/<name>skill-9<\/name><location>/);
 				expect(result).toMatch(/To fit the prompt, \d+ skills are listed without a description/);
 			});
 

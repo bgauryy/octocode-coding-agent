@@ -12,7 +12,7 @@ import type {
 	ToolExecutionStartEvent,
 	ToolExecutionUpdateEvent,
 	TurnStartEvent,
-} from "../extensions/index.ts";
+} from "../features/index.ts";
 import type { SessionBoundaries } from "./boundaries.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";

@@ -1,7 +1,7 @@
 import { type Component, Text, type TUI } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";
-import type { ToolDefinition } from "../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../src/core/features/types.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";

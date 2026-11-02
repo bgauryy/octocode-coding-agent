@@ -1,4 +1,4 @@
-import type { ToolInvocation } from "../../core/extensions/types.ts";
+import type { ToolInvocation } from "../../core/features/types.ts";
 import type { ActionClass, AskReason } from "./mode.ts";
 
 /** What an ask shows: the effect card, any reasons that tighten it, and exactly what it would do. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { gitStateGate } from "../../src/octocode/permission/git-state.ts";
 import { gitStateMutation } from "../../src/octocode/permission/shell/git-state.ts";

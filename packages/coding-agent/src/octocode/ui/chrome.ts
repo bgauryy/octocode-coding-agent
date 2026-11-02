@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type Color, mixColors, SPINNER } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
 import { stopRowTimers } from "../shared/render/rows.ts";

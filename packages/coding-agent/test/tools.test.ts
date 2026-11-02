@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.ts";
-import type { ExtensionToolContext } from "../src/core/extensions/types.ts";
+import type { ExtensionToolContext } from "../src/core/features/types.ts";
 import {
 	type BashOperations,
 	createBashTool,

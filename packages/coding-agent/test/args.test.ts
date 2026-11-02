@@ -252,33 +252,28 @@ describe("parseArgs", () => {
 		});
 	});
 
-	describe("--extension flag", () => {
-		test("parses single --extension", () => {
-			const result = parseArgs(["--extension", "./my-extension.ts"]);
-			expect(result.extensions).toEqual(["./my-extension.ts"]);
+	describe("removed extension flags", () => {
+		test.each([
+			[["--extension", "./my-extension.ts"], ["--extension"]],
+			[["-e", "./my-extension.ts"], ["--extension"]],
+			[
+				["--extension", "./ext1.ts", "-e", "./ext2.ts"],
+				["--extension", "--extension"],
+			],
+			[["-ne", "-e", "foo.ts"], ["--extension"]],
+		])("parses %j into removedFlags so the run exits 2", (argv, removed) => {
+			expect(parseArgs(argv).removedFlags).toEqual(removed);
 		});
 
-		test("parses -e shorthand", () => {
-			const result = parseArgs(["-e", "./my-extension.ts"]);
-			expect(result.extensions).toEqual(["./my-extension.ts"]);
-		});
+		test.each([[["--no-extensions"]], [["--no-extensions", "-e", "builtin:mcp"]], [["--no-extensions", "--no-mcp"]]])(
+			"accepts %j, the arguments an earlier parent gives its subagents",
+			(argv) => {
+				expect(parseArgs(argv).removedFlags).toBeUndefined();
+			},
+		);
 
-		test("parses multiple --extension flags", () => {
-			const result = parseArgs(["--extension", "./ext1.ts", "-e", "./ext2.ts"]);
-			expect(result.extensions).toEqual(["./ext1.ts", "./ext2.ts"]);
-		});
-	});
-
-	describe("--no-extensions flag", () => {
-		test("parses --no-extensions flag", () => {
-			const result = parseArgs(["--no-extensions"]);
-			expect(result.noExtensions).toBe(true);
-		});
-
-		test("parses --no-extensions with explicit -e flags", () => {
-			const result = parseArgs(["--no-extensions", "-e", "foo.ts", "-e", "bar.ts"]);
-			expect(result.noExtensions).toBe(true);
-			expect(result.extensions).toEqual(["foo.ts", "bar.ts"]);
+		test("takes the extension path as the flag's value, not as a message", () => {
+			expect(parseArgs(["-e", "x.ts", "hello"]).messages).toEqual(["hello"]);
 		});
 	});
 
@@ -373,25 +368,20 @@ describe("parseArgs", () => {
 		});
 	});
 
-	describe("project approval flags", () => {
-		test("parses --approve", () => {
+	describe("folder trust flags", () => {
+		test("parses --trust", () => {
+			const result = parseArgs(["--trust"]);
+			expect(result.trust).toBe(true);
+		});
+
+		test("--approve is an unknown flag, not an alias of --trust", () => {
 			const result = parseArgs(["--approve"]);
-			expect(result.projectTrustOverride).toBe(true);
+			expect(result.trust).toBeUndefined();
+			expect(result.unknownFlags.has("approve")).toBe(true);
 		});
 
-		test("parses -a shorthand", () => {
-			const result = parseArgs(["-a"]);
-			expect(result.projectTrustOverride).toBe(true);
-		});
-
-		test("parses --no-approve", () => {
-			const result = parseArgs(["--no-approve"]);
-			expect(result.projectTrustOverride).toBe(false);
-		});
-
-		test("parses -na shorthand", () => {
-			const result = parseArgs(["-na"]);
-			expect(result.projectTrustOverride).toBe(false);
+		test("-a, -na and --no-approve do not grant or refuse trust", () => {
+			for (const flag of ["-a", "-na", "--no-approve"]) expect(parseArgs([flag]).trust).toBeUndefined();
 		});
 	});
 

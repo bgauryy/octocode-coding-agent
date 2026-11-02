@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { idleContinuation } from "../../src/octocode/compaction/cache.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";

@@ -35,8 +35,8 @@ The groups below name the flags; `octocode --help` has the exact syntax.
 - **Model**: `--provider`, `--model` (accepts `provider/id` and a `:thinking` suffix), `--models` for the cycling list, `--thinking`, `--list-models`.
 - **Sessions**: `--continue`, `--resume`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
 - **Tools**: `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools`, `--no-mcp`. See [native features](native-features.md#tool-selection-and-migration).
-- **Resources**: `--extension`, `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`.
-- **Trust and network**: `--approve`, `--no-approve`, `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).
+- **Resources**: `--extension builtin:<id>` (turns a built-in feature on; a code path exits 2 because user code extensions are not supported), `--no-extensions` (accepted and ignored), `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`.
+- **Trust and network**: `--trust` records your trust of the current folder and then runs; a print, JSON or RPC run in a folder you have not trusted exits with an error without it (it does not apply to `--mode acp`). `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).
 - **Interface**: `--tui-mode`, `--use-theme`, `--verbose`.
 
 When `--continue`, `--session` or `--session-id` opens a saved session that another running Octocode process has open, Octocode asks whether to resume it here as well, as `/resume` and `--resume` do; Cancel exits. Print, JSON and RPC modes cannot ask, so they exit with an error instead: two processes appending to one session overwrite each other's history. `--fork` copies the session and is never refused. `--session-id <id>` and `--fork --session-id <id>` refuse an id that belongs to a saved session in another folder and name its file; use `--session <id>` to open it.

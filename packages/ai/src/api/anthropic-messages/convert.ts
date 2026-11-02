@@ -263,7 +263,7 @@ export function convertMessages(
 
 	flushPendingSystemMessages();
 
-	// Mark the last user or system message so the next request reads the conversation history from cache.
+	// Mark the last user or system message so the next request can read the conversation history from cache.
 	if (cacheControl && params.length > 0) {
 		const lastMessage = params[params.length - 1];
 		if (lastMessage.role === "user" || lastMessage.role === "system") {

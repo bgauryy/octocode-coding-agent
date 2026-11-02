@@ -167,3 +167,33 @@ export const SkillsInputSchema = Type.Union(
 	],
 	{ description: "Local skill file paths or directories." },
 );
+
+/** Install record on a `plugins[]` entry written by `octocode plugin install`. */
+export const PluginInstallSourceSchema = Type.Object(
+	{
+		marketplace: Type.String({ description: "Marketplace name." }),
+		plugin: Type.String({ description: "Plugin name in that marketplace." }),
+		sha: Type.String({ description: "Pinned commit, or a content hash for a local directory marketplace." }),
+	},
+	{ description: "Where the cached copy at `path` came from; written by `octocode plugin install`." },
+);
+
+/** Where a marketplace is fetched from: a local directory, a GitHub repository or a git URL. No other kinds. */
+const MarketplaceSourceSchema = Type.Union([
+	Type.Object({ source: Type.Literal("directory"), path: Type.String({ description: "Absolute directory." }) }),
+	Type.Object({
+		source: Type.Literal("github"),
+		repo: Type.String({ description: "owner/repo." }),
+		ref: Type.Optional(Type.String({ description: "Branch or tag; default branch when omitted." })),
+	}),
+	Type.Object({
+		source: Type.Literal("git"),
+		url: Type.String({ description: "https, ssh, git or file URL, or a local repository path; no credentials." }),
+		ref: Type.Optional(Type.String({ description: "Branch or tag; default branch when omitted." })),
+	}),
+]);
+
+export const MarketplaceRecordSchema = Type.Object({
+	source: MarketplaceSourceSchema,
+	addedAt: Type.String({ description: "ISO time the marketplace was added." }),
+});

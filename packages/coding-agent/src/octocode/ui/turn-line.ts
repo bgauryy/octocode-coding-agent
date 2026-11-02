@@ -1,5 +1,5 @@
 import { GLYPH, Text } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { setToolInterruptShown } from "../../core/application/interrupted-tools.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration } from "../shared/format.ts";

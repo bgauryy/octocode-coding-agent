@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { registerWorktreeCommand } from "./command.ts";
 import type { ParkedResident } from "./occupants.ts";

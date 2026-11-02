@@ -16,7 +16,6 @@ function context(currentFile = "/tmp/current.jsonl") {
 		showExtensionConfirm: vi.fn(async () => true),
 		clearStatusIndicator: vi.fn(),
 		showStatus: vi.fn(),
-		createProjectTrustContext: vi.fn(),
 	};
 }
 

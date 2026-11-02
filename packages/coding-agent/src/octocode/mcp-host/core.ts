@@ -18,7 +18,6 @@ import {
 } from "../../config.ts";
 import { FileAuthStorageBackend } from "../../core/auth-storage.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
-import { ProjectTrustStore } from "../../core/trust-manager.ts";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
 import { type McpAuthBackend, type McpHostPorts, installMcpHost } from "../../../../mcp/src/host.ts";
 import { tailNote } from "../shared/format.ts";
@@ -30,11 +29,9 @@ import {
 	spillOutput,
 	TEXT_MAX_CHARS,
 } from "../shared/spill.ts";
-import { projectTrustNow, saveDecision } from "../shared/trust.ts";
-import { fingerprint, projectConfigFiles, projectMcpFiles } from "../shared/trust/files.ts";
-import { readStore, storeKey } from "../shared/trust/store.ts";
 import { browserMcpAsked } from "../web/browser-mcp.ts";
-import { contextOptimizationDirs, projectMcpConfigPaths, sessionsRoot } from "../shared/home.ts";
+import { contextOptimizationDirs, sessionsRoot } from "../shared/home.ts";
+import { resolveFolderTrust } from "../trust/resolve.ts";
 import { userResearchRoots } from "./research-roots.ts";
 
 const identity: McpHostPorts["identity"] = {
@@ -76,17 +73,7 @@ const images: McpHostPorts["images"] = {
 };
 
 const trust: McpHostPorts["trust"] = {
-	directoryTrusted: (agentDir, cwd) => new ProjectTrustStore(agentDir).get(cwd) === true,
-	contentTrusted: (ctx) => projectTrustNow(ctx),
-	projectMcpFiles,
-	beginTrustPreservingEdit(root, file) {
-		if (!projectMcpConfigPaths(root).includes(file)) return () => undefined;
-		const before = fingerprint(projectConfigFiles(root));
-		const stored = readStore()[storeKey(root)];
-		return () => {
-			if (stored?.trusted && stored.sha === before) saveDecision(root, fingerprint(projectConfigFiles(root)), true);
-		};
-	},
+	folderTrusted: (cwd) => resolveFolderTrust(cwd).state === "trusted",
 };
 
 const runtimes = new Map<string, Promise<ModelRuntime>>();

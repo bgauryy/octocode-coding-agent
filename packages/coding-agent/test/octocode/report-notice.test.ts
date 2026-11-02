@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { noticeText, NOTICE_TYPE, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";

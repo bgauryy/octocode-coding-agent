@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { registerSessionAttach } from "../web-daemon/attach-register.ts";
 import { attachedDaemon, daemonOpener } from "../web-daemon/open.ts";

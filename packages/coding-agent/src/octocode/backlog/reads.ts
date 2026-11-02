@@ -6,10 +6,10 @@ import {
 	type BacklogAudit,
 } from "@octocodeai/octocode-contracts/snapshot";
 import { redactData, visibleControls } from "../../../../common/src/sanitize.ts";
-import { LEGACY_ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { type Db, backlog, sessionRunningPid } from "../agentdb/api.ts";
 import { type Row, toItem } from "./row.ts";
 import { enrichItems } from "./entities.ts";
+import { type BacklogCounts, summarizeCounts } from "./counts.ts";
 import { type Item, BacklogError, parseRef } from "./item.ts";
 import type { ListQuery } from "./inputs.ts";
 
@@ -53,14 +53,6 @@ function seqOf(ref: string): number {
 	return seq;
 }
 
-/** The stored type names of `types`: a row an older build wrote may still say `task` for `feature`. */
-const storedTypes = (types: readonly string[]) => [
-	...types,
-	...Object.entries(LEGACY_ITEM_TYPES)
-		.filter(([, current]) => types.includes(current))
-		.map(([legacy]) => legacy),
-];
-
 /** The SQL filter of a listing: item ids become numbers or row ids, and a missing parent or origin is refused. */
 function filterOf(db: Db, repo: string, query: ListQuery): backlog.ItemFilter {
 	const text = query.query?.trim();
@@ -78,7 +70,7 @@ function filterOf(db: Db, repo: string, query: ListQuery): backlog.ItemFilter {
 		...(query.ids ? { seqs: query.ids.map(seqOf) } : {}),
 		...(words.length ? { titleWords: words } : {}),
 		...(parent ? { underItem: parent.rowId } : {}),
-		...(query.types ? { types: storedTypes(query.types) } : {}),
+		...(query.types ? { types: query.types } : {}),
 		...(query.maxPriority !== undefined ? { maxPriority: query.maxPriority } : {}),
 		...(tags?.length ? { tags } : {}),
 		...(paths?.length ? { pathPrefixes: paths } : {}),
@@ -99,12 +91,16 @@ export function list(db: Db, repo: string, query: ListQuery = {}): { items: Item
 	return { items: enrichItems(db, repo, rows.map(toItem)), total };
 }
 
-/** How many items sit in each state. */
-export function counts(db: Db, repo: string): Record<State, number> {
-	const counts = Object.fromEntries(STATES.map((state) => [state, 0])) as Record<State, number>;
-	const rows = backlog.stateCounts(db, repo) as Array<{ state: State; n: number }>;
-	for (const row of rows) counts[row.state] = row.n;
-	return counts;
+/** How many items sit in each state and how many epics (by the state their items give them): the footer's and the board's counts. */
+export function counts(db: Db, repo: string): BacklogCounts {
+	return summarizeCounts(
+		backlog.countHeads(db, repo).map((row) => ({
+			key: String(row.id),
+			type: row.type,
+			state: row.state as State,
+			...(row.parent_id === null ? {} : { parent: String(row.parent_id) }),
+		})),
+	);
 }
 
 /** The newest `limit` notes after skipping `offset` of them, oldest first; a negative `limit` is every note. */

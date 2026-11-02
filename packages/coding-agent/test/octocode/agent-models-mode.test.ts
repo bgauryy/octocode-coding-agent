@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ToolDefinition } from "../../src/core/extensions/index.ts";
+import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";

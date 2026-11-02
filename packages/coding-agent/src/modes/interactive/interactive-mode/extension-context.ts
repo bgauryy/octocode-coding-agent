@@ -1,16 +1,10 @@
 /**
- * The UI context handed to extensions, the project-trust context, extension shortcuts, and extension notifications
- * and errors.
+ * The UI context handed to extensions, extension shortcuts, and extension notifications and errors.
  */
 
 import { matchesKey } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import type {
-	ExtensionContext,
-	ExtensionRunner,
-	ExtensionUIContext,
-	ProjectTrustContext,
-} from "../../../core/extensions/index.ts";
+import type { ExtensionContext, ExtensionRunner, ExtensionUIContext } from "../../../core/features/index.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -117,24 +111,6 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 			}
 		}
 		return false;
-	};
-}
-
-/**
- * Create the ExtensionUIContext for extensions.
- */
-export function createProjectTrustContext(host: ExtensionContextHost, cwd: string): ProjectTrustContext {
-	const ui = host.createExtensionUIContext();
-	return {
-		cwd,
-		mode: "tui",
-		hasUI: true,
-		ui: {
-			select: ui.select,
-			confirm: ui.confirm,
-			input: ui.input,
-			notify: ui.notify,
-		},
 	};
 }
 

@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import type { AuthContext, AuthPrompt, ModelsPublication, ModelsStoreEntry } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
 import { LlamaClient, type LlamaProgress, normalizeLlamaServerUrl } from "../src/octocode/llama/client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "../src/octocode/llama/huggingface.ts";
 import llamaExtension from "../src/octocode/llama/index.ts";

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
 import { formatSkillsForPrompt } from "../../core/skills.ts";
+import type { SlashCommandInfo } from "../../core/slash-commands.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import type { Run } from "./claim.ts";
@@ -20,9 +21,17 @@ export interface TaskSkillPlan {
 	inline: boolean;
 }
 
-export function taskSkillPlan(profile: AgentProfile | undefined, requested: string[] | undefined): TaskSkillPlan {
+export function taskSkillPlan(
+	profile: AgentProfile | undefined,
+	requested: string[] | undefined,
+	commands?: readonly SlashCommandInfo[],
+): TaskSkillPlan {
 	const inline = profile?.lean === true;
-	const names = requested ?? profile?.skills ?? (inline ? [] : undefined);
+	// A role's skills are defaults: one this session cannot load (not installed, skills off) is left out rather than
+	// failing the start. Skills the task names are the caller's choice and still fail when unknown.
+	const loadable = commands && new Set(commands.filter((c) => c.source === "skill").map((c) => c.name));
+	const fromRole = loadable ? profile?.skills?.filter((name) => loadable.has(name)) : profile?.skills;
+	const names = requested ?? fromRole ?? (inline ? [] : undefined);
 	return names === undefined ? { inTask: false, inline } : { names, inTask: true, inline };
 }
 

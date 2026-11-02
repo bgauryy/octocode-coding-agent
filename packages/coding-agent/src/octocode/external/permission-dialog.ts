@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { interactive } from "../shared/interactive.ts";
 import { withDialog } from "../shared/locks.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";

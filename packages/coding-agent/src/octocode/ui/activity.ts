@@ -2,7 +2,7 @@ import { agentCall } from "../shared/agent-call.ts";
 import { fileChanges } from "../shared/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { setRunClock } from "../../modes/interactive/components/status-indicator.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { setRowsAnimate } from "./chrome.ts";

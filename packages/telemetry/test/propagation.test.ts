@@ -137,23 +137,16 @@ describe("propagation and links", () => {
 		expect(telemetry.getSpans()[0]?.parentContext).toEqual(carrier);
 	});
 
-	it("still extracts a carrier written with the legacy pi-memory keys, and re-injects it with the current ones", async () => {
+	it("does not read a carrier written with the former pi-memory keys", async () => {
 		const telemetry = new InMemoryTelemetryContext();
 		const parent = telemetry.extract({
 			"pi-memory-scope": "older-recorder",
 			"pi-memory-span": "7",
 			"pi-memory-trace": "older-trace",
 		});
-		const current = {
-			"octocode-memory-scope": "older-recorder",
-			"octocode-memory-span": "7",
-			"octocode-memory-trace": "older-trace",
-		};
-		expect(telemetry.inject(parent)).toEqual(current);
 		await parent.startSpan({ name: "receiver" }, () => {});
 		const [span] = telemetry.getSpans();
-		expect(span?.parentContext).toEqual(current);
-		expect(span?.context["octocode-memory-trace"]).toBe("older-trace");
-		expect(Object.keys(span?.context ?? {}).some((key) => key.startsWith("pi-"))).toBe(false);
+		expect(JSON.stringify(span?.parentContext ?? {})).not.toContain("older-");
+		expect(JSON.stringify(span?.context ?? {})).not.toContain("older-trace");
 	});
 });

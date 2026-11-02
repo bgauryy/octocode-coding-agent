@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/types.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/types.ts";
 import { formatBytes } from "../../utils/bytes.ts";
 import { LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";

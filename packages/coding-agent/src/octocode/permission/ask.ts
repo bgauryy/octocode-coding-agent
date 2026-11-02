@@ -1,7 +1,7 @@
 import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../shared/permission-updates.ts";
 import type { FileInputReplacement } from "../shared/claude-file.ts";
-import type { ToolInvocation } from "../../core/extensions/types.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ToolInvocation } from "../../core/features/types.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "../../../../common/src/env.ts";
 import { interactive } from "../shared/interactive.ts";

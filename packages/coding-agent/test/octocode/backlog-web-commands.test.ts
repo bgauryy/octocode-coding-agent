@@ -171,10 +171,10 @@ describe("hierarchy commands from the web page", () => {
 		expect(bug.body.item).toMatchObject({ type: "bug" });
 	});
 
-	it("still takes the old item type `task` in a backlog mutation, as feature", async () => {
-		const added = await send({ op: "add", title: "Old page", goal: "g", why: "w", type: "task" });
-		expect(added.status).toBe(200);
-		expect(app.store.list().items.map((item) => [item.title, item.type])).toEqual([["Old page", "feature"]]);
+	it("refuses the removed item type `task` and unknown types in a backlog mutation", async () => {
+		expect((await send({ op: "add", title: "Old page", goal: "g", why: "w", type: "task" })).status).toBe(400);
 		expect((await send({ op: "add", title: "Bad", type: "story" })).status).toBe(400);
+		expect((await send({ op: "add", title: "Page", goal: "g", why: "w", type: "feature" })).status).toBe(200);
+		expect(app.store.list().items.map((item) => [item.title, item.type])).toEqual([["Page", "feature"]]);
 	});
 });

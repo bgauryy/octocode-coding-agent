@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
-import type { ExtensionAPI, ExtensionFactory } from "../src/core/extensions/types.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
+import type { ExtensionAPI, ExtensionFactory } from "../src/core/features/types.ts";
 
 function setup() {
 	const runtime = createExtensionRuntime();

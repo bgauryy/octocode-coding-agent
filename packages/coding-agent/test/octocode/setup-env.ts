@@ -11,11 +11,18 @@ for (const name of Object.keys(process.env)) if (name.startsWith("OCTOCODE_")) d
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-test-home-"));
 process.env.OCTOCODE_HOME = home;
 delete process.env.OCTOCODE_AGENT_DB;
-// Nor the user's real ~/.octocode/agent: Octocode's `/trust` store lives there. Like a developer who trusted their code folder, the
-// suite saves one decision trusting the temp folder every test project is created in; untrusted cases use their own dir.
+// Nor the user's real ~/.octocode/agent: settings, credentials and sessions live there.
 const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-test-agent-"));
-fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(os.tmpdir())]: true }));
 process.env.OCTOCODE_CODING_AGENT_DIR = agentDir;
+// The folder trust gate reads the agent database (under OCTOCODE_HOME here). Like a developer who trusted their code folder,
+// the suite saves one subtree grant on the temp folder every test project is created in, recorded the way a user's "trust the
+// parent" answer is, through a throwaway child folder; untrusted cases use their own dir.
+const anchor = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-test-anchor-"));
+const { grantFolder } = await import("../../src/octocode/trust/grants.ts");
+grantFolder(anchor, "parent", { source: "command", surface: "cli" });
+// The grant loaded the agent database modules; a test file's `vi.mock` of a node module (`node:child_process`) must apply to
+// the copies it imports, not to ones this file already bound to the real module.
+vi.resetModules();
 // A fake Octocode never runs the Octocode server: no server process or first-prompt wait unless a test opts in (e2e runs the
 // real server; mcp.test.ts passes its own env).
 process.env.OCTOCODE_MCP = "0";

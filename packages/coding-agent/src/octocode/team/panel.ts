@@ -1,5 +1,5 @@
 import { type Component, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
 import { plural } from "../shared/render/text.ts";

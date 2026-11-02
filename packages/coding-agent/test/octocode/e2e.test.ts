@@ -11,13 +11,14 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ExtensionFactory, ToolDefinition } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory, ToolDefinition } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createReadToolDefinition } from "../fixtures/read-tool.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
+import { trustFolder } from "./helpers.ts";
 import { nativeCall } from "./e2e-calls.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -114,7 +115,7 @@ async function startSession(
 	if (options.agentSettings)
 		fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify(options.agentSettings));
 	// The user trusted this project with Octocode's /trust.
-	fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(root)]: true }));
+	trustFolder(cwd);
 	const originalHome = process.env.HOME;
 	const originalAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
 	const originalPermission = process.env.OCTOCODE_PERMISSION;
@@ -159,7 +160,7 @@ async function startSession(
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		resourceLoader,
@@ -259,14 +260,21 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.tools).not.toContain("tool_search");
 		// The extension's client connects before the first request is built, so the guidance and the server's contract
 		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
-		expect(turn.systemPrompt).toContain("Use Octocode MCP (`mcp__octocode__*`");
+		// The policy says nothing about the server: it explains itself in `<mcps>` and its declarations.
+		expect(turn.systemPrompt).not.toContain("Use Octocode MCP");
+		expect(turn.systemPrompt).not.toContain("block routes each question");
+		expect(turn.systemPrompt).not.toContain("Search with bash");
 		expect(turn.systemPrompt).toMatch(
-			/<mcps>\n<mcp name="octocode" tools="mcp__octocode__\*">\n[^\n]+\n\/\/ MCP server "octocode"[^\n]*\n\/\*\* \S/,
+			/<mcps>\n<mcp name="octocode" tools="mcp__octocode__\*">\n\/\/ MCP server "octocode"[^\n]*\n\/\*\* \S/,
 		);
-		// `<tools>` lists native tools only; the server's tools are in `<mcps>`.
+		// `<tools>` lists native tools one by one and each described server once by its purpose (stated there, not in
+		// its `<mcps>` block); the server's tools are in `<mcps>`.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
-		expect(toolLines.every((line) => /^- [\w-]+: \S/.test(line))).toBe(true);
+		expect(toolLines.every((line) => /^- [\w-]+(?:__\*)?: \S/.test(line))).toBe(true);
+		expect(toolLines).toContain(
+			"- mcp__octocode__*: Code research: local search and reading, language-server lookups, GitHub and package registries.",
+		);
 		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
 			expect(
 				toolLines.some((line) => line.startsWith(`- ${name}: `)),
@@ -442,8 +450,9 @@ describe("with the user's own octocode server in mcp.json", () => {
 		expect(first.tools).toContain("mcp__octocode__shout");
 		expect(first.tools).not.toContain("mcp__octocode__localSearch");
 		// The prompt follows the tools by server name (`turn.ts`: `isOctocodeTool`), so the user's own `octocode` entry still
-		// gets the Octocode research line; only the server's own instruction text is absent, since this server sends none.
-		expect(first.systemPrompt).toContain("Use Octocode MCP");
+		// counts as the research server: no native fallback, and no routing text either way.
+		expect(first.systemPrompt).not.toContain("Use Octocode MCP");
+		expect(first.systemPrompt).not.toContain("Search with bash");
 		expect(first.systemPrompt).not.toContain("# Octocode MCP server instructions");
 		expect(turns.at(-1)!.lastResults[0]).toEqual({
 			toolName: "mcp__octocode__shout",
@@ -477,17 +486,19 @@ describe("with another MCP server and Octocode disabled", () => {
 			"askUser",
 			"backlog",
 			"steps",
-			"memory",
+			"archive",
 			"mcp__echo__shout",
 		])
 			expect(turn.tools).toContain(name);
 		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
 		expect(turn.tools).toContain("mcp");
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
-		// The mcp.json entry replaces the registration, so no request is told to prefer Octocode.
+		// The mcp.json entry replaces the registration, so there is no research server: the native fallback shows.
 		expect(turn.systemPrompt).not.toContain("Use Octocode MCP");
+		expect(turn.systemPrompt).toContain("Search with bash");
 		const next = (await s.run("again", [say("ok")])).at(-1)!;
 		expect(next.systemPrompt).not.toContain("Use Octocode MCP");
+		expect(next.systemPrompt).toContain("Search with bash");
 	});
 
 	it("calls another server's tools through Octocode's MCP, surfacing remote errors", async () => {
@@ -659,6 +670,14 @@ describe("compaction", () => {
 		expect(log.length).toBeGreaterThan(0);
 		expect(new Set(log.map((call) => call.model))).toEqual(new Set(["faux-1"]));
 		expect(log.some((call) => call.text.includes("This summary becomes the only record"))).toBe(true);
+		// Exact user constraints are kept as written, not paraphrased (code keeps whole messages only within its budget).
+		expect(
+			log.some((call) =>
+				call.text.includes(
+					"do not quote whole messages; state what they asked for, decided and corrected, and keep each limit, number, path, identifier and prohibition the user set exactly as written",
+				),
+			),
+		).toBe(true);
 		// The summary is asked for inside the session's own request (its messages, then one more), not as a standalone prompt.
 		expect(log[0].text).toContain("Please read notes.txt and create todo.txt");
 		expect(log[0].text).toContain("Stop here and write a context checkpoint");
@@ -737,6 +756,33 @@ describe("compaction", () => {
 		expect(entry.fromHook).not.toBe(true);
 		expect(entry.summary).toContain("Default summary");
 		expect(entry.details!.modifiedFiles).toEqual(expect.arrayContaining(["todo.txt"]));
+		// What code appends to Octocode's summary follows the default one as one hidden message: the user's earlier messages
+		// word for word (carried from the previous checkpoint) and the Recovery section, which names the archive itself.
+		const custom = (type: string) =>
+			s.session.sessionManager
+				.getEntries()
+				.filter(
+					(item) => item.type === "custom_message" && (item as { customType?: string }).customType === type,
+				) as Array<{ content: string }>;
+		const continuity = custom("octocode-compaction-continuity");
+		expect(continuity).toHaveLength(1);
+		expect(custom("octocode-archive")).toHaveLength(0);
+		const requests: string[] = [];
+		s.faux.setResponses([
+			(context: TranscriptContext) => {
+				requests.push(JSON.stringify(context.messages));
+				return fauxAssistantMessage("ok");
+			},
+		]);
+		await s.session.prompt("continue after the fallback");
+		expect(requests[0]).toContain("<user-message>\\nPlease read notes.txt and create todo.txt\\n</user-message>");
+		expect(requests[0]).toContain("## Recovery\\n- ");
+		// The next Octocode summary carries those messages once, from the continuity message, not a second copy.
+		await s.run("later", [say(`Later. ${"detail ".repeat(14_000)}`)]);
+		script("## Goal\nAfter fallback");
+		await s.session.compact();
+		const next = compactionEntries().at(-1)!.summary;
+		expect(next.split("<user-message>\nPlease read notes.txt and create todo.txt\n</user-message>")).toHaveLength(2);
 	}, 60_000);
 });
 
@@ -798,17 +844,23 @@ describe("a subagent session with MCP enabled", () => {
 	let s: Awaited<ReturnType<typeof startSession>>;
 	const previous = {
 		sub: process.env.OCTOCODE_SUBAGENT,
+		item: process.env.OCTOCODE_BACKLOG_ITEM,
 	};
 
 	beforeAll(async () => {
 		process.env.OCTOCODE_SUBAGENT = "1";
+		// A child declares `backlog` only when its task names an item (BACKLOG_ITEM_ENV).
+		process.env.OCTOCODE_BACKLOG_ITEM = "B1";
 		s = await startSession({}, {});
 		fs.writeFileSync(path.join(s.cwd, "app.ts"), "export const answer = 41;\n");
 	}, 200_000);
 
 	afterAll(async () => {
 		await s?.dispose();
-		for (const [key, value] of [["OCTOCODE_SUBAGENT", previous.sub]] as const) {
+		for (const [key, value] of [
+			["OCTOCODE_SUBAGENT", previous.sub],
+			["OCTOCODE_BACKLOG_ITEM", previous.item],
+		] as const) {
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
 		}
@@ -821,13 +873,13 @@ describe("a subagent session with MCP enabled", () => {
 		expect(turn.tools.filter((name) => name.includes("cua"))).toEqual([]);
 		expect(turn.tools).toContain("agent");
 		expect(turn.tools).not.toContain("askUser");
-		expect(turn.toolContracts.find((tool) => tool.name === "memory")?.parameters).toMatchObject({
+		expect(turn.toolContracts.find((tool) => tool.name === "archive")?.parameters).toMatchObject({
 			properties: { op: { enum: ["search", "get", "list"] } },
 		});
 		expect(turn.toolContracts.find((tool) => tool.name === "backlog")?.parameters).toMatchObject({
 			properties: { op: { enum: ["list", "get", "add", "update"] } },
 		});
-		for (const name of ["agent", "backlog", "steps", "memory"]) expect(turn.tools).toContain(name);
+		for (const name of ["agent", "backlog", "steps", "archive"]) expect(turn.tools).toContain(name);
 		expect(turn.systemPrompt).toContain("You are a subagent");
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();
 		const appPath = path.join(s.cwd, "app.ts");

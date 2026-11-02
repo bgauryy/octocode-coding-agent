@@ -12,7 +12,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { getBranchSelection, type ModelRouteRequest, type VirtualModelDefinition } from "../src/core/virtual-models.ts";
 import { createTestResourceLoader } from "./utilities.ts";
@@ -261,7 +261,7 @@ describe("ModelRuntime virtual models", () => {
 	});
 });
 
-describe("createAgentSession with virtual models", () => {
+describe("session with virtual models", () => {
 	let tempDir: string;
 
 	beforeEach(() => {
@@ -280,7 +280,7 @@ describe("createAgentSession with virtual models", () => {
 		sessionManager.appendMessage(assistantFrom(runtime.getModel("faux", "large")!, "hello"));
 		const resourceLoader = createTestResourceLoader();
 		const options = { cwd: tempDir, agentDir: tempDir, modelRuntime: runtime, sessionManager, resourceLoader, model };
-		const { session } = await createAgentSession(options);
+		const { session } = await createTestSession(options);
 		onTestFinished(() => session.dispose());
 		return { session, sessionManager };
 	}
@@ -303,7 +303,7 @@ describe("createAgentSession with virtual models", () => {
 		sessionManager.appendMessage({ role: "user", content: "hi", timestamp: 1 });
 		sessionManager.appendMessage(assistantFrom(runtime.getModel("faux", "large")!, "hello"));
 
-		const { session, modelFallbackMessage } = await createAgentSession({
+		const { session, modelFallbackMessage } = await createTestSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			modelRuntime: runtime,
@@ -340,7 +340,7 @@ describe("createAgentSession with virtual models", () => {
 		});
 		runtime.unregisterVirtualModel("router", "auto");
 
-		const { session, modelFallbackMessage } = await createAgentSession({
+		const { session, modelFallbackMessage } = await createTestSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			modelRuntime: runtime,
@@ -367,7 +367,7 @@ describe("createAgentSession with virtual models", () => {
 				resourceLoader,
 				model,
 			};
-			return (await createAgentSession(options)).session;
+			return (await createTestSession(options)).session;
 		};
 
 		for (const [before, after] of [
@@ -396,7 +396,7 @@ describe("createAgentSession with virtual models", () => {
 		faux.setResponses([fauxAssistantMessage("ok"), fauxAssistantMessage("ok")]);
 		const small = runtime.getModel("faux", "small")!;
 		const sessionManager = SessionManager.inMemory(tempDir);
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			modelRuntime: runtime,

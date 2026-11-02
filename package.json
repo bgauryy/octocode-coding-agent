@@ -3,8 +3,7 @@
 	"private": true,
 	"type": "module",
 	"workspaces": [
-		"packages/*",
-		"packages/coding-agent/examples/extensions/with-deps"
+		"packages/*"
 	],
 	"scripts": {
 		"start": "node --import ./packages/coding-agent/scripts/source-resolver.ts ./packages/coding-agent/src/cli.ts",

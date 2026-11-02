@@ -1,11 +1,18 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { planRun } from "../../src/octocode/subagents/claim.ts";
 import {
 	closeModels,
 	type ModelRef,
 	resolveModel,
 	routedModel,
 	routeModel,
+	SUBAGENT_THINKING_ENV,
+	subagentThinking,
 } from "../../src/octocode/subagents/model.ts";
+import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 
 const SESSION = { dir: "/s/session", id: "inky-kraken" };
@@ -103,6 +110,83 @@ describe("routeModel", () => {
 	});
 });
 
+describe("subagent thinking", () => {
+	const parent: ModelRef = { provider: "p", id: "big", cost: { input: 10, output: 40 } };
+	const tiers: ModelRef[] = [
+		parent,
+		{ provider: "p", id: "mid", cost: { input: 4, output: 16 } },
+		{ provider: "p", id: "tiny", cost: { input: 0.1, output: 0.4 } },
+	];
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("takes the call's suffix, else the profile's, else the default, else none", () => {
+		const route = (explicit: string | undefined, preferred: string | undefined, thinking?: string) =>
+			routeModel({ explicit, preferred, available: tiers, parent, thinking });
+		expect(route("small:high", "small:low", "minimal")).toEqual({ model: "p/tiny:high" });
+		// The role's effort holds when the call picks another model without a level.
+		expect(route("medium", "small:low", "minimal")).toEqual({ model: "p/mid:low" });
+		expect(route(undefined, "small", "minimal")).toEqual({ model: "p/tiny:minimal" });
+		// No profile: the parent's model, still not the parent's level.
+		expect(route(undefined, undefined, "low")).toEqual({ model: "p/big:low" });
+		expect(route(undefined, undefined)).toEqual({ model: "p/big" });
+		// A preference that falls back keeps its level on the parent's model.
+		expect(route(undefined, "x/gone:low")).toEqual({ model: "p/big:low", fallback: "x/gone:low" });
+		// A colon that is not a level stays part of the id.
+		expect(routeModel({ preferred: "qwen/qwen3:free", available, thinking: "low" })).toEqual({
+			model: "openrouter/qwen/qwen3:free:low",
+		});
+		expect(route("zzz", "small:low")).toHaveProperty("error");
+	});
+
+	it("reads OCTOCODE_SUBAGENT_THINKING, else medium, and ignores what is not a level", () => {
+		expect(subagentThinking({ [SUBAGENT_THINKING_ENV]: " LOW " })).toBe("low");
+		expect(subagentThinking({ [SUBAGENT_THINKING_ENV]: "cheap" })).toBe("medium");
+		expect(subagentThinking({})).toBe("medium");
+	});
+
+	const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "octocode-thinking-"));
+	const plan = (models: readonly object[]) => {
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		const registry = { getAvailable: () => models, getProvider: () => undefined } as never;
+		const ctx = { modelRegistry: registry, model: parent as never };
+		return (profile?: string, call?: string) => planRun(profiles, { profile, model: call }, ctx).route.model;
+	};
+	const reasoning = tiers.map((model) => ({ ...model, reasoning: true }));
+
+	it("names a level on every route, so the coordinator knows each child's effort, whatever its own", () => {
+		const model = plan(reasoning);
+		expect(model("researcher")).toBe("p/tiny:low");
+		expect(model("browser")).toBe("p/tiny:low");
+		expect(model("lean")).toBe("p/tiny:low");
+		expect(model("implementer")).toBe("p/mid:medium");
+		expect(model("reviewer")).toBe("p/mid:high");
+		// No profile, no level: the coordinator's model at the subagent default, not the coordinator's high.
+		expect(model(undefined)).toBe("p/big:medium");
+		vi.stubEnv(SUBAGENT_THINKING_ENV, "low");
+		expect(model(undefined)).toBe("p/big:low");
+		expect(model("reviewer")).toBe("p/mid:high");
+	});
+
+	it("routes each task by the call: lookups cheap, escalations and root causes strong", () => {
+		const model = plan(reasoning);
+		// A one-off lookup without a profile.
+		expect(model(undefined, "small:low")).toBe("p/tiny:low");
+		// A scout whose question turned out hard: the same role on a stronger route.
+		expect(model("researcher", "medium:high")).toBe("p/mid:high");
+		// The role's effort holds when the call only changes the model.
+		expect(model("reviewer", "small")).toBe("p/tiny:high");
+		// A root cause or a design decision on the coordinator's own model.
+		expect(model(undefined, "p/big:high")).toBe("p/big:high");
+	});
+
+	it("reports the level the child will really run at", () => {
+		// The small model has no reasoning: its session runs at off, and the route says so.
+		const model = plan(reasoning.map((entry) => (entry.id === "tiny" ? { ...entry, reasoning: false } : entry)));
+		expect(model("researcher")).toBe("p/tiny:off");
+		expect(model("implementer")).toBe("p/mid:medium");
+	});
+});
+
 describe("buildAgentArgs model", () => {
 	it("passes the resolved model, and never the profile's own unresolved preference", () => {
 		const profile = { name: "p", description: "", prompt: "", model: "claude-haiku-5-5" };
@@ -125,5 +209,27 @@ describe("routedModel", () => {
 	it("is undefined for no route or a model the registry does not list", () => {
 		expect(routedModel(undefined, available)).toBeUndefined();
 		expect(routedModel("anthropic/claude-opus-5-5", available)).toBeUndefined();
+	});
+});
+
+describe("a child whose session has no model", () => {
+	it("routeModel still names the level it runs at, in place of a model suffix", () => {
+		expect(routeModel({ available, thinking: "medium" })).toEqual({ thinking: "medium" });
+		// A purpose's level, a profile's level and the default, in that order.
+		expect(routeModel({ explicit: "small:high", available, thinking: "medium" })).toEqual({ thinking: "high" });
+		expect(routeModel({ preferred: "small:low", available, thinking: "medium" })).toEqual({ thinking: "low" });
+		expect(routeModel({ preferred: "small", available, thinking: "medium" })).toEqual({ thinking: "medium" });
+		expect(routeModel({ available })).toEqual({});
+	});
+
+	it("keeps the level on the route a run is planned with, and starts the child with --thinking", () => {
+		const registry = { getAvailable: () => available } as never;
+		const plan = planRun(new Map(), {}, { modelRegistry: registry, model: undefined });
+		expect(plan.route.model).toBeUndefined();
+		expect(plan.route).toMatchObject({ thinking: subagentThinking({}) });
+		const args = buildAgentArgs(undefined, plan.route.model, SESSION, [], plan.route.thinking);
+		expect(args.slice(args.indexOf("--thinking"), args.indexOf("--thinking") + 2)).toEqual(["--thinking", "medium"]);
+		// A model route carries its level in the suffix: no separate flag.
+		expect(buildAgentArgs(undefined, "openai/gpt-5:low", SESSION, [], "low")).not.toContain("--thinking");
 	});
 });

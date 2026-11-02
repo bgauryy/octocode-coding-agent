@@ -5,11 +5,9 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { globalPaths, HOME_NAMES, sessionDir, sessionDirName, workspacePaths } from "../../src/octocode/shared/home.ts";
-import { projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { extraSkillDirs } from "../../src/octocode/skills.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 /** A git repo with `files` written under it, and a nested `pkg/src` folder to start sessions from. */
 function repo(files: Record<string, string> = {}): { root: string; sub: string } {
@@ -47,12 +45,6 @@ describe("layout", () => {
 		expect(paths.team).toBe(path.join(moved, "team"));
 	});
 
-	it("keeps the fingerprinted trust store apart from the core /trust store in the same home", () => {
-		const home = tmp();
-		// Without OCTOCODE_CODING_AGENT_DIR the core store is <Octocode home>/trust.json and holds booleans only.
-		expect(globalPaths({}, home).trust).not.toBe(path.join(globalPaths({}, home).home, "trust.json"));
-	});
-
 	it("resolves workspace paths from the repository root when started in a subfolder", () => {
 		const { root, sub } = repo();
 		const paths = workspacePaths(sub);
@@ -80,29 +72,6 @@ describe("session folders", () => {
 		expect(sessionDirName("a..b")).toBe("a..b");
 		expect(sessionDirName("/")).toBe("_");
 		expect(sessionDirName("../x")).toBe(".._x");
-	});
-});
-
-describe("trust covers the .octocode workspace files", () => {
-	it("lists them from the repo root and re-asks when .octocode/hooks.json changes", () => {
-		vi.stubEnv("OCTOCODE_HOME", tmp("octocode-layout-home-"));
-		const { root, sub } = repo({
-			".octocode/hooks.json": "{}",
-			".octocode/agents/x.md": profile("x", "p"),
-			".octocode/skills/s/SKILL.md": "---\nname: s\n---\n",
-		});
-		expect(projectConfigFiles(sub)).toEqual(
-			[
-				path.join(root, ".octocode", "hooks.json"),
-				path.join(root, ".octocode", "agents", "x.md"),
-				path.join(root, ".octocode", "skills", "s", "SKILL.md"),
-			].sort(),
-		);
-		const ctx = { cwd: sub, isProjectTrusted: () => true };
-		saveDecision(sub, fingerprint(projectConfigFiles(sub)), true);
-		expect(projectTrustNow(ctx)).toBe(true);
-		write(path.join(root, ".octocode", "hooks.json"), '{"hooks":{}}');
-		expect(projectTrustNow(ctx)).toBeUndefined();
 	});
 });
 

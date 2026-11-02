@@ -2,8 +2,7 @@
 
 import { mcpNamespace } from "../../../../common/src/mcp-names.ts";
 import { OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
-import type { RegisteredTool, ToolDefinition } from "../extensions/index.ts";
-import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
+import type { RegisteredTool, ToolDefinition } from "../features/index.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo } from "../source-info.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
 
@@ -73,7 +72,7 @@ export function buildToolDefinitionRegistry(
 		definitionRegistry.set(tool.definition.name, {
 			definition: tool.definition,
 			sourceInfo:
-				tool.sourceInfo.path === NATIVE_FEATURE_PATH
+				tool.sourceInfo.owner === "native"
 					? createSyntheticSourceInfo(`${BUILTIN_PATH_PREFIX}${tool.definition.name}`, { source: "builtin" })
 					: tool.sourceInfo,
 		});
@@ -100,13 +99,13 @@ export function buildToolDefinitionRegistry(
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Tools every role is given in the same form, declared first and in this order. */
-const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "archive", "mcp"];
+const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "mcp"];
 
 /**
  * Tools whose presence or declaration depends on the role (a read-only child lacks debug), declared last and in this
  * order.
  */
-const ROLE_VARIANT_TOOLS = ["backlog", "steps", "memory", "debug", "askUser", "agent", "skill"];
+const ROLE_VARIANT_TOOLS = ["backlog", "steps", "archive", "debug", "askUser", "agent", "skill", "models", "compact"];
 
 /** The research server's namespace: every role that has MCP tools has these, so they come before other servers' tools. */
 const SHARED_MCP_NAMESPACE = mcpNamespace(OCTOCODE_SERVER);

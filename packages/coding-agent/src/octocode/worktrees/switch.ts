@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { say } from "../shared/commands.ts";
 import { existingWorktree, mainCheckout } from "./target.ts";
 

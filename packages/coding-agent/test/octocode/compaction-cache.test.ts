@@ -1,6 +1,6 @@
 import { INSTRUCTION_CACHE_RETENTION_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import {
 	INFERRED_CACHE_TTL_SECONDS,
 	cacheClock,

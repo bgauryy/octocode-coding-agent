@@ -20,12 +20,12 @@ octocode install ./local-package
 
 Personal installs are written to `~/.octocode/octocodecode/settings.json`. Add `--local` or `-l` to write the package declaration to `.octocode/settings.json`. Octocode reads declarations from that file only after project trust is granted.
 
-Project packages are installed and loaded only after project trust is resolved. Packages can execute extension code and can include skills that instruct the model to run programs. Review third-party package source before installing it. Review project package declarations before granting project trust.
+Project packages are installed and loaded only after project trust is resolved. Packages can include skills that instruct the model to run programs. Review third-party package source before installing it. Review project package declarations before granting project trust.
 
-Use `--extension` or `-e` to try a package for one invocation without adding it to settings:
+User code extensions are not supported, so a package's extension code is ignored with a warning; its skills, prompts and themes still load. `-e` accepts only `builtin:<id>` (for one invocation, switch a built-in feature):
 
 ```bash
-octocode -e npm:@example/octocode-tools
+octocode -e builtin:mcp
 ```
 
 ## Choose a source
@@ -54,7 +54,7 @@ my-octocode-package/
 └── themes/
 ```
 
-Without an `octocode` manifest, Octocode discovers TypeScript and JavaScript extensions, skill directories, Markdown prompts, and JSON themes from those directories. Extension discovery follows the [extension directory discovery rules](extensions.md#extension-directory-discovery).
+Without an `octocode` manifest, Octocode discovers TypeScript and JavaScript extensions, skill directories, Markdown prompts, and JSON themes from those directories.
 
 Use an explicit manifest when resources live elsewhere or need filtering:
 
@@ -128,4 +128,4 @@ The same package can appear in personal and project settings. A project entry no
 
 Octocode identifies npm packages by package name, git packages by repository URL without the ref, and local packages by resolved absolute path. This prevents the same package from loading twice through equivalent declarations.
 
-Use [Extensions](extensions.md), [Skills](skills.md), [Prompt Templates](prompt-templates.md), and [Themes](themes.md) to design each resource before packaging it.
+Use [Skills](skills.md), [Prompt Templates](prompt-templates.md), and [Themes](themes.md) to design each resource before packaging it.

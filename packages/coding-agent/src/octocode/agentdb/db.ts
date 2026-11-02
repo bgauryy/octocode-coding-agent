@@ -26,6 +26,8 @@ export interface AgentDb {
 	readonly fts: boolean;
 	/** One BEGIN IMMEDIATE transaction; nested calls join the outer one. */
 	transaction<T>(fn: () => T): T;
+	/** Notification after a successful outer transaction; observers cannot undo the commit. */
+	onCommit(listener: () => void): () => void;
 	withActor<T>(actor: { id: string; kind?: string }, fn: () => T): T;
 	close(): void;
 }
@@ -55,25 +57,34 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 			auditActor = previous;
 		}
 	};
+	const committed = new Set<() => void>();
 	let depth = 0;
 	const transaction = <T>(fn: () => T): T => {
 		if (depth > 0) return fn();
 		db.exec("BEGIN IMMEDIATE");
 		depth += 1;
+		let result: T;
 		try {
-			const result = fn();
+			result = fn();
 			db.exec("COMMIT");
-			return result;
 		} catch (error) {
 			try {
 				db.exec("ROLLBACK");
 			} catch {
-				// SQLite already rolled back (some errors do); the failure to report is the original.
+				/* SQLite may already have rolled back. */
 			}
 			throw error;
 		} finally {
 			depth -= 1;
 		}
+		for (const listener of committed) {
+			try {
+				listener();
+			} catch {
+				/* An observer cannot undo a completed transaction. */
+			}
+		}
+		return result;
 	};
 	try {
 		// Nothing that changes the file (journal mode included) before ensureSchema has checked it is ours or new. A file
@@ -84,14 +95,6 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
 		// Comments replaced the backlog notes of kind `note`; rows written by an older build are copied across once.
 		if (backlog.hasUncopiedNotes(db)) transaction(() => backlog.copyNotesToComments(db));
-		// The item type `task` was renamed `feature`; an older build still running (or an existing file's column default,
-		// which a schema sync cannot change) writes `task` again, so every open rewrites whatever rows it finds. The check
-		// takes no write lock. Best effort: a locked file keeps its rows (every read maps `task` to `feature`); the next open retries.
-		try {
-			if (backlog.hasLegacyItemType(db)) transaction(() => backlog.renameLegacyItemType(db));
-		} catch {
-			// Busy or read-only: not a reason to fail the open.
-		}
 		tighten(target);
 		let open = true;
 		return {
@@ -101,7 +104,14 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 			fts,
 			transaction,
 			withActor,
+			onCommit: (listener) => {
+				committed.add(listener);
+				return () => {
+					committed.delete(listener);
+				};
+			},
 			close: () => {
+				committed.clear();
 				if (open) db.close();
 				open = false;
 			},

@@ -20,8 +20,12 @@ import { PeerRegistry } from "./peer-registry.ts";
 
 /** `PRAGMA application_id` of the package database (`assets/schema.sql` of the package: it spells "OCTO" ... "COMM"); a different file is not ours. */
 export const PEER_APPLICATION_ID = 1329678147;
-/** `PRAGMA user_version` of the schema this reads (`assets/schema.sql`); any other is skipped with one warning. One version: the package opens only this schema. */
-export const PEER_SCHEMA_VERSION = 7;
+/**
+ * `PRAGMA user_version`s of the package schema (`assets/schema.sql`) this reads; any other is skipped with one warning.
+ * Version 8 reworked only `messages` and `records` (message parts, `contextId`, `outcome`): `leases` and `sessions`, the
+ * only tables read, kept the version 7 columns, so both are read. Add a version here only after comparing those two tables.
+ */
+export const PEER_SCHEMA_VERSIONS: readonly number[] = [7, 8];
 /** How long a read waits for the package's writer: a refusal is advisory, so an edit never stalls on it. */
 const BUSY_MS = 200;
 /** After a failed open or read, how long before the next attempt: the file may finish a write. */
@@ -117,11 +121,11 @@ class PeerDatabase {
 				this.retryAt = now + RETRY_MS;
 				return undefined;
 			}
-			if (id !== PEER_APPLICATION_ID || version !== PEER_SCHEMA_VERSION) {
+			if (id !== PEER_APPLICATION_ID || !PEER_SCHEMA_VERSIONS.includes(version)) {
 				db.close();
 				this.fail(
 					now,
-					`has application_id ${id} and schema version ${version}; this reads version ${PEER_SCHEMA_VERSION}`,
+					`has application_id ${id} and schema version ${version}; this reads versions ${PEER_SCHEMA_VERSIONS.join(", ")}`,
 				);
 				return undefined;
 			}

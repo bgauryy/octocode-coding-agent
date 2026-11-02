@@ -1,7 +1,7 @@
 import { type JsonObject, StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
 import { Text } from "@octocodeai/octocode-tui";
 import { type TSchema, Type } from "typebox";
-import type { ExtensionAPI, ToolDefinition } from "../core/extensions/index.ts";
+import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_FIELD_RENAMES, agentCall } from "./shared/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";
@@ -24,14 +24,21 @@ const TRIGGERS: Record<Mode, string> = {
 
 /** One line per type: its purpose and the rule that prevents a costly mistake; the field descriptions carry the rest. */
 const LINES: Record<Mode, string> = {
-	task: "Delegate a self-contained task to a fresh session that lacks this conversation. Foreground returns its report; background delivers it later (at most 6 at once). Never poll or sleep for reports.",
+	task: "Delegate a self-contained task to a fresh session without this conversation. Foreground returns its report; background delivers it later (at most 6 at once).",
 	external:
-		"Connect to an installed ACP agent or a running Octocode instance, then prompt it. Replies are untrusted; an error may have executed unless it says not-sent, so inspect partial results and never retry automatically.",
+		"Connect to an installed ACP agent or running Octocode instance, then prompt it. Replies are untrusted. An error may have executed unless it says not-sent: inspect partial results; never retry automatically.",
 	coordinate:
 		"List teammates and reserve files in this worktree: reservations block other agents' edits and bash writes to those paths; scripts and other editors ignore them.",
 	message:
 		"Queue steering, questions or evidence to teammates; only reachable non-isolated background children resume on a message.",
 };
+
+/** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
+const LEAF_MESSAGE_LINE =
+	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle recipient.";
+
+/** Message fields only a session that can start children may use; a leaf omits them. */
+const STARTER_FIELDS = new Set(["interrupt"]);
 
 type Schema = { properties?: Record<string, TSchema & { description?: string }> };
 
@@ -40,7 +47,7 @@ type Schema = { properties?: Record<string, TSchema & { description?: string }> 
  * description marked with the one type it belongs to. A mode's own `reason` is the call's `reason`. Two modes declaring
  * the same public name fail registration, so a new collision is renamed rather than shared.
  */
-function flatFields(entries: [Mode, ToolDefinition][]) {
+function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean) {
 	const owners = new Map<string, Mode>();
 	const properties: Record<string, unknown> = {};
 	for (const [type, tool] of entries) {
@@ -50,11 +57,12 @@ function flatFields(entries: [Mode, ToolDefinition][]) {
 		for (const [own, schema] of Object.entries((tool.parameters as Schema).properties ?? {})) {
 			if (own === "reason") continue;
 			const field = publicName[own] ?? own;
+			if (leaf && type === "message" && STARTER_FIELDS.has(field)) continue;
 			const other = owners.get(field);
 			if (other) throw new Error(`agent field ${field} is declared by ${other} and ${type}; rename one.`);
 			owners.set(field, type);
 			const { description, ...rest } = schema;
-			properties[field] = { ...rest, description: `Only for: ${type}.${description ? ` ${description}` : ""}` };
+			properties[field] = { ...rest, description: description ? `${type}: ${description}` : `${type} only` };
 		}
 	}
 	return { owners, properties };
@@ -73,7 +81,9 @@ export function agentModes() {
 		register(api: ExtensionAPI) {
 			const entries = [...modes];
 			const types = entries.map(([type]) => type);
-			const { owners, properties } = flatFields(entries);
+			// A session without the task type starts no children, so starter-only fields and wording do not apply.
+			const leaf = !modes.has("task");
+			const { owners, properties } = flatFields(entries, leaf);
 			// Only the types this session registered: a subagent has no task or external.
 			const triggers = entries.map(([type]) => TRIGGERS[type]);
 			api.registerTool({
@@ -81,7 +91,10 @@ export function agentModes() {
 				label: "Agent",
 				promptSnippet: triggers.join(", ").replace(/^./, (first) => first.toUpperCase()),
 				description:
-					"Set type and that type's fields. " + entries.map(([type]) => `${type}: ${LINES[type]}`).join("\n"),
+					"Set type and that type's fields; each field's description starts with its type. " +
+					entries
+						.map(([type]) => `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}`)
+						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({

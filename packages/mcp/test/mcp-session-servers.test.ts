@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
 import {
-	getMcpAddedServers,
+	getMcpSessionHandoff,
 	parseMcpSessionServers,
 	registerInheritedMcpServers,
 	registerMcpAddedServers,
@@ -19,12 +19,12 @@ const stdio = { command: "node", args: ["server.js"], env: { TOKEN: "t" } };
 describe("session MCP servers handed to children", () => {
 	it("answers requests on the event bus with the owner's current servers", () => {
 		const events = createEventBus();
-		expect(getMcpAddedServers(events)).toEqual({});
+		expect(getMcpSessionHandoff(events).servers).toEqual({});
 		const added: Record<string, typeof stdio> = { echo: stdio };
-		const off = registerMcpAddedServers(events, () => added);
-		expect(getMcpAddedServers(events)).toEqual({ echo: stdio });
+		const off = registerMcpAddedServers(events, () => ({ servers: added, stopped: [] }));
+		expect(getMcpSessionHandoff(events).servers).toEqual({ echo: stdio });
 		delete added.echo;
-		expect(getMcpAddedServers(events)).toEqual({});
+		expect(getMcpSessionHandoff(events).servers).toEqual({});
 		off();
 	});
 
@@ -35,7 +35,7 @@ describe("session MCP servers handed to children", () => {
 		expect(servers).toEqual({ echo: stdio });
 		expect(errors).toHaveLength(1);
 		expect(parseMcpSessionServers(serializeMcpSessionServers({ echo: stdio })!).servers).toEqual({ echo: stdio });
-		expect(() => parseMcpSessionServers('{"version":2}')).toThrow("not a session server list");
+		expect(() => parseMcpSessionServers('{"version":3,"servers":{}}')).toThrow("not a session server list");
 	});
 
 	it("registers them only in a subagent that was given the file", () => {

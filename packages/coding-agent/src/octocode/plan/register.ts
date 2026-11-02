@@ -1,5 +1,5 @@
 import { contentText } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { planningRefusal, type ShellReader } from "./gate.ts";

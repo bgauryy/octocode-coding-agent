@@ -1,8 +1,7 @@
 import os from "node:os";
-import type { ExtensionAPI, ExtensionContext, ToolInvocation } from "../../core/extensions/types.ts";
+import type { ExtensionAPI, ExtensionContext, ToolInvocation } from "../../core/features/types.ts";
 import { nativeHost } from "../shared/host-api.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
-import { projectTrustForContents, preparePermissionTrustUpdate } from "../shared/trust.ts";
 import { say } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { parseSourcePolicy, type SourcePolicy } from "./source-policy/rules.ts";
@@ -54,18 +53,14 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 		} catch {
 			say(ctx, "Bash syntax parser unavailable; shell file targets require explicit review", "warning");
 		}
-		// Read the policy only after initialization, and verify trust against exactly those bytes.
+		// Read the policy only after initialization, so the bytes parsed are the bytes captured.
 		const allSources = claudeSettingsSources(ctx.cwd, true, home);
 		const captured = allSources.map((source) => ({
 			source,
 			...readPolicy(source.path),
 		}));
-		const trusted = await projectTrustForContents(
-			ctx,
-			new Map(
-				captured.slice(1).flatMap((entry) => (entry.text === undefined ? [] : [[entry.source.path, entry.text]])),
-			),
-		);
+		// The session's folder is trusted (the startup gate decides); project settings may then allow as well as restrict.
+		const trusted = ctx.isProjectTrusted();
 		const current = allSources.map((source) => ({
 			source,
 			...readPolicy(source.path),
@@ -153,19 +148,6 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 				if (parsed.errors.length) throw new Error(parsed.errors.join("\n"));
 				return [plan];
 			});
-			const advanceTrust = preparePermissionTrustUpdate(
-				ctx,
-				new Map(
-					plans.map((plan) => [
-						plan.source.path,
-						{
-							before: plan.before,
-							after: `${JSON.stringify(plan.settings, null, 2)}\n`,
-						},
-					]),
-				),
-				home,
-			);
 			const expectedContents = acceptedContents.map((entry) => ({ ...entry }));
 			const expectedRevision = revision;
 			const expectedSession = ctx.sessionManager.getSessionId();
@@ -195,7 +177,6 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 					}
 					signal.throwIfAborted();
 					assertCurrent();
-					if (saved.length) advanceTrust(saved);
 					const snapshot = plans.length ? await capture(ctx) : undefined;
 					signal.throwIfAborted();
 					assertCurrent();

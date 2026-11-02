@@ -27,7 +27,6 @@ import {
 	PERMISSION_RELAY_ENV,
 	SUBAGENT_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
-	TRUST_ROOT_ENV,
 	AGENT_SCRATCH_ENV,
 	TEAM_WORKSPACE_ENV,
 } from "../../../../../common/src/env.ts";
@@ -38,6 +37,7 @@ import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID
 import type { AgentProfile } from "../profiles.ts";
 import type { ResultContract } from "../result-schema.ts";
 import { CHILD_OWNED_ENV } from "./child-env.ts";
+import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
 import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
@@ -46,6 +46,8 @@ export interface Identity {
 	skillResources?: SkillResourceSnapshot;
 	/** MCP servers the parent's `mcp` tool added this session (the user confirmed them): the child registers them, and nothing is written to `mcp.json`. */
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
+	/** Servers the parent stopped for this session only: the child leaves them out unless its tool selection names them. */
+	mcpStopped?: readonly string[];
 	cachePreferences?: CachePreferences;
 	/** Lifetime of the history entry the child's requests write, when known (`cache-warmer/economics`). */
 	cacheTtlMs?: number;
@@ -66,8 +68,6 @@ export interface Identity {
 	isolation?: { path: string; repo: string; cwd: string };
 	/** The parent's team workspace, for a child whose cwd is an isolated worktree (a different git root). */
 	workspace?: string;
-	/** Set only when the parent's project config is trusted: the repository whose stored decision an isolated child follows. */
-	trustRoot?: string;
 	/** Its handoff folder: files it writes there are read by the parent on demand instead of riding in its report. */
 	scratch?: string;
 	/** The parent's Octocode session id: the backlog claims the child may update. */
@@ -84,6 +84,8 @@ export interface Identity {
 	permission?: { mode: PermissionMode; grants: readonly ActionClass[] };
 	/** The parent can ask a person: the child sends its approval dialogs to the parent (`OCTOCODE_PERMISSION_RELAY`) instead of denying them. */
 	relay?: boolean;
+	/** The identity text the parent appended to the child's latest task (`identityBlock`); the child re-reads it after a compaction (`identity-reminder.ts`). */
+	assignment?: string;
 }
 
 /**
@@ -129,11 +131,11 @@ export function subagentProcessEnv(
 			? { [WORKTREE_ROOT_ENV]: identity.isolation.path, [PROMPT_ROOT_ENV]: identity.isolation.repo }
 			: {}),
 		...(identity?.workspace ? { [TEAM_WORKSPACE_ENV]: identity.workspace } : {}),
-		...(identity?.trustRoot ? { [TRUST_ROOT_ENV]: identity.trustRoot } : {}),
 		...(identity?.scratch ? { [AGENT_SCRATCH_ENV]: identity.scratch } : {}),
 		...(identity?.parentTranscript ? { [PARENT_TRANSCRIPT_ENV]: identity.parentTranscript } : {}),
 		...(identity?.parentSession ? { [PARENT_SESSION_ENV]: identity.parentSession } : {}),
 		...(identity?.item ? { [BACKLOG_ITEM_ENV]: identity.item } : {}),
+		...(identity?.assignment ? { [SUBAGENT_ASSIGNMENT_ENV]: identity.assignment } : {}),
 		// The pid and its start time name this process, so a child never mistakes a later process with the pid for its parent.
 		...(identity ? { [PARENT_PID_ENV]: [process.pid, processStartTime(process.pid)].filter(Boolean).join(" ") } : {}),
 		...(nonceFile ? { [PERMISSION_NONCE_FILE_ENV]: nonceFile } : {}),

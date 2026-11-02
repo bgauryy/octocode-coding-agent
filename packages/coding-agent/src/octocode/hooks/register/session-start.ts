@@ -1,7 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
-import { projectTrust } from "../../shared/trust.ts";
 import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
 import { loadHooks } from "../config.ts";
 import { capContext } from "../runner.ts";
@@ -76,7 +75,7 @@ export function registerSessionStartHooks(
 
 	api.on("session_start", async (event, ctx) => {
 		const settings = api.getSettings();
-		const loaded = loadHooks(ctx.cwd, await projectTrust(ctx), home, {
+		const loaded = loadHooks(ctx.cwd, ctx.isProjectTrusted(), home, {
 			plugins: effectivePlugins(settings, ctx.cwd),
 			toggles: settings.toggles,
 		});

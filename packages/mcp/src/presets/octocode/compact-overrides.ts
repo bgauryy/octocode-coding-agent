@@ -3,6 +3,8 @@ import {
 	type DescriptionOverrides,
 	parsePresetOverrides,
 	presetOverridesFor,
+	presetStatus,
+	type StalePresetEntry,
 } from "../../compact/index.ts";
 import data from "./compact-overrides.json" with { type: "json" };
 
@@ -27,11 +29,24 @@ function withShippedServers(input: CompactServerInput): { input: CompactServerIn
 	return { input: { ...input, tools }, servers };
 }
 
+/** `input` with the language servers of `lspSearch` as shipped: the catalog the preset's upstream hashes describe. */
+export const octocodeShippedCatalog = (input: CompactServerInput): CompactServerInput =>
+	withShippedServers(input).input;
+
+/**
+ * The overrides that no longer match the server's catalogs (every catalog it sends: with and without a classification
+ * key), each named by tool and field; `yarn workspace @octocodeai/octocode-mcp run generate:compact` shows and re-points them.
+ */
+export function octocodeOverrideStatus(inputs: readonly CompactServerInput[]): StalePresetEntry[] {
+	return "overrides" in parsed ? presetStatus(parsed.overrides, inputs.map(octocodeShippedCatalog)) : [];
+}
+
 /**
  * Description overrides and triggers for the generated file of the Octocode research server, written with the
- * `octocode-context-optimization` skill. Each tool's entries carry the hash of the tool they describe, so a server release that
- * changes a tool drops only that tool's entries; the skill rewrites them. Write them from a catalog read where only
- * the ts/js, py and c/c++ servers are installed (an empty home).
+ * `octocode-context-optimization` skill. Each override carries the hash of the upstream text it replaces (the server
+ * instructions, a tool's description, a field's description at its path), so a server release that rewrites some texts
+ * drops only the overrides of those texts. Write them from a catalog read where only the ts/js, py and c/c++
+ * servers are installed (an empty home).
  */
 export function octocodeCompactOverrides(input: CompactServerInput): DescriptionOverrides | undefined {
 	if (!("overrides" in parsed)) return undefined;

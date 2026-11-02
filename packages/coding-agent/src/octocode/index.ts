@@ -1,18 +1,18 @@
+import { registerArchiveLifecycle } from "./archive/lifecycle.ts";
 import { registerRunGuards } from "./run-guards.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
-import { registerExtensibilityCommands } from "./plugins/command.ts";
+import { registerHarnessCommand } from "./harness/command.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "./files/tool/guard.ts";
 import { plural } from "./shared/render/text.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { spilledMessage } from "./team/session/spilled-message.ts";
 import { registerWebCommands } from "./remote/register.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
 import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
-import type { ExtensionAPI, ExtensionContext } from "../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../mcp/src/status.ts";
 import { OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { agentModes, agentOperation } from "./agent-tool.ts";
@@ -20,7 +20,7 @@ import { registerApi } from "./api/register.ts";
 import { registerAskUser } from "./ask/tool.ts";
 import { registerBacklog } from "./backlog/index.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
-import { registerArchiveTool } from "./compaction/archive-tool.ts";
+import { registerArchiveTool } from "./archive/tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
 import { registerDebugTool } from "./debug/tool.ts";
 import { registerOllamaTool } from "./ollama/tool.ts";
@@ -38,7 +38,6 @@ import { registerMemory } from "./memory/register.ts";
 import { registerSourcePolicy } from "./permission/source-policy-loader.ts";
 import { Permission } from "./permission/ask.ts";
 import { registerPermissionCommand } from "./permission/command.ts";
-import { PROFILE_DECLARABLE } from "./permission/mode.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { pruneSnapshots } from "./permission/snapshot.ts";
 import { parsedShell, reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
@@ -47,13 +46,13 @@ import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerSessions } from "./sessions/register.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
-import { notify, Subcommands } from "./shared/commands.ts";
-import { envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { Subcommands } from "./shared/commands.ts";
+import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { setCurrentSession } from "./shared/home.ts";
 import { interactive } from "./shared/interactive.ts";
 import { withDialog } from "./shared/locks.ts";
 import { EXTERNAL_SENDER, type MessageEnvelope } from "./shared/messages.ts";
-import { projectTrust, registerTrustCommand } from "./shared/trust.ts";
+import { registerTrustCommand } from "./trust/command.ts";
 import { registerSkills } from "./skills.ts";
 import { registerSkillTool } from "./skill/tool.ts";
 import { statusCommand } from "./status-command.ts";
@@ -61,7 +60,9 @@ import { currentCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
 import { registerModelsTool } from "./subagents/models-tool.ts";
-import { type AgentProfile, loadProfiles, profileFileName } from "./subagents/profiles.ts";
+import type { AgentProfile } from "./subagents/profiles.ts";
+import { registerIdentityReminder } from "./subagents/identity-reminder.ts";
+import { loadSessionProfiles } from "./subagents/session-profiles.ts";
 import { type AgentControl, registerAgentTool } from "./subagents/tool.ts";
 import { Team } from "./team/session.ts";
 import { changeNote } from "./team/edits.ts";
@@ -74,7 +75,7 @@ import { Delivery } from "./ui/delivery.ts";
 import { registerEditor } from "./ui/editor.ts";
 import { registerNotify } from "./ui/notify.ts";
 import { registerWebTool } from "./web/web.ts";
-
+import { installOctocodeDiscovery } from "./discovery/index.ts";
 /**
  * Native features compose guarded tools, subagents, collaboration and session policy. The MCP host owns its servers.
  * Cross-cutting runtime policy is composed here, in an order that reads top to bottom: the `tool_call` gate pipeline
@@ -90,6 +91,7 @@ import { registerWebTool } from "./web/web.ts";
  */
 export default function octocode(api: ExtensionAPI): void {
 	api = withNativePermissionOwners(api);
+	installOctocodeDiscovery(); // Agents, hooks, plugins and MCP servers join configuration discovery.
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
 	// First, so every feature's api.sendMessage goes through it and its agent_settled handler runs before theirs.
 	Delivery.install(api);
@@ -97,7 +99,7 @@ export default function octocode(api: ExtensionAPI): void {
 	const guard = new FileGuard();
 	const team = new Team(api);
 	let profiles = new Map<string, AgentProfile>();
-	/** Why each profile file was refused at load (`loadProfiles`' `onSkip`), by file name: the `agent` tool names it for an unknown profile. */
+	/** Why each profile file was refused at load (`loadSessionProfiles`), by profile name: the `agent` tool names it for an unknown profile. */
 	let refused = new Map<string, string>();
 	const updateReader = () => {
 		const server = getMcpSessionStatus(api.events).find((server) => server.name === OCTOCODE_SERVER);
@@ -122,7 +124,6 @@ export default function octocode(api: ExtensionAPI): void {
 	const localReads = registerReadReceipts(api);
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	api.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
-
 	guard.reservedBy = (file) => team.reservation(file, file);
 	guard.modifiedBy = (file) => changeNote(team.editLog(), file, team.id);
 	const checkpoints = new Checkpoints();
@@ -146,8 +147,7 @@ export default function octocode(api: ExtensionAPI): void {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
 	planning.readOnlyShell = planReadOnly;
-	// /new, /resume and /fork end this runtime, and with it its bash jobs and background subagents: ask before leaving
-	// them. Registered before the checkpoint handlers, so a fork is confirmed before its file-restore offer.
+	// /new, /resume and /fork end this runtime, its bash jobs and subagents: ask first, before the checkpoint handlers.
 	const confirmLeave = async (ctx: ExtensionContext, action: string) => {
 		if (!interactive(ctx, isSubagent)) return undefined;
 		const running = [
@@ -188,7 +188,7 @@ export default function octocode(api: ExtensionAPI): void {
 		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
 	if (!isSubagent) registerWebCommands(api, { commands, workspace, openWorkspace });
-	registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });
+	const memoryTool = registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });
 	commands.add(
 		"status",
 		statusCommand(api, () =>
@@ -320,11 +320,17 @@ export default function octocode(api: ExtensionAPI): void {
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
 	// paths to the file lists Octocode carries into its summary. Octocode writes the summary itself.
 	registerCompactTool(api, registerCompaction(api, guard, isSubagent), isSubagent);
+	if (isSubagent) registerIdentityReminder(api);
 	registerArchiveCommand(commands);
-	registerArchiveTool(api);
+	registerArchiveTool(api, memoryTool);
+	const closeArchive = registerArchiveLifecycle(api, {
+		canProject: () => !planning.blocked() && !envFlag(process.env, READ_ONLY_ENV),
+		agentId: () => team.id,
+		parentId: () => team.parentId,
+	});
 	registerSkillTool(api);
 	registerRunGuards(api); // after the file guard: see run-guards.ts
-	registerExtensibilityCommands(commands, hooks, api);
+	registerHarnessCommand(commands, hooks, api);
 	// Subagents have no terminal of their own: their parent's row and report carry their state.
 	if (!isSubagent) registerNotify(api, { onNotice: hooks.notification });
 	const externalApi = isSubagent
@@ -353,31 +359,7 @@ export default function octocode(api: ExtensionAPI): void {
 		await external?.reset();
 		// Reads in a resumed, reloaded or forked session's context still count; a new session starts empty.
 		guard.restore(contextReads(ctx));
-		const skipped: string[] = [];
-		refused = new Map();
-		const shadowed: string[] = [];
-		profiles = loadProfiles(
-			ctx.cwd,
-			undefined,
-			await projectTrust(ctx),
-			process.env,
-			(file, error) => {
-				skipped.push(`${file}: ${errorMessage(error)}`);
-				refused.set(profileFileName(file), errorMessage(error));
-			},
-			(name, file, replaced) => shadowed.push(`${name}: ${file} replaces ${replaced}`),
-		);
-		if (shadowed.length > 0 && interactive(ctx, isSubagent))
-			notify(ctx.ui, `Project subagent profiles replace profiles loaded earlier:\n${shadowed.join("\n")}`, "warning");
-		if (skipped.length > 0 && interactive(ctx, isSubagent))
-			notify(ctx.ui, `Skipped subagent profiles that could not be read:\n${skipped.join("\n")}`, "warning");
-		const ignored = [...profiles.values()].filter((profile) => profile.ignoredPermissions?.length);
-		if (ignored.length > 0 && interactive(ctx, isSubagent))
-			notify(
-				ctx.ui,
-				`Ignored permissions a subagent profile cannot declare (only ${PROFILE_DECLARABLE.join(", ")}):\n${ignored.map((profile) => `${profile.name}: ${profile.ignoredPermissions!.join(", ")}`).join("\n")}`,
-				"warning",
-			);
+		({ profiles, refused } = loadSessionProfiles(api, ctx, isSubagent));
 		await externalApi?.start(ctx);
 		// The models.dev index, refreshed in the background, so the first subagent of the day routes with it.
 		if (!isSubagent) currentCatalog();
@@ -395,6 +377,7 @@ export default function octocode(api: ExtensionAPI): void {
 		planning,
 	});
 	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
+	api.on("session_shutdown", async () => closeArchive());
 	// Register each native command once, after every feature has supplied its handler.
 	commands.register(api);
 }

@@ -9,12 +9,11 @@ import {
 	type SlashCommand,
 	CombinedAutocompleteProvider,
 } from "@octocodeai/octocode-tui";
-import type { ExtensionRunner } from "../../../core/extensions/index.ts";
+import type { ExtensionRunner } from "../../../core/features/index.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../../core/slash-commands.ts";
 import { getSkillCommands } from "../../../core/skill-commands.ts";
 import { getPromptCommands } from "../../../core/prompt-templates.ts";
-import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { parseGitUrl } from "../../../utils/git.ts";
 import { getModelSearchText } from "../model-search.ts";
@@ -81,7 +80,7 @@ export function getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionR
 	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 	return extensionRunner
 		.getRegisteredCommands()
-		.filter((command) => builtinNames.has(command.name) && command.sourceInfo.path !== NATIVE_FEATURE_PATH)
+		.filter((command) => builtinNames.has(command.name) && command.sourceInfo.owner !== "native")
 		.map((command) => ({
 			type: "warning" as const,
 			message:

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { HookEvent } from "./catalog.ts";

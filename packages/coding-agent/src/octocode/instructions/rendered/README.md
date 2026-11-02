@@ -5,13 +5,13 @@ The full context each agent receives with its first model request, captured from
 
 | Agent | Total chars | ~Tokens | System | Native tools | MCP tools | Messages | Largest parts |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| [main](main/sizes.md) | 80,615 | 20,154 | **49,682** | 27,182 | 3,725 | 26 | `mcps` 31,105, `agent` 7,074, `skills` 5,145 |
-| [general](general/sizes.md) | 69,525 | 17,382 | **45,794** | 18,894 | 3,725 | 1,112 | `mcps` 31,105, `skills` 4,766, `backlog` 4,166 |
-| [researcher](researcher/sizes.md) | 66,240 | 16,560 | **44,765** | 16,635 | 3,725 | 1,115 | `mcps` 31,105, `skills` 4,766, `backlog` 4,166 |
-| [implementer](implementer/sizes.md) | 70,382 | 17,596 | **46,647** | 18,894 | 3,725 | 1,116 | `mcps` 31,105, `skills` 4,766, `backlog` 4,166 |
-| [reviewer](reviewer/sizes.md) | 67,046 | 16,762 | **45,573** | 16,635 | 3,725 | 1,113 | `mcps` 31,105, `skills` 4,766, `backlog` 4,166 |
-| [browser](browser/sizes.md) | 55,058 | 13,765 | **37,523** | 8,621 | 7,772 | 1,142 | `mcps` 23,972, `skills` 4,766, `agent` 2,277 |
-| [lean](lean/sizes.md) | 7,213 | 1,804 | 2,521 | **3,583** | 0 | 1,109 | `file` 1,906, `bash` 1,677, `user message 1` 1,109 |
+| [main](main/sizes.md) | 78,600 | 19,650 | **49,899** | 24,915 | 3,760 | 26 | `mcps` 31,382, `agent` 6,901, `skills` 5,121 |
+| [general](general/sizes.md) | 62,003 | 15,501 | **44,941** | 12,442 | 3,760 | 860 | `mcps` 31,382, `skills` 4,755, `octocode_work` 3,471 |
+| [researcher](researcher/sizes.md) | 55,477 | 13,870 | **37,991** | 12,442 | 3,760 | 1,284 | `mcps` 31,382, `octocode_work` 2,542, `archive` 2,443 |
+| [implementer](implementer/sizes.md) | 45,777 | 11,445 | **29,948** | 12,442 | 2,523 | 864 | `mcps` 20,589, `octocode_work` 3,471, `archive` 2,443 |
+| [reviewer](reviewer/sizes.md) | 47,434 | 11,859 | **30,862** | 12,442 | 2,848 | 1,282 | `mcps` 23,185, `octocode_work` 2,542, `archive` 2,443 |
+| [browser](browser/sizes.md) | 42,982 | 10,746 | **22,379** | 12,442 | 6,853 | 1,308 | `mcps` 14,358, `octocode_work` 2,627, `archive` 2,443 |
+| [lean](lean/sizes.md) | 11,284 | 2,821 | 3,650 | **6,777** | 0 | 857 | `agent` 2,029, `file` 1,886, `bash` 1,560 |
 
 Sizes are characters of the text the model receives (tokens are chars / 4, an estimate). The largest of System, Native tools, MCP tools and Messages is bold; each agent's `sizes.md` ranks every section, tool and message and lists sentences repeated across its context.
 
@@ -32,6 +32,12 @@ Each folder holds `system.md` (the whole system prompt), `tools.md` (every decla
 - The main session is the real session: the Octocode extension, the Octocode MCP server, bundled skills and a fixture `AGENTS.md`.
 - A subagent is started as `subagents/tool.ts` starts one: its role prompt, identity, read-only and lean flags reach it through `subagentProcessEnv`, its tools, extensions and skills through `buildAgentArgs`, and its first message is built by `childTaskInput` and `withIdentity`. The parent's task text and the goal are placeholders.
 - Paths, the date, platform, shell, ports and ids are replaced by fixed values so the files are the same on every machine.
+
+## What this is not
+
+- A normalized fixture on a scripted model, not the exact request of any paid session: no provider is called, and project context, user skills and the date are fixed.
+- Declarations are captured before the provider adapter, so they are not the bytes every adapter sends: an adapter may convert or reshape a schema for its API.
+- The default configuration only: `mcpPresentation` is the default `"compact"` (the supported `"json"` mode is not rendered here), no classification key (so no `clasify` tool), the optional `ollama` and `debug` tools off, no ACP agent or other Octocode instance (so no `external` agent type), and no user or project MCP servers, profiles, plugins, hooks or `SYSTEM.md`.
 
 ## Update
 

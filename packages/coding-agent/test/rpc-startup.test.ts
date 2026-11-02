@@ -1,80 +1,84 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { expect, it, vi } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
 import { getCliInvocation } from "../src/config.ts";
 import { RpcClient } from "../src/modes/rpc/rpc-client.ts";
+import type { RpcExtensionUIRequest } from "../src/modes/rpc/rpc-types.ts";
+import {
+	createSandbox,
+	observeSessions,
+	QUIET_ARGS,
+	SCRIPTED_MODEL_ARGS,
+	type ModelServer,
+	type Sandbox,
+	startModelServer,
+	writeScriptedProvider,
+} from "./helpers/feature-host-cli.ts";
 
-it.each(["respond", "stop"])("keeps ordinary RPC startup command ordering while handling UI %s", async (action) => {
-	const directory = mkdtempSync(join(tmpdir(), "octocode-rpc-startup-"));
-	const extension = join(directory, "startup.mjs");
-	const journal = join(directory, "journal.json");
-	writeFileSync(
-		extension,
-		`import { writeFileSync } from "node:fs";
-export default function(api) {
-  api.on("session_start", async (_event, context) => {
-    const answer = await context.ui.select("Startup question", ["Ready"]);
-    writeFileSync(${JSON.stringify(journal)}, JSON.stringify({ answer: answer ?? "cancelled" }));
-  });
-}`,
-	);
-	const invocation = getCliInvocation();
-	const identity = vi.fn();
-	const ui = vi.fn();
-	const client = new RpcClient({
-		invocation: { command: invocation.command, args: invocation.prefix },
-		cwd: directory,
-		onSessionIdentity: identity,
-		args: [
-			"--no-mcp",
-			"--no-builtin-tools",
-			"--no-extensions",
-			"--extension",
-			extension,
-			"--no-skills",
-			"--no-context-files",
-			"--offline",
-		],
-		env: {
-			PATH: [dirname(process.execPath), process.env.PATH ?? ""].join(process.platform === "win32" ? ";" : ":"),
-			HOME: directory,
-			USERPROFILE: directory,
-			OCTOCODE_HOME: join(directory, "octocode"),
-			OCTOCODE_CODING_AGENT_DIR: join(directory, "agent"),
-			OCTOCODE_OFFLINE: "1",
-			OCTOCODE_MCP: "0",
-			OCTOCODE_API: "0",
-			OCTOCODE_INTERNAL_ACP_WORKER: "0",
-		},
-	});
-	client.onExtensionUIRequest(ui);
-	try {
-		await client.start();
-		let stateFinished = false;
-		const state = client.getState().finally(() => {
-			stateFinished = true;
-		});
-		void state.catch(() => {});
-		// The child CLI boots in about 1s when idle and much slower while the full suite runs in parallel.
-		await expect.poll(() => ui.mock.calls.length, { timeout: 20_000 }).toBe(1);
-		expect(stateFinished).toBe(false);
-		expect(identity).not.toHaveBeenCalled();
-		if (action === "respond") {
-			await client.respondToExtensionUIRequest({
-				type: "extension_ui_response",
-				id: ui.mock.calls[0][0].id,
-				value: "Ready",
-			});
-			await expect(state).resolves.toHaveProperty("sessionId");
-			expect(JSON.parse(readFileSync(journal, "utf8"))).toEqual({ answer: "Ready" });
-		} else {
-			await client.stop();
-			await expect(state).rejects.toThrow("stopped");
-			expect(JSON.parse(readFileSync(journal, "utf8"))).toEqual({ answer: "cancelled" });
-		}
-	} finally {
-		await client.stop();
-		rmSync(directory, { recursive: true, force: true });
-	}
+/**
+ * The RPC host keeps handling commands while a UI request is open, and answers every open request when it closes.
+ * The native producer of a UI request is the permission prompt of a manual-mode shell call; no native feature opens
+ * one while a session starts (see .octocode/sdk-removal/p3-coverage.md).
+ */
+let sandbox: Sandbox;
+let server: ModelServer | undefined;
+let client: RpcClient | undefined;
+
+afterEach(async () => {
+	await client?.stop();
+	await server?.close();
+	sandbox?.cleanup();
+	client = undefined;
+	server = undefined;
 });
+
+it.each(["respond", "stop"])(
+	"keeps RPC command ordering while a UI request is open, then handles %s",
+	async (action) => {
+		sandbox = createSandbox({ OCTOCODE_PERMISSION: "manual" });
+		const sessions = observeSessions(sandbox);
+		server = await startModelServer([{ tool: "bash", args: { command: "echo ran > ran.txt" } }, { text: "finished" }]);
+		writeScriptedProvider(sandbox, server);
+		const invocation = getCliInvocation();
+		// Notifications and status updates are UI requests too; only the permission prompt waits for an answer.
+		const ui: RpcExtensionUIRequest[] = [];
+		const rpc = new RpcClient({
+			invocation: { command: invocation.command, args: invocation.prefix },
+			cwd: sandbox.project,
+			args: [...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS],
+			env: sandbox.env,
+		});
+		client = rpc;
+		rpc.onExtensionUIRequest((request) => {
+			if (request.method === "select" && request.permission) ui.push(request);
+		});
+		await rpc.start();
+		await rpc.prompt("run the command");
+		// The child CLI boots in about 1s when idle and much slower while the full suite runs in parallel.
+		await vi.waitFor(() => expect(ui, rpc.getStderr()).toHaveLength(1), { timeout: 45_000 });
+		const ran = join(sandbox.project, "ran.txt");
+
+		// Commands sent while the request is open are answered, each response matching its own command.
+		const [state, commands] = await Promise.all([rpc.getState(), rpc.getCommands()]);
+		expect(state).toHaveProperty("sessionId");
+		expect(commands.map((command) => command.name)).toContain("permissions");
+		expect(ui, "no second request was opened").toHaveLength(1);
+		expect(existsSync(ran), "nothing runs while the request is open").toBe(false);
+
+		if (action === "respond") {
+			const request = ui[0] as Extract<RpcExtensionUIRequest, { method: "select" }>;
+			await rpc.respondToExtensionUIRequest({
+				type: "extension_ui_response",
+				id: request.id,
+				value: request.permission!.allowOnce,
+			});
+			await vi.waitFor(() => expect(readFileSync(ran, "utf8").trim()).toBe("ran"), { timeout: 45_000 });
+		} else {
+			await rpc.stop();
+			expect(existsSync(ran), "stopping answers the open request as cancelled").toBe(false);
+			expect(sessions.ended(), "the session shut down").toEqual(sessions.started());
+		}
+		expect(sessions.started()).toHaveLength(1);
+	},
+	120_000,
+);

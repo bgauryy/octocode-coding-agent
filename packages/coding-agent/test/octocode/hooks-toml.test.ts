@@ -2,11 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
-import { projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
-import { describeProjectConfig } from "../../src/octocode/shared/trust/describe.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 function fixture() {
@@ -39,22 +36,6 @@ it("loads user and trusted project inline TOML and merges JSON with a diagnostic
 	expect(commandsFor(user.config, "PreToolUse", ["Bash"])).toHaveLength(2);
 	expect(commandsFor(loadHooks(f.cwd, true, f.home).config, "PreToolUse", ["Bash"])).toHaveLength(3);
 	expect(hookFiles(f.cwd, true, f.home)).toContain(path.join(f.cwd, ".codex/config.toml"));
-});
-
-it("fingerprints TOML and shows only hook commands, including Windows overrides, during trust review", () => {
-	const f = fixture();
-	const file = path.join(f.cwd, ".codex/config.toml");
-	fs.writeFileSync(file, `secret = "do-not-display"\n${definition("review-me")}`);
-	const files = projectConfigFiles(f.cwd);
-	expect(files).toContain(file);
-	const description = describeProjectConfig(f.cwd);
-	expect(description).toContain("review-me");
-	expect(description).toContain("windows-review-me");
-	expect(description).not.toContain("do-not-display");
-	saveDecision(f.cwd, fingerprint(files), true, f.home);
-	expect(projectTrustNow({ cwd: f.cwd, isProjectTrusted: () => true }, f.home)).toBe(true);
-	fs.appendFileSync(file, "\n# changed\n");
-	expect(projectTrustNow({ cwd: f.cwd, isProjectTrusted: () => true }, f.home)).not.toBe(true);
 });
 
 it("honors Codex feature disablement without disabling native hooks and lets the trusted project override it", () => {

@@ -66,7 +66,11 @@ describe("browser MCP preset", () => {
 		const loaded = loadMcpConfig({ agentDir, cwd, projectTrusted: false, defaults });
 		expect(loaded.errors).toEqual([]);
 		const byName = Object.fromEntries(loaded.servers.map((server) => [server.name, server]));
-		expect(byName.browser.config).toEqual({ command: "my-chrome" });
+		// The replacement keeps the preset's purpose, which the prompt shows; nothing else of the preset.
+		expect(byName.browser.config).toEqual({
+			command: "my-chrome",
+			description: defaults.find((entry) => entry.name === BROWSER_SERVER)!.config.description,
+		});
 		expect(byName.other.config).toEqual({ command: "x" });
 		expect(byName.octocode.config.enabled).toBe(true);
 	});

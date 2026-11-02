@@ -2,6 +2,7 @@ import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octoco
 import { WebSocket } from "ws";
 import { redactData } from "../../../../common/src/sanitize.ts";
 import { encodeApplicationFrame, isEncodedApplicationFrame } from "../../core/application/service/frames.ts";
+import { readerStalled } from "./socket-pressure.ts";
 
 /** A view-only tab sees the session as it is but can do nothing: its snapshots carry no capabilities, so the page draws no controls. */
 function viewFrame(frame: ApplicationFrame): ApplicationFrame {
@@ -39,7 +40,7 @@ function joinDelta(pending: DeltaFrame, next: DeltaFrame): DeltaFrame | undefine
 
 /**
  * Sends an application connection's frames to a browser socket, redacted, with streamed text coalesced to one update
- * per window. A slow socket or a resync closes it so the page reconnects and resynchronizes. Closes `connection` when
+ * per window. A page that stopped reading (`readerStalled`) or a resync closes it so the page reconnects and resynchronizes. Closes `connection` when
  * the stream or the socket ends. Shared by the per-session server and the user-level daemon.
  */
 export async function pumpApplicationFrames(
@@ -76,7 +77,7 @@ export async function pumpApplicationFrames(
 	try {
 		for await (const received of connection) {
 			if (socket.readyState !== WebSocket.OPEN) break;
-			if (socket.bufferedAmount > 1048576) {
+			if (readerStalled(socket)) {
 				socket.close(1013, "Reconnect to synchronize");
 				break;
 			}

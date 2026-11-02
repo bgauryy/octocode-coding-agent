@@ -4,15 +4,15 @@ import { join } from "node:path";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import type { TUI } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { ToolDefinition } from "../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../src/core/features/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme } from "../src/theme/theme.ts";
 
-const examplesDir = join(import.meta.dirname, "../examples/extensions");
+const examplesDir = join(import.meta.dirname, "./fixtures/extensions");
 
 describe("tool renderer examples", () => {
 	let tempDir: string;
@@ -44,16 +44,15 @@ describe("tool renderer examples", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			additionalExtensionPaths: extensionPath ? [extensionPath] : [],
 		});
 		await resourceLoader.reload();
 		expect(resourceLoader.getExtensions().errors).toEqual([]);
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

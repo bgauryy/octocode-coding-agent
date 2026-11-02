@@ -21,7 +21,7 @@ import {
 } from "./package-manager-cli/self-update.ts";
 import {
 	createCommandSettingsManager,
-	type PackageCommandRuntimeOptions,
+	FOLDER_NOT_TRUSTED_HINT,
 	reportProjectTrustWarnings,
 	reportSettingsErrors,
 } from "./package-manager-cli/settings.ts";
@@ -57,10 +57,7 @@ async function refreshModelCatalogs(agentDir: string): Promise<void> {
 	console.log(chalk.green("Model catalogs refreshed"));
 }
 
-export async function handlePackageCommand(
-	args: string[],
-	runtimeOptions: PackageCommandRuntimeOptions = {},
-): Promise<boolean> {
+export async function handlePackageCommand(args: string[]): Promise<boolean> {
 	const options = parsePackageCommand(args);
 	if (!options) {
 		return false;
@@ -121,16 +118,14 @@ export async function handlePackageCommand(
 	const cwd = process.cwd();
 	const agentDir = getAgentDir();
 	const writesProjectPackageConfig = (options.command === "install" || options.command === "remove") && options.local;
-	const { settingsManager, projectTrustWarnings } = await createCommandSettingsManager({
+	const { settingsManager, projectTrustWarnings } = createCommandSettingsManager({
 		cwd,
 		agentDir,
-		projectTrustOverride: options.projectTrustOverride,
-		useSavedProjectTrustOnly: options.command === "update",
-		extensionFactories: runtimeOptions.extensionFactories,
+		trust: options.trust,
 	});
 	reportProjectTrustWarnings(projectTrustWarnings);
 	if (!settingsManager.isProjectTrusted() && writesProjectPackageConfig) {
-		console.error(chalk.red("Project is not trusted. Use --approve to modify local package config."));
+		console.error(chalk.red(`${FOLDER_NOT_TRUSTED_HINT} Project package config was not changed.`));
 		process.exitCode = 1;
 		return true;
 	}

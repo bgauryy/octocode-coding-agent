@@ -1,13 +1,12 @@
 import { type JsonObject, validateToolArguments, type Tool } from "@octocodeai/octocode-ai";
 import { rewriteClaudeBash } from "../shared/claude-bash.ts";
-import { stateFolderRefusal, shellTargetAccess } from "./file-access.ts";
+import { shellTargetAccess } from "./file-access.ts";
 import { isolatedMainTree, isolatedTreeRefusal } from "./isolated-tree.ts";
 import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
 import { shellParserReady } from "./shell/mutation.ts";
 import { commandWriteTargets } from "./shell/write-targets.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/extensions/index.ts";
-import { resolveToolPath } from "../shared/home.ts";
+import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Classification } from "../../utils/windows/winclassify/types.ts";
 import type { SourceDecision } from "./source-policy/rules.ts";
@@ -15,7 +14,7 @@ import { classifyPowerShell } from "../../utils/windows/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
-import { args, callRequest, CHANGE_TOOLS, classify, reasonPurpose } from "./gate/classify.ts";
+import { args, callRequest, classify, reasonPurpose } from "./gate/classify.ts";
 
 /**
  * The permission step of the `tool_call` pipeline, after the invariants and the PreToolUse hooks. A provenance hit
@@ -102,13 +101,6 @@ export function permissionGate(options: PermissionGateOptions) {
 			if (roleRefusal) {
 				permission.refused([`${event.toolName} ${args(input)}`], roleRefusal, event.toolName);
 				return { block: true, reason: roleRefusal };
-			}
-			const target = CHANGE_TOOLS.has(event.toolName) ? optionalString(input.path) : undefined;
-			const refused =
-				target && stateFolderRefusal(resolveToolPath(ctx.cwd, target), target, `Octocode ${event.toolName}`);
-			if (refused) {
-				permission.refused([`${event.toolName} ${target}`], refused, event.toolName);
-				return { block: true, reason: refused };
 			}
 			// PowerShell's grammar is parsed by the Windows helper (async); classify itself stays synchronous.
 			const forceDestructive =

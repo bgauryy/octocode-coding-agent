@@ -1,26 +1,21 @@
 import { existsSync } from "node:fs";
 import { getBundledSkillsDir } from "../config.ts";
-import { resolveExtensionFactories } from "./resource-loader/builtins.ts";
+import { BUILTIN_FEATURES, NATIVE_FEATURE } from "./resource-loader/builtins.ts";
 import type { Theme } from "../theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 
-export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.ts";
+export type { ResourceDiagnostic } from "./diagnostics.ts";
 
-import { isLocalPath, resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "../../../common/src/paths.ts";
 import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
-import { clearExtensionCache, createExtensionRuntime } from "./extensions/loader.ts";
-import type { Extension, InlineExtension, LoadExtensionsResult } from "./extensions/types.ts";
+import { discoveryInput } from "./discovery/service.ts";
+import { createExtensionRuntime } from "./features/runtime.ts";
+import type { Feature, InlineExtension, LoadExtensionsResult } from "./features/types.ts";
 import { DefaultPackageManager, type PathMetadata } from "./package-manager.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import type { LoadSkillsResult } from "./skills.ts";
-import { BUILTIN_PATH_PREFIX } from "./source-info.ts";
 import { resetTimings } from "./timings.ts";
-import {
-	type BuiltinExtension,
-	collectExtensionPackageWarnings,
-	mergeExtensionWarnings,
-} from "./resource-loader/extension-sets.ts";
 import {
 	discoverAppendSystemPromptFile,
 	discoverSystemPromptFile,
@@ -29,27 +24,12 @@ import {
 } from "./resource-loader/context-files.ts";
 import { ResourceCollections } from "./resource-loader/collections.ts";
 import { collectEnabledResources } from "./resource-loader/enabled-resources.ts";
-import { ExtensionSetLoader } from "./resource-loader/extension-loading.ts";
-import { mergePaths, resolveResourcePath } from "./resource-loader/paths.ts";
-import {
-	findSourceInfoForPath,
-	getDefaultSourceInfoForPath,
-	type ResourceRoots,
-} from "./resource-loader/source-info.ts";
-import type {
-	DefaultResourceLoaderOptions,
-	ResourceExtensionPaths,
-	ResourceLoader,
-	ResourceLoaderReloadOptions,
-} from "./resource-loader/types.ts";
+import { FeatureSetLoader, ignoredCodeWarnings } from "./resource-loader/feature-loading.ts";
+import type { ResourceRoots } from "./resource-loader/source-info.ts";
+import type { DefaultResourceLoaderOptions, ResourceExtensionPaths, ResourceLoader } from "./resource-loader/types.ts";
 
 export { loadProjectContextFiles } from "./resource-loader/context-files.ts";
-export type {
-	DefaultResourceLoaderOptions,
-	ResourceExtensionPaths,
-	ResourceLoader,
-	ResourceLoaderReloadOptions,
-} from "./resource-loader/types.ts";
+export type { DefaultResourceLoaderOptions, ResourceExtensionPaths, ResourceLoader } from "./resource-loader/types.ts";
 
 export class DefaultResourceLoader implements ResourceLoader {
 	private cwd: string;
@@ -57,13 +37,11 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private settingsManager: SettingsManager;
 	private eventBus: EventBus;
 	private packageManager: DefaultPackageManager;
-	private additionalExtensionPaths: string[];
 	private extensionFactories: InlineExtension[];
-	private nativeFeatures: boolean;
-	private builtinExtensions: Map<string, BuiltinExtension>;
-	private noExtensions: boolean;
-	private disabledBuiltinExtensions: Set<string>;
+	private builtinFeatures: readonly Feature[];
+	private disabledFeatures: Set<string>;
 	private noContextFiles: boolean;
+	private contextRoot?: string;
 	private systemPromptSource?: string;
 	private appendSystemPromptSource?: string[];
 	private extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
@@ -82,27 +60,24 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private appendSystemPromptSourcePaths: string[];
 	private resourceMetadataByPath: Map<string, PathMetadata>;
 	private loaded: boolean;
-	private readonly extensionLoader: ExtensionSetLoader;
+	private readonly featureLoader: FeatureSetLoader;
 
 	constructor(options: DefaultResourceLoaderOptions) {
 		this.cwd = resolvePath(options.cwd);
 		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager ?? SettingsManager.create(this.cwd, this.agentDir);
 		this.eventBus = options.eventBus ?? createEventBus();
-		this.nativeFeatures = options.nativeFeatures !== false;
-		const factories = resolveExtensionFactories(options.extensionFactories, this.nativeFeatures);
-		this.extensionFactories = factories.extensionFactories;
-		this.builtinExtensions = factories.builtinExtensions;
+		const nativeFeatures = options.nativeFeatures !== false;
+		this.extensionFactories = options.extensionFactories ?? [];
+		this.builtinFeatures = options.builtinFeatures ?? (nativeFeatures ? BUILTIN_FEATURES : []);
 		this.packageManager = new DefaultPackageManager({
 			cwd: this.cwd,
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
-			builtinExtensions: [...this.builtinExtensions.keys()],
-			builtinSkillsDir: this.nativeFeatures ? getBundledSkillsDir() : undefined,
+			builtinExtensions: this.builtinFeatures.map((feature) => feature.id),
+			builtinSkillsDir: nativeFeatures ? getBundledSkillsDir() : undefined,
 		});
-		this.additionalExtensionPaths = options.additionalExtensionPaths ?? [];
-		this.noExtensions = options.noExtensions ?? false;
-		this.disabledBuiltinExtensions = new Set(options.disabledBuiltinExtensions);
+		this.disabledFeatures = new Set(options.disabledFeatures);
 		this.collections = new ResourceCollections({
 			cwd: this.cwd,
 			agentDir: this.agentDir,
@@ -119,6 +94,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			themesOverride: options.themesOverride,
 		});
 		this.noContextFiles = options.noContextFiles ?? false;
+		this.contextRoot = options.contextRoot;
 		this.systemPromptSource = options.systemPrompt;
 		this.appendSystemPromptSource = options.appendSystemPrompt;
 		this.extensionsOverride = options.extensionsOverride;
@@ -136,18 +112,16 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.appendSystemPromptSourcePaths = [];
 		this.resourceMetadataByPath = new Map();
 		this.loaded = false;
-		this.extensionLoader = new ExtensionSetLoader({
+		this.featureLoader = new FeatureSetLoader({
 			cwd: this.cwd,
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
 			eventBus: this.eventBus,
 			packageManager: this.packageManager,
-			additionalExtensionPaths: this.additionalExtensionPaths,
-			extensionFactories: this.extensionFactories,
-			nativeFeatures: this.nativeFeatures,
-			builtinExtensions: this.builtinExtensions,
-			noExtensions: this.noExtensions,
-			disabledBuiltinExtensions: this.disabledBuiltinExtensions,
+			builtinFeatures: this.builtinFeatures,
+			nativeFeature: nativeFeatures ? NATIVE_FEATURE : undefined,
+			injected: this.extensionFactories,
+			disabledFeatures: this.disabledFeatures,
 		});
 	}
 
@@ -202,68 +176,31 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.collections.extend(paths, this.resourceMetadataByPath);
 	}
 
-	async loadProjectTrustExtensions(): Promise<LoadExtensionsResult> {
-		// Force untrusted project settings for the bootstrap pass. This keeps project-local
-		// extensions/packages out while still loading user/global and temporary CLI extensions.
-		this.settingsManager.setProjectTrusted(false);
-		await this.settingsManager.reload();
-		return this.extensionLoader.loadCurrentExtensionSet();
-	}
-
-	async reload(options?: ResourceLoaderReloadOptions): Promise<void> {
+	async reload(): Promise<void> {
 		resetTimings("extensions");
-
-		if (this.loaded) {
-			clearExtensionCache();
-		}
-
-		let preTrustExtensions: LoadExtensionsResult | undefined;
-		if (options?.resolveProjectTrust) {
-			preTrustExtensions = await this.loadProjectTrustExtensions();
-			const projectTrusted = await options.resolveProjectTrust({
-				extensionsResult: preTrustExtensions,
-			});
-			this.settingsManager.setProjectTrusted(projectTrusted);
-		}
 
 		// reload() preserves SettingsManager.projectTrusted and reloads settings for that trust state.
 		await this.settingsManager.reload();
-		const resolvedPaths = await this.extensionLoader.resolveResources();
-		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
-			temporary: true,
-		});
+		const resolvedPaths = await this.featureLoader.resolveResources();
 		// Kept on the instance so post-reload passes (extendResources) can still resolve package metadata.
 		this.resourceMetadataByPath = new Map();
 		const metadataByPath = this.resourceMetadataByPath;
 
 		this.collections.resetExtensionSourceInfos();
 
-		const enabled = collectEnabledResources(resolvedPaths, cliExtensionPaths, metadataByPath);
+		const enabled = collectEnabledResources(resolvedPaths, metadataByPath);
 
-		const extensionPaths = (
-			this.noExtensions ? enabled.cliExtensions : mergePaths(this.cwd, enabled.cliExtensions, enabled.extensions)
-		).filter(
-			(path) =>
-				!path.startsWith(BUILTIN_PATH_PREFIX) ||
-				!this.disabledBuiltinExtensions.has(path.slice(BUILTIN_PATH_PREFIX.length)),
+		const extensionsResult = await this.featureLoader.loadFeatures(enabled.extensions);
+		extensionsResult.warnings = ignoredCodeWarnings(
+			enabled.extensions,
+			metadataByPath,
+			discoveryInput({
+				cwd: this.cwd,
+				agentDir: this.agentDir,
+				projectTrusted: this.settingsManager.isProjectTrusted(),
+			}),
 		);
-
-		const packageWarnings = collectExtensionPackageWarnings(extensionPaths, metadataByPath);
-		const extensionsResult = await this.extensionLoader.loadFinalExtensionSet(extensionPaths, preTrustExtensions);
-		mergeExtensionWarnings(extensionsResult, packageWarnings);
-		for (const p of this.additionalExtensionPaths) {
-			if (isLocalPath(p)) {
-				const resolved = resolveResourcePath(this.cwd, p);
-				if (!existsSync(resolved)) {
-					extensionsResult.errors.push({
-						path: resolved,
-						error: `Extension path does not exist: ${resolved}`,
-					});
-				}
-			}
-		}
 		this.extensionsResult = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
-		this.applyExtensionSourceInfo(this.extensionsResult.extensions, metadataByPath);
 
 		this.collections.load(enabled, metadataByPath);
 
@@ -273,6 +210,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 				: loadProjectContextFiles({
 						cwd: this.cwd,
 						agentDir: this.agentDir,
+						contextRoot: this.contextRoot,
 					}),
 		};
 		const resolvedAgentsFiles = this.agentsFilesOverride ? this.agentsFilesOverride(agentsFiles) : agentsFiles;
@@ -299,20 +237,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 			.filter((source) => existsSync(source))
 			.map((source) => resolvePath(source));
 		this.loaded = true;
-	}
-
-	private applyExtensionSourceInfo(extensions: Extension[], metadataByPath: Map<string, PathMetadata>): void {
-		for (const extension of extensions) {
-			extension.sourceInfo =
-				findSourceInfoForPath(this.roots(), extension.path, undefined, metadataByPath) ??
-				getDefaultSourceInfoForPath(this.roots(), extension.path);
-			for (const command of extension.commands.values()) {
-				command.sourceInfo = extension.sourceInfo;
-			}
-			for (const tool of extension.tools.values()) {
-				tool.sourceInfo = extension.sourceInfo;
-			}
-		}
 	}
 
 	private roots(): ResourceRoots {

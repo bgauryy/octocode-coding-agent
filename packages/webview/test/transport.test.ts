@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { connectionTone } from "../src/app/live/model.ts";
 import { BrowserConnection } from "../src/transport.ts";
 
 class Socket {
@@ -56,6 +57,24 @@ function connection() {
 	client.open();
 	return { client, observer, socket: Socket.instances[0] };
 }
+it("says the session keeps dropping the connection when several in a row close before any frame", () => {
+	const { client, observer, socket } = connection();
+	socket.close(1006);
+	expect(connectionTone(observer.status.mock.lastCall![0])).toBe("connecting");
+	for (const index of [1, 2]) {
+		vi.runOnlyPendingTimers();
+		Socket.instances[index].close(1006);
+	}
+	expect(connectionTone(observer.status.mock.lastCall![0])).toBe("error");
+	// It keeps retrying, and a connection that delivers a frame starts the count again.
+	vi.runOnlyPendingTimers();
+	const recovered = Socket.instances[3];
+	recovered.receive(frame(1, { type: "snapshot", snapshot }));
+	recovered.close(1006);
+	expect(connectionTone(observer.status.mock.lastCall![0])).toBe("connecting");
+	client.close();
+});
+
 it("authenticates with protocol and replays the retained cursor after disconnection", () => {
 	const { client, socket } = connection();
 	socket.onopen?.();

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { redactData, redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
 import { boundedExternal, boundedText } from "./bridge/bounded.ts";

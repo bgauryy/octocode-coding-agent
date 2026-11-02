@@ -12,8 +12,8 @@ export const SETTINGS_DEFAULTS = {
 	/** Working context for a session: this many tokens, at most 90% of the model's capacity. */
 	contextBudget: 300_000,
 	/**
-	 * Built-in compaction values, not a user setting: `compaction` is a removed settings key (settings-manager/ignored-keys.ts says
-	 * its fields have no effect in a settings file), and `builtInCompactionSettings` derives the real thresholds from
+	 * Built-in compaction values, not a user setting: `compaction` is not a settings key (a settings file's block is reported as
+	 * unknown and has no effect), and `builtInCompactionSettings` derives the real thresholds from
 	 * these as the ceiling for each model's window.
 	 */
 	compaction: {
@@ -40,7 +40,6 @@ export const SETTINGS_DEFAULTS = {
 	bashBackgroundAfterSeconds: 90,
 	bashOutputMaxBytes: RESULT_DEFAULT_BYTES,
 	mcpPresentation: "compact",
-	defaultProjectTrust: "ask",
 	collapseChangelog: false,
 	enableInstallTelemetry: true,
 	enableAnalytics: false,

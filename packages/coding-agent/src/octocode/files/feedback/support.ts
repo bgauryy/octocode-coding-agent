@@ -3,13 +3,13 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * What the research server answered about file types it cannot serve: once it reports that a file's grammar is
- * unregistered or that no language server exists for it, later edits of files with the same extension in the same
- * session skip that feedback call instead of repeating the same error. The server owns the list of supported
- * languages; this remembers only its answers, per session and per tool, so nothing here presumes what it can parse.
+ * unregistered or that no language server exists for it, later edits of files with the same extension skip that
+ * feedback call for the rest of the process (its sessions share one server) instead of repeating the same error. The
+ * server owns the list of supported languages; this remembers only its answers, per tool, so nothing here presumes
+ * what it can parse.
  */
 
-/** Session ids are few per process; the oldest sessions are forgotten past this count. */
-const MAX_SESSIONS = 64;
+/** Per tool, the extensions its server said it does not serve. */
 const answered = new Map<string, Set<string>>();
 
 /** The server's own words for a file type it does not serve (`syntaxTree.language.unsupported`, `serverUnavailable`). */
@@ -27,24 +27,15 @@ function extensionOf(file: string): string {
 	return extension || path.basename(file).toLowerCase();
 }
 
-function sessionSet(sessionId: string, tool: string): Set<string> {
-	const key = `${sessionId}\0${tool}`;
-	const known = answered.get(key);
-	if (known) return known;
-	if (answered.size >= MAX_SESSIONS) answered.delete(answered.keys().next().value!);
-	const created = new Set<string>();
-	answered.set(key, created);
-	return created;
+/** Whether the server already answered, in this process, that `tool` does not serve files like `file`. */
+export function knownUnsupported(tool: string, file: string): boolean {
+	return answered.get(tool)?.has(extensionOf(file)) ?? false;
 }
 
-/** Whether the server already answered, in this session, that `tool` does not serve files like `file`. */
-export function knownUnsupported(sessionId: string, tool: string, file: string): boolean {
-	return answered.get(`${sessionId}\0${tool}`)?.has(extensionOf(file)) ?? false;
-}
-
-/** Remember the server's answer that `tool` does not serve files like `file`, for the rest of the session. */
-export function noteUnsupported(sessionId: string, tool: string, file: string): void {
-	sessionSet(sessionId, tool).add(extensionOf(file));
+/** Remember the server's answer that `tool` does not serve files like `file`, for the rest of the process. */
+export function noteUnsupported(tool: string, file: string): void {
+	const known = answered.get(tool) ?? new Set<string>();
+	answered.set(tool, known.add(extensionOf(file)));
 }
 
 /** Whether a tool outcome is the server's answer that it does not serve this file type (not a transient failure). */

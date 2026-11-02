@@ -1,4 +1,4 @@
-import { type Db, agents, deliveries, leases } from "../../agentdb/api.ts";
+import { type Db, type agentEvents, agents, deliveries, leases } from "../../agentdb/api.ts";
 import { sameProcess } from "../../shared/process.ts";
 import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
@@ -15,21 +15,38 @@ const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
  * `replyRequired` questions, and the relay requests it took but never settled, so their senders are told; the one
  * place a member is dropped.
  */
-function retire(db: Db, id: string, now: number): void {
+function retire(db: Db, id: string, now: number, reason: string): void {
 	// Its open questions close too, unless a live parent may still resume it with the answer (a lingering subagent).
 	deliveries.closeAsksOf(db, id, now);
-	agents.remove(db, id);
+	agents.remove(db, id, reason, now);
 	leases.releaseByOwner(db, id);
 	deliveries.deadLetterOf(db, id, now);
 }
 
 /** `join`'s write, run in its transaction: takes the name unless a running process other than this one holds it. */
-export function claimMember(db: Db, team: string, checkout: string, member: Member): boolean {
-	if (agents.insert(db, team, checkout, member) || agents.refresh(db, member, checkout)) return true;
+export function claimMember(
+	db: Db,
+	team: string,
+	checkout: string,
+	member: Member,
+	context?: agentEvents.LifecycleContext,
+): boolean {
+	if (agents.insert(db, team, checkout, member, context) || agents.refresh(db, member, checkout, context)) return true;
 	const holder = agents.processOf(db, member.id);
 	if (holder && sameProcess(holder.pid, holder.started)) return false;
-	retire(db, member.id, Date.now());
-	return agents.insert(db, team, checkout, member);
+	retire(db, member.id, Date.now(), "replaced dead registration");
+	return agents.insert(db, team, checkout, member, context);
+}
+
+/** Refresh or restore presence; the caller owns its write transaction. */
+export function saveMember(
+	db: Db,
+	team: string,
+	checkout: string,
+	member: Member,
+	context?: agentEvents.LifecycleContext,
+): boolean {
+	return agents.refresh(db, member, checkout, context) || agents.insert(db, team, checkout, member, context);
 }
 
 /** Retires `id` unless its row now names another process than `owner` (`TeamStore.remove`); whether it did. */
@@ -38,7 +55,7 @@ export function retireOwned(db: Db, id: string, now: number, owner: ProcessIdent
 		const row = agents.processOf(db, id);
 		if (row && !sameIdentity(row, owner)) return false;
 	}
-	retire(db, id, now);
+	retire(db, id, now, "left");
 	return true;
 }
 
@@ -46,7 +63,7 @@ export function retireOwned(db: Db, id: string, now: number, owner: ProcessIdent
 export function reapMember(db: Db, id: string, judged: ProcessIdentity | undefined, now: number): boolean {
 	const row = agents.processOf(db, id);
 	if (row && (judged === undefined || !sameIdentity(row, judged))) return false;
-	retire(db, id, now);
+	retire(db, id, now, "reaped");
 	return true;
 }
 

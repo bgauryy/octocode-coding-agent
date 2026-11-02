@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../core/extensions/index.ts";
+import type { ExtensionAPI } from "../core/features/index.ts";
 import type { registerApi } from "./api/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import type { registerBashTool } from "./files/bash.ts";

@@ -6,14 +6,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentSession } from "../../../src/core/agent-session.ts";
 import {
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../../../src/core/agent-session-runtime.ts";
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
 import { ModelRuntime } from "../../../src/core/model-runtime.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionFactory } from "../../../src/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionFactory } from "../../../src/core/features/index.ts";
 
 function getText(message: AgentSession["messages"][number]): string {
 	if (!("content" in message)) {
@@ -77,14 +77,14 @@ describe("regression #2860: replaced session callbacks", () => {
 					],
 					// The default MCP host declares the octocode tool contracts directly; they would fill the context
 					// and trigger usage notices that this session-replacement test does not measure.
-					disabledBuiltinExtensions: ["mcp"],
+					disabledFeatures: ["mcp"],
 					noSkills: true,
 					noPromptTemplates: true,
 					noThemes: true,
 				},
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,

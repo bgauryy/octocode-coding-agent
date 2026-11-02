@@ -6,7 +6,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../../src/index.ts";
+import type { ExtensionFactory } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 /** Compaction supplied by an extension hook, as in the reported sessions. */
@@ -153,73 +153,5 @@ describe("context handlers and system messages", () => {
 		expect(toolNames(request)).toEqual(harness.session.getActiveToolNames());
 		expect(getCurrentSystemPrompt(request.messages)).toContain(harness.session.systemPrompt);
 		expect(getCurrentSystemPrompt(request.messages)).toContain("ephemeral reminder");
-	});
-});
-
-describe("context_with_system handlers", () => {
-	const harnesses: Harness[] = [];
-
-	afterEach(() => {
-		while (harnesses.length > 0) harnesses.pop()?.cleanup();
-	});
-
-	it("runs after context handlers on the restored transcript and sends its output verbatim", async () => {
-		const seen: AgentMessage[][] = [];
-		const harness = await createHarness({
-			builtinCompactionFactories: [
-				compactViaHook,
-				(api) => {
-					api.on("context_with_system", async (event) => {
-						seen.push(event.messages);
-						return {
-							messages: event.messages.map((message) =>
-								message.role === "system" && message.toolsAdded
-									? { ...message, toolsAdded: message.toolsAdded.filter((tool) => tool.name !== "bash") }
-									: message,
-							),
-						};
-					});
-					// Registered after, but runs first: context handlers precede context_with_system.
-					api.on("context", async (event) => {
-						const summary = event.messages.findIndex((message) => message.role === "compactionSummary");
-						return { messages: event.messages.slice(summary) };
-					});
-				},
-			],
-		});
-		harnesses.push(harness);
-		await compactSession(harness);
-		const getRequest = captureRequest(harness, "after compaction");
-
-		await harness.session.prompt("third");
-
-		const input = seen.at(-1);
-		expect(input?.[0]?.role).toBe("system");
-		expect(input?.[1]?.role).toBe("compactionSummary");
-		expect(harness.session.getActiveToolNames()).toContain("bash");
-		expect(toolNames(getRequest())).toEqual(harness.session.getActiveToolNames().filter((name) => name !== "bash"));
-	});
-
-	it("reports a handler that drops the leading system message but honors its output", async () => {
-		const harness = await createHarness({
-			builtinCompactionFactories: [
-				(api) => {
-					api.on("context_with_system", async (event) => ({
-						messages: event.messages.filter((message) => message.role !== "system"),
-					}));
-				},
-			],
-		});
-		harnesses.push(harness);
-		const errors: string[] = [];
-		harness.session.extensionRunner.onError((error) => {
-			errors.push(`${error.event}: ${error.error}`);
-		});
-		const getRequest = captureRequest(harness, "done");
-
-		await harness.session.prompt("hello");
-
-		expect(getRequest().messages.map((message) => message.role)).toEqual(["user"]);
-		expect(errors).toEqual([expect.stringMatching(/^context_with_system: Handler removed the leading system message/)]);
 	});
 });

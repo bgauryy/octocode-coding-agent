@@ -14,6 +14,8 @@ import { SessionManager } from "../core/session-manager.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { type RpcEvent, RpcClient } from "../modes/rpc/rpc-client.ts";
 import type { RpcExtensionUIRequest } from "../modes/rpc/rpc-types.ts";
+import { homeFolderMessage, refusedFolderMessage } from "../octocode/trust/messages.ts";
+import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 
 const WORKER_EVENTS: ReadonlySet<string> = new Set<AcpWorkerEvent["type"]>([
 	"session_dispatch",
@@ -78,7 +80,18 @@ export const acpServerHost: AcpServerHost = {
 	sessionDirEnv: ENV_SESSION_DIR,
 	agentDir: getAgentDir,
 	nodeRuntime: () => (isBunBinary ? "node" : process.execPath),
-	configuredSessionDir: (cwd) => SettingsManager.createForStartup(cwd).getSessionDir(),
+	configuredSessionDir: (cwd) =>
+		SettingsManager.createForStartup(cwd, undefined, resolveFolderTrust(cwd).state === "trusted").getSessionDir(),
+	folderTrust(cwd) {
+		const trust = resolveFolderTrust(cwd);
+		if (trust.state === "trusted") return { trusted: true };
+		const command = `octocode trust add ${trust.path}`;
+		if (trust.state === "refused") return { trusted: false, message: refusedFolderMessage(trust.path), command };
+		if (trust.state === "untrusted" && (trust.reason === "home" || trust.reason === "filesystem-root"))
+			return { trusted: false, message: homeFolderMessage(trust.path, trust.reason), command };
+		const why = trust.state === "untrusted" ? ` (${trust.reason})` : "";
+		return { trusted: false, message: `Folder is not trusted: ${trust.path}${why}`, command };
+	},
 	listSessions: (cwd, sessionDir) =>
 		cwd === undefined ? SessionManager.listAll(sessionDir) : SessionManager.list(cwd, sessionDir),
 	openTranscript(path) {

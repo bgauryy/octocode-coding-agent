@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { normalizePath } from "../../../../../common/src/paths.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
-import type { DefaultProjectTrust, QuietStartup } from "../../settings-schema.ts";
+import type { QuietStartup } from "../../settings-schema.ts";
 import type { EnvironmentSettingsApi } from "../api/environment.ts";
 import { RuntimeSettingsAccessors } from "./runtime.ts";
 
@@ -53,17 +53,6 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 	setQuietStartup(quiet: QuietStartup): void {
 		this.globalSettings.quietStartup = quiet;
 		this.markModified("quietStartup");
-		this.save();
-	}
-
-	getDefaultProjectTrust(): DefaultProjectTrust {
-		const value = this.globalSettings.defaultProjectTrust;
-		return value === "always" || value === "never" ? value : SETTINGS_DEFAULTS.defaultProjectTrust;
-	}
-
-	setDefaultProjectTrust(defaultProjectTrust: DefaultProjectTrust): void {
-		this.globalSettings.defaultProjectTrust = defaultProjectTrust;
-		this.markModified("defaultProjectTrust");
 		this.save();
 	}
 

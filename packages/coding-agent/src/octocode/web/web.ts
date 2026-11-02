@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";

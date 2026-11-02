@@ -10,7 +10,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
 	catalogHash,
 	catalogHashes,
-	checkFidelity,
+	checkOverrides,
 	COMPACT_GENERATOR_VERSION,
 	type CompactServerInput,
 	type DescriptionOverrides,
@@ -160,7 +160,7 @@ async function measure(context: CompactContext, args: string[], allowed: Record<
 	const input = await catalogOf(context, server, parsed.values.get("catalog"));
 	if (!input) return undefined;
 	const text = renderServer(input, overrides);
-	return { parsed, server, input, overrides, text, result: checkFidelity(input, text, overrides) };
+	return { parsed, server, input, overrides, text, result: checkOverrides(input, text, overrides) };
 }
 
 function printProblems(context: CompactContext, problems: readonly string[]): void {
@@ -173,6 +173,10 @@ async function check(context: CompactContext, args: string[]): Promise<number> {
 	if (!measured) return 1;
 	const { input, overrides, text, result } = measured;
 	context.log(sizeReport(input, overrides, renderServer(input), text));
+	if (result.inherent.length)
+		context.log(
+			`\nNot caused by the overrides (the renderer cannot express these tools; sessions declare them in full):\n- ${result.inherent.join("\n- ")}`,
+		);
 	if (!result.ok) {
 		printProblems(context, result.problems);
 		return 1;

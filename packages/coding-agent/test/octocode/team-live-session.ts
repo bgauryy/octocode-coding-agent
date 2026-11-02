@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -88,7 +88,7 @@ export async function liveSession(options: LiveOptions) {
 		agentDir,
 		settingsManager,
 		extensionFactories: [{ name: "live-session", factory }],
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -96,7 +96,7 @@ export async function liveSession(options: LiveOptions) {
 	});
 	await resourceLoader.reload();
 	const sessionManager = SessionManager.inMemory(cwd);
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		resourceLoader,

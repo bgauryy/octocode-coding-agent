@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import { globalMcpConfigPaths } from "../src/paths.ts";
-import { hasTrustRequiringProjectResources } from "../../coding-agent/src/core/trust-manager.ts";
 import { loadMcpConfig, updateMcpServerConfig } from "../src/config.ts";
 import { octocodePreset } from "../src/presets/octocode/index.ts";
 import { presetEntries } from "../src/preset.ts";
@@ -146,12 +145,37 @@ describe("shared MCP discovery", () => {
 			{ name: "octocode", config: { enabled: false } },
 		]);
 	});
+	it("keeps a built-in server's purpose when a configured entry replaces it, unless the entry has its own", () => {
+		const { options, write } = setup();
+		const defaults = presetEntries([octocodePreset()]);
+		const purpose = defaults[0].config.description;
+		expect(purpose).toBeTruthy();
+		write(join(options.agentDir, "mcp.json"), { octocode: { command: "node", args: ["server.js"] } });
+		expect(loadMcpConfig({ ...options, defaults }).servers).toMatchObject([
+			{ name: "octocode", scope: "global", config: { command: "node", description: purpose } },
+		]);
+		// A later project entry for the same server keeps it too.
+		write(join(options.cwd, ".mcp.json"), { octocode: { command: "project" } });
+		expect(loadMcpConfig({ ...options, defaults }).servers[0].config).toMatchObject({
+			command: "project",
+			description: purpose,
+		});
+		write(join(options.agentDir, "mcp.json"), { octocode: { command: "node", description: "My own purpose" } });
+		expect(loadMcpConfig({ ...options, defaults, projectTrusted: false }).servers[0].config.description).toBe(
+			"My own purpose",
+		);
+		// A server with no earlier entry gets none.
+		write(join(options.agentDir, "mcp.json"), { docs: { command: "docs" } });
+		expect(
+			loadMcpConfig({ ...options, defaults, projectTrusted: false }).servers.find((entry) => entry.name === "docs")
+				?.config.description,
+		).toBeUndefined();
+	});
 	it.each([".pi/mcp.json", ".mcp.json", ".agents/mcp.json", ".octocode/mcp.json"])(
 		"loads %s only after trust and shares ownership with the built-in client",
 		(relative) => {
 			const { options, write } = setup();
 			write(join(options.cwd, relative), { octocode: { command: "server", enabled: false } });
-			expect(hasTrustRequiringProjectResources(options.cwd)).toBe(true);
 			expect(loadMcpConfig({ ...options, projectTrusted: false }).servers).toEqual([]);
 			expect(
 				loadMcpConfig({ ...options, projectTrusted: false }).servers.find((entry) => entry.name === "octocode"),

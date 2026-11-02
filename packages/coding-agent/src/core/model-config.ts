@@ -1,7 +1,7 @@
 /** Immutable, credential-blind models.json snapshot. */
 
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { ProviderCompatSchema } from "@octocodeai/octocode-ai/providers/compat-schema";
 import {
 	ModelCostSchema,
@@ -13,7 +13,8 @@ import {
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
-import { getLegacyConfigDirs, getModelsPath } from "../config.ts";
+import { getModelsPath } from "../config.ts";
+import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { stripJsonComments } from "../../../common/src/json.ts";
 import { normalizePath } from "../../../common/src/paths.ts";
 import { stripBom } from "../../../common/src/text.ts";
@@ -163,7 +164,11 @@ export class ModelConfig {
 		if (!modelsJsonPath) return new ModelConfig(new Map());
 		const paths = [modelsJsonPath];
 		if (resolve(normalizePath(modelsJsonPath)) === resolve(getModelsPath())) {
-			paths.push(...getLegacyConfigDirs(dirname(getModelsPath())).map((dir) => join(dir, "models.json")));
+			// Octocode's file first, then Pi's: the first definition of a provider wins.
+			const input = discoveryInput({ cwd: process.cwd(), agentDir: dirname(getModelsPath()), projectTrusted: false });
+			for (const item of configDiscovery.discover("model", input)) {
+				if (item.loaded && resolve(item.provenance.path) !== resolve(modelsJsonPath)) paths.push(item.provenance.path);
+			}
 		}
 		const providers = new Map<string, ModelsJsonProvider>();
 		const errors: string[] = [];

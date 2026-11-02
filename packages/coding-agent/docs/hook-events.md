@@ -23,7 +23,7 @@ See [Hooks](hooks.md) for discovery, trust, the input each event receives and th
 | `SubagentStart` | — | `command`, `http`, `mcp_tool` | `command`, `mcp_tool` | Supplies child context when child hooks are enabled. |
 | `SubagentStop` | — | `command`, `http`, `prompt`, `mcp_tool` | `command`, `mcp_tool` | Gates child completion when child hooks are enabled. |
 | `Interrupt` | — | — | `command`, `mcp_tool` (1 s default, no matcher) | Observes an explicitly interrupted main turn after cancellation; cannot continue it. |
-| `SessionEnd` | — | `command`, `http`, `mcp_tool` (1.5 s default) | `command` (1 s default) | Observes supported termination reasons within a separate cleanup deadline. |
+| `SessionEnd` | `command` (1.5 s default) | `command`, `http`, `mcp_tool` (1.5 s default) | `command` (1 s default) | Observes supported termination reasons within a separate cleanup deadline. |
 | `UserPromptSubmit` | — | `command`, `http`, `prompt`, `mcp_tool` (30 s default, no matcher) | `command`, `mcp_tool` (no matcher) | Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed. |
 | `PreCompact` | `command` | `command`, `http`, `mcp_tool` | `command`, `mcp_tool` | Native is observational; supported source-profile vetoes reach the compaction owner. |
 | `PostCompact` | — | `command`, `http`, `mcp_tool` | `command`, `mcp_tool` | Claude observes; Codex can stop continuation after compaction. |
@@ -59,14 +59,14 @@ Native input carries no host metadata. Source profiles add these fields when the
 ## Command handler fields
 
 - **Native** (default timeout 60 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`.
-- **Claude** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `args`, `onFailure`, `async`, `asyncRewake`.
+- **Claude** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `args`, `shell`, `onFailure`, `async`, `asyncRewake`.
 - **Codex** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `commandWindows`, `async`, `additionalContextLimit`.
 
-Other fields reject the handler with a diagnostic in `/hooks`. No timeout can exceed 600 seconds.
+Other fields reject the handler with a diagnostic in `/harness hooks`. No timeout can exceed 600 seconds.
 
 ## Upstream events not implemented yet
 
-These events are documented by the upstream host but not implemented in Octocode yet. A hook file that declares one is loaded without it, and `/hooks` reports it as not implemented.
+These events are documented by the upstream host but not implemented in Octocode yet. A hook file that declares one is loaded without it, and `/harness hooks` reports it as not implemented.
 
 - **Claude Code**: `Setup`, `UserPromptExpansion`, `PermissionDenied`, `MessageDisplay`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `DirectoryAdded`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreModelSwitch`, `PostModelSwitch`, `Elicitation`, `ElicitationResult`.
 

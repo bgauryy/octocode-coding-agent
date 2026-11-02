@@ -16,15 +16,27 @@ import {
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
+import { getAgentDir, getLegacyConfigDirs } from "../../../config.ts";
+import { collectContextView } from "../../../core/discovery/context-snapshot.ts";
+import {
+	type ContextView,
+	type LoadedRef,
+	buildContextView,
+	sourceInfoLabel,
+	sourceSummary,
+} from "../../../core/discovery/context-view.ts";
+import { takePiNotice } from "../../../core/discovery/pi-notice.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
+import { warningsBesideListing } from "../../../core/resource-loader/feature-loading.ts";
+import type { Skill } from "../../../core/skills.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
-import { keyHint } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { LoadedRow, type LoadedRowSpec, loadedColumns } from "./loaded-row.ts";
+import { viewRows } from "./discovery-rows.ts";
+import { LoadedRow, type LoadedRowSpec, expandHint, loadedColumns } from "./loaded-row.ts";
 import type { SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the loaded-resources listing. */
@@ -42,6 +54,8 @@ type LoadedResourcesHost = Pick<
 	| "getStartupExpansionState"
 	| "loadedResourcesContainer"
 	| "session"
+	| "sessionManager"
+	| "settingsManager"
 	| "shouldShowStartupDetails"
 	| "ui"
 >;
@@ -63,6 +77,7 @@ export function showLoadedResources(
 	disposeLoadedResources(host.loadedResourcesContainer);
 	host.loadedResourcesContainer.clear();
 
+	let piNotice: string | undefined;
 	const showListing = options?.force || host.shouldShowStartupDetails();
 	const showDiagnostics = showListing || options?.showDiagnosticsWhenQuiet === true;
 	if (!showListing && !showDiagnostics) {
@@ -77,7 +92,6 @@ export function showLoadedResources(
 		}
 		return theme.fg("dim", labels.join(", "));
 	};
-	const listHint = () => keyHint("app.tools.expand", "to list");
 
 	const skillsResult = host.session.resourceLoader.getSkills();
 	const promptsResult = host.session.resourceLoader.getPrompts();
@@ -114,48 +128,18 @@ export function showLoadedResources(
 	}
 
 	if (showListing) {
-		const rows: LoadedRowSpec[] = [];
-		const systemPromptSource = host.session.resourceLoader.getSystemPromptSource();
-		const contextFiles = [
-			...(systemPromptSource ? [systemPromptSource] : []),
-			...host.session.resourceLoader.getAppendSystemPromptSources(),
-			...host.session.resourceLoader.getAgentsFiles().agentsFiles,
+		// Context, skills, prompts and the other file-based kinds come from the loaded-context view (one row per kind, with
+		// where each item came from); MCP follows live server status, and loaded extension code keeps its own labels.
+		const view = loadedContextView(host, skillsResult.skills);
+		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path));
+		const viewRow = (id: string) => viewSpecs.filter((row) => row.id === id).map((row) => row.spec);
+		const rows: LoadedRowSpec[] = [
+			...viewRow("context"),
+			...viewRow("skill"),
+			...viewRow("agent"),
+			...viewRow("model"),
 		];
-		if (contextFiles.length > 0) {
-			rows.push({
-				label: "Context",
-				count: () => contextFiles.length,
-				summary: () =>
-					formatCompactList(
-						contextFiles.map((contextFile) => host.formatContextPath(contextFile.path)),
-						{ sort: false },
-					),
-				expandedSummary: () => theme.fg("dim", "files in the system prompt"),
-				details: () =>
-					contextFiles
-						.map((f) => theme.fg("dim", `  ${sanitizeTerminalText(host.formatDisplayPath(f.path))}`))
-						.join("\n"),
-			});
-		}
-
-		const skills = skillsResult.skills;
-		if (skills.length > 0) {
-			const groups = host.buildScopeGroups(
-				skills.map((skill) => ({ path: skill.filePath, sourceInfo: skill.sourceInfo })),
-			);
-			// Names are rarely news and fill the screen at startup: collapsed shows the count, ctrl+o the list.
-			rows.push({
-				label: "Skills",
-				count: () => skills.length,
-				summary: listHint,
-				expandedSummary: () => theme.fg("dim", "loaded on demand"),
-				details: () =>
-					host.formatScopeGroups(groups, {
-						formatPath: (item) => host.formatDisplayPath(item.path),
-						formatPackagePath: (item) => host.getShortPath(item.path, item.sourceInfo),
-					}),
-			});
-		}
+		piNotice = takePiNotice(view, getAgentDir());
 
 		const events = host.session.resourceLoader.getEventBus?.();
 		if (events) {
@@ -166,6 +150,10 @@ export function showLoadedResources(
 				count: () => mcp.getState().length,
 				source: mcp,
 				summary: () => mcp.getState().map(mcpSummary).join(theme.fg("dim", SEPARATOR)),
+				cells: () => ({
+					sources: mcp.getState().map(mcpSummary).join(theme.fg("dim", SEPARATOR)),
+					tail: theme.fg("dim", sanitizeTerminalText(mcpSources(mcp.getState()))),
+				}),
 				expandedSummary: () => {
 					const connected = mcp.getState().filter((server) => server.enabled && server.state === "connected").length;
 					return theme.fg("dim", `${connected} connected`);
@@ -181,31 +169,7 @@ export function showLoadedResources(
 			});
 		}
 
-		const templates = host.session.promptTemplates;
-		if (templates.length > 0) {
-			const groups = host.buildScopeGroups(
-				templates.map((template) => ({ path: template.filePath, sourceInfo: template.sourceInfo })),
-			);
-			const templateByPath = new Map(templates.map((t) => [t.filePath, t]));
-			const templateList = () =>
-				host.formatScopeGroups(groups, {
-					formatPath: (item) => {
-						const template = templateByPath.get(item.path);
-						return template ? `/${template.name}` : host.formatDisplayPath(item.path);
-					},
-					formatPackagePath: (item) => {
-						const template = templateByPath.get(item.path);
-						return template ? `/${template.name}` : host.formatDisplayPath(item.path);
-					},
-				});
-			rows.push({
-				label: "Prompts",
-				count: () => templates.length,
-				summary: () => formatCompactList(templates.map((template) => `/${template.name}`)),
-				expandedSummary: () => "",
-				details: templateList,
-			});
-		}
+		for (const id of ["hook", "plugin", "prompt", "theme", "keybinding", "setting"]) rows.push(...viewRow(id));
 
 		if (extensions.length > 0) {
 			const groups = host.buildScopeGroups(extensions);
@@ -223,6 +187,8 @@ export function showLoadedResources(
 				details: extList,
 			});
 		}
+		// Code Octocode does not run (`pi` extensions and hooks) is listed, with the way to move it to a supported place.
+		rows.push(...viewRow("extension"), ...viewRow("warning"));
 
 		if (rows.length > 0) {
 			const columns = () => loadedColumns(rows);
@@ -232,6 +198,11 @@ export function showLoadedResources(
 					new LoadedRow(row, columns, host.getStartupExpansionState(), requestRender),
 				);
 			}
+			// Rows with a list behind them are collapsed: say how to open them, and drop the hint once they are open.
+			if (rows.some((row) => row.details && row.count() > 0))
+				host.loadedResourcesContainer.addChild(
+					new ExpandableText(expandHint, () => "", host.getStartupExpansionState(), 0, 0),
+				);
 		}
 	}
 
@@ -240,6 +211,8 @@ export function showLoadedResources(
 		if (host.loadedResourcesContainer.children.length > 0) host.loadedResourcesContainer.addChild(new Spacer(1));
 		host.loadedResourcesContainer.addChild(block);
 	};
+
+	if (piNotice) addBlock(new ThemedText(() => theme.fg("muted", sanitizeTerminalText(piNotice ?? "")), 0, 0));
 
 	if (showDiagnostics) {
 		// Name collisions are routine when the same skills are installed in two places: collapsed, they are one
@@ -271,7 +244,10 @@ export function showLoadedResources(
 		for (const error of extensionsResult.errors) {
 			extensionDiagnostics.push({ type: "error", message: error.error, path: error.path });
 		}
-		for (const warning of extensionsResult.warnings ?? []) {
+		// Code that is not loaded has its row in the listing above; the other loader warnings need this block.
+		for (const warning of showListing
+			? warningsBesideListing(extensionsResult.warnings)
+			: (extensionsResult.warnings ?? [])) {
 			extensionDiagnostics.push({ type: "warning", message: warning.warning, path: warning.path });
 		}
 
@@ -305,6 +281,40 @@ export function showLoadedResources(
 			addBlock(conflicts);
 		}
 	}
+}
+
+/** The loaded-context view: discovery joined with what this session's loaders loaded. */
+function loadedContextView(host: LoadedResourcesHost, skills: readonly Skill[]): ContextView {
+	const loader = host.session.resourceLoader;
+	const ref = (path: string, sourceInfo?: SourceInfo, name?: string): LoadedRef => ({
+		path,
+		...(name ? { name } : {}),
+		label: sourceInfoLabel(sourceInfo),
+	});
+	const agentDir = getAgentDir();
+	const systemPrompt = loader.getSystemPromptSource();
+	return collectContextView({
+		cwd: host.sessionManager.getCwd(),
+		agentDir,
+		projectTrusted: host.settingsManager.isProjectTrusted(),
+		settings: host.settingsManager.getSettings(),
+		loaded: {
+			// Project instruction files come from the loader: discovery lists only the global one.
+			context: loader.getAgentsFiles().agentsFiles.map((file) => ({ path: file.path, label: "project" })),
+			systemPrompt: systemPrompt ? [{ path: systemPrompt.path, label: "path" }] : [],
+			appendSystemPrompt: loader.getAppendSystemPromptSources().map((source) => ({ path: source.path, label: "path" })),
+			skill: skills.map((skill) => ref(skill.filePath, skill.sourceInfo, skill.name)),
+			prompt: host.session.promptTemplates.map((template) =>
+				ref(template.filePath, template.sourceInfo, template.name),
+			),
+		},
+	});
+}
+
+/** `builtin 1 · octocode global 2 · pi project 1`: where the MCP servers are defined (their names are in the row). */
+function mcpSources(servers: readonly McpStatus[]): string {
+	const view = buildContextView({ discovery: new Map(), mcp: servers, piRoots: getLegacyConfigDirs(getAgentDir()) });
+	return view.groups.map((group) => sourceSummary(group, { counted: true })).join(SEPARATOR);
 }
 
 /** Diagnostic headings share the warning mark with the rest of the TUI. */

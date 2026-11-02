@@ -322,22 +322,19 @@ describe("live local backlog", () => {
 		expect(html).not.toContain(token);
 		expect(html).not.toContain("From browser");
 	});
-	it("maps the API's former reason to why, refuses a conflicting pair, and no longer accepts body", async () => {
+	it("takes why and refuses the removed reason and body fields", async () => {
 		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo", repoRoot: dir });
 		const url = new URL(web.url);
 		const headers = { Authorization: `Bearer ${url.hash.slice(8)}`, "Content-Type": "application/json" };
 		const post = (body: unknown) =>
 			fetch(url.origin + "/api/backlogs", { method: "POST", headers, body: JSON.stringify(body) });
-		const added = await post({ op: "add", title: "Old client", goal: "Works", reason: "Kept as why" });
+		expect((await post({ op: "add", title: "Old client", goal: "Works", reason: "Old name" })).status).toBe(400);
+		const added = await post({ op: "add", title: "Client", goal: "Works", why: "Kept" });
 		expect(added.status).toBe(200);
 		const { item } = (await added.json()) as { item: { ref: string; version: number; why: string } };
-		expect(item.why).toBe("Kept as why");
-		const conflict = await post({ op: "update", id: item.ref, version: item.version, reason: "a", why: "b" });
-		expect(conflict.status).toBe(400);
-		expect(await conflict.json()).toEqual({ error: "reason is the former name of why: give only why." });
-		const same = await post({ op: "update", id: item.ref, version: item.version, reason: "Same", why: "Same" });
-		expect(((await same.json()) as { item: { why: string } }).item.why).toBe("Same");
-		expect((await post({ op: "update", id: item.ref, version: item.version + 1, body: "x" })).status).toBe(400);
-		expect(store.get(item.ref)).toMatchObject({ why: "Same", body: "" });
+		expect(item.why).toBe("Kept");
+		expect((await post({ op: "update", id: item.ref, version: item.version, reason: "a" })).status).toBe(400);
+		expect((await post({ op: "update", id: item.ref, version: item.version, body: "x" })).status).toBe(400);
+		expect(store.get(item.ref)).toMatchObject({ why: "Kept", body: "", version: item.version });
 	});
 });

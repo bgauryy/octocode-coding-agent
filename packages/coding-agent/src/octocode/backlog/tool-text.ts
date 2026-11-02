@@ -55,10 +55,9 @@ export function backlogPrompt(subagent: boolean): {
 		ops,
 		promptGuidelines: subagent
 			? [
-					"If your task names a backlog item, note progress on it and close it after verifying its goal. Propose, never do, follow-ups and unfixed failures (trigger, evidence, fix) with from and links.",
+					"The backlog item your task names is the only one you may update: note progress on it and close it after verifying its goal. Put follow-ups and unfixed failures (trigger, evidence, fix) in your report; your parent files them.",
 				]
 			: [
-					"The steps of one piece of work go in `steps` under the claimed item, not in separate items.",
 					"Claim the item before starting or delegating work it covers; update touched items before reporting. Every item needs why, paths, links (a follow-up: from, trigger, evidence, fix).",
 				],
 	};

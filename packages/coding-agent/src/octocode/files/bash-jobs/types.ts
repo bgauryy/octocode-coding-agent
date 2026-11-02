@@ -28,6 +28,8 @@ export interface VerificationReceipt {
 export interface BashJob {
 	id: string;
 	command: string;
+	/** Why it runs: the bash call's `reason`. A job has no backlog item; its command says what it does, this says why. */
+	reason?: string;
 	/** Where it runs; its log path is shown relative to it. */
 	cwd: string;
 	pid: number;
@@ -42,6 +44,9 @@ export interface BashJob {
 	exited?: boolean;
 	done: Promise<JobExit>;
 }
+
+/** What the note a /reload leaves names of each job it stopped. */
+export type ReloadedJob = Pick<BashJob, "id" | "command" | "reason" | "log">;
 
 export interface JobExit {
 	code: number | null;

@@ -7,11 +7,12 @@ import { ProviderHealth, providerHealth } from "../../src/octocode/subagents/pro
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 
 const parent: ModelRef = { provider: "home", id: "big", cost: { input: 10, output: 40 } };
-const available: ModelRef[] = [
+// Models that reason: a route's thinking level is kept as asked (a model without reasoning clamps it to off).
+const available = [
 	parent,
 	{ provider: "other", id: "mid", cost: { input: 4, output: 16 } },
 	{ provider: "cheap", id: "tiny", cost: { input: 0.1, output: 0.4 } },
-];
+].map((model) => ({ ...model, reasoning: true }) as ModelRef);
 const refusedCheap = (provider: string) => provider === "cheap";
 
 describe("routing and provider health (B347 P2-5)", () => {
@@ -57,10 +58,10 @@ describe("routing and provider health (B347 P2-5)", () => {
 		const registry = { getAvailable: () => available, getProvider: () => undefined } as never;
 		const profiles = new Map<string, AgentProfile>();
 		const ctx = { modelRegistry: registry, model: parent as never };
-		expect(planRun(profiles, { model: "small" }, ctx).route.model).toBe("cheap/tiny");
+		expect(planRun(profiles, { model: "small" }, ctx).route.model).toBe("cheap/tiny:medium");
 		providerHealth.noteRun("cheap/tiny", "401 Unauthorized");
 		try {
-			expect(planRun(profiles, { model: "small" }, ctx).route.model).toBe("other/mid");
+			expect(planRun(profiles, { model: "small" }, ctx).route.model).toBe("other/mid:medium");
 		} finally {
 			providerHealth.noteRun("cheap/tiny");
 		}
@@ -75,12 +76,14 @@ describe("routing and provider health (B347 P2-5)", () => {
 		try {
 			const small = planRun(profiles, { model: "small" }, ctx).route.model;
 			const scout = planRun(profiles, { profile: "scout" }, ctx).route;
-			expect(small).toBe("other/mid");
-			expect(scout).toMatchObject({ model: "home/big", fallback: "cheap/tiny" });
+			expect(small).toBe("other/mid:medium");
+			expect(scout).toMatchObject({ model: "home/big:medium", fallback: "cheap/tiny" });
 			const listing = describeModels(available, parent, profiles, undefined);
-			expect(listing).toContain(`small: ${small}`);
-			expect(listing).toContain("scout: home/big (cheap/tiny: cheap refused its credential)");
-			expect(failedNext(scout, "boom", false)).toContain("Ran on home/big (cheap/tiny: cheap refused its credential).");
+			expect(listing).toContain("small: other/mid");
+			expect(listing).toContain("scout: home/big:medium (cheap/tiny: cheap refused its credential)");
+			expect(failedNext(scout, "boom", false)).toContain(
+				"Ran on home/big, medium thinking (cheap/tiny: cheap refused its credential).",
+			);
 		} finally {
 			providerHealth.noteRun("cheap/tiny");
 		}

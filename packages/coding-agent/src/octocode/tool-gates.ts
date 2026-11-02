@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "../core/features/index.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import { type GateVerdict, permissionGate } from "./permission/gate.ts";

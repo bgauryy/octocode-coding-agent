@@ -12,7 +12,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { type SessionEntry, sessionEntryToContextMessages } from "../../src/core/session-manager.ts";
-import type { ExtensionFactory } from "../../src/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { createHarness } from "./harness.ts";
 
 function messageEntry(message: Record<string, unknown>): SessionEntry {

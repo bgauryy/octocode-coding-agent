@@ -1,8 +1,8 @@
 import type { FileInputReplacement } from "../../shared/claude-file.ts";
-import type { ToolInvocation } from "../../../core/extensions/types.ts";
+import type { ToolInvocation } from "../../../core/features/types.ts";
 import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../../core/extensions/index.ts";
+import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../../core/features/index.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
 import type { HookEvent, HookProtocol } from "../catalog.ts";
 import type { HookConfig, HookVerdict } from "../contracts.ts";

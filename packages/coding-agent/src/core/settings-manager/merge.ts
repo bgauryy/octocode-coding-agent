@@ -71,3 +71,8 @@ export function mergeScopedSettings(global: Settings, project: Settings): Settin
 	}
 	return result;
 }
+
+/** Pi's inherited settings under global under project; only the inherited layer is never written back to a file. */
+export function mergeAllSettings(inherited: Settings, global: Settings, project: Settings): Settings {
+	return mergeScopedSettings(Object.keys(inherited).length ? deepMergeSettings(inherited, global) : global, project);
+}

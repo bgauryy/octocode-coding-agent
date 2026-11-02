@@ -5,8 +5,8 @@ import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-a
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { defineTool } from "../src/core/extensions/types.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { defineTool } from "../src/core/features/types.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { exportSessionToJsonl } from "../src/core/session-export.ts";
@@ -26,7 +26,7 @@ describe("JSONL share export", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "octocode-jsonl-share-"));
 		tempDirs.push(tempDir);
 		const sessionManager = SessionManager.inMemory(tempDir);
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir: join(tempDir, "agent"),
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

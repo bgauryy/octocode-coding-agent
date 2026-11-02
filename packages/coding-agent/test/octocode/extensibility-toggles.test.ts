@@ -9,7 +9,13 @@ import { initTheme } from "../../src/theme/theme.ts";
 import { mergeScopedSettings } from "../../src/core/settings-manager/merge.ts";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { hookToggleIds } from "../../src/octocode/hooks/config/toggles.ts";
-import { pluginsCommand } from "../../src/octocode/plugins/command.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
+import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
+import { type McpSwitchRequest, registerMcpSwitch } from "../../../mcp/src/switch.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
+import type { HooksView } from "../../src/octocode/hooks/register/types.ts";
+import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { writeHookFiles } from "./fixtures/hook-formats.ts";
 import { tmp } from "./helpers.ts";
@@ -66,7 +72,7 @@ describe("toggles", () => {
 		const [hookId] = hookToggleIds("PreToolUse", group.matcher, group.hooks[0], f.home);
 		expect(loadedTags(f, { "hooks:claude": false, [hookId]: true })).toEqual([...withoutClaude, "claude-user"].sort());
 		const { errors } = loadHooks(f.cwd, true, f.home, { toggles: { "hooks:claude": false } });
-		expect(errors.join("\n")).toMatch(/hooks? switched off in \/plugins/);
+		expect(errors.join("\n")).toMatch(/hooks? switched off in \/harness/);
 	});
 
 	it("let a project switch only the repository's own hooks", () => {
@@ -169,27 +175,125 @@ describe("switchItem", () => {
 	});
 });
 
-describe("/plugins", () => {
+/** `/harness` as the session registers it, with a hooks view that only reports. */
+function harness(api: ExtensionAPI) {
+	const commands = new Subcommands();
+	registerHarnessCommand(commands, { report: () => "Hooks: on" } as unknown as HooksView, api);
+	return commands.get("harness")!;
+}
+
+describe("/harness", () => {
 	it("lists every hook per host and switches one by ID", async () => {
 		const f = fixture();
 		const { api } = fakeHost();
-		const command = pluginsCommand(api);
+		const command = harness(api);
 		const ctx = fakeCtx({ cwd: f.cwd, mode: "rpc" });
 		await command.handler("", ctx);
 		const listing = ctx.ui.notes.at(-1)!.message;
 		for (const title of ["Claude Code", "Codex", "Octocode"]) expect(listing).toContain(title);
 		expect(listing).toContain("[x] Hooks from Claude Code");
 		await command.handler("disable hooks:claude", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("switched off globally. Run /reload to apply.");
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/switched off globally\.\nRun \/reload to apply\.$/);
 		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles).toEqual({
 			"hooks:claude": false,
 		});
+		// Switched on again before a reload: the saved switch is reverted, not skipped because the session still has it on.
+		await command.handler("enable hooks:claude", ctx);
+		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles ?? {}).toEqual({});
 		await command.handler("disable nothing:here", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/harness list shows the IDs");
+	});
+
+	it("lists one section, filters by text, and reports hooks and config through subcommands", async () => {
+		const f = fixture();
+		const { api } = fakeHost();
+		const command = harness(api);
+		const ctx = fakeCtx({ cwd: f.cwd, mode: "rpc" });
+		await command.handler("list hooks", ctx);
+		const hooks = ctx.ui.notes.at(-1)!.message;
+		expect(hooks).toContain("Hooks from Claude Code");
+		await command.handler("list mcp", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).not.toContain("Hooks from Claude Code");
+		await command.handler("list codex", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("Codex");
+		await command.handler("hooks", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toBe("Hooks: on");
+		await command.handler("hooks events", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("Hook events Octocode implements");
+		await command.handler("bogus", ctx);
+		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/harness enable|disable");
+	});
+
+	it("switches MCP servers by name through the MCP owner, live and without a reload", async () => {
+		const f = fixture();
+		const { api } = fakeHost();
+		const events = createEventBus();
+		Object.assign(api, { events });
+		const requests: McpSwitchRequest[] = [];
+		setMcpSessionStatus(events, [
+			{ name: "docs", enabled: true, state: "connected", source: path.join(f.agentDir, "mcp.json"), tools: [] },
+		] as never);
+		registerMcpSwitch(events, async (request) => {
+			requests.push(request);
+			return { ok: true, message: `${request.name}: ${request.enabled ? "enabled" : "disabled"}` };
+		});
+		const reload = vi.fn(async () => {});
+		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "rpc" }), { reload });
+		const command = harness(api);
+		await command.handler("list mcp", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("docs");
+		await command.handler("disable docs --local", ctx);
+		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: true, saveOnly: false }]);
+		expect(ctx.ui.notes.at(-1)!.message).toBe("docs: disabled");
+		expect(reload).not.toHaveBeenCalled();
+		expect(fs.existsSync(path.join(f.agentDir, "settings.json"))).toBe(false);
+	});
+
+	it("batches settings and MCP switches into one reload, saving MCP for it instead of connecting twice", async () => {
+		const f = fixture();
+		const { api } = fakeHost();
+		const events = createEventBus();
+		Object.assign(api, { events });
+		const requests: McpSwitchRequest[] = [];
+		setMcpSessionStatus(events, [
+			{ name: "docs", enabled: true, state: "connected", source: path.join(f.agentDir, "mcp.json"), tools: [] },
+		] as never);
+		registerMcpSwitch(events, async (request) => {
+			requests.push(request);
+			return { ok: true, message: `${request.name}: saved` };
+		});
+		const reload = vi.fn(async () => {});
+		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { confirms: [true] } }), { reload });
+		await harness(api).handler("disable hooks:claude docs", ctx);
+		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: false, saveOnly: true }]);
+		expect(reload).toHaveBeenCalledOnce();
+		// The same switch again leaves the files as they were: no reload is offered.
+		await harness(api).handler("disable hooks:claude", ctx);
+		expect(reload).toHaveBeenCalledOnce();
+		expect(ctx.ui.notes.at(-1)!.message).toContain("nothing to reload");
+	});
+
+	it("answers the retired /plugins, /hooks and /config over RPC with the /harness line to run", async () => {
+		const { api, fire } = fakeHost();
+		Object.assign(api, { getCommands: () => [{ name: "harness" }] });
+		const commands = new Subcommands();
+		registerHarnessCommand(commands, { report: () => "" } as unknown as HooksView, api);
+		commands.register(api);
+		const ctx = fakeCtx({ cwd: tmp(), mode: "rpc" });
+		expect(await fire("input", { text: "/plugins disable hooks:claude" }, ctx)).toEqual({ action: "handled" });
+		expect(ctx.ui.notes.at(-1)).toMatchObject({
+			message: "/plugins moved to /harness. Run /harness disable hooks:claude to continue.",
+			type: "warning",
+		});
+		await fire("input", { text: "/hooks events" }, ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toBe("/hooks moved to /harness hooks. Run /harness hooks events to continue.");
+		expect(await fire("input", { text: "/configure" }, ctx)).toEqual({ action: "continue" });
 	});
 });
 
-describe("/plugins terminal list", () => {
+describe("/harness terminal list", () => {
 	it("toggles with Space or Enter, guards gates, explains blocked rows, filters, and offers a reload", async () => {
 		const f = fixture();
 		// A required gate in the native user file.
@@ -213,11 +317,11 @@ describe("/plugins terminal list", () => {
 		const reload = vi.fn(async () => {});
 		const { api } = fakeHost();
 		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { custom, confirms: [true] } }), { reload });
-		const run = pluginsCommand(api).handler("", ctx);
+		const run = harness(api).handler("", ctx);
 		await vi.waitFor(() => expect(component).toBeDefined());
 		const press = (...keys: string[]) => keys.forEach((key) => component!.handleInput(key));
 		const screen = () => component!.render(200).join("\n");
-		expect(screen()).toContain("Plugins, extensions and hooks · Global");
+		expect(screen()).toContain("Harness · Global");
 		expect(screen()).toMatch(/Claude Code\n> +\[x\] Hooks from Claude Code/);
 		// Hook files start collapsed: one row per file, not per hook.
 		expect(screen()).toContain("▸ [x] ~/.claude/settings.json");
@@ -230,7 +334,7 @@ describe("/plugins terminal list", () => {
 
 		// Project scope cannot reach a user hook file, and says what to do instead.
 		press("tui.select.down", "tui.input.tab", " ");
-		expect(screen()).toContain("Plugins, extensions and hooks · Project");
+		expect(screen()).toContain("Harness · Project");
 		expect(screen()).toContain("~/.claude/settings.json: not part of this repository: switch it globally.");
 		press("tui.input.tab");
 
@@ -290,7 +394,7 @@ describe("plugins installed by other hosts", () => {
 		fs.appendFileSync(path.join(f.home, ".codex/config.toml"), '\n[plugins."browser@openai"]\nenabled = false\n');
 
 		const { api } = fakeHost();
-		const command = pluginsCommand(api);
+		const command = harness(api);
 		const ctx = fakeCtx({ cwd: f.cwd, mode: "rpc" });
 		await command.handler("", ctx);
 		const listing = ctx.ui.notes.at(-1)!.message;

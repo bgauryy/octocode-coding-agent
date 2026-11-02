@@ -1,4 +1,4 @@
-import type { ToolInvocation } from "../extensions/types.ts";
+import type { ToolInvocation } from "../features/types.ts";
 
 /** Snapshot JSON arguments without changing execution of custom SDK argument objects. */
 export function captureToolInvocation(

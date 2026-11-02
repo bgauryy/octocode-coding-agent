@@ -1,10 +1,9 @@
 import {
 	DEFAULT_ITEM_TYPE,
-	itemTypeInput,
+	isItemType,
 	type BacklogRef,
 	type Completion,
 	type EntityInput,
-	type ItemType,
 	type WorkLink,
 } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
@@ -31,17 +30,6 @@ const ITEM_FIELDS = new Set([
 	"force",
 ]);
 
-/**
- * Maps a legacy item type name in `input.type` (`task`, now `feature`) to its replacement so every caller of the store
- * keeps working for one release; the tool tells its caller about the mapping with `itemTypeInput` before this.
- */
-export function withCurrentType<T extends { type?: string }>(input: T): Omit<T, "type"> & { type?: ItemType } {
-	const mapped = input.type === undefined ? undefined : itemTypeInput(input.type);
-	return (mapped && mapped.type !== input.type ? { ...input, type: mapped.type } : input) as Omit<T, "type"> & {
-		type?: ItemType;
-	};
-}
-
 export function entityInput(input: EntityInput): EntityInput {
 	return Object.fromEntries(Object.entries(input).filter(([key]) => !ITEM_FIELDS.has(key)));
 }
@@ -65,8 +53,8 @@ export function enrichItems(db: Db, repo: string, bases: ReturnType<typeof toIte
 		return {
 			...base,
 			evidence: evidence.text,
-			// A row an older build wrote (or its column default) may still say `task`.
-			type: itemTypeInput(row.type)?.type ?? DEFAULT_ITEM_TYPE,
+			// A row whose stored type is not an item type reads as the default.
+			type: isItemType(row.type) ? row.type : DEFAULT_ITEM_TYPE,
 			...(row.parent_seq === null ? {} : { parentId: refText(row.parent_seq) }),
 			dependsOn: links
 				.filter((link) => link.relation === "depends_on")

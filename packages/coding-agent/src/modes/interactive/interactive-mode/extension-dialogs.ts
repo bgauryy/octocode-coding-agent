@@ -4,7 +4,7 @@
  */
 
 import type { OverlayHandle, OverlayOptions, Component, TUI } from "@octocodeai/octocode-tui";
-import type { ExtensionUIDialogOptions } from "../../../core/extensions/index.ts";
+import type { ExtensionUIDialogOptions } from "../../../core/features/index.ts";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { formatMissingSessionCwdPrompt, type MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { ExtensionEditorComponent } from "../components/extension-editor.ts";

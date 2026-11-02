@@ -1,6 +1,6 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getMessageText, getUserTexts, type Harness } from "./harness.ts";

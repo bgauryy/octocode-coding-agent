@@ -9,7 +9,8 @@ interface PackageCommandOptions {
 	showExtensionsSkippedNote: boolean;
 	local: boolean;
 	force: boolean;
-	projectTrustOverride?: boolean;
+	/** `--trust`: record the user's trust for this folder, then run. */
+	trust: boolean;
 	help: boolean;
 	invalidOption?: string;
 	invalidArgument?: string;
@@ -29,7 +30,7 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 
 	let local = false;
 	let force = false;
-	let projectTrustOverride: boolean | undefined;
+	let trust = false;
 	let help = false;
 	let invalidOption: string | undefined;
 	let invalidArgument: string | undefined;
@@ -94,13 +95,8 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 			continue;
 		}
 
-		if (arg === "--approve" || arg === "-a") {
-			projectTrustOverride = true;
-			continue;
-		}
-
-		if (arg === "--no-approve" || arg === "-na") {
-			projectTrustOverride = false;
+		if (arg === "--trust") {
+			trust = true;
 			continue;
 		}
 
@@ -203,7 +199,7 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 		showExtensionsSkippedNote,
 		local,
 		force,
-		projectTrustOverride,
+		trust,
 		help,
 		invalidOption,
 		invalidArgument,

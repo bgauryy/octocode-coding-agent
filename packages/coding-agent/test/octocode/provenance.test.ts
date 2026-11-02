@@ -1,6 +1,6 @@
 import util from "node:util";
 import { describe, expect, it } from "vitest";
-import type { ToolCallEvent, ToolResultEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { expandPromptRefs } from "../../src/octocode/external/refs.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 import type { MessageReader } from "../../src/octocode/shared/references.ts";
@@ -155,7 +155,9 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 				ctx,
 			)?.why,
 		).toMatch(/^contains text from mcp__gh__get_issue/);
-		expect(provenance.check(call("memory", { op: "set", title: "t", body: SPAN }), ctx)).toMatchObject({
+		expect(
+			provenance.check(call("archive", { op: "set", source: "memories", title: "t", body: SPAN }), ctx),
+		).toMatchObject({
 			why: expect.stringMatching(/^contains text from mcp__gh__get_issue/),
 		});
 		expect(provenance.check(call("mcp__gh__create_issue", { body: SPAN }), ctx)).toMatchObject({

@@ -1,5 +1,5 @@
 import { Box, Text } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { fencedBody } from "../../shared/fence.ts";
 import { formatClock } from "../../shared/format.ts";
 import { EXTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";

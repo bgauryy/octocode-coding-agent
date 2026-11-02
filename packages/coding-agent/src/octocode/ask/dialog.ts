@@ -6,7 +6,7 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { Breath, tabMark } from "./dialog/marks.ts";

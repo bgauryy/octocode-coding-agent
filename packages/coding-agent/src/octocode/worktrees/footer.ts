@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { gitQuiet } from "../shared/git.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import { canonical } from "./repo.ts";

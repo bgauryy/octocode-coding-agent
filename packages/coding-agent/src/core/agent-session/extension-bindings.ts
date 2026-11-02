@@ -13,7 +13,7 @@ import type {
 	ExtensionRunner,
 	ExtensionUIContext,
 	ShutdownHandler,
-} from "../extensions/index.ts";
+} from "../features/index.ts";
 import { getPromptCommands } from "../prompt-templates.ts";
 import type { ResourceExtensionPaths } from "../resource-loader/types.ts";
 import { captureSkillResourceSnapshot } from "../skill-resource-snapshot.ts";

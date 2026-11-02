@@ -3,7 +3,7 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type JsonObject } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp } from "./helpers.ts";
@@ -46,12 +46,12 @@ it("reports parser regressions and LSP issues after native file edits through li
 		cwd,
 		agentDir,
 		settingsManager,
-		noExtensions: true,
+		// Only the MCP built-in loads (the live Octocode server under test); llama.cpp stays off.
+		disabledFeatures: ["llama.cpp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 		noSkills: true,
-		additionalExtensionPaths: ["builtin:mcp"],
 		extensionFactories: [
 			{
 				name: "faux",
@@ -68,7 +68,7 @@ it("reports parser regressions and LSP issues after native file edits through li
 		],
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		resourceLoader,

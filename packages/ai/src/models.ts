@@ -27,6 +27,7 @@ export {
 	type ThinkingControl,
 } from "./models/capabilities.ts";
 export {
+	activeRates,
 	calculateCost,
 	clampThinkingLevel,
 	getSupportedThinkingLevels,

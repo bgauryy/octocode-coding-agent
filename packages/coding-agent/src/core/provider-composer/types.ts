@@ -18,8 +18,6 @@ export interface ExtensionOAuthConfig {
 	name: string;
 	/** Whether access through this auth method is backed by a provider subscription. */
 	isSubscription?: boolean;
-	/** @deprecated Retained for extension source compatibility; ignored by canonical auth flows. */
-	usesCallbackServer?: boolean;
 	login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials>;
 	refreshToken(credentials: OAuthCredentials, signal: AbortSignal): Promise<OAuthCredentials>;
 	getApiKey(credentials: OAuthCredentials): string;

@@ -28,7 +28,7 @@ import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/config-value.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import { ProjectTrustStore } from "../../core/trust-manager.ts";
+import { resolveFolderTrust } from "../trust/resolve.ts";
 import { repoKey } from "../shared/home/repo.ts";
 
 export interface ConfigStatusOptions {
@@ -146,8 +146,7 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 	const stored = await readStoredSources(options.agentDir, referenceMatchers(keychain), env);
 
 	// Project settings load only for a project the user trusted, as at startup.
-	const trusted =
-		options.cwd !== undefined && new ProjectTrustStore(options.agentDir, () => {}).get(options.cwd) === true;
+	const trusted = options.cwd !== undefined && resolveFolderTrust(options.cwd).state === "trusted";
 	const manager = SettingsManager.create(options.cwd ?? options.agentDir, options.agentDir, {
 		projectTrusted: trusted,
 	});

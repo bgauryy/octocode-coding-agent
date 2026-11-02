@@ -2,15 +2,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate, powershellDestructive } from "../../src/octocode/permission/gate.ts";
-import { archiveFolder } from "../../src/octocode/shared/archive.ts";
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { bashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
+import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
+import { RECORD_FILE } from "../../src/octocode/shared/archive/record.ts";
+import { archiveFolder, LIBRARY_FILE, ownArchives } from "../../src/octocode/shared/archive.ts";
+import { readableHistory } from "../../src/octocode/shared/history.ts";
 import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
+import { headlessFileTool } from "./permission-file-harness.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
-import { runsLater } from "../../src/octocode/permission/file-access.ts";
+import { runsLater, shellTargetAccess } from "../../src/octocode/permission/file-access.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
 
 const call = (toolName: string, input: Record<string, unknown>, extra: Partial<ToolCallEvent> = {}) =>
@@ -56,11 +62,16 @@ describe("action classes of tool calls", () => {
 		const of = (event: ToolCallEvent) => classify(event, ctx)?.action;
 		expect(of(call("bash", { command: "npm test" }))).toBe("shell");
 		expect(of(call("powershell", { command: "Get-ChildItem" }))).toBe("shell");
-		expect(of(call("edit", { path: "src/a.ts", edits: [] }))).toBe("file.workspace");
-		expect(of(call("write", { path: path.join(os.tmpdir(), "elsewhere", "x.txt"), content: "" }))).toBe("file.outside");
-		expect(of(call("read", { path: "src/a.ts" }))).toBeUndefined();
-		expect(of(call("read", { path: "/etc/hosts" }))).toBe("read.outside");
+		// Octocode registers no `edit`, `write`, `read` or `grep` tool, so a call named like one is not classified.
+		expect(of(call("edit", { path: "src/a.ts", edits: [] }))).toBeUndefined();
+		expect(of(call("write", { path: path.join(os.tmpdir(), "elsewhere", "x.txt"), content: "" }))).toBeUndefined();
+		expect(of(call("read", { path: "/etc/hosts" }))).toBeUndefined();
 		expect(of(call("grep", { pattern: "x" }))).toBeUndefined();
+		// What `edit` and `write` were is the `file` tool's own check (it asks from inside `execute`, so it has no class here),
+		// and a read is a shell read or an MCP call: the shell's read of a file outside the workspace is a `read.outside` target.
+		expect(of(call("file", { queries: [{ type: "write", path: "src/a.ts", content: "" }] }))).toBeUndefined();
+		expect(of(call("bash", { command: "cat /etc/hosts" }))).toBe("shell");
+		expect(of(call("mcp__octocode__localFetch", { queries: [{ path: "/etc/hosts" }] }))).toBe("mcp.write");
 		expect(of(call("bash", { command: "rm -rf ~" }))).toBe("shell.destructive");
 		expect(of(call("powershell", { command: "rm -rf /" }))).toBe("shell.destructive");
 		expect(of(call("web", { query: "pi agent" }))).toBe("web");
@@ -193,16 +204,20 @@ describe("permission gate", () => {
 		expect(await powershellDestructive("Get-ChildItem", classifier)).toBe(false);
 	});
 
-	it("asks for a write to ~/.zshrc when $HOME is the repository, and for nested hooks and workflows anywhere", () => {
+	it("asks for a write to ~/.zshrc when $HOME is the repository, and for nested hooks and workflows anywhere", async () => {
 		const home = tmp();
 		fs.mkdirSync(path.join(home, ".git"));
 		vi.stubEnv("HOME", home);
 		const cwd = path.join(home, "proj");
 		fs.mkdirSync(cwd);
+		// The `file` tool, with nobody to ask: a home with a `.git` is still no workspace for the project under it.
+		const files = headlessFileTool("workspace", cwd);
 		for (const file of [path.join(home, ".zshrc"), path.join(home, ".ssh", "config")]) {
-			expect(classify(call("write", { path: file, content: "x" }), { cwd })?.action, file).toBe("file.outside");
+			expect(await files.write(file), file).toMatch(/outside the workspace/);
+			expect(fs.existsSync(file), file).toBe(false);
 		}
-		expect(classify(call("write", { path: "src/app.ts", content: "x" }), { cwd })?.action).toBe("file.workspace");
+		expect(await files.write("src/app.ts")).toBeUndefined();
+		expect(fs.existsSync(path.join(cwd, "src", "app.ts"))).toBe(true);
 		const root = "/repo";
 		for (const file of [
 			"sub/.git/hooks/pre-commit",
@@ -393,20 +408,59 @@ describe("permission gate", () => {
 		const own = archiveFolder();
 		const parent = archiveFolder("parent-session-1");
 		const other = archiveFolder("someone-else");
-		for (const dir of [own, parent, other]) fs.mkdirSync(dir, { recursive: true });
-		const manual = setup("manual", { selects: ["Allow once", "Allow once", "Allow once"] });
-		expect(await manual.gate(call("read", { path: path.join(parent, "LIBRARY.md") }), manual.ctx)).toBeUndefined();
-		expect(await manual.gate(call("read", { path: path.join(own, "1-abc.md") }), manual.ctx)).toBeUndefined();
-		expect(await manual.gate(call("grep", { pattern: "x", path: parent }), manual.ctx)).toBeUndefined();
-		expect(manual.asked).toHaveLength(0);
-		await manual.gate(call("read", { path: path.join(other, "LIBRARY.md") }), manual.ctx);
-		await manual.gate(call("read", { path: path.join(parent, "..", "output", "x.txt") }), manual.ctx);
-		await manual.gate(call("read", { path: "/etc/hosts" }), manual.ctx);
-		expect(manual.asked).toHaveLength(3);
-		vi.stubEnv(PARENT_SESSION_ENV, "..");
-		expect(classify(call("read", { path: path.join(parent, "LIBRARY.md") }), { cwd: manual.cwd })?.action).toBe(
-			"read.outside",
+		for (const dir of [own, parent, other]) {
+			fs.mkdirSync(dir, { recursive: true });
+			fs.writeFileSync(path.join(dir, LIBRARY_FILE), `library of ${path.basename(path.dirname(dir))}\n`);
+		}
+		// Another session of another repository: its record names a repository this session is not in.
+		fs.writeFileSync(
+			path.join(other, RECORD_FILE),
+			"# Session record someone-else\n\n- Session: someone-else\n- Repository: /elsewhere/.git\n- Workspace: /elsewhere\n\n## Goal\n",
 		);
+		const manual = setup("manual", { selects: ["Allow once", "Allow once", "Allow once", "Allow once"] });
+		const fake = fakeHost();
+		registerArchiveTool(fake.api);
+		const archive = (file: string) =>
+			fake.tools
+				.get("archive")!
+				.execute("t1", { goal: "find a decision", reason: "test", file }, undefined, undefined, manual.ctx);
+		const gateArchive = (file: string) =>
+			manual.gate(call("archive", { goal: "find a decision", reason: "test", file }), manual.ctx);
+		// The `archive` tool reads its own history and its parent's, and the gate asks nothing for it.
+		for (const file of [path.join(parent, LIBRARY_FILE), path.join(own, LIBRARY_FILE)]) {
+			expect(await gateArchive(file), file).toBeUndefined();
+			expect((await archive(file)).content[0].text, file).toContain("library of");
+		}
+		expect(manual.asked).toHaveLength(0);
+		// Any other session, a `..` out of the parent's archive, and a file outside the sessions are not its history.
+		const elsewhere = [path.join(other, LIBRARY_FILE), path.join(parent, "..", "output", "x.txt"), "/etc/hosts"];
+		for (const file of elsewhere)
+			await expect(archive(file), file).rejects.toThrow(/not in the history this session may read/);
+		// The readers that can reach those paths are the ordinary ones, and each asks in manual mode: an MCP local read,
+		// and a shell read. The path does not make an MCP read pre-approved, whether it is history or not.
+		for (const file of elsewhere.slice(0, 2))
+			expect(
+				await manual.gate(call("mcp__octocode__localFetch", { queries: [{ path: file }] }), manual.ctx),
+				file,
+			).toBeUndefined();
+		expect(await manual.gate(call("bash", { command: `cat ${other}/${LIBRARY_FILE}` }), manual.ctx)).toBeUndefined();
+		expect(
+			await manual.gate(call("mcp__octocode__localFetch", { queries: [{ path: "/etc/hosts" }] }), manual.ctx),
+		).toBeUndefined();
+		expect(manual.asked).toHaveLength(4);
+		expect(
+			manual.asked
+				.slice(0, 3)
+				.every((title) => title.startsWith("Run this MCP tool?") || title.startsWith("Run this command?")),
+		).toBe(true);
+		// A `..` in the parent's id names no folder: it widens nothing, and the parent's archive stops being history.
+		expect(ownArchives()).toContain(parent);
+		expect(readableHistory(path.join(parent, LIBRARY_FILE), manual.cwd)).toBe(true);
+		vi.stubEnv(PARENT_SESSION_ENV, "..");
+		expect(ownArchives()).toEqual([own]);
+		expect(readableHistory(path.join(parent, LIBRARY_FILE), manual.cwd)).toBe(false);
+		await expect(archive(path.join(parent, LIBRARY_FILE))).rejects.toThrow(/not in the history this session may read/);
+		await expect(archive(path.join(own, "..", "..", "..", "agent.db"))).rejects.toThrow(/not in the history/);
 		vi.unstubAllEnvs();
 	});
 
@@ -431,14 +485,27 @@ describe("permission gate", () => {
 		const home = tmp();
 		vi.stubEnv("HOME", home);
 		fs.mkdirSync(path.join(home, "proj"));
-		const of = (event: ToolCallEvent, cwd = home) => classify(event, { cwd })?.action;
-		expect(of(call("write", { path: "notes.txt", content: "x" }))).toBe("file.outside");
-		expect(of(call("edit", { path: path.join(home, ".zshrc"), edits: [] }))).toBe("file.outside");
-		expect(of(call("read", { path: path.join(home, ".ssh", "id_rsa") }))).toBe("read.outside");
-		expect(of(call("grep", { pattern: "x" }))).toBe("read.outside");
-		// A project folder under home is still its own workspace.
-		expect(of(call("write", { path: "a.txt", content: "x" }), path.join(home, "proj"))).toBe("file.workspace");
+		const project = path.join(home, "proj");
+		await shellParserReady();
+		// A shell read is outside the workspace in ~ (a `read.outside` target), and inside it for a project folder under home.
+		const readOf = (command: string, cwd: string) =>
+			bashSyntax(command)
+				.targets.filter((target) => target.kind === "read")
+				.map((target) => shellTargetAccess(target, cwd).action);
+		expect(readOf("cat notes.txt", home)).toEqual(["read.outside"]);
+		expect(readOf(`cat ${path.join(home, ".ssh", "id_rsa")}`, home)).toEqual(["read.outside"]);
+		expect(readOf("cat a.txt", project)).toEqual([undefined]);
+		// The `file` tool asks for a change in ~, and a project folder under home is still its own workspace.
+		const inHome = headlessFileTool("workspace", home);
+		expect(await inHome.write("notes.txt")).toMatch(/outside any workspace \(the home folder is not one\)/);
+		expect(await inHome.write(path.join(home, ".zshrc"))).toMatch(/outside any workspace/);
+		expect(fs.existsSync(path.join(home, "notes.txt"))).toBe(false);
+		expect(await headlessFileTool("workspace", project).write("a.txt")).toBeUndefined();
+		expect(fs.existsSync(path.join(project, "a.txt"))).toBe(true);
+		expect(await headlessFileTool("full", home).write("notes.txt")).toBeUndefined();
+		expect(fs.existsSync(path.join(home, "notes.txt"))).toBe(true);
 
+		// A shell write in ~ has the same place: workspace refuses it headless, full allows it.
 		const run = async (mode: "workspace" | "full") => {
 			const fake = fakeHost();
 			const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
@@ -449,7 +516,7 @@ describe("permission gate", () => {
 				provenance: { check: () => undefined },
 				powershell: async () => false,
 			});
-			return gate(call("write", { path: "notes.txt", content: "x" }), ctx);
+			return gate(call("bash", { command: "echo x > shell-notes.txt" }), ctx);
 		};
 		expect(await run("workspace")).toMatchObject({ block: true });
 		expect(await run("full")).toBeUndefined();

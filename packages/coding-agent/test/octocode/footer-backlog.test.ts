@@ -1,3 +1,4 @@
+import { itemCounts } from "./counts-fixture.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { countsText } from "../../src/octocode/backlog/format.ts";
@@ -20,7 +21,7 @@ describe("backlog discovery in the native footer", () => {
 		{ backlog: 0, todo: 0, ongoing: 0, done: 5 },
 		{ backlog: 3, todo: 4, ongoing: 2, done: 5 },
 	])("keeps the web entry point with counts %o", (counts) => {
-		const statuses = new Map([[STATUS.backlog, { text: countsText(counts) }]]);
+		const statuses = new Map([[STATUS.backlog, { text: countsText(itemCounts(counts)) }]]);
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 200);
 		expect(bottom).toContain("/web · backlogs & activity");
 		expect(top).not.toContain("/web");
@@ -30,14 +31,16 @@ describe("backlog discovery in the native footer", () => {
 	});
 
 	it("shows this session's open tasks after the counts and still shortens to the hint", () => {
-		const statuses = new Map([[STATUS.backlog, { text: countsText({ backlog: 3, todo: 4, ongoing: 2, done: 5 }, 5) }]]);
+		const statuses = new Map([
+			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 }), 5) }],
+		]);
 		expect(footerLines(state, "main", statuses, theme, 200)[1]).toContain("2 ongoing · 4 todo · 3 to triage · 5 tasks");
 		expect(footerLines(state, "main", statuses, theme, 60)[1]).toContain("/web");
 	});
 
 	it("shortens the hint to /web while preserving location and usage at common terminal widths", () => {
 		const statuses = new Map([
-			[STATUS.backlog, { text: countsText({ backlog: 3, todo: 4, ongoing: 2, done: 5 }) }],
+			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],
 			["octocode-permission", { text: "permission: manual" }],
 		]);
 		for (const width of [80, 100, 120]) {

@@ -10,7 +10,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp } from "./helpers.ts";
@@ -69,7 +69,7 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 		],
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		settingsManager,
@@ -147,7 +147,8 @@ it("sends byte-identical tools and first instruction block from different projec
 	expect(a.firstNames).toContain("mcps");
 	expect(a.toolNames).toContain("mcp__echo__shout");
 	expect(a.toolNames.some((name) => name.startsWith("mcp__browser__"))).toBe(false);
-	expect(a.boundary).toBe("project_context");
+	// The first session-tier section starts the second block; `project_context` now follows the policy (`system-prompt-spec.ts`).
+	expect(a.boundary).toBe("cwd");
 	expect(a.first).not.toMatch(/project-a|Date: /);
 	expect(a.second).toContain("Rules that only project-a has.");
 	// Everything the provider caches ahead of the project is the same in both projects.

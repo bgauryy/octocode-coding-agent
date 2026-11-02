@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type RequestListener, type Server }
 import type { AddressInfo } from "node:net";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../../src/core/extensions/loader.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "../helpers/features.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { LlamaClient } from "../../src/octocode/llama/client.ts";
 import llamaExtension from "../../src/octocode/llama/index.ts";

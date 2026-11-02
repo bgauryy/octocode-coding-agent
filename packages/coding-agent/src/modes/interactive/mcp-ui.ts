@@ -4,7 +4,7 @@
  */
 
 import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/host.ts";
-import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
+import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import { getSelectListTheme, type Theme } from "../../theme/theme.ts";
 import { AuthUrlComponent } from "./components/auth-url.ts";
 import { frame, renderClipped, runInView } from "./components/framed-view.ts";

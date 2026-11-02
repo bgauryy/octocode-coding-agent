@@ -1,4 +1,5 @@
-import type { ToolCallEvent, ToolResultEvent } from "../../core/extensions/index.ts";
+import { archiveMutation } from "../shared/archive-operation.ts";
+import type { ToolCallEvent, ToolResultEvent } from "../../core/features/index.ts";
 import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
@@ -282,6 +283,7 @@ class Provenance {
 				return target && this.storesData(target, cwd) ? [target] : leaves(change);
 			});
 		}
+		if (toolName === "archive" && archiveMutation(input)) return input.op === "set" ? leaves(input) : [];
 		if (toolName === "memory") return input.op === "set" ? leaves(input) : [];
 		if (isMcpToolName(toolName)) return leaves(input);
 		return [];

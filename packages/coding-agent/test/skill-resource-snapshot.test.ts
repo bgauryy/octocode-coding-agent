@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
-import type { ExtensionAPI } from "../src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../src/core/features/types.ts";
 import {
 	captureSkillResourceSnapshot,
 	adoptSkillResourceSnapshot,
@@ -304,7 +304,7 @@ it("adopts snapshot skills authoritatively without default paths or skill overri
 		agentDir: path.join(root, "agent"),
 		settingsManager: SettingsManager.inMemory({}),
 		nativeFeatures: false,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		additionalSkillPaths: [extra.filePath],
 		skillResourceSnapshot: captureSkillResourceSnapshot({
 			skills: [skill],
@@ -406,7 +406,7 @@ it("recaptures an override's changed file path without inheriting the old canoni
 		agentDir: path.join(root, "agent"),
 		settingsManager: SettingsManager.inMemory({}),
 		nativeFeatures: false,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		additionalSkillPaths: [original.filePath],
 		skillsOverride: (base) => ({
 			...base,

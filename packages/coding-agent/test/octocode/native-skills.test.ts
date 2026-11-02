@@ -8,7 +8,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { adoptSkillResourceSnapshot, captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkills } from "../../src/core/skills.ts";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { bundledSkillDirs, registerSkills } from "../../src/octocode/skills.ts";
 
 describe("skills the application ships", () => {
@@ -33,7 +33,7 @@ describe("skills the application ships", () => {
 			cwd: path.join(root, "project"),
 			agentDir: path.join(root, "agent"),
 			settingsManager: SettingsManager.inMemory(),
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 		});
 		await loader.reload();
 		let handler: ((event: unknown, ctx: unknown) => Promise<{ skillPaths: string[] }>) | undefined;

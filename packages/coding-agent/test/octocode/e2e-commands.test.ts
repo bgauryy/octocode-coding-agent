@@ -72,6 +72,7 @@ const CASES: Record<string, Case> = {
 	api: { check: says(/Octocode API is off/) },
 	archive: { check: says(/segment|archive|compact/i) },
 	hooks: { check: says(/Hooks: (on|off)/) },
+	config: { check: says(/Loaded context and where each item came from|Nothing is loaded/) },
 	jobs: { check: says(/job/i) },
 	memory: { check: asks(/memor/i) },
 	plugins: { check: asks(/type to filter/) },
@@ -96,7 +97,15 @@ const CASES: Record<string, Case> = {
 	model: { check: asks(/Models from configured providers/) },
 	effort: { check: asks(/Thinking Level/) },
 	modelsettings: { check: asks(/Model settings/) },
-	trust: { check: asks(/Project/) },
+	// The one /trust: a menu in the terminal, and `list` prints where this folder stands and the stored decisions.
+	trust: {
+		check: async (run, t) => {
+			asks(/Folder trust/)(run);
+			const list = await t.submit("/trust list");
+			expect(list.settled).toBe(true);
+			expect(list.text).toMatch(/no\s+trust\s+decision\s+yet[\s\S]*No\s+trust\s+decisions\s+are\s+stored/);
+		},
+	},
 	login: { check: asks(/Configured means credentials are present/) },
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),

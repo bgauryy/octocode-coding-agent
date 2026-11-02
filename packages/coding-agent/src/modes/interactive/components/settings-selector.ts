@@ -4,7 +4,7 @@ import { CACHE_WARMING_MODES } from "../../../core/settings-manager.ts";
 import { getSettingsListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyText } from "./keybinding-hints.ts";
-import { applySettingChange, DEFAULT_PROJECT_TRUST_LABELS } from "./settings-selector/change-handler.ts";
+import { applySettingChange } from "./settings-selector/change-handler.ts";
 import { addConditionalItems } from "./settings-selector/conditional-items.ts";
 import {
 	createModelThinkingSubmenu,
@@ -114,13 +114,6 @@ export class SettingsSelectorComponent extends Container {
 				description: "Send an anonymous version/update ping after changelog-detected updates",
 				currentValue: config.enableInstallTelemetry ? "true" : "false",
 				values: ["true", "false"],
-			},
-			{
-				id: "default-project-trust",
-				label: "Default project trust",
-				description: "Fallback behavior when no extension or saved trust decision decides project trust",
-				currentValue: DEFAULT_PROJECT_TRUST_LABELS[config.defaultProjectTrust],
-				values: Object.values(DEFAULT_PROJECT_TRUST_LABELS),
 			},
 			{
 				id: "double-escape-action",

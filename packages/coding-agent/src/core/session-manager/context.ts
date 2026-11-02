@@ -9,7 +9,7 @@ import type {
 	SessionEntry,
 	SessionProjection,
 } from "./types.ts";
-import { getSystemBaseDelta } from "./system-base.ts";
+import { getCompactionSystemFields, getSystemBaseDelta } from "./system-base.ts";
 
 export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
@@ -129,13 +129,16 @@ export function buildContextEntries(
 	}
 
 	const contextEntries: SessionEntry[] = [compaction];
+	// Kept system messages replay in place when the compaction's state stops at the boundary; an older entry's state
+	// already holds them.
+	const keepSystem = compaction.systemFold === "summarized";
 	let foundFirstKept = false;
 	for (let i = 0; i < compactionIdx; i++) {
 		const entry = path[i];
 		if (entry.id === compaction.firstKeptEntryId) {
 			foundFirstKept = true;
 		}
-		if (foundFirstKept && !(entry.type === "message" && entry.message.role === "system")) {
+		if (foundFirstKept && (keepSystem || !isSystemEntry(entry))) {
 			contextEntries.push(entry);
 		}
 	}
@@ -198,6 +201,37 @@ export function buildSessionProjection(
 		thinkingLevel,
 		model,
 	};
+}
+
+const isSystemEntry = (entry: SessionEntry) => entry.type === "message" && entry.message.role === "system";
+
+/**
+ * The prompt and tool state a compaction that keeps `firstKeptEntryId` stores: the state through the entries it
+ * summarizes, so the kept system messages replay once, in place, after the summary (`systemFold`). Falls back to the
+ * state through the whole branch, with the kept system messages left out, where that replay would differ from the
+ * current context: the boundary is not in the context (nothing is kept), an older compaction left kept system messages
+ * out, or no prompt precedes the boundary (the leading message must stay first).
+ */
+export function getCompactionBoundarySystem(
+	entries: SessionEntry[],
+	leafId: string | null | undefined,
+	byId: Map<string, SessionEntry> | undefined,
+	firstKeptEntryId: string,
+	timestamp: number,
+): Pick<CompactionEntry, "systemMessage" | "systemBase" | "systemFold"> {
+	const projection = buildSessionProjection(entries, leafId, byId);
+	const whole = () => getCompactionSystemFields(projection.messages, timestamp);
+	const kept = projection.entries.findIndex((entry) => entry.sourceEntry.id === firstKeptEntryId);
+	if (kept < 0) return whole();
+	const path = buildSessionPath(entries, leafId, byId);
+	const projected = new Set(projection.entries.slice(kept).map((entry) => entry.sourceEntry.id));
+	const replayed = path.slice(path.findIndex((entry) => entry.id === firstKeptEntryId)).filter(isSystemEntry);
+	if (replayed.some((entry) => !projected.has(entry.id))) return whole();
+	const fields = getCompactionSystemFields(
+		projection.entries.slice(0, kept).flatMap((entry) => entry.messages),
+		timestamp,
+	);
+	return fields.systemMessage ? { ...fields, systemFold: "summarized" } : whole();
 }
 
 /** Build the finalized model context from the canonical session projection. */

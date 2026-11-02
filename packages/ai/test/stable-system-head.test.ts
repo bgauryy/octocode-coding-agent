@@ -174,15 +174,19 @@ describe("stable prompt head without mid-conversation system messages", () => {
 		expect(String(updates[1].content)).toContain("docs and search connected");
 	});
 
-	it("keeps the Mistral head identical and holds updates that would follow a tool result", async () => {
+	// The Mistral adapter keeps a user message from following a tool result (compatibility policy, not a verified
+	// hosted rejection), so an update there is folded into the head (B431).
+	it("folds Mistral updates up to one that follows a tool result into the head and keeps the turns", async () => {
 		const run = (context: TranscriptContext) =>
 			capture((options) =>
 				streamMistral({ ...completionsModel, api: "mistral-conversations" } as never, context, options),
 			) as Promise<{ messages: { role: string; content: unknown }[] }>;
 		const [a, b] = [await run(before), await run(after)];
-		expect(b.messages).toEqual(a.messages);
+		expect(b.messages.slice(1)).toEqual(a.messages.slice(1));
 		expect(b.messages.map((message) => message.role)).toEqual(["system", "user", "assistant", "tool"]);
-		expect(JSON.stringify(b.messages[0].content)).not.toContain("docs connected");
+		expect(JSON.stringify(a.messages[0].content)).not.toContain("docs and search connected");
+		expect(JSON.stringify(b.messages[0].content)).toContain("docs and search connected");
+		expect(JSON.stringify(b.messages)).not.toContain("docs connected");
 	});
 });
 

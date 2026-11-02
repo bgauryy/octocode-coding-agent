@@ -61,9 +61,10 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 					for (const listener of identityListeners) listener(id);
 				},
 				cwd,
-				args: [...sessionArgs, ...mcp.args, ...(sessionPath ? ["--session", sessionPath] : [])],
+				args: [...sessionArgs, ...(sessionPath ? ["--session", sessionPath] : [])],
 				env: {
 					[ACP_WORKER_ENV]: "1",
+					...mcp.env,
 					...(envSessionDir && !cliSessionDir && absoluteSessionDir
 						? { [host.sessionDirEnv]: absoluteSessionDir }
 						: {}),

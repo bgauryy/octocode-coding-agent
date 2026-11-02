@@ -20,7 +20,7 @@ Details: [session titles](../../../CONFIGURATIONS.md#where-each-configuration-be
 ## Add an MCP server for this project only
 
 1. `octocode mcp add --local docs -- npx -y some-mcp-server` (or `--url <url>` for a remote server) writes `.octocode/mcp.json`. `-l` is the short form of `--local`.
-2. In a running session, `/trust config` approves the new file (it needs `/trust project` first), then `/reload`.
+2. In a running session, run `/reload`; the folder is already trusted, so project hooks, MCP servers, agents and skills load.
 3. Check it: `/mcp list` in the session, or `octocode mcp list` in a shell, shows each server's connection state. `/mcp tools docs` lists its tools.
 
 Details: [MCP quick setup](mcp.md#quick-setup), [managing servers](../../../CONFIGURATIONS.md#manage-mcp-servers), [project trust](permissions.md#project-trust).
@@ -28,15 +28,17 @@ Details: [MCP quick setup](mcp.md#quick-setup), [managing servers](../../../CONF
 ## Make subagents use a cheaper model
 
 - For one call, the `agent` tool's `model` field takes `small`, `medium`, `provider/id` or a bare id, optionally with a `:thinking` suffix (`small:high`). Ask the agent to "run this with a `small` model".
-- For a role, set `model: small` in its profile front matter, for example in `.octocode/agents/<name>.md`. The bundled `researcher`, `browser` and `lean` roles already use `small`.
-- `/modelsettings` shows which model `small` and `medium` resolve to and how each profile routes.
+- For a role, set `model: small` in its profile front matter, for example in `.octocode/agents/<name>.md`. The bundled `researcher`, `browser` and `lean` roles already use `small:low`.
+- For every child whose call and profile name no thinking level, export `OCTOCODE_SUBAGENT_THINKING=low`; otherwise such a child runs at `medium`. Your `defaultThinkingLevel` setting applies only to the main session.
+- `/modelsettings` shows which model `small` and `medium` resolve to, that default thinking level, and how each profile routes. Each start result and report names the route a child ran on.
+- To escalate a cheap child, continue it with `resume` and a stronger `model`; its conversation is kept.
 
 Details: [the subagent model](native-features.md#the-subagent-model), [profile front matter](native-features.md#profile-front-matter).
 
 ## Give the agent a durable rule for this repository
 
-- `/memory add <title>` opens an editor for a project memory; or tell the agent "remember that …" and it saves one with the `memory` tool. Add `keywords` you would type when the rule matters. Pin it (`/memory`, pick it, **Pin**) to inject it before every prompt.
-- It may not appear later when injection is off (`/memory auto`), the project is not trusted (`/trust project`), the prompt shares too few words with it, or it was already injected on this branch. `/memory last` shows what the latest injection contained.
+- `/memory add <title>` opens an editor for a workspace memory; or tell the agent "remember that …" and it saves one with `archive` (`op: set`, `source: memories`). Add `keywords` you would type when the rule matters. Pin it (`/memory`, pick it, **Pin**) to inject it before every prompt.
+- It may not appear later when injection is off (`/memory auto`), the prompt shares too few words with it, or it was already injected on this branch. `/memory last` shows what the latest injection contained.
 
 Details and the full checklist: [memory](memory.md#memory).
 
@@ -60,7 +62,7 @@ Details: [compaction and recovery](native-features.md#compaction-and-recovery), 
 
 - The default mode is `full`. Start stricter with `OCTOCODE_PERMISSION=manual` (asks before every action class) or `workspace` (asks only for changes outside the workspace and destructive, private-network or upload actions), or switch in a session with `/permissions manual|workspace|full`.
 - `/permissions grants` lists what you allowed for the session; `/permissions grants clear` removes it.
-- `/trust project` lets Octocode load the project's resources; `/trust config` approves the exact hook, MCP, agent and skill files. This is not an operating-system sandbox.
+- Octocode asks once per folder before it opens a session there; `/trust` lists and changes those decisions. Permissions apply after trust. This is not an operating-system sandbox.
 
 Details: [modes](permissions.md#modes), [project trust](permissions.md#project-trust).
 
@@ -75,7 +77,7 @@ Details: [backlog view](web-workspace.md#backlog-view), [web controls for epics,
 ## Load a skill, and write your own
 
 - `/skills` lists discovered skills; `/skills info <name>` shows where one came from; `/skills enable|disable <name>` switches it. Run a skill yourself by typing its command, `/<name>` (`/skill:<name>` when names collide). The agent loads one itself when its description fits the task.
-- To write one, create `<name>/SKILL.md` with `name` and `description` front matter, then the instructions. Put it in `.octocode/skills/` (trusted project) or `~/.octocode/octocodecode/skills/` (all projects), then run `/reload`.
+- To write one, create `<name>/SKILL.md` with `name` and `description` front matter, then the instructions. Put it in `.octocode/skills/` (the project) or `~/.octocode/octocodecode/skills/` (all projects), then run `/reload`.
 - Say in the description what the skill does and when to use it.
 
 Details: [create a skill](skills.md#create-a-skill), [find and control skills](skills.md#find-and-control-skills), [skill locations](../../../CONFIGURATIONS.md#skills-and-prompts).

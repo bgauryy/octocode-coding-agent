@@ -9,14 +9,14 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { nativeCall } from "./e2e-calls.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, trustFolder } from "./helpers.ts";
 
 /**
  * Permission modes through the real Octocode runtime with a scripted model, bound without a UI as a headless run is (print
@@ -89,7 +89,7 @@ async function headless(env: Record<string, string>) {
 	);
 	// The user trusted this project with Octocode's /trust (`full` needs a saved decision).
 	fs.mkdirSync(path.join(root, "agent"), { recursive: true });
-	fs.writeFileSync(path.join(root, "agent", "trust.json"), JSON.stringify({ [fs.realpathSync(root)]: true }));
+	trustFolder(cwd);
 
 	const faux = createFauxCore({
 		provider: "faux",
@@ -119,7 +119,7 @@ async function headless(env: Record<string, string>) {
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		resourceLoader,
@@ -176,7 +176,7 @@ describe("permission modes in a headless run", () => {
 		for (const result of after) {
 			expect(result.isError).toBe(true);
 			expect(result.text.startsWith(NEEDS_APPROVAL)).toBe(true);
-			expect(result.text).toContain("report it to your parent as SBAR");
+			expect(result.text).toContain("report to your parent what is blocked, why, and what you need");
 		}
 		expect(fs.existsSync(path.join(cwd, "new.txt"))).toBe(false);
 		expect(fs.existsSync(path.join(cwd, "ran.txt"))).toBe(false);

@@ -6,22 +6,28 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall, type JsonObject } f
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, trustFolder } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
 const echoServer = path.resolve(import.meta.dirname, "fixtures/echo-mcp.mjs");
 
 /** A parent session, a fixture provider serving the child, and a parent model that scripts the tool calls. */
-async function fixture(registered = false) {
+async function fixture(registered = false, configured = false) {
 	const root = tmp("child-mcp-inheritance-");
 	const cwd = path.join(root, "project");
 	const home = path.join(root, "home");
 	const agentDir = path.join(root, "agent");
 	for (const dir of [cwd, home, agentDir]) fs.mkdirSync(dir);
+	// A server from `mcp.json`, which every session (a child's too) loads for itself.
+	if (configured)
+		fs.writeFileSync(
+			path.join(agentDir, "mcp.json"),
+			JSON.stringify({ mcpServers: { cfgecho: { command: process.execPath, args: [echoServer] } } }),
+		);
 	const requests: JsonObject[] = [];
 	const server = createServer(async (req, res) => {
 		const chunks: Buffer[] = [];
@@ -76,6 +82,7 @@ async function fixture(registered = false) {
 		OCTOCODE_SUBAGENT_LINGER_SECONDS: "0",
 	}))
 		vi.stubEnv(key, value);
+	trustFolder(cwd);
 	const faux = createFauxCore({
 		provider: "faux-parent",
 		models: [{ id: "parent", contextWindow: 200000, maxTokens: 4096 }],
@@ -85,7 +92,7 @@ async function fixture(registered = false) {
 		cwd,
 		agentDir,
 		settingsManager,
-		noExtensions: true,
+		disabledFeatures: ["mcp", "llama.cpp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -108,7 +115,7 @@ async function fixture(registered = false) {
 		],
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({
+	const { session } = await createTestSession({
 		cwd,
 		agentDir,
 		settingsManager,
@@ -220,6 +227,41 @@ it("gives a child nothing when no server was added", async () => {
 		await f.session.prompt("Delegate.");
 		expect(f.requests).toHaveLength(1);
 		expect(declaredTools(f.requests[0]).some((name) => name.startsWith("mcp__echo__"))).toBe(false);
+	} finally {
+		await f.close();
+	}
+}, 60000);
+
+it("starts a configured server in a child while the parent still runs it", async () => {
+	const f = await fixture(false, true);
+	try {
+		f.delegate();
+		await f.session.prompt("Delegate.");
+		expect(f.requests).toHaveLength(1);
+		expect(declaredTools(f.requests[0])).toContain("mcp__cfgecho__shout");
+	} finally {
+		await f.close();
+	}
+}, 60000);
+
+it("leaves out a configured server the parent stopped for this session, and keeps mcp.json unchanged", async () => {
+	const f = await fixture(false, true);
+	try {
+		const config = path.join(f.root, "agent", "mcp.json");
+		const before = fs.readFileSync(config, "utf8");
+		f.faux.setResponses([
+			fauxAssistantMessage([fauxToolCall("mcp", { intent: "stop", server: "cfgecho" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage("STOPPED"),
+		]);
+		await f.session.prompt("Stop the configured server.");
+		const stopped = f.session.messages.findLast((m) => m.role === "toolResult");
+		expect(stopped?.isError, JSON.stringify(stopped)).not.toBe(true);
+
+		f.delegate();
+		await f.session.prompt("Delegate.");
+		expect(f.requests).toHaveLength(1);
+		expect(declaredTools(f.requests[0]).some((name) => name.startsWith("mcp__cfgecho__"))).toBe(false);
+		expect(fs.readFileSync(config, "utf8")).toBe(before);
 	} finally {
 		await f.close();
 	}

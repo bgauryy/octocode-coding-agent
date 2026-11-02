@@ -181,13 +181,14 @@ describe("editor rules", () => {
 		expect(mutation).not.toHaveProperty("body");
 	});
 
-	it("restores a draft saved before the rename: reason becomes why and changed details join the note", () => {
+	it("restores a draft saved before the details field was dropped: changed details join the note", () => {
 		const item = snapshotItem("B1", { state: "todo", why: "stored", body: "Stored details" });
-		const old = JSON.stringify({ title: "t", reason: "typed why", body: "Typed details", note: "n" });
+		const old = JSON.stringify({ title: "t", why: "typed why", body: "Typed details", note: "n" });
 		expect(restoreDraft(old, item)).toMatchObject({ title: "t", why: "typed why", note: "n\n\nTyped details" });
-		const unchanged = JSON.stringify({ reason: "r", body: "Stored details" });
+		const unchanged = JSON.stringify({ why: "r", body: "Stored details" });
 		expect(restoreDraft(unchanged, item)).toMatchObject({ why: "r", note: "" });
-		expect(restoreDraft(JSON.stringify({ why: "current", reason: "stale" }), item).why).toBe("current");
+		// `reason` was the former name of `why`; it is no longer read.
+		expect(restoreDraft(JSON.stringify({ reason: "old" }), item).why).toBe("stored");
 		expect(restoreDraft(JSON.stringify({}), item)).not.toHaveProperty("body");
 	});
 

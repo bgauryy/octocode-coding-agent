@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
-import { resolveExtensionFactories } from "../../src/core/resource-loader/builtins.ts";
+import { BUILTIN_FEATURES } from "../../src/core/resource-loader/builtins.ts";
 import octocode from "../../src/octocode/index.ts";
 import { getNativeToolNames, takesCallReason } from "../../src/octocode/permission/native-tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -80,13 +80,13 @@ describe("the required reason on every core tool", () => {
 
 	it("is required by the built-in MCP extension's `mcp` tool", () => {
 		const fake = fakeHost();
-		const mcp = resolveExtensionFactories().builtinExtensions.get("mcp");
+		const mcp = BUILTIN_FEATURES.find((feature) => feature.id === "mcp");
 		// The fake host lacks the MCP extension's other host methods (renderers, commands, servers); they do nothing here.
 		const api = new Proxy(fake.api, {
 			get: (target, property, receiver) =>
 				property in target ? Reflect.get(target, property, receiver) : () => undefined,
 		});
-		mcp?.factory(api);
+		mcp?.register(api);
 		const tool = (fake.api.getAllTools() as Array<{ name: string; parameters: unknown }>).find(
 			({ name }) => name === MCP_MANAGE_TOOL_NAME,
 		);

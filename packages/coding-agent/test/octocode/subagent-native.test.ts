@@ -3,9 +3,9 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
@@ -36,14 +36,14 @@ describe("native Octocode subagent completion", () => {
 			agentDir,
 			settingsManager,
 			extensionFactories: [{ name: "faux", factory: provider }],
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
 		});
 		await resourceLoader.reload();
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd,
 			agentDir,
 			resourceLoader,

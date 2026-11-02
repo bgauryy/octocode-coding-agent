@@ -4,7 +4,7 @@ import { firstLine } from "../../common/src/clip.ts";
 import type { McpCommandContext } from "./host/types.ts";
 import { say } from "./notice.ts";
 import type { McpExposure } from "./config.ts";
-import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
+import { reconnect, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
 import { formatMcpConfigLocations, formatMcpTool } from "./inspection.ts";
 import { manage, signInWithUi, toolCatalog } from "./manager.ts";
@@ -14,6 +14,7 @@ import { describeState, isEnabled, type McpServer } from "./server.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import { getMcpSessionStatus } from "./status.ts";
+import { switchMcpServer } from "./switch.ts";
 import { showMcpManager } from "./ui.ts";
 
 /** `/mcp assign` values: every agent's default selection (`defaultActive: true`), or only agents that name the server. */
@@ -199,6 +200,11 @@ async function configureCommand(
 		say(ctx, MCP_USAGE, "warning");
 		return;
 	}
+	if (action === "enable" || action === "disable") {
+		const result = await switchMcpServer(state, { name, enabled: action === "enable", inProject });
+		say(ctx, result.message, result.ok ? "info" : state.findServer(name) ? "error" : "warning");
+		return;
+	}
 	const server = state.findServer(name);
 	if (!server) {
 		say(ctx, `No MCP server named "${name}".`, "warning");
@@ -207,9 +213,7 @@ async function configureCommand(
 	const failure =
 		action === "exposure"
 			? setExposure(state, server, mode as McpExposure, inProject)
-			: action === "assign"
-				? saveConfig(state, server, { defaultActive: mode === "all" }, inProject)
-				: await state.track(setEnabled(state, server, action === "enable", inProject));
+			: saveConfig(state, server, { defaultActive: mode === "all" }, inProject);
 	// Where the change was written: the override file, the definition file, or nowhere for a session-only server.
 	const saved = server.entry.scope === "extension" ? "this session" : (server.entry.override ?? server.entry.source);
 	if (failure) say(ctx, failure, "error");

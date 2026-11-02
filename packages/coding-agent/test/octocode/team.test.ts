@@ -427,13 +427,18 @@ describe("Team", () => {
 		vi.useFakeTimers();
 		const cwd = repo();
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
-		const ctx = { cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => false } as never;
+		const ctx = {
+			cwd,
+			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+			isIdle: () => false,
+		} as never;
 		const inbox = () => [] as Array<{ message: { content: string; details?: unknown }; options: unknown }>;
 		const [mainLog, childLog] = [inbox(), inbox()];
 		const fakeHost = (log: ReturnType<typeof inbox>) =>
 			({
 				sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }),
 				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
 			}) as never;
 		try {
 			const main = new Team(fakeHost(mainLog), env);
@@ -499,7 +504,8 @@ describe("Team", () => {
 			expect(main.reservation(path.join(cwd, "src", "a.ts"), "src/a.ts")).toBeUndefined();
 			expect(child.lock(["src/a.ts"], "also")).toMatchObject({ ok: false });
 			expect(mutatedPaths("file", { queries: [{ path: "src/a.ts", type: "edit" }] })).toEqual(["src/a.ts"]);
-			expect(mutatedPaths("write", { path: "x" })).toEqual(["x"]);
+			// Only `file` changes files: the legacy `write` and `edit` tools no longer exist.
+			expect(mutatedPaths("write", { path: "x" })).toEqual([]);
 			expect(mutatedPaths("read", { path: "x" })).toEqual([]);
 			// The file tool applies this per query, so a held path fails only its own change.
 			const guard = new FileGuard();
@@ -573,10 +579,17 @@ describe("team database schema", () => {
 		const { Team } = await Promise.resolve(importedModule2);
 		const file = path.join(tmp(), "other.sqlite");
 		exec(file, "CREATE TABLE notes (id INTEGER);");
-		const team = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-			OCTOCODE_AGENT_DB: file,
-		});
-		team.start({ cwd: repo(), sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never);
+		const team = new Team(
+			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			{
+				OCTOCODE_AGENT_DB: file,
+			},
+		);
+		team.start({
+			cwd: repo(),
+			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+			isIdle: () => true,
+		} as never);
 		expect(() => team.join()).toThrow(/not an Octocode agent database/);
 		expect(team.snapshot()).toMatchObject({ members: [], error: expect.stringMatching(/Team database unavailable/) });
 		expect(team.problem).toMatch(/not an Octocode agent database/);
@@ -598,7 +611,11 @@ describe("Team safety", () => {
 		const cwd = repo();
 		const file = path.join(tmp(), "team.sqlite");
 		const env = { OCTOCODE_AGENT_DB: file };
-		const ctx = { cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never;
+		const ctx = {
+			cwd,
+			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+			isIdle: () => true,
+		} as never;
 		const log: Array<{ message: { content: string }; options: unknown }> = [];
 		let failing = false;
 		const api = {
@@ -607,6 +624,7 @@ describe("Team safety", () => {
 				log.push({ message, options });
 			},
 			appendEntry: () => undefined,
+			getThinkingLevel: () => "off",
 		} as never;
 		const main = new Team(api, env);
 		main.start(ctx);
@@ -633,11 +651,14 @@ describe("Team safety", () => {
 		vi.stubEnv("OCTOCODE_HOME", tmp());
 		try {
 			const { Team, cwd, file, env, ctx, main, me } = await setup();
-			const child = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-				...env,
-				OCTOCODE_AGENT_ID: "researcher-1234",
-				OCTOCODE_PARENT_ID: me.id,
-			});
+			const child = new Team(
+				{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+				{
+					...env,
+					OCTOCODE_AGENT_ID: "researcher-1234",
+					OCTOCODE_PARENT_ID: me.id,
+				},
+			);
 			child.start(ctx);
 			const text = `${"a".repeat(MESSAGE_MAX_CHARS)}${"b".repeat(1_500)}\u001b]0;pwned\u0007\u202e${"c".repeat(100)}`;
 			const clean = visibleControls(text);
@@ -676,16 +697,19 @@ describe("Team safety", () => {
 	it("treats a subagent as headless whether or not Octocode reports a UI (RPC does): it leaves the team once its run settles", async () => {
 		const { Team, cwd, env, main, me } = await setup();
 		const started = (id: string, extra: Record<string, string>) => {
-			const team = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-				...env,
-				OCTOCODE_AGENT_ID: id,
-				OCTOCODE_PARENT_ID: me.id,
-				...extra,
-			});
+			const team = new Team(
+				{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+				{
+					...env,
+					OCTOCODE_AGENT_ID: id,
+					OCTOCODE_PARENT_ID: me.id,
+					...extra,
+				},
+			);
 			team.start({
 				cwd,
 				hasUI: true,
-				sessionManager: { getSessionId: () => "sess-team" },
+				sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
 				isIdle: () => true,
 			} as never);
 			return team;
@@ -707,10 +731,17 @@ describe("Team safety", () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		const { Team } = await Promise.resolve(importedModule2);
 		const cwd = repo();
-		const lonely = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-			OCTOCODE_AGENT_DB: path.join(tmp(), "none.sqlite"),
-		});
-		lonely.start({ cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never);
+		const lonely = new Team(
+			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			{
+				OCTOCODE_AGENT_DB: path.join(tmp(), "none.sqlite"),
+			},
+		);
+		lonely.start({
+			cwd,
+			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+			isIdle: () => true,
+		} as never);
 		expect(lonely.reservation(path.join(cwd, "a.ts"), "a.ts")).toBeUndefined();
 		const { main } = await setup();
 		const spy = vi.spyOn(TeamStore.prototype, "conflict").mockImplementation(() => {
@@ -794,10 +825,17 @@ describe("Team safety", () => {
 		const raw = new DatabaseSync(foreign);
 		raw.exec("CREATE TABLE notes (id INTEGER);");
 		raw.close();
-		const solo = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-			OCTOCODE_AGENT_DB: foreign,
-		});
-		solo.start({ cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never);
+		const solo = new Team(
+			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			{
+				OCTOCODE_AGENT_DB: foreign,
+			},
+		);
+		solo.start({
+			cwd,
+			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+			isIdle: () => true,
+		} as never);
 		expect(solo.reservation(target, "a.ts")).toBeUndefined();
 		await edit(solo, "one", "two");
 		expect(fs.readFileSync(target, "utf8")).toBe("two");
@@ -805,8 +843,15 @@ describe("Team safety", () => {
 
 		// A healthy database: a solo session still sees a peer's lease, and a busy database does not block it.
 		const { main, env } = await setup();
-		const lone = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, env);
-		lone.start({ cwd, sessionManager: { getSessionId: () => "sess-team" }, isIdle: () => true } as never);
+		const lone = new Team(
+			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			env,
+		);
+		lone.start({
+			cwd,
+			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
+			isIdle: () => true,
+		} as never);
 		try {
 			const peer = TeamStore.open(cwd, env.OCTOCODE_AGENT_DB);
 			peer.save(member("peer-0002"));
@@ -872,10 +917,13 @@ describe("Team safety", () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		vi.useFakeTimers();
 		const { Team, cwd, file, env, ctx, log, main, me } = await setup();
-		const peer = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-			...env,
-			OCTOCODE_AGENT_ID: "peer-0001",
-		});
+		const peer = new Team(
+			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			{
+				...env,
+				OCTOCODE_AGENT_ID: "peer-0001",
+			},
+		);
 		try {
 			peer.start(ctx);
 			const target = path.join(cwd, "src", "a.ts");
@@ -955,10 +1003,13 @@ describe("Team safety", () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		vi.useFakeTimers();
 		const { Team, env, ctx, log, main, fail } = await setup();
-		const child = new Team({ sendMessage: () => undefined, appendEntry: () => undefined } as never, {
-			...env,
-			OCTOCODE_AGENT_ID: "researcher-1234",
-		});
+		const child = new Team(
+			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			{
+				...env,
+				OCTOCODE_AGENT_ID: "researcher-1234",
+			},
+		);
 		try {
 			child.start(ctx);
 			fail(true);

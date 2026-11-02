@@ -66,10 +66,13 @@ function createFixture(t, { importUndeclared = false } = {}) {
 		},
 		{
 			"dist/index.js": `${importUndeclared ? 'import "@octocodeai/undeclared";' : ""}
-export function createAgentSession() {}
-export class SessionManager { static inMemory() {} }
-export class ModelRuntime { static create() {} }
+export class RpcClient {}
+export function runRpcMode() {}
+export function runPrintMode() {}
+export function main() {}
 `,
+			"dist/core/session-manager.js": "export class SessionManager { static inMemory() {} }\n",
+			"dist/core/model-runtime.js": "export class ModelRuntime { static create() {} }\n",
 			"dist/index.d.ts": "export {};\n",
 			"dist/acp/server/acp-mode.js": "export function runAcpMode() {}\n",
 			"dist/acp/client/client.js": "export class AcpBackend { static connect() {} }\n",
@@ -113,8 +116,8 @@ test("rejects a missing MCP executable", (t) => {
 	assert.throws(() => smokeTestCodingAgent(directory), /MCP executable exists/);
 });
 
-// #9132: smoke-test the public SDK, not just a bundled CLI that hides missing imports.
-test("fails when the SDK imports an undeclared package despite a working CLI", (t) => {
+// #9132: smoke-test the package root (CLI and RPC exports), not just a bundled CLI that hides missing imports.
+test("fails when the package root imports an undeclared package despite a working CLI", (t) => {
 	const directory = createFixture(t, { importUndeclared: true });
 	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@octocodeai\/undeclared'/);
 });
@@ -143,7 +146,7 @@ test("rejects a broken API executable despite a working agent CLI", (t) => {
 	assert.throws(() => smokeTestCodingAgent(directory), /Command failed/);
 });
 
-test("rejects a missing public MCP export despite a working agent SDK", (t) => {
+test("rejects a missing public MCP export despite a working package root", (t) => {
 	const directory = createFixture(t);
 	rmSync(join(directory, "node_modules", codingAgentName, "dist/mcp/client/index.js"));
 	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find module/);

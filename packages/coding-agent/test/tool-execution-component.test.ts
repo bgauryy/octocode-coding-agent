@@ -11,7 +11,7 @@ import {
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
-import type { ToolDefinition } from "../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../src/core/features/types.ts";
 import { type BashOperations, createBashTool, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";

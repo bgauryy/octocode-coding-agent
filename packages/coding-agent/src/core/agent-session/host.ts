@@ -7,7 +7,7 @@
 import type { Agent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { CompactionResult } from "../compaction/index.ts";
-import type { ContextUsage, ExtensionRunner, ToolInfo } from "../extensions/index.ts";
+import type { ContextUsage, ExtensionRunner, ToolInfo } from "../features/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";

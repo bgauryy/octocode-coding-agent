@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
 import type { DeadLetter, MailDetails, Message } from "./model.ts";
 import { userProofValid } from "./proof.ts";

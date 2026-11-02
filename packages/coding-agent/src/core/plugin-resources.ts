@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverPluginComponents } from "./plugin-components.ts";
+import { type PluginAgent, pluginAgents } from "./plugin-agents.ts";
 import {
 	isPluginIdentifier,
 	resolveConfiguredPlugin,
@@ -132,6 +133,35 @@ export function loadConfiguredPluginSkills(entries: Settings["plugins"]): LoadSk
 		} catch (cause) {
 			error(String(cause));
 		}
+	}
+	return result;
+}
+
+/** A plugin agent with the plugin that ships it. */
+export interface ConfiguredPluginAgent extends PluginAgent {
+	plugin: string;
+	root: string;
+}
+
+/**
+ * The Claude plugin agents of the enabled `entries`, named `<plugin>:<agent>`. Only names and files: the subagent profile
+ * loader reads and translates them (`octocode/subagents/profiles.ts`), and reports what it does not support.
+ */
+export function loadConfiguredPluginAgents(entries: Settings["plugins"]): {
+	agents: ConfiguredPluginAgent[];
+	diagnostics: ResourceDiagnostic[];
+} {
+	const result: { agents: ConfiguredPluginAgent[]; diagnostics: ResourceDiagnostic[] } = {
+		agents: [],
+		diagnostics: [],
+	};
+	// Other loaders report a plugin's manifest and non-agent component errors; this one keeps its own.
+	for (const { manifest, components } of configuredComponents(entries, [])) {
+		const error = (message: string) => result.diagnostics.push({ type: "error", path: manifest.root, message });
+		for (const message of components.errors) if (message.startsWith(`${manifest.name}: agents`)) error(message);
+		const loaded = pluginAgents(manifest, components.agents);
+		for (const message of loaded.errors) error(message);
+		for (const agent of loaded.agents) result.agents.push({ ...agent, plugin: manifest.name, root: manifest.root });
 	}
 	return result;
 }

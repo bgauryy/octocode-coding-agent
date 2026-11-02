@@ -126,16 +126,18 @@ describe("compact schema fidelity", () => {
 		{ type: "array", prefixItems: [{ type: "string" }], items: { type: "number" } },
 		{ type: "array", items: [{ type: "string" }], additionalItems: false },
 		{ anyOf: [{ type: "string" }, {}] },
-	])("keeps the JSON declaration when a shape cannot be expressed: %j", (arg) => {
+	])("describes the tool in plain form when a shape cannot be expressed: %j", (arg) => {
 		const current = tool(arg);
 		const input = { server: "s", tools: [current] };
 		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
 		presentation.sync("s", "s", undefined, [current]);
-		presentation.describe("s", ["a"], undefined, true);
+		const { file, contract } = presentation.describe("s", ["a"], undefined, true);
 		expect(checkFidelity(input, renderServer(input)).ok).toBe(false);
-		expect(presentation.isThin("s", current)).toBe(false);
+		expect(file).toBeUndefined();
+		expect(contract).toContain(`Input schema (JSON Schema): ${JSON.stringify(current.inputSchema)}`);
+		expect(presentation.isThin("s", current)).toBe(true);
 	});
-	it("keeps JSON for a local reference with shape-changing siblings", () => {
+	it("does not call a tool thin before the prompt describes it, even when its shape cannot be expressed", () => {
 		const current = {
 			name: "a",
 			inputSchema: {

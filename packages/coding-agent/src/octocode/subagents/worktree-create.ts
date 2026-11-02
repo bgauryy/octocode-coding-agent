@@ -3,6 +3,7 @@ import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { octocodeHome } from "../shared/home.ts";
 import { git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
+import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";
 import { ID_PATTERN, owner, repoRoot, type Worktree, worktreesDir } from "./worktree-base.ts";
 import { snapshotWorkingCopy } from "./worktree-snapshot.ts";
 
@@ -17,6 +18,7 @@ export async function createWorktree(
 	home = octocodeHome(),
 	workingCopy = false,
 	item?: string,
+	ask?: WorktreeTrustAsk,
 ): Promise<Worktree> {
 	if (!ID_PATTERN.test(agentId)) throw new Error(`Invalid agent id "${agentId}"`);
 	const repo = repoRoot(cwd);
@@ -25,6 +27,8 @@ export async function createWorktree(
 	const dirty = workingCopy ? "" : await git(repo, ["status", "--porcelain"]);
 	const dir = worktreesDir(repo, home);
 	const worktree = path.join(dir, agentId);
+	// Settled before anything is created, so a "No" leaves nothing behind.
+	const recordTrust = await approveWorktree({ path: worktree, from: repo }, "worktree", ask);
 	fs.mkdirSync(dir, { recursive: true });
 	// Never reuse a kept worktree's id: overwriting (then removing) its record would hide it from prune and reports.
 	if (fs.existsSync(worktree) || fs.existsSync(`${worktree}.json`))
@@ -48,6 +52,7 @@ export async function createWorktree(
 		fs.rmSync(`${worktree}.json`, { force: true });
 		throw error;
 	}
+	recordTrust();
 	// `worktree add` does not fetch submodules (that would reach the network from URLs the branch names), so they are empty.
 	const submodules = fs.existsSync(path.join(worktree, ".gitmodules"))
 		? "The repository has submodules; they are empty in the isolated worktree (not initialised), so the subagent cannot build or test them."

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
+import { revokeWorktreeGrant } from "../trust/grants.ts";
 import { REF_PREFIX, type Worktree, type WorktreeResult } from "./worktree-base.ts";
 import {
 	PLAIN_DIFF,
@@ -80,6 +81,7 @@ async function removeWorktree(worktree: Pick<Worktree, "repo" | "path">): Promis
 		await gitQuiet(worktree.repo, ["worktree", "prune"]);
 	}
 	fs.rmSync(`${worktree.path}.json`, { force: true });
+	revokeWorktreeGrant(worktree.path);
 }
 
 /** The lines appended to an isolated subagent's report. */

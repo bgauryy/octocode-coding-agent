@@ -6,7 +6,7 @@ import {
 	AgentSessionRuntime,
 	type AgentSessionServices,
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 } from "../../../src/core/agent-session-runtime.ts";
 import { createHarness } from "../harness.ts";
 
@@ -49,7 +49,7 @@ describe("regression #8724: in-memory fork during an active tool turn", () => {
 			diagnostics: [],
 		};
 		const createRuntime: CreateAgentSessionRuntimeFactory = async ({ sessionManager, sessionStartEvent }) => ({
-			...(await createAgentSessionFromServices({
+			...(await createSessionFromServices({
 				services,
 				sessionManager,
 				sessionStartEvent,

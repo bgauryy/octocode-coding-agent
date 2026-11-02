@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
 import { assignMcpToolNames } from "../tool-names.ts";
+import { structureApplicability } from "./applicability.ts";
+import { inlineTinyRefs } from "./inline-refs.ts";
 import { dedupeFieldDocs } from "./field-docs.ts";
 import { isHoistableUnion, oneLine } from "./schema-nodes.ts";
+import { hoistedBlock, indentBlock, INDENT, sharedBlock } from "./file.ts";
 import { schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides } from "./types.ts";
 
 /** Bump when the rendered text changes for the same catalog, so stored files regenerate. */
-export const COMPACT_GENERATOR_VERSION = 9;
+export const COMPACT_GENERATOR_VERSION = 12;
 
 /**
  * A field doc repeated by at least this many tools is written once, in the server's shared-fields block, when every
@@ -26,10 +29,6 @@ const HOISTED_TYPE_MIN_CHARS = 60;
 const HOISTED_REPEAT_MIN_CHARS = 200;
 /** A union of plain types (`string | Record<string, unknown>`) used this many times is named once. */
 const HOISTED_UNION_MIN_USES = 4;
-
-const INDENT = "\t";
-const SHARED_HEAD = `${INDENT}/** Fields documented once; the doc applies wherever the field appears:`;
-const HOISTED_HEAD = `${INDENT}// Types used more than once:`;
 
 interface RenderContext {
 	sharedDocs?: ReadonlyMap<string, string>;
@@ -161,12 +160,6 @@ export function instructionsHash(instructions: string | undefined): string {
 	return sha256(instructions ?? "");
 }
 
-const indentBlock = (text: string, indent: string) =>
-	text
-		.split("\n")
-		.map((line) => (line ? indent + line : line))
-		.join("\n");
-
 /** The `output.`-prefixed entries of a tool's field overrides, without the prefix. */
 function outputFieldDocs(fieldDocs: Record<string, string>): Record<string, string> | undefined {
 	const entries = Object.entries(fieldDocs)
@@ -183,7 +176,7 @@ function renderTool(
 ): string {
 	const scope = scopeOf(name.fn);
 	const fieldDocs = overrides?.fields?.[tool.name];
-	const input = schemaToTs(tool.inputSchema, { scope, fieldDocs, ...context });
+	const input = schemaToTs(structureApplicability(inlineTinyRefs(tool.inputSchema)), { scope, fieldDocs, ...context });
 	const outputDocs = fieldDocs && outputFieldDocs(fieldDocs);
 	const output: { type: string; aliases: string[] } =
 		tool.outputSchema === undefined
@@ -272,13 +265,6 @@ function findHoistedTypes(
 	return hoisted;
 }
 
-const hoistedBlock = (entries: Iterable<[string, string]>) =>
-	`${HOISTED_HEAD}\n${[...entries].map(([name, type]) => `${dedupeFieldDocs(indentBlock(`type ${name} = ${type};`, INDENT))}\n`).join("")}`;
-
-const sharedLine = (field: string, doc: string) => `${INDENT} * ${field}: ${doc}`;
-const sharedBlock = (entries: Iterable<[string, string]>) =>
-	`${SHARED_HEAD}\n${[...entries].map(([field, doc]) => sharedLine(field, doc)).join("\n")}\n${INDENT} */\n`;
-
 /**
  * The model-facing text for one server: a header naming how to call its tools, its instructions, docs shared by
  * several tools, and one typed function per tool inside `declare namespace`. Tools are sorted by name; overrides
@@ -292,7 +278,7 @@ export function renderServer(input: CompactServerInput, overrides?: DescriptionO
 	const explicit = [...names.values()].some((name) => name.explicit)
 		? ` A function after a "${CALL_AS.trim()} <name>" line is called by that name.`
 		: "";
-	let out = `// MCP server "${oneLine(input.server)}" · catalog ${catalogHash(input).slice(0, 12)} · call a tool as mcp__${input.server}__<function> with the input object. A field's doc is written at its first use in a function.${explicit}\n`;
+	let out = `// MCP server "${oneLine(input.server)}" · catalog ${catalogHash(input).slice(0, 12)} · call a tool as mcp__${input.server}__<function> with the input object.${explicit}\n`;
 	const instructions = oneLine(overrides?.server ?? input.instructions);
 	if (instructions) out += `/** ${instructions} */\n`;
 	out += `declare namespace ${namespaceName(input.server)} {\n`;
@@ -301,91 +287,4 @@ export function renderServer(input: CompactServerInput, overrides?: DescriptionO
 	for (const tool of tools)
 		out += dedupeFieldDocs(renderTool(tool, names.get(tool.name)!, overrides, { sharedDocs, hoisted }));
 	return `${out}}\n`;
-}
-
-interface ParsedFile {
-	lines: string[];
-	/** Index of the first line after the header (instructions, shared docs, shared types). */
-	bodyStart: number;
-	shared: Map<string, string>;
-	/** Server-level alias name → its line range. */
-	types: Map<string, [number, number]>;
-	blocks: Map<string, [number, number]>;
-}
-
-const isToolLevel = (line: string) => line.startsWith(INDENT) && !line.startsWith(INDENT + INDENT);
-
-function parse(text: string): ParsedFile {
-	const lines = text.split("\n");
-	const shared = new Map<string, string>();
-	const blocks = new Map<string, [number, number]>();
-	let index = lines.findIndex((line) => line.startsWith("declare namespace ")) + 1;
-	if (lines[index] === SHARED_HEAD) {
-		for (index++; index < lines.length && lines[index] !== `${INDENT} */`; index++) {
-			const match = /^\t \* ([^:]+): (.*)$/.exec(lines[index]);
-			if (match) shared.set(match[1], match[2]);
-		}
-		index++;
-	}
-	const types = new Map<string, [number, number]>();
-	if (lines[index] === HOISTED_HEAD) {
-		for (index++; index < lines.length; index++) {
-			const match = /^\ttype ([\w$]+) = /.exec(lines[index]);
-			if (!match) break;
-			let end = index;
-			while (end < lines.length && !(isToolLevel(lines[end]) && lines[end].endsWith(";"))) end++;
-			types.set(match[1], [index, end]);
-			index = end;
-		}
-	}
-	const bodyStart = index;
-	let start = -1;
-	for (; index < lines.length; index++) {
-		const line = lines[index];
-		if (start < 0 && isToolLevel(line)) start = index;
-		const match = /^\tfunction ([\w$]+)\(/.exec(line);
-		if (!match) continue;
-		let end = index;
-		while (end < lines.length && !(isToolLevel(lines[end]) && lines[end].endsWith(";"))) end++;
-		blocks.set(match[1], [start, end]);
-		start = -1;
-		index = end;
-	}
-	return { lines, bodyStart, shared, types, blocks };
-}
-
-const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * One tool's block (aliases, JSDoc, function) from a rendered file, with the shared docs of the fields it uses, for
- * showing the tool without the rest of the file (a refused call). `fn` is the tool's function name
- * (`functionNames`). Undefined when the file lacks it.
- */
-export function toolBlock(text: string, fn: string): string | undefined {
-	const file = parse(text);
-	const range = file.blocks.get(fn);
-	if (!range) return undefined;
-	const own = file.lines.slice(range[0], range[1] + 1).join("\n");
-	const typeLines = [...file.types]
-		.filter(([name]) => new RegExp(`\\b${escapeRegExp(name)}\\b`).test(own))
-		.flatMap(([, [start, end]]) => file.lines.slice(start, end + 1));
-	const body = typeLines.length ? `${HOISTED_HEAD}\n${typeLines.join("\n")}\n${own}` : own;
-	const used = [...file.shared].filter(([field]) =>
-		new RegExp(`(^|[\\s{;/])"?${escapeRegExp(field)}"?\\??:`, "m").test(body),
-	);
-	return used.length ? `${sharedBlock(used)}${body}` : body;
-}
-
-/**
- * The rendered file restricted to the named functions (`functionNames`), e.g. direct tools; the header, instructions,
- * shared docs and types are kept.
- */
-export function selectTools(text: string, fns: readonly string[]): string {
-	const file = parse(text);
-	const keep = new Set(fns);
-	const head = file.lines.slice(0, file.bodyStart);
-	const body = [...file.blocks]
-		.filter(([name]) => keep.has(name))
-		.flatMap(([, [start, end]]) => file.lines.slice(start, end + 1));
-	return [...head, ...body, "}", ""].join("\n");
 }

@@ -1,5 +1,5 @@
 import type { BacklogAudit, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { navigate } from "../hooks.ts";
 import { stamp } from "../model/format.ts";
@@ -40,12 +40,41 @@ export function ItemActivity({ item }: { item: SnapshotItem }) {
 			) : (
 				<p className="muted">Agent controls connect when this board is opened inside a running Octocode session.</p>
 			)}
-			<details className="disclosure">
-				<summary>Audit history ({item.audits?.length ?? 0} recent events)</summary>
-				<AuditRows events={item.audits ?? []} />
-				<a href={hashFor("audit", { backlogId: item.ref })}>Full item audit</a>
-			</details>
+			<ItemAudit key={item.ref} backlogId={item.ref} />
 		</>
+	);
+}
+
+/** The item's recent changes, loaded when the panel opens: the board snapshot carries no audit rows. */
+function ItemAudit({ backlogId }: { backlogId: string }) {
+	const { api } = useLive();
+	const [open, setOpen] = useState(false);
+	const [state, setState] = useState<{ events?: BacklogAudit[]; error?: string }>({});
+	useEffect(() => {
+		if (!open) return;
+		const controller = new AbortController();
+		api.audit({ backlogId }, controller.signal).then(
+			(result) => !controller.signal.aborted && setState({ events: result.events }),
+			(error: unknown) => !controller.signal.aborted && setState({ error: errorMessage(error) }),
+		);
+		return () => controller.abort();
+	}, [api, backlogId, open]);
+	return (
+		<details
+			className="disclosure"
+			onToggle={(event) => {
+				const opened = event.currentTarget.open;
+				// Each opening reads the history afresh; a repeated event for the same state changes nothing.
+				if (opened && !open) setState({});
+				setOpen(opened);
+			}}
+		>
+			<summary>Audit history{state.events ? ` (${state.events.length} recent events)` : ""}</summary>
+			{open && !state.events && !state.error ? <p className="muted">Loading…</p> : null}
+			{state.error ? <StatusLine>{state.error}</StatusLine> : null}
+			{state.events ? <AuditRows events={state.events} /> : null}
+			<a href={hashFor("audit", { backlogId })}>Full item audit</a>
+		</details>
 	);
 }
 

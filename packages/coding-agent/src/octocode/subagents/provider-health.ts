@@ -4,7 +4,7 @@ import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discove
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import type { ModelRef } from "./model.ts";
+import { currentPrice, type ModelRef } from "./model.ts";
 
 /**
  * A provider refused the credential itself: 401/403, an invalid or expired key, or no credit. Narrower than the
@@ -103,8 +103,10 @@ export function checkCandidates(
 	parent: ModelRef | undefined,
 	limit = CHECK_CANDIDATES,
 ): Model<Api>[][] {
-	const price = (model: Model<Api>) =>
-		model.cost && model.cost.input + model.cost.output > 0 ? 3 * model.cost.input + model.cost.output : Infinity;
+	const price = (model: Model<Api>) => {
+		const rates = currentPrice(model.cost);
+		return rates && rates.input + rates.output > 0 ? 3 * rates.input + rates.output : Infinity;
+	};
 	const rank = (model: Model<Api>) =>
 		parent?.provider === model.provider && parent.id === model.id ? -1 : price(model);
 	const byProvider = new Map<string, Model<Api>[]>();

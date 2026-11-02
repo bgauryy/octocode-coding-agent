@@ -2,7 +2,7 @@ import { Check } from "typebox/value";
 import { SettingsSchema } from "./settings-schema.ts";
 import type { Settings } from "./settings-manager.ts";
 
-/** Settings files are untrusted JSON; validate each plugin before discovery. */
+/** Settings files are untrusted JSON; validate each plugin before discovery. Keys the schema does not name are ignored. */
 export function configuredPlugins(value: unknown, report: (message: string) => void): NonNullable<Settings["plugins"]> {
 	if (value === undefined) return [];
 	if (!Array.isArray(value)) {

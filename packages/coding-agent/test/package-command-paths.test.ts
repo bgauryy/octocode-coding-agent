@@ -17,7 +17,7 @@ import { ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultPackageManager, type ResolvedPaths } from "../src/core/package-manager.ts";
 import { InMemorySettingsStorage, SettingsManager } from "../src/core/settings-manager.ts";
-import { ProjectTrustStore } from "../src/core/trust-manager.ts";
+import { trustFolder } from "./octocode/helpers.ts";
 import { main } from "../src/main.ts";
 import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -238,7 +238,7 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 	it("uses remembered project trust for list", async () => {
 		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
 		writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ packages: ["npm:@project/pkg"] }));
-		new ProjectTrustStore(agentDir).set(projectDir, true);
+		trustFolder(projectDir);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		try {
@@ -254,31 +254,13 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 		}
 	});
 
-	it("overrides remembered trust for list with --no-approve", async () => {
-		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
-		writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ packages: ["npm:@project/pkg"] }));
-		new ProjectTrustStore(agentDir).set(projectDir, true);
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		try {
-			await expect(main(["list", "--no-approve"])).resolves.toBeUndefined();
-
-			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
-			expect(stdout).toContain("No packages installed.");
-			expect(stdout).not.toContain("Project packages:");
-			expect(process.exitCode).toBeUndefined();
-		} finally {
-			logSpy.mockRestore();
-		}
-	});
-
-	it("approves project trust for list with --approve", async () => {
+	it("records project trust for list with --trust", async () => {
 		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
 		writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ packages: ["npm:@project/pkg"] }));
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		try {
-			await expect(main(["list", "--approve"])).resolves.toBeUndefined();
+			await expect(main(["list", "--trust"])).resolves.toBeUndefined();
 
 			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stdout).toContain("Project packages:");
@@ -290,54 +272,8 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 		}
 	});
 
-	it("uses default project trust for list", async () => {
+	it("does not prompt or ask extensions for project trust during update, so an untrusted folder's packages stay untouched", async () => {
 		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
-		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProjectTrust: "always" }));
-		writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ packages: ["npm:@project/pkg"] }));
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		try {
-			await expect(main(["list"])).resolves.toBeUndefined();
-
-			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
-			expect(stdout).toContain("Project packages:");
-			expect(stdout).toContain("npm:@project/pkg");
-			expect(stdout).not.toContain("No packages installed.");
-			expect(process.exitCode).toBeUndefined();
-		} finally {
-			logSpy.mockRestore();
-		}
-	});
-
-	it("uses project_trust extensions for package commands", async () => {
-		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
-		writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ packages: ["npm:@project/pkg"] }));
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		try {
-			await expect(
-				main(["list"], {
-					extensionFactories: [
-						(octocode) => {
-							octocode.on("project_trust", () => ({ trusted: "yes" }));
-						},
-					],
-				}),
-			).resolves.toBeUndefined();
-
-			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
-			expect(stdout).toContain("Project packages:");
-			expect(stdout).toContain("npm:@project/pkg");
-			expect(stdout).not.toContain("No packages installed.");
-			expect(process.exitCode).toBeUndefined();
-		} finally {
-			logSpy.mockRestore();
-		}
-	});
-
-	it("does not prompt or ask extensions for project trust during update", async () => {
-		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
-		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProjectTrust: "always" }));
 		const fakeNpmPath = join(tempDir, "fake-project-npm.cjs");
 		const recordPath = join(tempDir, "project-update.json");
 		writeFileSync(
@@ -348,24 +284,11 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 			join(projectDir, ".octocode", "settings.json"),
 			JSON.stringify({ packages: ["npm:fake-package"], npmCommand: [originalExecPath, fakeNpmPath] }),
 		);
-		let projectTrustCalled = false;
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		try {
-			await expect(
-				main(["update", "--extensions"], {
-					extensionFactories: [
-						(octocode) => {
-							octocode.on("project_trust", () => {
-								projectTrustCalled = true;
-								return { trusted: "yes" };
-							});
-						},
-					],
-				}),
-			).resolves.toBeUndefined();
+			await expect(main(["update", "--extensions"])).resolves.toBeUndefined();
 
-			expect(projectTrustCalled).toBe(false);
 			expect(existsSync(recordPath)).toBe(false);
 			expect(process.exitCode).toBeUndefined();
 		} finally {
@@ -385,32 +308,13 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 			join(projectDir, ".octocode", "settings.json"),
 			JSON.stringify({ packages: ["npm:fake-package"], npmCommand: [originalExecPath, fakeNpmPath] }),
 		);
-		new ProjectTrustStore(agentDir).set(projectDir, true);
+		trustFolder(projectDir);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		try {
 			await expect(main(["update", "--extensions"])).resolves.toBeUndefined();
 
 			expect(existsSync(recordPath)).toBe(true);
-			expect(process.exitCode).toBeUndefined();
-		} finally {
-			logSpy.mockRestore();
-		}
-	});
-
-	it("lets trust.json override default project trust", async () => {
-		mkdirSync(join(projectDir, ".octocode"), { recursive: true });
-		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProjectTrust: "always" }));
-		writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ packages: ["npm:@project/pkg"] }));
-		new ProjectTrustStore(agentDir).set(projectDir, false);
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		try {
-			await expect(main(["list"])).resolves.toBeUndefined();
-
-			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
-			expect(stdout).toContain("No packages installed.");
-			expect(stdout).not.toContain("Project packages:");
 			expect(process.exitCode).toBeUndefined();
 		} finally {
 			logSpy.mockRestore();
@@ -426,15 +330,15 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 			await expect(main(["install", "-l", "./local-package"])).resolves.toBeUndefined();
 
 			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
-			expect(stderr).toContain("Project is not trusted. Use --approve to modify local package config.");
+			expect(stderr).toContain("This folder is not trusted. Run again with --trust");
 			expect(process.exitCode).toBe(1);
 		} finally {
 			errorSpy.mockRestore();
 		}
 	});
 
-	it("allows local package install to initialize fresh project settings", async () => {
-		await main(["install", "-l", packageDir]);
+	it("lets --trust record the folder, then initializes fresh project settings with a local install", async () => {
+		await main(["install", "-l", packageDir, "--trust"]);
 
 		const settingsPath = join(projectDir, ".octocode", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf-8")) as { packages?: string[] };
@@ -591,6 +495,20 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 		expect(settingsManager.getProjectSettings().extensions).toEqual([]);
 	});
 
+	it("rejects --approve as an unknown option", async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		try {
+			await expect(main(["list", "--approve"])).resolves.toBeUndefined();
+
+			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
+			expect(stderr).toContain('Unknown option --approve for "list".');
+			expect(process.exitCode).toBe(1);
+		} finally {
+			errorSpy.mockRestore();
+		}
+	});
+
 	it("shows a friendly error for unknown install options", async () => {
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -599,7 +517,7 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 
 			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stderr).toContain('Unknown option --unknown for "install".');
-			expect(stderr).toContain('Use "octocode --help" or "octocode install <source> [-l] [--approve|--no-approve]".');
+			expect(stderr).toContain('Use "octocode --help" or "octocode install <source> [-l] [--trust]".');
 			expect(process.exitCode).toBe(1);
 		} finally {
 			errorSpy.mockRestore();

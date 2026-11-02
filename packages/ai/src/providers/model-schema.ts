@@ -39,13 +39,27 @@ const ModelCostTierSchema = Type.Object({
 	}),
 	...ModelCostRatesProperties,
 });
+const ModelCostTiersProperty = Type.Optional(
+	Type.Array(ModelCostTierSchema, {
+		description: "Request-wide pricing tiers. The highest matching input threshold applies to the full request.",
+	}),
+);
+/** Rates that replace a time-limited price once it ends. They cannot expire themselves. */
+const ModelCostAfterSchema = Type.Object(
+	{ ...ModelCostRatesProperties, tiers: ModelCostTiersProperty },
+	{ description: "Rates (and tiers) charged from the day after `until`." },
+);
 export const ModelCostSchema = Type.Object({
 	...ModelCostRatesProperties,
-	tiers: Type.Optional(
-		Type.Array(ModelCostTierSchema, {
-			description: "Request-wide pricing tiers. The highest matching input threshold applies to the full request.",
+	tiers: ModelCostTiersProperty,
+	until: Type.Optional(
+		Type.String({
+			pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+			description:
+				"Last UTC day (YYYY-MM-DD, inclusive) these rates apply, for a time-limited price. Ignored without `after`.",
 		}),
 	),
+	after: Type.Optional(ModelCostAfterSchema),
 });
 
 function modelImageResizeOptions(options?: TSchemaOptions) {

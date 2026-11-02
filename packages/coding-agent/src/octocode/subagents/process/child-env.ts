@@ -16,11 +16,11 @@ import {
 	SUBAGENT_ENV,
 	SUBAGENT_HOOKS_ENV,
 	TEAM_WORKSPACE_ENV,
-	TRUST_ROOT_ENV,
 } from "../../../../../common/src/env.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processAlive } from "../../shared/process.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
+import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
 
 /**
  * What a parent sets for one child run: its identity in the team, the role and task handoff files, and the limits the
@@ -39,7 +39,6 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	READ_ONLY_ENV,
 	LEAN_ENV,
 	SKILLS_IN_TASK_ENV,
-	TRUST_ROOT_ENV,
 	PERMISSION_GRANTS_ENV,
 	PERMISSION_NONCE_FILE_ENV,
 	PERMISSION_RELAY_ENV,
@@ -55,6 +54,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	PARENT_TRANSCRIPT_ENV,
 	PARENT_PID_ENV,
 	BACKLOG_ITEM_ENV,
+	SUBAGENT_ASSIGNMENT_ENV,
 ];
 
 /**

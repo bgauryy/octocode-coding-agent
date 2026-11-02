@@ -13,7 +13,7 @@ import { inspectPluginHooks } from "../plugin-hooks.ts";
 import { resolveConfiguredPlugin } from "../plugin-manifest.ts";
 import { inspectPluginMcp } from "../plugin-mcp.ts";
 import { configuredPlugins } from "../plugin-settings.ts";
-import { resolveExtensionFactories } from "../resource-loader/builtins.ts";
+import { BUILTIN_FEATURE_IDS } from "../features/builtin-ids.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import { hostInstalledPlugins } from "./host-plugins.ts";
@@ -28,13 +28,16 @@ import {
 	type ToggleHost,
 } from "./toggles.ts";
 
-export type InventoryHost = ToggleHost | "packages";
+/** The heading a row lists under: the host whose format defines it, packages, or the MCP and skill sections. */
+export type InventoryHost = ToggleHost | "packages" | "mcp" | "skills";
 
-/** One row of `/plugins`: something the user can switch, with what decides it and why it is in its state. */
+/** One row of `/harness`: something the user can switch, with what decides it and why it is in its state. */
 export interface InventoryItem {
 	id: string;
+	/** A short name `/harness enable|disable` also accepts: plugin, skill or MCP server name. */
+	name?: string;
 	host: InventoryHost;
-	kind: "plugin" | "extension" | "hooks" | "hook-file" | "hook";
+	kind: "plugin" | "extension" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";
 	label: string;
 	/** 0 host-level, 1 a file or container, 2 one handler. */
 	depth: 0 | 1 | 2;
@@ -49,7 +52,7 @@ export interface InventoryItem {
 	locked?: string;
 	/** The broader toggle keys that decide this item when its own key is unset, most specific first. */
 	parents?: string[];
-	/** For extensions: the resource the existing `extensions` patterns switch. */
+	/** For extensions and skills: the resource the existing `extensions` and `skills` patterns switch. */
 	resource?: ResourceItem;
 	/** For a plugin another host installed: the `plugins` entry switching it on adds. */
 	install?: { path: string; protocol: "claude" | "codex" };
@@ -65,21 +68,23 @@ export interface Inventory {
 }
 
 export const EMPTY_INVENTORY =
-	'Nothing configured yet. Add plugins under "plugins" in settings.json, hooks in a hook file, or extensions in extensions/.';
+	'Nothing configured yet. Add plugins under "plugins" in settings.json, hooks in a hook file, skills in skills/, or MCP servers in mcp.json.';
 
+/** Headings in display order. */
 export const HOST_TITLES: Record<InventoryHost, string> = {
 	claude: "Claude Code",
 	codex: "Codex",
 	octocode: "Octocode",
 	packages: "Packages",
+	mcp: "MCP servers",
+	skills: "Skills",
 };
 const count = (items: readonly unknown[], noun: string) => `${items.length} ${noun}${items.length === 1 ? "" : "s"}`;
 
-/** Approval state of one executable component: none declared, approved, or the fingerprint to review and copy. */
-function approval(declared: boolean, approved: string | undefined, fingerprint: string | undefined, field: string) {
+/** State of one executable component: none declared, unloadable, or loads. */
+function componentState(declared: boolean, errors: readonly string[]) {
 	if (!declared) return "none";
-	if (!fingerprint) return "not approvable (see diagnostics)";
-	return approved === fingerprint ? "approved" : `needs review: ${field}=${fingerprint}`;
+	return errors.length ? "not loaded (see diagnostics)" : "loads";
 }
 
 function pluginItems(settings: Settings, cwd: string, notes: string[]): InventoryItem[] {
@@ -108,12 +113,13 @@ function pluginItems(settings: Settings, cwd: string, notes: string[]): Inventor
 		notes.push(...new Set([...errors, ...components.errors, ...hooks.errors, ...mcp.errors]));
 		return {
 			...item,
+			name: manifest.name,
 			host: manifest.protocol,
 			label: `${manifest.name} (plugin, ${manifest.format} manifest)`,
 			detail: [
 				`${count(components.skills, "skill directory")}, ${count(components.commands, "command source")}`,
-				`hooks ${approval(hooks.definitions.length > 0, entry.hooksFingerprint, hooks.fingerprint, "hooksFingerprint")}`,
-				`MCP ${mcp.servers.map((server) => server.name).join(", ") || "none"}: ${approval(mcp.servers.length > 0, entry.mcpFingerprint, mcp.fingerprint, "mcpFingerprint")}`,
+				`hooks ${componentState(hooks.definitions.length > 0, hooks.errors)}`,
+				`MCP ${mcp.servers.map((server) => server.name).join(", ") || "none"}: ${componentState(mcp.servers.length > 0, mcp.errors)}`,
 				...(components.unsupported.length ? [`not loaded: ${components.unsupported.join(", ")}`] : []),
 				entry.path,
 			].join(" · "),
@@ -201,8 +207,9 @@ function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, hom
 	return items;
 }
 
-async function extensionItems(manager: SettingsManager, cwd: string, agentDir: string): Promise<InventoryItem[]> {
-	const builtinExtensions = [...resolveExtensionFactories(undefined).builtinExtensions.keys()];
+/** Extensions and skills from the package resolver, switched by the `extensions` and `skills` patterns. */
+async function resourceItems(manager: SettingsManager, cwd: string, agentDir: string): Promise<InventoryItem[]> {
+	const builtinExtensions = [...BUILTIN_FEATURE_IDS];
 	// "skip": listing must never install a missing package source.
 	const resolved = await new DefaultPackageManager({
 		cwd,
@@ -211,25 +218,78 @@ async function extensionItems(manager: SettingsManager, cwd: string, agentDir: s
 		builtinExtensions,
 		builtinSkillsDir: getBundledSkillsDir(),
 	}).resolve(async () => "skip");
-	return buildGroups(resolved, agentDir).flatMap((group) =>
-		group.subgroups
-			.filter((subgroup) => subgroup.type === "extensions")
-			.flatMap((subgroup) =>
-				subgroup.items.map((resource): InventoryItem => ({
-					id: `extension:${tildePath(resource.path)}`,
-					host: group.origin === "package" ? "packages" : "octocode",
-					kind: "extension",
-					depth: 0,
-					label: `${resource.displayName} (extension)`,
-					on: resource.enabled,
-					detail: `${group.label} · ${group.scope}`,
-					resource,
-				})),
-			),
-	);
+	const groups = buildGroups(resolved, agentDir);
+	const rows = (type: "extensions" | "skills") =>
+		groups.flatMap((group) =>
+			group.subgroups
+				.filter((subgroup) => subgroup.type === type)
+				.flatMap((subgroup) =>
+					subgroup.items.map((resource): InventoryItem =>
+						type === "skills"
+							? {
+									id: `skill:${tildePath(resource.path)}`,
+									name: resource.displayName,
+									host: "skills",
+									kind: "skill",
+									depth: 0,
+									label: resource.displayName,
+									on: resource.enabled,
+									detail: `${group.label} · ${tildePath(resource.path)}`,
+									...(resource.metadata.scope === "project" ? { project: true as const } : {}),
+									resource,
+								}
+							: {
+									id: `extension:${tildePath(resource.path)}`,
+									host: group.origin === "package" ? "packages" : "octocode",
+									kind: "extension",
+									depth: 0,
+									label: `${resource.displayName} (extension)`,
+									on: resource.enabled,
+									detail: `${group.label} · ${group.scope}`,
+									resource,
+								},
+					),
+				),
+		);
+	// Skills read best alphabetically; the detail names the folder each comes from.
+	return [...rows("extensions"), ...rows("skills").sort((a, b) => a.label.localeCompare(b.label))];
 }
 
-/** Everything `/plugins` lists, from the same loaders the session uses; nothing is installed or executed. */
+/** What an MCP row reads of a server in the MCP host's status snapshot (core does not import the MCP package). */
+interface McpRowSource {
+	name: string;
+	enabled: boolean;
+	state: string;
+	toolCount: number;
+	exposure: string;
+	scope?: string;
+	source: string;
+}
+
+/**
+ * One `mcp:<name>` row per MCP server in the session's registry snapshot. The MCP owner keeps its own `enabled` setting
+ * (in the server's `mcp.json` or a project override) and applies a switch at once, so these rows carry no `toggles` key.
+ */
+function mcpItems(servers: readonly McpRowSource[], home?: string): InventoryItem[] {
+	return servers.map((server) => ({
+		id: `mcp:${server.name}`,
+		name: server.name,
+		host: "mcp",
+		kind: "mcp",
+		depth: 0,
+		label: server.name,
+		on: server.enabled,
+		detail: [
+			server.state,
+			`${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`,
+			server.exposure,
+			server.scope ?? "configured",
+			server.scope === "default" ? "built in" : tildePath(server.source, home),
+		].join(" · "),
+	}));
+}
+
+/** Everything `/harness` lists, from the same loaders the session uses; nothing is installed or executed. */
 export async function buildInventory(options: {
 	cwd: string;
 	agentDir: string;
@@ -238,6 +298,8 @@ export async function buildInventory(options: {
 	/** File-backed settings for package resolution and writes. */
 	manager: SettingsManager;
 	projectTrusted: boolean;
+	/** The session's MCP registry snapshot; omitted when no MCP owner runs. */
+	mcp?: readonly McpRowSource[];
 	home?: string;
 }): Promise<Inventory> {
 	const notes: string[] = [];
@@ -253,11 +315,12 @@ export async function buildInventory(options: {
 				depth: 0,
 				label: `${plugin.id} (installed in ${HOST_TITLES[plugin.host]})`,
 				on: false,
-				detail: `${plugin.enabledThere ? "enabled" : "disabled"} there · not added to Octocode; switch on to add it (hooks and MCP still need review)`,
+				detail: `${plugin.enabledThere ? "enabled" : "disabled"} there · not added to Octocode; switch on to add it (adding approves its hooks and MCP servers)`,
 				install: { path: plugin.path, protocol: plugin.protocol },
 			})),
 		...hookItems(options.settings, options.cwd, options.projectTrusted, options.home),
-		...(await extensionItems(options.manager, options.cwd, options.agentDir)),
+		...(await resourceItems(options.manager, options.cwd, options.agentDir)),
+		...mcpItems(options.mcp ?? [], options.home),
 	];
 	const ids = new Set(items.map((item) => item.id));
 	const projectIds = new Set(items.filter((item) => item.project).map((item) => item.id));
@@ -273,11 +336,15 @@ export async function buildInventory(options: {
 	return { items, stale: [...new Set(stale)], ignored, notes };
 }
 
-/** The inventory as text, grouped by host, one ID per row for `/plugins enable|disable <id>`. */
-export function renderInventory(inventory: Inventory): string {
+/**
+ * The inventory as text, grouped by heading, one ID per row for `/harness enable|disable <id>`. `items` narrows the
+ * rows (`/harness list skills`); stale switches, ignored keys and diagnostics show only in the full listing.
+ */
+export function renderInventory(inventory: Inventory, items: readonly InventoryItem[] = inventory.items): string {
+	const full = items === inventory.items;
 	const lines: string[] = [];
 	for (const host of Object.keys(HOST_TITLES) as InventoryHost[]) {
-		const rows = inventory.items.filter((item) => item.host === host);
+		const rows = items.filter((item) => item.host === host);
 		if (!rows.length) continue;
 		lines.push(HOST_TITLES[host]);
 		for (const item of rows)
@@ -285,20 +352,23 @@ export function renderInventory(inventory: Inventory): string {
 				`${"  ".repeat(item.depth + 1)}[${item.locked ? "-" : item.on ? "x" : " "}] ${item.label}${item.detail ? ` — ${item.detail}` : ""}  ${item.id}`,
 			);
 	}
-	if (!lines.length) lines.push(EMPTY_INVENTORY);
-	if (inventory.stale.length)
+	if (!lines.length) lines.push(full ? EMPTY_INVENTORY : "Nothing matches.");
+	if (full && inventory.stale.length)
 		lines.push(
 			"",
-			"Stale switches (they match nothing now; /plugins enable <id> clears one):",
+			"Stale switches (they match nothing now; /harness enable <id> clears one):",
 			...inventory.stale.map((id) => `  ${id}`),
 		);
-	if (inventory.ignored.length)
+	if (full && inventory.ignored.length)
 		lines.push(
 			"",
 			"Project switches ignored (they target items outside this repository):",
 			...inventory.ignored.map((id) => `  ${id}`),
 		);
-	if (inventory.notes.length) lines.push("", "Diagnostics:", ...inventory.notes.map((note) => `  ${note}`));
-	lines.push("", "/plugins enable|disable <id> [--local] [--force] · /reload applies changes");
+	if (full && inventory.notes.length) lines.push("", "Diagnostics:", ...inventory.notes.map((note) => `  ${note}`));
+	lines.push(
+		"",
+		"/harness enable|disable <id|name>... [--local] [--force] · MCP switches apply now; /reload applies the rest",
+	);
 	return lines.join("\n");
 }

@@ -8,9 +8,22 @@ export function taskLine(task: BacklogTask, options: { owner?: boolean } = {}): 
 	return `${task.ref} [${task.state}] ${visibleControls(task.goal)}${owner}${result}`;
 }
 
-/** An item's tasks as a block for `get`: a heading with the count, then one line each; empty when it has none. */
+/**
+ * A step's own why as an indented line, for views that show a step in detail; nothing when it has none (a step under an
+ * item then serves the item's why, which those views show).
+ */
+export function taskWhy(task: BacklogTask, indent = "  "): string[] {
+	const why = visibleControls(task.reason).replace(/\s+/g, " ").trim();
+	return why ? [`${indent}why: ${why}`] : [];
+}
+
+/** An item's steps as a block for `get`: a heading with the count, then each step and its own why; empty when none. */
 export function taskBlock(tasks: readonly BacklogTask[]): string[] {
 	return tasks.length === 0
 		? []
-		: ["", `Tasks (${tasks.length}):`, ...tasks.map((task) => `- ${taskLine(task, { owner: false })}`)];
+		: [
+				"",
+				`Steps (${tasks.length}):`,
+				...tasks.flatMap((task) => [`- ${taskLine(task, { owner: false })}`, ...taskWhy(task)]),
+			];
 }

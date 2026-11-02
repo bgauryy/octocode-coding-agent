@@ -205,7 +205,6 @@ describe("interactive streaming and input races", () => {
 			sessionManager: { getSessionFile: () => "/tmp/current.jsonl" },
 			runtimeHost: { switchSession },
 			promptForMissingSessionCwd: vi.fn(async () => "/tmp"),
-			createProjectTrustContext: vi.fn(),
 			clearStatusIndicator: vi.fn(),
 			showStatus: vi.fn(),
 			handleFatalRuntimeError,

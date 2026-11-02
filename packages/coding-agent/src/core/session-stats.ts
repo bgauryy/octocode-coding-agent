@@ -3,9 +3,9 @@ import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { type CacheMetrics, computeCacheMetrics } from "./cache-stats.ts";
 import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { estimateProjectedContextTokens } from "./compaction/index.ts";
-import type { ContextUsage } from "./extensions/index.ts";
+import type { ContextUsage } from "./features/index.ts";
 import { getLatestCompactionEntry, type SessionManager } from "./session-manager.ts";
-import { addUsageToTotals, createUsageTotals } from "./usage-totals.ts";
+import { addUsageToTotals, createUsageTotals, entryUsage } from "./usage-totals.ts";
 
 /** Session statistics for /session command */
 export interface SessionStats {
@@ -48,11 +48,8 @@ export function computeSessionStats(
 	const usageTotals = createUsageTotals();
 
 	for (const entry of sessionManager.getEntries()) {
-		if (entry.type === "usage") {
-			addUsageToTotals(usageTotals, entry.usage);
-		} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
-			addUsageToTotals(usageTotals, entry.usage);
-		}
+		const spend = entryUsage(entry);
+		if (spend) addUsageToTotals(usageTotals, spend.usage);
 		if (entry.type !== "message") continue;
 		totalMessages++;
 		const message = entry.message;
@@ -60,16 +57,12 @@ export function computeSessionStats(
 			userMessages++;
 		} else if (message.role === "toolResult") {
 			toolResults++;
-			if (message.usage) {
-				addUsageToTotals(usageTotals, message.usage);
-			}
 		} else if (message.role === "assistant") {
 			assistantMessages++;
 			const assistantMsg = message;
 			if (Array.isArray(assistantMsg.content)) {
 				toolCalls += assistantMsg.content.filter((c) => c.type === "toolCall").length;
 			}
-			addUsageToTotals(usageTotals, assistantMsg.usage);
 			if (assistantMsg.thinkingBudget && assistantMsg.thinkingBudget.sent < assistantMsg.thinkingBudget.requested) {
 				thinkingReduced++;
 			}

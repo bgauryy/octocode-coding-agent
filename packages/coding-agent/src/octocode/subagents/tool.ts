@@ -1,13 +1,13 @@
 import type { RunDetails } from "./run-types.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { withIdentity } from "../instructions/task.ts";
 import type { Permission } from "../permission/ask.ts";
-import { existingLibrary } from "../shared/archive.ts";
+import { assignmentText, parentArchive } from "./identity-reminder.ts";
 import { type Subcommand, notify } from "../shared/commands.ts";
 import { timedTool } from "../shared/render/rows.ts";
 import { modelLookup, settleWithin, textResult } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
-import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
+import { getMcpSessionHandoff } from "../../../../mcp/src/session-servers.ts";
 import { checkGoal } from "../team/identity.ts";
 import { AgentsView } from "../team/panel.ts";
 import { launchOverlap } from "../team/overlap.ts";
@@ -34,6 +34,7 @@ import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask, resumeText } fro
 import { Isolation } from "./isolation.ts";
 import { reportNotes } from "./child-tasks.ts";
 import { itemLink } from "./item-link.ts";
+import { routeSummary } from "./model.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { runForeground, startBackground } from "./run-execution.ts";
 import { childCacheGroup, taskSkillPlan, taskSkillText } from "./task-skills.ts";
@@ -132,7 +133,7 @@ export function registerAgentTool(
 			const session = childSession(run.identity);
 			const details = runDetails(run, session);
 			const track = tracker(run.identity, details, modelLookup(ctx), ctx);
-			const args = buildAgentArgs(run.profile, run.route.model, session, []);
+			const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking);
 			const host = relayHost(ctx);
 			const launch = (signal: AbortSignal) =>
 				record(
@@ -252,7 +253,7 @@ export function registerAgentTool(
 					ctx,
 					getRefused?.(),
 				);
-				const skillPlan = taskSkillPlan(plan.profile, params.skills);
+				const skillPlan = taskSkillPlan(plan.profile, params.skills, api.getCommands());
 				const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
 				const artifactAccess = plan.profile?.lean ? "none" : "local";
 				const referenced = await taskReferences(params.task, team, ctx, artifactAccess);
@@ -297,9 +298,10 @@ export function registerAgentTool(
 					// A lean child reads its skills inlined in the task; it loads none itself.
 					if (!skillPlan.inline) run.identity.skillResources = skillResources;
 					run.identity.skillsInTask = skillPlan.inTask;
-					// Servers the model added with `mcp` (the user confirmed each) reach the child as a transient file.
-					const addedServers = getMcpAddedServers(api.events);
+					// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
+					const { servers: addedServers, stopped } = getMcpSessionHandoff(api.events);
 					if (Object.keys(addedServers).length > 0) run.identity.mcpServers = addedServers;
+					if (stopped.length > 0) run.identity.mcpStopped = stopped;
 					// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
 					// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
 					run.identity.permission = {
@@ -314,19 +316,20 @@ export function registerAgentTool(
 					const worktree = isolation.worktree;
 					const warning = `${worktree?.warning ? `\n\n${worktree.warning}` : ""}${run.teamNote}${launchOverlap(team, run.identity.id, goal, overlapWarned)}`;
 					const onSpawn = worktree ? (pid: number) => recordWorktreePid(worktree, pid) : undefined;
-					const library = existingLibrary();
-					const browserMode = run.profile?.headless;
+					const archive = parentArchive();
 					const told = resumeText(resumed, params.task);
 					const skillText = skillPlan.inTask && !told.prefix ? taskSkillText(skillResources, skillPlan.inline) : "";
-					const contractTask = childTaskInput(told.text, { referenced, browserMode, skillText, resultContract });
-					const own = withIdentity(`${told.prefix}${contractTask}`, run.identity, library ? { library } : undefined);
+					const parts = { referenced, browserMode: run.profile?.headless, skillText, resultContract };
+					const assigned = { ...run.identity, background: params.background === true, why: params.reason };
+					const own = withIdentity(`${told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
+					run.identity.assignment = assignmentText(assigned, archive, parts, skillPlan.inline); // re-read after compacting
 					const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
 					const session = resumed?.session ?? childSession(run.identity);
 					const details = runDetails(run, session);
 					const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 					// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 					const lingers = params.background === true && !params.isolate;
-					const args = buildAgentArgs(run.profile, run.route.model, session, []);
+					const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking);
 					const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, warm?: () => void) => {
 						const tracked = track(update);
 						const progress: typeof tracked = (change) => {
@@ -370,7 +373,7 @@ export function registerAgentTool(
 					handedOff = true;
 					details.status = "background";
 					return textResult(
-						`Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message.${warning}`,
+						`Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${warning}`,
 						details,
 					);
 				} finally {

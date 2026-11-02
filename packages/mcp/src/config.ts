@@ -3,7 +3,8 @@
  *
  * Servers are read from global fallbacks through the writable agent directory, then trusted project
  * paths. Each uses the `mcpServers` shape shared by other MCP clients. Later entries replace earlier
- * transports with the same namespace; conflicting spellings within one file are refused.
+ * transports with the same namespace; conflicting spellings within one file are refused. A replacement without its own
+ * `description` keeps the replaced entry's (a built-in server's, say), since the prompt's purpose line comes from it.
  *
  * An entry without `command`, `url`, or `type` overrides only `enabled`, `defaultActive`, `exposure`, and
  * `toolExposure` of an earlier server with the same namespace, for example to turn it off in one project:
@@ -66,7 +67,7 @@ export interface LoadedMcpConfig {
 const OVERRIDE_KEYS = ["enabled", "defaultActive", "exposure", "toolExposure"];
 
 /** Whether an entry overrides a server defined elsewhere instead of defining one. */
-function isOverride(value: Record<string, unknown>): boolean {
+function isMcpOverride(value: Record<string, unknown>): boolean {
 	return value.command === undefined && value.url === undefined && value.type === undefined;
 }
 
@@ -75,29 +76,50 @@ interface McpConfigState {
 	errors: string[];
 }
 
-function readConfigFile(path: string, scope: "global" | "project", state: McpConfigState): void {
-	const { servers, errors } = state;
-	if (!existsSync(path)) return;
+/** The `mcpServers` object of one file: nothing when the file is missing, an error when it cannot be used. */
+function parseConfigFile(path: string): { servers: Record<string, unknown> } | { error: string } | undefined {
+	if (!existsSync(path)) return undefined;
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(stripJsonComments(stripBom(readFileSync(path, "utf8"))));
 	} catch (error) {
-		errors.push(`${path}: ${errorMessage(error)}`);
-		return;
+		return { error: `${path}: ${errorMessage(error)}` };
 	}
-	if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers))) {
-		errors.push(`${path}: expected an object with an "mcpServers" object`);
+	if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers)))
+		return { error: `${path}: expected an object with an "mcpServers" object` };
+	return { servers: parsed.mcpServers ?? {} };
+}
+
+/** What one `mcp.json` holds, for listing: each server name and whether the entry only overrides another server. */
+export function listMcpFileEntries(path: string): { entries: { name: string; override: boolean }[]; error?: string } {
+	const file = parseConfigFile(path);
+	if (!file) return { entries: [] };
+	if ("error" in file) return { entries: [], error: file.error };
+	return {
+		entries: Object.entries(file.servers).map(([name, value]) => ({
+			name,
+			override: isRecord(value) && isMcpOverride(value),
+		})),
+	};
+}
+
+function readConfigFile(path: string, scope: "global" | "project", state: McpConfigState): void {
+	const { servers, errors } = state;
+	const file = parseConfigFile(path);
+	if (!file) return;
+	if ("error" in file) {
+		errors.push(file.error);
 		return;
 	}
 	const names = new Map<string, string>();
-	for (const [name, value] of Object.entries(parsed.mcpServers ?? {})) {
+	for (const [name, value] of Object.entries(file.servers)) {
 		const namespace = mcpNamespace(name);
 		const clash = names.get(namespace);
 		if (clash && clash !== name) {
 			errors.push(`${path}: server "${name}" conflicts with "${clash}"`);
 			continue;
 		}
-		if (isRecord(value) && isOverride(value)) {
+		if (isRecord(value) && isMcpOverride(value)) {
 			const base = servers.get(namespace);
 			const extra = Object.keys(value).filter((key) => !OVERRIDE_KEYS.includes(key));
 			if (!base) {
@@ -129,7 +151,14 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 			errors.push(`${path}: server "${name}": auth is only allowed in the global mcp.json`);
 			continue;
 		}
-		servers.set(namespace, { name, config, source: path, scope });
+		// The purpose describes the server under that name (the built-in's, say), so a replacement without its own keeps it.
+		const inherited = config.description === undefined ? servers.get(namespace)?.config.description : undefined;
+		servers.set(namespace, {
+			name,
+			config: inherited === undefined ? config : { ...config, description: inherited },
+			source: path,
+			scope,
+		});
 		names.set(namespace, name);
 	}
 }
@@ -214,7 +243,7 @@ export function updateMcpServerConfig(
 			parsed.mcpServers = { ...servers, [name]: server };
 		}
 		if (!isRecord(server)) throw new Error(`${path} does not define MCP server "${name}"`);
-		applyMcpServerPatch(server, patch, isOverride(server));
+		applyMcpServerPatch(server, patch, isMcpOverride(server));
 		return true;
 	});
 }

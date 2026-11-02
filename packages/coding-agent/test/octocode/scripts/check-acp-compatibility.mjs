@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { FIXTURE_MODEL, FIXTURE_PROVIDER, startFixtureModel } from "./acp-fixture-model.mjs";
 
 const help = `Run the independent ACP v1 Test Compatibility Kit against the source CLI.
 
@@ -12,7 +13,7 @@ const help = `Run the independent ACP v1 Test Compatibility Kit against the sour
 
 Requires Node 24.15+ within Node 24, installed workspace dependencies, uv, and an
 acp-tck checkout with its locked dependencies available. Uses an offline fixture
-provider and isolated user directories; it never uses provider credentials.
+model endpoint and isolated user directories; it never uses provider credentials.
 The TCK is experimental. Passing it is not official ACP certification.
 `;
 
@@ -65,6 +66,11 @@ async function main(argv) {
 		OCTOCODE_NOTIFY: "off",
 		OCTOCODE_TELEMETRY: "0",
 	};
+	const model = await startFixtureModel({
+		home: env.OCTOCODE_HOME,
+		userHome: run,
+		pidJournal: join(run, "processes.jsonl"),
+	});
 	const args = [
 		"--project",
 		tck,
@@ -92,16 +98,13 @@ async function main(argv) {
 		"--mode",
 		"acp",
 		"--no-builtin-tools",
-		"--no-extensions",
-		"--extension",
-		join(packageDir, "test/fixtures/acp-compatibility-provider.ts"),
 		"--no-skills",
 		"--no-context-files",
 		"--offline",
 		"--provider",
-		"acp-compatibility-fixture",
+		FIXTURE_PROVIDER,
 		"--model",
-		"fixture",
+		FIXTURE_MODEL,
 	];
 	try {
 		const child = spawn("uv", args, { cwd: root, env, stdio: "inherit" });
@@ -118,6 +121,7 @@ async function main(argv) {
 		}
 		console.log(`ACP compatibility report: ${report}`);
 	} finally {
+		await model.close();
 		rmSync(run, { recursive: true, force: true });
 	}
 }

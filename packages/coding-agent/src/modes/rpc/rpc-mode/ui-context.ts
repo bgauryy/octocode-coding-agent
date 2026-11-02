@@ -4,7 +4,7 @@ import type {
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
 	WorkingIndicatorOptions,
-} from "../../../core/extensions/index.ts";
+} from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
 import type {

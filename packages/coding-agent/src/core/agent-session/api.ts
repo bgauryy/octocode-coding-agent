@@ -6,7 +6,7 @@ import type { RepositoryDiff } from "../../octocode/files/repository-diff.ts";
  * in `api-state.ts` (state, tools, models) and `api-run.ts` (prompting, compaction, retry, bash).
  */
 
-import type { ContextUsage, ExtensionRunner, ReplacedSessionContext } from "../extensions/index.ts";
+import type { ContextUsage, ExtensionRunner, ReplacedSessionContext } from "../features/index.ts";
 import type { SessionNameSource } from "../session-manager.ts";
 import type { SessionStats } from "../session-stats.ts";
 import type { AgentSessionPromptingApi, AgentSessionRecoveryApi } from "./api-run.ts";

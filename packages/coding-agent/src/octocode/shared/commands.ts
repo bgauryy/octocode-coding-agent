@@ -4,7 +4,7 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 	ExtensionUIContext,
-} from "../../core/extensions/index.ts";
+} from "../../core/features/index.ts";
 import { withDialog } from "./locks.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 
@@ -75,11 +75,33 @@ export function legacyNativeCommandGuidance(args: string, commands: readonly str
 	return `Commands now have direct names: ${list}.`;
 }
 
+/** Commands folded into `/harness`, with the subcommand that replaced each; their arguments carry over. */
+const FOLDED_INTO_HARNESS: Record<string, string> = {
+	plugins: "harness",
+	hooks: "harness hooks",
+	config: "harness config",
+};
+
 /**
- * For input in a retired `/octocode` form, the registered command line that replaced it (`web`, `web backlogs`,
- * `permissions manual`), or null when no registered command does; undefined when `text` is not a retired form.
+ * For `/plugins`, `/hooks` or `/config` input, the `/harness` line that replaced it, while `/harness` is registered
+ * and nothing else (a prompt or skill) took the old name; undefined otherwise.
+ */
+function foldedReplacement(text: string, commands: readonly string[]): string | undefined {
+	const match = /^\/([a-z]+)(?:\s+(.*))?$/s.exec(text.trim());
+	const to = match && Object.hasOwn(FOLDED_INTO_HARNESS, match[1]) ? FOLDED_INTO_HARNESS[match[1]] : undefined;
+	if (!to || !commands.includes("harness") || commands.includes(match![1])) return undefined;
+	const rest = match![2]?.trim();
+	return rest ? `${to} ${rest}` : to;
+}
+
+/**
+ * For input in a retired form, the registered command line that replaced it (`web`, `web backlogs`,
+ * `permissions manual`, `harness hooks`), or null when no registered command does; undefined when `text` is not a
+ * retired form.
  */
 export function retiredCommandReplacement(text: string, commands: readonly string[]): string | null | undefined {
+	const folded = foldedReplacement(text, commands);
+	if (folded) return folded;
 	const match = RETIRED_COMMAND.exec(text.trim());
 	if (!match) return undefined;
 	const to = legacyReplacement(match[1] ?? "", commands)?.to;
@@ -130,8 +152,18 @@ export class Subcommands {
 						: withDialog(() => command.handler(args.trim(), ctx)),
 			});
 		}
-		// No command is named `octocode`, so SDK and RPC input reaches this hook; the terminal reports it as unknown first.
+		// No command has a retired name, so SDK and RPC input reaches this hook; the terminal reports it as unknown first.
 		api.on("input", async (event, ctx) => {
+			if (this.has("harness") && /^\/(?:plugins|hooks|config)(?:\s|$)/.test(event.text.trim())) {
+				const to = foldedReplacement(
+					event.text,
+					api.getCommands().map((command) => command.name),
+				);
+				if (!to) return { action: "continue" };
+				const from = event.text.trim().split(/\s+/, 1)[0].slice(1);
+				say(ctx, `/${from} moved to /${FOLDED_INTO_HARNESS[from]}. Run /${to} to continue.`, "warning");
+				return { action: "handled" };
+			}
 			const match = RETIRED_COMMAND.exec(event.text.trim());
 			if (!match) return { action: "continue" };
 			say(ctx, this.guidance(match[1] ?? ""), "warning");

@@ -1,7 +1,7 @@
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { estimateTokens } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 
 /**
  * When compaction runs, beyond Octocode's threshold: a breaker for compactions that keep refilling the context, and a

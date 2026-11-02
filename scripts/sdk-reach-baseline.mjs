@@ -1,5 +1,5 @@
 /**
- * Interactive layers the headless SDK entry (`core/sdk.ts`) still reaches through static value imports, as
+ * Interactive layers the headless session factory (`core/agent-session/create-session.ts` and `core/agent-session-services.ts`) still reaches through static value imports, as
  * `importer -> tui | webview | file under modes/` with importers relative to `packages/`. `check:boundaries` fails on a
  * new edge and on a listed edge that is gone. Shrink it by moving theme, keybinding and render helpers out of the
  * terminal layers; the HTML exporter (`core/export-html`) loads lazily and `@octocodeai/octocode-tui/multiplexer` is
@@ -16,17 +16,16 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/octocode/api/bridge/renderer.ts -> tui",
 	"coding-agent/src/octocode/ask/dialog.ts -> tui",
 	"coding-agent/src/octocode/ask/dialog/marks.ts -> tui",
-	"coding-agent/src/octocode/backlog/board.ts -> tui",
 	"coding-agent/src/octocode/backlog/command/export-files.ts -> webview",
 	"coding-agent/src/octocode/external/describe.ts -> tui",
 	"coding-agent/src/octocode/files/render.ts -> coding-agent/src/modes/interactive/components/diff.ts",
 	"coding-agent/src/octocode/files/render.ts -> tui",
+	"coding-agent/src/octocode/harness/picker.ts -> tui",
 	"coding-agent/src/octocode/hooks/register/stop.ts -> tui",
 	"coding-agent/src/octocode/llama/ui.ts -> coding-agent/src/modes/interactive/components/framed-view.ts",
 	"coding-agent/src/octocode/llama/ui.ts -> coding-agent/src/modes/interactive/components/keybinding-hints.ts",
 	"coding-agent/src/octocode/llama/ui.ts -> tui",
 	"coding-agent/src/octocode/llama/ui/huggingface-search.ts -> tui",
-	"coding-agent/src/octocode/plugins/picker.ts -> tui",
 	"coding-agent/src/octocode/sessions/command.ts -> tui",
 	"coding-agent/src/octocode/sessions/register.ts -> tui",
 	"coding-agent/src/octocode/shared/keys.ts -> coding-agent/src/modes/interactive/components/keybinding-hints.ts",

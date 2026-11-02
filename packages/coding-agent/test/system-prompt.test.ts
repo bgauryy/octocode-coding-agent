@@ -43,7 +43,9 @@ describe("buildSystemPrompt", () => {
 		"loads skills through %s without read or bash",
 		(reader) => {
 			const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [reader], contextFiles: [], skills: [testSkill] });
-			expect(prompt).toContain("Use Octocode localFetch");
+			// The reader is a declared tool with its own description: the skill hint names none.
+			expect(prompt).toContain("Load a skill's file when the task matches its description.");
+			expect(prompt).not.toContain("localFetch");
 			expect(prompt).toContain("/skills/test-skill/SKILL.md");
 			expect(prompt).not.toContain("Use the read tool");
 		},
@@ -61,7 +63,7 @@ describe("buildSystemPrompt", () => {
 		);
 		// The skill tool's description owns how a loaded skill's relative paths resolve.
 		expect(prompt).not.toContain("resolve it against the skill directory");
-		expect(prompt).not.toMatch(/Use Octocode localFetch|Use bash to load|localGetFileContent/);
+		expect(prompt).not.toMatch(/Load a skill's file|Use bash to load|localFetch|localGetFileContent/);
 		// The tool needs no file reader.
 		expect(
 			buildSystemPrompt({ cwd: "/tmp", selectedTools: ["skill"], contextFiles: [], skills: [testSkill] }),
@@ -76,7 +78,7 @@ describe("buildSystemPrompt", () => {
 			contextFiles: [],
 			skills: [testSkill],
 		});
-		expect(prompt).toContain("Use Octocode localFetch to load a skill file");
+		expect(prompt).toContain("Load a skill's file when the task matches its description.");
 		expect(prompt).not.toContain("skill tool");
 	});
 
@@ -86,10 +88,10 @@ describe("buildSystemPrompt", () => {
 			const input = { cwd: "/tmp", selectedTools: [reader], hiddenTools: [reader], skills: [testSkill] };
 			const indirect = buildSystemPrompt(input);
 			expect(indirect).toContain("/skills/test-skill/SKILL.md");
-			expect(indirect).not.toContain("Use Octocode localFetch");
+			expect(indirect).not.toContain("localFetch");
 			const shell = buildSystemPrompt({ ...input, selectedTools: [reader, "bash"] });
 			expect(shell).toContain("Use bash");
-			expect(shell).not.toContain("Use Octocode localFetch");
+			expect(shell).not.toContain("localFetch");
 		},
 	);
 
@@ -97,7 +99,7 @@ describe("buildSystemPrompt", () => {
 		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash"], toolSnippets: { bash: "Run." } });
 		expect(prompt).not.toContain("other custom tools");
 		expect(prompt.match(/Read the documentation that defines/g)).toBeNull();
-		expect(prompt.match(/follow \.md cross-references/g)).toHaveLength(1);
+		expect(prompt.match(/follow the \.md links/g)).toHaveLength(1);
 		// SDK sessions without an `octocode` section keep the core communication floor.
 		expect(prompt).toContain("- Be concise in your responses");
 	});
@@ -168,7 +170,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("<addendum>\nAdditional instructions.\n</addendum>");
 			expect(prompt).toContain(
-				'<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="/tmp/AGENTS.md">',
+				'<project_context>\nProject-specific instructions and guidelines. They rank above general habits and below the user\'s direct request; the safety rules of this prompt stay in force:\n\n<project_instructions path="/tmp/AGENTS.md">',
 			);
 			expect(prompt).toContain("<cwd>\n/tmp\n</cwd>");
 		});
@@ -187,7 +189,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("Use bash for file operations like ls, rg, find");
 		});
 
-		test("instructs models to resolve Octocode docs and examples under absolute base paths", () => {
+		test("instructs models to resolve Octocode docs under an absolute base path", () => {
 			const prompt = buildSystemPrompt({
 				contextFiles: [],
 				skills: [],
@@ -195,7 +197,8 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toMatch(/Octocode documentation, under \S+ \(not the working directory\)/);
-			expect(prompt).toContain("README.md; docs/ (docs/index.md maps every Octocode topic to its page); examples/");
+			expect(prompt).toContain("README.md and docs/ (docs/index.md maps each topic to its page)");
+			expect(prompt).not.toContain("examples/");
 		});
 	});
 
@@ -334,6 +337,27 @@ describe("buildSystemPrompt", () => {
 			expect(section).toBe("<tools>\n- bash: Run\n- mcp: Manage servers\n</tools>");
 		});
 
+		test("names each MCP server from the supplied purposes after the native tools, in key order", () => {
+			const section = buildSystemPromptSections({
+				selectedTools: ["bash", "mcp__docs__search"],
+				toolSnippets: { bash: "Run", mcp__docs__search: "ignored" },
+				mcpServers: { mcp__web: "Browse the web", mcp__docs: "Product docs", mcp__quiet: "" },
+				cwd: "/tmp",
+			}).tools;
+			expect(section).toBe(
+				"<tools>\n- bash: Run\n- mcp__docs__*: Product docs\n- mcp__web__*: Browse the web\n</tools>",
+			);
+		});
+
+		test("lists a server even when no native tool has a snippet", () => {
+			const section = buildSystemPromptSections({
+				selectedTools: ["mcp__docs__search"],
+				mcpServers: { mcp__docs: "Product docs" },
+				cwd: "/tmp",
+			}).tools;
+			expect(section).toBe("<tools>\n- mcp__docs__*: Product docs\n</tools>");
+		});
+
 		test("is absent when no declared tool has a snippet", () => {
 			expect(tools(["bash"], {})).toBeUndefined();
 			expect(tools(["mcp__docs__search"], { mcp__docs__search: "Search" })).toBeUndefined();
@@ -383,8 +407,8 @@ describe("base sections", () => {
 			"mcps",
 			"other_base",
 			"addendum",
-			"project_context",
 			"cwd",
+			"project_context",
 			"octocode",
 			"environment",
 		]);

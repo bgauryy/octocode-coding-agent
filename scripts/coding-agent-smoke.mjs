@@ -52,7 +52,9 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAgentSession, SessionManager, ModelRuntime } from "${codingAgentName}";
+import { RpcClient, runRpcMode, runPrintMode, main } from "${codingAgentName}";
+import { SessionManager } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/core/session-manager.js")).href)};
+import { ModelRuntime } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/core/model-runtime.js")).href)};
 import { McpClient, StdioTransport } from "${codingAgentName}/mcp";
 import { McpOAuthProvider } from "${codingAgentName}/mcp/oauth";
 import { createInMemoryTransportPair } from "${codingAgentName}/mcp/testing";
@@ -64,7 +66,7 @@ import { getCliInvocation, getSubagentsDir${strictRuntime ? ", getBundledSkillsD
 for (const dependency of ["@agentclientprotocol/sdk"]) {
 	assert.ok(existsSync(fileURLToPath(import.meta.resolve(dependency))), dependency);
 }
-assert.equal(typeof createAgentSession, "function");
+for (const entry of [RpcClient, runRpcMode, runPrintMode, main]) assert.equal(typeof entry, "function");
 assert.equal(typeof SessionManager.inMemory, "function");
 assert.equal(typeof ModelRuntime.create, "function");
 assert.equal(typeof octocode, "function");

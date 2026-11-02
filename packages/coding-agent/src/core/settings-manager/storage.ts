@@ -1,12 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
-import { CONFIG_DIR_NAME, getLegacyConfigDirs } from "../../config.ts";
+import { CONFIG_DIR_NAME } from "../../config.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
 import { resolvePath } from "../../../../common/src/paths.ts";
-import { stripBom } from "../../../../common/src/text.ts";
-import { deepMergeObjects, isMergeableObject } from "./merge.ts";
-import { readJsonFile } from "../../../../common/src/json.ts";
+import { type InheritedSettings, readInheritedSettings } from "./inherited.ts";
 
 export type SettingsScope = "global" | "project";
 
@@ -22,6 +20,8 @@ export interface SettingsStorage {
 		fn: (current: string | undefined) => string | undefined,
 		options?: { readOnly?: boolean },
 	): void;
+	/** Settings read from another product (Pi), merged under the two scopes in memory and never written back. */
+	loadInherited?(projectTrusted: boolean): InheritedSettings;
 }
 
 export interface SettingsError {
@@ -50,12 +50,20 @@ export function toSettingsError(scope: SettingsScope, error: unknown, path?: str
 export class FileSettingsStorage implements SettingsStorage {
 	private globalSettingsPath: string;
 	private projectSettingsPath: string;
+	private readonly cwd: string;
+	private readonly agentDir: string;
 
 	constructor(cwd: string, agentDir: string) {
 		const resolvedCwd = resolvePath(cwd);
 		const resolvedAgentDir = resolvePath(agentDir);
+		this.cwd = resolvedCwd;
+		this.agentDir = resolvedAgentDir;
 		this.globalSettingsPath = join(resolvedAgentDir, "settings.json");
 		this.projectSettingsPath = join(resolvedCwd, CONFIG_DIR_NAME, "settings.json");
+	}
+
+	loadInherited(projectTrusted: boolean): InheritedSettings {
+		return readInheritedSettings(this.cwd, this.agentDir, projectTrusted);
 	}
 
 	withLock(
@@ -76,36 +84,7 @@ export class FileSettingsStorage implements SettingsStorage {
 			if (!options.readOnly || existsSync(path)) {
 				release = lockSyncWithRetry(path);
 			}
-			let current = existsSync(path) ? readFileSync(path, "utf-8") : undefined;
-			if (scope === "global") {
-				let inherited: Record<string, unknown> = {};
-				for (const legacyDir of getLegacyConfigDirs(dir).reverse()) {
-					const legacyFile = join(legacyDir, "settings.json");
-					if (!existsSync(legacyFile)) continue;
-					const legacy: unknown = readJsonFile(legacyFile);
-					if (!isMergeableObject(legacy)) throw new Error(`Invalid settings object: ${legacyFile}`);
-					// Resources resolve against their original directory in the resource loader.
-					for (const key of [
-						"packages",
-						"extensions",
-						"skills",
-						"prompts",
-						"themes",
-						"sessionDir",
-						"deviceId",
-						"trackingId",
-						"enableAnalytics",
-						"defaultProjectTrust",
-					])
-						delete legacy[key];
-					inherited = deepMergeObjects(inherited, legacy);
-				}
-				if (Object.keys(inherited).length) {
-					const native = current !== undefined ? JSON.parse(stripBom(current)) : {};
-					if (!isMergeableObject(native)) throw new Error(`Invalid settings object: ${path}`);
-					current = JSON.stringify(deepMergeObjects(inherited, native));
-				}
-			}
+			const current = existsSync(path) ? readFileSync(path, "utf-8") : undefined;
 			const next = fn(current);
 			if (options.readOnly && next !== undefined) {
 				throw new Error("Read-only settings transaction cannot write");

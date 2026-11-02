@@ -1,10 +1,9 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { openFile } from "../shared/open.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { doItPrompt } from "./actions.ts";
-import { showBoard } from "./board.ts";
 import { type Backlog, openBacklog } from "./context.ts";
 import { boardText, isState, itemLine } from "./format.ts";
 import { taskLine } from "./task-format.ts";
@@ -57,6 +56,8 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 
 	/** The TUI board; loops back to it after each action until the user closes it or hands an item to the agent. */
 	const board = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
+		// Loaded on open: the board paints with the terminal UI package, which a headless session never loads.
+		const { showBoard } = await import("./board.ts");
 		let selected: string | undefined;
 		for (;;) {
 			const choice = await showBoard(
@@ -65,6 +66,9 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 					title: `Backlog — ${backlog.repoName}`,
 					self: backlog.session,
 					load: () => backlog.store.list().items,
+					marks: (items) => backlog.store.marks(items, backlog.session),
+					revision: () => backlog.store.revision,
+					changed: () => deps.changed(ctx),
 					tasks: {
 						load: () => backlog.store.tasks.list({ states: OPEN_TASKS }),
 						move: (task, state) => tasks.step(ctx, backlog, task, state),
@@ -170,7 +174,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	const syntax = Object.entries(verbs).map(([name, verb]) => `${name}${verb.args ? ` ${verb.args}` : ""}`);
 	const usage = `[${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
 	return {
-		description: "Deprecated task board; use /web",
+		description: "Open the live backlog board; tui for terminal",
 		argumentHint: usage,
 		complete: (prefix) => {
 			const words = prefix.split(/\s+/);

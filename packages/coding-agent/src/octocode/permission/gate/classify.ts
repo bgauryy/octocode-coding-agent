@@ -1,34 +1,18 @@
-import path from "node:path";
-import type { ExtensionContext, ToolCallEvent } from "../../../core/extensions/index.ts";
-import { readableHistory } from "../../shared/history.ts";
-import { resolveToolPath } from "../../shared/home.ts";
+import type { ExtensionContext, ToolCallEvent } from "../../../core/features/index.ts";
 import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
 import { callReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
-import { changesOnlyWorkspace, runsLater } from "../file-access.ts";
 import { takesCallReason } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
-import { LEGACY_CHANGE_TOOLS, LEGACY_READ_TOOLS } from "../../../core/tools/tool-names.ts";
+import { canonicalPath } from "../../shared/home/repo.ts";
 import { catastrophicCommand } from "../shell/destructive.ts";
-
-/** Tools named like the removed core readers (Octocode ships none now) that a custom tool or SDK caller may still register: `read` takes `path`; `grep`, `find` and `ls` default to the working directory. They stay classified so a same-named tool cannot read outside the workspace unasked. */
-const READ_TOOLS = new Set(LEGACY_READ_TOOLS);
-/** Same-named custom file changers (Octocode ships no `edit` or `write`); Octocode's `file` tool checks itself. */
-export const CHANGE_TOOLS = new Set(LEGACY_CHANGE_TOOLS);
 
 /** Whether `command` is a shell command a destructive pattern matches, relative targets resolved against `cwd`: a `shell.destructive` call, ask each time. */
 const destructive = (command: string, cwd: string): boolean => catastrophicCommand(command, cwd) !== undefined;
 
 /** The call's arguments, whole: the user approves exactly what is shown. */
 export const args = (input: Record<string, unknown>): string => JSON.stringify(input);
-
-/** The folder grant for `file`: "changes under <dir>". */
-const dirGrant = (file: string, verb: string) => {
-	const dir = path.dirname(file);
-	return { key: dir, label: `${verb} under ${dir}` };
-};
 
 /** What a native call says it is for: its `reason` argument, as the request's `purpose` (ahead of the assistant's last sentence). */
 export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">): { purpose?: string } {
@@ -67,11 +51,6 @@ function classOf(
 	cwd: string,
 	forceDestructive: boolean,
 ): PermissionRequest | undefined {
-	const inRepo = (raw: string) => {
-		const file = canonicalPath(resolveToolPath(cwd, raw));
-		const root = workspaceRoot(cwd);
-		return { file, root, inside: root !== undefined && isWithin(file, root) };
-	};
 	// Inspection can execute adapter getters; all debugger operations share process authorization. Termination stops an
 	// existing session, and a launch without an adapter only returns the adapter recipes (`debug/tool.ts`).
 	if (tool === "debug")
@@ -104,43 +83,6 @@ function classOf(
 			title: "Run this command?",
 			what: [command, `cwd: ${cwd}`],
 			...(grant ? { grant } : {}),
-		};
-	}
-	if (CHANGE_TOOLS.has(tool) && optionalString(input.path)) {
-		const { file, root } = inRepo(optionalString(input.path)!);
-		const inside = root !== undefined && changesOnlyWorkspace(file, root);
-		if (inside && runsLater(file, root)) {
-			return {
-				action: "file.outside",
-				title: "Change a file that runs in later sessions?",
-				what: [`${tool} ${file}`],
-				reason: "it loads code, hooks or instructions in later sessions",
-				grant: dirGrant(file, "file changes"),
-			};
-		}
-		return inside
-			? {
-					action: "file.workspace",
-					title: "Change this file?",
-					what: [`${tool} ${file}`],
-					grant: dirGrant(file, "file changes"),
-				}
-			: {
-					action: "file.outside",
-					title: "Change a file outside the workspace?",
-					what: [`${tool} ${file}`],
-					grant: dirGrant(file, "file changes"),
-				};
-	}
-	if (READ_TOOLS.has(tool)) {
-		const { file, inside } = inRepo(optionalString(input.path) ?? cwd);
-		// History the session may read (its own, its forks' sources, its parent's, its repository's) is read like the workspace (`shared/history.ts`).
-		if (inside || readableHistory(file, cwd)) return undefined;
-		return {
-			action: "read.outside",
-			title: "Read outside the workspace?",
-			what: [`${tool} ${file}`],
-			grant: dirGrant(file, "reads"),
 		};
 	}
 	if (tool === "web") {

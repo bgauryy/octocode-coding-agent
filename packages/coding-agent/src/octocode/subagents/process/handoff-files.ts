@@ -46,7 +46,7 @@ export function prepareChildResourceFiles(identity: Identity): ChildResourceFile
 				fs.closeSync(fd);
 			}
 		}
-		const mcpServers = identity.mcpServers && serializeMcpSessionServers(identity.mcpServers);
+		const mcpServers = serializeMcpSessionServers(identity.mcpServers ?? {}, identity.mcpStopped);
 		if (mcpServers) {
 			// Server env and headers may hold credentials the user entered: an owner-only file, removed when the run ends.
 			const directory = privateDir(identity.scratch ?? reportDir(identity.id) ?? sessionOutputDir("output"));

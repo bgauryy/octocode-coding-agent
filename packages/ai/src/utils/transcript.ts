@@ -128,6 +128,15 @@ export function foldSystemMessages(context: TranscriptContext): TranscriptContex
  * message. Without a leading system message there is no head to preserve, so the transcript is
  * folded with {@link foldSystemMessages}.
  *
+ * With {@link CollapseSystemOptions.holdAfterToolResult}, an update is held when its first chance
+ * to be delivered (the next assistant or user message, or the end of the transcript) comes right
+ * after a tool result, wherever it sits relative to the tool call and its results. A held update
+ * that changes the prompt cannot travel as a user message, while the tools it describes change in
+ * this request. It is folded into the leading message instead, together with every system message
+ * before it, so the head keeps system authority over the current tools and no older update is
+ * replayed after a newer one. The head is rewritten once per such update and stays the same in
+ * later requests, because later messages do not change where the update was first held.
+ *
  * The transcript still replays through {@link getCurrentSystemMessage}; this projection is
  * request-time only.
  */
@@ -137,50 +146,105 @@ export function collapseSystemMessages(context: TranscriptContext, options?: Col
 	const rest = context.messages.slice(1);
 	if (!rest.some(isSystemMessage)) return context;
 	const holdAfterToolResult = options?.holdAfterToolResult === true;
+	let placed = placeSystemUpdates(rest, holdAfterToolResult, -1);
+	const foldThrough = findLastPromptChange(first, rest, placed.held);
+	if (foldThrough >= 0) placed = placeSystemUpdates(rest, holdAfterToolResult, foldThrough);
+	const leading =
+		foldThrough < 0 ? first : (getCurrentSystemMessage([first, ...rest.slice(0, foldThrough + 1)]) ?? first);
 
+	const tools = getCurrentTools(context.messages);
+	const { toolsAdded: _initialTools, ...base } = leading;
+	const head: SystemMessage = { ...base, ...(tools.length > 0 ? { toolsAdded: tools } : {}) };
+	return { messages: [head, ...placed.messages] } as TranscriptContext;
+}
+
+interface PlacedSystemUpdates {
+	messages: Message[];
+	/** Indexes in `rest` of updates whose first delivery point came right after a tool result. */
+	held: Set<number>;
+}
+
+/**
+ * Replay the messages after the head with each system update as a marked user message, skipping updates
+ * at or before `skipThrough` (they are folded into the head). Updates are delivered before the next
+ * assistant message or at the end; with `holdAfterToolResult`, a delivery point right after a tool result
+ * holds them instead, and they merge into the next user message.
+ */
+function placeSystemUpdates(
+	rest: readonly Message[],
+	holdAfterToolResult: boolean,
+	skipThrough: number,
+): PlacedSystemUpdates {
 	const messages: Message[] = [];
-	let pending: UserMessage[] = [];
+	const held = new Set<number>();
+	let pending: { index: number; message: UserMessage }[] = [];
 	// A user message directly after a tool result is illegal on strict APIs; hold the update instead.
 	const canFlush = (): boolean => !holdAfterToolResult || messages.at(-1)?.role !== "toolResult";
+	const reachDeliveryPoint = (): void => {
+		if (!canFlush()) for (const update of pending) held.add(update.index);
+	};
 	const flush = (): void => {
 		// Strict APIs also dislike consecutive user messages, so held updates travel as one.
 		if (holdAfterToolResult && pending.length > 1) {
-			const text = pending.map((update) => contentText(update.content)).join("\n\n");
-			messages.push({ ...pending[0], content: text });
+			const text = pending.map((update) => contentText(update.message.content)).join("\n\n");
+			messages.push({ ...pending[0].message, content: text });
 		} else {
-			messages.push(...pending);
+			messages.push(...pending.map((update) => update.message));
 		}
 		pending = [];
 	};
-	for (const message of rest) {
+	for (const [index, message] of rest.entries()) {
 		if (isSystemMessage(message)) {
+			if (index <= skipThrough) continue;
 			const text = renderSystemUpdateAsUserText(message);
-			if (text.length > 0) pending.push({ role: "user", content: text, timestamp: message.timestamp });
+			if (text.length > 0)
+				pending.push({ index, message: { role: "user", content: text, timestamp: message.timestamp } });
 			continue;
 		}
+		if (message.role === "user" || message.role === "assistant") reachDeliveryPoint();
 		if (holdAfterToolResult && message.role === "user" && pending.length > 0) {
-			messages.push(prependToUserMessage(message, pending));
+			messages.push(
+				prependToUserMessage(
+					message,
+					pending.map((update) => update.message),
+				),
+			);
 			pending = [];
 			continue;
 		}
 		if (message.role === "assistant" && canFlush()) flush();
 		messages.push(message);
 	}
+	reachDeliveryPoint();
 	if (canFlush()) flush();
-
-	const tools = getCurrentTools(context.messages);
-	const { toolsAdded: _initialTools, ...base } = first;
-	const head: SystemMessage = { ...base, ...(tools.length > 0 ? { toolsAdded: tools } : {}) };
-	return { messages: [head, ...messages] } as TranscriptContext;
+	return { messages, held };
 }
 
 export interface CollapseSystemOptions {
 	/**
-	 * For APIs that reject a user message directly after a tool result. An update that would land there is
-	 * held and merged into the next user message, so it reaches the model one turn later. The leading prompt
-	 * stays unchanged either way.
+	 * For adapters that keep a user message from directly following a tool result (a compatibility policy, e.g.
+	 * for endpoints that reject that order). An update that changes the prompt
+	 * there is folded into the leading prompt with every system message before it, which costs the cached
+	 * prompt prefix once per such update. Any other update that would land there is held and merged into the
+	 * next user message.
 	 */
 	holdAfterToolResult?: boolean;
+}
+
+/**
+ * Index in `rest` of the last held update that changes the prompt text, or -1. Held updates only carry
+ * text (a tool-only change is never pending), and one that leaves the prompt as it was does not count.
+ */
+function findLastPromptChange(first: SystemMessage, rest: readonly Message[], held: ReadonlySet<number>): number {
+	const systemMessages: SystemMessage[] = [first];
+	let last = -1;
+	for (const [index, message] of rest.entries()) {
+		if (!isSystemMessage(message)) continue;
+		const before = held.has(index) ? getCurrentSystemPrompt(systemMessages) : undefined;
+		systemMessages.push(message);
+		if (before !== undefined && getCurrentSystemPrompt(systemMessages) !== before) last = index;
+	}
+	return last;
 }
 
 /** Put held system updates in front of the user's own content. */

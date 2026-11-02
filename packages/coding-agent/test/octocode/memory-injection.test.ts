@@ -94,7 +94,7 @@ describe("pinned memories beyond one injection", () => {
 			const first = selectInjection(store, { query: "", scope: "all", seen: new Set(), topK: 5 })!;
 			expect(first.ids.length).toBeGreaterThan(0);
 			expect(first.content.split("\n").at(-1)).toBe(
-				`[${55 - first.ids.length} more pinned memories did not fit here; call memory with op "list" to read them.]`,
+				`[${55 - first.ids.length} more pinned memories did not fit here; call archive with op "list", source "memories" to read them.]`,
 			);
 			// The 50 newest were injected earlier: the 5 oldest come now, and nothing is held back.
 			const seen = new Set(ids.slice(5));
@@ -192,7 +192,7 @@ describe("edited and long memories", () => {
 				topK: 5,
 			})!.content.split("\n")[1];
 			expect(line.length).toBeLessThanOrEqual(600);
-			expect(line.endsWith(`…" (memory get M${memory.id})`)).toBe(true);
+			expect(line.endsWith(`…" (archive op=get source=memories id=M${memory.id})`)).toBe(true);
 		} finally {
 			db.close();
 		}
@@ -209,7 +209,7 @@ describe("pinned memories over the budget", () => {
 			const injection = selectInjection(store, { query: "", scope: "all", seen: new Set(), topK: 5 })!;
 			expect(injection.ids).toHaveLength(2);
 			expect(injection.content.split("\n").at(-1)).toBe(
-				'[2 more pinned memories did not fit here; call memory with op "list" to read them.]',
+				'[2 more pinned memories did not fit here; call archive with op "list", source "memories" to read them.]',
 			);
 			// Held-back memories are not recorded as injected, so a later prompt still brings them.
 			const later = selectInjection(store, { query: "", scope: "all", seen: new Set(injection.ids), topK: 5 })!;

@@ -3,14 +3,14 @@
 
 Every tool of the first request with its description and parameter schema, as the model receives them. Sizes count the compact JSON declaration.
 
-## Native tools (2; 3,583 chars)
+## Native tools (4; 6,777 chars)
 
 ### bash
 
-1,677 chars: description 564, parameter schema 1,067.
+1,560 chars: description 447, parameter schema 1,067.
 
 ```text
-Run a command in the working directory. Foreground calls return combined output. Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after 90s or on a user message. To wait in the foreground instead, set background: false with a timeout; the command is then stopped at the timeout. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.
+Run a command in the working directory. Foreground calls return combined output. Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after 90s or on a user message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.
 ```
 
 ```json
@@ -59,7 +59,7 @@ Run a command in the working directory. Foreground calls return combined output.
 
 ### file
 
-1,906 chars: description 508, parameter schema 1,352.
+1,886 chars: description 508, parameter schema 1,332.
 
 ```text
 Applies a batch of file changes; it does not read files. Pass queries (one object per change: type, path, edits or content) or a Codex-style patch string, not both; put a file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. Read an existing file before changing it; edits need exact text matching once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval.
@@ -140,13 +140,172 @@ Applies a batch of file changes; it does not read files. Pass queries (one objec
     },
     "patch": {
       "type": "string",
-      "description": "Codex apply_patch text, instead of queries"
+      "description": "Codex apply_patch text"
     },
     "reason": {
       "type": "string",
       "description": "Why this call, one sentence"
     }
   }
+}
+```
+
+### steps
+
+1,302 chars: description 236, parameter schema 1,019.
+
+```text
+Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, it needs item. move reorders a step or hands it to a held item.
+```
+
+```json
+{
+  "type": "object",
+  "required": [
+    "op",
+    "reason"
+  ],
+  "properties": {
+    "op": {
+      "type": "string",
+      "enum": [
+        "list",
+        "add",
+        "update",
+        "move"
+      ],
+      "description": "list: open steps of item, else of this session and its items"
+    },
+    "id": {
+      "type": "string",
+      "description": "update/move/promote: e.g. T7; list: only this step"
+    },
+    "goal": {
+      "type": "string",
+      "description": "add/update: what done means"
+    },
+    "why": {
+      "type": "string",
+      "description": "add/update: why"
+    },
+    "item": {
+      "type": "string",
+      "description": "list/add/move: e.g. B12; list: an epic covers its items"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "todo",
+        "ongoing",
+        "done",
+        "dropped"
+      ],
+      "description": "list: filter; add: todo/ongoing; update: new"
+    },
+    "result": {
+      "type": "string",
+      "description": "update: outcome"
+    },
+    "position": {
+      "type": "integer",
+      "description": "move: 0 is first"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "list: page size, capped at 200 (default 20)"
+    },
+    "offset": {
+      "type": "integer",
+      "description": "list: skip; copy from Next"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this call, one sentence"
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### agent
+
+2,029 chars: description 364, parameter schema 1,617.
+
+```text
+Set type and that type's fields; each field's description starts with its type. coordinate: List teammates and reserve files in this worktree: reservations block other agents' edits and bash writes to those paths; scripts and other editors ignore them.
+message: Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle recipient.
+```
+
+```json
+{
+  "type": "object",
+  "required": [
+    "type",
+    "reason"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "coordinate",
+        "message"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "list",
+        "lock",
+        "unlock",
+        "changes"
+      ],
+      "description": "coordinate: list: live agents and held paths; lock: reserve paths, all or none; unlock: release paths, or all without paths; changes: recent file changes by agents, newest first"
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "coordinate: lock/unlock: files, or \"dir/\" for a tree. changes: only under these paths"
+    },
+    "withinMinutes": {
+      "type": "integer",
+      "description": "coordinate: changes: window in minutes (default 60)"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "coordinate: changes: max files (default 20)"
+    },
+    "to": {
+      "type": "string",
+      "description": "message: Agent id, role or \"parent\"; use an exact id across parent trees. \"all\" reaches only your tree; omit with replyTo to answer its sender."
+    },
+    "message": {
+      "type": "string",
+      "description": "message only"
+    },
+    "forward": {
+      "type": "integer",
+      "description": "message: Stored message # to pass on unchanged (msg#N elsewhere); message becomes an optional note; replies go to its sender."
+    },
+    "replyRequired": {
+      "type": "boolean",
+      "description": "message: true: a request you need answered; wakes an idle recipient. Default false: an FYI"
+    },
+    "wake": {
+      "type": "boolean",
+      "description": "message: true: an idle recipient acts now, no answer expected (an FYI waits). Not with to: all"
+    },
+    "replyTo": {
+      "type": "integer",
+      "description": "message: Message number to answer; wakes the asker."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this call, one sentence"
+    }
+  },
+  "additionalProperties": false
 }
 ```
 

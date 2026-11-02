@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
+import type { ExtensionAPI } from "../../src/core/features/types.ts";
 import type { Skill } from "../../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";

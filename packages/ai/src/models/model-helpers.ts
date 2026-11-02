@@ -1,4 +1,4 @@
-import type { Api, AnyModel, Model, ModelCostRates, ModelThinkingLevel, Usage } from "../types.ts";
+import type { Api, AnyModel, Model, ModelCost, ModelCostRates, ModelThinkingLevel, Usage } from "../types.ts";
 import { getModelType, isModelType } from "../utils/model-operations.ts";
 
 /**
@@ -22,11 +22,32 @@ const CACHE_WRITE_1H_INPUT_MULTIPLIER = 2;
 /** `Usage.cacheWrite12h` price over the input rate: OpenAI explicit 12-hour writes. */
 const CACHE_WRITE_12H_INPUT_MULTIPLIER = 2.5;
 
-export function calculateCost(model: AnyModel, usage: Usage): Usage["cost"] {
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * The rates (and context tiers) in force at `now`: the listed ones, or `after` once the UTC day `until` has ended.
+ * Every reader of a model price, for pricing or display, goes through this one rule.
+ * An entry without `after`, or with an unreadable `until`, never expires.
+ */
+export function activeRates(
+	cost: ModelCost,
+	now: Date | number = Date.now(),
+): ModelCostRates & Pick<ModelCost, "tiers"> {
+	if (!cost.after || cost.until === undefined) return cost;
+	const lastDay = Date.parse(`${cost.until}T00:00:00Z`);
+	return Number.isNaN(lastDay) || +now < lastDay + MS_PER_DAY ? cost : cost.after;
+}
+
+/**
+ * Prices `usage` at the model's catalog rates. `now` selects between the listed and the `after` rates of a
+ * time-limited price; tests inject it, callers normally take the system clock.
+ */
+export function calculateCost(model: AnyModel, usage: Usage, now: Date | number = Date.now()): Usage["cost"] {
+	const cost = activeRates(model.cost, now);
 	const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
-	let rates: ModelCostRates = model.cost;
+	let rates: ModelCostRates = cost;
 	let matchedThreshold = -1;
-	for (const tier of model.cost.tiers ?? []) {
+	for (const tier of cost.tiers ?? []) {
 		if (inputTokens > tier.inputTokensAbove && tier.inputTokensAbove > matchedThreshold) {
 			rates = tier;
 			matchedThreshold = tier.inputTokensAbove;

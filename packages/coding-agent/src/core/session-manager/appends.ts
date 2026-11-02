@@ -1,9 +1,8 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { BashExecutionMessage, CustomMessage } from "../messages.ts";
-import { buildSessionProjection } from "./context.ts";
+import { getCompactionBoundarySystem } from "./context.ts";
 import { generateId } from "./entries.ts";
 import { appendEntry } from "./persistence.ts";
-import { getCompactionSystemFields } from "./system-base.ts";
 import { getBranchEntries, getSessionEntries, type SessionState } from "./state.ts";
 import { normalizeContextEditReplacement } from "./tree.ts";
 import type {
@@ -97,11 +96,14 @@ export function appendCompaction<T = unknown>(
 	usage?: Usage,
 ): string {
 	const timestamp = new Date().toISOString();
-	const system = getCompactionSystemFields(
-		buildSessionProjection(getSessionEntries(state), state.leafId, state.byId).messages,
+	const id = generateId(state.byId);
+	const system = getCompactionBoundarySystem(
+		getSessionEntries(state),
+		state.leafId,
+		state.byId,
+		firstKeptEntryId ?? id,
 		new Date(timestamp).getTime(),
 	);
-	const id = generateId(state.byId);
 	const entry: CompactionEntry<T> = {
 		type: "compaction",
 		id,

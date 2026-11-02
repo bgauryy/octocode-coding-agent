@@ -1,4 +1,4 @@
-import type { ExtensionUIContext } from "../../core/extensions/index.ts";
+import type { ExtensionUIContext } from "../../core/features/index.ts";
 import { ALLOW_ONCE, DENY_NOTE, NOTE_TITLE } from "../permission/ask/text.ts";
 import {
 	AUDIT_NOTIFY_PREFIX,
@@ -32,7 +32,7 @@ const RELAY_MAX_DIALOGS = 10;
 const RELAY_WINDOW_MS = 60_000;
 
 /** What the parent says to a child it stops asking about. The child's own deny-with-a-note path carries it to the model. */
-export const RELAY_LIMIT_NOTE = `Not run: this subagent sent more than ${RELAY_MAX_DIALOGS} approval dialogs within a minute, so the rest of that minute is denied without asking the user. Do not retry now; report it to your parent as SBAR.`;
+export const RELAY_LIMIT_NOTE = `Not run: this subagent sent more than ${RELAY_MAX_DIALOGS} approval dialogs within a minute, so the rest of that minute is denied without asking the user. Do not retry now; report to your parent what is blocked, why, and what you need.`;
 
 /** The part of the parent's permission state a relay uses. */
 interface RelayPermission {

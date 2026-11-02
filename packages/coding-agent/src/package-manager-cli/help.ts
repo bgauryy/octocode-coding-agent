@@ -8,17 +8,17 @@ export type PackageCommand = "install" | "remove" | "update" | "list";
 export function getPackageCommandUsage(command: PackageCommand): string {
 	switch (command) {
 		case "install":
-			return `${APP_NAME} install <source> [-l] [--approve|--no-approve]`;
+			return `${APP_NAME} install <source> [-l] [--trust]`;
 		case "remove":
-			return `${APP_NAME} remove <source> [-l] [--approve|--no-approve]`;
+			return `${APP_NAME} remove <source> [-l] [--trust]`;
 		case "update":
-			return `${APP_NAME} update [source|self] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
+			return `${APP_NAME} update [source|self] [--self|--extensions|--models|--all] [--extension <source>] [--trust] [--force]`;
 		case "list":
-			return `${APP_NAME} list [--approve|--no-approve]`;
+			return `${APP_NAME} list [--trust]`;
 	}
 }
 
-export const CONFIG_COMMAND_USAGE = `${APP_NAME} config [-l] [--approve|--no-approve]`;
+export const CONFIG_COMMAND_USAGE = `${APP_NAME} config [-l] [--trust]`;
 
 export function printConfigCommandHelp(): void {
 	console.log(`${chalk.bold("Usage:")}
@@ -30,8 +30,7 @@ Press Tab in the TUI to switch between global and project-local modes.
 
 Options:
   -l, --local       Edit project overrides (${CONFIG_DIR_NAME}/settings.json)
-  -a, --approve     Trust project-local files for this command with -l
-  -na, --no-approve Ignore project-local files for this command with -l
+  --trust           Record your trust for this folder first, so -l can use project-local files
 `);
 }
 
@@ -45,8 +44,7 @@ Install a package and add it to settings.
 
 Options:
   -l, --local       Install project-locally (${CONFIG_DIR_NAME}/settings.json)
-  -a, --approve     Trust project-local files for this command
-  -na, --no-approve Ignore project-local files for this command
+  --trust           Record your trust for this folder first
 
 Examples:
   ${APP_NAME} install npm:@foo/bar
@@ -66,8 +64,7 @@ Remove a package and its source from settings.
 
 Options:
   -l, --local       Remove from project settings (${CONFIG_DIR_NAME}/settings.json)
-  -a, --approve     Trust project-local files for this command
-  -na, --no-approve Ignore project-local files for this command
+  --trust           Record your trust for this folder first
 
 Examples:
   ${APP_NAME} remove npm:@foo/bar
@@ -86,8 +83,7 @@ Options:
   --models                Refresh model catalogs only
   --all                   Update ${APP_TITLE} and installed packages
   --extension <source>    Update one package only
-  -a, --approve           Trust project-local files for this command
-  -na, --no-approve       Ignore project-local files for this command
+  --trust                 Record your trust for this folder first
   --force                 Reinstall ${APP_TITLE} even if the current version is latest
 
 Short forms:
@@ -106,8 +102,7 @@ Short forms:
 List installed packages from user and project settings.
 
 Options:
-  -a, --approve      Trust project-local files for this command
-  -na, --no-approve  Ignore project-local files for this command
+  --trust            Record your trust for this folder first
 `);
 			return;
 	}

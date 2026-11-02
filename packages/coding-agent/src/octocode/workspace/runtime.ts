@@ -5,7 +5,7 @@ import { presentAgentReport } from "../subagents/presentation.ts";
 import { dbStamp, sharedAgentDb, type AgentDb } from "../agentdb/api.ts";
 import type { RevisedWorkspace } from "./revision.ts";
 import { WorkspaceCommands } from "./commands.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
 import type { Team } from "../team/session.ts";

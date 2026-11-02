@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createBashTool, createBashToolDefinition } from "../src/core/tools/index.ts";
@@ -54,7 +54,7 @@ describe("strict built-in tools", () => {
 				cwd,
 				agentDir,
 				settingsManager,
-				noExtensions: true,
+				disabledFeatures: ["mcp", "llama.cpp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -72,7 +72,7 @@ describe("strict built-in tools", () => {
 			});
 			try {
 				await resourceLoader.reload();
-				const { session } = await createAgentSession({
+				const { session } = await createTestSession({
 					cwd,
 					agentDir,
 					model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

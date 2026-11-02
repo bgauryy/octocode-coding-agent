@@ -137,15 +137,14 @@ function repairSchemaNode(value: unknown, definitions: Definitions): unknown {
  * repairs still returns a copy, so callers can adjust the root afterwards.
  */
 function repairSchema(schema: Record<string, unknown>, definitions: Definitions): Record<string, unknown> {
-	const repaired: Record<string, unknown> = {};
+	// Collected as entries: `Object.fromEntries` defines own properties, so a name such as `__proto__` stays a name.
+	const entries: [string, unknown][] = [];
 	for (const [key, value] of Object.entries(schema)) {
 		let next: unknown = value;
 		if (SCHEMA_MAP_KEYS.has(key) && isSchemaObject(next)) {
-			const map: Record<string, unknown> = {};
-			for (const [name, subschema] of Object.entries(next)) {
-				map[name] = repairSchemaNode(subschema, definitions);
-			}
-			next = map;
+			next = Object.fromEntries(
+				Object.entries(next).map(([name, subschema]) => [name, repairSchemaNode(subschema, definitions)]),
+			);
 		} else if (SCHEMA_LIST_KEYS.has(key) && Array.isArray(next)) {
 			next = next.map((item) => repairSchemaNode(item, definitions));
 		} else if (key === "propertyNames") {
@@ -159,8 +158,9 @@ function repairSchema(schema: Record<string, unknown>, definitions: Definitions)
 				next = repairSchemaNode(next, definitions);
 			}
 		}
-		repaired[key] = next;
+		entries.push([key, next]);
 	}
+	const repaired: Record<string, unknown> = Object.fromEntries(entries);
 	// Beside a union the type belongs on its children (repaired above), never on the parent.
 	if (Array.isArray(repaired.anyOf) || Array.isArray(repaired.oneOf)) {
 		const { type: _parentType, ...withoutType } = repaired;

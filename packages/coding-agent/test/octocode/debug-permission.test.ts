@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { isolatedTreeRefusal } from "../../src/octocode/permission/isolated-tree.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
@@ -19,8 +19,10 @@ const call = (action: string): ToolCallEvent => ({
 
 describe("debugger permission integration", () => {
 	it("includes an explicitly selected debugger in the child's authorized process capabilities", () => {
-		expect(profileReach(undefined, ["debug"])).toContain("shell");
-		expect(profileReach(undefined, ["file"])).not.toContain("shell");
+		// Every child gets bash, so only a profile that removes it shows what the debugger alone reaches.
+		const noBash = { name: "no-bash", description: "", prompt: "", excludeTools: "bash" };
+		expect(profileReach(noBash, ["debug"])).toContain("shell");
+		expect(profileReach(noBash, ["file"])).not.toContain("shell");
 	});
 	it.each(["launch", "breakpoints", "continue", "next", "stepIn", "stepOut", "stack", "scopes", "variables", "output"])(
 		"classifies %s as process execution and refuses it for a read-only role",

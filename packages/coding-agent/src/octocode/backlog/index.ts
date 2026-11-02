@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../shared/web.ts";
 import { STATUS } from "../shared/status.ts";

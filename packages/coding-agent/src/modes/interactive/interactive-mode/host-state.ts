@@ -21,7 +21,7 @@ import type {
 	EditorFactory,
 	MarkdownTransformer,
 	WorkingIndicatorOptions,
-} from "../../../core/extensions/index.ts";
+} from "../../../core/features/index.ts";
 import type { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionManager } from "../../../core/session-manager.ts";
@@ -50,7 +50,6 @@ export interface InteractiveModeState {
 	autoCompactionEscapeHandler: (() => void) | undefined;
 	autocompleteProvider: AutocompleteProvider | undefined;
 	autocompleteProviderWrappers: AutocompleteProviderFactory[];
-	autoTrustOnReloadCwd: string | undefined;
 	bashComponent: BashExecutionComponent | undefined;
 	bugReportHintShown: boolean;
 	builtInHeader: Component | undefined;

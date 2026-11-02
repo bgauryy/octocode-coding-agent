@@ -82,18 +82,19 @@ export function parseJsonContainer(value: unknown, type: "array" | "object"): un
 }
 
 interface LiftedObject {
-	properties: Schema;
+	/** By name in a Map: a field may be named `__proto__`, `constructor` or another `Object.prototype` member. */
+	properties: Map<string, unknown>;
 	required: Set<string>;
 }
 
 const mergedAlternatives = new WeakSet<object>();
 
 /** Adds `source`'s properties to `target`; a key both declare differently accepts either schema. */
-function mergeProperties(target: Schema, source: Schema): void {
-	for (const [key, next] of Object.entries(source)) {
-		const existing = target[key];
+function mergeProperties(target: Map<string, unknown>, source: Iterable<[string, unknown]>): void {
+	for (const [key, next] of source) {
+		const existing = target.get(key);
 		if (existing === undefined) {
-			target[key] = next;
+			target.set(key, next);
 			continue;
 		}
 		if (JSON.stringify(existing) === JSON.stringify(next)) continue;
@@ -103,31 +104,53 @@ function mergeProperties(target: Schema, source: Schema): void {
 		if (!options.some((option) => JSON.stringify(option) === JSON.stringify(next))) options.push(next);
 		const merged = { anyOf: options };
 		mergedAlternatives.add(merged);
-		target[key] = merged;
+		target.set(key, merged);
 	}
 }
 
-function liftObject(schema: unknown, root: unknown): LiftedObject {
-	const resolved = resolveLocalRef(schema, root);
-	const lifted: LiftedObject = { properties: {}, required: new Set() };
-	if (!isSchema(resolved)) return lifted;
-	if (isSchema(resolved.properties)) mergeProperties(lifted.properties, resolved.properties);
-	for (const key of stringList(resolved.required)) lifted.required.add(key);
-	if (Array.isArray(resolved.allOf)) {
-		for (const part of resolved.allOf) {
-			const next = liftObject(part, root);
+/**
+ * The properties and required keys `schema` describes, for a declaration the model reads: those of a local `$ref`
+ * target and of the keywords beside it (every key of either side; a key both declare differently accepts either
+ * schema; the required keys of both), then of `allOf` and alternatives. A schema already on the current path (a
+ * reference back to the root or to an enclosing definition) is a cycle: it adds nothing the enclosing visit does not,
+ * so it returns undefined and is left out, also from the keys every alternative requires. This approximates the shape
+ * for a declaration only; validation resolves references itself ({@link resolveLocalRef}).
+ */
+function liftObject(schema: unknown, root: unknown, path: ReadonlySet<unknown> = new Set()): LiftedObject | undefined {
+	if (path.has(schema)) return undefined;
+	const inner = new Set(path).add(schema);
+	const lifted: LiftedObject = { properties: new Map(), required: new Set() };
+	if (!isSchema(schema)) return lifted;
+	const target = typeof schema.$ref === "string" ? resolvePointer(root, schema.$ref) : undefined;
+	const referenced = isSchema(target) ? liftObject(target, root, inner) : undefined;
+	if (referenced) {
+		mergeProperties(lifted.properties, referenced.properties);
+		for (const key of referenced.required) lifted.required.add(key);
+	}
+	if (isSchema(schema.properties)) mergeProperties(lifted.properties, Object.entries(schema.properties));
+	for (const key of stringList(schema.required)) lifted.required.add(key);
+	if (Array.isArray(schema.allOf)) {
+		for (const part of schema.allOf) {
+			const next = liftObject(part, root, inner);
+			if (!next) continue;
 			mergeProperties(lifted.properties, next.properties);
 			for (const key of next.required) lifted.required.add(key);
 		}
 	}
-	for (const alternatives of [resolved.anyOf, resolved.oneOf]) {
+	for (const alternatives of [schema.anyOf, schema.oneOf]) {
 		if (!Array.isArray(alternatives) || alternatives.length === 0) continue;
-		const options = alternatives.map((option) => liftObject(option, root));
+		const options = alternatives
+			.map((option) => liftObject(option, root, inner))
+			.filter((option): option is LiftedObject => option !== undefined);
+		if (options.length === 0) continue;
 		for (const option of options) mergeProperties(lifted.properties, option.properties);
 		for (const key of options[0].required) {
 			if (options.every((option) => option.required.has(key))) lifted.required.add(key);
 		}
 	}
+	// A reference back onto the path with nothing of its own beside it is that cycle too.
+	const revisit = isSchema(target) && !referenced;
+	if (revisit && lifted.properties.size === 0 && lifted.required.size === 0) return undefined;
 	return lifted;
 }
 
@@ -160,7 +183,10 @@ export function liftRootComposition<T>(schema: T): T {
 	if (!isSchema(schema)) return schema;
 	if (!Array.isArray(schema.anyOf) && !Array.isArray(schema.oneOf) && !Array.isArray(schema.allOf)) return schema;
 	const { anyOf: _anyOf, oneOf: _oneOf, allOf: _allOf, ...rest } = schema;
-	const { properties, required } = liftObject(schema, schema);
+	// The root starts the path, so it is never a revisit of itself.
+	const lifted = liftObject(schema, schema);
+	const properties = Object.fromEntries(lifted?.properties ?? []);
+	const required = lifted?.required ?? new Set<string>();
 	const { required: _required, ...withoutRequired } = rest;
 	return {
 		...withoutRequired,
@@ -171,4 +197,14 @@ export function liftRootComposition<T>(schema: T): T {
 			: {}),
 		...(required.size > 0 ? { required: [...required] } : {}),
 	} as T;
+}
+
+/**
+ * Every top-level property a tool's arguments may carry, as {@link liftRootComposition} lists them, also for a root
+ * that is only a `$ref` (with or without keywords beside it). For a declaration only: it approximates the shape and is
+ * not a validator.
+ */
+export function liftedProperties(schema: unknown): Schema {
+	// Object.fromEntries defines own properties, so a field named `__proto__` stays a field.
+	return Object.fromEntries(liftObject(schema, schema)?.properties ?? []);
 }

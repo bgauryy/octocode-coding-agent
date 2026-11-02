@@ -142,7 +142,7 @@ export function runList(
 		lines.push(
 			`Next: backlog ${JSON.stringify({ op: "list", states, ...filters, limit, offset: offset + items.length })}`,
 		);
-	const triage = states.includes("backlog") ? 0 : store.counts().backlog;
+	const triage = states.includes("backlog") ? 0 : store.counts().items.backlog;
 	if (triage > 0) lines.push(`${triage} proposed item(s) await triage (list with states: ["backlog"]).`);
 	return textResult(lines.join("\n"), { shown: items.length, total });
 }

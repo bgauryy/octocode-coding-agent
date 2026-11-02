@@ -23,6 +23,18 @@ afterEach(() => {
 });
 
 describe("cooperative file mutation locks", () => {
+	it("keeps the old file and removes the temporary file when a synchronous precommit check fails", () => {
+		const file = fixture();
+		expect(() =>
+			atomicWriteFileSync(file, "new", {
+				beforeCommit: () => {
+					throw new Error("projection path changed");
+				},
+			}),
+		).toThrow("projection path changed");
+		expect(fs.readFileSync(file, "utf8")).toBe("old");
+		expect(fs.readdirSync(path.dirname(file))).toEqual(["file.txt"]);
+	});
 	it("allows only one concurrent replacement of the same expected bytes", async () => {
 		const file = fixture();
 		const outcomes = await Promise.allSettled([

@@ -1,3 +1,4 @@
+import { sessionWorkspace } from "./home/workspace.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
@@ -104,6 +105,16 @@ export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env):
 	others.sort((a, b) => (b.record.lastActive ?? "").localeCompare(a.record.lastActive ?? ""));
 	for (const { folder, record } of others) add(folder, "same repository", record);
 	return sessions;
+}
+
+/** Workspace records plus inherited lineage; all Archive calls share this policy. */
+export function workspaceHistoryScope(cwd: string): HistorySession[] {
+	const workspace = sessionWorkspace(cwd);
+	return historyScope(cwd).filter(
+		(session) =>
+			session.relation !== "same repository" ||
+			(session.record?.workspace && sessionWorkspace(session.record.workspace, {}) === workspace),
+	);
 }
 
 /** One file of a session's history: its record, or a segment. */

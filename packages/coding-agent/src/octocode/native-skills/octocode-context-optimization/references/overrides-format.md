@@ -26,7 +26,7 @@ Load when writing, validating or debugging an overrides file.
 
 ## What the check enforces
 
-`octocode mcp compact check` runs the product `checkFidelity`: every tool, property, enum or const value, required flag and required-keys alternative from the catalog is present in the rendered file, nothing renders as an unresolved `$ref`, and each override stays within the length limit (server 1,200, tool 600, trigger 200 on one line, field 240) and adds no URL absent from the source. A field override must name a path the schema has (`no such field`) and must not call a field optional that every occurrence requires. It does not judge wording or budget: read the printed tables (whole file, prose against structure, costliest field docs, per description) and apply the budget rules.
+`octocode mcp compact check` runs the product `checkFidelity`: every tool, property, enum or const value, required flag and required-keys alternative from the catalog is present in the rendered file, nothing renders as an unresolved `$ref`, and each override stays within the length limit (server 1,200, tool 600, trigger 200 on one line, field 240) and adds no URL absent from the source. A field override must name a path the schema has (`no such field`) and must not call a field optional that every occurrence requires. A tool the renderer cannot express (it fails the plain file too) is listed apart as not caused by the overrides: sessions declare it in full and keep every other tool's overrides. It does not judge wording or budget: read the printed tables (whole file, prose against structure, costliest field docs, per description) and apply the budget rules.
 
 ## Stored metadata
 
@@ -34,15 +34,20 @@ Load when writing, validating or debugging an overrides file.
 
 ## Preset form
 
-A preset ships its overrides per tool, each entry with the hash of the tool it describes, so a server release drops only the entries of changed tools:
+A preset ships each override with the hash of the upstream text it replaces: the server text with the hash of the instructions, a tool's `description` and `trigger` with the hash of the tool's description, and each field with the hash of its description at its dotted path. A server release that rewrites some texts drops only the overrides of those texts; the rest still apply, and a stale one falls back to the server's wording:
 
 ```json
 {
-	"server": { "instructionsHash": "<sha256>", "text": "Server instructions as plain prose." },
+	"server": { "instructionsHash": "<hash>", "text": "Server instructions as plain prose." },
 	"tools": {
-		"localSearch": { "hash": "<sha256>", "description": "...", "trigger": "...", "fields": { "responseChars": "..." } }
+		"localSearch": {
+			"descriptionHash": "<hash>",
+			"description": "...",
+			"trigger": "...",
+			"fields": { "queries.limit": { "upstream": "<hash>", "text": "..." } }
+		}
 	}
 }
 ```
 
-Do not compute the hashes by hand: `octocode mcp compact preset <server> --overrides <file> --catalog <file>` checks the overrides and prints this form.
+Do not compute the hashes by hand: `octocode mcp compact preset <server> --overrides <file> --catalog <file>` checks the overrides and prints this form. For a preset in this repository, `yarn workspace @octocodeai/octocode-mcp run generate:compact` lists the overrides a rebuilt server left stale (tool and field, with the text before and after) and re-points the ones you accept.

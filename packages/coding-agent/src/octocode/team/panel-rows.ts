@@ -26,8 +26,17 @@ const WIDE_ONLY = ["cost", "tools"] as const;
 /** Give way, in order, only when the goal would be cut below `GOAL_MIN`. */
 const GIVE_WAY = ["cache", "role"] as const;
 
-/** `anthropic/claude-opus-4-5` → `claude-opus-4-5`: the provider adds width, not meaning, in a one-line row. */
-const modelLabel = (model: string | undefined) => safe(model?.slice(model.lastIndexOf("/") + 1), MODEL_MAX);
+/**
+ * `anthropic/claude-opus-4-5:high` → `claude-opus-4-5:high`: the provider adds width, not meaning, in a one-line row. A
+ * long id is cut before its `:level`, which says how hard the agent thinks and stays visible.
+ */
+function modelLabel(model: string | undefined): string {
+	if (!model) return "";
+	const name = model.slice(model.lastIndexOf("/") + 1);
+	const colon = name.lastIndexOf(":");
+	if (colon <= 0 || name.length <= MODEL_MAX) return safe(name, MODEL_MAX);
+	return `${safe(name.slice(0, colon), Math.max(1, MODEL_MAX - (name.length - colon)))}${name.slice(colon)}`;
+}
 
 type Usage = Pick<Member, "input" | "cacheRead" | "output">;
 /** Every token an agent used: new prompt tokens, cache reads and output. */
@@ -210,7 +219,9 @@ export function rootRow(
 ): string {
 	const role = self?.role ?? "main";
 	const roleText = role === selfId ? "" : `${GAP}${theme.fg("dim", safe(role, 24))}`;
-	const lead = ` ${theme.fg(STATE_COLOR.done, GLYPH.live)} ${theme.fg("text", safe(selfId, 64))}${roleText}`;
+	const model = modelLabel(self?.model);
+	const modelText = model ? `${GAP}${theme.fg("muted", model)}` : "";
+	const lead = ` ${theme.fg(STATE_COLOR.done, GLYPH.live)} ${theme.fg("text", safe(selfId, 64))}${roleText}${modelText}`;
 	const gap = Math.max(GAP.length, Math.min(alignTo, width) - visibleWidth(lead) - visibleWidth(summary));
 	return truncateToWidth(`${lead}${" ".repeat(gap)}${theme.fg("muted", summary)}`, Math.max(1, width), "…");
 }

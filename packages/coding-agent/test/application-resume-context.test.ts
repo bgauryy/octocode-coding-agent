@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@octocodeai/octocode-ai/compat";
 import { afterEach, expect, it } from "vitest";
-import { createAgentSessionFromServices, createAgentSessionServices } from "../src/core/agent-session-runtime.ts";
+import { createSessionFromServices, createAgentSessionServices } from "../src/core/agent-session-runtime.ts";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import { ApplicationService } from "../src/core/application/service.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -36,7 +36,7 @@ async function open(
 		modelRuntime,
 		resourceLoaderOptions: { appendSystemPrompt, noSkills: true, noPromptTemplates: true, noThemes: true },
 	});
-	const { session } = await createAgentSessionFromServices({ services, sessionManager, model });
+	const { session } = await createSessionFromServices({ services, sessionManager, model });
 	await session.bindExtensions({});
 	return session;
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { syncBuiltinESMExports } from "node:module";
 import { randomUUID, createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
@@ -68,7 +68,6 @@ Object.assign(process.env, {
 	OCTOCODE_MEMORY_AUTO: "0",
 	OCTOCODE_API: "1",
 });
-fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(workspace)]: true }));
 const hookFile = path.join(run, "hooks.jsonl");
 const recorder = path.join(run, "hook-recorder.mjs");
 fs.writeFileSync(
@@ -87,8 +86,12 @@ fs.writeFileSync(
 	}),
 );
 const { createFauxCore, fauxAssistantMessage, fauxToolCall } = await import("@octocodeai/octocode-ai");
-const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } =
-	await import("@octocodeai/octocodecode");
+const { createTestSession } = await import(path.join(packageRoot, "test/helpers/session.ts"));
+const { trustFolder } = await import(path.join(packageRoot, "test/octocode/helpers.ts"));
+trustFolder(workspace);
+const { DefaultResourceLoader } = await import(path.join(packageRoot, "src/core/resource-loader.ts"));
+const { SettingsManager } = await import(path.join(packageRoot, "src/core/settings-manager.ts"));
+const { SessionManager } = await import(path.join(packageRoot, "src/core/session-manager.ts"));
 const { ApiClient } = await import(path.join(packageRoot, "src/octocode/api/client.ts"));
 const { AGENT_FIELD_RENAMES } = await import(path.join(packageRoot, "src/octocode/shared/agent-call.ts"));
 const { apiDir, listInstances } = await import(path.join(packageRoot, "src/octocode/api/registry.ts"));
@@ -109,7 +112,7 @@ const report = {
 		arch: process.arch,
 		packageRoot,
 		sourceResolver,
-		codingAgent: import.meta.resolve("@octocodeai/octocodecode"),
+		codingAgent: pathToFileURL(path.join(packageRoot, "src/core/agent-session/create-session.ts")).href,
 		ai: import.meta.resolve("@octocodeai/octocode-ai"),
 	},
 	cloudPromptAttempts: 0,
@@ -118,7 +121,7 @@ const report = {
 	checks: {},
 	hashes: Object.fromEntries(
 		[
-			"src/index.ts",
+			"src/core/agent-session/create-session.ts",
 			"scripts/source-resolver.ts",
 			"src/octocode/index.ts",
 			"src/octocode/agent-tool.ts",
@@ -383,7 +386,7 @@ try {
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	({ session } = await createAgentSession({
+	({ session } = await createTestSession({
 		cwd: workspace,
 		agentDir,
 		resourceLoader,

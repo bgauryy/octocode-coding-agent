@@ -1,5 +1,8 @@
+import { sessionWorkspace } from "../shared/home/workspace.ts";
+import { repoKey } from "../shared/home/repo.ts";
 import {
 	type AgentDb,
+	sharedAgentDb,
 	type MemoryFilter,
 	type MemoryScope,
 	memories,
@@ -82,7 +85,7 @@ const SETTING_AUTO = "memory_auto";
 function toMemory(row: Row): Memory {
 	return {
 		id: Number(row.id),
-		scope: row.scope === "global" ? "global" : "project",
+		scope: memories.memoryScope(row),
 		repoKey: (row.repo_key as string | null) ?? null,
 		kind: rowKind(row),
 		title: stringOrEmpty(row.title),
@@ -105,9 +108,26 @@ function toMemory(row: Row): Memory {
 export class MemoryStore {
 	private readonly agentDb: AgentDb;
 	readonly repoKey: string;
-	constructor(agentDb: AgentDb, repoKey: string) {
+	readonly workspace: string | undefined;
+	constructor(agentDb: AgentDb, repoKey: string, workspace?: string) {
 		this.agentDb = agentDb;
 		this.repoKey = repoKey;
+		this.workspace = workspace;
+	}
+
+	private get context(): memories.MemoryContext {
+		return this.workspace
+			? { repoKey: this.repoKey, workspaceKey: memories.workspaceMemoryKey(this.workspace) }
+			: this.repoKey;
+	}
+
+	private storageScope(scope: MemoryScope): { scope: string; repoKey: string | null } {
+		if (scope === "workspace" && !this.workspace) throw new MemoryError("No workspace is bound.");
+		return {
+			scope: scope === "workspace" ? "project" : scope,
+			repoKey:
+				scope === "global" ? null : scope === "workspace" ? memories.workspaceMemoryKey(this.workspace!) : this.repoKey,
+		};
 	}
 
 	private get db() {
@@ -116,13 +136,18 @@ export class MemoryStore {
 
 	/** A memory visible from this repository (global, or project of this repo), else undefined. */
 	get(id: number): Memory | undefined {
-		const row = memories.visible(this.db, this.repoKey, id);
+		const row = memories.visible(this.db, this.context, id);
 		return row ? toMemory(row) : undefined;
 	}
 
 	/** Pinned first, then most recently updated. */
 	list(scope: ScopeFilter = "all", limit = 50, options: MemoryFilter = {}): Memory[] {
-		return memories.list(this.db, this.repoKey, scope, limit, options).map(toMemory);
+		return memories.list(this.db, this.context, scope, limit, options).map(toMemory);
+	}
+
+	/** Bounded retrieval for Archive; the cursor visits every visible note. */
+	scan(scope: ScopeFilter, before: memories.MemoryCursor, limit: number): Memory[] {
+		return memories.scan(this.db, this.context, scope, before, limit).map(toMemory);
 	}
 
 	/** The `updatedAt` of each of `ids` that still exists, in one query. */
@@ -132,12 +157,12 @@ export class MemoryStore {
 	}
 
 	count(scope: ScopeFilter = "all", options: MemoryFilter = {}): number {
-		return memories.count(this.db, this.repoKey, scope, options);
+		return memories.count(this.db, this.context, scope, options);
 	}
 
 	/** Memories never handed to the model, or not updated in `days` days, oldest update first (`/memory review`). */
 	review(days: number, scope: ScopeFilter = "all", limit = 100, now = Date.now()): Memory[] {
-		return memories.forReview(this.db, this.repoKey, scope, now - days * DAY_MS, limit).map(toMemory);
+		return memories.forReview(this.db, this.context, scope, now - days * DAY_MS, limit).map(toMemory);
 	}
 
 	/**
@@ -152,20 +177,30 @@ export class MemoryStore {
 			: this.searchLike([...new Set(terms(query, MAX_QUERY_TERMS).map(stem))], scope);
 		return hits
 			.filter((hit) => !exclude.has(hit.id))
-			.map((hit) => (hit.scope === "project" ? { ...hit, score: hit.score * PROJECT_BOOST } : hit))
+			.map((hit) => (hit.scope !== "global" ? { ...hit, score: hit.score * PROJECT_BOOST } : hit))
 			.sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
 			.slice(0, limit);
 	}
 
+	/** Archive pages ranked matches from the existing full-text index; absent FTS uses its bounded scan. */
+	searchPage(query: string, scope: ScopeFilter, offset: number, limit: number): MemoryHit[] | undefined {
+		if (!this.agentDb.fts) return undefined;
+		const match = ftsQuery(query);
+		if (!match) return [];
+		return memories
+			.searchFts(this.db, this.context, match, scope, new Set(), limit, offset)
+			.map((row) => ({ ...toMemory(row), score: -Number(row.bm25_score) }));
+	}
+
 	private searchFts(match: string, scope: ScopeFilter, limit: number, exclude: ReadonlySet<number>): MemoryHit[] {
-		const rows = memories.searchFts(this.db, this.repoKey, match, scope, exclude, limit);
+		const rows = memories.searchFts(this.db, this.context, match, scope, exclude, limit);
 		// bm25() is lower-is-better and negative for matches; negate so every score reads higher-is-better.
 		return rows.map((row) => ({ ...toMemory(row), score: -Number(row.bm25_score) }));
 	}
 
 	/** BM25-like without FTS5: per-column weights (5/3/1) times each term's inverse document frequency; `words` are stems. */
 	private searchLike(words: string[], scope: ScopeFilter): MemoryHit[] {
-		const docs = memories.newest(this.db, this.repoKey, scope, LIKE_SCAN_LIMIT).map((row) => {
+		const docs = memories.newest(this.db, this.context, scope, LIKE_SCAN_LIMIT).map((row) => {
 			const memory = toMemory(row);
 			const stems = (text: string) => new Set(terms(text).map(stem));
 			return { memory, title: stems(memory.title), keywords: stems(memory.keywords), body: stems(memory.body) };
@@ -210,7 +245,7 @@ export class MemoryStore {
 		const title = storedText(input.title);
 		if (!title) throw new MemoryError("A new memory needs a title.");
 		const body = storedText(input.body);
-		const scope = input.scope ?? "project";
+		const scope = input.scope ?? (this.workspace ? "workspace" : "project");
 		const keywords = storedText(input.keywords);
 		const duplicate = this.duplicateOf(scope, `${title} ${keywords} ${body}`, title);
 		if (duplicate)
@@ -218,8 +253,7 @@ export class MemoryStore {
 				`Similar memory ${memoryLabel(duplicate.id)} exists: "${duplicate.title}". Call set with id:"${memoryLabel(duplicate.id)}" to update it, or change the title.`,
 			);
 		const id = memories.insert(this.db, {
-			scope,
-			repoKey: scope === "project" ? this.repoKey : null,
+			...this.storageScope(scope),
 			...storedKind(input.kind ?? "fact"),
 			title,
 			body,
@@ -254,8 +288,7 @@ export class MemoryStore {
 				);
 		}
 		memories.update(this.db, id, {
-			scope,
-			repoKey: scope === "project" ? (current.scope === "project" ? current.repoKey : this.repoKey) : null,
+			...this.storageScope(scope),
 			...storedKind(input.kind ?? current.kind),
 			title,
 			body,
@@ -316,7 +349,7 @@ export const memoryTags = (memory: Memory, now?: number): string =>
 	].join(", ");
 
 /** The call that reads memory `id` whole: where every model-facing line with a cut body ends. */
-export const memoryGetCall = (id: number): string => `memory get ${memoryLabel(id)}`;
+export const memoryGetCall = (id: number): string => `archive op=get source=memories id=${memoryLabel(id)}`;
 
 /**
  * `M3 (project, decision, pinned) Title — body`, one line; the body whole unless `bodyChars` clips it (a one-line view for
@@ -332,4 +365,21 @@ export function memoryLine(memory: Memory, bodyChars = Number.POSITIVE_INFINITY,
 export function memoryToolLine(memory: Memory, bodyChars: number, now = Date.now()): string {
 	const cut = memory.body.replace(/\s+/g, " ").trim().length > bodyChars;
 	return `${memoryLine(memory, bodyChars, now)}${cut ? ` (${memoryGetCall(memory.id)})` : ""}`;
+}
+
+/** The memory store of `cwd`'s repository in the shared agent DB (the DB reopens when its path changes). */
+export function memoryStore(cwd: string, env: NodeJS.ProcessEnv = process.env): MemoryStore {
+	return new MemoryStore(sharedAgentDb(env), repoKey(cwd).key, sessionWorkspace(cwd, env));
+}
+
+/** The full view of one memory, for `get`. */
+export function describeMemory(memory: Memory, now = Date.now()): string {
+	const days = (at: number) => `${Math.max(0, Math.round((now - at) / DAY_MS))}d ago`;
+	return [
+		memoryLine(memory, 0),
+		...(memory.keywords ? [`keywords: ${memory.keywords}`] : []),
+		`author: ${memory.author} · updated ${days(memory.updatedAt)} · used ${memory.useCount}×${memory.lastUsed ? ` (last ${days(memory.lastUsed)})` : ""}`,
+		"",
+		memory.body || "(no body)",
+	].join("\n");
 }

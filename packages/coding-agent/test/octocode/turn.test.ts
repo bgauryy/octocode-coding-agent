@@ -18,6 +18,8 @@ describe("registerTurnSetup", () => {
 	};
 	const turns = new Map<ReturnType<typeof fakeHost>, ReturnType<typeof registerTurnSetup>>();
 	const setupTurn = (fake: ReturnType<typeof fakeHost>) => turns.get(fake)!;
+	// The research section's last-resort line: shown only when neither the research server nor a shell or `web` is reachable.
+	const NO_LOOKUP_TOOL = "no lookup tool is available";
 	const run = async (fake: ReturnType<typeof fakeHost>, selectedTools?: string[]) => {
 		const event = {
 			systemPromptOptions: {
@@ -46,7 +48,9 @@ describe("registerTurnSetup", () => {
 		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "direct" });
 		fake.api.setActiveTools(["mcp__octocode__ghSearchCode"]);
 		const prompt = await run(fake);
-		expect(prompt).toContain("Use Octocode MCP");
+		// With the server reachable the policy leaves research to its own text: no fallback, no server tool named.
+		expect(prompt).not.toContain(NO_LOOKUP_TOOL);
+		expect(prompt).not.toContain("mcp__octocode");
 		expect(prompt).not.toContain("are called from `codemode`");
 		expect(prompt).not.toContain("tool_search");
 	});
@@ -150,14 +154,21 @@ describe("registerTurnSetup", () => {
 		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
 	});
 
-	it("routes rendered-page lookups to the browser tools only when the agent holds one and the web tool", async () => {
+	it("never routes rendered-page lookups to the browser server's tools, whatever the agent holds", async () => {
 		const fake = fakeHost();
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => loadProfiles(tmp(), tmp(), false, {}) });
-		const routing = "When static text from `web` cannot answer the question, use the browser tools";
-		expect(await run(fake, ["agent", "file", "web", "mcp__browser__run"])).toContain(routing);
-		expect(await run(fake, ["agent", "file", "web", "browser"])).not.toContain(routing);
-		// No browser: the delegation line names the specialist, and the web guideline no longer points at tools it lacks.
-		expect(await run(fake, ["agent", "file", "web"])).not.toContain(routing);
+		// The browser server explains itself through its own text; the policy names neither it nor its tools.
+		for (const selected of [
+			["agent", "file", "web", "mcp__browser__run"],
+			["agent", "file", "web", "browser"],
+			["agent", "file", "web"],
+		]) {
+			const prompt = await run(fake, selected);
+			expect(prompt).not.toContain("mcp__browser");
+			expect(prompt).not.toContain("cannot answer the question, use the browser");
+		}
+		// No browser: the delegation line names the specialist.
+		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction");
 		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
 	});
 
@@ -194,7 +205,7 @@ describe("registerTurnSetup", () => {
 		fake.tools.set("mcp__octocode__localSearch", { name: "mcp__octocode__localSearch" });
 		const selected = ["read", "mcp__octocode__localSearch"];
 		const first = await run(fake, selected);
-		expect(first).toContain("Use Octocode MCP");
+		expect(first).not.toContain(NO_LOOKUP_TOOL);
 		expect(first).not.toContain("# Using Octocode MCP tools");
 		expect(await run(fake, selected)).toBe(first);
 		setupTurn(fake).reset();
@@ -207,16 +218,16 @@ describe("registerTurnSetup", () => {
 			namespace: { name: "mcp__octocode", instructions: "SERVER_ONLY_INVENTORY" },
 		});
 		const native = await run(fake, ["read", "mcp__octocode__localSearch"]);
-		expect(native).toContain("Use Octocode MCP");
+		expect(native).not.toContain(NO_LOOKUP_TOOL);
 		expect(native).not.toContain("SERVER_ONLY_INVENTORY");
 	});
-	it("adds research guidance when tools become available and removes it after deselection or reset", async () => {
+	it("drops the native research fallback when the research server's tools become available and restores it after deselection or reset", async () => {
 		const { fake } = setup();
-		expect(await run(fake, ["read"])).not.toContain("Use Octocode MCP");
-		expect(await run(fake, ["read", "mcp__octocode__localSearch"])).toContain("Use Octocode MCP");
-		expect(await run(fake, ["read"])).not.toContain("Use Octocode MCP");
+		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
+		expect(await run(fake, ["read", "mcp__octocode__localSearch"])).not.toContain(NO_LOOKUP_TOOL);
+		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
 		setupTurn(fake).reset();
-		expect(await run(fake, ["read"])).not.toContain("Use Octocode MCP");
+		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
 	});
 	it("gives every child of one profile the same octocode section, whatever its id, parent and scratch folder", async () => {
 		const sectionFor = async (id: string, parent: string, scratch: string) => {

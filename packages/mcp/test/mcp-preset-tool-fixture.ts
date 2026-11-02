@@ -1,5 +1,5 @@
 import type { CallToolResult, ProgressNotification, Tool } from "../src/client/index.ts";
-import type { ToolDefinition } from "../../coding-agent/src/core/extensions/index.ts";
+import type { ToolDefinition } from "../../coding-agent/src/core/features/index.ts";
 import { defineOctocodeTool, octocodeToolName } from "../src/presets/octocode/tools.ts";
 import { OCTOCODE_SERVER } from "../src/presets/octocode/names.ts";
 /** What the extension registers a server's tool as. */

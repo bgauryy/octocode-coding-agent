@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/extensions/types.ts";
+import type { ExtensionAPI } from "../../core/features/types.ts";
 
 /**
  * Members only the native composition may use. They exist on the object `createExtensionAPI()` builds, but are not

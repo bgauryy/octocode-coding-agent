@@ -2,7 +2,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { WindowsHelper, windowsTree } from "../../src/utils/windows/winhelper.ts";
@@ -22,14 +22,14 @@ it("keeps another native SDK session's team usable after shutdown and reload", a
 			cwd,
 			agentDir: path.join(cwd, "agent"),
 			settingsManager,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
 		});
 		await resourceLoader.reload();
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd,
 			agentDir: path.join(cwd, "agent"),
 			settingsManager,

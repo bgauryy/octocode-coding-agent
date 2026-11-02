@@ -23,7 +23,6 @@ import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts
 import { loadMcpConfig, type McpExposure, updateMcpServerConfig } from "./config.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
-import { projectMcpChanged, projectMcpTrusted } from "./trust.ts";
 
 const help = (): string => `${chalk.bold("Usage:")}
   ${hostIdentity().appName} mcp add <server> [options] -- <command> [args...]
@@ -90,11 +89,8 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			? add(rest, projectConfig, options, log, error)
 			: remove(rest, projectConfig, options, log, error);
 	}
-	// Writing project controls needs the directory decision. Project definitions start commands, so, as in a session,
-	// they load only when the project's config files also match the content trusted with /trust.
-	const directoryTrusted = hostTrust().directoryTrusted(options.agentDir, options.cwd);
-	const trustContext = { cwd: options.cwd, isProjectTrusted: () => directoryTrusted };
-	const projectTrusted = projectMcpTrusted(trustContext);
+	// Project definitions and project controls need the folder to be trusted, as in a session.
+	const projectTrusted = hostTrust().folderTrusted(options.cwd);
 	if (command === "config") {
 		const parsed = parseOptions(rest, { json: "flag" }, error);
 		if (!parsed) return 1;
@@ -112,10 +108,9 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 		projectTrusted,
 		defaults: presetEntries(options.presets ?? []),
 	});
-	const untrustedNote = projectMcpChanged(trustContext, projectTrusted)
-		? `Project MCP servers are not loaded: their config is new or changed since the project was trusted. Run /trust in a ${hostIdentity().appName} session in the project to review it.`
-		: !directoryTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
-			? `Project MCP configuration is ignored because the project is not trusted. Start ${hostIdentity().appName} in the project to trust it.`
+	const untrustedNote =
+		!projectTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
+			? `Project MCP configuration is ignored because the folder is not trusted. Run \`${hostIdentity().appName} trust add\` in it, or start ${hostIdentity().appName} there to trust it.`
 			: undefined;
 	const credentials = options.credentials ?? new McpOAuthCredentialStore();
 
@@ -157,8 +152,8 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 				return 1;
 			}
 			const local = parsed.values.has("local");
-			if (local && !directoryTrusted) {
-				error("Project configuration requires a trusted project.");
+			if (local && !projectTrusted) {
+				error("Project configuration requires a trusted folder.");
 				return 1;
 			}
 			const projectOverride = entry.override && entry.overrideScope !== "global";

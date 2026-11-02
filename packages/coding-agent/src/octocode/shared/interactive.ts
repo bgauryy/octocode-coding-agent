@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 
 /**
  * Whether a person is watching this session. `ctx.hasUI` is also true in RPC mode (the dialog protocol is functional),

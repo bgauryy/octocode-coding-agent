@@ -637,7 +637,6 @@ async function scenario() {
 			item: env.OCTOCODE_BACKLOG_ITEM,
 			scratch: env.OCTOCODE_AGENT_SCRATCH,
 			workspace: env.OCTOCODE_TEAM_WORKSPACE,
-			trustRoot: env.OCTOCODE_TRUST_ROOT,
 			worktreeRoot: env.OCTOCODE_WORKTREE_ROOT,
 			promptRoot: env.OCTOCODE_PROMPT_ROOT,
 			cwd: process.cwd(),

@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import {
@@ -175,7 +175,7 @@ describe("compact tool in a real session", () => {
 			agentDir,
 			settingsManager,
 			extensionFactories: [{ name: "compact-test", factory }],
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -183,7 +183,7 @@ describe("compact tool in a real session", () => {
 		});
 		await resourceLoader.reload();
 		const sessionManager = SessionManager.inMemory(cwd);
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd,
 			agentDir,
 			resourceLoader,

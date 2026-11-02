@@ -1,3 +1,4 @@
+import { activeRates } from "@octocodeai/octocode-ai";
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
 	CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS,
@@ -302,6 +303,7 @@ export class CacheWarmer {
 
 	private evaluate(run: ActiveRun): CacheWarmingDecision {
 		const model = run.model;
+		const rates = activeRates(model.cost);
 		const { cached: promptTokens, input } = lastPromptTokens(this.sessionManager.getBranch());
 		// With layered lifetimes only the history entry expires; the instruction prefix is still read from its own entry.
 		const expiringTokens = Math.max(0, promptTokens - run.instructionTokens);
@@ -313,10 +315,10 @@ export class CacheWarmer {
 		const rewrite = longHistory
 			? { cacheWrite: expiringTokens, cacheWrite1h: expiringTokens }
 			: { cacheWrite: expiringTokens };
-		const cacheMissCost = price(model, model.cost.cacheWrite > 0 ? rewrite : { input: expiringTokens });
+		const cacheMissCost = price(model, rates.cacheWrite > 0 ? rewrite : { input: expiringTokens });
 		const warmCost = price(model, {
 			cacheRead: promptTokens,
-			...(model.cost.cacheWrite > model.cost.input ? { cacheWrite: input } : { input }),
+			...(rates.cacheWrite > rates.input ? { cacheWrite: input } : { input }),
 			output: 1,
 		});
 		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
@@ -325,7 +327,7 @@ export class CacheWarmer {
 		const economicsAvailable =
 			promptTokens > 0 &&
 			(price(model, { cacheRead: promptTokens }) > 0 ||
-				price(model, model.cost.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens }) > 0);
+				price(model, rates.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens }) > 0);
 		const expectedSavings = continuationProbability * missCost - warmCost;
 		return {
 			phase: run.phase,

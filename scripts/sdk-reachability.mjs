@@ -6,11 +6,14 @@ import { parseAst } from "rolldown/parseAst";
 import { SDK_REACH_BASELINE } from "./sdk-reach-baseline.mjs";
 
 /**
- * The headless SDK entry, relative to `packages/`. The package index (`src/index.ts`) is not ratcheted: it also
- * exports the run modes and interactive components, so it reaches them by design.
+ * The headless session factory and its services, relative to `packages/`. The package index (`src/index.ts`) is not ratcheted:
+ * it exports the run modes (`main`, RPC and print), so it reaches the terminal layers by design.
  */
-export const SDK_ENTRIES = ["coding-agent/src/core/sdk.ts"];
-/** Interactive layers an SDK consumer must not load: these packages and the terminal modes folder. */
+export const SDK_ENTRIES = [
+	"coding-agent/src/core/agent-session/create-session.ts",
+	"coding-agent/src/core/agent-session-services.ts",
+];
+/** Interactive layers a headless session must not load: these packages and the terminal modes folder. */
 export const SDK_FORBIDDEN_PACKAGES = ["tui", "webview"];
 /** Subpaths of a forbidden package that import nothing interactive, so a headless consumer may load them. */
 export const SDK_HEADLESS_SUBPATHS = ["@octocodeai/octocode-tui/ansi", "@octocodeai/octocode-tui/multiplexer"];

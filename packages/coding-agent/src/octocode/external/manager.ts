@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
@@ -74,16 +74,23 @@ export class ExternalAgents {
 
 	private readonly policy: ExternalPolicy;
 	private readonly factories: ExternalFactories;
-	constructor(
-		policy: ExternalPolicy,
-		factories: ExternalFactories = { acp: connectAcp, octocode: OctocodeBackend.connect },
-	) {
+	constructor(policy: ExternalPolicy, factories: Partial<ExternalFactories> = {}) {
 		this.policy = policy;
-		this.factories = factories;
+		this.factories = { acp: connectAcp, octocode: OctocodeBackend.connect, ...factories };
 	}
 
 	get running(): number {
 		return [...this.connections.values()].filter(isBusy).length;
+	}
+
+	/**
+	 * Whether there is anything to connect to: a known ACP agent on PATH, or another live Octocode instance. The `agent`
+	 * tool declares its `external` type only then; `/agents external` stays available either way. Reads only; nothing is
+	 * started or pruned.
+	 */
+	discoverable(): boolean {
+		if ((this.factories.discover ?? installedAcpAgents)().length > 0) return true;
+		return listInstances(apiDir(), false).some((instance) => instance.pid !== process.pid);
 	}
 
 	async call(value: unknown, ctx: ExtensionContext, callerSignal?: AbortSignal): Promise<unknown> {

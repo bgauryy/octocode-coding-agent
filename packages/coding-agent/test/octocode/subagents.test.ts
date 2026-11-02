@@ -14,6 +14,7 @@ import { maxSubagents, Slots, subagentLimitError } from "../../src/octocode/suba
 import { FAILED_NEXT, failedNext } from "../../src/octocode/subagents/report-text.ts";
 import { assistantText } from "../../src/octocode/subagents/events.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
+import { taskSkillPlan } from "../../src/octocode/subagents/task-skills.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { askSpawn, loadProfiles, parseProfile, profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -52,7 +53,8 @@ describe("subagent permissions", () => {
 		const profile = (fields: object) => ({ name: "p", description: "", prompt: "", ...fields });
 		expect(profileReach(undefined)).toEqual(["file.workspace", "shell"]);
 		expect(() => profileReach(profile({ excludeTools: "file" }))).toThrow(/removes file/);
-		expect(profileReach(profile({ tools: "read,grep" }))).toEqual(["file.workspace"]);
+		// Every child can run commands, a read-only allowlist included.
+		expect(profileReach(profile({ tools: "read,grep" }))).toEqual(["file.workspace", "shell"]);
 		expect(profileReach(profile({ tools: "read,file,bash", excludeTools: "bash" }))).toEqual(["file.workspace"]);
 		expect(profileReach(profile({ tools: "read,edit,write,bash", excludeTools: "bash" }))).toEqual(["file.workspace"]);
 	});
@@ -168,7 +170,7 @@ describe("subagents", () => {
 			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B\nTo pass on a teammate's message, forward it instead of retyping it.",
 		);
 		expect(teamTask("Fix A", "main-1", [])).toMatch(
-			/none yet; `agent` type `coordinate`, `action` `list` shows teammates that start later/,
+			/none yet; `agent` type `coordinate` shows teammates that start later/,
 		);
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
@@ -203,9 +205,9 @@ describe("subagents", () => {
 			);
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
-		// Parent/child and teammate communication share one policy: every child's task names its teammates.
+		// Parent/child and teammate communication share one policy: a child messages its parent for a decision.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
-			/your task names your role, goal, parent, teammates/,
+			/You cannot ask the user\. When you need a decision, send it to your parent by message/,
 		);
 	});
 
@@ -218,7 +220,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,file,agent,archive,skill,mcp,mcp__*",
+			tools: "read,grep,bash,file,agent,steps,archive,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -229,13 +231,10 @@ describe("subagents", () => {
 			SESSION.dir,
 			"--session-id",
 			SESSION.id,
-			"--no-extensions",
-			"-e",
-			"builtin:mcp",
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,file,agent,archive,skill,mcp,mcp__*",
+			"read,grep,bash,file,agent,steps,archive,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
 			"mcp__browser__*",
@@ -267,7 +266,7 @@ describe("subagents", () => {
 		expect(parsed.messages).toEqual([]);
 		expect(parsed.fileArgs).toEqual([]);
 		expect(parsed.model).toBe("faux/model");
-		expect(parsed.extensions).toEqual(["builtin:mcp"]);
+		expect(parsed.removedFlags).toBeUndefined();
 		expect(parsed.appendSystemPrompt).toBeUndefined();
 		expect(parsed.diagnostics).toEqual([]);
 	});
@@ -289,11 +288,10 @@ describe("subagents", () => {
 			SESSION.dir,
 			"--session-id",
 			SESSION.id,
-			"--no-extensions",
-			"-e",
-			"builtin:mcp",
 			"--tools",
-			["file", "agent", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
+			["bash", "file", "agent", "steps", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS]
+				.map((name) => `+${name}`)
+				.join(","),
 			"--exclude-tools",
 			"browser,bash,mcp__browser__*",
 		]);
@@ -331,14 +329,46 @@ describe("subagents", () => {
 		expect(profile.prompt.length).toBeLessThanOrEqual(2_000);
 		expect(profile.prompt).toContain("headless");
 		expect(profile.prompt).toContain("persistent");
-		expect(buildAgentArgs(profile, undefined, SESSION)).toContain("builtin:mcp");
-		// Read-only roles drop the debugger.
+		expect(buildAgentArgs(profile, undefined, SESSION)).not.toContain("--no-mcp");
+		// Read-only roles drop the debugger; roles that rarely call the remote research tools or `clasify` leave their
+		// declarations out (the researcher keeps the whole catalog).
+		const remote = ["ghSearchHistory", "ghSearchRepo", "artifactSearch"].map((name) => `mcp__octocode__${name}`);
+		const history = "mcp__octocode__ghGetHistoryItem";
+		const clasify = "mcp__octocode__clasify";
 		for (const [name, excluded] of [
 			["researcher", "debug"],
-			["reviewer", "debug"],
-			["implementer", undefined],
+			["reviewer", ["debug", ...remote, clasify].join(",")],
+			["implementer", [...remote, history, clasify].join(",")],
 		] as const)
 			expect(profiles.get(name)?.excludeTools, name).toBe(excluded);
+	});
+
+	it("gives each bundled role the skills it names, so a child does not carry the whole catalog", () => {
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		expect(profiles.get("researcher")?.skills).toEqual(["octocode-research"]);
+		expect(profiles.get("reviewer")?.skills).toEqual(["octocode-research"]);
+		expect(profiles.get("browser")?.skills).toEqual(["octocode-chrome-devtools"]);
+		// An empty list is a choice (no skills), not an absent key (the whole catalog).
+		expect(profiles.get("implementer")?.skills).toEqual([]);
+		// A task's own `skills` replaces the role's: taskSkillPlan prefers it.
+		expect(taskSkillPlan(profiles.get("implementer"), ["octocode-roast"]).names).toEqual(["octocode-roast"]);
+	});
+
+	it("relaxes the local research floor only for an allowlist that names Octocode server tools", () => {
+		const names = (tools: string | undefined) => (tools ?? "").split(",");
+		const curated = names(parseProfile("c", "---\ntools: mcp__octocode__clasify\n---\nTask").tools);
+		expect(curated).toEqual(expect.arrayContaining(["mcp__octocode__localFetch", "mcp__octocode__localSearch"]));
+		expect(curated).not.toContain("mcp__octocode__astSearch");
+		const other = names(parseProfile("o", "---\ntools: mcp__example__lookup\n---\nTask").tools);
+		expect(other).toEqual(expect.arrayContaining(LOCAL_RESEARCH_TOOLS));
+	});
+
+	it("lets the browser role leave out the structure, AST and LSP tools but keeps the local reader and search", () => {
+		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
+		const tools = browser.tools ?? "";
+		for (const name of ["structureSearch", "astSearch", "lspSearch"]) expect(tools).not.toContain(name);
+		for (const name of ["localFetch", "localSearch"])
+			expect(tools).toMatch(new RegExp(`mcp__octocode__(${name}|local\\*)`));
 	});
 
 	it("carries the browser mode in the task, not the environment", () => {
@@ -476,7 +506,7 @@ describe("subagents", () => {
 			/Adds teammate context.*does not enable messaging or grant authority/,
 		);
 		expect(agent.parameters.properties.model?.description).toMatch(
-			/provider\/id, bare id, small or medium.*:thinking.*unavailable choices refused/,
+			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Fit the task: small:low.*Default: the profile's.*else your model at medium/,
 		);
 		expect([...commands.keys()]).toEqual(["agents"]);
 		const notes: string[] = [];

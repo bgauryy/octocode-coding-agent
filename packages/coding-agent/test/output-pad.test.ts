@@ -2,7 +2,7 @@ import { type Component, Text, TuiMainScreen } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
-import type { ToolDefinition } from "../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../src/core/features/types.ts";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";

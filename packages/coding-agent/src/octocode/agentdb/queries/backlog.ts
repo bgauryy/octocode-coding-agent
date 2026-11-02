@@ -4,12 +4,15 @@ import { allRows, num, type Row } from "../rows.ts";
 // Item rows and listings (one item, an origin's derived items, filtered pages) live beside this module.
 export * from "./backlog-items.ts";
 
-/** The item count of each state present in the repository. */
-export function stateCounts(db: DatabaseSync, repo: string): Array<{ state: string; n: number }> {
-	return db.prepare("SELECT state, COUNT(*) AS n FROM backlog WHERE repo_key = ? GROUP BY state").all(repo) as Array<{
-		state: string;
-		n: number;
-	}>;
+/** Every item's row id, type, state and parent's row id: the least the counts need (an epic's state comes from its children). */
+export function countHeads(
+	db: DatabaseSync,
+	repo: string,
+): Array<{ id: number; type: string; state: string; parent_id: number | null }> {
+	return allRows<{ id: number; type: string; state: string; parent_id: number | null }>(
+		db.prepare("SELECT id, type, state, parent_id FROM backlog WHERE repo_key = ?"),
+		repo,
+	);
 }
 
 /** The newest `limit` notes after skipping `offset` of them, newest first. */
@@ -109,16 +112,6 @@ export function childStates(db: DatabaseSync, rowId: number): string[] {
 	return allRows<{ state: string }>(db.prepare("SELECT state FROM backlog WHERE parent_id = ?"), rowId).map(
 		(row) => row.state,
 	);
-}
-
-/** Whether an item still has the type `task`, which was renamed `feature` (an older build wrote it). */
-export function hasLegacyItemType(db: DatabaseSync): boolean {
-	return db.prepare("SELECT 1 FROM backlog WHERE type = 'task' LIMIT 1").get() !== undefined;
-}
-
-/** Rewrites every item of type `task` to `feature`; versions and update times stay, and no audit row is written (reads already show `feature`). */
-export function renameLegacyItemType(db: DatabaseSync): void {
-	db.exec("UPDATE backlog SET type = 'feature' WHERE type = 'task'");
 }
 
 /** Drops an item's dependency links (`dependsOn`) or all its other links. */

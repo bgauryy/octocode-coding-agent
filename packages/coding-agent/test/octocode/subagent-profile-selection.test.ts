@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
@@ -84,16 +84,16 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			cwd,
 			agentDir,
 			settingsManager,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
 		});
-		let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+		let session: Awaited<ReturnType<typeof createTestSession>>["session"] | undefined;
 		try {
 			await resourceLoader.reload();
-			({ session } = await createAgentSession({
+			({ session } = await createTestSession({
 				cwd,
 				agentDir,
 				resourceLoader,
@@ -111,14 +111,20 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				...(args.excludeTools ? { excludeTools: args.excludeTools } : {}),
 			}));
 			const active = new Set(session.getActiveToolNames());
-			expect([...active]).toEqual(expect.arrayContaining(["file", "agent", "archive", ...LOCAL_RESEARCH_TOOLS]));
+			// The browser role curates the Octocode catalog: it keeps the local reader and search, not structure, AST or LSP.
+			const local =
+				fields.name === "browser"
+					? LOCAL_RESEARCH_TOOLS.filter((name) => /__local(Fetch|Search)$/.test(name))
+					: LOCAL_RESEARCH_TOOLS;
+			expect([...active]).toEqual(expect.arrayContaining(["file", "agent", "steps", "archive", ...local]));
 			if (fields.tools === "web,mcp__example__lookup") {
 				expect(active.has("mcp__example__lookup")).toBe(true);
 				expect(active.has("mcp__other__lookup")).toBe(false);
 			}
 			if (fields.name === "browser") {
 				expect(active.has("powershell")).toBe(false);
-				expect(active.has("bash")).toBe(false);
+				// Read-only through the permission gate, not by lacking a shell.
+				expect(active.has("bash")).toBe(true);
 				expect(active.has("file")).toBe(true);
 				expect(active.has("browser")).toBe(false);
 			}
@@ -127,8 +133,9 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				defaults?.length === 1 &&
 				defaults[0] === "read"
 			) {
-				expect([...active]).toEqual(expect.arrayContaining(["agent", "archive"]));
-				expect(active.has("bash")).toBe(false);
+				expect([...active]).toEqual(expect.arrayContaining(["agent", "steps", "archive"]));
+				// Without a `-bash` entry the child gets the shell even when its parent's defaults have none.
+				expect(active.has("bash")).toBe(fields.tools === undefined);
 			}
 			const nativeReach = [
 				...(active.has("file") ? ["file.workspace"] : []),
@@ -203,7 +210,8 @@ describe("bundled roles", () => {
 		const lean = loadProfiles(tmp(), tmp(), false, {}).get("lean");
 		expect(lean?.lean).toBe(true);
 		for (const tool of ["bash", "file"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
-		expect(profileSelectsTool(lean, "agent", defaults)).toBe(false);
+		for (const tool of ["agent", "steps"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
+		for (const tool of ["archive", "skill", "mcp"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(false);
 	});
 
 	it("keeps read-only roles read-only and the implementer unrestricted", () => {
@@ -232,11 +240,12 @@ describe("bundled roles", () => {
 			expect(profileSelectsTool(profile, tool, ["bash", "file", ...stale]), tool).toBe(true);
 	});
 
-	it("reads the old name `task` in a saved profile's tools and excludeTools as `steps`, for one release", () => {
+	it("does not read `task` in a saved profile's tools or excludeTools as `steps`", () => {
 		const selects = parseProfile("old", "---\ntools: bash,task\n---\nTask");
+		// `steps` comes from the core floor, not from reading `task` as its old name.
 		expect(profileSelectsTool(selects, "steps", ["bash"])).toBe(true);
 		const excludes = parseProfile("old", "---\nexcludeTools: task\n---\nTask");
-		expect(profileSelectsTool(excludes, "steps", ["bash", "steps"])).toBe(false);
+		expect(profileSelectsTool(excludes, "steps", ["bash", "steps"])).toBe(true);
 		expect(profileSelectsTool(excludes, "bash", ["bash", "steps"])).toBe(true);
 	});
 });

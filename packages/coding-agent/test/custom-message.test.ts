@@ -1,6 +1,6 @@
 import { Text } from "@octocodeai/octocode-tui";
 import { describe, expect, test } from "vitest";
-import type { MessageRenderer, MessageRenderOptions } from "../src/core/extensions/types.ts";
+import type { MessageRenderer, MessageRenderOptions } from "../src/core/features/types.ts";
 import type { CustomMessage } from "../src/core/messages.ts";
 import { CustomMessageComponent } from "../src/modes/interactive/components/custom-message.ts";
 import { initTheme } from "../src/theme/theme.ts";

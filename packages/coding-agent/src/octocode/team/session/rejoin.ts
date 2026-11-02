@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../../core/features/index.ts";
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_ID_ENV } from "../store/env.ts";

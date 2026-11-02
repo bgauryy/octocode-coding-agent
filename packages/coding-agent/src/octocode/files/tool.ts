@@ -2,8 +2,9 @@ import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai"
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
 import { rewriteFileQuery, type FileInputReplacement } from "../shared/claude-file.ts";
 import type { Static } from "typebox";
-import type { ExtensionAPI, ExtensionToolContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionToolContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
+import { stateFolderRefusal } from "../permission/file-access.ts";
 import { systemLines } from "../permission/effect.ts";
 import { changedOnDisk } from "../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
@@ -101,6 +102,17 @@ export function registerFileTool(
 								details: { outcomes: [] },
 							};
 						throw new Error("No queries: pass at least one edit, write or delete query.");
+					}
+					// Octocode's own state folder is never changed: refused in every mode before any dialog asks for it.
+					for (const query of queries) {
+						const refusal = stateFolderRefusal(
+							canonicalPath(resolveToolPath(ctx.cwd, query.path)),
+							query.path,
+							"the file tool",
+						);
+						if (!refusal) continue;
+						permission.refused([`${query.type} ${query.path}`], refusal, "file");
+						throw new Error(refusal);
 					}
 					const sourceBatch = !canonical && replacementOwner?.enabled(params, ctx.cwd) === true;
 					const originalInspection = sourceBatch ? await inspectQueryBatch(queries, guard, ctx, signal) : undefined;

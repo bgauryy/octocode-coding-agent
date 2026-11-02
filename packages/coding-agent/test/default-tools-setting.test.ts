@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAgentSessionFromServices, createAgentSessionServices } from "../src/core/agent-session-services.ts";
+import { createAgentSessionServices } from "../src/core/agent-session-services.ts";
+import { createSessionFromServices } from "../src/core/agent-session/create-session.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import type { InlineExtension } from "../src/core/extensions/index.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
-import type { CreateAgentSessionOptions } from "../src/core/sdk/types.ts";
+import type { InlineExtension } from "../src/core/features/index.ts";
+import { createTestSession } from "./helpers/session.ts";
+import type { CreateTestSessionOptions } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { removedToolWarnings } from "../src/core/settings-manager/ignored-keys.ts";
 
 /**
  * Octocode's only core tool is `bash`. These inactive extension tools stand in for further built-in tools: a
@@ -31,7 +31,7 @@ const extraTools: InlineExtension = (api) => {
 	}
 };
 
-type ToolOptions = Pick<CreateAgentSessionOptions, "tools" | "excludeTools" | "noTools" | "customTools">;
+type ToolOptions = Pick<CreateTestSessionOptions, "tools" | "excludeTools" | "noTools" | "customTools">;
 
 describe("defaultTools setting", () => {
 	let tempDir: string;
@@ -66,7 +66,7 @@ describe("defaultTools setting", () => {
 		await resourceLoader.reload();
 
 		return (
-			await createAgentSession({
+			await createTestSession({
 				cwd: tempDir,
 				agentDir,
 				model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
@@ -130,36 +130,24 @@ describe("defaultTools setting", () => {
 		}
 	});
 
-	it("selects `steps` where saved defaults, --tools or --exclude-tools name its old name `task`, for one release", async () => {
+	it("does not treat `task` as an old name of `steps`: a selection that names it selects nothing", async () => {
 		const cases: Array<[string[], ToolOptions, string[]]> = [
-			[["file", "task"], {}, ["file", "steps"]],
-			[["file", "+task"], {}, ["file", "steps"]],
-			[["file"], { tools: ["file", "task"] }, ["file", "steps"]],
-			[["file", "steps"], { tools: ["-task"] }, ["file"]],
-			[["file", "steps"], { excludeTools: ["task"] }, ["file"]],
+			[["file", "task"], {}, ["file"]],
+			[["file", "+task"], {}, ["file"]],
+			[["file"], { tools: ["file", "task"] }, ["file"]],
+			[["file", "steps"], { tools: ["-task"] }, ["file", "steps"]],
+			[["file", "steps"], { excludeTools: ["task"] }, ["file", "steps"]],
 		];
 		for (const [defaults, options, active] of cases) {
 			const session = await createSession(defaults, options, [], true);
 			try {
-				// One registered name: the old one is only an input alias.
 				expect(session.getAllTools().map((tool) => tool.name)).not.toContain("task");
 				expect(session.getActiveToolNames().sort(), JSON.stringify([defaults, options])).toEqual(active);
-				// A transcript from before the rename renders its `task` calls with the `steps` tool's renderers (an
-				// excluded tool is not registered, so there is nothing to render with then).
-				const old = session.getToolDefinition("task");
-				if (options.excludeTools) expect(old).toBeUndefined();
-				else {
-					expect(old?.name).toBe("steps");
-					expect(old?.renderCall).toBeTypeOf("function");
-					expect(old?.renderResult).toBeTypeOf("function");
-				}
+				expect(session.getToolDefinition("task")).toBeUndefined();
 			} finally {
 				session.dispose();
 			}
 		}
-		expect(removedToolWarnings({ defaultTools: ["-task"] })).toEqual([
-			'Setting "defaultTools" entry "-task" names the old name of "steps"; it selects "steps" for this release only. Write "steps" instead.',
-		]);
 	});
 
 	it.each([
@@ -468,7 +456,7 @@ describe("defaultTools setting", () => {
 			});
 			await resourceLoader.reload();
 			return (
-				await createAgentSession({
+				await createTestSession({
 					cwd: tempDir,
 					agentDir,
 					model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
@@ -575,7 +563,7 @@ describe("defaultTools setting", () => {
 			});
 			await resourceLoader.reload();
 			return (
-				await createAgentSession({
+				await createTestSession({
 					cwd: tempDir,
 					agentDir,
 					model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
@@ -639,7 +627,7 @@ describe("defaultTools setting", () => {
 			settingsManager,
 			resourceLoaderOptions: { nativeFeatures: false, extensionFactories: [extraTools] },
 		});
-		const { session } = await createAgentSessionFromServices({
+		const { session } = await createSessionFromServices({
 			services,
 			sessionManager: SessionManager.inMemory(tempDir),
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

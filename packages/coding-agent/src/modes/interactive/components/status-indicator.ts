@@ -10,7 +10,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
-import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import { formatDuration } from "../../../octocode/shared/format.ts";
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AgentSessionRuntime } from "../../../src/core/agent-session-runtime.ts";
-import type { ExtensionAPI, UserBashEvent, UserBashEventResult } from "../../../src/core/extensions/types.ts";
+import type { ExtensionAPI, UserBashEvent, UserBashEventResult } from "../../../src/core/features/types.ts";
 import { setupEditorSubmitHandler } from "../../../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { runRpcMode } from "../../../src/modes/rpc/rpc-mode.ts";
 import { createHarness, type Harness } from "../harness.ts";

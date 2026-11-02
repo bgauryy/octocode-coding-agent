@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { reasonSchema } from "../shared/reason.ts";
 import { GOAL_DESCRIPTION } from "../team/identity.ts";
 import { maxSubagents } from "./claim.ts";
 
@@ -12,8 +13,7 @@ export function agentToolSpec() {
 		label: "Agent",
 		description:
 			"Delegate a self-contained task to a fresh session without this conversation. " +
-			`Foreground returns its report; background returns its id and delivers the report later. At most ${maxSubagents()} at once; more wait. ` +
-			"Never poll or sleep for reports.",
+			`Foreground returns its report; background returns its id and delivers the report later. At most ${maxSubagents()} at once; more wait.`,
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
@@ -23,7 +23,7 @@ export function agentToolSpec() {
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({
 				description:
-					"Task contract: objective, required inputs (paths/evidence/decisions), constraints (scope/authorization/budget), output, Definition of Done. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",
+					"Task contract: objective, inputs (paths, evidence, decisions), constraints (scope, authorization, budget), output, Definition of Done. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",
 			}),
 			item: Type.Optional(
 				Type.String({
@@ -33,7 +33,7 @@ export function agentToolSpec() {
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Finished or stopped child id from this session: continue its saved conversation with this task and its original profile.",
+						"Finished or stopped child id from this session: continues its saved conversation, with its profile, on this task; with model, on that route. An isolated child cannot resume: start a new one with recovery context.",
 				}),
 			),
 			profile: Type.Optional(
@@ -49,7 +49,7 @@ export function agentToolSpec() {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Override: provider/id, bare id, small or medium, optional :thinking; unavailable choices refused. Default: profile model, else yours.",
+						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Fit the task: small:low lookups and mechanical steps, medium scoped edits, medium:high review, your model :high root causes and design. Default: the profile's (see models), else your model at medium.",
 				}),
 			),
 			resultSchema: Type.Optional(
@@ -57,7 +57,7 @@ export function agentToolSpec() {
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
 					description:
-						"Bounded JSON Schema for the child's final marked JSON result (verdict in details). Keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
+						"JSON Schema for the child's final JSON result (verdict in details). Supported keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
 				}),
 			),
 			background: Type.Optional(
@@ -74,15 +74,17 @@ export function agentToolSpec() {
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
-						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. Report names the ref; the user lands it with /agents merge <id> (slash commands are not yours to run).",
+						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. The user lands them with /agents merge <id>; slash commands are not yours to run.",
 				}),
 			),
 			workingCopy: Type.Optional(
 				Type.Boolean({
 					description:
-						"With isolate: start from a snapshot of tracked and non-ignored untracked files; only the child's delta exports; conflicts keep the worktree for review.",
+						"With isolate: start from a snapshot of tracked and non-ignored untracked files; conflicts keep the worktree.",
 				}),
 			),
+			// The `agent` call's own reason (`octocode/agent-tool.ts` passes it to a type that declares one): the child's why.
+			reason: Type.Optional(reasonSchema()),
 		}),
 	};
 }

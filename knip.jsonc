@@ -47,8 +47,10 @@
 				"cross-spawn",
 				"@types/cross-spawn",
 				"@octocodeai/octocode-mcp",
-				// Resolved at runtime by name (`ollama/freellama.ts`), and imported by the private MCP workspace's sources.
+				// Resolved at runtime by name (`ollama/freellama.ts`).
 				"@octocodeai/freellama",
+				// Imported by private MCP sources compiled into the published coding-agent package.
+				"@modelcontextprotocol/client",
 				"@modelcontextprotocol/core",
 				// highlight.js 11 under an alias; `scripts/generate-vendor.ts` bundles it by name for the HTML export.
 				"highlight.js-browser",
@@ -66,8 +68,6 @@
 				"scripts/generate-{schemas,references}.ts",
 				"scripts/generate-codex-hook-output-fixtures.mjs",
 				"scripts/export-agent-prompts.ts",
-				"examples/extensions/*.{ts,tsx}",
-				"examples/extensions/*/index.ts",
 				// Bundled skill scripts the agent runs with node by path.
 				"src/octocode/native-skills/*/scripts/*.mjs",
 			],

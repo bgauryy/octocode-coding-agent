@@ -3,9 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, expect, it, vi } from "vitest";
-vi.mock("../../src/octocode/shared/trust.ts", () => ({
-	projectTrustForContents: async () => false,
-}));
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 const roots: string[] = [];
@@ -41,7 +38,8 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 	}
 	const fake = fakeHost();
 	const owner = registerSourcePolicy(fake.api, home);
-	await owner.refresh(fakeCtx({ cwd, hasUI: false }));
+	// A session that does not trust the folder: only the user's own untracked local file may allow.
+	await owner.refresh({ ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => false });
 	return owner.evaluate(
 		{
 			active: true,
@@ -55,6 +53,9 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 it("loads untracked local source permission allowances without granting project hook trust", async () => {
 	expect(await run("plain")).toBe("allow");
 });
-it.each(["tracked", "symlink", "project"] as const)("withholds untrusted %s allowances", async (kind) => {
-	expect(await run(kind)).toBe("none");
-});
+it.each(["tracked", "symlink", "project"] as const)(
+	"withholds %s allowances when the session does not trust the folder",
+	async (kind) => {
+		expect(await run(kind)).toBe("none");
+	},
+);

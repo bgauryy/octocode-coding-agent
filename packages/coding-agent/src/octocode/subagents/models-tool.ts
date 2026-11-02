@@ -1,6 +1,6 @@
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { formatTokens } from "../shared/format.ts";
 import { textResult } from "../shared/util.ts";
 import type { ModelRef } from "./model.ts";

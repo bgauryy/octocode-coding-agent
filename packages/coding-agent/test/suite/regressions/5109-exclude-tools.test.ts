@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../../src/index.ts";
+import type { ExtensionFactory } from "../../../src/core/features/index.ts";
 import { createHarness } from "../harness.ts";
 
 function toolNames(tools: Array<{ name: string }>): string[] {

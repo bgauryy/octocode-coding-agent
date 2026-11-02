@@ -1,5 +1,4 @@
-import { createHash, type Hash } from "node:crypto";
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { readJsonFile } from "../../../common/src/json.ts";
@@ -134,14 +133,4 @@ export function resolveConfiguredPlugin(entry: {
 		errors: discovery.errors,
 		...(manifest ? { manifest } : { failure: `No valid ${entry.protocol} plugin manifest found` }),
 	};
-}
-
-/**
- * Start an approval fingerprint with the plugin identity and the text of every manifest source. Callers append the
- * declarations they review. Stored in user settings: the hashed bytes must not change.
- */
-export function startPluginFingerprint(manifest: PluginManifest): Hash {
-	const hash = createHash("sha256").update(JSON.stringify([manifest.root, manifest.protocol, manifest.name]));
-	for (const source of manifest.sources) hash.update(JSON.stringify([source, readFileSync(source, "utf8")]));
-	return hash;
 }

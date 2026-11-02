@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
 	projectMcpConfigPath as projectMcpFile,
 	projectMcpConfigPaths as projectMcpFiles,
@@ -37,3 +37,36 @@ export const projectMcpConfigPath = (cwd: string): string => projectMcpFile(cwd,
 
 /** Project MCP files, lowest precedence first. All require project trust. */
 export const projectMcpConfigPaths = (cwd: string): string[] => projectMcpFiles(cwd, hostIdentity().configDirName);
+
+/** One `mcp.json` that is read, with the convention it comes from. */
+export interface McpConfigFile {
+	path: string;
+	scope: "global" | "project";
+	/** `pi` for Pi's own files; every other file belongs to Octocode (`octocode`, the shared `agents` and `mcp` conventions). */
+	product: "octocode" | "pi";
+	origin: "octocode" | "pi" | "agents" | "mcp";
+}
+
+/**
+ * Every `mcp.json` that is read, lowest precedence first, with whether it is Pi's. Discovery lists these; the loader reads
+ * them (`globalMcpConfigPaths`, `projectMcpConfigPaths`), so the two lists cannot differ. Project files need trust.
+ */
+export function mcpConfigFiles(agentDir: string, cwd: string): McpConfigFile[] {
+	const pi = new Set(
+		hostPaths()
+			.legacyConfigDirs(agentDir)
+			.map((dir) => join(dir, "mcp.json")),
+	);
+	const global = globalMcpConfigPaths(agentDir).map((path): McpConfigFile =>
+		pi.has(path)
+			? { path, scope: "global", product: "pi", origin: "pi" }
+			: { path, scope: "global", product: "octocode", origin: "octocode" },
+	);
+	const project = projectMcpConfigPaths(cwd).map((path): McpConfigFile => {
+		const folder = basename(dirname(path));
+		const origin =
+			folder === ".pi" ? "pi" : folder === ".agents" ? "agents" : basename(path) === ".mcp.json" ? "mcp" : "octocode";
+		return { path, scope: "project", product: origin === "pi" ? "pi" : "octocode", origin };
+	});
+	return [...global, ...project];
+}

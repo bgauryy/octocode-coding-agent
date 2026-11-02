@@ -38,7 +38,7 @@ Deciding evidence:
 - A native package's `hooks/hooks.json` is ignored ([packages.md](../packages/coding-agent/docs/packages.md)). So the same hook file works in a Claude plugin and silently does nothing in an Octocode package.
 - Plugin and skill markers block implicit extension discovery ([`hasPluginOrSkillMarker`](../packages/coding-agent/src/core/extension-manifest.ts)). This guard exists only because the two discovery paths can see the same directory.
 - Until S0, hooks also needed two environment flags. The default runtime applied a shared behavior to Claude and Codex files that matched neither host. That second dialect doubled the test matrix and the documentation.
-- The same facts are described in [hooks.md](../packages/coding-agent/docs/hooks.md) (319 lines), [plugins.md](../packages/coding-agent/docs/plugins.md), [packages.md](../packages/coding-agent/docs/packages.md), [extensions.md](../packages/coding-agent/docs/extensions.md) and the 597-line [PLUGINS_MODS_HOOKS.md](PLUGINS_MODS_HOOKS.md) matrix.
+- The same facts are described in [hooks.md](../packages/coding-agent/docs/hooks.md) (319 lines), [plugins.md](../packages/coding-agent/docs/plugins.md), [packages.md](../packages/coding-agent/docs/packages.md), extensions.md and the 597-line [PLUGINS_MODS_HOOKS.md](PLUGINS_MODS_HOOKS.md) matrix.
 
 If nothing changes, each new component type (agents, LSP, Claude Mods) needs its own discovery path, approval field and document in every system. Authors will also keep finding that a declaration works in one container and is ignored in the other.
 

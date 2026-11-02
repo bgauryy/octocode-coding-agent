@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RegisteredCommand } from "../../coding-agent/src/core/extensions/types.ts";
+import type { RegisteredCommand } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { registerMcpHost, type McpExtensionOptions } from "../src/index.ts";
 import type { McpExtensionState } from "../src/state.ts";

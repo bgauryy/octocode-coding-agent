@@ -14,13 +14,13 @@ flowchart TB
         T["tool declarations"] --> P["preamble · tools · rules · docs"] --> M["mcps"]
     end
     subgraph L2["Instruction block 2: project, session and role"]
-        A["addendum · project_context · skills"] --> CW["cwd · environment"] --> POL["octocode_* policy · role · planning"]
+        A["addendum · cwd"] --> POL["octocode_* policy · project_context · skills · role"] --> EV["environment · planning"]
     end
     subgraph L3["History"]
         CS["compaction summary"] --> H["messages, tool calls and results"] --> U["section updates · memory · restored files"]
     end
     M --> BP1{{"breakpoint"}} --> A
-    POL --> BP2{{"breakpoint"}} --> CS
+    EV --> BP2{{"breakpoint"}} --> CS
     U --> BP3{{"breakpoints: previous tail, last block"}}
 
     classDef b1 fill:#d1fae5,stroke:#059669,color:#064e3b
@@ -54,7 +54,7 @@ flowchart TB
 | Memory               | Pinned and query-matched notes, at most 2,400 characters, hidden from the transcript view                                                                                                      | Each prompt; already injected notes are skipped                         |
 | Child task           | Identity, goal, scratch folder and teammates of a subagent                                                                                                                                     | Once, as the child's first message                                      |
 
-Every section's order, cache tier and `SYSTEM.md` behavior is declared once in `packages/coding-agent/src/core/system-prompt-spec.ts`: the policy and `role` sections precede `environment`, and `planning` and `mcp_status` follow it. Block 2 starts at the first section outside the base tier present (`addendum`, `project_context`, `skills`, `cwd`, policy, `role`, `environment`, `planning` or `mcp_status`); `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block. An isolated subagent names the main checkout in its prompt, so sibling children share both blocks. The breakpoints shown are Anthropic's; [adapter behavior](../packages/coding-agent/docs/prompt-caching.md#behavior-and-accounting) covers other providers and [retention per layer](../packages/coding-agent/docs/prompt-caching.md#retention-per-layer) the settings. Raw `mcp.json`, commands, environment values and tokens never reach the model; server instructions and tool descriptions do.
+Every section's order, cache tier and `SYSTEM.md` behavior is declared once in `packages/coding-agent/src/core/system-prompt-spec.ts`: the policy, `project_context`, `skills` and `role` sections precede `environment`, and `planning` and `mcp_status` follow it. Block 2 starts at the first section outside the base tier present (`addendum`, `project_context`, `skills`, `cwd`, policy, `role`, `environment`, `planning` or `mcp_status`); `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block. An isolated subagent names the main checkout in its prompt, so sibling children share both blocks. The breakpoints shown are Anthropic's; [adapter behavior](../packages/coding-agent/docs/prompt-caching.md#behavior-and-accounting) covers other providers and [retention per layer](../packages/coding-agent/docs/prompt-caching.md#retention-per-layer) the settings. Raw `mcp.json`, commands, environment values and tokens never reach the model; server instructions and tool descriptions do.
 
 ## How a change reaches the model
 

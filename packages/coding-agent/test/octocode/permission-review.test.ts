@@ -1,8 +1,9 @@
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ToolCallEvent, ToolResultEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
@@ -15,6 +16,8 @@ import { octocodeHome, sessionFolder } from "../../src/octocode/shared/home.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { headlessFileTool } from "./permission-file-harness.ts";
+import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { RECORD_FILE } from "../../src/octocode/shared/archive/record.ts";
 import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
@@ -129,42 +132,48 @@ describe("a child's access to its parent's archive of compacted history", () => 
 	});
 
 	it.each(["manual", "workspace", "full"] as const)(
-		"can never be changed by it with edit or write in %s mode (the file tool shares the check: files.test.ts)",
+		"can never be changed by it with the file tool or a shell redirect in %s mode (files.test.ts covers the tool's own check)",
 		async (mode) => {
+			const cwd = repo();
+			expect(await headlessFileTool(mode, cwd, { isSubagent: true }).write(archive())).toMatch(
+				/Octocode's state folder/,
+			);
 			const gate = permissionGate({
 				permission: fakePermission(mode, { isSubagent: true }),
 				provenance: { check: () => undefined },
 			});
-			for (const toolName of ["edit", "write"]) {
-				expect(
-					await gate(
-						call(toolName, { path: archive(), content: "x", edits: [] }),
-						fakeCtx({ cwd: repo(), hasUI: false }),
-					),
-					`${toolName} in ${mode}`,
-				).toMatchObject({ block: true, reason: expect.stringMatching(/Octocode's state folder/) });
-			}
+			await shellParserReady();
+			expect(
+				await gate(call("bash", { command: `echo x > ${archive()}` }), fakeCtx({ cwd, hasUI: false })),
+				`bash in ${mode}`,
+			).toMatchObject({ block: true, reason: expect.stringMatching(/Octocode's state folder/) });
 		},
 	);
 });
 
 describe("places that run code later", () => {
-	it("refuses Octocode edit/write into the Octocode home in every mode", async () => {
-		const cwd = repo();
-		const gate = permissionGate({
-			permission: fakePermission("full"),
-			provenance: { check: () => undefined },
-		});
-		const target = path.join(octocodeHome(), "pi-trust.json");
-		expect(await gate(call("write", { path: target, content: "{}" }), fakeCtx({ cwd }))).toMatchObject({
-			block: true,
-			reason: expect.stringMatching(/Octocode's state folder/),
-		});
-	});
+	it.each(["manual", "workspace", "full"] as const)(
+		"refuses the file tool and a shell redirect into the Octocode home in %s mode",
+		async (mode) => {
+			const cwd = repo();
+			const target = path.join(octocodeHome(), "pi-trust.json");
+			expect(await headlessFileTool(mode, cwd).write(target, "{}")).toMatch(/Octocode's state folder/);
+			const gate = permissionGate({
+				permission: fakePermission(mode),
+				provenance: { check: () => undefined },
+			});
+			await shellParserReady();
+			expect(await gate(call("bash", { command: `echo {} > ${target}` }), fakeCtx({ cwd }))).toMatchObject({
+				block: true,
+				reason: expect.stringMatching(/Octocode's state folder/),
+			});
+			expect(fs.existsSync(target)).toBe(false);
+		},
+	);
 
-	it("asks like an outside change before writing repository files that load code or hooks in later sessions", () => {
+	it("asks like an outside change before the file tool writes repository files that load code or hooks in later sessions", async () => {
 		const cwd = repo();
-		const ctx = { cwd };
+		const files = headlessFileTool("workspace", cwd);
 		for (const file of [
 			".git/hooks/pre-commit",
 			".octocode/extensions/x.ts",
@@ -174,17 +183,23 @@ describe("places that run code later", () => {
 			".octocode/hooks.json",
 			".agents/skills/s/SKILL.md",
 		]) {
-			expect(classify(call("write", { path: file, content: "x" }), ctx)?.action, file).toBe("file.outside");
+			expect(await files.write(file), file).toMatch(/a file that runs in later sessions/);
+			expect(fs.existsSync(path.join(cwd, file)), file).toBe(false);
 		}
-		expect(classify(call("write", { path: "src/app.ts", content: "x" }), ctx)?.action).toBe("file.workspace");
+		expect(await files.write("src/app.ts")).toBeUndefined();
+		expect(fs.existsSync(path.join(cwd, "src", "app.ts"))).toBe(true);
+		// Full allows the same change: the ask is the only difference.
+		expect(await headlessFileTool("full", cwd).write(".claude/settings.json")).toBeUndefined();
 	});
 
-	it("resolves a dangling symlink to where a write through it would land", () => {
+	it("resolves a dangling symlink to where a write through it would land", async () => {
 		const cwd = repo();
 		const outside = path.join(tmp(), "not-yet.txt");
 		fs.symlinkSync(outside, path.join(cwd, "link.txt"));
 		expect(canonicalPath(path.join(cwd, "link.txt"))).toBe(canonicalPath(outside));
-		expect(classify(call("write", { path: "link.txt", content: "x" }), { cwd })?.action).toBe("file.outside");
+		// The file tool resolves the link before it decides where the write lands.
+		expect(await headlessFileTool("workspace", cwd).write("link.txt")).toMatch(/outside the workspace/);
+		expect(fs.existsSync(outside)).toBe(false);
 		// A loop resolves without hanging.
 		fs.symlinkSync(path.join(cwd, "b"), path.join(cwd, "a"));
 		fs.symlinkSync(path.join(cwd, "a"), path.join(cwd, "b"));
@@ -230,8 +245,9 @@ describe("the subagent spawn ask", () => {
 		const implementer = { name: "implementer", description: "", prompt: "" };
 		await askSpawn(permission, ctx, implementer, "Fix the bug\nthen also delete the release branch");
 		expect(shown[0]).toContain("then also delete the release branch");
-		// The same name with a narrower reach is a different grant: it asks again (and the dismissal refuses).
-		await expect(askSpawn(permission, ctx, { ...implementer, tools: "read" }, "x")).rejects.toThrow();
+		// The same name with a narrower reach is a different grant: it asks again (and the dismissal refuses). Every child
+		// keeps bash unless its profile removes it, so removing bash is what narrows the reach.
+		await expect(askSpawn(permission, ctx, { ...implementer, excludeTools: "bash" }, "x")).rejects.toThrow();
 	});
 });
 
@@ -250,13 +266,26 @@ describe("shared memory moves", () => {
 
 	it("unpins a pinned memory and moves a global one into the project at once: narrowing shared memory has no prompt", async () => {
 		const fake = fakeHost();
-		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission("manual") });
-		const tool = fake.tools.get("memory");
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, {
+				commands: new Subcommands(),
+				isSubagent: false,
+				permission: fakePermission("manual"),
+			}),
+		);
+		const tool = fake.tools.get("archive");
 		// Saving each shared memory asks once; the moves that narrow them do not.
 		const ctx = fakeCtx({ cwd: root, ui: { selects: ["Allow once", "Allow once"] } });
 		const run = (params: Record<string, unknown>) =>
 			tool
-				.execute("c", params, undefined, undefined, ctx)
+				.execute(
+					"c",
+					{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+					undefined,
+					undefined,
+					ctx,
+				)
 				.then((r: { content: Array<{ text: string }> }) => r.content[0].text);
 		await run({ op: "set", title: "Pinned note", pinned: true });
 		await run({ op: "set", title: "Global note", scope: "global" });

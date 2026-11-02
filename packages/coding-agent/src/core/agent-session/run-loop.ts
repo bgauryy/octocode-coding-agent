@@ -1,5 +1,4 @@
 import { planConstraintActive } from "../../octocode/plan/state.ts";
-import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
 /**
  * One agent run of a session, from its starting messages to `agent_settled`: preparation and
  * `before_agent_start`, the post-run loop of retries, compaction and boundaries, interruption and
@@ -11,8 +10,8 @@ import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmer } from "../cache-warmer.ts";
-import type { AgentInterruptedEvent } from "../extensions/types.ts";
-import type { BeforeAgentStartTrigger } from "../extensions/runner.ts";
+import type { AgentInterruptedEvent } from "../features/types.ts";
+import type { BeforeAgentStartTrigger } from "../features/runner.ts";
 import type { SessionBash } from "./bash.ts";
 import type { SessionBoundaries } from "./boundaries.ts";
 import { settleSessionDispatch } from "./dispatch.ts";
@@ -77,7 +76,7 @@ export class SessionRunLoop {
 			planConstraintActive(session.sessionManager) &&
 			!session.extensionRunner
 				.getRegisteredCommands()
-				.some((command) => command.name === "plan" && command.sourceInfo.path === NATIVE_FEATURE_PATH)
+				.some((command) => command.name === "plan" && command.sourceInfo.owner === "native")
 		)
 			throw new Error("This session has an active planning constraint. Enable native features before continuing.");
 		run.logicalTurnId = randomUUID();
@@ -118,6 +117,9 @@ export class SessionRunLoop {
 			while (!run.agentRunAbortRequested && !run.inputTerminated) {
 				if (await this._handlePostAgentRun()) {
 					if (run.agentRunAbortRequested) break;
+					// The run's turns are over, so held messages (such as those sent after an overflow compaction) cannot split a
+					// tool call from its result; append them before the retry's first request rather than after its turn.
+					inputs.flushPendingCustomMessages();
 					await session.agent.continue();
 					continue;
 				}

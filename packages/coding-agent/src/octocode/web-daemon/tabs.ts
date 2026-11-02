@@ -11,6 +11,7 @@ import { dbStamp } from "../agentdb/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
+import { readerStalled } from "../workspace/socket-pressure.ts";
 import type { AttachClient } from "./attach-client.ts";
 import { tokenAccess, type DaemonTokens, type TokenAccess } from "./http-util.ts";
 import type { RepoCatalog, RepoInfo } from "./repos.ts";
@@ -22,7 +23,6 @@ const MAX_PENDING = 32;
 /** A page sends its hello as soon as the socket opens. */
 const HELLO_MS = 2000;
 const TICK_MS = 500;
-const BUFFER_LIMIT = 1048576;
 
 export interface TabScope {
 	repo: RepoInfo;
@@ -196,7 +196,7 @@ export class TabHub {
 
 	private post(tab: Tab, event: WorkspaceServerEvent | { type: "daemon"; data: { draining: boolean } }): void {
 		if (tab.socket.readyState !== WebSocket.OPEN) return;
-		if (tab.socket.bufferedAmount > BUFFER_LIMIT) return tab.socket.terminate();
+		if (readerStalled(tab.socket)) return tab.socket.terminate();
 		tab.socket.send(JSON.stringify(event));
 	}
 
@@ -216,7 +216,7 @@ export class TabHub {
 			cache?.set(key, text);
 		}
 		if (tab.socket.readyState !== WebSocket.OPEN) return;
-		if (tab.socket.bufferedAmount > BUFFER_LIMIT) return tab.socket.terminate();
+		if (readerStalled(tab.socket)) return tab.socket.terminate();
 		tab.socket.send(text);
 	}
 

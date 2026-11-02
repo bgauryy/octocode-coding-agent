@@ -1,6 +1,6 @@
 import type { AgentSessionRuntimeDiagnostic, AgentSessionServices } from "../agent-session-services.ts";
-import type { ProjectTrustContext, SessionStartEvent } from "../extensions/index.ts";
-import type { CreateAgentSessionResult } from "../sdk/types.ts";
+import type { SessionStartEvent } from "../features/index.ts";
+import type { CreateSessionResult } from "../agent-session/create-session.ts";
 import type { SessionManager } from "../session-manager.ts";
 
 /**
@@ -9,7 +9,7 @@ import type { SessionManager } from "../session-manager.ts";
  * The caller gets the created session, its cwd-bound services, and all
  * diagnostics collected during setup.
  */
-export interface CreateAgentSessionRuntimeResult extends CreateAgentSessionResult {
+export interface CreateAgentSessionRuntimeResult extends CreateSessionResult {
 	services: AgentSessionServices;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
 }
@@ -26,5 +26,4 @@ export type CreateAgentSessionRuntimeFactory = (options: {
 	agentDir: string;
 	sessionManager: SessionManager;
 	sessionStartEvent?: SessionStartEvent;
-	projectTrustContext?: ProjectTrustContext;
 }) => Promise<CreateAgentSessionRuntimeResult>;

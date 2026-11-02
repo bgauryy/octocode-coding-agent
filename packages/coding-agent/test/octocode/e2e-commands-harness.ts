@@ -6,11 +6,11 @@ import type { Terminal } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../src/core/application/index.ts";
 import {
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../../src/core/agent-session-runtime.ts";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 // As `interactive-mode.ts` does before building the host: MCP's terminal UI port.
@@ -87,7 +87,6 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 	const agentDir = path.join(root, "agent");
 	for (const dir of [cwd, home, agentDir]) fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(cwd, "app.ts"), "export const answer = 41;\n");
-	fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [root]: true }));
 	const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
 	git("init", "-q", "-b", "main");
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
@@ -133,7 +132,7 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 		});
 		const model = services.modelRuntime.getModel("faux", "faux-1");
 		return {
-			...(await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent, model })),
+			...(await createSessionFromServices({ services, sessionManager, sessionStartEvent, model })),
 			services,
 			diagnostics: services.diagnostics,
 		};

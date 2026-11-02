@@ -1,9 +1,9 @@
-import type { ToolCallEvent, ToolInfo } from "../../core/extensions/index.ts";
-import { NATIVE_FEATURE_PATH } from "../../core/native-tools.ts";
+import { archiveRead } from "../shared/archive-operation.ts";
+import type { ToolCallEvent, ToolInfo } from "../../core/features/index.ts";
 import { LOCAL_RESEARCH_TOOLS, OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
 import type { McpServerStatus } from "../../../../mcp/src/status.ts";
 
-const reads = new Set(["archive", "askUser", "skill", "web"]);
+const reads = new Set(["askUser", "skill", "web"]);
 
 /**
  * Decides whether a shell command only reads. The permission layer depends on planning, so the host injects the
@@ -25,14 +25,16 @@ export function planningRefusal(
 	servers: readonly McpServerStatus[] = [],
 	shell?: ShellReader,
 ): string | undefined {
-	const native = definition?.sourceInfo.path === NATIVE_FEATURE_PATH;
+	const native = definition?.sourceInfo.owner === "native";
+	if (native && event.toolName === "archive" && archiveRead(event.input)) return undefined;
 	if (native && reads.has(event.toolName)) return undefined;
 	if (native && event.toolName === "bash") {
 		if (readOnlyShell(event.input, shell)) return undefined;
 		return "Plan mode blocks this bash command: only read-only shell commands (ls, cat, rg, git log, git diff...) run in the foreground, with no redirects, installs, builds, test runners, interpreters or background jobs. Use native research tools for the rest; only the user can leave with /plan --off or approve the displayed revision.";
 	}
 	if (
-		definition?.sourceInfo.path === "builtin:mcp" &&
+		definition?.sourceInfo.owner === "builtin" &&
+		definition.sourceInfo.path === "builtin:mcp" &&
 		LOCAL_RESEARCH_TOOLS.includes(event.toolName) &&
 		servers.some(
 			(server) =>

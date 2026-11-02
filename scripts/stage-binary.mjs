@@ -42,7 +42,6 @@ export function stageBinary(outDir, platform = currentPlatform()) {
 	// The whole folder: template.html, template.css, script/ and vendor/ are all read at export time.
 	copy(from("dist", "core", "export-html"), join(outDir, "export-html"));
 	copy(from("docs"), join(outDir, "docs"));
-	copy(from("examples"), join(outDir, "examples"));
 	// Prompt Markdown (policy, roles, ...): `getInstructionsDir` reads `instructions/` next to the executable.
 	copyInstructions(from("src", "octocode", "instructions"), join(outDir, "instructions"));
 	copy(from("src", "octocode", "native-skills"), join(outDir, "native-skills"));

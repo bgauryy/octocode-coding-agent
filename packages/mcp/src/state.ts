@@ -70,6 +70,8 @@ export class McpExtensionState {
 	/** The trusted project's `mcp.json`, where `/mcp` saves project overrides of global servers. */
 	projectConfig: string | undefined;
 	globalConfig: string | undefined;
+	/** In a subagent: servers its parent stopped for the session (`isParentStopped` decides which stay out). */
+	parentStopped: ReadonlySet<string> = new Set();
 	/** Registered servers that `mcp.json` overrides, shown in `/mcp`. */
 	overridden: string[] = [];
 	pending: Promise<unknown> | undefined;
@@ -87,6 +89,8 @@ export class McpExtensionState {
 	readonly updateConfig: (entry: McpServerEntry, patch: McpServerConfigPatch) => void;
 
 	unregisterHookCaller: (() => void) | undefined;
+	/** Ends the current session's answer to the host's switch requests (`switch.ts`). */
+	unregisterSwitch: (() => void) | undefined;
 	/**
 	 * Lifetime of the current session: aborted on session_shutdown, and before the first session_start
 	 * (registrations before that are read on session_start). Work captures `session.signal` when it

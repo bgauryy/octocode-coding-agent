@@ -1,19 +1,8 @@
 import { join } from "node:path";
-import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import type { Model } from "@octocodeai/octocode-ai";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
-import type { SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { ModelRuntime } from "./model-runtime.ts";
-import {
-	DefaultResourceLoader,
-	type DefaultResourceLoaderOptions,
-	type ResourceLoader,
-	type ResourceLoaderReloadOptions,
-} from "./resource-loader.ts";
-import { createAgentSession } from "./sdk.ts";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/types.ts";
-import type { SessionManager } from "./session-manager.ts";
+import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type ResourceLoader } from "./resource-loader.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { checkAuthFileSafety } from "./auth-storage/file-safety.ts";
@@ -45,26 +34,6 @@ export interface CreateAgentSessionServicesOptions {
 	modelRuntimeSignal?: AbortSignal;
 	extensionFlagValues?: Map<string, boolean | string>;
 	resourceLoaderOptions?: Omit<DefaultResourceLoaderOptions, "cwd" | "agentDir" | "settingsManager">;
-	resourceLoaderReloadOptions?: ResourceLoaderReloadOptions;
-}
-
-/**
- * Inputs for creating an AgentSession from already-created services.
- *
- * Use this after services exist and any cwd-bound model/tool/session options
- * have been resolved against those services.
- */
-export interface CreateAgentSessionFromServicesOptions {
-	services: AgentSessionServices;
-	sessionManager: SessionManager;
-	sessionStartEvent?: SessionStartEvent;
-	model?: Model<any>;
-	thinkingLevel?: ThinkingLevel;
-	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
-	tools?: string[];
-	excludeTools?: CreateAgentSessionOptions["excludeTools"];
-	noTools?: CreateAgentSessionOptions["noTools"];
-	customTools?: ToolDefinition[];
 }
 
 /**
@@ -154,7 +123,7 @@ export async function createAgentSessionServices(
 		agentDir,
 		settingsManager,
 	});
-	await resourceLoader.reload(options.resourceLoaderReloadOptions);
+	await resourceLoader.reload();
 
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
 	if (!options.modelRuntime) {
@@ -210,32 +179,4 @@ export async function createAgentSessionServices(
 		resourceLoader,
 		diagnostics,
 	};
-}
-
-/**
- * Create an AgentSession from previously created services.
- *
- * This keeps session creation separate from service creation so callers can
- * resolve model, thinking, tools, and other session inputs against the target
- * cwd before constructing the session.
- */
-export async function createAgentSessionFromServices(
-	options: CreateAgentSessionFromServicesOptions,
-): Promise<CreateAgentSessionResult> {
-	return createAgentSession({
-		cwd: options.services.cwd,
-		agentDir: options.services.agentDir,
-		modelRuntime: options.services.modelRuntime,
-		settingsManager: options.services.settingsManager,
-		resourceLoader: options.services.resourceLoader,
-		sessionManager: options.sessionManager,
-		model: options.model,
-		thinkingLevel: options.thinkingLevel,
-		scopedModels: options.scopedModels,
-		tools: options.tools,
-		excludeTools: options.excludeTools,
-		noTools: options.noTools,
-		customTools: options.customTools,
-		sessionStartEvent: options.sessionStartEvent,
-	});
 }

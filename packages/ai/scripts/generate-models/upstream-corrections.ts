@@ -3,6 +3,8 @@ import { withClaudeThinkingCapabilities } from "../../src/utils/claude-thinking.
 import {
 	COPILOT_STATIC_HEADERS,
 	GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS,
+	GOOGLE_MISSING_CACHE_READ_COSTS,
+	GOOGLE_TIME_LIMITED_COSTS,
 	KIMI_K3_MAX_TOKENS,
 	OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
 	OPENAI_LONG_CONTEXT_PRICING_MODEL_IDS,
@@ -101,6 +103,9 @@ export function applyUpstreamCorrections(allModels: Model<any>[]): void {
 			const standardCost = OPENAI_STANDARD_COSTS[candidate.id];
 			candidate.cost = withOpenAiLongContextPricing(standardCost ?? candidate.cost);
 		}
+		if (candidate.provider === "google" || candidate.provider === "google-vertex") {
+			applyGoogleCostCorrections(candidate);
+		}
 		// Cloudflare AI Gateway passes OpenAI usage through at OpenAI list prices.
 		if (candidate.provider === "cloudflare-ai-gateway") {
 			const standardCost = OPENAI_STANDARD_COSTS[candidate.id];
@@ -137,5 +142,24 @@ export function applyUpstreamCorrections(allModels: Model<any>[]): void {
 			candidate.cost.output = 1.9;
 			candidate.cost.cacheRead = 0.119;
 		}
+	}
+}
+
+function applyGoogleCostCorrections(candidate: Model<Api>): void {
+	const cacheRead = GOOGLE_MISSING_CACHE_READ_COSTS[candidate.id];
+	if (cacheRead !== undefined && candidate.cost.cacheRead === 0) candidate.cost.cacheRead = cacheRead;
+
+	const window = GOOGLE_TIME_LIMITED_COSTS[candidate.id];
+	const { cost } = candidate;
+	if (
+		window &&
+		!cost.tiers?.length &&
+		cost.input === window.listed.input &&
+		cost.output === window.listed.output &&
+		cost.cacheRead === window.listed.cacheRead &&
+		cost.cacheWrite === window.listed.cacheWrite
+	) {
+		cost.until = window.until;
+		cost.after = { ...window.after };
 	}
 }

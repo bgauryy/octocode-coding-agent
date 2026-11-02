@@ -14,9 +14,9 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import { getBundledSkillsDir } from "../../src/config.ts";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
@@ -127,8 +127,8 @@ describe("installed MCP and skills through the native SDK", () => {
 							]),
 				],
 				additionalSkillPaths: [externalSkill],
-				...(owner === "configured-default" ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
-				noExtensions: true,
+				// The configured default keeps the built-in MCP host on; the other owners supply their own.
+				disabledFeatures: owner === "configured-default" ? ["llama.cpp"] : ["mcp", "llama.cpp"],
 				noPromptTemplates: true,
 				noThemes: true,
 				noContextFiles: true,
@@ -143,7 +143,7 @@ describe("installed MCP and skills through the native SDK", () => {
 							}),
 						)
 					: parseArgs([]);
-			const { session } = await createAgentSession({
+			const { session } = await createTestSession({
 				cwd,
 				agentDir,
 				resourceLoader,

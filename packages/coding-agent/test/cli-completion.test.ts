@@ -1,3 +1,5 @@
+import octocode from "../src/octocode/index.ts";
+import { fakeHost } from "./octocode/fake-host.ts";
 import { describe, expect, it } from "vitest";
 import { completeCli, shellCompletion } from "../src/cli/completion.ts";
 
@@ -9,8 +11,6 @@ describe("CLI value completion", () => {
 		expect(completeCli(["--tools", "read,ba"])).toContain("read,bash");
 	});
 	it("completes every reviewed native tool and the built-in MCP tools", async () => {
-		const { default: octocode } = await import("../src/octocode/index.ts");
-		const { fakeHost } = await import("./octocode/fake-host.ts");
 		const fake = fakeHost();
 		await octocode(fake.api);
 		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp"]));
@@ -38,9 +38,11 @@ it("parses, documents and completes every flag from one table", async () => {
 	const { flagHelpRows } = await import("../src/cli/args/flags.ts");
 	const help = flagHelpRows().join("\n");
 	for (const spec of FLAG_SPECS) {
-		expect(CLI_FLAGS).toContain(spec.name);
-		if (spec.short) expect(CLI_FLAGS).toContain(spec.short);
-		expect(help).toContain(spec.name);
+		// A hidden flag (kept so an older parent's command line still parses) is neither listed nor completed.
+		const listed = !spec.hidden;
+		expect(CLI_FLAGS.includes(spec.name), spec.name).toBe(listed);
+		if (spec.short) expect(CLI_FLAGS.includes(spec.short), spec.short).toBe(listed);
+		expect(help.includes(spec.name), spec.name).toBe(listed);
 		// Every flag is recognized: none falls through to the unknown-flag path.
 		const value = spec.values?.[0] ?? "x";
 		const parsed = parseArgs(spec.kind === "boolean" || spec.kind === "optional" ? [spec.name] : [spec.name, value]);

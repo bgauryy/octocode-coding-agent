@@ -50,7 +50,7 @@ interface BranchSummaryDetails {
 	modifiedFiles: string[];
 }
 
-export interface BranchPreparation {
+interface BranchPreparation {
 	/** Messages extracted for summarization, in chronological order */
 	messages: AgentMessage[];
 	/** File operations extracted from tool calls */
@@ -190,7 +190,7 @@ function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
  * @param entries - Entries in chronological order
  * @param tokenBudget - Maximum tokens to include (0 = no limit)
  */
-export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0): BranchPreparation {
+function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0): BranchPreparation {
 	const messages: AgentMessage[] = [];
 	const fileOps = createFileOps();
 	let totalTokens = 0;

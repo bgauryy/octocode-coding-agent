@@ -1,5 +1,4 @@
 import { readPlan, planConstraintActive, clearPlanConstraint, type PlanOptions } from "../octocode/plan/state.ts";
-import { NATIVE_FEATURE_PATH } from "./native-tools.ts";
 import { contextReport } from "./agent-session/context-report.ts";
 import { sideQuestionsFor, clearSideQuestions } from "./agent-session/side-questions.ts";
 import { readRepositoryDiff, readUntrackedDiff } from "../octocode/files/repository-diff.ts";
@@ -56,8 +55,8 @@ import type {
 import type { BashResult } from "./bash-executor.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
 import type { CompactionPreparation, CompactionResult } from "./compaction/index.ts";
-import type { ExtensionRunner, ReplacedSessionContext } from "./extensions/index.ts";
-import type { BeforeAgentStartTrigger } from "./extensions/runner.ts";
+import type { ExtensionRunner, ReplacedSessionContext } from "./features/index.ts";
+import type { BeforeAgentStartTrigger } from "./features/runner.ts";
 import type { CompactionReason } from "./session-compaction.ts";
 import type { SessionNameSource } from "./session-manager.ts";
 import { exportSessionToJsonl } from "./session-export.ts";
@@ -70,9 +69,7 @@ export type {
 	AgentSessionConfig,
 	AgentSessionEvent,
 	AgentSessionEventListener,
-	ModelCycleResult,
 	PromptDisposition,
-	PromptOptions,
 	QueuedInput,
 	QueuedInputDisposition,
 	ReleasedQueuedInput,
@@ -284,7 +281,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		getApplicationPort(this);
 		const command = this.extensionRunner
 			.getRegisteredCommands()
-			.find((command) => command.name === "plan" && command.sourceInfo.path === NATIVE_FEATURE_PATH);
+			.find((command) => command.name === "plan" && command.sourceInfo.owner === "native");
 		if (!command) throw new Error("Planning controls require native features.");
 		if (!["show", "enter", "leave", "approve"].includes(options.action)) throw new Error("Invalid planning action.");
 		if (options.action === "approve" && (!Number.isSafeInteger(options.revision) || Number(options.revision) < 1))

@@ -19,7 +19,6 @@ export {
 	type LoadSkillsResult,
 	loadedSkillDirectories,
 	type Skill,
-	type SkillFrontmatter,
 } from "./skills/identity.ts";
 
 /**
@@ -89,15 +88,15 @@ export function formatSkillsForPrompt(
 	if (overflowBudget) fitted = fitSkillEntries(visibleSkills, budget - overflowBudget, fileReadTool !== "skill");
 	const { entries, undescribed, unlisted } = fitted;
 	const overflowNames = fitOverflowNames(unlisted, overflowBudget);
-	const lines = [
-		"\n\nThe following skills provide specialized instructions for specific tasks.",
+	// One intro line, the load instruction: each entry's description already says what its skill is for.
+	const load =
 		fileReadTool === "skill"
 			? `Use the skill tool with a skill's name to load it ${when}.`
-			: fileReadTool === "octocode"
-				? `Use Octocode localFetch to load a skill file ${when}.`
-				: fileReadTool === "bash"
-					? `Use bash to load a skill's file ${when}.`
-					: `Load a skill's file ${when}.`,
+			: fileReadTool === "bash"
+				? `Use bash to load a skill's file ${when}.`
+				: `Load a skill's file ${when}.`;
+	const lines = [
+		`\n\n${load}`,
 		// The skill tool's description says how to resolve a loaded skill's relative paths.
 		...(fileReadTool === "skill"
 			? []
@@ -129,13 +128,14 @@ function skillEntry(skill: Skill, withDescription: boolean, withLocation: boolea
 		description && description.length > SKILL_PROMPT_DESCRIPTION_CHARS
 			? `${description.slice(0, SKILL_PROMPT_DESCRIPTION_CHARS - 1).trimEnd()}…`
 			: description;
+	// One line per skill: its name and its description as written (plus the file path when a file reader loads it).
 	return [
 		"  <skill>",
-		`    <name>${escapeXml(skill.name)}</name>`,
-		...(withDescription && shown ? [`    <description>${escapeXml(shown)}</description>`] : []),
-		...(withLocation ? [`    <location>${escapeXml(skill.filePath)}</location>`] : []),
-		"  </skill>",
-	].join("\n");
+		`<name>${escapeXml(skill.name)}</name>`,
+		...(withDescription && shown ? [`<description>${escapeXml(shown)}</description>`] : []),
+		...(withLocation ? [`<location>${escapeXml(skill.filePath)}</location>`] : []),
+		"</skill>",
+	].join("");
 }
 
 /** Entries within `budget` characters: descriptions go first from the last skills, then the last skills' entries. */

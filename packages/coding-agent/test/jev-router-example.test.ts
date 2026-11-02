@@ -9,7 +9,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import jevRouter from "../examples/extensions/jev-router.ts";
+import jevRouter from "./fixtures/extensions/jev-router.ts";
 import { VIRTUAL_MODEL_STATE_ENTRY, type VirtualModelStateData } from "../src/core/virtual-models.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
 

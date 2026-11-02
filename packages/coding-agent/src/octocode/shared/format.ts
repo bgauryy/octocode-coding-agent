@@ -80,7 +80,7 @@ export const toolCallCount = (count: number) => plural(count, "tool call");
 
 export const formatClock = (at: number) => new Date(at).toTimeString().slice(0, 8);
 
-/** `7 tool calls · ↑12k (25% cached) ↓3k · ≈$0.02`: an agent's work in `coordinate list` and /agents. */
+/** `7 tool calls · ↑12k +4k cached ↓3k · ≈$0.02`: an agent's work in `coordinate list` and /agents. */
 export function memberStats(member: { toolCalls: number } & UsageTotals): string {
 	return [toolCallCount(member.toolCalls), formatTokenUsage(member), formatCost(member)].filter(Boolean).join(" · ");
 }

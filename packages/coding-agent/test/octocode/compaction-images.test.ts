@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { isRequestTooLarge, planTooLargeRecovery } from "../../src/octocode/compaction/images.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";

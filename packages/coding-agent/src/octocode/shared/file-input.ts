@@ -1,7 +1,6 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { expandPath } from "../../core/tools/path-utils.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
-import { LEGACY_CHANGE_TOOLS } from "../../core/tools/tool-names.ts";
 interface PatchChange {
 	type: "write" | "edit" | "delete";
 	path: string;
@@ -49,14 +48,10 @@ export function validateFileInput(input: Record<string, unknown>): void {
 	if (input.patch !== undefined && typeof input.patch !== "string") throw new Error("Patch must be a string");
 	if (input.queries !== undefined && !Array.isArray(input.queries)) throw new Error("Queries must be an array");
 }
-const PATH_KEYS = ["path", "filePath"] as const;
-
-/** Files a `file`, `edit` or `write` call is about to change; empty for any other tool. */
+/** Files a `file` call is about to change; empty for any other tool. */
 export function mutatedPaths(toolName: string, input: unknown): string[] {
 	if (typeof input !== "object" || input === null) return [];
 	const record = input as Record<string, unknown>;
-	if (LEGACY_CHANGE_TOOLS.includes(toolName))
-		return PATH_KEYS.flatMap((key) => (typeof record[key] === "string" ? [record[key]] : []));
 	if (toolName !== "file") return [];
 	return fileChanges(record).flatMap((query) =>
 		typeof query === "object" && query !== null && typeof query.path === "string"

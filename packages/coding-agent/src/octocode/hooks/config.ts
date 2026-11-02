@@ -3,14 +3,16 @@ import type { HookSource, HookHandler, HookConfig } from "./contracts.ts";
 import { applyHttpPolicy } from "./http.ts";
 import fs from "node:fs";
 import { parseConfigDocument } from "../../utils/config-document.ts";
-import { codexConfigDir } from "../../utils/host-config.ts";
 import { pluginContext } from "../../core/plugin-context.ts";
 import { configuredPlugins } from "../../core/plugin-settings.ts";
 import { inspectPluginHooks } from "../../core/plugin-hooks.ts";
 import type { Settings } from "../../core/settings-manager.ts";
 import os from "node:os";
 import path from "node:path";
-import { claudeSettingsSources, globalPaths, projectHookFiles } from "../shared/home.ts";
+import { globalPaths } from "../shared/home.ts";
+import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
+import { installOctocodeDiscovery } from "../discovery/index.ts";
+import { codexHomeFor } from "../discovery/hook-files.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
 import { applyHookToggles } from "./config/toggles.ts";
@@ -39,46 +41,34 @@ export function hookLabel(hook: HookHandler): string {
  * project.
  */
 export function hookFiles(cwd: string, projectTrusted: boolean, home = os.homedir()): string[] {
-	return hookSources(cwd, projectTrusted, home).map((source) => source.path);
+	return hookSourcesFromDiscovery(cwd, projectTrusted, home).map((source) => source.path);
 }
 
-function hookSources(cwd: string, projectTrusted: boolean, home: string, errors: string[] = []): HookSource[] {
-	let codexHome: string | undefined = path.join(home, ".codex");
-	if (process.env.CODEX_HOME) {
-		try {
-			codexHome = codexConfigDir(home);
-		} catch {
-			codexHome = undefined;
-			errors.push("CODEX_HOME must resolve to an existing directory; Codex user hooks were not loaded");
-		}
-	}
-	return [
-		{
-			path: path.join(path.dirname(claudeSettingsSources(cwd, false, home)[0].path), "settings.json"),
-			dialect: "claude",
-			scope: "user",
-		},
-		...(codexHome
-			? (["hooks.json", "config.toml"] as const).map((name): HookSource => ({
-					path: path.join(codexHome, name),
-					dialect: "codex",
-					scope: "user",
-				}))
-			: []),
-		{ path: globalPaths(process.env, home).hooks, dialect: "octocode", scope: "user" },
-		...(projectTrusted
-			? projectHookFiles(cwd).map((file): HookSource => ({
-					path: file,
-					dialect:
-						path.basename(path.dirname(file)) === ".claude"
-							? "claude"
-							: path.basename(path.dirname(file)) === ".codex"
-								? "codex"
-								: "octocode",
-					scope: "project",
-				}))
-			: []),
-	];
+/** The hook files discovery lists (Octocode's, Claude's, Codex's), in load order, with the dialect each is read as. */
+function hookSourcesFromDiscovery(
+	cwd: string,
+	projectTrusted: boolean,
+	home: string,
+	errors: string[] = [],
+): HookSource[] {
+	installOctocodeDiscovery();
+	const codex = codexHomeFor(home, process.env);
+	if (codex.error) errors.push(codex.error);
+	const input = discoveryInput({
+		cwd,
+		agentDir: globalPaths(process.env, home).home,
+		home,
+		projectTrusted,
+		piRoots: [],
+	});
+	return configDiscovery
+		.discover("hook", input)
+		.filter((item) => item.loaded && item.provenance.origin !== "plugin")
+		.map((item): HookSource => ({
+			path: item.provenance.path,
+			dialect: item.provenance.origin as HookSource["dialect"],
+			scope: item.provenance.scope === "project" ? "project" : "user",
+		}));
 }
 
 export function loadHooks(
@@ -94,7 +84,7 @@ export function loadHooks(
 	const codexLayers = new Map<string, Set<string>>();
 	const httpPolicies: unknown[] = [];
 	const seen = new Set<string>();
-	for (const origin of hookSources(cwd, projectTrusted, home, errors)) {
+	for (const origin of hookSourcesFromDiscovery(cwd, projectTrusted, home, errors)) {
 		const file = origin.path;
 		if (seen.has(file)) continue;
 		seen.add(file);
@@ -153,11 +143,7 @@ export function loadHooks(
 			if (entry.enabled === false) continue;
 			const inspected = inspectPluginHooks(entry);
 			errors.push(...inspected.errors);
-			if (!inspected.fingerprint || !inspected.manifest || inspected.definitions.length === 0) continue;
-			if (entry.hooksFingerprint !== inspected.fingerprint) {
-				errors.push(`${entry.path}: plugin hooks require review; hooksFingerprint=${inspected.fingerprint}`);
-				continue;
-			}
+			if (inspected.errors.length || !inspected.manifest || inspected.definitions.length === 0) continue;
 			const manifest = inspected.manifest;
 			const context = pluginContext(manifest, home);
 			for (const definition of inspected.definitions) {

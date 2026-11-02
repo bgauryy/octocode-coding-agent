@@ -98,15 +98,31 @@ export function renderTemplate(source: string, values: TemplateValues): string {
 	return emit(parse(text), values).replace(/\n$/, "");
 }
 
-const sources = new Map<string, string>();
+let sources: Map<string, string> | undefined;
 
-/** The text of an instruction file, read once. `name` is relative to the instructions folder, such as `policy/work.md`. */
-function instructionSource(name: string): string {
-	let text = sources.get(name);
-	if (text === undefined) {
-		text = fs.readFileSync(path.join(getInstructionsDir(), name), "utf8");
-		sources.set(name, text);
+/**
+ * Every instruction file, read together on first use (about 50 KB; the generated `rendered/` captures are not prompt
+ * sources). A running process keeps the text it started with while the files change on disk, so its loaded code never
+ * meets a template naming a value that code does not pass.
+ */
+function instructionSources(): Map<string, string> {
+	if (sources) return sources;
+	const root = getInstructionsDir();
+	const read = new Map<string, string>();
+	for (const entry of fs.readdirSync(root, { recursive: true, withFileTypes: true })) {
+		const file = path.join(entry.parentPath, entry.name);
+		const name = path.relative(root, file).split(path.sep).join("/");
+		if (entry.isFile() && name.endsWith(".md") && !name.startsWith("rendered/"))
+			read.set(name, fs.readFileSync(file, "utf8"));
 	}
+	sources = read;
+	return read;
+}
+
+/** The text of an instruction file. `name` is relative to the instructions folder, such as `policy/work.md`. */
+function instructionSource(name: string): string {
+	const text = instructionSources().get(name);
+	if (text === undefined) throw new Error(`Instruction template: no file ${name} in ${getInstructionsDir()}`);
 	return text;
 }
 

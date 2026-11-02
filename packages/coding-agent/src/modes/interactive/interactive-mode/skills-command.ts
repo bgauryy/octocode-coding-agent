@@ -102,7 +102,6 @@ async function catalog(host: SkillsHost): Promise<{ entries: SkillEntry[]; resol
 		["user", host.session.settingsManager.getGlobalSettings().skills ?? []],
 		["project", host.session.settingsManager.getProjectSettings().skills ?? []],
 	] as const) {
-		if (scope === "project" && !host.session.settingsManager.isProjectTrusted()) continue;
 		for (const pattern of paths) {
 			if (!(pattern.startsWith("-") || pattern.startsWith("+")) || !isAbsolute(pattern.slice(1))) continue;
 			const path = pattern.slice(1);
@@ -142,10 +141,6 @@ async function setEnabled(
 	}
 	if (entry.metadata.scope === "temporary" || isSyntheticPath(entry.path)) {
 		host.showWarning("This session-only skill cannot be changed in settings.");
-		return;
-	}
-	if (entry.metadata.scope === "project" && !host.session.settingsManager.isProjectTrusted()) {
-		host.showWarning("Trust project resources before changing a project skill.");
 		return;
 	}
 	const settings = host.session.settingsManager;

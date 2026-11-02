@@ -12,9 +12,9 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
+import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createAgentSession } from "../../src/core/sdk.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -71,7 +71,7 @@ const agentCall = (type: "task" | "coordinate" | "message", fields: Parameters<t
 const say = (text: string) => () => fauxAssistantMessage(text);
 type Reply = () => ReturnType<typeof fauxAssistantMessage>;
 
-let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
+let session: Awaited<ReturnType<typeof createTestSession>>["session"];
 let faux: ReturnType<typeof createFauxCore>;
 const turns: Turn[] = [];
 /** A run started and Octocode has not emitted its `agent_settled` yet: a prompt sent now is deferred until the run settles, and may never reach the model. */
@@ -176,7 +176,7 @@ beforeAll(async () => {
 		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	({ session } = await createAgentSession({
+	({ session } = await createTestSession({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		resourceLoader,
@@ -200,7 +200,7 @@ afterAll(async () => {
 describe("Native features through the SDK", () => {
 	it("registers every tool and command, keeps the banner out of the session and picks up ~/.claude skills", async () => {
 		const [turn] = await run("hello", [say("ready")]);
-		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "memory"])
+		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "archive"])
 			expect(turn.tools).toContain(name);
 		// Browsing is the browser MCP server's; no native `browser` tool is registered.
 		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("browser");
@@ -208,7 +208,7 @@ describe("Native features through the SDK", () => {
 		for (const name of [
 			"status",
 			"agents",
-			"hooks",
+			"harness",
 			"resume",
 			"permissions",
 			"backlog",
@@ -222,6 +222,8 @@ describe("Native features through the SDK", () => {
 			expect(commands).toContain(name);
 		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
 		expect(commands).not.toContain("octocode");
+		// Folded into /harness: one name per command.
+		for (const retired of ["plugins", "hooks", "config"]) expect(commands).not.toContain(retired);
 		expect(session.systemPrompt).toContain("demo-skill");
 		expect(turn.context).toMatch(/Delegation/);
 		// The banner is the TUI header (none over RPC), never a session entry.
@@ -239,7 +241,7 @@ describe("Native features through the SDK", () => {
 		expect(note(/^Octocode \d/)).toMatch(/Subagents: .*researcher/);
 		expect(note(/^Octocode \d/)).toMatch(/^Skills \([1-9]\d*\)$/m);
 		expect(note(/^Octocode \d/)).toMatch(/Hooks: (off|on)/);
-		await session.prompt("/hooks");
+		await session.prompt("/harness hooks");
 		expect(note(/^Hooks: /)).toMatch(/Hook files[\s\S]*settings\.json/);
 		const beforeRequests = turns.length;
 		// `/octocode` is retired (the workspace command is `/web`): every form gets migration guidance and never reaches the model.
@@ -406,6 +408,8 @@ describe("Native features through the SDK", () => {
 	});
 
 	it("runs a subagent and an isolated subagent whose changes /agents merge brings in", async () => {
+		// Isolation creates a worktree, so the parent asks "Trust new worktree?" once; the user says yes.
+		ui.confirms.push(true);
 		const t = await run("delegate", [
 			calls(
 				agentCall("task", { goal: "check things", task: "report facts", profile: "researcher" }),
@@ -415,9 +419,10 @@ describe("Native features through the SDK", () => {
 		]);
 		const [plain, isolated] = t.at(-1)!.results;
 		expect(plain.text).toMatch(/report \{/);
-		// The inline report is bounded (the skill snapshot leads the child's facts), so read the child's full report.
-		const full = /Full report: (.+) \(read only the parts you need\)/.exec(plain.text)![1];
-		expect(fs.readFileSync(full, "utf8")).toMatch(/"subagent":"1"/);
+		// A long report is bounded and kept on disk (the next test pins that); a researcher's role names its skills, so no
+		// inherited catalog pads its facts and they may fit inline.
+		const full = /Full report: (.+) \(read only the parts you need\)/.exec(plain.text)?.[1];
+		expect(full ? fs.readFileSync(full, "utf8") : plain.text).toMatch(/"subagent":"1"/);
 		expect(isolated.text).toMatch(/refs\/octocode\/[\w-]+/);
 		expect(fs.existsSync(path.join(cwd, "child.txt"))).toBe(false);
 		const id = /refs\/octocode\/([\w-]+)/.exec(isolated.text)![1];
@@ -516,15 +521,32 @@ describe("Native features through the SDK", () => {
 				}),
 			),
 			calls(
-				nativeCall("memory", {
+				nativeCall("archive", {
+					source: "memories",
+					goal: "remember the answer",
 					op: "set",
 					title: "The answer constant lives in app.ts",
 					body: "Exported as answer from app.ts at the repository root.",
 					keywords: "answer constant export",
 				}),
 			),
-			calls(nativeCall("memory", { op: "search", query: "answer constant" })),
-			calls(nativeCall("memory", { op: "set", title: "Deploy token", body: `use ghp_${"a".repeat(36)}` })),
+			calls(
+				nativeCall("archive", {
+					source: "memories",
+					goal: "remember the answer",
+					op: "search",
+					keywords: "answer constant",
+				}),
+			),
+			calls(
+				nativeCall("archive", {
+					source: "memories",
+					goal: "remember the answer",
+					op: "set",
+					title: "Deploy token",
+					body: `use ghp_${"a".repeat(36)}`,
+				}),
+			),
 			say("done"),
 		]);
 		const [added, listed, claimed, noNote, done, saved, found, secret] = t.slice(1).map((turn) => turn.results[0]);
@@ -567,7 +589,7 @@ describe("Native features through the SDK", () => {
 		expect(out.some((text) => /^Moved B2\b/.test(text))).toBe(true);
 		expect(out.some((text) => /^Saved M\d+ .*Tabs everywhere/.test(text))).toBe(true);
 		const listed = out.find((text) => text.startsWith("Memories (auto on)"))!;
-		expect(listed).toMatch(/^Project:$/m);
+		expect(listed).toMatch(/^Workspace:$/m);
 		expect(listed).toContain("Tabs everywhere");
 		expect(listed).toContain("The answer constant lives in app.ts");
 		expect(out.find((text) => text.startsWith('Memories matching "answer"'))).toContain(

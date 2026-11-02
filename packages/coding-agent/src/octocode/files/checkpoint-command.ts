@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sessionDir } from "../shared/home.ts";
 import { withDialog } from "../shared/locks.ts";

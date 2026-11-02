@@ -3,10 +3,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { failureOf } from "../../src/octocode/hooks/runner.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -25,7 +23,6 @@ function project(hook: Hook): string {
 		path.join(dir, ".octocode", "hooks.json"),
 		JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [hook] }] } }),
 	);
-	saveDecision(dir, fingerprint(projectConfigFiles(dir)), true);
 	return dir;
 }
 
@@ -165,7 +162,6 @@ describe("observer hook dispatch failures", () => {
 			path.join(cwd, ".octocode", "hooks.json"),
 			JSON.stringify({ hooks: { [event]: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 		);
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const { api, fire } = fakeHost();
 		const hooks = registerHooks(api, {}, tmp());
 		const notify = vi.fn();

@@ -52,6 +52,24 @@ describe("inbound ACP protocol", () => {
 		expect(created.sessionId).toBe((await h.workers[1].getState()).sessionId);
 	});
 
+	it("refuses a session in a folder the user has not trusted, naming the command, before allocating a worker", async () => {
+		const h = harness({
+			folderTrust: (cwd) => ({
+				trusted: false,
+				message: `Folder is not trusted: ${cwd}`,
+				command: `octocode trust add ${cwd}`,
+			}),
+		});
+		await h.initialize();
+		const refused = await h.newSession().catch((error: unknown) => error);
+		expect(refused).toMatchObject({
+			code: -32002,
+			message: expect.stringContaining("Folder is not trusted"),
+			data: { command: expect.stringContaining("octocode trust add") },
+		});
+		expect(h.createWorker).not.toHaveBeenCalled();
+	});
+
 	it("limits pending session creation and cleans a worker whose readiness fails", async () => {
 		const gate = deferred<FakeWorker>();
 		const h = harness({ maxSessions: 1, createWorker: () => gate.promise });

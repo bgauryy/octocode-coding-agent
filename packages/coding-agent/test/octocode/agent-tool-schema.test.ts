@@ -70,14 +70,44 @@ describe("flat agent schema", () => {
 			"to",
 			"reason",
 		]);
-		expect(schema.properties.task.description).toBe("Only for: task. brief");
-		expect(schema.properties.to.description).toBe("Only for: message.");
-		expect(schema.properties.subagent.description).toBe("Only for: coordinate.");
+		expect(schema.properties.task.description).toBe("task: brief");
+		expect(schema.properties.to.description).toBe("message only");
+		expect(schema.properties.subagent.description).toBe("coordinate only");
 		expect(schema.properties.reason.description).toMatch(/^Why this call/);
 		expect(JSON.stringify(schema)).not.toContain('"input"');
 		for (const args of valid) expect(Check(tool.parameters, args)).toBe(true);
 		expect(Check(tool.parameters, { type: "message", input: { to: "parent" }, reason: "old" })).toBe(false);
 		expect(Check(tool.parameters, { type: "message", to: "parent" })).toBe(false);
+	});
+
+	it("leaves out starter-only interrupt and its wording for a session without the task type", () => {
+		const build = (names: string[]) => {
+			const modes = agentModes();
+			for (const [name, , properties] of registrations)
+				if (names.includes(name))
+					modes.collect({
+						name,
+						label: name,
+						description: name,
+						parameters: Type.Object({
+							...properties,
+							...(name === "sendMessage" ? { interrupt: Type.Optional(Type.Boolean({ description: "stop" })) } : {}),
+						}),
+						execute: vi.fn(),
+					});
+			const fake = fakeHost();
+			modes.register(fake.api);
+			return fake.tools.get("agent")!;
+		};
+		const main = build(["agent", "coordinate", "sendMessage"]);
+		const child = build(["coordinate", "sendMessage"]);
+		const fields = (tool: { parameters: unknown }) =>
+			Object.keys((tool.parameters as { properties: object }).properties);
+		expect(fields(main)).toContain("interrupt");
+		expect(main.description).toContain("only reachable non-isolated background children");
+		expect(fields(child)).not.toContain("interrupt");
+		expect(child.description).not.toContain("non-isolated");
+		expect(child.description).toContain("parent or teammates");
 	});
 
 	it("fails registration when two modes would share a public field", () => {

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { newMember } from "../../src/octocode/team/identity.ts";
 import { PARENT_ID_ENV } from "../../src/octocode/team/store/env.ts";

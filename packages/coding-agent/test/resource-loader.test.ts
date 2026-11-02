@@ -2,9 +2,11 @@ import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { ExtensionRunner } from "../src/core/extensions/runner.ts";
+import { ExtensionRunner } from "../src/core/features/runner.ts";
+import type { ExtensionFactory, Feature } from "../src/core/features/types.ts";
 import { DefaultResourceLoader, loadProjectContextFiles } from "../src/core/resource-loader.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -12,6 +14,9 @@ import type { Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
+
+/** A hidden built-in feature, as `defaultFeatures` lists them. */
+const builtin = (id: string, register: ExtensionFactory): Feature => ({ id, owner: "builtin", hidden: true, register });
 
 describe("DefaultResourceLoader", () => {
 	let tempDir: string;
@@ -45,7 +50,7 @@ describe("DefaultResourceLoader", () => {
 			expect(loader.getThemes().themes).toEqual([]);
 		});
 
-		it("should not treat a project manifest as the owner of a project extension", async () => {
+		it("should not attribute a project extension file to the project manifest", async () => {
 			const extensionsDir = join(cwd, ".octocode", "extensions");
 			mkdirSync(extensionsDir, { recursive: true });
 			writeFileSync(
@@ -62,12 +67,12 @@ describe("DefaultResourceLoader", () => {
 			});
 			await loader.reload();
 
-			expect(loader.getExtensions().extensions).toHaveLength(1);
-			expect(loader.getExtensions().warnings).toEqual([]);
+			expect(loader.getExtensions().extensions).toHaveLength(0);
+			expect(loader.getExtensions().warnings).toHaveLength(1);
+			expect(loader.getExtensions().warnings?.[0]?.warning).not.toContain("shipped by package");
 		});
 
-		it("should warn about host dependencies in an extension package manifest", async () => {
-			// Regression for #9863.
+		it("should name the package that ships an ignored extension", async () => {
 			const packageRoot = join(tempDir, "extension-package");
 			const extensionsDir = join(packageRoot, "extensions");
 			mkdirSync(extensionsDir, { recursive: true });
@@ -85,17 +90,16 @@ describe("DefaultResourceLoader", () => {
 			});
 			await loader.reload();
 
-			expect(loader.getExtensions().extensions).toHaveLength(1);
+			expect(loader.getExtensions().extensions).toHaveLength(0);
 			expect(loader.getExtensions().warnings).toEqual([
 				{
-					path: join(packageRoot, "package.json"),
-					warning:
-						'Host-provided extension packages must be declared in peerDependencies with a "*" range, not dependencies: @octocodeai/octocodecode. Installed copies can bypass the extension loader and create duplicate runtime modules.',
+					path: join(packageRoot, "extensions", "package-extension.ts"),
+					warning: `Ignored extension shipped by package ${packageRoot}. User code extensions are not supported; use plugins and hooks (see PLUGINS.md).`,
 				},
 			]);
 		});
 
-		it("should fail when an extension package manifest cannot be parsed", async () => {
+		it("should ignore, not load or parse, an extension package whose manifest is invalid", async () => {
 			const packageRoot = join(tempDir, "invalid-extension-package");
 			const extensionsDir = join(packageRoot, "extensions");
 			mkdirSync(extensionsDir, { recursive: true });
@@ -109,7 +113,11 @@ describe("DefaultResourceLoader", () => {
 				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }, { projectTrusted: true }),
 			});
 
-			await expect(loader.reload()).rejects.toThrow(SyntaxError);
+			await loader.reload();
+
+			expect(loader.getExtensions().extensions).toHaveLength(0);
+			expect(loader.getExtensions().errors).toEqual([]);
+			expect(loader.getExtensions().warnings).toHaveLength(1);
 		});
 
 		it("should discover skills from agentDir", async () => {
@@ -278,7 +286,7 @@ Project skill`,
 			expect(theme?.sourcePath).toBe(projectThemePath);
 		});
 
-		it("should load symlinked user and project extensions once", async () => {
+		it("should list symlinked user and project extension files once as ignored", async () => {
 			const sharedExtDir = join(tempDir, "shared-extensions");
 			mkdirSync(sharedExtDir, { recursive: true });
 			writeFileSync(
@@ -305,103 +313,39 @@ Project skill`,
 			await loader.reload();
 
 			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions).toHaveLength(1);
+			expect(extensionsResult.extensions).toHaveLength(0);
 			expect(extensionsResult.errors).toEqual([]);
 
 			// mergePaths processes project paths before user paths, so the project
-			// alias is the canonical survivor.
-			expect(extensionsResult.extensions[0].path).toBe(join(cwd, ".octocode", "extensions", "shared.ts"));
-		});
-
-		it("should load user extensions before trust and reuse them after trust resolves", async () => {
-			const userExtDir = join(agentDir, "extensions");
-			const projectExtDir = join(cwd, ".octocode", "extensions");
-			mkdirSync(userExtDir, { recursive: true });
-			mkdirSync(projectExtDir, { recursive: true });
-			const loadCountKey = `__trustPreloadCount_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-			const globalState = globalThis as typeof globalThis & Record<string, number | undefined>;
-
-			writeFileSync(
-				join(userExtDir, "user.ts"),
-				`globalThis[${JSON.stringify(loadCountKey)}] = (globalThis[${JSON.stringify(loadCountKey)}] ?? 0) + 1;
-export default function(api) {
-	api.on("project_trust", () => ({ trusted: "yes" }));
-	api.registerCommand("user-trust", {
-		description: "user trust",
-		handler: async () => {},
-	});
-}`,
-			);
-			writeFileSync(
-				join(projectExtDir, "project.ts"),
-				`export default function(api) {
-	api.registerCommand("project-trusted", {
-		description: "project trusted",
-		handler: async () => {},
-	});
-}`,
-			);
-
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-			});
-			await loader.reload({
-				resolveProjectTrust: async ({ extensionsResult }) => {
-					expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([join(userExtDir, "user.ts")]);
-					return true;
-				},
-			});
-
-			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([
-				join(cwd, ".octocode", "extensions", "project.ts"),
-				join(userExtDir, "user.ts"),
+			// alias is the one reported.
+			expect(extensionsResult.warnings?.map((warning) => warning.path)).toEqual([
+				join(cwd, ".octocode", "extensions", "shared.ts"),
 			]);
-			expect(globalState[loadCountKey]).toBe(1);
+			expect(extensionsResult.warnings?.[0]?.warning).toContain("Ignored extension");
 		});
 
-		it("should keep both extensions loaded when command names collide", async () => {
-			const userExtDir = join(agentDir, "extensions");
-			const projectExtDir = join(cwd, ".octocode", "extensions");
-			mkdirSync(userExtDir, { recursive: true });
-			mkdirSync(projectExtDir, { recursive: true });
-
-			writeFileSync(
-				join(projectExtDir, "project.ts"),
-				`export default function(api) {
-	api.registerCommand("deploy", {
-		description: "project deploy",
-		handler: async () => {},
-	});
-	api.registerCommand("project-only", {
-		description: "project only",
-		handler: async () => {},
-	});
-}`,
-			);
-
-			writeFileSync(
-				join(userExtDir, "user.ts"),
-				`export default function(api) {
-	api.registerCommand("deploy", {
-		description: "user deploy",
-		handler: async () => {},
-	});
-	api.registerCommand("user-only", {
-		description: "user only",
-		handler: async () => {},
-	});
-}`,
-			);
-
+		it("should keep both features loaded when command names collide", async () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
+				extensionFactories: [
+					{
+						name: "project",
+						factory: (api) => {
+							api.registerCommand("deploy", { description: "project deploy", handler: async () => {} });
+							api.registerCommand("project-only", { description: "project only", handler: async () => {} });
+						},
+					},
+					{
+						name: "user",
+						factory: (api) => {
+							api.registerCommand("deploy", { description: "user deploy", handler: async () => {} });
+							api.registerCommand("user-only", { description: "user only", handler: async () => {} });
+						},
+					},
+				],
 			});
 			await loader.reload();
 
@@ -1162,109 +1106,64 @@ Content`,
 	});
 
 	describe("extension conflict detection", () => {
-		it("should detect tool conflicts between extensions", async () => {
-			// Create two extensions that register the same tool
-			const ext1Dir = join(agentDir, "extensions", "ext1");
-			const ext2Dir = join(agentDir, "extensions", "ext2");
-			mkdirSync(ext1Dir, { recursive: true });
-			mkdirSync(ext2Dir, { recursive: true });
-
-			writeFileSync(
-				join(ext1Dir, "index.ts"),
-				`
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
-import { Type } from "typebox";
-export default function(api: ExtensionAPI) {
-  api.registerTool({
-    name: "duplicate-tool",
-    description: "First",
-    parameters: Type.Object({}),
-    execute: async () => ({ result: "1" }),
-  });
-}`,
-			);
-
-			writeFileSync(
-				join(ext2Dir, "index.ts"),
-				`
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
-import { Type } from "typebox";
-export default function(api: ExtensionAPI) {
-  api.registerTool({
-    name: "duplicate-tool",
-    description: "Second",
-    parameters: Type.Object({}),
-    execute: async () => ({ result: "2" }),
-  });
-}`,
-			);
-
+		it("should detect tool conflicts between features", async () => {
+			const duplicate =
+				(description: string): ExtensionFactory =>
+				(api) =>
+					api.registerTool({
+						name: "duplicate-tool",
+						label: "duplicate-tool",
+						description,
+						parameters: Type.Object({}),
+						execute: async () => ({ content: [], details: {} }),
+					});
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
+				extensionFactories: [
+					{ name: "one", factory: duplicate("First") },
+					{ name: "two", factory: duplicate("Second") },
+				],
 			});
 			await loader.reload();
 
 			const { errors } = loader.getExtensions();
 			expect(errors.some((e) => e.error.includes("duplicate-tool") && e.error.includes("conflicts"))).toBe(true);
+			// The error names both owners.
+			expect(errors[0]?.error).toContain("<inline:one>");
+			expect(errors[0]?.error).toContain("<inline:two>");
 		});
 
-		it("should prefer explicit CLI extensions over discovered extensions when commands and tools conflict", async () => {
-			const globalExtDir = join(agentDir, "extensions");
-			mkdirSync(globalExtDir, { recursive: true });
-			const explicitExtPath = join(tempDir, "explicit-extension.ts");
-
-			writeFileSync(
-				join(globalExtDir, "global.ts"),
-				`
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
-import { Type } from "typebox";
-export default function(api: ExtensionAPI) {
-  api.registerTool({
-    name: "duplicate-tool",
-    description: "global tool",
-    parameters: Type.Object({}),
-    execute: async () => ({ result: "global" }),
-  });
-  api.registerCommand("deploy", {
-    description: "global command",
-    handler: async () => {},
-  });
-}`,
-			);
-
-			writeFileSync(
-				explicitExtPath,
-				`
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
-import { Type } from "typebox";
-export default function(api: ExtensionAPI) {
-  api.registerTool({
-    name: "duplicate-tool",
-    description: "explicit tool",
-    parameters: Type.Object({}),
-    execute: async () => ({ result: "explicit" }),
-  });
-  api.registerCommand("deploy", {
-    description: "explicit command",
-    handler: async () => {},
-  });
-}`,
-			);
+		it("should keep the first registered feature's tool and number colliding commands in registration order", async () => {
+			const feature =
+				(label: string): ExtensionFactory =>
+				(api) => {
+					api.registerTool({
+						name: "duplicate-tool",
+						label: "duplicate-tool",
+						description: `${label} tool`,
+						parameters: Type.Object({}),
+						execute: async () => ({ content: [], details: {} }),
+					});
+					api.registerCommand("deploy", { description: `${label} command`, handler: async () => {} });
+				};
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				additionalExtensionPaths: [explicitExtPath],
+				extensionFactories: [
+					{ name: "explicit", factory: feature("explicit") },
+					{ name: "global", factory: feature("global") },
+				],
 			});
 			await loader.reload();
 
 			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions[0]?.path).toBe(explicitExtPath);
+			expect(extensionsResult.extensions[0]?.path).toBe("<inline:explicit>");
 
 			const sessionManager = SessionManager.inMemory();
 			const authStorage = AuthStorage.create(join(tempDir, "auth-explicit.json"));
@@ -1282,57 +1181,6 @@ export default function(api: ExtensionAPI) {
 			expect(runner.getToolDefinition("duplicate-tool")?.description).toBe("explicit tool");
 		});
 
-		it("should leave out replaceable extensions whose names another extension registers", async () => {
-			// A third-party MCP extension registering /mcp replaces the built-in one instead of both running.
-			const globalExtDir = join(agentDir, "extensions");
-			mkdirSync(globalExtDir, { recursive: true });
-			writeFileSync(
-				join(globalExtDir, "other-mcp.ts"),
-				`
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
-export default function(api: ExtensionAPI) {
-  api.registerCommand("mcp", { description: "other mcp", handler: async () => {} });
-}`,
-			);
-
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				extensionFactories: [
-					{
-						name: "mcp",
-						replaceable: true,
-						factory: (api) => api.registerCommand("mcp", { description: "built-in mcp", handler: async () => {} }),
-					},
-					{
-						name: "llama",
-						replaceable: true,
-						factory: (api) => api.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
-					},
-				],
-			});
-			await loader.reload();
-
-			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([
-				join(globalExtDir, "other-mcp.ts"),
-				"<inline:llama>",
-			]);
-			expect(extensionsResult.errors).toEqual([]);
-
-			const runner = new ExtensionRunner(
-				extensionsResult.extensions,
-				extensionsResult.runtime,
-				cwd,
-				SessionManager.inMemory(),
-				await createModelRegistry(AuthStorage.create(join(tempDir, "auth-replaceable.json"))),
-			);
-			expect(runner.getCommand("mcp")?.description).toBe("other mcp");
-			expect(runner.getCommand("llama")?.description).toBe("built-in llama");
-		});
-
 		it("should skip built-in extensions disabled in settings", async () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
 			const loaded: string[] = [];
@@ -1341,9 +1189,9 @@ export default function(api: ExtensionAPI) {
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				extensionFactories: [
-					{ name: "mcp", builtin: true, factory: () => void loaded.push("mcp") },
-					{ name: "llama", builtin: true, factory: () => void loaded.push("llama") },
+				builtinFeatures: [
+					builtin("mcp", () => void loaded.push("mcp")),
+					builtin("llama", () => void loaded.push("llama")),
 				],
 			});
 			await loader.reload();
@@ -1357,7 +1205,7 @@ export default function(api: ExtensionAPI) {
 			expect(loaded).toEqual(["llama"]);
 		});
 
-		it("should skip disabledBuiltinExtensions even when settings or -e enable them", async () => {
+		it("should skip disabledFeatures even when settings enable them", async () => {
 			mkdirSync(join(cwd, ".octocode"), { recursive: true });
 			writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
 			const loaded: string[] = [];
@@ -1366,21 +1214,20 @@ export default function(api: ExtensionAPI) {
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				disabledBuiltinExtensions: ["mcp"],
-				additionalExtensionPaths: ["builtin:mcp"],
-				extensionFactories: [
-					{ name: "mcp", builtin: true, factory: () => void loaded.push("mcp") },
-					{ name: "llama", builtin: true, factory: () => void loaded.push("llama") },
+				disabledFeatures: ["mcp"],
+				builtinFeatures: [
+					builtin("mcp", () => void loaded.push("mcp")),
+					builtin("llama", () => void loaded.push("llama")),
 				],
 			});
-			await loader.reload({ resolveProjectTrust: async () => true });
+			await loader.reload();
 
 			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:llama"]);
 			expect(loader.getExtensions().errors).toEqual([]);
 			expect(loaded).toEqual(["llama"]);
 		});
 
-		it("should load built-in extensions after file extensions with and without trust resolution", async () => {
+		it("should load a built-in once per reload and only warn about extension files", async () => {
 			const userExtDir = join(agentDir, "extensions");
 			mkdirSync(userExtDir, { recursive: true });
 			writeFileSync(join(userExtDir, "user.ts"), "export default function() {}");
@@ -1392,40 +1239,35 @@ export default function(api: ExtensionAPI) {
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				extensionFactories: [{ name: "mcp", builtin: true, factory: () => {} }],
+				builtinFeatures: [builtin("mcp", () => {})],
 			});
-			const expected = [join(userExtDir, "user.ts"), "builtin:mcp"];
 
-			await loader.reload({ resolveProjectTrust: async () => true });
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(expected);
-			await loader.reload();
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(expected);
+			for (let round = 0; round < 2; round++) {
+				await loader.reload();
+				expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:mcp"]);
+				expect(loader.getExtensions().errors).toEqual([]);
+				expect(loader.getExtensions().warnings?.map((warning) => warning.path)).toEqual([join(userExtDir, "user.ts")]);
+			}
 		});
 
-		it("should disable built-in extensions with noExtensions unless loaded with -e builtin:<name>", async () => {
+		it("should ignore a settings entry for an unknown built-in", async () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:missing"] }));
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				noExtensions: true,
-				additionalExtensionPaths: ["builtin:mcp", "builtin:missing"],
-				extensionFactories: [
-					{ name: "mcp", builtin: true, factory: () => void loaded.push("mcp") },
-					{ name: "llama", builtin: true, factory: () => void loaded.push("llama") },
-				],
+				builtinFeatures: [builtin("mcp", () => void loaded.push("mcp"))],
 			});
 			await loader.reload();
 
 			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:mcp"]);
-			expect(loader.getExtensions().errors).toEqual([
-				{ path: "builtin:missing", error: "Unknown built-in extension: builtin:missing" },
-			]);
+			expect(loader.getExtensions().errors).toEqual([]);
 			expect(loaded).toEqual(["mcp"]);
 		});
 
-		it("should apply project built-in extension overrides after trust resolves", async () => {
+		it("should apply project built-in extension overrides over user settings", async () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
 			mkdirSync(join(cwd, ".octocode"), { recursive: true });
 			writeFileSync(
@@ -1438,25 +1280,19 @@ export default function(api: ExtensionAPI) {
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				extensionFactories: [
-					{ name: "mcp", builtin: true, factory: () => void loaded.push("mcp") },
-					{ name: "plain", factory: () => void loaded.push("plain") },
-					{ name: "llama", builtin: true, factory: () => void loaded.push("llama") },
+				builtinFeatures: [
+					builtin("mcp", () => void loaded.push("mcp")),
+					builtin("llama", () => void loaded.push("llama")),
 				],
+				extensionFactories: [{ name: "plain", factory: () => void loaded.push("plain") }],
 			});
-			await loader.reload({
-				resolveProjectTrust: async ({ extensionsResult }) => {
-					// Built-in extensions wait until project settings are known.
-					expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual(["<inline:plain>"]);
-					return true;
-				},
-			});
+			await loader.reload();
 
 			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual([
 				"builtin:mcp",
 				"<inline:plain>",
 			]);
-			expect(loaded).toEqual(["plain", "mcp"]);
+			expect(loaded).toEqual(["mcp", "plain"]);
 		});
 	});
 

@@ -1,5 +1,5 @@
 import { type CompactionThinking, builtInCompactionSettings } from "../../core/compaction/settings.ts";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 
 /** The session's thinking level and custom budgets, which size the compaction reserve. */
 export function compactionThinking(api: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings">): CompactionThinking {

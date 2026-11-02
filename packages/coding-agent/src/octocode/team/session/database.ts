@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import { AgentDbError } from "../../agentdb/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";

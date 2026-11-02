@@ -11,7 +11,7 @@ import type { Model } from "@octocodeai/octocode-ai";
 import type { PromptDisposition, QueuedInput, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
-import type { ExtensionUIPermissionRequest } from "../../core/extensions/types.ts";
+import type { ExtensionUIPermissionRequest } from "../../core/features/types.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";

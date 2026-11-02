@@ -1,6 +1,6 @@
 import type { TSchema } from "typebox";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
-import type { ExtensionAPI, ToolDefinition } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, liftNestedReason, withoutReason, withReason } from "../shared/reason.ts";
 
 /**
@@ -13,13 +13,12 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["ollama", "gate/classify: a task runs the FreeLlama CLI on a local model; models and route read its state"],
 	["web", "gate/classify plus Web tool: search, resolved URLs and private hosts"],
 	["file", "File tool: checked mutation transaction and source-policy projection"],
-	["memory", "Memory tool: persistent memory scope checks"],
+	["archive", "Archive tool: persistent memory scope checks"],
 	["agent", "Agent modes: task/profile and external-process checks; session coordination and messages"],
 	["models", "Session state only: lists model and provider state; check sends one small request per provider"],
 	["askUser", "Session UI only: collects the user's answers"],
 	["backlog", "Session workspace state only: backlog records and comments"],
 	["steps", "Session workspace state only: steps (tasks) of repository items and of this session"],
-	["archive", "Archive tool: authorized session history, checked by the history reader"],
 	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 ]);

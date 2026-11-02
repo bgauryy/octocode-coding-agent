@@ -14,7 +14,6 @@ const workspaceSourcePaths = {
 	aiProviders: fileURLToPath(new URL("./packages/ai/src/providers", import.meta.url)),
 	aiUtils: fileURLToPath(new URL("./packages/ai/src/utils", import.meta.url)),
 	agentIndex: fileURLToPath(new URL("./packages/agent/src/index.ts", import.meta.url)),
-	codingAgentIndex: fileURLToPath(new URL("./packages/coding-agent/src/index.ts", import.meta.url)),
 	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
 	tuiAnsi: fileURLToPath(new URL("./packages/tui/src/utils/ansi-codes.ts", import.meta.url)),
 } as const;
@@ -46,6 +45,7 @@ export default defineConfig({
 
 			{ find: /^@octocodeai\/octocode-telemetry$/, replacement: workspaceSourcePaths.telemetryIndex },
 			{ find: /^@octocodeai\/octocode-telemetry\/testing$/, replacement: workspaceSourcePaths.telemetryTesting },
+			// The package root exports only the CLI and RPC; extension fixtures import the loader's host module.
 			{ find: /^@octocodeai\/octocodecode\/mcp$/, replacement: workspaceSourcePaths.mcpIndex },
 			{ find: /^@octocodeai\/octocodecode\/mcp\/oauth$/, replacement: workspaceSourcePaths.mcpOAuth },
 			{ find: /^@octocodeai\/octocodecode\/mcp\/testing$/, replacement: workspaceSourcePaths.mcpTesting },

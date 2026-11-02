@@ -204,7 +204,7 @@ for (const block of response.content) {
 
 Snippets in this README and the pages under `docs/` assume a `models` collection set up like this (with the relevant providers registered).
 
-`usage.cost` estimates inference charges from the selected provider's catalog rates and reported tokens. Known long-context tiers, cache-write lifetimes and served OpenAI service tiers affect the estimate; output usage can include billable reasoning tokens. Subscription allowances, account credits, regional premiums and time-based cache-storage fees are not fully represented. Refresh catalog metadata as prices change.
+`usage.cost` estimates inference charges from the selected provider's catalog rates and reported tokens. Known long-context tiers, cache-write lifetimes and served OpenAI service tiers affect the estimate. A time-limited price carries `cost.until` (last UTC day, inclusive) and `cost.after` (the rates, and tiers, from the next day); `calculateCost(model, usage, now?)` picks the period by the clock, which tests can inject; output usage can include billable reasoning tokens. Subscription allowances, account credits, regional premiums and time-based cache-storage fees are not fully represented. Refresh catalog metadata as prices change.
 
 ## License
 

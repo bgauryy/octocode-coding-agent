@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
 import { openFile } from "../shared/open.ts";
 import type { SessionAttach } from "./attach-register.ts";
 import { ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOptions } from "./launcher.ts";

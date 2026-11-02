@@ -3,10 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
@@ -220,7 +218,6 @@ describe("user ! commands and a PreToolUse hook", () => {
 				path.join(cwd, ".octocode", "hooks.json"),
 				JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command }] }] } }),
 			);
-			saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		}
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });

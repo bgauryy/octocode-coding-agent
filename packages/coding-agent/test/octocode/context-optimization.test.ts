@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generatedDir, serverGeneratedDir } from "../../../mcp/src/compact/store.ts";
 import { getNativeSkillsDir } from "../../src/config.ts";
-import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import type { Skill } from "../../src/core/skills.ts";
 import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
 import { runContextCommand } from "../../src/octocode/context-optimization/command.ts";

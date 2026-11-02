@@ -16,7 +16,7 @@ export class SdkTransportAdapter implements Transport {
 	onclose?: Transport["onclose"];
 	private readonly pending = new Map<JsonRpcId, AbortController>();
 	private readonly disposers: (() => void)[] = [];
-	private closed = false;
+	private closing: Promise<void> | undefined;
 	private readonly transport: McpTransport;
 
 	constructor(transport: McpTransport, observe: (method: string, params: unknown) => void) {
@@ -63,9 +63,10 @@ export class SdkTransportAdapter implements Transport {
 			throw error;
 		}
 	}
-	async close(): Promise<void> {
-		if (this.closed) return;
-		this.closed = true;
+	close(): Promise<void> {
+		return (this.closing ??= Promise.resolve().then(() => this.closeTransport()));
+	}
+	private async closeTransport(): Promise<void> {
 		this.abortPending();
 		try {
 			await this.transport.close();

@@ -4,13 +4,12 @@ import type { Args, Mode } from "../cli/args.ts";
 import { processFileArguments } from "../cli/file-processor.ts";
 import { buildInitialMessage } from "../cli/initial-message.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
-import { APP_NAME } from "../config.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../core/agent-session-services.ts";
-import type { AppMode } from "../core/project-trust.ts";
 import { formatMissingSessionCwdPrompt, type SessionCwdIssue } from "../core/session-cwd.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 
-export const EXTENSION_LOAD_FAILURE_HINT = `Hint: Start without extensions using "${APP_NAME} -ne".`;
+/** How this process runs: a terminal UI, a one-shot print run, JSON-lines output or the RPC server. */
+export type AppMode = "interactive" | "print" | "json" | "rpc";
 
 /**
  * Read all content from piped stdin.

@@ -1,9 +1,11 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import chalk from "chalk";
-import { CONFIG_DIR_NAME } from "../../config.ts";
 import { canonicalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import { stripBom } from "../../../../common/src/text.ts";
+import { CONTEXT_FILE_CANDIDATES } from "../discovery/sources.ts";
+import { configDiscovery, discoveryInput } from "../discovery/service.ts";
+import type { ConfigKind } from "../discovery/types.ts";
 import { findGitPaths } from "../footer-data-provider.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { ResourceRoots } from "./source-info.ts";
@@ -38,8 +40,7 @@ function capContextFile(path: string, content: string): string {
 }
 
 function loadContextFileFromDir(dir: string): { path: string; content: string } | null {
-	const candidates = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
-	for (const filename of candidates) {
+	for (const filename of CONTEXT_FILE_CANDIDATES) {
 		const filePath = join(dir, filename);
 		if (existsSync(filePath)) {
 			try {
@@ -85,17 +86,32 @@ function findShadowedContextFile(cwd: string): string | undefined {
 	return worktreeContextFile ? join(mainRepoRoot, basename(worktreeContextFile.path)) : undefined;
 }
 
+/**
+ * `contextRoot` is the folder a trust grant is on (`FolderTrustView.root`): project instructions load from it down to
+ * `cwd` and nothing above it is read. Without it (or when it is not an ancestor of `cwd`) the walk reaches the
+ * filesystem root, as before.
+ */
 export function loadProjectContextFiles(options: {
 	cwd: string;
 	agentDir: string;
+	contextRoot?: string;
 }): Array<{ path: string; content: string }> {
 	const resolvedCwd = resolvePath(options.cwd);
+	const resolvedRoot = options.contextRoot === undefined ? undefined : resolvePath(options.contextRoot);
+	const boundary =
+		resolvedRoot !== undefined && (resolvedCwd === resolvedRoot || resolvedCwd.startsWith(`${resolvedRoot}${sep}`))
+			? resolvedRoot
+			: undefined;
 	const resolvedAgentDir = resolvePath(options.agentDir);
 
 	const contextFiles: Array<{ path: string; content: string }> = [];
 	const seenPaths = new Set<string>();
 
-	const globalContext = loadContextFileFromDir(resolvedAgentDir);
+	// The global file: Octocode's, else Pi's (`~/.pi/agent`), as discovery ranks them.
+	const globalFile = configDiscovery
+		.discover("context", discoveryInput({ cwd: resolvedCwd, agentDir: resolvedAgentDir, projectTrusted: false }))
+		.find((item) => item.loaded);
+	const globalContext = globalFile ? loadContextFileFromDir(dirname(globalFile.provenance.path)) : null;
 	if (globalContext) {
 		contextFiles.push(globalContext);
 		seenPaths.add(globalContext.path);
@@ -119,6 +135,7 @@ export function loadProjectContextFiles(options: {
 			seenPaths.add(contextFile.path);
 		}
 
+		if (currentDir === boundary) break;
 		const parentDir = dirname(currentDir);
 		if (parentDir === currentDir) break;
 		currentDir = parentDir;
@@ -129,33 +146,27 @@ export function loadProjectContextFiles(options: {
 	return contextFiles;
 }
 
+/** The highest-ranked `SYSTEM.md` or `APPEND_SYSTEM.md`: Octocode's project then global file, then Pi's. */
+function discoverPromptFile(
+	kind: Extract<ConfigKind, "systemPrompt" | "appendSystemPrompt">,
+	roots: ResourceRoots,
+	settingsManager: SettingsManager,
+): string | undefined {
+	const input = discoveryInput({
+		cwd: roots.cwd,
+		agentDir: roots.agentDir,
+		projectTrusted: settingsManager.isProjectTrusted(),
+	});
+	return configDiscovery.discover(kind, input).find((item) => item.loaded)?.provenance.path;
+}
+
 export function discoverSystemPromptFile(roots: ResourceRoots, settingsManager: SettingsManager): string | undefined {
-	const projectPath = join(roots.cwd, CONFIG_DIR_NAME, "SYSTEM.md");
-	if (settingsManager.isProjectTrusted() && existsSync(projectPath)) {
-		return projectPath;
-	}
-
-	const globalPath = join(roots.agentDir, "SYSTEM.md");
-	if (existsSync(globalPath)) {
-		return globalPath;
-	}
-
-	return undefined;
+	return discoverPromptFile("systemPrompt", roots, settingsManager);
 }
 
 export function discoverAppendSystemPromptFile(
 	roots: ResourceRoots,
 	settingsManager: SettingsManager,
 ): string | undefined {
-	const projectPath = join(roots.cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md");
-	if (settingsManager.isProjectTrusted() && existsSync(projectPath)) {
-		return projectPath;
-	}
-
-	const globalPath = join(roots.agentDir, "APPEND_SYSTEM.md");
-	if (existsSync(globalPath)) {
-		return globalPath;
-	}
-
-	return undefined;
+	return discoverPromptFile("appendSystemPrompt", roots, settingsManager);
 }

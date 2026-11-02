@@ -1,6 +1,6 @@
 import type { ApplicationAwaiting } from "@octocodeai/octocode-contracts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clipText, firstLine } from "../shared/util.ts";
 import { promptTitle } from "../shared/locks.ts";

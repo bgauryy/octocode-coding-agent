@@ -3,7 +3,7 @@ import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocod
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { archivedSummary, inlineSummaryTokens } from "../../core/compaction/checkpoint.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { convertToLlm } from "../../core/messages.ts";
 import { sessionCleared, sessionClearedAt } from "../files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";

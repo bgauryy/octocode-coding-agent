@@ -9,8 +9,8 @@ import type {
 	SessionEvent,
 	ToolResultEvent,
 	TreePreparation,
-} from "../src/index.ts";
-import { isBashToolResult } from "../src/index.ts";
+} from "../src/core/features/index.ts";
+import { isBashToolResult } from "../src/core/features/index.ts";
 
 /** Compile-time check (`tsc` covers tests): types reachable from public signatures can be named from the root. */
 type Exported = [

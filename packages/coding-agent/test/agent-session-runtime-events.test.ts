@@ -5,7 +5,7 @@ import { fauxAssistantMessage, registerFauxProvider } from "@octocodeai/octocode
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../src/core/agent-session-runtime.ts";
@@ -18,7 +18,7 @@ import type {
 	SessionBeforeSwitchEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
-} from "../src/index.ts";
+} from "../src/core/features/index.ts";
 
 type RecordedSessionEvent =
 	| SessionBeforeSwitchEvent
@@ -84,7 +84,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 				cwd,
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,

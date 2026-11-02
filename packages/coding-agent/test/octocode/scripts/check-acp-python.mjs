@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { FIXTURE_MODEL, FIXTURE_PROVIDER, startFixtureModel } from "./acp-fixture-model.mjs";
 
 const { values } = parseArgs({
 	options: {
@@ -52,6 +53,7 @@ async function main() {
 	const interrupt = () => stop.abort(new Error("Interrupted"));
 	const report = { startedAt: new Date().toISOString(), node: process.version, pythonSdk: "0.12.1", outbound: [] };
 	let runtime;
+	let model;
 	let journal;
 	let failure;
 	for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, interrupt);
@@ -77,6 +79,7 @@ async function main() {
 			OCTOCODE_NOTIFY: "off",
 			OCTOCODE_TELEMETRY: "0",
 		};
+		model = await startFixtureModel({ home: env.OCTOCODE_HOME, userHome: run, pidJournal: journal });
 		const config = join(run, "launch.json");
 		const resolver = join(packageDir, "scripts/source-resolver.ts");
 		const peer = join(packageDir, "test/fixtures/acp-python-peer.py");
@@ -97,16 +100,13 @@ async function main() {
 					"--mode",
 					"acp",
 					"--no-builtin-tools",
-					"--no-extensions",
-					"--extension",
-					join(packageDir, "test/fixtures/acp-compatibility-provider.ts"),
 					"--no-skills",
 					"--no-context-files",
 					"--offline",
 					"--provider",
-					"acp-compatibility-fixture",
+					FIXTURE_PROVIDER,
 					"--model",
-					"fixture",
+					FIXTURE_MODEL,
 				],
 			}),
 			{ mode: 0o600 },
@@ -179,6 +179,7 @@ async function main() {
 			cleanupErrors.push(String(error));
 		} finally {
 			for (const signal of ["SIGINT", "SIGTERM"]) process.off(signal, interrupt);
+			await model?.close();
 			try {
 				rmSync(temporary, { recursive: true, force: true });
 			} catch (error) {

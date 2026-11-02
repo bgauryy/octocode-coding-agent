@@ -89,6 +89,26 @@ const named = (name: string): AgentContext => {
 
 const sectionNames = (context: AgentContext): string[] => context.sections.map((section) => section.name);
 
+it("shares complete native and research-tool declarations before role-specific tools", () => {
+	const main = named("main");
+	const child = named("general");
+	const shared = [
+		"bash",
+		"file",
+		"web",
+		"mcp",
+		...main.tools.filter((tool) => isMcpTool(tool.name)).map((tool) => tool.name),
+	];
+	expect(shared.length).toBeGreaterThan(4);
+	expect(main.tools.slice(0, shared.length).map((tool) => tool.name)).toEqual(shared);
+	expect(child.tools.slice(0, shared.length).map((tool) => tool.name)).toEqual(shared);
+	expect(JSON.stringify(child.tools.slice(0, shared.length))).toBe(JSON.stringify(main.tools.slice(0, shared.length)));
+	// Archive differs by role and must follow that prefix.
+	expect(main.tools.find((tool) => tool.name === "archive")?.parameters).not.toEqual(
+		child.tools.find((tool) => tool.name === "archive")?.parameters,
+	);
+});
+
 describe.each(AGENTS)("$name context", (agent) => {
 	const context = () => named(agent.name);
 
@@ -109,6 +129,12 @@ describe.each(AGENTS)("$name context", (agent) => {
 		if (agent.role === "lean") {
 			expect(names).toContain("octocode_lean");
 			for (const policy of POLICY) expect(names, `the full policy ${policy} in a lean child`).not.toContain(policy);
+		} else if (["researcher", "reviewer", "browser"].includes(agent.role ?? "")) {
+			// A read-only child's compact core (`policy/readonly.md`) replaces the work, delegation and safety sections.
+			const core = POLICY.filter((name) => name !== "octocode_delegation" && name !== "octocode_safety");
+			expect(names).toEqual(expect.arrayContaining(core));
+			expect(names).not.toContain("octocode_delegation");
+			expect(names).not.toContain("octocode_safety");
 		} else {
 			expect(names).toEqual(expect.arrayContaining(POLICY));
 			expect(names).not.toContain("octocode_lean");

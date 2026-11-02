@@ -1,5 +1,5 @@
 import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../../shared/permission-updates.ts";
-import type { ToolInvocation } from "../../../core/extensions/types.ts";
+import type { ToolInvocation } from "../../../core/features/types.ts";
 import { interactive } from "../../shared/interactive.ts";
 import { withDialog } from "../../shared/locks.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -82,10 +82,15 @@ export async function checkPermission(
 				via: "policy",
 				message: access.refusal,
 			});
-		if (access.uncertain && !(source?.shellBroadAllowance && target.uncertain === "dynamic file target"))
+		// One reason line per card, however many targets are unresolved; this is the only place that adds the reason.
+		if (
+			access.uncertain &&
+			!(source?.shellBroadAllowance && target.uncertain === "dynamic file target") &&
+			!request.reasons?.includes("shell.target")
+		)
 			request = {
 				...request,
-				reasons: [...new Set([...(request.reasons ?? []), "shell.target" as const])],
+				reasons: [...(request.reasons ?? []), "shell.target"],
 				reason: [request.reason, "Bash file target cannot be resolved before execution"].filter(Boolean).join("\n"),
 			};
 		if ((!target.allowed || access.protected) && !(source?.shellBroadAllowance && !access.protected) && access.action)

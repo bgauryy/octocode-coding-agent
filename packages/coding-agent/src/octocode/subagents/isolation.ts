@@ -1,7 +1,7 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "../team/store/workspace.ts";
-import { projectTrustNow } from "../shared/trust.ts";
+import { type WorktreeTrustRequest, worktreeTrustTitle } from "../worktrees/approval.ts";
 import type { Identity } from "./process/env.ts";
 import { createWorktree, finishWorktree, isolationReport, type Worktree } from "./worktree.ts";
 
@@ -21,15 +21,17 @@ export class Isolation {
 
 	/** Creates the worktree and returns the child's cwd. The worktree is its own git root: the child stays on this team. */
 	async start(
-		ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+		ctx: Pick<ExtensionContext, "cwd" | "hasUI" | "ui">,
 		identity: Identity,
 		workingCopy = false,
 	): Promise<string> {
-		this.worktree = await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item);
+		// The parent asks, because the worktree is created in this process: the child never prompts and never records.
+		const ask = ctx.hasUI
+			? (request: WorktreeTrustRequest) => ctx.ui.confirm(worktreeTrustTitle(request), "")
+			: undefined;
+		this.worktree = await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item, ask);
 		identity.isolation = { path: this.worktree.path, repo: this.worktree.repo, cwd: this.worktree.cwd };
 		identity.workspace = teamWorkspace(ctx.cwd);
-		// The worktree is a different root, so no stored decision matches it: hand down only a decision this session made.
-		if (projectTrustNow(ctx) === true) identity.trustRoot = identity.workspace;
 		return this.worktree.cwd;
 	}
 

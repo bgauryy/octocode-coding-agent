@@ -1,3 +1,4 @@
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,12 +28,15 @@ afterEach(() => {
 
 function memoryTool(mode: PermissionMode) {
 	const fake = fakeHost();
-	registerMemory(fake.api, {
-		commands: new Subcommands(),
-		isSubagent: false,
-		permission: fakePermission(mode, { api: fake.api }),
-	});
-	const tool = fake.tools.get("memory");
+	registerArchiveTool(
+		fake.api,
+		registerMemory(fake.api, {
+			commands: new Subcommands(),
+			isSubagent: false,
+			permission: fakePermission(mode, { api: fake.api }),
+		}),
+	);
+	const tool = fake.tools.get("archive");
 	/** Runs the tool; `selects` answer the permission dialogs in order, and what is left of them shows how many were asked. */
 	const run = (
 		params: Record<string, unknown>,
@@ -47,18 +51,24 @@ function memoryTool(mode: PermissionMode) {
 			{ isProjectTrusted: () => true },
 		);
 		return tool
-			.execute("call", params, undefined, undefined, ctx)
+			.execute(
+				"call",
+				{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+				undefined,
+				undefined,
+				ctx,
+			)
 			.then((result: { content: Array<{ text: string }> }) => result.content[0].text);
 	};
 	return Object.assign(run, { entries: fake.entries });
 }
 
 describe("shared memory", () => {
-	it("saves a plain project memory at once in every mode, with no dialog and no UI", async () => {
+	it("saves a plain workspace memory at once in every mode, with no dialog and no UI", async () => {
 		for (const mode of ["manual", "workspace", "full"] as const) {
 			const run = memoryTool(mode);
 			const selects: string[] = [];
-			expect(await run({ op: "set", title: `Project note ${mode}` }, { selects })).toMatch(/^Saved M\d+ \(project/);
+			expect(await run({ op: "set", title: `Project note ${mode}` }, { selects })).toMatch(/^Saved M\d+ \(workspace/);
 			expect(await run({ op: "set", title: `Headless note ${mode}` }, { hasUI: false })).toMatch(/^Saved M\d+/);
 			expect(run.entries.map((entry) => entry.data)).toEqual([]);
 		}
@@ -99,7 +109,7 @@ describe("shared memory", () => {
 		await expect(run({ op: "set", title: "Injected pin", pinned: true }, { selects: ["Deny"] })).rejects.toThrow(
 			/user denied/,
 		);
-		expect(await run({ op: "list" })).toBe("No memories yet.");
+		expect(await run({ op: "list" })).toContain("memories: 0 matches");
 	});
 
 	it("refuses a global or pinned memory when no one can be asked, with the reason", async () => {
@@ -110,7 +120,7 @@ describe("shared memory", () => {
 		await expect(run({ op: "set", title: "Headless pin", pinned: true }, { hasUI: false })).rejects.toThrow(
 			/needs the user's approval/,
 		);
-		expect(await run({ op: "list" })).toBe("No memories yet.");
+		expect(await run({ op: "list" })).toContain("memories: 0 matches");
 		expect(run.entries.map((entry) => entry.data)).toEqual([
 			expect.objectContaining({ allowed: false, via: "headless" }),
 			expect.objectContaining({ allowed: false, via: "headless" }),
@@ -122,35 +132,5 @@ describe("shared memory", () => {
 		expect(await run({ op: "set", title: "Full rule", scope: "global" }, { hasUI: false })).toMatch(
 			/^Saved M\d+ \(global/,
 		);
-	});
-
-	it("refuses a global or pinned memory in an untrusted project in every mode, and audits the refusal", async () => {
-		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
-		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');
-		for (const mode of ["manual", "workspace", "full"] as const) {
-			const fake = fakeHost();
-			registerMemory(fake.api, {
-				commands: new Subcommands(),
-				isSubagent: false,
-				permission: fakePermission(mode, { api: fake.api }),
-			});
-			const ctx = Object.assign(fakeCtx({ cwd, hasUI: true }), { isProjectTrusted: () => false });
-			await expect(
-				fake.tools
-					.get("memory")
-					.execute("call", { op: "set", title: "Sneaky", scope: "global" }, undefined, undefined, ctx),
-			).rejects.toThrow(/untrusted project/);
-			expect(
-				fake.entries.map((entry) => entry.data),
-				mode,
-			).toEqual([
-				expect.objectContaining({
-					action: "invariant",
-					allowed: false,
-					via: "invariant",
-					what: ["memory a global or pinned memory"],
-				}),
-			]);
-		}
 	});
 });

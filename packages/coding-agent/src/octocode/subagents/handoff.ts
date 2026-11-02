@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import type { ReadonlySessionManager } from "../../core/session-manager.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { parseJsonlLine } from "../../../../common/src/jsonl.ts";

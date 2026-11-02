@@ -5,7 +5,7 @@ import { runCompletionCommand } from "./cli/completion.ts";
  * Main entry point for the coding agent CLI.
  *
  * This file handles CLI argument parsing and translates them into
- * createAgentSession() options. The SDK does the heavy lifting.
+ * session options for the runtime factory, which creates the session.
  */
 
 import { setCapabilityOverrides } from "@octocodeai/octocode-tui";
@@ -13,29 +13,27 @@ import chalk from "chalk";
 import { normalizeSessionName, parseArgs, printHelp, restoreBooleanFlagWords } from "./cli/args.ts";
 import { listModels } from "./cli/list-models.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "./cli/startup-ui.ts";
-import { APP_NAME, ENV_SESSION_DIR, getAgentDir, getPackageDir, VERSION } from "./config.ts";
+import { ENV_SESSION_DIR, getAgentDir, getPackageDir, VERSION } from "./config.ts";
 import { createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
-import type { InlineExtension } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.ts";
-import type { AppMode } from "./core/project-trust.ts";
 import { getMissingSessionCwdIssue, MissingSessionCwdError } from "./core/session-cwd.ts";
 import { SessionManager } from "./core/session-manager.ts";
 import { collectSettingsDiagnostics, deduplicateDiagnostics } from "./core/settings-diagnostics.ts";
 import { SettingsManager } from "./core/settings-manager.ts";
 import { printTimings, resetTimings, time } from "./core/timings.ts";
-import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import "./octocode/mcp-host/core-install.ts";
 import { loadMcpCommand } from "../../mcp/src/cli.lazy.ts";
 import { runAuthCommand } from "./main/auth-command.ts";
 import { runModelDiscoveryCommand } from "./main/model-discovery.ts";
 import { startupCwd } from "./cli/worktree-startup.ts";
 import { createCliRuntimeFactory } from "./main/runtime-factory.ts";
+import { folderTrustAsker, gateStartup, prepareAcpTrust } from "./main/trust-startup.ts";
+import { folderTrustResolver } from "./octocode/trust/port.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./main/session-manager.ts";
 import {
-	EXTENSION_LOAD_FAILURE_HINT,
 	isPlainRuntimeMetadataCommand,
 	prepareInitialMessage,
 	promptForMissingSessionCwd,
@@ -45,7 +43,6 @@ import {
 	resolveAppMode,
 	toPrintOutputMode,
 } from "./main/startup.ts";
-import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./theme/theme.ts";
 import { validateThemeJson } from "./theme/theme-schema.ts";
@@ -56,36 +53,11 @@ import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.
 
 export { createSessionManager } from "./main/session-manager.ts";
 
-export interface MainOptions {
-	extensionFactories?: InlineExtension[];
-}
-
-export async function main(args: string[], options?: MainOptions) {
+export async function main(args: string[]) {
 	if (runCompletionCommand(args)) return;
 	resetTimings();
 	// Commands and startup selectors can load user-authored themes before runtime creation.
 	setThemeJsonValidator(validateThemeJson);
-	const extensionFactories = options?.extensionFactories ?? [];
-	if (args[0] === "migrate") {
-		if (args.length === 2 && (args[1] === "--help" || args[1] === "-h")) {
-			console.log(
-				`Usage: ${APP_NAME} migrate\nConvert historical configuration in ${getAgentDir()} and .octocode/ in the current directory. Pi fallback directories are read-only and are not migrated.`,
-			);
-			return;
-		}
-		if (args.length !== 1) {
-			console.error(`Usage: ${APP_NAME} migrate`);
-			process.exitCode = 1;
-			return;
-		}
-		const result = runMigrations(process.cwd());
-		if (result.migratedAuthProviders.length > 0) {
-			console.log(`Migrated credentials for: ${result.migratedAuthProviders.join(", ")}`);
-		}
-		showDeprecationWarnings(result.deprecationWarnings);
-		console.log(`Migration checks completed for ${getAgentDir()} and the current project's .octocode/.`);
-		return;
-	}
 	const offlineMode = args.includes("--offline") || isOfflineModeEnabled();
 	if (offlineMode) {
 		process.env[OFFLINE_ENV] = "1";
@@ -107,7 +79,7 @@ export async function main(args: string[], options?: MainOptions) {
 	configureHttpDispatcher();
 	if (await runModelDiscoveryCommand(args)) return;
 
-	if (await handlePackageCommand(args, { extensionFactories })) {
+	if (await handlePackageCommand(args)) {
 		const exitCode = process.exitCode ?? 0;
 		if (process.platform === "win32" && exitCode === 0 && args[0] === "update") {
 			// We normally prefer process.exit(0) for package commands so bad extensions cannot keep
@@ -120,13 +92,26 @@ export async function main(args: string[], options?: MainOptions) {
 		return;
 	}
 
-	if (await handleConfigCommand(args, { extensionFactories })) {
+	if (await handleConfigCommand(args)) {
 		return;
 	}
 
 	if (args[0] === "mcp") {
 		const { runMcpCommand } = await loadMcpCommand();
 		process.exitCode = await runMcpCommand(args.slice(1), { cwd, agentDir });
+		return;
+	}
+
+	if (args[0] === "trust") {
+		const { runTrustCommand } = await import("./cli/trust-command.ts");
+		process.exitCode = await runTrustCommand(args.slice(1), { cwd });
+		return;
+	}
+
+	if (args[0] === "marketplace" || args[0] === "plugin") {
+		const { runMarketplaceCommand, runPluginCommand } = await import("./octocode/plugins/marketplace/command.ts");
+		const run = args[0] === "plugin" ? runPluginCommand : runMarketplaceCommand;
+		process.exitCode = await run(args.slice(1), { cwd });
 		return;
 	}
 
@@ -140,6 +125,14 @@ export async function main(args: string[], options?: MainOptions) {
 	const skillSnapshotFile = process.env[SKILL_SNAPSHOT_FILE_ENV];
 	const skillResourceSnapshot =
 		envFlag(process.env, SUBAGENT_ENV) && skillSnapshotFile ? readSkillResourceSnapshot(skillSnapshotFile) : undefined;
+	if (parsed.removedFlags?.length) {
+		console.error(
+			chalk.red(
+				`Error: ${[...new Set(parsed.removedFlags)].join(", ")} ${parsed.removedFlags.length > 1 ? "were" : "was"} removed: Octocode no longer loads user code extensions. Add behavior with plugins and hooks instead (see PLUGINS.md).`,
+			),
+		);
+		process.exit(2);
+	}
 	if (parsed.diagnostics.length > 0) {
 		for (const d of parsed.diagnostics) {
 			const color = d.type === "error" ? chalk.red : chalk.yellow;
@@ -156,15 +149,13 @@ export async function main(args: string[], options?: MainOptions) {
 		process.exit(0);
 	}
 
+	const folderTrust = folderTrustResolver();
 	if (parsed.mode === "acp") {
 		if (parsed.help) {
 			printHelp();
 			return;
 		}
-		if (options?.extensionFactories?.length)
-			throw new Error(
-				"ACP workers require file-based extensions; inline extension factories cannot cross process boundaries.",
-			);
+		prepareAcpTrust(parsed);
 		await (await import("./main/acp-host.ts")).runAcpMain(args, parsed);
 		return;
 	}
@@ -197,15 +188,8 @@ export async function main(args: string[], options?: MainOptions) {
 	validateForkFlags(parsed);
 	validateSessionIdFlags(parsed);
 
-	const startupSettingsManager = SettingsManager.createForStartup(cwd, agentDir);
+	const startupSettingsManager = SettingsManager.createForStartup(cwd, agentDir, folderTrust(cwd).state === "trusted");
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);
-
-	// Experimental first-time setup: theme choice and analytics opt-in.
-	// Runs before any runtime services are created so the chosen settings apply everywhere.
-	if (appMode === "interactive" && !parsed.help && parsed.listModels === undefined && shouldRunFirstTimeSetup()) {
-		await showFirstTimeSetup(startupSettingsManager);
-		time("firstTimeSetup");
-	}
 
 	if (appMode === "interactive" && parsed.useTheme !== undefined) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
@@ -245,22 +229,20 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 	time("createSessionManager");
 
-	const trustStore = new ProjectTrustStore(agentDir);
-	const sessionCwd = sessionManager.getCwd();
-	const autoTrustOnReloadCwd =
-		parsed.projectTrustOverride === undefined && !hasTrustRequiringProjectResources(sessionCwd)
-			? sessionCwd
-			: undefined;
-	const trustPromptMode: AppMode = parsed.help || parsed.listModels !== undefined ? "print" : appMode;
+	const requireTrust = !parsed.help && parsed.listModels === undefined;
+	if (requireTrust)
+		await gateStartup({ parsed, appMode, cwd: sessionManager.getCwd(), settingsManager: startupSettingsManager });
+	if (appMode === "interactive" && requireTrust && shouldRunFirstTimeSetup()) {
+		await showFirstTimeSetup(startupSettingsManager);
+		time("firstTimeSetup");
+	}
 	const createRuntime = createCliRuntimeFactory({
 		parsed,
 		cwd,
-		trustStore,
-		startupSettingsManager,
-		trustPromptMode,
+		folderTrust,
+		requireTrust,
 		getAppMode: () => appMode,
 		skillResourceSnapshot,
-		extensionFactories,
 	});
 	time("createRuntime");
 	const runtime = await createAgentSessionRuntime(createRuntime, {
@@ -268,6 +250,11 @@ export async function main(args: string[], options?: MainOptions) {
 		agentDir,
 		sessionManager,
 	});
+	if (requireTrust) {
+		// A switch into another folder is checked before the current session is torn down (resume, new session, import).
+		runtime.folderAdmission.resolve = folderTrust;
+		runtime.folderAdmission.ask = folderTrustAsker(() => appMode);
+	}
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
 	const { settingsManager, modelRuntime, resourceLoader } = services;
@@ -318,12 +305,9 @@ export async function main(args: string[], options?: MainOptions) {
 		reportDiagnostics(startupDiagnostics);
 	}
 	if (hasRuntimeErrors) {
-		if (runtime.diagnostics.some((diagnostic) => diagnostic.message.includes("Failed to load extension"))) {
-			console.error(chalk.yellow(EXTENSION_LOAD_FAILURE_HINT));
-		}
 		process.exit(1);
 	}
-	time("createAgentSession");
+	time("createSession");
 
 	if (appMode !== "interactive" && !session.model) {
 		console.error(chalk.red(formatNoModelsAvailableMessage("cli")));
@@ -353,13 +337,13 @@ export async function main(args: string[], options?: MainOptions) {
 		const interactiveMode = new InteractiveMode(runtime, {
 			startupDiagnostics,
 			modelFallbackMessage,
-			autoTrustOnReloadCwd,
 			initialMessage,
 			initialImages,
 			initialMessages: parsed.messages,
 			verbose: parsed.verbose,
 			tuiMode: parsed.tuiMode,
 			initialThemeSetting: parsed.useTheme,
+			createFolderTrustAsker: (prompt) => folderTrustAsker(() => appMode, prompt),
 		});
 		if (startupBenchmark) {
 			await interactiveMode.init();

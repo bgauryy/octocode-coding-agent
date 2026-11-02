@@ -29,6 +29,7 @@ import { pumpApplicationFrames } from "./application-stream.ts";
 import { handleDocsRequest } from "./docs.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
+import { readerStalled } from "./socket-pressure.ts";
 
 /** A loopback board with a per-launch capability; the general session API stays browser-inaccessible. */
 export async function startWorkspaceWeb(
@@ -71,13 +72,13 @@ export async function startWorkspaceWeb(
 	};
 	const snapshot = () => backlogSnapshot(backlog.store, backlog.repoName, Date.now(), backlog.session);
 	const sendSnapshot = (socket: WebSocket) => {
-		if (socket.bufferedAmount > 1048576) return socket.terminate();
+		if (readerStalled(socket)) return socket.terminate();
 		if (socket.readyState === WebSocket.OPEN)
 			socket.send(JSON.stringify({ type: "snapshot", data: snapshot() } satisfies WorkspaceServerEvent));
 	};
 	const sendWorkspace = (socket: WebSocket) => {
 		if (!workspace || socket.readyState !== WebSocket.OPEN) return;
-		if (socket.bufferedAmount > 1048576) return socket.terminate();
+		if (readerStalled(socket)) return socket.terminate();
 		socket.send(JSON.stringify({ type: "workspace", data: workspace.snapshot() } satisfies WorkspaceServerEvent));
 	};
 	const broadcast = () => {
@@ -209,13 +210,7 @@ export async function startWorkspaceWeb(
 			}
 			if (!Value.Check(BacklogMutationSchema, input)) return reply(400, { error: "Invalid backlog fields" });
 			const actor = { ...backlog.actor, kind: "human" as const };
-			const { op, id, reason, ...fields } = input;
-			// `reason` is the former name of `why`, still accepted from older clients.
-			if (reason !== undefined) {
-				if (fields.why !== undefined && fields.why !== reason)
-					return reply(400, { error: "reason is the former name of why: give only why." });
-				fields.why = reason;
-			}
+			const { op, id, ...fields } = input;
 			if (op !== "add" && (!id || fields.version === undefined))
 				return reply(400, { error: "An item and its current version are required." });
 			const item =

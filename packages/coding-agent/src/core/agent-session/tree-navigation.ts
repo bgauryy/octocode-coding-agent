@@ -4,7 +4,7 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { contentText } from "@octocodeai/octocode-ai";
 import type { Model, RetryCallbacks, Usage } from "@octocodeai/octocode-ai/compat";
 import { collectEntriesForBranchSummary, generateBranchSummary } from "../compaction/index.ts";
-import type { TreePreparation } from "../extensions/index.ts";
+import type { TreePreparation } from "../features/index.ts";
 import type { BranchSummaryEntry } from "../session-manager.ts";
 import type { SessionInternals } from "./host.ts";
 import type { RequestAuth } from "./request-auth.ts";

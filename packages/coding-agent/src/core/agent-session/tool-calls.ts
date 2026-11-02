@@ -15,7 +15,7 @@ import {
 } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { normalizeToolResultImages } from "../../utils/tool-result-images.ts";
-import type { ExecuteToolOptions } from "../extensions/index.ts";
+import type { ExecuteToolOptions } from "../features/index.ts";
 import { NestedToolCallRunner } from "../nested-tool-calls.ts";
 import { combineUsage } from "../usage-totals.ts";
 import type { SessionInternals, SessionPublic } from "./host.ts";

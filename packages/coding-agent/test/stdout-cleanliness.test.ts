@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
+import { SCRIPTED_MODEL_ARGS, startModelServer, writeScriptedProvider } from "./helpers/feature-host-cli.ts";
+import { trustFolder } from "./octocode/helpers.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
 const cliPath = resolve(__dirname, "../src/cli.ts");
@@ -29,7 +31,10 @@ function createTempDir(): string {
 	return dir;
 }
 
-async function runCli(args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
+async function runCli(
+	args: string[],
+	options: { trusted?: boolean } = {},
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
 	const tempRoot = createTempDir();
 	const agentDir = join(tempRoot, "agent");
 	const projectDir = join(tempRoot, "project");
@@ -59,13 +64,18 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
 		"utf-8",
 	);
 
-	return await new Promise((resolvePromise, reject) => {
+	// A scripted model endpoint (a `models.json` provider) answers every request, so a startup can finish a turn offline.
+	const model = await startModelServer([{ text: "fixture reply" }]);
+	writeScriptedProvider({ agentDir }, model);
+
+	// The folder trust gate reads the agent database: the project is trusted the way a user's answer would record it.
+	const env = { ...process.env, [ENV_AGENT_DIR]: agentDir, OCTOCODE_HOME: join(tempRoot, "octocode") };
+	if (options.trusted) trustFolder(projectDir, env);
+
+	return await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolvePromise, reject) => {
 		const child = spawn(process.execPath, ["--import", sourceResolverUrl, cliPath, ...args], {
 			cwd: projectDir,
-			env: {
-				...process.env,
-				[ENV_AGENT_DIR]: agentDir,
-			},
+			env,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
@@ -81,7 +91,7 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
 		child.on("close", (code) => {
 			resolvePromise({ stdout, stderr, code });
 		});
-	});
+	}).finally(() => model.close());
 }
 
 describe("stdout cleanliness in non-interactive modes", () => {
@@ -95,13 +105,19 @@ describe("stdout cleanliness in non-interactive modes", () => {
 		expect(result.stderr).not.toContain("found 0 vulnerabilities");
 	});
 
-	it("keeps stdout empty for --mode json --help while routing trusted startup chatter to stderr", async () => {
-		const result = await runCli(["--mode", "json", "--help", "--approve"]);
+	it("keeps stdout to JSON events on a trusted --mode json startup, routing package install chatter to stderr", async () => {
+		const result = await runCli(
+			["--mode", "json", "--no-mcp", "--no-skills", "--no-context-files", ...SCRIPTED_MODEL_ARGS, "hello"],
+			{ trusted: true },
+		);
 
-		expect(result.code).toBe(0);
-		expect(result.stdout).toBe("");
 		expect(result.stderr).toContain("changed 1 package in 471ms");
 		expect(result.stderr).toContain("found 0 vulnerabilities");
-		expect(result.stderr).toContain("Usage:");
+		expect(result.code).toBe(0);
+		const lines = result.stdout.split("\n").filter((line) => line.trim() !== "");
+		expect(lines.length).toBeGreaterThan(0);
+		for (const line of lines) expect(() => JSON.parse(line), line).not.toThrow();
+		expect(result.stdout).not.toContain("changed 1 package");
+		expect(result.stdout).not.toContain("found 0 vulnerabilities");
 	});
 });

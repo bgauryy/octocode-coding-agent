@@ -8,6 +8,8 @@ export type SwitchScope = "global" | "project";
 /** Why `item` cannot be switched in `scope`, or undefined. The terminal list dims such rows and shows this reason. */
 export function blockedReason(item: InventoryItem, scope: SwitchScope): string | undefined {
 	if (item.locked) return item.locked;
+	// The MCP owner writes a project override for any server, so both scopes reach every MCP row.
+	if (item.kind === "mcp") return undefined;
 	if (item.resource)
 		return scope === "global" && item.resource.metadata.scope === "project"
 			? "comes from this project: switch it for this project."
@@ -30,6 +32,7 @@ export function switchItem(
 	manager: SettingsManager,
 	options: { cwd: string; agentDir: string; force?: boolean },
 ): string {
+	if (item.kind === "mcp") throw new Error(`${item.label}: MCP servers switch through the MCP owner.`);
 	if (scope === "project" && !manager.isProjectTrusted()) throw new Error("Trust this project first (/trust).");
 	if (!on && item.gate && !options.force)
 		throw new Error(`${item.label} is a gate hook that denies when it fails; pass --force to switch it off.`);
@@ -39,7 +42,7 @@ export function switchItem(
 	if (item.install) {
 		if (!on) return `${item.label} is not added to Octocode.`;
 		manager.addPlugin(scope, item.install);
-		return `${item.label} added to Octocode ${where}; its hooks and MCP servers still need review in /plugins.`;
+		return `${item.label} added to Octocode ${where}; adding it approves its hooks and MCP servers.`;
 	}
 	if (item.resource) {
 		// No inherited-group map is needed: a user item is inherited by its own scope.

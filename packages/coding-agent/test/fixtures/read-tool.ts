@@ -3,7 +3,7 @@ import { extname } from "node:path";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import { type Static, Type } from "typebox";
-import type { ToolDefinition } from "../../src/core/extensions/types.ts";
+import type { ToolDefinition } from "../../src/core/features/types.ts";
 import { resolveToCwd } from "../../src/core/tools/path-utils.ts";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, type TruncationResult, truncateHead } from "../../src/core/tools/truncate.ts";

@@ -1,33 +1,30 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { once } from "node:events";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { Readable, Writable } from "node:stream";
-import {
-	client,
-	methods,
-	ndJsonStream,
-	PROTOCOL_VERSION,
-	type RequestPermissionRequest,
-} from "@agentclientprotocol/sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+import { methods, PROTOCOL_VERSION, type RequestPermissionRequest } from "@agentclientprotocol/sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../src/cli/args.ts";
-import { getCliInvocation } from "../src/config.ts";
 import { acpWorkerArguments } from "../../acp/src/server/acp-mode.ts";
+import { choose, startAcpAgent, type AcpAgent } from "./helpers/feature-host-acp.ts";
+import {
+	createSandbox,
+	observeSessions,
+	type ModelServer,
+	type Sandbox,
+	startModelServer,
+	writeScriptedProvider,
+} from "./helpers/feature-host-cli.ts";
 
-const children: ChildProcessWithoutNullStreams[] = [];
-const directories: string[] = [];
+let sandbox: Sandbox;
+let server: ModelServer | undefined;
+let agent: AcpAgent | undefined;
+
 afterEach(async () => {
-	await Promise.all(
-		children.splice(0).map(async (child) => {
-			if (child.exitCode !== null || child.signalCode !== null) return;
-			const closed = once(child, "close");
-			child.kill("SIGKILL");
-			await closed;
-		}),
-	);
-	for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
+	if (agent && agent.child.exitCode === null && agent.child.signalCode === null) agent.child.kill("SIGKILL");
+	await agent?.stop();
+	await server?.close();
+	sandbox?.cleanup();
+	agent = undefined;
+	server = undefined;
 });
 
 describe("ACP CLI", () => {
@@ -71,151 +68,79 @@ describe("ACP CLI", () => {
 	it.each(process.platform === "win32" ? (["session/close"] as const) : (["session/close", "SIGTERM"] as const))(
 		"roundtrips real worker prompts and permissions, then cleans up on %s",
 		async (shutdownMode) => {
-			const directory = mkdtempSync(join(tmpdir(), "octocode-acp-cli-"));
-			directories.push(directory);
-			const extension = join(directory, "permission-fixture.mjs");
-			const choices = join(directory, "choices.jsonl");
-			const shutdown = join(directory, "shutdown.json");
-			writeFileSync(
-				extension,
-				`import { appendFileSync, writeFileSync } from "node:fs";
-export default function(api) {
-  api.on("input", async (_event, context) => {
-    const choice = await context.ui.select("Fixture permission", ["Allow once", "Deny"], {
-      permission: { toolCallId: "fixture-call", toolName: "fixture", action: "fixture.check", targets: ["fixture-target"], allowOnce: "Allow once", rejectOnce: "Deny" }
-    });
-    appendFileSync(${JSON.stringify(choices)}, JSON.stringify({ choice, pid: process.pid }) + "\\n");
-    return { action: "handled" };
-  });
-  api.on("session_shutdown", async () => {
-    writeFileSync(${JSON.stringify(shutdown)}, JSON.stringify({ pid: process.pid }));
-  });
-}
-`,
-			);
-			const invocation = getCliInvocation();
-			const child = spawn(
-				invocation.command,
-				[
-					...invocation.prefix,
-					"--mode",
-					"acp",
-					"--no-mcp",
-					"--no-builtin-tools",
-					"--no-extensions",
-					"--extension",
-					extension,
-					"--no-skills",
-					"--no-context-files",
-					"--offline",
-					"--provider",
-					"openai",
-					"--model",
-					"gpt-4o-mini",
-				],
-				{
-					cwd: directory,
-					stdio: ["pipe", "pipe", "pipe"],
-					env: {
-						PATH: [dirname(process.execPath), process.env.PATH ?? ""].join(process.platform === "win32" ? ";" : ":"),
-						HOME: directory,
-						USERPROFILE: directory,
-						TMPDIR: tmpdir(),
-						OCTOCODE_HOME: join(directory, "octocode"),
-						OCTOCODE_OFFLINE: "1",
-						OCTOCODE_MCP: "0",
-						OCTOCODE_MODELS_DEV: "0",
-						OCTOCODE_API: "0",
-					},
-				},
-			);
-			children.push(child);
-			let output = "";
-			let diagnostics = "";
-			child.stdout.on("data", (chunk) => {
-				output += chunk.toString();
-			});
-			child.stderr.on("data", (chunk) => {
-				diagnostics += chunk.toString();
-			});
-			const exited = once(child, "close");
+			sandbox = createSandbox({ OCTOCODE_PERMISSION: "manual" });
+			const sessions = observeSessions(sandbox);
+			server = await startModelServer([
+				{ tool: "bash", args: { command: "echo allowed > allowed.txt" } },
+				{ text: "first done" },
+				{ tool: "bash", args: { command: "echo denied > denied.txt" } },
+				{ text: "second done" },
+			]);
+			writeScriptedProvider(sandbox, server);
 			const permissions: RequestPermissionRequest[] = [];
-			const connection = client({ name: "octocode-cli-test" })
-				.onRequest(methods.client.session.requestPermission, ({ params }) => {
+			const current = startAcpAgent(sandbox, {
+				permission: (params) => {
 					permissions.push(params);
-					const kind = permissions.length === 1 ? "allow_once" : "reject_once";
-					return {
-						outcome: { outcome: "selected", optionId: params.options.find((option) => option.kind === kind)!.optionId },
-					};
-				})
-				.connect(
-					ndJsonStream(
-						Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
-						Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
-					),
-				);
-			try {
-				const response = await connection.agent.request(methods.agent.initialize, {
-					protocolVersion: PROTOCOL_VERSION,
-					clientCapabilities: {},
+					return choose(params, permissions.length === 1 ? "allow_once" : "reject_once");
+				},
+			});
+			agent = current;
+			const response = await current.connection.agent.request(methods.agent.initialize, {
+				protocolVersion: PROTOCOL_VERSION,
+				clientCapabilities: {},
+			});
+			expect(response.protocolVersion).toBe(PROTOCOL_VERSION);
+			expect(response.agentInfo?.name).toBe("octocode");
+			const sessionId = await current.newSession();
+			expect(sessionId).toEqual(expect.any(String));
+			const existing = await current.connection.agent.request(methods.agent.session.list, { cwd: sandbox.project });
+			expect(existing.sessions).toMatchObject([{ sessionId, cwd: realpathSync(sandbox.project) }]);
+			await expect(current.connection.agent.request(methods.agent.session.close, { sessionId })).resolves.toEqual({});
+			await expect(
+				current.connection.agent.request(methods.agent.session.resume, {
+					cwd: sandbox.project,
+					sessionId,
+					mcpServers: [],
+				}),
+			).resolves.toEqual({});
+			for (const text of ["allow the call", "deny the call"]) {
+				await expect(current.prompt(sessionId, text), current.diagnostics()).resolves.toMatchObject({
+					stopReason: "end_turn",
 				});
-				expect(response.protocolVersion).toBe(PROTOCOL_VERSION);
-				expect(response.agentInfo?.name).toBe("octocode");
-				const session = await connection.agent.request(methods.agent.session.new, { cwd: directory, mcpServers: [] });
-				expect(session.sessionId).toEqual(expect.any(String));
-				const existing = await connection.agent.request(methods.agent.session.list, { cwd: directory });
-				expect(existing.sessions).toMatchObject([{ sessionId: session.sessionId, cwd: realpathSync(directory) }]);
-				await expect(
-					connection.agent.request(methods.agent.session.close, { sessionId: session.sessionId }),
-				).resolves.toEqual({});
-				await expect(
-					connection.agent.request(methods.agent.session.resume, {
-						cwd: directory,
-						sessionId: session.sessionId,
-						mcpServers: [],
-					}),
-				).resolves.toEqual({});
-				for (const text of ["allow fixture", "deny fixture"]) {
-					await expect(
-						connection.agent.request(methods.agent.session.prompt, {
-							sessionId: session.sessionId,
-							prompt: [{ type: "text", text }],
-						}),
-					).resolves.toMatchObject({ stopReason: "end_turn" });
-				}
-				expect(permissions).toHaveLength(2);
-				expect(permissions.every((request) => request.sessionId === session.sessionId)).toBe(true);
-				expect(permissions[0].toolCall.toolCallId).toBe("fixture-call");
-				const selections = readFileSync(choices, "utf8")
-					.trim()
-					.split("\n")
-					.map((line) => JSON.parse(line));
-				expect(selections.map((selection) => selection.choice)).toEqual(["Allow once", "Deny"]);
-				expect(selections[0].pid).toBe(selections[1].pid);
-				expect(selections[0].pid).not.toBe(child.pid);
-				if (shutdownMode === "session/close") {
-					await expect(
-						connection.agent.request(methods.agent.session.close, { sessionId: session.sessionId }),
-					).resolves.toEqual({});
-					expect(JSON.parse(readFileSync(shutdown, "utf8"))).toEqual({ pid: selections[0].pid });
-					expect(() => process.kill(selections[0].pid, 0)).toThrow();
-					child.stdin.end();
-				} else {
-					child.kill("SIGTERM");
-				}
-				const [code, signal] = await exited;
-				expect({ code, signal }, diagnostics).toEqual({ code: shutdownMode === "SIGTERM" ? 143 : 0, signal: null });
-				expect(JSON.parse(readFileSync(shutdown, "utf8"))).toEqual({ pid: selections[0].pid });
-				expect(() => process.kill(selections[0].pid, 0)).toThrow();
-				const messages = output
-					.trim()
-					.split("\n")
-					.map((line) => JSON.parse(line));
-				expect(messages).toHaveLength(shutdownMode === "session/close" ? 10 : 9);
-				expect(messages[0]).toMatchObject({ jsonrpc: "2.0", result: { protocolVersion: PROTOCOL_VERSION } });
-			} finally {
-				connection.close();
 			}
+			expect(permissions).toHaveLength(2);
+			expect(permissions.every((request) => request.sessionId === sessionId)).toBe(true);
+			expect(permissions[0].toolCall.toolCallId).toBe("call_1");
+			expect(readFileSync(join(sandbox.project, "allowed.txt"), "utf8").trim()).toBe("allowed");
+			expect(existsSync(join(sandbox.project, "denied.txt"))).toBe(false);
+			// The first worker ended with `session/close`; the resumed one answered both prompts.
+			await vi.waitFor(() => expect(new Set(sessions.started()).size).toBe(2), { timeout: 20_000 });
+			const worker = sessions.started().at(-1)!;
+			expect(worker).not.toBe(current.child.pid);
+			if (shutdownMode === "session/close") {
+				await expect(current.connection.agent.request(methods.agent.session.close, { sessionId })).resolves.toEqual({});
+				expect(sessions.ended()).toContain(worker);
+				expect(() => process.kill(worker, 0)).toThrow();
+				current.child.stdin.end();
+			} else {
+				current.child.kill("SIGTERM");
+			}
+			const [code, signal] = await current.exited;
+			expect({ code, signal }, current.diagnostics()).toEqual({
+				code: shutdownMode === "SIGTERM" ? 143 : 0,
+				signal: null,
+			});
+			expect(sessions.ended()).toContain(worker);
+			expect(() => process.kill(worker, 0)).toThrow();
+			// Standard output carries protocol messages only.
+			const messages = current
+				.output()
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line));
+			expect(messages[0]).toMatchObject({ jsonrpc: "2.0", result: { protocolVersion: PROTOCOL_VERSION } });
+			expect(messages.every((message) => message.jsonrpc === "2.0")).toBe(true);
 		},
+		120_000,
 	);
 });

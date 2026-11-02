@@ -30,7 +30,7 @@ export interface ScopedModel {
 	thinkingLevel?: ThinkingLevel;
 }
 
-export interface ModelScopeDiagnostic {
+interface ModelScopeDiagnostic {
 	type: "warning";
 	code: "no-match" | "invalid-thinking-level" | "ambiguous";
 	message: string;

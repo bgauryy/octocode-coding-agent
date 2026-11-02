@@ -1,6 +1,6 @@
 import { captureToolInvocation } from "./tool-invocation.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
-import type { ExtensionToolContext, ToolDefinition } from "../extensions/types.ts";
+import type { ExtensionToolContext, ToolDefinition } from "../features/types.ts";
 
 /** Creates the context for one tool call. */
 type ToolContextFactory = (toolCallId: string, signal: AbortSignal | undefined) => ExtensionToolContext;

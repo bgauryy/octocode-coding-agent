@@ -110,6 +110,22 @@ export abstract class ResourceSettingsAccessors extends EnvironmentSettingsAcces
 		this.save();
 	}
 
+	setGlobalPlugins(plugins: NonNullable<Settings["plugins"]>): void {
+		this.globalSettings.plugins = plugins;
+		this.markModified("plugins");
+		this.save();
+	}
+
+	getMarketplaces(): NonNullable<Settings["marketplaces"]> {
+		return { ...this.globalSettings.marketplaces };
+	}
+
+	setMarketplaces(marketplaces: NonNullable<Settings["marketplaces"]>): void {
+		this.globalSettings.marketplaces = marketplaces;
+		this.markModified("marketplaces");
+		this.save();
+	}
+
 	setToggle(scope: "global" | "project", id: string, on: boolean | undefined): void {
 		const update = (settings: Settings) => {
 			const toggles = { ...settings.toggles };

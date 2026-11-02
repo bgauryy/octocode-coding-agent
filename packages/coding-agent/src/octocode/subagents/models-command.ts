@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
@@ -14,12 +14,17 @@ import {
 	readCatalog,
 } from "./catalog.ts";
 import {
+	currentPrice,
 	fallbackNote,
 	isModelTier,
 	MODEL_TIERS,
 	type ModelRef,
 	resolveTier,
 	routeModel,
+	SUBAGENT_DEFAULT_THINKING,
+	SUBAGENT_THINKING_ENV,
+	subagentThinking,
+	supportedThinking,
 	usableModels,
 } from "./model.ts";
 import type { AgentProfile } from "./profiles.ts";
@@ -76,10 +81,8 @@ export function describeModels(
 	if (available.length === 0) return "No models are configured.";
 	const rows = available.filter(shown).map((model) => {
 		const known = lookup(catalog, model.provider, model.id);
-		const cost =
-			model.cost && model.cost.input + model.cost.output > 0
-				? model.cost
-				: listedCost(catalog, model.provider, model.id);
+		const own = currentPrice(model.cost);
+		const cost = own && own.input + own.output > 0 ? own : listedCost(catalog, model.provider, model.id);
 		const abilities = modelAbilities(model, catalog);
 		const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
 		const price = cost ? `${perMillion(cost.input)}/${perMillion(cost.output)}` : "price ?";
@@ -108,10 +111,14 @@ export function describeModels(
 		const chosen = resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
 		return `  ${tier}: ${chosen ? name(chosen) : parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model"}`;
 	});
+	const thinking = subagentThinking();
+	const set = thinking !== SUBAGENT_DEFAULT_THINKING || process.env[SUBAGENT_THINKING_ENV] !== undefined;
+	const unsuffixed = `  thinking when the call and profile name none: ${thinking} (${set ? SUBAGENT_THINKING_ENV : `built in; ${SUBAGENT_THINKING_ENV} sets another`}), never this session's level`;
 	// Each profile as it would route now: the model it runs on, and what it asked for.
 	const routed = [...profiles.values()].map((profile) => {
-		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused });
-		const runs = "error" in route ? route.error : (route.model ?? "this session's model");
+		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking });
+		const runs =
+			"error" in route ? route.error : route.model ? supportedThinking(route.model, available) : "this session's model";
 		const asked = !profile.model
 			? ""
 			: "fallback" in route && route.fallback
@@ -129,6 +136,7 @@ export function describeModels(
 		"",
 		"Subagent purposes:",
 		...tiers,
+		unsuffixed,
 		...(routed.length > 0 ? ["", "Profiles:", ...routed] : []),
 	].join("\n");
 }

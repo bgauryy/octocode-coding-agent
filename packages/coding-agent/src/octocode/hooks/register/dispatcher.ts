@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../shared/home/repo.ts";

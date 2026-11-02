@@ -40,7 +40,7 @@ function importsOf(file: string): string[] {
  */
 const ALLOWED: Record<string, string[]> = {
 	shared: [],
-	"mcp-host": ["shared", "skill", "web"],
+	"mcp-host": ["shared", "skill", "trust", "web"],
 	llama: ["shared"],
 	ollama: ["shared"],
 	api: ["shared"],
@@ -48,18 +48,23 @@ const ALLOWED: Record<string, string[]> = {
 	ask: ["shared"],
 	files: ["shared", "permission"],
 	team: ["shared", "agentdb"],
-	hooks: ["shared"],
-	plugins: ["shared", "hooks"],
+	discovery: ["shared"],
+	hooks: ["shared", "discovery"],
+	plugins: ["shared", "hooks", "discovery"],
+	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
+	harness: ["shared", "plugins", "hooks", "discovery"],
 	web: ["shared", "permission"],
-	compaction: ["shared", "files", "permission"],
+	compaction: ["shared", "files", "permission", "archive"],
+	archive: ["shared", "agentdb", "memory", "permission"],
 	ui: ["shared", "permission"],
-	subagents: ["shared", "team", "permission", "instructions", "backlog"],
+	subagents: ["shared", "discovery", "team", "permission", "instructions", "backlog", "trust", "worktrees"],
 	instructions: ["shared"],
 	agentdb: ["shared"],
-	sessions: ["shared", "agentdb", "files", "subagents", "backlog"],
+	sessions: ["shared", "agentdb", "files", "subagents", "backlog", "archive"],
 	backlog: ["shared", "agentdb"],
+	trust: ["shared", "agentdb"],
 	workspace: ["shared", "agentdb", "backlog", "team", "subagents"],
-	"web-daemon": ["shared", "agentdb", "backlog", "workspace"],
+	"web-daemon": ["shared", "agentdb", "backlog", "workspace", "trust"],
 	remote: ["shared", "web-daemon", "workspace"],
 	memory: ["shared", "agentdb", "permission"],
 	plan: ["shared"],
@@ -69,7 +74,7 @@ const ALLOWED: Record<string, string[]> = {
 	"context-optimization": ["shared"],
 	"native-skills": [],
 	"terminal-launch": [],
-	worktrees: ["shared", "terminal-launch"],
+	worktrees: ["shared", "terminal-launch", "trust"],
 };
 
 describe("source layout", () => {

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { modelLookup, unpricedModel } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

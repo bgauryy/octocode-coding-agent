@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	type CreateAgentSessionRuntimeFactory,
-	createAgentSessionFromServices,
+	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../../src/core/agent-session-runtime.ts";
@@ -20,7 +20,7 @@ import type {
 	SessionBeforeSwitchEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
-} from "../../src/index.ts";
+} from "../../src/core/features/index.ts";
 
 type RecordedSessionEvent =
 	| SessionBeforeSwitchEvent
@@ -93,7 +93,7 @@ describe("AgentSessionRuntime characterization", () => {
 				cwd,
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,
@@ -481,7 +481,7 @@ describe("AgentSessionRuntime characterization", () => {
 				cwd,
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,
@@ -609,7 +609,7 @@ describe("AgentSessionRuntime characterization", () => {
 				cwd,
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,
@@ -641,20 +641,12 @@ describe("AgentSessionRuntime characterization", () => {
 		mkdirSync(otherDir);
 		await runtime.session.prompt("before");
 		const oldFile = runtime.session.sessionFile!;
-		const trustedFor: string[] = [];
 
-		const result = await runtime.newSession({
-			cwd: otherDir,
-			projectTrustContextFactory: (cwd) => {
-				trustedFor.push(cwd);
-				return undefined as never;
-			},
-		});
+		const result = await runtime.newSession({ cwd: otherDir });
 
 		expect(result).toEqual({ cancelled: false });
 		expect(realpathSync(runtime.cwd)).toBe(realpathSync(otherDir));
 		expect(runtime.session.sessionManager.getCwd()).toBe(otherDir);
-		expect(trustedFor).toEqual([otherDir]);
 		expect(runtime.session.sessionFile).not.toBe(oldFile);
 		expect(existsSync(oldFile)).toBe(true);
 		// The new session is saved with the worktree's own sessions, not with the old folder's.
@@ -726,7 +718,7 @@ describe("AgentSessionRuntime characterization", () => {
 				cwd,
 			});
 			return {
-				...(await createAgentSessionFromServices({
+				...(await createSessionFromServices({
 					services,
 					sessionManager,
 					sessionStartEvent,

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { freellamaCommand, FREELLAMA_PACKAGE } from "../../src/octocode/ollama/freellama.ts";
 import { registerOllamaTool } from "../../src/octocode/ollama/tool.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";

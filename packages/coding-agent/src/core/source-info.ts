@@ -3,8 +3,13 @@ import type { PathMetadata } from "./package-manager/types.ts";
 export type SourceScope = "user" | "project" | "temporary";
 export type SourceOrigin = "package" | "top-level";
 
+/** Who supplies a feature: `native` is the Octocode feature set; `builtin` is every other host-supplied feature. */
+export type FeatureOwner = "native" | "builtin";
+
 export interface SourceInfo {
 	path: string;
+	/** Set on tools and commands that a feature registered. */
+	owner?: FeatureOwner;
 	source: string;
 	scope: SourceScope;
 	origin: SourceOrigin;
@@ -45,10 +50,12 @@ export function createSyntheticSourceInfo(
 		scope?: SourceScope;
 		origin?: SourceOrigin;
 		baseDir?: string;
+		owner?: FeatureOwner;
 	},
 ): SourceInfo {
 	return {
 		path,
+		...(options.owner ? { owner: options.owner } : {}),
 		source: options.source,
 		scope: options.scope ?? "temporary",
 		origin: options.origin ?? "top-level",

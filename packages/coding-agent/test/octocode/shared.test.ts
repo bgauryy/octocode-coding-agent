@@ -510,6 +510,17 @@ describe("native commands", () => {
 		expect(retiredCommandReplacement("/octocode-research", commands)).toBeUndefined();
 		expect(retiredCommandReplacement("/web", commands)).toBeUndefined();
 	});
+	it("points /plugins, /hooks and /config at /harness, with their arguments, only while /harness is registered", () => {
+		const commands = ["harness", "reload"];
+		expect(retiredCommandReplacement("/plugins", commands)).toBe("harness");
+		expect(retiredCommandReplacement("/plugins disable hooks:claude", commands)).toBe("harness disable hooks:claude");
+		expect(retiredCommandReplacement("/hooks events", commands)).toBe("harness hooks events");
+		expect(retiredCommandReplacement(" /config ", commands)).toBe("harness config");
+		// Without /harness, or when a prompt or skill took the old name, the ordinary suggestion applies.
+		expect(retiredCommandReplacement("/config", ["reload"])).toBeUndefined();
+		expect(retiredCommandReplacement("/hooks", ["harness", "hooks"])).toBeUndefined();
+		expect(retiredCommandReplacement("/configure", commands)).toBeUndefined();
+	});
 	it("lists the registered commands, not a fixed set, when asked for the old namespace", () => {
 		const help = legacyNativeCommandGuidance("help", ["web", "agents", "status"]);
 		expect(help).toBe("Commands now have direct names: /agents, /mcp, /status and /web.");

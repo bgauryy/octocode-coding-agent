@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI, ToolDefinition } from "../src/core/extensions/types.ts";
+import type { ExtensionAPI, ToolDefinition } from "../src/core/features/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -40,7 +40,7 @@ describe("AgentSession tool registration", () => {
 			extensionFactories: [register],
 		});
 		await resourceLoader.reload();
-		const { session } = await createAgentSession({
+		const { session } = await createTestSession({
 			cwd: tempDir,
 			agentDir,
 			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),

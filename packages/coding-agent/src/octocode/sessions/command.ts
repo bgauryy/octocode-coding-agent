@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GLYPH } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionExtras } from "../../core/session-picker.ts";
 import { runningPid } from "../agentdb/api.ts";

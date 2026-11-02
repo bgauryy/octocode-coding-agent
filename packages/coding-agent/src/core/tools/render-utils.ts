@@ -4,7 +4,7 @@ import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
 import { formatDuration } from "../../utils/duration.ts";
-import type { ToolRenderContext } from "../extensions/types.ts";
+import type { ToolRenderContext } from "../features/types.ts";
 
 export function str(value: unknown): string | null {
 	if (typeof value === "string") return value;

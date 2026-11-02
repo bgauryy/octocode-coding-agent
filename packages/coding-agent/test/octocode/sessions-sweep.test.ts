@@ -119,7 +119,7 @@ describe("session sweep", () => {
 		expect(fs.existsSync(log)).toBe(false);
 	});
 
-	it("counts an archive write as activity of its session and removes the archive with the session folder", async () => {
+	it("preserves orphan archive copies whose complete summary and committed time cannot be recovered", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const sessions = path.join(home, "agent", "sessions");
 		// Everything else in both folders is old; one has just archived a compaction, the other has not for a month.
@@ -130,10 +130,8 @@ describe("session sweep", () => {
 		age(active, 31 * DAY);
 		age(idle, 31 * DAY);
 		fs.utimesSync(path.join(active, "archive"), new Date(), new Date());
-		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set<string>() })).toEqual([
-			"unindexed-idle",
-		]);
-		expect(fs.existsSync(path.join(sessions, "unindexed-idle"))).toBe(false);
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set<string>() })).toEqual([]);
+		expect(fs.existsSync(path.join(sessions, "unindexed-idle", "archive", "1-c1.md"))).toBe(true);
 		expect(fs.existsSync(path.join(active, "archive", "1-c1.md"))).toBe(true);
 		// A kept session keeps its archive: it is the searchable twin of the transcript.
 		const kept = folder("kept", ["output", "archive"]);
@@ -141,12 +139,10 @@ describe("session sweep", () => {
 		age(kept, 31 * DAY);
 		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([]);
 		expect(fs.existsSync(path.join(kept, "archive", "1-c1.md"))).toBe(true);
-		// Once the archive is old too, the unlisted session goes with it.
+		// Age alone never deletes an archive without a verifiable retained summary.
 		age(active, 31 * DAY);
-		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([
-			"unindexed-archiving",
-		]);
-		expect(fs.existsSync(active)).toBe(false);
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([]);
+		expect(fs.existsSync(path.join(active, "archive", "1-c1.md"))).toBe(true);
 	});
 
 	it("skips a malformed session id instead of abandoning the sweep", async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../agentdb/api.ts";
 import { say } from "../../shared/commands.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";

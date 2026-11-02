@@ -51,6 +51,18 @@ Each `models` entry adds a model to the provider. An entry whose `id` matches an
 | `cost.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
 | `cost.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
 | `cost.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.until` | string |  | Last UTC day (YYYY-MM-DD, inclusive) these rates apply, for a time-limited price. Ignored without `after`. |
+| `cost.after` | object |  | Rates (and tiers) charged from the day after `until`. |
+| `cost.after.input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.after.output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.after.cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.after.cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.after.tiers` | `object[]` |  | Request-wide pricing tiers. The highest matching input threshold applies to the full request. |
+| `cost.after.tiers[].inputTokensAbove` | number |  | Required. Use this tier when total request input exceeds this token count. |
+| `cost.after.tiers[].input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.after.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.after.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.after.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
 | `promptCache` | object |  | Best-effort prompt cache lifetime in seconds for the short and long retention tiers. Octocode warms only tiers with a known lifetime. |
 | `contextWindow` | number | `128000` | Context window in tokens. |
 | `maxTokens` | number | `16384` | Maximum output tokens. |
@@ -61,7 +73,7 @@ Each `models` entry adds a model to the provider. An entry whose `id` matches an
 
 ## Model overrides
 
-Each `modelOverrides` key is the ID of a built-in or extension model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it.
+Each `modelOverrides` key is the ID of a built-in or extension model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it. A `cost` override that sets any rate or `tiers` also drops the model's built-in `until`/`after` price window, so your rates stay in force after the built-in date; set `until` and `after` in the override to give it a window of its own.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -83,6 +95,18 @@ Each `modelOverrides` key is the ID of a built-in or extension model. Unknown ID
 | `cost.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
 | `cost.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
 | `cost.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.until` | string |  | Last UTC day (YYYY-MM-DD, inclusive) these rates apply, for a time-limited price. Ignored without `after`. |
+| `cost.after` | object |  | Rates (and tiers) charged from the day after `until`. |
+| `cost.after.input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.after.output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.after.cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.after.cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.after.tiers` | `object[]` |  | Request-wide pricing tiers. The highest matching input threshold applies to the full request. |
+| `cost.after.tiers[].inputTokensAbove` | number |  | Required. Use this tier when total request input exceeds this token count. |
+| `cost.after.tiers[].input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.after.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.after.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.after.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
 | `promptCache` | object |  | Best-effort prompt cache lifetime in seconds for the short and long retention tiers. Octocode warms only tiers with a known lifetime. |
 | `contextWindow` | number |  | Context window in tokens. |
 | `maxTokens` | number |  | Maximum output tokens. |

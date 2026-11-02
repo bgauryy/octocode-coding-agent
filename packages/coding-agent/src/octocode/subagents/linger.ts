@@ -1,6 +1,6 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
-import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
+import { getMcpSessionHandoff } from "../../../../mcp/src/session-servers.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_SENDER } from "../shared/messages.ts";
 import { messageText } from "../team/routing.ts";
@@ -43,7 +43,7 @@ interface Resumption {
  * the inventory it was given.
  */
 function withoutServers(identity: Run["identity"]): Run["identity"] {
-	const { mcpServers: _servers, ...rest } = identity;
+	const { mcpServers: _servers, mcpStopped: _stopped, ...rest } = identity;
 	return rest;
 }
 
@@ -262,10 +262,11 @@ export class Lingering {
 				throw new Error(`Subagent ${id} cannot resume: its saved transcript is missing. Start a new task instead.`);
 			// Keep the saved conversation, model and skill inventory, but renew authorization from the parent's current policy,
 			// and take the session's current MCP servers, as a new run would.
-			const servers = getMcpAddedServers(runs.api.events);
+			const { servers, stopped } = getMcpSessionHandoff(runs.api.events);
 			const identity = {
 				...withoutServers(last.identity),
 				...(Object.keys(servers).length > 0 ? { mcpServers: servers } : {}),
+				...(stopped.length > 0 ? { mcpStopped: stopped } : {}),
 				relay: ctx.hasUI,
 				permission: { mode: permission.mode, grants: [...new Set([...grants, ...permission.childGrants()])] },
 			};

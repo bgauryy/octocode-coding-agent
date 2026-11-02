@@ -3,7 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 import { getAgentDir } from "../src/config.ts";
 import { updateMcpServerConfig } from "../../mcp/src/config.ts";
 
@@ -116,12 +115,4 @@ it("reports an empty native settings document even when Pi fallback is valid", (
 	const manager = SettingsManager.create(cwd, nativeAgentDir, { projectTrusted: false });
 	expect(manager.getTheme()).toBeUndefined();
 	expect(manager.drainErrors()).toMatchObject([{ scope: "global", path: file }]);
-});
-
-it("replaces project trust decisions without changing an already-open reader's document", async () => {
-	const file = path.join(agentDir, "trust.json");
-	const oldText = JSON.stringify({ [cwd]: false });
-	fs.writeFileSync(file, oldText);
-	await expectOldReaderKeptWholeFile(file, oldText, () => new ProjectTrustStore(agentDir).set(cwd, true));
-	expect(new ProjectTrustStore(agentDir).get(cwd)).toBe(true);
 });

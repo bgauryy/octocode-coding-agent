@@ -2,7 +2,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { type Component, ELLIPSIS, SEPARATOR, truncateToWidth } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
-import type { ContextUsage } from "../../../core/extensions/types.ts";
+import type { ContextUsage } from "../../../core/features/types.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
 import {
 	addUsageToTotals,

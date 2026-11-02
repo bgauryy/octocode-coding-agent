@@ -1,18 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
-import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 type Command = { type: "command"; command: string; timeout?: number; failClosed?: boolean };
 const group = (command: string, matcher = "", extra: Partial<Command> = {}) => [
@@ -34,7 +32,6 @@ function project(hooks: unknown): string {
 	fs.mkdirSync(path.join(cwd, ".git"));
 	fs.mkdirSync(path.join(cwd, ".octocode"));
 	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
-	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 	return cwd;
 }
 

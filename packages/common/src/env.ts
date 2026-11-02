@@ -6,6 +6,9 @@ import fs from "node:fs";
 /** Set by the ACP broker (`1`) in the native worker it spawns: the broker, not the worker, owns that session's transcript identity. */
 export const ACP_WORKER_ENV = "OCTOCODE_INTERNAL_ACP_WORKER";
 
+/** Set by the ACP broker in its worker: the private manifest of the client's MCP servers, which the MCP host registers (`mcp/acp-session-servers.ts`). */
+export const ACP_MCP_MANIFEST_ENV = "OCTOCODE_INTERNAL_ACP_MCP_MANIFEST";
+
 /** Set in a subagent: the session id of the Octocode session that started it, whose backlog claims the subagent may update. */
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
 export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
@@ -54,9 +57,6 @@ export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
 /** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
 export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";
-
-/** Set for an isolated subagent: the parent's repository root, whose stored trust decision the worktree follows. */
-export const TRUST_ROOT_ENV = "OCTOCODE_TRUST_ROOT";
 
 /** `off`, `unfocused` (default: only while the terminal is in the background) or `always`: answer-ready notifications. */
 export const NOTIFY_ENV = "OCTOCODE_NOTIFY";

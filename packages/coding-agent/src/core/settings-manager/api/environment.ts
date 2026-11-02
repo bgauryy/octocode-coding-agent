@@ -1,6 +1,6 @@
-import type { DefaultProjectTrust, QuietStartup } from "../../settings-schema.ts";
+import type { QuietStartup } from "../../settings-schema.ts";
 
-/** Session storage, shell and external commands, startup, project trust default, telemetry and installation identity. */
+/** Session storage, shell and external commands, startup, telemetry and installation identity. */
 export interface EnvironmentSettingsApi {
 	getLastChangelogVersion(): string | undefined;
 	setLastChangelogVersion(version: string): void;
@@ -10,8 +10,6 @@ export interface EnvironmentSettingsApi {
 	setShellPath(path: string | undefined): void;
 	getQuietStartup(): QuietStartup;
 	setQuietStartup(quiet: QuietStartup): void;
-	getDefaultProjectTrust(): DefaultProjectTrust;
-	setDefaultProjectTrust(defaultProjectTrust: DefaultProjectTrust): void;
 	getShellCommandPrefix(): string | undefined;
 	setShellCommandPrefix(prefix: string | undefined): void;
 	/** Seconds a foreground bash command runs before moving to the background; 0 = never. */

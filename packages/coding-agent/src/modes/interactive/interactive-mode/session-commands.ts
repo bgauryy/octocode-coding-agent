@@ -22,13 +22,13 @@ import { setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { warnRefusedSwitch } from "./trust-switch.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the session slash commands. */
 type SessionCommandsHost = Pick<
 	InteractiveModeHost,
 	| "applyRuntimeSettings"
-	| "autoTrustOnReloadCwd"
 	| "builtInHeader"
 	| "chatContainer"
 	| "clearStatusIndicator"
@@ -39,7 +39,6 @@ type SessionCommandsHost = Pick<
 	| "handleFatalRuntimeError"
 	| "hideThinkingBlock"
 	| "keybindings"
-	| "maybeSaveImplicitProjectTrustAfterReload"
 	| "outputPad"
 	| "promptForMissingSessionCwd"
 	| "rebuildChatFromMessages"
@@ -131,16 +130,11 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 			force: false,
 			showDiagnosticsWhenQuiet: true,
 		});
-		const savedImplicitProjectTrust = host.maybeSaveImplicitProjectTrustAfterReload();
 		const modelsJsonError = host.session.modelRuntime.getError();
 		if (modelsJsonError) {
 			host.showError(`models.json error: ${modelsJsonError}`);
 		}
-		host.showStatus(
-			savedImplicitProjectTrust
-				? "Reloaded keybindings, extensions, skills, prompts, themes, and context files; saved project trust"
-				: "Reloaded keybindings, extensions, skills, prompts, themes, and context files",
-		);
+		host.showStatus("Reloaded keybindings, extensions, skills, prompts, themes, and context files");
 		dismissReloadBox(host.editor);
 		reloadBoxDismissed = true;
 	} catch (error) {
@@ -236,6 +230,7 @@ export async function handleImportCommand(host: SessionCommandsHost, text: strin
 			host.showError(`Failed to import session: ${error.message}`);
 			return;
 		}
+		if (warnRefusedSwitch(host, error)) return;
 		await host.handleFatalRuntimeError("Failed to import session", error);
 	}
 }

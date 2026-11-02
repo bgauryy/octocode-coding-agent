@@ -1,5 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CompactServerInput } from "../src/compact/index.ts";
 
@@ -21,16 +23,31 @@ export function describeWithServer(
 	});
 }
 
-/** A stdio MCP server's instructions and tool list, as a session reads them; `server` names the catalog. */
+/** Variables a server needs to start; the rest of the developer's environment (tool toggles, tokens, `OCTOCODE_*`) stays out. */
+const PASSED_ENV = ["PATH", "SystemRoot", "LANG", "LC_ALL", "TZ", "CI"];
+
+/**
+ * A stdio MCP server's instructions and tool list, as a session reads them; `server` names the catalog. The server runs
+ * with an empty home and none of the caller's configuration, like `./test.sh`: the tools it lists and the wording it
+ * varies by configuration (an installed language server, a classification key) must not depend on the machine.
+ */
 export async function catalogOf(
 	server: string,
 	args: readonly string[],
 	env: Record<string, string> = {},
 	cwd?: string,
 ): Promise<CompactServerInput> {
+	const home = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-catalog-home-"));
+	const passed = PASSED_ENV.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]]));
 	const child: ChildProcess = spawn(process.execPath, [...args], {
 		stdio: ["pipe", "pipe", "ignore"],
-		env: { ...process.env, ...env },
+		env: {
+			...Object.fromEntries(passed),
+			HOME: home,
+			USERPROFILE: home,
+			XDG_CONFIG_HOME: path.join(home, ".config"),
+			...env,
+		},
 		...(cwd ? { cwd } : {}),
 	});
 	const pending = new Map<number, (message: Record<string, any>) => void>();
@@ -70,5 +87,6 @@ export async function catalogOf(
 		};
 	} finally {
 		child.kill();
+		fs.rmSync(home, { recursive: true, force: true });
 	}
 }

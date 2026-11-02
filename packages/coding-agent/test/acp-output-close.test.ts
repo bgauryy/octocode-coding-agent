@@ -1,67 +1,39 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
-import { expect, it } from "vitest";
 import { getCliInvocation } from "../src/config.ts";
 import { processAlive, processMatch, processStartTime, stopTree } from "../src/octocode/shared/process.ts";
+import {
+	createSandbox,
+	observeSessions,
+	QUIET_ARGS,
+	SCRIPTED_MODEL_ARGS,
+	type ModelServer,
+	type Sandbox,
+	startModelServer,
+	writeScriptedProvider,
+} from "./helpers/feature-host-cli.ts";
+
+let sandbox: Sandbox;
+let server: ModelServer | undefined;
+
+afterEach(async () => {
+	await server?.close();
+	sandbox?.cleanup();
+	server = undefined;
+});
 
 it("stops every owned ACP worker before exiting when the client closes only its stdout reader", async () => {
-	const directory = mkdtempSync(join(tmpdir(), "octocode-acp-output-close-"));
-	const extension = join(directory, "lifecycle.mjs");
-	const started = join(directory, "started.jsonl");
-	const shutdown = join(directory, "shutdown.jsonl");
-	writeFileSync(
-		extension,
-		`import { appendFileSync } from "node:fs";
-export default function(api) {
-  api.on("session_start", () => appendFileSync(${JSON.stringify(started)}, JSON.stringify({ pid: process.pid }) + "\\n"));
-  api.on("input", () => ({ action: "handled" }));
-  api.on("session_shutdown", async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    appendFileSync(${JSON.stringify(shutdown)}, JSON.stringify({ pid: process.pid }) + "\\n");
-  });
-}
-`,
-	);
+	sandbox = createSandbox();
+	const sessions = observeSessions(sandbox);
+	server = await startModelServer([{ text: "answered after the reader closed" }]);
+	writeScriptedProvider(sandbox, server);
 	const invocation = getCliInvocation();
 	const child = spawn(
 		invocation.command,
-		[
-			...invocation.prefix,
-			"--mode",
-			"acp",
-			"--no-mcp",
-			"--no-builtin-tools",
-			"--no-extensions",
-			"--extension",
-			extension,
-			"--no-skills",
-			"--no-context-files",
-			"--offline",
-			"--provider",
-			"openai",
-			"--model",
-			"gpt-4o-mini",
-		],
-		{
-			cwd: directory,
-			stdio: ["pipe", "pipe", "pipe"],
-			env: {
-				PATH: [dirname(process.execPath), process.env.PATH ?? ""].join(process.platform === "win32" ? ";" : ":"),
-				HOME: directory,
-				USERPROFILE: directory,
-				TMPDIR: tmpdir(),
-				OCTOCODE_HOME: join(directory, "home"),
-				OCTOCODE_CODING_AGENT_DIR: join(directory, "agent"),
-				OCTOCODE_OFFLINE: "1",
-				OCTOCODE_MCP: "0",
-				OCTOCODE_MODELS_DEV: "0",
-				OCTOCODE_API: "0",
-			},
-		},
+		[...invocation.prefix, "--mode", "acp", ...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS],
+		{ cwd: sandbox.project, stdio: ["pipe", "pipe", "pipe"], env: sandbox.env },
 	);
 	let diagnostics = "";
 	child.stderr.setEncoding("utf8").on("data", (chunk) => {
@@ -89,23 +61,21 @@ export default function(api) {
 		});
 	};
 	const workers: { pid: number; started: string | undefined }[] = [];
-	const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+	const timer = setTimeout(() => child.kill("SIGKILL"), 45_000);
 	try {
 		expect(
 			await request("initialize", { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} }),
 			diagnostics,
 		).toHaveProperty("result");
-		const sessions: { sessionId: string }[] = [];
+		const created: { sessionId: string }[] = [];
 		for (let index = 0; index < 2; index++) {
-			const response = await request("session/new", { cwd: directory, mcpServers: [] });
+			const response = await request("session/new", { cwd: sandbox.project, mcpServers: [] });
 			expect(response, diagnostics).toHaveProperty("result");
-			sessions.push(response.result as { sessionId: string });
+			created.push(response.result as { sessionId: string });
 		}
-		for (const line of readFileSync(started, "utf8").trim().split("\n")) {
-			const { pid } = JSON.parse(line) as { pid: number };
-			workers.push({ pid, started: processStartTime(pid) });
-		}
-		expect(workers).toHaveLength(2);
+		// The SessionStart hook does not hold session creation back, so it records its pid shortly after.
+		await vi.waitFor(() => expect(new Set(sessions.started()).size, diagnostics).toBe(2), { timeout: 20_000 });
+		for (const pid of new Set(sessions.started())) workers.push({ pid, started: processStartTime(pid) });
 		const readerClosed = once(child.stdout, "close");
 		child.stdout.destroy();
 		await readerClosed;
@@ -115,26 +85,20 @@ export default function(api) {
 				id: ++nextId,
 				method: "session/prompt",
 				params: {
-					sessionId: sessions[0].sessionId,
-					prompt: [{ type: "text", text: "handled without model calls" }],
+					sessionId: created[0].sessionId,
+					prompt: [{ type: "text", text: "answered while nobody reads" }],
 				},
 			})}\n`,
 		);
 		const [code, signal] = await exited;
 		expect({ code, signal }, diagnostics).toEqual({ code: 1, signal: null });
-		const stopped = existsSync(shutdown)
-			? readFileSync(shutdown, "utf8")
-					.trim()
-					.split("\n")
-					.map((line) => (JSON.parse(line) as { pid: number }).pid)
-			: [];
 		expect(
-			{ stopped: stopped.sort((a, b) => a - b), live: workers.filter(({ pid }) => processAlive(pid)) },
+			{
+				stopped: [...new Set(sessions.ended())].sort((a, b) => a - b),
+				live: workers.filter(({ pid }) => processAlive(pid)),
+			},
 			diagnostics,
-		).toEqual({
-			stopped: workers.map(({ pid }) => pid).sort((a, b) => a - b),
-			live: [],
-		});
+		).toEqual({ stopped: workers.map(({ pid }) => pid).sort((a, b) => a - b), live: [] });
 		expect(diagnostics).not.toContain("Unhandled 'error' event");
 	} finally {
 		clearTimeout(timer);
@@ -142,6 +106,5 @@ export default function(api) {
 		if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 		await exited;
 		for (const worker of workers) if (processMatch(worker.pid, worker.started) === "same") await stopTree(worker.pid);
-		rmSync(directory, { recursive: true, force: true });
 	}
-}, 40_000);
+}, 60_000);

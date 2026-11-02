@@ -1,6 +1,6 @@
-import type { Usage } from "@octocodeai/octocode-ai";
+import { activeRates, type ModelCost, type Usage } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../../utils/output-budget.ts";
@@ -255,10 +255,7 @@ export function addReply(totals: UsageTotals, usage: unknown, unpriced: boolean)
 }
 
 /** A model's registry rates by provider and id (`ctx.modelRegistry.find`); undefined when the registry does not know it. */
-export type ModelLookup = (
-	provider: string,
-	id: string,
-) => { cost?: { input: number; output: number; cacheRead: number; cacheWrite: number } } | undefined;
+export type ModelLookup = (provider: string, id: string) => { cost?: ModelCost } | undefined;
 
 export const modelLookup =
 	(ctx: Pick<ExtensionContext, "modelRegistry">): ModelLookup =>
@@ -289,7 +286,11 @@ export function unpricedModel(message: unknown, find?: ModelLookup): string | un
 	}
 	const provider = typeof message.provider === "string" ? message.provider : undefined;
 	const model = typeof message.model === "string" ? message.model : undefined;
-	const rates = provider && model ? find?.(provider, model)?.cost : undefined;
+	const cost = provider && model ? find?.(provider, model)?.cost : undefined;
+	// The rates in effect when the reply was billed: an expired free introductory price no longer makes a model free.
+	const rates = cost
+		? activeRates(cost, typeof message.timestamp === "number" ? message.timestamp : Date.now())
+		: undefined;
 	const free = rates
 		? rates.input === 0 && rates.output === 0 && rates.cacheRead === 0 && rates.cacheWrite === 0
 		: finiteOrZero(isRecord(usage.cost) ? usage.cost.total : undefined) === 0;

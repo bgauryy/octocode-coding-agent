@@ -1,8 +1,8 @@
 import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts";
 import type { FileInputReplacement } from "../../shared/claude-file.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import type { ExtensionToolContext, ToolInvocation } from "../../../core/extensions/types.ts";
-import type { ExtensionContext } from "../../../core/extensions/index.ts";
+import type { ExtensionToolContext, ToolInvocation } from "../../../core/features/types.ts";
+import type { ExtensionContext } from "../../../core/features/index.ts";
 import type { ActionClass, PermissionMode } from "../mode.ts";
 import type { SourceDecision } from "../source-policy/rules.ts";
 import type { PermissionRequest } from "../request.ts";

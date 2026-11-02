@@ -45,15 +45,17 @@ export function buildAgentArgs(
 	model: string | undefined,
 	session: ChildSession,
 	skillPaths?: readonly string[],
+	/** The level of a child with no model to suffix (`ModelRoute.thinking`). */
+	thinking?: string,
 ): string[] {
 	const args = ["--mode", "rpc", "--session-dir", session.dir, "--session-id", session.id];
-	// `--no-extensions` also turns off Octocode's built-in MCP extension, which serves Octocode's research tools and the
-	// user's own MCP servers: every specialist needs local research. A lean child runs without any MCP server.
-	if (profile?.lean) args.push("--no-extensions", "--no-mcp");
-	else args.push("--no-extensions", "-e", "builtin:mcp");
+	// The built-in MCP feature serves Octocode's research tools and the user's own MCP servers: every specialist needs
+	// local research. A lean child runs without any MCP server.
+	if (profile?.lean) args.push("--no-mcp");
 	// `model` is already resolved (`provider/id`, optionally `:thinking`); none means the parent's model. The profile's own
 	// preference is routed by `routeModel` before this, so an unavailable one never reaches Octocode.
 	if (model) args.push("--model", model);
+	else if (thinking) args.push("--thinking", thinking);
 	args.push("--tools", profileTools(profile));
 	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
 	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`).

@@ -2,14 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getAgentDir, getNativeSkillsDir } from "../config.ts";
-import type { ExtensionAPI } from "../core/extensions/index.ts";
+import type { ExtensionAPI } from "../core/features/index.ts";
 import { loadSkillsFromDir } from "../core/skills.ts";
 import { isDirectory } from "../utils/fs-probe.ts";
 import { claudeConfigDir, codexConfigDir } from "../utils/host-config.ts";
 import { registerSkillDescriptions } from "./context-optimization/skills.ts";
 import { EXTRA_SKILLS_ENV, envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { globalPaths, projectSkillDirs, workspacePaths } from "./shared/home.ts";
-import { projectTrust } from "./shared/trust.ts";
 
 /**
  * Core discovery already loads ~/.agents/skills, the agent directory's skills and the project's .agents/skills and
@@ -89,12 +88,6 @@ export function registerSkills(api: ExtensionAPI): void {
 	api.on("resources_discover", async (event, ctx) => {
 		const bundled = bundledSkillDirs();
 		if (!extraSkillsEnabled()) return { skillPaths: bundled };
-		const trusted = await projectTrust({
-			cwd: event.cwd,
-			hasUI: ctx.hasUI,
-			ui: ctx.ui,
-			isProjectTrusted: () => ctx.isProjectTrusted(),
-		});
-		return { skillPaths: [...bundled, ...extraSkillDirs(event.cwd, undefined, trusted)] };
+		return { skillPaths: [...bundled, ...extraSkillDirs(event.cwd, undefined, ctx.isProjectTrusted())] };
 	});
 }

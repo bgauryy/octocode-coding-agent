@@ -1,14 +1,14 @@
 import { type BacklogTask, TASK_STATES, type TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
-import { taskLine } from "./task-format.ts";
+import { taskLine, taskWhy } from "./task-format.ts";
 import { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT } from "./tool-list.ts";
 import type { Item } from "./store.ts";
 
@@ -39,14 +39,13 @@ interface Params {
 /**
  * What the model reads about `steps` (stored as tasks, `T<n>`): when work gets steps (the quick-work threshold, for every
  * role that has the tool), how a step is used and what happens to the steps left open. `backlog`'s guidelines say when
- * work is an item. The tool was called `task` until it was renamed to stop clashing with `agent` type `task`; selections
- * that name `task` select it for one release (`RENAMED_TOOLS` in `core/settings-manager/tool-list.ts`).
+ * work is an item.
  */
 function taskPrompt(subagent: boolean) {
 	return {
 		promptSnippet: "Work with several steps; skip it for one step or a few calls",
 		description:
-			"Tracked steps of one piece of work, kept under a backlog item or on this session. add uses the one item this session holds; with several, it needs item. move reorders a step or hands it to a held item.",
+			"Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, it needs item. move reorders a step or hands it to a held item.",
 		promptGuidelines: [
 			"Set a step ongoing when you start it and done when finished. " +
 				"Leave unfinished steps todo (they persist with the session and show on resume); drop only a step you decided against." +
@@ -125,7 +124,7 @@ export function registerTaskTool(
 			if (params.id?.trim()) {
 				const task = tasks.get(params.id);
 				if (!task) throw new Error(`No step ${visibleControls(params.id)}.`);
-				return textResult(taskLine(task), { shown: 1 });
+				return textResult([taskLine(task), ...taskWhy(task)].join("\n"), { shown: 1 });
 			}
 			const states = params.state ? [params.state] : OPEN;
 			const scopes = params.item ? itemScopes(backlog, params.item) : heldItems(backlog).map((item) => item.ref);

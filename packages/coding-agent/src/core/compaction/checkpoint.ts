@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { buildSessionProjection, type CompactionEntry, type SessionEntry } from "../session-manager.ts";
+import { getCompactionBoundarySystem } from "../session-manager/context.ts";
 import type { CompactionResult } from "./types.ts";
 import { clipWithMarker } from "./inline.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
@@ -59,16 +59,17 @@ export function finalizeCompactionResult(
 		};
 	}
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return result;
-	const systemMessage = getCurrentSystemMessage(buildSessionProjection(branchEntries).messages);
+	// The prompt and tool state the entry will carry (`appendCompaction`), so the estimate counts the same context.
+	const timestamp = new Date();
 	const boundary: CompactionEntry = {
 		type: "compaction",
 		id: randomUUID(),
 		parentId: branchEntries.at(-1)?.id ?? null,
-		timestamp: new Date().toISOString(),
+		timestamp: timestamp.toISOString(),
 		summary: "",
 		firstKeptEntryId: result.firstKeptEntryId,
 		tokensBefore: result.tokensBefore,
-		...(systemMessage ? { systemMessage } : {}),
+		...getCompactionBoundarySystem(branchEntries, undefined, undefined, result.firstKeptEntryId, timestamp.getTime()),
 	};
 	const projectedTokens = (summary: string) => {
 		const entries = [...branchEntries, { ...boundary, summary }];

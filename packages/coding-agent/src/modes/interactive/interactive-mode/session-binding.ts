@@ -10,6 +10,7 @@ import { setRegisteredThemes } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { disposeLoadedResources } from "./loaded-resources.ts";
 import { showTreeNavigationResult } from "./session-navigation.ts";
+import { warnRefusedSwitch } from "./trust-switch.ts";
 
 /** Interactive-mode members used by session binding. */
 type SessionBindingHost = Pick<
@@ -20,7 +21,6 @@ type SessionBindingHost = Pick<
 	| "bindCurrentSessionExtensions"
 	| "chatContainer"
 	| "clearStatusIndicator"
-	| "createProjectTrustContext"
 	| "compactionQueuedMessages"
 	| "createExtensionUIContext"
 	| "defaultEditor"
@@ -38,6 +38,7 @@ type SessionBindingHost = Pick<
 	| "pendingMessagesContainer"
 	| "pendingTools"
 	| "programStatus"
+	| "showWarning"
 	| "renderCurrentSessionState"
 	| "renderInitialMessages"
 	| "renderer"
@@ -81,11 +82,9 @@ export async function bindCurrentSessionExtensions(host: SessionBindingHost): Pr
 			newSession: async (options) => {
 				host.clearStatusIndicator();
 				try {
-					return await host.runtimeHost.newSession({
-						...options,
-						projectTrustContextFactory: (cwd) => host.createProjectTrustContext(cwd),
-					});
+					return await host.runtimeHost.newSession(options);
 				} catch (error: unknown) {
+					if (warnRefusedSwitch(host, error)) return { cancelled: true };
 					return host.handleFatalRuntimeError("Failed to create session", error);
 				}
 			},

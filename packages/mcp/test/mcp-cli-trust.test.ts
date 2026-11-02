@@ -2,12 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectTrustStore } from "../../coding-agent/src/core/trust-manager.ts";
-import { saveDecision } from "../../coding-agent/src/octocode/shared/trust.ts";
-import { fingerprint, projectConfigFiles } from "../../coding-agent/src/octocode/shared/trust/files.ts";
+import { grantFolder } from "../../coding-agent/src/octocode/trust/grants.ts";
 import { runMcpCommand } from "../src/cli.ts";
 
-describe("octocode mcp project trust", () => {
+describe("octocode mcp folder trust", () => {
 	const dirs: string[] = [];
 	const temp = (prefix: string) => {
 		const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -19,7 +17,7 @@ describe("octocode mcp project trust", () => {
 		while (dirs.length > 0) rmSync(dirs.pop() ?? "", { recursive: true, force: true });
 	});
 
-	it("loads project servers only when the trusted content still matches, as a session does", async () => {
+	it("loads project servers only in a folder the user trusted, as a session does", async () => {
 		vi.stubEnv("OCTOCODE_HOME", temp("octocode-mcp-trust-home-"));
 		const agentDir = temp("octocode-mcp-trust-agent-");
 		const cwd = temp("octocode-mcp-trust-project-");
@@ -36,20 +34,17 @@ describe("octocode mcp project trust", () => {
 			return { exitCode, output: output.join("\n") };
 		};
 
-		// The directory is trusted, but nobody reviewed this config with /trust: its command is not started.
-		new ProjectTrustStore(agentDir).set(cwd, true);
 		const refused = await run(["list", "--json"]);
 		expect(refused.output).not.toContain('"name": "project"');
-		expect(refused.output).toContain("Project MCP servers are not loaded: their config is new or changed");
-		expect((await run(["compact", "list", "--offline"])).output).toContain("Project MCP servers are not loaded");
+		expect(refused.output).toContain("Project MCP configuration is ignored because the folder is not trusted");
 
-		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
+		grantFolder(cwd, "folder", { source: "command", surface: "test" });
 		const trusted = await run(["list", "--json"]);
 		expect(trusted.output).toContain('"name": "project"');
-		expect(trusted.output).not.toContain("not loaded");
+		expect(trusted.output).not.toContain("not trusted");
 
-		// A change after trust waits for /trust again.
+		// Trusting a folder trusts its future contents: a later change to the file needs no new decision.
 		writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: { project: { command: "changed-command" } } }));
-		expect((await run(["list", "--json"])).output).not.toContain('"name": "project"');
+		expect((await run(["list", "--json"])).output).toContain('"name": "project"');
 	});
 });

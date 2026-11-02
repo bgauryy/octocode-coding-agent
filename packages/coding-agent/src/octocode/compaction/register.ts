@@ -4,8 +4,15 @@ import type {
 	ExtensionContext,
 	SessionBeforeCompactEvent,
 	SessionCompactEvent,
-} from "../../core/extensions/index.ts";
-import { contextReads, seenFiles, sessionCleared, sessionClearedAt, type WorkedFile } from "../files/reads.ts";
+} from "../../core/features/index.ts";
+import {
+	appliedFileOutcomes,
+	contextReads,
+	seenFiles,
+	sessionCleared,
+	sessionClearedAt,
+	type WorkedFile,
+} from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { writeSessionRecord } from "../shared/archive/record.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -20,6 +27,7 @@ import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache
 import { shellParserReady } from "../permission/shell/mutation.ts";
 import { clearStaleResults, prefixRewritten } from "./clearing.ts";
 import { COMPACT_TOOL, CompactRequests } from "./compact-tool.ts";
+import { FallbackContinuity, latestCompaction, withoutCarriedNotes } from "./continuity.ts";
 import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
 import {
@@ -72,6 +80,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 	const lifetimes = new PromptCacheLifetimes();
 	const thrash = new ThrashBreaker();
 	const archive = new ArchiveCapture();
+	const continuity = new FallbackContinuity();
 	const requests = new CompactRequests(thrash);
 	const cacheEnv = (ctx: ExtensionContext): NodeJS.ProcessEnv => ({
 		[CACHE_RETENTION_ENV]: ctx.model
@@ -124,6 +133,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 	let pendingRestore: PendingRestore | undefined;
 	api.on("session_before_compact", async (event, ctx) => {
 		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.
+		continuity.discard();
 		if ((event.reason !== "manual" || requests.inFlight) && thrash.tripped()) {
 			recordCompactionNote(api, "thrash-stop", THRASH_MESSAGE);
 			// While the context still fits the window, the run (and a prompt about to be sent) goes on; the refusal is a
@@ -149,7 +159,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		carryFileLists(event.preparation, event.branchEntries);
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
-		return writeSummary(api, event, ctx, from);
+		return writeSummary(api, event, ctx, from, continuity);
 	});
 
 	api.on("session_start", async (_event, ctx) => {
@@ -160,6 +170,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		restoreCandidates = [];
 		pendingRestore = undefined;
 		archive.discard();
+		continuity.discard();
 		// A forked session's history before the fork is in its sources' archives: its own (`ownArchives`, the pointer).
 		setSessionLineage(forkLineage(ctx.sessionManager));
 		recordWarned = false;
@@ -200,13 +211,21 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 	api.on("session_compact", async (event, ctx) => {
 		thrash.compacted(event.reason === "manual" && !requests.inFlight);
 		requests.compacted();
-		archiveCompaction(api, archive, event, ctx);
+		const segment = archiveCompaction(api, archive, event, ctx);
+		// After Octocode's default summary, what code appends to a summary follows it, archive pointer included; any other
+		// summary that is not Octocode's gets only the pointer.
+		const entry = event.compactionEntry;
+		if (!continuity.deliver(api, entry) && segment !== undefined && summaryMethodOf(entry.details) === undefined)
+			deliverArchivePointer(api, segment);
 		guard.restore(contextReads(ctx));
 		const pending = restoreCandidates;
 		restoreCandidates = [];
 		pendingRestore = deliverRestoredFiles(api, pending, ctx, restoreBudget, compactionThinking(api));
 	});
-	api.on("session_compact_failed", async () => archive.discard());
+	api.on("session_compact_failed", async () => {
+		archive.discard();
+		continuity.discard();
+	});
 	// The restored files count as read from the first model call that carries them (Octocode may hold the message until the
 	// running turn ends).
 	api.on("context", async (event, ctx) => {
@@ -219,10 +238,11 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 			contextWindow: ctx.model?.contextWindow,
 		});
 		if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
-		// Every request shows the results cleared on this branch as their placeholders, the same way each time, and no
-		// thinking a compaction made stale (`thinking.ts`).
+		// Every request shows the results cleared on this branch as their placeholders, the same way each time, no
+		// thinking a compaction made stale (`thinking.ts`) and no continuity message a later compaction carried on.
+		const latest = latestCompaction(ctx.sessionManager);
 		const messages = requestMessages(
-			event.messages,
+			withoutCarriedNotes(event.messages, latest?.id, summaryMethodOf(latest?.details) !== undefined),
 			ctx.model,
 			sessionCleared(ctx.sessionManager),
 			sessionClearedAt(ctx.sessionManager),
@@ -233,6 +253,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		tooLarge.reset();
 		restoreCandidates = [];
 		pendingRestore = undefined;
+		continuity.discard();
 		guard.restore(contextReads(ctx));
 	});
 	return requests;
@@ -242,16 +263,20 @@ type Preparation = SessionBeforeCompactEvent["preparation"];
 
 /**
  * Files the messages captured for the compaction that just succeeded (`ArchiveCapture`), labelled with what its summary
- * says. A summary Octocode did not write has no pointer to the archive in its Recovery section, so one follows as a
- * message. A failure is reported and recorded, never thrown: the compaction itself is done.
+ * says, and returns the segment written. A summary Octocode did not write has no pointer to the archive in its Recovery
+ * section, so the caller sends one. A failure is reported and recorded, never thrown: the compaction itself is done.
  */
 function archiveCompaction(
 	api: ExtensionAPI,
 	archive: ArchiveCapture,
 	event: SessionCompactEvent,
 	ctx: ExtensionContext,
-): void {
-	if (!archive.captured) return;
+): number | undefined {
+	if (!ctx.sessionManager.getSessionFile()) {
+		archive.discard();
+		return undefined;
+	}
+	if (!archive.captured) return undefined;
 	try {
 		const entry = event.compactionEntry;
 		const written = archive.write(
@@ -260,18 +285,20 @@ function archiveCompaction(
 			summaryLabel(splitSummary(entry.summary).body),
 			summaryMethodOf(entry.details) ?? (entry.fromHook ? "extension" : "pi-default"),
 		);
-		if (written && summaryMethodOf(entry.details) === undefined) deliverArchivePointer(api, written.n);
+		return written?.n;
 	} catch (error) {
 		const reason = `The compaction succeeded, but its messages could not be archived (${errorMessage(error)}).`;
 		recordCompactionNote(api, "archive-failed", reason);
 		if (ctx.hasUI) notify(ctx.ui, reason, "warning");
+		return undefined;
 	}
 }
 
 /**
  * Adds every path the `file` tool changed in the summarized messages to Octocode's modified-file list (in place). A call's
- * result is found by `toolCallId`; a path counts only when the call succeeded and its query's outcome is `ok`
- * (`details.outcomes` is aligned to `queries`; a call where every query failed has `isError` and no details).
+ * result is found by `toolCallId`; a path counts only when the call succeeded and its outcome is `ok`, read from the
+ * outcome itself (`appliedFileOutcomes`), so a `patch` call counts as a `queries` call does (a call where every query
+ * failed has `isError` and no details).
  */
 export function addFileToolOps(
 	preparation: Pick<Preparation, "fileOps" | "messagesToSummarize" | "turnPrefixMessages">,
@@ -284,17 +311,10 @@ export function addFileToolOps(
 	}
 	for (const message of messages) {
 		for (const part of parts(message)) {
-			if (!isRecord(part) || part.type !== "toolCall" || part.name !== "file" || !isRecord(part.arguments)) continue;
+			if (!isRecord(part) || part.type !== "toolCall" || part.name !== "file") continue;
 			const result = typeof part.id === "string" ? results.get(part.id) : undefined;
 			if (!result || result.isError === true) continue;
-			const outcomes =
-				isRecord(result.details) && Array.isArray(result.details.outcomes) ? result.details.outcomes : [];
-			const queries = part.arguments.queries;
-			(Array.isArray(queries) ? queries : []).forEach((query, index) => {
-				const outcome: unknown = outcomes[index];
-				if (isRecord(query) && typeof query.path === "string" && isRecord(outcome) && outcome.ok === true)
-					preparation.fileOps.edited.add(query.path);
-			});
+			for (const outcome of appliedFileOutcomes(result.details)) preparation.fileOps.edited.add(outcome.path);
 		}
 	}
 }

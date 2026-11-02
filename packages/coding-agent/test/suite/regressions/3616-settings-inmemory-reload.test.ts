@@ -47,7 +47,7 @@ describe("regression #3616: in-memory settings survive reload", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			noExtensions: true,
+			disabledFeatures: ["mcp", "llama.cpp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,

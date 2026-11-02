@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import inputTransformStreaming from "../examples/extensions/input-transform-streaming.ts";
+import inputTransformStreaming from "./fixtures/extensions/input-transform-streaming.ts";
 import type {
 	ExecResult,
 	ExtensionAPI,
 	ExtensionContext,
 	InputEvent,
 	InputEventResult,
-} from "../src/core/extensions/index.ts";
+} from "../src/core/features/index.ts";
 
 type InputHandler = (event: InputEvent, ctx: ExtensionContext) => Promise<InputEventResult | undefined>;
 

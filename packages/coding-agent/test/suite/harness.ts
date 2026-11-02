@@ -1,5 +1,4 @@
 import { createBashTool } from "../../src/core/tools/index.ts";
-import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
 import type { CompactionSettings } from "../../src/core/compaction/compaction.ts";
 import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } from "../model-runtime-test-utils.ts";
 /**
@@ -21,12 +20,12 @@ import type {
 import { registerFauxProvider, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
-import type { ExtensionRunner, ExtensionUIContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionRunner, ExtensionUIContext, InlineExtension } from "../../src/core/features/index.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { DEFAULT_TOOL_NAMES, SettingsManager } from "../../src/core/settings-manager.ts";
-import type { InlineExtension, ResourceLoader } from "../../src/index.ts";
+import type { ResourceLoader } from "../../src/core/resource-loader/types.ts";
 import { theme } from "../../src/theme/theme.ts";
 import {
 	type CreateTestExtensionsResultInput,
@@ -216,24 +215,6 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			tools: [],
 		},
 		convertToLlm,
-		onPayload: async (payload) => {
-			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("before_provider_request")) {
-				return payload;
-			}
-			return runner.emitBeforeProviderRequest(payload);
-		},
-		onResponse: async (response) => {
-			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("after_provider_response")) {
-				return;
-			}
-			await runner.emit({
-				type: "after_provider_response",
-				status: response.status,
-				headers: response.headers,
-			});
-		},
 		transformContext: async (messages: AgentMessage[]) => {
 			const runner = extensionRunnerRef.current;
 			if (!runner) return messages;
@@ -243,7 +224,10 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	const factories = options.builtinCompactionFactories ?? options.extensionFactories;
 	const extensionsResult = factories ? await createTestExtensionsResult(factories, tempDir) : undefined;
 	if (options.builtinCompactionFactories && extensionsResult) {
-		for (const extension of extensionsResult.extensions) extension.sourceInfo.path = NATIVE_FEATURE_PATH;
+		for (const extension of extensionsResult.extensions) {
+			extension.owner = "native";
+			extension.sourceInfo.owner = "native";
+		}
 	}
 	const resourceLoader =
 		options.resourceLoader ?? createTestResourceLoader(extensionsResult ? { extensionsResult } : undefined);

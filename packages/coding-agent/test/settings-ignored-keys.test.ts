@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { collectSettingsDiagnostics, deduplicateDiagnostics } from "../src/core/settings-diagnostics.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 
 let root: string;
 let cwd: string;
@@ -25,7 +24,7 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("settings keys Octocode ignores", () => {
-	it("tells the user a removed compaction block has no effect and what replaced it", () => {
+	it("reports a removed compaction block as an unknown key, with no replacement text", () => {
 		writeFileSync(
 			globalPath,
 			JSON.stringify({
@@ -41,7 +40,7 @@ describe("settings keys Octocode ignores", () => {
 		expect(diagnostics[0]?.type).toBe("warning");
 		expect(diagnostics[0]?.message).toContain(`Settings file ${globalPath}:`);
 		expect(diagnostics[0]?.message).toBe(
-			`Settings file ${globalPath}: Setting "compaction" is no longer used: the whole block (enabled, reserveTokens, keepRecentTokens, modelOverrides) does nothing, because Octocode now decides when to compact from each model's context window. To compact earlier, set a smaller "contextBudget" (or use /context size for one session). Delete "compaction" from the file to hide this warning.`,
+			`Settings file ${globalPath}: Setting "compaction" is not a known setting, so it does nothing. Check the spelling, or delete it from the file.`,
 		);
 		// Loading stays permissive: the known keys still apply and the unknown one is kept in the file.
 		expect(manager.getTheme()).toBe("dark");
@@ -57,26 +56,21 @@ describe("settings keys Octocode ignores", () => {
 		expect(warning?.message).toContain('Setting "defaultModle" is not a known setting, so it does nothing.');
 	});
 
-	it("explains the removed codemode keys", () => {
+	it("reports the removed codemode keys as unknown keys", () => {
 		writeFileSync(globalPath, JSON.stringify({ codemode: { mode: "on" }, autoEnableCodemode: true }));
 
 		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
 
 		expect(messages).toHaveLength(2);
-		expect(messages.join("\n")).toContain('Setting "codemode" is no longer used: codemode was removed');
-		expect(messages.join("\n")).toContain('Setting "autoEnableCodemode" is no longer used: codemode was removed');
+		expect(messages.join("\n")).toContain('Setting "codemode" is not a known setting');
+		expect(messages.join("\n")).toContain('Setting "autoEnableCodemode" is not a known setting');
+		expect(messages.join("\n")).not.toContain("no longer used");
 	});
 
-	it("explains a defaultTools entry for the removed native browser tool, with or without a modifier", () => {
-		writeFileSync(globalPath, JSON.stringify({ defaultTools: ["+browser", "+debug", "-browser"] }));
+	it("does not warn about the names in a defaultTools list, including removed or renamed tools", () => {
+		writeFileSync(globalPath, JSON.stringify({ defaultTools: ["+browser", "+debug", "-browser", "task", "-task"] }));
 
-		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
-
-		expect(messages).toHaveLength(2);
-		expect(messages[0]).toContain(`Settings file ${globalPath}:`);
-		expect(messages[0]).toContain('"defaultTools" entry "+browser" has no effect');
-		expect(messages[0]).toContain("mcp__browser__*");
-		expect(messages[1]).toContain('entry "-browser"');
+		expect(collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir))).toEqual([]);
 	});
 
 	it("stays silent for known keys, including legacy ones that migrate", () => {
@@ -126,10 +120,9 @@ describe("settings keys Octocode ignores", () => {
 		untrusted.setProjectTrusted(true);
 		const [warning] = collectSettingsDiagnostics(untrusted);
 		expect(warning?.message).toContain(`Settings file ${projectPath}:`);
-		expect(warning?.message).toContain('Setting "compaction" is no longer used');
+		expect(warning?.message).toContain('Setting "compaction" is not a known setting');
 
-		new ProjectTrustStore(agentDir).set(cwd, true);
-		expect(collectSettingsDiagnostics(SettingsManager.createForStartup(cwd, agentDir))).toHaveLength(1);
+		expect(collectSettingsDiagnostics(SettingsManager.createForStartup(cwd, agentDir, true))).toHaveLength(1);
 	});
 
 	it("does not touch the file: the unknown key survives a settings save", async () => {

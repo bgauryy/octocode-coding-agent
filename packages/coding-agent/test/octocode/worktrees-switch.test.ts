@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext, ReplacedSessionContext } from "../../src/core/extensions/index.ts";
+import type { ExtensionCommandContext, ReplacedSessionContext } from "../../src/core/features/index.ts";
 import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import type { TmuxRunner } from "../../src/octocode/terminal-launch/tmux.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";

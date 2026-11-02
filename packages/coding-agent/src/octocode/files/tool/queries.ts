@@ -1,5 +1,5 @@
 import { type Static, Type } from "typebox";
-import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { reasonSchema } from "../../shared/reason.ts";
 import { elisionMarkers, escapeRegExp } from "../../shared/util.ts";
@@ -48,7 +48,7 @@ export const Params = Type.Object({
 	queries: Type.Optional(Type.Array(QuerySchema)),
 	patch: Type.Optional(
 		Type.String({
-			description: "Codex apply_patch text, instead of queries",
+			description: "Codex apply_patch text",
 		}),
 	),
 	// Declared here (so `execute` keeps it for a patch's changes) and required like every native tool's: the row shows it.

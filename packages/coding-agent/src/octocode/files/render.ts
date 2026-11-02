@@ -13,6 +13,7 @@ import { timingOf } from "../shared/render/rows.ts";
 import { stateMark } from "../../theme/status.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { VerificationReceipt } from "./bash-jobs/types.ts";
+import { parseJobMessage } from "./bash-jobs/message.ts";
 
 /**
  * How the files tools draw: `Bash(cmd)` / `⎿  exit 0 · 12 lines` and the last lines, `File(edit a.ts)` /
@@ -215,19 +216,17 @@ export function renderBashResult(
 	);
 }
 
-/** A finished background job: `✓ Job(bash-1: yarn build)` / `⎿  finished after 3s`, its output tail; the status header names its log (older reports: a `Log:` line). */
+/** A finished background job: `✓ Job(bash-1: yarn build)`, `↳ <why>`, `⎿  finished after 3s`, its output tail; the status header names its log (format: `bash-jobs/message.ts`). */
 export function renderJobMessage(text: string, expanded: boolean, theme: Theme, outputPad = 1): Component {
-	const [head = "", ...rest] = text.replace(/^\[[^\n]*\]\n/, "").split("\n");
+	const { head, why, log, rest } = parseJobMessage(text);
 	const ok = / finished after /.test(head);
 	const stopped = !ok && / stopped \(/.test(head); // killed by the user or at shutdown: interrupted, not failed
 	// "Background bash bash-1 finished after 3s: yarn build" → `✓ Job(bash-1: yarn build)` / `⎿ finished after 3s`.
 	const parts = /^Background bash (\S+) (.+?): (.*)$/.exec(head);
 	const context: RenderContext = { isPartial: false, isError: !ok, expanded, state: stopped ? { stopped: true } : {} };
-	const log =
-		/^\[[^\n]*· log: ([^\n]+)\]\n/.exec(text)?.[1] ??
-		(rest[0]?.startsWith("Log: ") ? rest.shift()!.slice(5) : undefined);
 	const box = new Box(outputPad, 0); // custom messages are drawn flush left; pad them like a tool row
-	box.addChild(toolHeader(theme, context, "Job", parts ? `${parts[1]}: ${parts[3]}` : head));
+	const lines = isInformativeReason(why) ? [theme.fg("toolReason", `↳ ${clip(sanitizeTerminalText(why), 200)}`)] : [];
+	box.addChild(toolHeader(theme, context, "Job", parts ? `${parts[1]}: ${parts[3]}` : head, { lines }));
 	box.addChild(
 		resultBlock(theme, context, {
 			summary: parts?.[2] ?? head,

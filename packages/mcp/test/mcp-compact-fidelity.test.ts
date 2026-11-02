@@ -132,8 +132,8 @@ describe("checkFidelity", () => {
 	});
 });
 
-describe("presentation keeps a tool's JSON declaration when its block is not faithful", () => {
-	it("declares only faithful tools as thin stubs", () => {
+describe("presentation describes a tool in plain form when its block is not faithful", () => {
+	it("describes every declared tool in the block and declares each as a thin stub", () => {
 		const presentation = new McpPresentation({ agentDir: tmp, mode: () => "compact" });
 		const plain = { name: "plain", inputSchema: { type: "object", properties: { q: { type: "string" } } } };
 		const remote = {
@@ -143,8 +143,15 @@ describe("presentation keeps a tool's JSON declaration when its block is not fai
 		presentation.sync("s", "s", undefined, [plain, remote]);
 		presentation.describe("s", ["plain", "remote"], undefined, true);
 		expect(presentation.isThin("s", plain)).toBe(true);
-		expect(presentation.isThin("s", remote)).toBe(false);
+		expect(presentation.isThin("s", remote)).toBe(true);
 		expect(presentation.signature("s", "remote")).toBeUndefined();
+		// The file carries the faithful tool; the tool it cannot express follows in plain form, schema as sent.
+		const { file, contract } = presentation.describe("s", ["plain", "remote"], undefined, true);
+		expect(file).toContain("function plain(");
+		expect(file).not.toContain("remote");
+		expect(contract).toBe(
+			`${file}\n// mcp__s__remote\nInput schema (JSON Schema): ${JSON.stringify(remote.inputSchema)}`,
+		);
 	});
 });
 

@@ -1,5 +1,5 @@
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
-import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import { teamTask } from "../instructions/task.ts";
 import { envInt } from "../../../../common/src/env.ts";
@@ -12,7 +12,7 @@ import type { Team } from "../team/session.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
-import { type ModelRoute, routedModel, routeModel } from "./model.ts";
+import { type ModelRoute, routedModel, routeModel, subagentThinking, supportedThinking } from "./model.ts";
 import { providerHealth } from "./provider-health.ts";
 import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
@@ -209,15 +209,18 @@ export function planRun(
 		profile = { ...profile, headless: params.headless };
 	}
 	// An explicit model is strict; a profile's is a preference that falls back to this session's model.
-	const route = routeModel({
+	const available = childAvailable(ctx.modelRegistry, params.model);
+	const routed = routeModel({
 		explicit: params.model,
 		preferred: profile?.model,
-		available: childAvailable(ctx.modelRegistry, params.model),
+		available,
 		parent: ctx.model,
 		catalog: currentCatalog(),
 		refused: (provider) => providerHealth.refused(provider),
+		thinking: subagentThinking(),
 	});
-	if ("error" in route) throw new Error(route.error);
+	if ("error" in routed) throw new Error(routed.error);
+	const route = routed.model ? { ...routed, model: supportedThinking(routed.model, available) } : routed;
 	// No model argument, or a preference that fell back, runs the child on this session's model.
 	const routedProvider = route.model ? route.model.slice(0, route.model.indexOf("/")) : ctx.model?.provider;
 	if (routedProvider && sessionOnlyProvider(ctx.modelRegistry, routedProvider)) throw sessionOnlyError(routedProvider);

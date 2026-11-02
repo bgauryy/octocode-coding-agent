@@ -20,6 +20,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { bindInteractiveModeMethods } from "./host-methods.ts";
 import { handleRightClickPaste } from "./input-handlers.ts";
 import { installRenderErrorNotices } from "./render-errors.ts";
+import { installFolderTrustAsker } from "./trust-switch.ts";
 import type { InteractiveModeOptions } from "./types.ts";
 
 type WritableHost = { -readonly [K in keyof InteractiveModeHost]: InteractiveModeHost[K] };
@@ -160,7 +161,6 @@ export function createInteractiveModeHost(
 	setCapabilityOverrides(host.settingsManager.getTerminalCapabilityOverrides());
 	const tuiMode = options.tuiMode ?? host.settingsManager.getTuiMode();
 	host.options = { ...options, tuiMode };
-	host.autoTrustOnReloadCwd = options.autoTrustOnReloadCwd;
 	host.runtimeHost.setBeforeSessionInvalidate(() => {
 		// The outgoing session's queue and the compaction queue would be discarded with it; keep the text.
 		host.restoreQueuedMessagesToEditor();
@@ -226,5 +226,6 @@ export function createInteractiveModeHost(
 		onChanged: () => host.updateEditorBorderColor(),
 		initialThemeSetting: options.initialThemeSetting,
 	});
+	installFolderTrustAsker(host, options.createFolderTrustAsker);
 	return host;
 }

@@ -1,6 +1,11 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { getAgentDir } from "../config.ts";
+import { SettingsManager } from "../core/settings-manager.ts";
+import { allowWorktreeGrants, type WorktreeTrustRequest } from "../octocode/worktrees/approval.ts";
+import { insideSessionShell, sessionShellRefusal } from "../octocode/trust/session-shell.ts";
 import { describeWorktree } from "../octocode/worktrees/create.ts";
+import { confirmWorktreeTrust } from "./trust-prompt.ts";
 import { enterWorktree } from "../octocode/worktrees/enter.ts";
 import { parseArgs } from "./args.ts";
 import { isSubcommand } from "./completion.ts";
@@ -19,6 +24,10 @@ function fail(message: string): never {
 export async function startupCwd(args: string[]): Promise<string> {
 	const parsed = parseArgs(args);
 	const { worktree, help, version } = parsed;
+	// `--trust` is the user's grant: a run the agent started from a session's shell may not record one.
+	if (parsed.trust === true && insideSessionShell()) fail(sessionShellRefusal("record trust for --trust"));
+	// `--trust` lets a headless run (or a later isolated subagent) record the grant for a worktree it creates.
+	allowWorktreeGrants(parsed.trust === true);
 	if (worktree === undefined || help || version) return process.cwd();
 	const notSession = isSubcommand(args)
 		? `the "${args[0]}" command`
@@ -43,7 +52,12 @@ export async function startupCwd(args: string[]): Promise<string> {
 		);
 	}
 	try {
-		const info = await enterWorktree(worktree);
+		const interactive = process.stdin.isTTY && process.stdout.isTTY && !parsed.print && parsed.mode === undefined;
+		const ask = interactive
+			? (request: WorktreeTrustRequest) =>
+					confirmWorktreeTrust(SettingsManager.create(process.cwd(), getAgentDir(), { projectTrusted: false }), request)
+			: undefined;
+		const info = await enterWorktree(worktree, process.cwd(), ask);
 		process.stderr.write(`${describeWorktree({ ...info, path: path.relative(info.main, info.path) || info.path })}\n`);
 		return process.cwd();
 	} catch (error) {

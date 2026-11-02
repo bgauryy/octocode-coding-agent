@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
-import type { ExtensionAPI } from "../../../src/index.ts";
+import type { ExtensionAPI } from "../../../src/core/features/index.ts";
 
 const noop: (api: ExtensionAPI) => void = () => {};
 

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { openBacklog } from "../backlog/context.ts";
 import { attachReport, heldItem } from "../backlog/delegation.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

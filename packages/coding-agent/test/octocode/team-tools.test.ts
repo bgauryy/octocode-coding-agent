@@ -2,6 +2,7 @@ import fs, * as importedModule1 from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
+import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { type AgentControl, registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -41,6 +42,15 @@ function member(dbFile: string, cwd: string) {
 	const gate = async (event: unknown, context: unknown) => [await reservationGate(event as never, context as never)];
 	return { ...fake, team, ctx, gate };
 }
+
+/**
+ * What an edit of `file` meets: the reservation check the `file` tool runs for each change (the gate itself leaves `file`
+ * to it), with the path resolved against the caller's cwd as that tool does.
+ */
+const editGate = async (agent: ReturnType<typeof member>, file: string) => {
+	const reason = agent.team.reservation(reservationPath(agent.ctx.cwd, file), file);
+	return [reason ? { block: true, reason } : undefined];
+};
 
 const run = (
 	tool: { execute: (...args: unknown[]) => Promise<{ content: { text: string }[]; details: { id: string } }> },
@@ -106,14 +116,12 @@ describe("team tools on a fake Octocode", () => {
 		await expect(run(b.tools.get("coordinate"), { action: "lock", paths: ["lib/x.ts"] }, b.ctx)).rejects.toThrow(
 			/Not reserved; nothing was locked/,
 		);
-		const [blocked] = await b.gate({ toolName: "write", input: { path: "src/a.ts" } }, b.ctx);
+		const [blocked] = await editGate(b, "src/a.ts");
 		expect(blocked).toMatchObject({
 			block: true,
 			reason: expect.stringMatching(new RegExp(`reserved by ${a.team.id} \\(auth; locked \\d+s ago\\)`)),
 		});
-		expect(await b.gate({ toolName: "edit", input: { path: "@lib/deep/y.ts" } }, b.ctx)).toEqual([
-			expect.objectContaining({ block: true }),
-		]);
+		expect(await editGate(b, "@lib/deep/y.ts")).toEqual([expect.objectContaining({ block: true })]);
 		// A bash command whose parse writes a reserved path is refused like an edit; reads, unreserved writes and unresolved targets pass.
 		for (const command of [
 			"echo x > src/a.ts",
@@ -138,7 +146,7 @@ describe("team tools on a fake Octocode", () => {
 			expect(await b.gate({ toolName: "bash", input: { command } }, b.ctx), command).toEqual([undefined]);
 		// `file` is guarded inside the file tool itself; unrelated tools pass.
 		expect(await b.gate({ toolName: "file", input: { queries: [{ path: "src/a.ts" }] } }, b.ctx)).toEqual([undefined]);
-		expect(await b.gate({ toolName: "write", input: { path: "free.ts" } }, b.ctx)).toEqual([undefined]);
+		expect(await editGate(b, "free.ts")).toEqual([undefined]);
 
 		const listed = text(await run(b.tools.get("coordinate"), { action: "list" }, b.ctx));
 		expect(listed).toContain(a.team.id!);
@@ -147,7 +155,7 @@ describe("team tools on a fake Octocode", () => {
 		expect(text(await run(coordinate, { action: "unlock", paths: ["src/a.ts"] }, a.ctx))).toBe(
 			"Released 1 reservation(s).",
 		);
-		expect(await b.gate({ toolName: "write", input: { path: "src/a.ts" } }, b.ctx)).toEqual([undefined]);
+		expect(await editGate(b, "src/a.ts")).toEqual([undefined]);
 		expect(text(await run(coordinate, { action: "unlock" }, a.ctx))).toBe("Released 1 reservation(s).");
 		expect(text(await run(coordinate, { action: "leave" }, a.ctx))).toBe("Left the team.");
 		expect(text(await run(b.tools.get("coordinate"), { action: "list" }, b.ctx))).not.toContain(a.team.id!);
@@ -168,20 +176,13 @@ describe("team tools on a fake Octocode", () => {
 			text(await run(coordinate, { action: "lock", paths: ["src/a.ts", "lib/"], reason: "work" }, inPkg.ctx)),
 		).toContain("pkg/src/a.ts");
 		for (const agent of [atRoot, peerInPkg]) await run(agent.tools.get("coordinate"), { action: "join" }, agent.ctx);
-		expect(await atRoot.gate({ toolName: "write", input: { path: "pkg/src/a.ts" } }, atRoot.ctx)).toEqual([
+		expect(await editGate(atRoot, "pkg/src/a.ts")).toEqual([expect.objectContaining({ block: true })]);
+		expect(await editGate(peerInPkg, "src/a.ts")).toEqual([expect.objectContaining({ block: true })]);
+		expect(await editGate(peerInPkg, path.join(root, "pkg", "lib", "deep.ts"))).toEqual([
 			expect.objectContaining({ block: true }),
 		]);
-		expect(await peerInPkg.gate({ toolName: "edit", input: { path: "src/a.ts" } }, peerInPkg.ctx)).toEqual([
-			expect.objectContaining({ block: true }),
-		]);
-		expect(
-			await peerInPkg.gate(
-				{ toolName: "edit", input: { path: path.join(root, "pkg", "lib", "deep.ts") } },
-				peerInPkg.ctx,
-			),
-		).toEqual([expect.objectContaining({ block: true })]);
 		// The same relative path at the repository root is another file.
-		expect(await atRoot.gate({ toolName: "write", input: { path: "src/a.ts" } }, atRoot.ctx)).toEqual([undefined]);
+		expect(await editGate(atRoot, "src/a.ts")).toEqual([undefined]);
 		// A peer's conflicting lock names the path as the peer typed it.
 		await expect(
 			run(peerInPkg.tools.get("coordinate"), { action: "lock", paths: ["src/a.ts"] }, peerInPkg.ctx),
@@ -189,7 +190,7 @@ describe("team tools on a fake Octocode", () => {
 		expect(text(await run(coordinate, { action: "unlock", paths: ["src/a.ts", "lib/"] }, inPkg.ctx))).toBe(
 			"Released 2 reservation(s).",
 		);
-		expect(await atRoot.gate({ toolName: "write", input: { path: "pkg/src/a.ts" } }, atRoot.ctx)).toEqual([undefined]);
+		expect(await editGate(atRoot, "pkg/src/a.ts")).toEqual([undefined]);
 	});
 
 	it("delivers messages between agents and rejects unknown recipients", async () => {

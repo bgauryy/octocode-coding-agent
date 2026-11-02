@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../../coding-agent/src/core/extensions/loader.ts";
-import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "../../coding-agent/test/helpers/features.ts";
+import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
 import { fakeCtx } from "../../coding-agent/test/octocode/fake-host.ts";
 import { reconnect } from "../src/connections.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";

@@ -149,6 +149,9 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				break;
 			}
 			case "tool.started": {
+				// A call a tool makes while it runs (`ctx.executeTool`, e.g. the `file` tool's parse check) is the parent's
+				// work, recorded on its result: no row of its own, so it never reads as a call the model made.
+				if (event.parentToolCallId) break;
 				let component = host.pendingTools.get(event.toolCallId);
 				if (!component) {
 					component = addToolExecution(

@@ -145,7 +145,11 @@ export function writeSessionRecord(record: SessionRecord, env: NodeJS.ProcessEnv
 
 /** The header of the record in archive `folder`; undefined when it has none or it cannot be read. */
 export function readRecordHeader(folder: string): RecordHeader | undefined {
-	const header = readHeader(path.join(folder, RECORD_FILE), "\n## Goal");
+	return parseRecordHeader(readHeader(path.join(folder, RECORD_FILE), "\n## Goal"));
+}
+
+/** Decode the same header for asynchronous archive recovery. */
+export function parseRecordHeader(header: string | undefined): RecordHeader | undefined {
 	if (header === undefined) return undefined;
 	const field = (key: keyof RecordHeader): string | undefined => headerField(header, LABELS[key]);
 	const session = field("session");

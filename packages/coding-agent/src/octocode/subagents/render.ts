@@ -5,11 +5,10 @@ import type {
 	ExtensionAPI,
 	MessageRenderer,
 	ToolRenderResultOptions,
-} from "../../core/extensions/index.ts";
+} from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
 import { fencedParts } from "../shared/fence.ts";
-import { trustNoticeShown } from "../shared/trust.ts";
 import { presentAgentReport } from "./presentation.ts";
 import {
 	formatCost,
@@ -21,14 +20,14 @@ import {
 } from "../shared/format.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
-import { modelLabel } from "./model.ts";
+import { modelLabel, withoutProvider } from "./model.ts";
 import { noticeText } from "./notices.ts";
-import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
+import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../shared/row-mark.ts";
 import { agentState, headerOverride } from "./render-state.ts";
 
 /**
  * How the `agent` tool and a background subagent's report message are drawn: `● Agent(goal · model) · 38s`, then live
- * progress while it runs and `⎿ Done (name · 4 tool calls · ↑12k (80% cached) ↓2k · ≈$0.12 · 38s)` with the answer once it finishes. The row
+ * progress while it runs and `⎿ Done (name · 4 tool calls · ↑12k +48k cached ↓2k · ≈$0.12 · 38s)` with the answer once it finishes. The row
  * stays one short line; the full prompt the agent was given shows in the expanded view, above its progress or report.
  */
 
@@ -69,24 +68,14 @@ export function compactionNote(details: Pick<RunDetails, "compactions">): string
 }
 
 /**
- * The untrusted-project warning (`shared/trust.ts`). A subagent inherits its parent's trust decision, so when this session
- * showed the same warning the report need not repeat it; a child that alone lacks config (an isolated worktree whose
- * files differ) keeps it.
- */
-const TRUST_NOTICE = /^Project config not loaded\b/;
-
-/**
  * What the child's extensions said that a person would have read on screen (warnings, errors, the latest compaction
  * failure), one line each and whole, identical repeats folded with a count. Notices past the inline page end in one line
  * naming the file that holds every notice. Text of the child: callers place it with the child's own words, never among
  * the parent's.
  */
-export function noticeLines(
-	details: Pick<RunDetails, "compactions" | "notices">,
-	shown: boolean = trustNoticeShown(),
-): string[] {
+export function noticeLines(details: Pick<RunDetails, "compactions" | "notices">): string[] {
 	const { more = 0, file } = details.notices ?? {};
-	const kept = (details.notices?.kept ?? []).filter((notice) => !(shown && TRUST_NOTICE.test(notice.text)));
+	const kept = details.notices?.kept ?? [];
 	const failure = details.compactions?.error;
 	const rest = file
 		? `+${more} more notices; every notice, whole, is in ${shortPath(file)} (read it, or search it)`
@@ -129,7 +118,7 @@ type Progress = Pick<
 	| "compactions"
 >;
 
-/** `inky-kraken · 4 tool calls · ↑12k (80% cached) ↓2k · ≈$0.12 · model` while a run works (no tool calls yet: none named). */
+/** `inky-kraken · 4 tool calls · ↑12k +48k cached ↓2k · ≈$0.12 · model` while a run works (no tool calls yet: none named). */
 function runStats(details: Progress): string {
 	return [
 		details.id,
@@ -210,11 +199,14 @@ function promptPreface(theme: Theme, task: string | undefined, next: string | un
 /** Characters of the goal a row shows. */
 const GOAL_ROW_CHARS = 60;
 
-/** `audit auth token refresh · gpt-5 · isolated`: what the row says about the run, never the prompt or the profile. */
-function runLabel(args: AgentArgs): string {
+/**
+ * `audit auth token refresh · claude-haiku-5-5:low · isolated`: what the row says about the run, never the prompt or the
+ * profile. The model is the one the run resolved to, with its level, once the run reports it; until then the call's own.
+ */
+function runLabel(args: AgentArgs, resolved?: string): string {
 	return [
 		args.goal ? clip(args.goal, GOAL_ROW_CHARS) : "",
-		args.model ? clip(args.model, 40) : "",
+		resolved ? clip(resolved, 40) : args.model ? clip(args.model, 40) : "",
 		args.isolate ? "isolated" : "",
 	]
 		.filter(Boolean)
@@ -228,9 +220,10 @@ export function renderAgentCall(args: AgentArgs, theme: Theme, context: RenderCo
 	// The result's renderer says when the run needs the user (`◇`) or its report is a failure (`✗`).
 	const state = sharedRowState(context);
 	const mark = state ? { state } : {};
-	if (!args.background) return toolHeader(theme, context, "Agent", runLabel(args), mark);
+	const label = runLabel(args, sharedRowModel(context));
+	if (!args.background) return toolHeader(theme, context, "Agent", label, mark);
 	const quick = context.durationMs !== undefined && context.durationMs < LAUNCH_SHOWN_MS;
-	return toolHeader(theme, quick ? { ...context, durationMs: undefined } : context, "Agent", runLabel(args), {
+	return toolHeader(theme, quick ? { ...context, durationMs: undefined } : context, "Agent", label, {
 		meta: "background",
 		...mark,
 	});
@@ -269,6 +262,7 @@ export function renderAgentResult(
 			preface: promptPreface(theme, task, undefined),
 		});
 	shareRowState(context, headerOverride(agentState(details)));
+	shareRowModel(context, withoutProvider(details.model));
 	if (isPartial) {
 		// Live progress: counts, then the latest steps (the header carries the running clock).
 		const lines = [

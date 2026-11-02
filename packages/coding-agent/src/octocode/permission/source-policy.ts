@@ -1,6 +1,6 @@
 import { bashSyntax } from "./bash-syntax.ts";
 import { needsBashTokens } from "./bash-wrappers.ts";
-import type { ToolInvocation } from "../../core/extensions/types.ts";
+import type { ToolInvocation } from "../../core/features/types.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { runsLater, stateFolderRefusal } from "./file-access.ts";
 import { match, type Operation, operations, pathMatch } from "./source-policy/match.ts";
@@ -33,7 +33,8 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 			decision: "unsupported",
 			message: "Cannot project invocation for source permission policy",
 		};
-	let shellIncomplete = false;
+	// The first construct the Bash parser does not model, in any command of this call.
+	let shellUnsupported: string | undefined;
 	let shellFileEffects = false;
 	const shellTargets: NonNullable<SourceDecision["shellTargets"]> = [];
 	const targetDecisions: SourceDecision[] = [];
@@ -46,6 +47,12 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 			rule.behavior !== "ask" &&
 			rule.specifier !== undefined &&
 			rule.specifier !== "*",
+	);
+	// Only a restriction refuses syntax it cannot see through; an allow-only policy merely withholds its grant.
+	const restriction = policy.rules.find(
+		(rule) =>
+			(rule.tool === "Bash" && rule.behavior !== "allow" && rule.specifier !== undefined && rule.specifier !== "*") ||
+			(fileRules.includes(rule) && rule.behavior === "deny"),
 	);
 	const broadBashAllow = policy.rules.some(
 		(rule) =>
@@ -63,7 +70,7 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 			)
 				return [operation];
 			const syntax = bashSyntax(text);
-			shellIncomplete ||= syntax.incomplete && (scopedBash || fileRules.some((rule) => rule.behavior === "deny"));
+			if (syntax.incomplete) shellUnsupported ??= syntax.unsupported ?? "unknown construct";
 			shellFileEffects ||= syntax.targets.some((target) => !target.policyOnly);
 			for (const target of syntax.targets) {
 				const eligible = fileRules.filter(
@@ -130,15 +137,16 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 	results.push(...targetDecisions.filter((decision) => decision.decision !== "none"));
 	let decision: SourceDecision =
 		results.find((value) => value.decision === "deny") ??
-		(shellIncomplete
+		(shellUnsupported !== undefined && restriction
 			? {
 					decision: "unsupported" as const,
-					message: "Unsupported or incomplete Bash syntax for source permission policy",
+					message: `Bash syntax the source permission policy cannot check (${shellUnsupported}), refused under the Claude permission ${restriction.behavior} rule in ${restriction.source.path} (${restriction.tool}); run simple commands or a script file instead`,
 				}
 			: undefined) ??
 		results.find((value) => value.decision === "unsupported") ??
 		results.find((value) => value.decision === "ask") ??
 		(results.length > 0 &&
+		(shellUnsupported === undefined || broadBashAllow) &&
 		(!shellFileEffects || broadBashAllow || shellTargets.every((target) => target.allowed)) &&
 		results.every((value) => value.decision === "allow")
 			? { decision: "allow" }

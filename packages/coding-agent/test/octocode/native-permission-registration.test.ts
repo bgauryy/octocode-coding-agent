@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
-import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { userBashGate } from "../../src/octocode/permission/user-bash.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

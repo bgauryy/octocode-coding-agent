@@ -2,11 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ConfigSettingCommand, ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ProjectTrustStore } from "../../src/core/trust-manager.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildConfigSnapshot } from "../../src/octocode/web-daemon/config-status.ts";
 import { ConfigWriteError, writeConfigSetting } from "../../src/octocode/web-daemon/config-write.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
+import { trustFolder } from "./helpers.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
 
 const SECRET = "SENTINEL-SECRET-77d1";
@@ -21,8 +21,11 @@ beforeEach(() => {
 	cwd = path.join(root, "work");
 	fs.mkdirSync(agentDir);
 	fs.mkdirSync(path.join(cwd, ".octocode"), { recursive: true });
+	// Its own agent database: the suite's default one trusts the whole temp folder, which would trust every workspace here.
+	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 });
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	for (const fn of cleanup.splice(0).reverse()) await fn();
 	fs.rmSync(root, { recursive: true, force: true });
 });
@@ -65,7 +68,7 @@ describe("writeConfigSetting", () => {
 	});
 
 	it("writes a trusted workspace file and shows workspace precedence, then falls back to global when cleared", async () => {
-		new ProjectTrustStore(agentDir).set(cwd, true);
+		trustFolder(cwd);
 		await set({ value: "openai" });
 		await set({ scope: "workspace", value: "anthropic" }, true);
 		expect(readJson(workspaceFile())).toEqual({ defaultProvider: "anthropic" });
@@ -88,7 +91,7 @@ describe("writeConfigSetting", () => {
 		expect((failure as Error).message).not.toContain(SECRET);
 		expect(fs.readFileSync(globalFile(), "utf8")).toBe(content);
 
-		new ProjectTrustStore(agentDir).set(cwd, true);
+		trustFolder(cwd);
 		fs.writeFileSync(workspaceFile(), "not json");
 		await expect(set({ scope: "workspace" }, true)).rejects.toMatchObject({ status: 409 });
 		expect(fs.readFileSync(workspaceFile(), "utf8")).toBe("not json");
