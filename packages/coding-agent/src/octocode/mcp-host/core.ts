@@ -30,7 +30,7 @@ import {
 	TEXT_MAX_CHARS,
 } from "../shared/spill.ts";
 import { browserMcpAsked } from "../web/browser-mcp.ts";
-import { contextOptimizationDirs, sessionsRoot } from "../shared/home.ts";
+import { contextOptimizationDirs, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
 import { userResearchRoots } from "./research-roots.ts";
 
@@ -49,7 +49,7 @@ const paths: McpHostPorts["paths"] = {
 	legacyConfigDirs: (agentDir) => getLegacyConfigDirs(agentDir),
 	contextOptimizationDir: (agentDir) => getContextOptimizationDir(agentDir),
 	contextOptimizationDirs: (cwd, agentDir) => contextOptimizationDirs(cwd, agentDir),
-	sessionsRoot: (env) => sessionsRoot(env),
+	sessionRoots: (cwd, env) => [sessionsRoot(env, cwd), sessionTempRoot(env, cwd)],
 	researchRoots: (env) => userResearchRoots(env),
 };
 

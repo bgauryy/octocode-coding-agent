@@ -51,22 +51,6 @@ function classOf(
 	cwd: string,
 	forceDestructive: boolean,
 ): PermissionRequest | undefined {
-	// Inspection can execute adapter getters; all debugger operations share process authorization. Termination stops an
-	// existing session, and a launch without an adapter only returns the adapter recipes (`debug/tool.ts`).
-	if (tool === "debug")
-		return input.action === "terminate" || (input.action === "launch" && !input.adapter)
-			? undefined
-			: { action: "shell", title: "Run this debugger operation?", what: [args(input), `cwd: ${cwd}`] };
-	// A local model task runs the FreeLlama CLI and spends local compute; `models` and `route` only read its state.
-	if (tool === "ollama")
-		return input.action === "task"
-			? {
-					action: "shell",
-					title: "Run this local model task?",
-					what: [args(input)],
-					grant: { key: "ollama task", label: "local Ollama tasks through FreeLlama" },
-				}
-			: undefined;
 	if (SHELL_TOOLS.has(tool)) {
 		const command = optionalString(input.command) ?? "";
 		const simple = simpleCommand(command);

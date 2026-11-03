@@ -1,7 +1,7 @@
-import { accessSync, constants, existsSync, realpathSync } from "fs";
-import { homedir } from "os";
-import { basename, dirname, join, resolve, sep, win32 } from "path";
-import { fileURLToPath } from "url";
+import { accessSync, constants, existsSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve, sep, win32 } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnProcessSync } from "../../../common/src/child-process.ts";
 import { getPackageDir, isBunBinary, isBunRuntime } from "./package-detection.ts";
 

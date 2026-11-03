@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type Db, leases } from "../../agentdb/api.ts";
+import { type Db, leases } from "../../../../../db/src/api.ts";
 import { ancestorKeys, overlappingRequests } from "../lease-key.ts";
 import { type Lease, type LeaseRequest, toLease } from "../model.ts";
 import { LEASE_MS } from "./limits.ts";
@@ -62,7 +62,14 @@ export function refuseOverlap(workspace: string, requests: LeaseRequest[]): void
 }
 
 /** Writes `owner`'s lease for each request (a live one it already holds is renewed with the new reason). */
-export function writeLeases(db: Db, workspace: string, owner: string, requests: LeaseRequest[], now: number): void {
+export function writeLeases(
+	db: Db,
+	workspace: string,
+	workspaceId: string,
+	owner: string,
+	requests: LeaseRequest[],
+	now: number,
+): void {
 	for (const request of requests) {
 		const relative = path.relative(workspace, canonicalIn(workspace, request.path)) || ".";
 		const key = pathKey(workspace, request.path);
@@ -71,7 +78,7 @@ export function writeLeases(db: Db, workspace: string, owner: string, requests: 
 		else
 			leases.insert(
 				db,
-				workspace,
+				workspaceId,
 				owner,
 				{ path: relative, pathKey: key, kind: request.kind, reason: request.reason },
 				now,

@@ -16,6 +16,7 @@ import { tildePath } from "../shared/home.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contentText } from "../shared/util.ts";
+import { SUMMARY_METHOD_DETAILS, summaryMethodOf } from "../shared/summary-method.ts";
 import { archivePointer } from "./archive.ts";
 import {
 	SUMMARIZER_RESULT_CHARS,
@@ -26,6 +27,7 @@ import {
 } from "./checkpoint-text.ts";
 import { RECOVERY_HEADING, splitSummary } from "../../core/compaction/summary-view.ts";
 import { carriedUserMessages, type FallbackContinuity, persistenceFailure } from "./continuity.ts";
+import { keptWordsOf } from "./kept-words.ts";
 import { recordCompactionNote } from "./record.ts";
 import {
 	carriedSavedResults,
@@ -75,7 +77,7 @@ const USER_REFERENCE_CHARS = 1_000;
  * format the request already carries, and what code appends after the summary (the user's messages, file lists, saved
  * results, recovery pointers) is not asked for.
  */
-export const SUMMARY_FOCUS = `This summary becomes the only record of the conversation above: the next model will not see those messages, and what the summary leaves out it will not know to look for. Code appends the user's messages word for word after your summary, so do not quote whole messages; state what they asked for, decided and corrected, and keep each limit, number, path, identifier and prohibition the user set exactly as written. Condense the assistant's own reasoning and narration, but keep what the work found exactly: numbers, sizes, lists, names, states, error strings and conclusions. Detail that can be fetched again (a file, a command's output, a page) needs only a pointer: its path, command or URL. Images do not reach you: where the messages show an image was read, attached or captured, keep its path and what was said about it. Write only what the messages show; never guess.`;
+export const SUMMARY_FOCUS = `This summary becomes the only record of the conversation above: the next model will not see those messages, and what the summary leaves out it will not know to look for. Code appends the user's messages word for word after your summary, with their askUser answers and, for a subagent, its parent's messages, so do not quote whole messages; state what they asked for, decided and corrected, and keep each limit, number, path, identifier and prohibition the user set exactly as written, and every approval or permission the user granted, with its scope. Condense the assistant's own reasoning and narration, but keep what the work found exactly: numbers, sizes, lists, names, states, error strings and conclusions. Detail that can be fetched again (a file, a command's output, a page) needs only a pointer: its path, command or URL. Images do not reach you: where the messages show an image was read, attached or captured, keep its path and what was said about it. Write only what the messages show; never guess.`;
 
 /**
  * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed: the
@@ -151,19 +153,7 @@ function notifyStandalone(ctx: Pick<ExtensionContext, "hasUI" | "ui">, reason: s
 		);
 }
 
-/**
- * The compaction `details` key that names how this summary was written: `{ method: 'cache-shared' }`, or
- * `{ method: 'standalone', reason }` with why the cache-sharing request was not used. Without it the method could
- * only be guessed from the cache numbers of the request.
- */
-export const SUMMARY_METHOD_DETAILS = "summaryMethod";
-
-/** How Octocode wrote the summary of a compaction entry's `details` (`cache-shared`, `standalone`); undefined when it did not (Octocode's default summary, another extension's). */
-export function summaryMethodOf(details: unknown): string | undefined {
-	const method =
-		isRecord(details) && isRecord(details[SUMMARY_METHOD_DETAILS]) ? details[SUMMARY_METHOD_DETAILS].method : undefined;
-	return typeof method === "string" ? method : undefined;
-}
+export { SUMMARY_METHOD_DETAILS, summaryMethodOf };
 
 /** The model's summary of one input, kept so a failure after the paid call does not repeat it. */
 interface PaidSummary {
@@ -205,9 +195,11 @@ function codeSections(
 	previous: { messages: string[]; omitted: number },
 	segment: number,
 	saveText: ((text: string) => string | undefined) | null,
+	parentId: string | undefined,
 ): { saved: string[]; body: string; messages: string; note: string } {
 	const summarized = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages];
-	const added = summarized.flatMap((message) => userText(message) ?? []);
+	// The user's messages, their askUser answers and, in a subagent, its parent's mail, each labeled by source.
+	const added = summarized.flatMap((message) => userText(message) ?? keptWordsOf(message, parentId));
 	const note = transcriptNote(
 		ctx.sessionManager.getSessionFile(),
 		api.getActiveTools().includes("backlog"),
@@ -254,6 +246,8 @@ export async function writeSummary(
 	 * request rewrites the prefix anyway, so the shared request pays that write once and the next request reads it.
 	 */
 	fallback?: FallbackContinuity,
+	/** The agent that started this one, when it is a subagent: its mail to this agent is kept word for word. */
+	parentId?: string,
 ): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
@@ -351,7 +345,16 @@ export async function writeSummary(
 			paid.set(ctx.sessionManager, paidSummary);
 		}
 		const { result, method } = paidSummary;
-		const { saved, body, messages, note } = codeSections(api, event, ctx, result.summary, kept, segment, saveText);
+		const { saved, body, messages, note } = codeSections(
+			api,
+			event,
+			ctx,
+			result.summary,
+			kept,
+			segment,
+			saveText,
+			parentId,
+		);
 		const details = {
 			...asRecord(result.details),
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),
@@ -373,7 +376,7 @@ export async function writeSummary(
 		// that summary as one message (`continuity.ts`). Saving its long texts can fail like Octocode's summary does.
 		if (fallback) {
 			try {
-				const { body, messages, note } = codeSections(api, event, ctx, "", kept, segment, saveText);
+				const { body, messages, note } = codeSections(api, event, ctx, "", kept, segment, saveText, parentId);
 				fallback.hold(event.preparation.firstKeptEntryId, `${body}${messages}${note}`);
 			} catch (sectionsError) {
 				const sectionsFailed = persistenceFailure(api, ctx, sectionsError);

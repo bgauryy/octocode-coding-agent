@@ -1,10 +1,11 @@
+import { runtimeTempDir } from "../../../config/runtime-paths.ts";
 /**
  * Editor key handlers: app keybindings, clipboard and right-click paste, and the external editor.
  */
 
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
+
 import * as path from "node:path";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { readClipboardFilePaths, readClipboardText } from "../../../utils/clipboard.ts";
@@ -86,8 +87,8 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	host.defaultEditor.onCtrlD = () => host.handleCtrlD();
 	host.defaultEditor.onAction("app.suspend", () => host.handleCtrlZ());
 	host.defaultEditor.onAction("app.thinking.cycle", () => host.cycleThinkingLevel());
-	host.defaultEditor.onAction("app.model.cycleForward", () => host.cycleModel("forward"));
-	host.defaultEditor.onAction("app.model.cycleBackward", () => host.cycleModel("backward"));
+	host.defaultEditor.onAction("app.model.cycleForward", () => void host.cycleModel("forward"));
+	host.defaultEditor.onAction("app.model.cycleBackward", () => void host.cycleModel("backward"));
 
 	// Global debug handler on TUI (works regardless of focus)
 	host.ui.onDebug = () => host.handleDebugCommand();
@@ -99,13 +100,13 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 		"app.message.copy",
 		() => void host.handleCopyCommand({ flashConfirmation: true, preferSelection: true }),
 	);
-	host.defaultEditor.onAction("app.message.followUp", () => host.handleFollowUp());
+	host.defaultEditor.onAction("app.message.followUp", () => void host.handleFollowUp());
 	host.defaultEditor.onAction("app.message.dequeue", () => host.handleDequeue());
 	// Up in an empty editor manages queued messages when there are any; otherwise it browses prompt history.
 	host.defaultEditor.onEmptyUp = () =>
 		(host.session.getQueuedInputs().length > 0 || host.compactionQueuedMessages.length > 0) &&
 		host.showQueueManager("last");
-	host.defaultEditor.onAction("app.session.new", () => host.handleClearCommand());
+	host.defaultEditor.onAction("app.session.new", () => void host.handleClearCommand());
 	host.defaultEditor.onAction("app.session.tree", () => host.showTreeSelector());
 	host.defaultEditor.onAction("app.session.fork", () => host.showUserMessageSelector());
 	host.defaultEditor.onAction("app.session.resume", () => host.showSessionSelector());
@@ -161,11 +162,11 @@ export async function handleClipboardPaste(host: InputHandlersHost): Promise<voi
 
 		const image = await readClipboardImage();
 		if (image) {
-			const tmpDir = os.tmpdir();
+			const tmpDir = runtimeTempDir();
 			const ext = extensionForImageMimeType(image.mimeType) ?? "png";
 			const fileName = `octocode-clipboard-${crypto.randomUUID()}.${ext}`;
 			const filePath = path.join(tmpDir, fileName);
-			fs.writeFileSync(filePath, Buffer.from(image.bytes));
+			fs.writeFileSync(filePath, Buffer.from(image.bytes), { mode: 0o600, flag: "wx" });
 
 			host.editor.insertTextAtCursor?.(filePath);
 			host.ui.requestRender();

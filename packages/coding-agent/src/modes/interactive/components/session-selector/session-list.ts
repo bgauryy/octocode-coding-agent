@@ -23,6 +23,7 @@ import { checkoutLabel } from "../../../../core/worktree-path.ts";
 import type { SessionCounts } from "./header.ts";
 import { type GroupMode, groupNodes, listItems, scrollTop, visibleItems } from "./groups.ts";
 import { emptyMessage, renderGroupLabel, renderSearchBox } from "./list-chrome.ts";
+import { DeleteFlow } from "./marks.ts";
 import { renderPreview } from "./preview.ts";
 import { renderSessionRow } from "./row.ts";
 import type { SessionExtras, SessionPickerPorts } from "./types.ts";
@@ -51,7 +52,12 @@ export class SessionList implements Component, Focusable {
 	/** Where the selection stands, for the title: `(3 of 97)`. */
 	public getCounts(): SessionCounts {
 		const shown = this.filteredSessions.length;
-		return { position: shown === 0 ? 0 : this.selectedIndex + 1, shown, total: this.allSessions.length };
+		return {
+			position: shown === 0 ? 0 : this.selectedIndex + 1,
+			shown,
+			total: this.allSessions.length,
+			marked: this.deleteFlow.markedCount,
+		};
 	}
 
 	public setQuery(query: string): void {
@@ -74,7 +80,15 @@ export class SessionList implements Component, Focusable {
 	private nameFilter: NameFilter = "all";
 	private keybindings: KeybindingsManager;
 	private showPath = false;
-	private confirmingDeletePath: string | null = null;
+	private readonly deleteFlow = new DeleteFlow({
+		extras: (session) => this.extras.get(session.id),
+		isCurrent: (session) => this.isCurrentSessionPath(session.path),
+		selected: () => this.getSelectedSession(),
+		moveDown: () => this.move(this.selectedIndex + 1),
+		error: (message) => this.onError?.(message),
+		confirmationChanged: (paths) => this.onDeleteConfirmationChange?.(paths),
+		marksChanged: (count) => this.onMarksChange?.(count),
+	});
 	private currentSessionCanonicalPath?: string;
 	private readonly ports: Pick<SessionPickerPorts, "extras" | "viewportRows">;
 	private extras: ReadonlyMap<string, SessionExtras> = new Map();
@@ -90,9 +104,11 @@ export class SessionList implements Component, Focusable {
 	public onTogglePath?: (showPath: boolean) => void;
 	public onPreviewChange?: (open: boolean) => void;
 	public onOpenActions?: (session: SessionInfo) => void;
-	public onDeleteConfirmationChange?: (path: string | null) => void;
-	public onDeleteSession?: (sessionPath: string) => Promise<void>;
+	/** The transcripts the user is asked to confirm deleting (the marked rows, else the selected one), null when not asking. */
+	public onDeleteConfirmationChange?: (paths: string[] | null) => void;
+	public onDeleteSessions?: (sessionPaths: string[]) => Promise<void>;
 	public onRenameSession?: (sessionPath: string) => void;
+	public onMarksChange?: (count: number) => void;
 	public onError?: (message: string) => void;
 
 	// Focusable implementation - propagate to searchInput for IME cursor positioning
@@ -149,6 +165,7 @@ export class SessionList implements Component, Focusable {
 		this.allSessions = sessions;
 		this.showCwd = showCwd;
 		this.byPath = new Map(sessions.map((session) => [canonicalizePath(session.path), session]));
+		this.deleteFlow.keepOnly(new Set(sessions.map((session) => session.path)));
 		this.extras = this.ports.extras?.(sessions.map((session) => session.id)) ?? new Map();
 		this.filterSessions(this.searchInput.getValue());
 		if (!this.selectionTouched) {
@@ -180,28 +197,6 @@ export class SessionList implements Component, Focusable {
 		this.groupLabels = grouped.labels;
 		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredSessions.length - 1));
 		this.top = 0;
-	}
-
-	private setConfirmingDeletePath(path: string | null): void {
-		this.confirmingDeletePath = path;
-		this.onDeleteConfirmationChange?.(path);
-	}
-
-	private startDeleteConfirmationForSelectedSession(): void {
-		const selected = this.filteredSessions[this.selectedIndex];
-		if (!selected) return;
-
-		// Prevent deleting current session
-		if (this.isCurrentSessionPath(selected.session.path)) {
-			this.onError?.("Cannot delete the currently active session");
-			return;
-		}
-		if (!selected.session.path) {
-			this.onError?.("This session has no file yet");
-			return;
-		}
-
-		this.setConfirmingDeletePath(selected.session.path);
 	}
 
 	private checkoutLabel(folder: string): string | undefined {
@@ -260,7 +255,8 @@ export class SessionList implements Component, Focusable {
 					width,
 					selected: item.row === this.selectedIndex,
 					current: this.isCurrentSessionPath(session.path),
-					confirmingDelete: session.path === this.confirmingDeletePath,
+					confirmingDelete: this.deleteFlow.isConfirming(session.path),
+					marked: this.deleteFlow.isMarked(session.path),
 					showPath: this.showPath,
 					...(this.showCwd && this.groupMode === "none" && session.cwd
 						? { folder: folderColumn(session.cwd, this.checkoutLabel(session.cwd), 40) }
@@ -287,18 +283,12 @@ export class SessionList implements Component, Focusable {
 		const kb = getKeybindings();
 
 		// Handle delete confirmation state first - intercept all keys
-		if (this.confirmingDeletePath !== null) {
-			if (kb.matches(keyData, "tui.select.confirm")) {
-				const pathToDelete = this.confirmingDeletePath;
-				this.setConfirmingDeletePath(null);
-				void this.onDeleteSession?.(pathToDelete);
-				return;
-			}
-			if (kb.matches(keyData, "tui.select.cancel")) {
-				this.setConfirmingDeletePath(null);
-				return;
-			}
-			// Ignore all other keys while confirming
+		if (this.deleteFlow.confirming) {
+			const confirmed = kb.matches(keyData, "tui.select.confirm");
+			// Any key but Enter and Esc is ignored while asking.
+			if (!confirmed && !kb.matches(keyData, "tui.select.cancel")) return;
+			const paths = this.deleteFlow.answer(confirmed);
+			if (paths.length > 0) void this.onDeleteSessions?.(paths);
 			return;
 		}
 
@@ -326,7 +316,13 @@ export class SessionList implements Component, Focusable {
 
 		// Ctrl+D: initiate delete confirmation (useful on terminals that don't distinguish Ctrl+Backspace from Backspace)
 		if (kb.matches(keyData, "app.session.delete")) {
-			this.startDeleteConfirmationForSelectedSession();
+			this.deleteFlow.ask();
+			return;
+		}
+
+		// Ctrl+X: mark the selected row for deletion
+		if (kb.matches(keyData, "app.session.mark")) {
+			this.deleteFlow.toggleMark();
 			return;
 		}
 
@@ -355,7 +351,7 @@ export class SessionList implements Component, Focusable {
 				return;
 			}
 
-			this.startDeleteConfirmationForSelectedSession();
+			this.deleteFlow.ask();
 			return;
 		}
 
@@ -366,6 +362,11 @@ export class SessionList implements Component, Focusable {
 		}
 		if (this.previewOpen && kb.matches(keyData, "tui.select.cancel")) {
 			this.setPreviewOpen(false);
+			return;
+		}
+
+		if (this.deleteFlow.markedCount > 0 && kb.matches(keyData, "tui.select.cancel")) {
+			this.deleteFlow.clearMarks();
 			return;
 		}
 

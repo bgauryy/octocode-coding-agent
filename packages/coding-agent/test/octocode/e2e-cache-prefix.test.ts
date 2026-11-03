@@ -1,10 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
+import {
+	fauxAssistantMessage,
+	getCurrentSystemMessage,
+	getCurrentTools,
+	type TranscriptContext,
+} from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { nativeCall } from "./e2e-calls.ts";
 import { disposeSessions, headless, restoreEnv, say } from "./e2e-headless.ts";
 import { tmp } from "./helpers.ts";
+import {
+	baseEnv,
+	captureChild,
+	fixture,
+	scriptedSession,
+	withEnv,
+	type AgentContext,
+	type Fixture,
+} from "./agent-context/capture.ts";
+import { instructionBlocks, toolsText } from "./agent-context/fingerprint.ts";
 
 /**
  * Provider caching reads the request from the start: whatever one request carries must open the next one unchanged. The
@@ -155,4 +170,150 @@ describe("a /reload between prompts", () => {
 		expect(extendsPrefix(s.contexts[0], s.contexts[1])).toBe(true);
 		expect(appended(s.contexts[0], s.contexts[1]).sections).toEqual([]);
 	});
+});
+
+/**
+ * The cached prefix is the tool array plus the base and session instruction blocks. A new process of the same
+ * configuration must send the same bytes, whatever its clock, process id or the order in which its MCP servers connect
+ * (RFC_CONTEXT_EFFICIENCY.md, section a, item 3). The one allowed difference is the volatile `environment` section,
+ * which carries the date and sits last in the session block.
+ */
+describe("the prefix of one configuration does not depend on the process", () => {
+	const WRAPPER = (delay: number) =>
+		`await new Promise((resolve) => setTimeout(resolve, ${delay}));\nawait import(${JSON.stringify(path.join(import.meta.dirname, "fixtures", "docs-mcp.mjs"))});\n`;
+
+	async function render(
+		fx: Fixture,
+		run: {
+			now: string;
+			pid: number;
+			order: ["docs-a" | "docs-b", "docs-a" | "docs-b"];
+			delays: Record<string, number>;
+		},
+	): Promise<AgentContext> {
+		const servers = Object.fromEntries(
+			run.order.map((name) => {
+				const file = path.join(fx.root, `${name}-${run.delays[name]}.mjs`);
+				fs.writeFileSync(file, WRAPPER(run.delays[name]));
+				return [name, { command: process.execPath, args: [file], exposure: "direct", description: name }];
+			}),
+		);
+		fs.writeFileSync(
+			path.join(fx.agentDir, "mcp.json"),
+			JSON.stringify({ mcpServers: { octocode: { command: "false", enabled: false }, ...servers } }),
+		);
+		const pid = Object.getOwnPropertyDescriptor(process, "pid")!;
+		vi.useFakeTimers({ toFake: ["Date"], now: new Date(run.now) });
+		Object.defineProperty(process, "pid", { value: run.pid, configurable: true });
+		try {
+			return await withEnv(baseEnv(fx), async () => {
+				const { session, faux } = await scriptedSession(fx, {});
+				try {
+					let captured: TranscriptContext | undefined;
+					faux.setResponses([
+						(context: TranscriptContext) => {
+							captured ??= context;
+							return fauxAssistantMessage("ready");
+						},
+					]);
+					await session.prompt("hello");
+					if (!captured) throw new Error("The scripted model received no request");
+					const system = getCurrentSystemMessage(captured.messages);
+					const sections = Object.entries(system?.sections ?? {}).map(([name, text]) => ({ name, text: String(text) }));
+					return {
+						name: "main",
+						kind: "main",
+						sections,
+						tools: getCurrentTools(captured.messages).map((tool) => ({
+							name: tool.name,
+							description: tool.description ?? "",
+							parameters: tool.parameters ?? null,
+						})),
+						messages: [],
+					};
+				} finally {
+					session.dispose?.();
+				}
+			});
+		} finally {
+			Object.defineProperty(process, "pid", pid);
+			vi.useRealTimers();
+		}
+	}
+
+	it("sends identical tools, base block and session block for another clock, pid and MCP connection order", async () => {
+		const fx = fixture();
+		try {
+			const first = await render(fx, {
+				now: "2026-11-01T12:00:00Z",
+				pid: 1111,
+				order: ["docs-a", "docs-b"],
+				delays: { "docs-a": 0, "docs-b": 700 },
+			});
+			const second = await render(fx, {
+				now: "2026-11-01T13:30:00Z",
+				pid: 2222,
+				order: ["docs-b", "docs-a"],
+				delays: { "docs-a": 700, "docs-b": 0 },
+			});
+			// Not vacuous: both servers are in the prefix, and the two renders are real prompts.
+			expect(first.tools.map((tool) => tool.name)).toEqual(
+				expect.arrayContaining(["mcp__docs_a__lookup", "mcp__docs_b__lookup"]),
+			);
+			expect(instructionBlocks(first).session).toBeTruthy();
+			expect(toolsText(second)).toBe(toolsText(first));
+			expect(instructionBlocks(second)).toEqual(instructionBlocks(first));
+		} finally {
+			fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+
+	it("changes only the environment section when the date changes", async () => {
+		const fx = fixture();
+		try {
+			const config = {
+				pid: 1,
+				order: ["docs-a", "docs-b"] as ["docs-a", "docs-b"],
+				delays: { "docs-a": 0, "docs-b": 0 },
+			};
+			const today = await render(fx, { ...config, now: "2026-11-01T12:00:00Z" });
+			const later = await render(fx, { ...config, now: "2026-11-04T12:00:00Z" });
+			expect(toolsText(later)).toBe(toolsText(today));
+			expect(instructionBlocks(later).base).toBe(instructionBlocks(today).base);
+			const without = (context: AgentContext) => context.sections.filter((section) => section.name !== "environment");
+			expect(without(later)).toEqual(without(today));
+			expect(later.sections.find((section) => section.name === "environment")?.text).not.toBe(
+				today.sections.find((section) => section.name === "environment")?.text,
+			);
+		} finally {
+			fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+});
+
+/**
+ * Siblings of one profile must share their cached prefix: the task, goal and identity ride in the first user message,
+ * so the system prompt and the tool array may not depend on them. RFC item U3 moves the fixed report and run-mode
+ * rules out of the task and into the system prompt; until it lands the prefix is still task-independent, and these
+ * cases hold it so.
+ */
+describe("two children of one profile with different tasks", () => {
+	const tasks = [
+		{ task: "Find where the retry policy is configured.", goal: "Name the file and line." },
+		{ task: "Review the diff of the session manager for races, then list findings by severity.", goal: "A verdict." },
+	];
+	it.each([undefined, "researcher", "implementer"])(
+		"profile %s sends the same system prompt and tool array",
+		async (role) => {
+			const [a, b] = [
+				await captureChild(role ?? "general", role, tasks[0]),
+				await captureChild(role ?? "general", role, tasks[1]),
+			];
+			// Not vacuous: the tasks do differ in what each child reads first.
+			expect(a.messages.map((message) => message.text)).not.toEqual(b.messages.map((message) => message.text));
+			expect(toolsText(b)).toBe(toolsText(a));
+			expect(b.sections).toEqual(a.sections);
+			expect(instructionBlocks(b)).toEqual(instructionBlocks(a));
+		},
+	);
 });

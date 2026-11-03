@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { normalizePath } from "../../../../../common/src/paths.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { QuietStartup } from "../../settings-schema.ts";
@@ -71,6 +71,10 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 		return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
 			? seconds
 			: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds;
+	}
+
+	getExternalAgents(): boolean {
+		return this.settings.externalAgents === true;
 	}
 
 	getBashOutputMaxBytes(): number {

@@ -1,5 +1,5 @@
 import type { EntityInput } from "@octocodeai/octocode-contracts/backlogs";
-import { type Db, backlog, tasks } from "../agentdb/api.ts";
+import { type Db, backlog, tasks } from "../../../../db/src/api.ts";
 import { type Item, BacklogError } from "./item.ts";
 import { getItem } from "./reads.ts";
 

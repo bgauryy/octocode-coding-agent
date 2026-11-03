@@ -180,7 +180,7 @@ export function createMemoryActions(
 							global || pinned,
 							current ? "Change this shared memory?" : "Save this shared memory?",
 							[
-								`${current ? `${memoryLabel(current.id)} ` : ""}(${global ? "global" : (params.scope ?? current?.scope ?? (store.workspace ? "workspace" : "project"))}${pinned ? ", pinned" : ""}) ${params.title ?? current?.title ?? ""}`,
+								`${current ? `${memoryLabel(current.id)} ` : ""}(${global ? "global" : (params.scope ?? current?.scope ?? (store.workspaceId ? "workspace" : "project"))}${pinned ? ", pinned" : ""}) ${params.title ?? current?.title ?? ""}`,
 								...(body ? [body] : []),
 							],
 							`${current ? "changes" : "saves"} a memory every later session receives`,
@@ -210,6 +210,7 @@ export function createMemoryActions(
 						);
 					}
 				}
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- `params.op` is `never` here by exhaustiveness, but is model input at runtime
 				throw new Error(`Unknown op ${String(params.op)}.`);
 			},
 		},

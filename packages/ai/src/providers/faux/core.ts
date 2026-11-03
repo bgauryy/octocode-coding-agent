@@ -100,7 +100,7 @@ export function createFauxCore(options: RegisterFauxProviderOptions) {
 		const step = pendingResponses.shift();
 		state.callCount++;
 
-		queueMicrotask(async () => {
+		void Promise.resolve().then(async () => {
 			try {
 				await streamOptions?.onResponse?.({ status: 200, headers: {} }, requestModel);
 				if (!step) {
@@ -162,7 +162,7 @@ export function createFauxCore(options: RegisterFauxProviderOptions) {
 		const outer = createAssistantMessageEventStream();
 		state.deferredFetchCount++;
 
-		queueMicrotask(async () => {
+		void Promise.resolve().then(async () => {
 			try {
 				await fetchOptions?.onResponse?.({ status: 200, headers: {} }, requestModel);
 				const entry = deferredResponses.get(handle.id);

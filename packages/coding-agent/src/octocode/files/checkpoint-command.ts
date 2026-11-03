@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { sessionDir } from "../shared/home.ts";
+import { sessionFolder } from "../shared/home.ts";
 import { withDialog } from "../shared/locks.ts";
 import { plural } from "../shared/render/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -18,7 +18,7 @@ const CHANGED_LABEL_MARK = "✎";
 const CHANGED_LABEL = /^✎ \d+ files?$/;
 
 /** A session's checkpoint folder: `<session folder>/checkpoints` (not created). */
-const checkpointDir = (id: string): string => path.join(sessionDir(id), "checkpoints");
+const checkpointDir = (id: string): string => sessionFolder("checkpoints", id);
 
 /** The parent session file of a fork: the fork event's, else the session header's (`octocode --fork <file>` starts as 'startup'). */
 function parentSessionFile(

@@ -40,9 +40,6 @@ export function isolatedTreeRefusal(
 	const main = isolatedMainTree(cwd, env);
 	if (!main) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
-	// Adapter-specific launch payloads and inspection may execute against arbitrary paths.
-	if (event.toolName === "debug" && input.action !== "terminate")
-		return refusal("Debugging (adapter paths and effects cannot be confined to this worktree)", main);
 	const scratch = env[AGENT_SCRATCH_ENV];
 	const intoMain = (file: string, fromShell = false): boolean => {
 		const target = canonicalPath(fromShell ? shellPath(cwd, file) : resolveToolPath(cwd, file));

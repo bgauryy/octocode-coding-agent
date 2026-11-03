@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { parseRef } from "./item.ts";
+import type { CompletionArgument } from "./completion-key.ts";
 
 /** A link as the model may write it: `target` is a reference object or a shorthand string (`tool.ts` `linkInput`). */
 export interface LinkArgument {
@@ -29,9 +30,9 @@ const LinkField = Type.Unsafe<LinkArgument[]>({
 });
 
 const completion = Type.Optional(
-	Type.Unsafe<NonNullable<EntityInput["completion"]>>({
+	Type.Unsafe<CompletionArgument>({
 		type: "object",
-		required: ["summary", "files", "verification", "operationKey"],
+		required: ["summary", "files", "verification"],
 		properties: {
 			summary: { type: "string" },
 			files: { type: "array" },
@@ -39,7 +40,7 @@ const completion = Type.Optional(
 			operationKey: { type: "string" },
 		},
 		description:
-			"update with state done: the result. files: [{path, role: changed|reviewed|produced}]; verification: {status: passed|failed|not_run|not_applicable, summary}; operationKey: unique per completion; optional lesson (what to reuse) and replaces (a done item's completion to correct).",
+			"update with state done: the result. files: [{path, role: changed|reviewed|produced}]; verification: {status: passed|failed|not_run|not_applicable, summary}; optional operationKey (retry key); optional lesson (what to reuse) and replaces (a done item's completion to correct).",
 	}),
 );
 

@@ -1,7 +1,8 @@
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
-import { git as runGit, GitError } from "../shared/git.ts";
+import { WORKSPACE_STATE } from "../../config/workspace.ts";
+import { EXCLUDE_WORKSPACE_STATE, git as runGit, GitError } from "../shared/git.ts";
 
 const MAX_OUTPUT = 128_000;
 export interface RepositoryDiff {
@@ -22,7 +23,7 @@ async function git(
 	try {
 		const text = await runGit(
 			cwd,
-			["--no-pager", "--literal-pathspecs", "-c", "core.fsmonitor=false", ...(options?.configuration ?? []), ...args],
+			["--no-pager", "-c", "core.fsmonitor=false", ...(options?.configuration ?? []), ...args],
 			{
 				signal,
 				timeoutMs: 15_000,
@@ -33,7 +34,7 @@ async function git(
 		);
 		return { text: text.slice(0, MAX_OUTPUT), truncated: false };
 	} catch (error) {
-		if (signal?.aborted) throw new Error("Diff cancelled.");
+		if (signal?.aborted) throw new Error("Diff cancelled.", { cause: error });
 		if (error instanceof GitError) {
 			if (error.exitCode === 1 && options?.allowMissing) return { text: "", truncated: false };
 			if (error.overflow) return { text: error.stdout.slice(0, MAX_OUTPUT), truncated: true };
@@ -68,8 +69,14 @@ async function selectedPath(root: string, cwd: string, selection: string): Promi
 	let existing = absolute;
 	for (;;) {
 		try {
-			if (!within(root, await realpath(existing)))
-				throw new Error("The selected path resolves outside the repository.");
+			const real = await realpath(existing);
+			if (
+				`${path.sep}${path.relative(root, real).toLowerCase()}${path.sep}`.includes(
+					`${path.sep}${WORKSPACE_STATE}${path.sep}`,
+				)
+			)
+				throw new Error("Repository diff excludes private workspace state.");
+			if (!within(root, real)) throw new Error("The selected path resolves outside the repository.");
 			break;
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -94,7 +101,8 @@ export async function readRepositoryDiff(
 		throw new Error("Repository diff is unavailable outside a Git working tree.");
 	}
 	const workingDirectory = await realpath(cwd);
-	const paths = selection ? [await selectedPath(root, workingDirectory, selection)] : [];
+	const selected = selection ? await selectedPath(root, workingDirectory, selection) : undefined;
+	const paths = selected ? [`:(literal)${selected}`, EXCLUDE_WORKSPACE_STATE] : [EXCLUDE_WORKSPACE_STATE];
 	const configuration = await disabledFilters(root, signal);
 	const flags = [
 		"--no-ext-diff",
@@ -114,7 +122,7 @@ export async function readRepositoryDiff(
 	names.pop(); // An incomplete final filename from truncated output is never selectable.
 	return {
 		root,
-		selectedUntracked: paths.length === 1 && names.includes(paths[0]) ? paths[0] : undefined,
+		selectedUntracked: selected && names.includes(selected) ? selected : undefined,
 		staged: staged.text,
 		unstaged: unstaged.text,
 		untracked: names,

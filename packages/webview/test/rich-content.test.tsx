@@ -66,7 +66,7 @@ beforeEach(() => {
 	);
 	vi.stubGlobal(
 		"fetch",
-		vi.fn(async (url: string, init: RequestInit = {}) => {
+		vi.fn(async (url: string | URL, init: RequestInit = {}) => {
 			requests.push({ url: String(url), init });
 			const reply = replies.shift() ?? { asset, encoding: "base64", data: "eA==" };
 			const body = typeof reply === "function" ? await reply(init) : reply;

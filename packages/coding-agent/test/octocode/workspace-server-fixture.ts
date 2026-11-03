@@ -1,3 +1,4 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
@@ -9,8 +10,7 @@ import { vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import type { AgentSession, AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { ApplicationService } from "../../src/core/application/index.ts";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -49,7 +49,7 @@ export class MemorySocket extends EventEmitter {
 export async function workspaceServerFixture() {
 	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-handler-"));
 	const db = openAgentDb(path.join(directory, "db"));
-	const store = new BacklogStore(() => db, "repo");
+	const store = fixtureBacklog(() => db, "repo");
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: directory });
 	const listeners = new Set<(event: AgentSessionEvent) => void>();

@@ -11,7 +11,7 @@ const CONFINED = "node --permission --no-experimental-sqlite --allow-fs-read=*";
 
 /** The confined form with the words `export` and `alias` where they are only data: Node's code, a path or an argument. */
 const DATA_WORDS = [
-	`${CONFINED} -e 'console.log(require("fs").readdirSync(".octocode/tmp/agents/x/export"))'`,
+	`${CONFINED} -e 'console.log(require("fs").readdirSync(".octa/code/temp/agents/x/export"))'`,
 	`${CONFINED} -e "export const alias = 1"`,
 	`${CONFINED} -e 'x' .octocode/export/alias.json`,
 	`${CONFINED} -e 'x' > out/export.txt`,
@@ -63,7 +63,7 @@ describe("the confined node form and the words export and alias", () => {
 		[`${CONFINED} -e 'x' --allow-fs-write=*`, "`--allow-fs-write`"],
 		[`${CONFINED} -e 'x' --other`, "`--other` after the code"],
 		[`${CONFINED} -e "$(date)"`, "`$` outside single quotes"],
-		[`${CONFINED} -e 'x' ${"`ls`"}`, "outside single quotes"],
+		[`${CONFINED} -e 'x' \`ls\``, "outside single quotes"],
 		[`FOO=1 ${CONFINED} -e 'x'`, "`FOO=1` before node"],
 		["./node --permission -e 'x'", "`./node` is not plain"],
 		[`${CONFINED} -r ./p.js -e 'x'`, "`-r` between node and its code"],
@@ -101,7 +101,7 @@ describe("the reservation gate's refusal of inline code", () => {
 		stops.push(() => fake.emit("session_shutdown", {}, ctx));
 		const lock = (paths: string[]) =>
 			fake.tools.get("coordinate").execute("c", { action: "lock", paths, reason: "auth" }, undefined, undefined, ctx);
-		const gate = (command: string) => reservationGate({ toolName: "bash", input: { command } } as never, ctx);
+		const gate = (command: string, input = { command }) => reservationGate({ toolName: "bash", input } as never, ctx);
 		return { lock, gate };
 	}
 
@@ -114,9 +114,13 @@ describe("the reservation gate's refusal of inline code", () => {
 		for (const command of DATA_WORDS) expect(await peer.gate(command), command).toBeUndefined();
 		const refused = await peer.gate(`export NODE_OPTIONS=--allow-fs-write=*; ${CONFINED} -e 'x'`);
 		expect(refused).toMatchObject({ block: true });
-		expect(refused?.reason).toContain("Why this line is not the read-only form: `NODE_OPTIONS`");
-		const bare = await peer.gate(`node -e 'x'`);
-		expect(bare?.reason).toContain("needs both `--permission`");
-		expect(bare?.reason).toContain("reserved by");
+		expect(refused?.reason).toContain("(`NODE_OPTIONS` appears in the line");
+		// A bare node only lacks the flags: the gate adds them rather than refusing with that cause.
+		const bare = { command: `node -e 'x'` };
+		expect(await peer.gate(bare.command, bare)).toBeUndefined();
+		expect(bare.command).toBe(`${CONFINED} -e 'x'`);
+		const lifted = await peer.gate(`export X=1; node -e 'x'`);
+		expect(lifted?.reason).toContain("`export` appears in the line");
+		expect(lifted?.reason).toContain("reserved by");
 	});
 });

@@ -12,7 +12,7 @@ export type HostLookup = (hostname: string) => Promise<Array<{ address: string }
 
 /** Resolves through the system resolver, loaded on first use so importing the guard costs no resolver setup. */
 export const defaultLookup: HostLookup = async (hostname) =>
-	(await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true });
+	(await import("node:dns/promises")).lookup(hostname, { all: true, order: "verbatim" });
 
 /** Non-public IPv4 ranges: this network, private, CGNAT, loopback, link-local (cloud metadata), protocol/test/benchmark, multicast, reserved. */
 const V4_BLOCKS: ReadonlyArray<readonly [string, number]> = [

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../instructions/report.ts";
@@ -12,7 +13,14 @@ import type { Team } from "../team/session.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
-import { type ModelRoute, routedModel, routeModel, subagentThinking, supportedThinking } from "./model.ts";
+import {
+	type ModelRoute,
+	routedModel,
+	routeModel,
+	SUBAGENT_DEFAULT_TIER,
+	subagentThinking,
+	supportedThinking,
+} from "./model.ts";
 import { providerHealth } from "./provider-health.ts";
 import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
@@ -136,6 +144,7 @@ interface AgentParams {
 	goal: string;
 	/** The name of the child a continued run is (`resume`): it keeps it, and with it its saved conversation. */
 	name?: string;
+	sessionId?: string;
 	profile?: string;
 	model?: string;
 	headless?: boolean;
@@ -208,11 +217,12 @@ export function planRun(
 			throw new Error("headless requires a browser-enabled profile; use profile: browser.");
 		profile = { ...profile, headless: params.headless };
 	}
-	// An explicit model is strict; a profile's is a preference that falls back to this session's model.
+	// An explicit model is strict; a profile's is a preference that falls back to this session's model; a task with
+	// neither a model nor a profile takes the default purpose.
 	const available = childAvailable(ctx.modelRegistry, params.model);
 	const routed = routeModel({
 		explicit: params.model,
-		preferred: profile?.model,
+		preferred: profile ? profile.model : SUBAGENT_DEFAULT_TIER,
 		available,
 		parent: ctx.model,
 		catalog: currentCatalog(),
@@ -221,28 +231,33 @@ export function planRun(
 	});
 	if ("error" in routed) throw new Error(routed.error);
 	const route = routed.model ? { ...routed, model: supportedThinking(routed.model, available) } : routed;
-	// No model argument, or a preference that fell back, runs the child on this session's model.
+	// A preference that fell back, or a default purpose with no candidate, runs the child on this session's model.
 	const routedProvider = route.model ? route.model.slice(0, route.model.indexOf("/")) : ctx.model?.provider;
 	if (routedProvider && sessionOnlyProvider(ctx.modelRegistry, routedProvider)) throw sessionOnlyError(routedProvider);
+	const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+	// The default purpose names its route only when it chose a model other than this session's.
+	const onParent = !route.model || route.model === parent || route.model.startsWith(`${parent}:`);
+	const defaulted = !params.model && !profile && !onParent;
 	const via = params.model
 		? `model argument: ${params.model}`
 		: profile?.model && !route.fallback
 			? `profile ${profile.name}: ${profile.model}`
-			: undefined;
-	const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+			: defaulted
+				? `default: ${SUBAGENT_DEFAULT_TIER}`
+				: undefined;
 	return { profile, route: { ...route, ...(via ? { via } : {}), ...(parent ? { parent } : {}) } };
 }
 
 /**
  * Names the run and claims it, in the slot the caller already took (`runs.slots`); `release` gives the slot back.
  * `avoid`: names to skip besides the team's, those of existing scratch folders and those of existing session folders
- * (a child's session id is its name, and its archive is global and outlives scratch), e.g. existing refs of isolated runs. A
+ *, e.g. existing refs of isolated runs. A
  * resumed run keeps its own name, and with it its saved conversation; a new one never gets a name with a saved one.
  */
 export function claimRun(
 	runs: AgentRuns,
 	plan: RunPlan,
-	params: Pick<AgentParams, "goal" | "collaborate" | "name">,
+	params: Pick<AgentParams, "goal" | "collaborate" | "name" | "sessionId">,
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
@@ -265,6 +280,7 @@ export function claimRun(
 			params.name ??
 			runs.team.newName([...runs.running.keys(), ...scratchNames(cwd), ...sessionFolderNames(), ...avoid]),
 		role: profile?.name ?? GENERAL_PROFILE,
+		sessionId: params.sessionId ?? randomUUID(),
 		goal: params.goal,
 		parentSession: ctx.sessionManager.getSessionId(),
 		parentTranscript: ctx.sessionManager.getSessionFile(),

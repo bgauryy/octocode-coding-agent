@@ -1,6 +1,6 @@
-import { readdirSync, statSync } from "fs";
-import { homedir } from "os";
-import { basename, dirname, join } from "path";
+import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { hasControlCharacter } from "../utils/chars.ts";
 import { buildCompletionValue, parsePathPrefix, toDisplayPath } from "./path-prefix.ts";
 import type { AutocompleteItem } from "./types.ts";

@@ -1,8 +1,9 @@
+import { runtimeTempDir } from "../config/runtime-paths.ts";
 import { getNativeClipboard } from "@octocodeai/octocode-tui";
-import { randomUUID } from "crypto";
-import { readFileSync, unlinkSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { randomUUID } from "node:crypto";
+import { readFileSync, unlinkSync } from "node:fs";
+
+import { join } from "node:path";
 
 import { runClipboardCommand } from "./clipboard-command.ts";
 import { detectSupportedImageMimeType } from "@octocodeai/octocode-ai/utils/mime";
@@ -117,7 +118,7 @@ async function readClipboardImageViaWlPaste(): Promise<ClipboardImage | null | u
  * directly, so we use it as a fallback.
  */
 async function readClipboardImageViaPowerShell(): Promise<ClipboardImage | null> {
-	const tmpFile = join(tmpdir(), `octocode-wsl-clip-${randomUUID()}.png`);
+	const tmpFile = join(runtimeTempDir(), `octocode-wsl-clip-${randomUUID()}.png`);
 
 	try {
 		const winPathResult = await runClipboardCommand("wslpath", ["-w", tmpFile], {

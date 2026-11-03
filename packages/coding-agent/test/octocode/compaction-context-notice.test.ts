@@ -63,3 +63,24 @@ describe("context usage notice", () => {
 		expect(sent).toEqual([]);
 	});
 });
+
+describe("compact hint", () => {
+	it("is in the first notice, at half, so it names the tool the `compact` description says to use then", () => {
+		const sent: Array<{ content: string }> = [];
+		const api = { sendMessage: (message: { content: string }) => sent.push(message) };
+		const ctx = { model, getContextUsage: () => ({ tokens: 100_000, contextWindow: 200_000, percent: 50 }) };
+		noticeContextUsage(api as never, ctx as never, [], undefined, true);
+		expect(sent).toHaveLength(1);
+		expect(sent[0].content).toMatch(/\(5\d%\).*At a task boundary, `compact` can summarize sooner\.$/);
+		// Without the tool the notice does not offer it.
+		const bare: Array<{ content: string }> = [];
+		noticeContextUsage(
+			{ sendMessage: (message: { content: string }) => bare.push(message) } as never,
+			ctx as never,
+			[],
+			undefined,
+			false,
+		);
+		expect(bare[0].content).not.toContain("`compact`");
+	});
+});

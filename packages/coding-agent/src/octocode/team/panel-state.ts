@@ -13,30 +13,28 @@ export function shownWorking(member: Member, now: number): boolean {
 	);
 }
 
-/** One panel row's agent: its depth under this session, and when it left the team (`✓ done`) if it did. */
+/** One panel row's agent: its depth under this session, and when it left the team if it did. */
 export interface PanelEntry {
 	member: Member;
 	depth: number;
 	doneAt?: number;
 }
 
-/** What a panel row says about an agent: the design state (mark and colour), its word, and when it finished. */
+/** What a panel row says about an agent: the design state (mark and colour) and its word. */
 export interface PanelState {
 	state: UiState;
-	label: "working" | "idle" | "done";
-	/** When a done agent left the team: its mark glows briefly after this. */
-	since?: number;
+	label: "working" | "idle" | "left";
 }
 
-/** The one place the panel decides an agent's state: working is running, idle is pending, a departed agent is done. */
+/** Departure has no outcome evidence: a stopped or failed agent can leave too, so keep its mark neutral. */
 export function panelState({ member, doneAt }: PanelEntry, now: number): PanelState {
-	if (doneAt !== undefined) return { state: "done", label: "done", since: doneAt };
+	if (doneAt !== undefined) return { state: "pending", label: "left" };
 	return shownWorking(member, now) ? { state: "running", label: "working" } : { state: "pending", label: "idle" };
 }
 
 /** The colour role of `state`'s word and of its mark. */
 export const panelColor = (state: PanelState) => STATE_COLOR[state.state];
 
-/** The mark in front of an agent's row, painted for `now` (a spinner frame while it works, a glow just after it finished). */
+/** The mark in front of an agent's row, painted for `now` (a spinner frame while it works). */
 export const panelMark = (theme: Theme, state: PanelState, now: number): string =>
-	stateMark(theme, state.state, { now, ...(state.since === undefined ? {} : { since: state.since }) });
+	stateMark(theme, state.state, { now });

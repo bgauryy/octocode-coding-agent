@@ -33,7 +33,7 @@ export function widgetLines(
 	traffic: Traffic[] = [],
 	/** Terminal height: when the full layout would take more than `panelBudget(rows)` rows, agents collapse to one row each. */
 	rows?: number,
-	/** Agents that left the team less than `FINISHED_MS` ago: shown as `✓ done` rows, last. */
+	/** Agents that left the team less than `FINISHED_MS` ago: shown as neutral `left` rows, last. */
 	finished: Finished[] = [],
 ): string[] {
 	const { others, tree, doneAt } = roster(members, selfId, now, finished);
@@ -50,7 +50,7 @@ export function widgetLines(
 	const summary = [
 		...(busy ? [`${busy} working`] : []),
 		...(idle ? [`${idle} idle`] : []),
-		...(over ? [`${over} done`] : []),
+		...(over ? [`${over} left`] : []),
 		...(tokens ? [`${formatTokens(tokens)} tok`] : []),
 		...(cost ? [cost] : []),
 	].join(SEPARATOR);

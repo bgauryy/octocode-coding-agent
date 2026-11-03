@@ -32,7 +32,7 @@ async function getRequiredRequestAuth(
 	} catch (error) {
 		const cause = error instanceof Error ? error.cause : undefined;
 		if (cause instanceof Error && cause.message === "authHeader requires a resolved API key") {
-			throw new Error(formatNoApiKeyFoundMessage(model.provider));
+			throw new Error(formatNoApiKeyFoundMessage(model.provider), { cause: error });
 		}
 		throw error;
 	}

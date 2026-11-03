@@ -222,7 +222,7 @@ export class ApiClient {
 				finished = true;
 				options.signal?.removeEventListener("abort", abort);
 				socket.destroy();
-				if (error) reject(error);
+				if (error) reject(error instanceof Error ? error : new Error("API event stream failed", { cause: error }));
 				else resolve();
 			};
 			socket.setEncoding("utf8");

@@ -15,6 +15,7 @@ export interface SessionState {
 	/** Byte size of the session file after this state's last load or write; undefined until the file is known. */
 	fileSize: number | undefined;
 	persistenceFailure: Error | undefined;
+	mirrorProblem?: string;
 	fileEntries: FileEntry[];
 	readonly byId: Map<string, SessionEntry>;
 	readonly labelsById: Map<string, string>;

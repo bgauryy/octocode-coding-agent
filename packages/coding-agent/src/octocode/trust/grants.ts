@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type FolderDecision, type FolderGrantRow, trust } from "../agentdb/api.ts";
+import { type FolderDecision, type FolderGrantRow, trust } from "../../../../db/src/api.ts";
 import { FolderGrantRefusedError } from "./errors.ts";
 import {
 	currentUser,

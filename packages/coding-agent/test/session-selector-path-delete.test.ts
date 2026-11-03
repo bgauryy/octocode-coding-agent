@@ -120,8 +120,8 @@ describe("session selector path/delete interactions", () => {
 		await flushPromises();
 
 		const list = selector.getSessionList();
-		const confirmationChanges: Array<string | null> = [];
-		list.onDeleteConfirmationChange = (path) => confirmationChanges.push(path);
+		const confirmationChanges: Array<string[] | null> = [];
+		list.onDeleteConfirmationChange = (paths) => confirmationChanges.push(paths);
 
 		list.handleInput("a");
 		list.handleInput(CTRL_BACKSPACE);
@@ -144,13 +144,13 @@ describe("session selector path/delete interactions", () => {
 		await flushPromises();
 
 		const list = selector.getSessionList();
-		const confirmationChanges: Array<string | null> = [];
-		list.onDeleteConfirmationChange = (path) => confirmationChanges.push(path);
+		const confirmationChanges: Array<string[] | null> = [];
+		list.onDeleteConfirmationChange = (paths) => confirmationChanges.push(paths);
 
 		list.handleInput("a");
 		list.handleInput(CTRL_D);
 
-		expect(confirmationChanges).toEqual([sessions[0].path]);
+		expect(confirmationChanges).toEqual([[sessions[0].path]]);
 	});
 
 	it("enters confirmation mode on Ctrl+Backspace when search query is empty", async () => {
@@ -168,20 +168,20 @@ describe("session selector path/delete interactions", () => {
 		await flushPromises();
 
 		const list = selector.getSessionList();
-		const confirmationChanges: Array<string | null> = [];
-		list.onDeleteConfirmationChange = (path) => confirmationChanges.push(path);
+		const confirmationChanges: Array<string[] | null> = [];
+		list.onDeleteConfirmationChange = (paths) => confirmationChanges.push(paths);
 
-		let deletedPath: string | null = null;
-		list.onDeleteSession = async (sessionPath) => {
-			deletedPath = sessionPath;
+		let deletedPaths: string[] = [];
+		list.onDeleteSessions = async (sessionPaths) => {
+			deletedPaths = sessionPaths;
 		};
 
 		list.handleInput(CTRL_BACKSPACE);
-		expect(confirmationChanges).toEqual([sessions[0].path]);
+		expect(confirmationChanges).toEqual([[sessions[0].path]]);
 
 		list.handleInput("\r");
-		expect(confirmationChanges).toEqual([sessions[0].path, null]);
-		expect(deletedPath).toBe(sessions[0].path);
+		expect(confirmationChanges).toEqual([[sessions[0].path], null]);
+		expect(deletedPaths).toEqual([sessions[0].path]);
 	});
 
 	it("does not switch scope back to All when All load resolves after toggling back to Current", async () => {
@@ -343,9 +343,9 @@ describe("session selector path/delete interactions", () => {
 		await flushPromises();
 
 		const list = selector.getSessionList();
-		const confirmationChanges: Array<string | null> = [];
+		const confirmationChanges: Array<string[] | null> = [];
 		let errorMessage: string | undefined;
-		list.onDeleteConfirmationChange = (path) => confirmationChanges.push(path);
+		list.onDeleteConfirmationChange = (paths) => confirmationChanges.push(paths);
 		list.onError = (message) => {
 			errorMessage = message;
 		};

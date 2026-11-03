@@ -94,11 +94,15 @@ export function staleRefusal(display: string, reader: Reader, by = ""): string {
 	return `${display} changed on disk since you last read it. Read it again with \`${reader.name}\` before modifying it.${by}`;
 }
 
-const PLAIN_PRINT = "a plain `cat FILE` or `sed -n 'A,Bp' FILE` (no pipe or redirect)";
+const BASH_PRINT = (file: string): string => `\`sed -n '1,200p' ${file}\``;
+const PIPE_NOTE = "A read piped or redirected, or after `||`, does not count.";
 
+/** The exact call that counts, path filled in: the reader first; a plain print in `bash` counts with either reader (`bashReads`). */
 function unreadRefusal(display: string, reader: Reader): string {
-	const how = reader === BASH_READER ? ` (${PLAIN_PRINT} counts)` : `, or print it in \`bash\` with ${PLAIN_PRINT},`;
-	return `${display} already exists and was not read in this session. Read it with \`${reader.name}\`${how} before modifying it.`;
+	const unread = `${display} already exists and was not read in this session.`;
+	return reader === BASH_READER
+		? `${unread} Read it first: bash ${BASH_PRINT(display)} (a plain \`cat\` or \`sed -n\` print counts, alone or chained with \`;\` or \`&&\`). ${PIPE_NOTE}`
+		: `${unread} Read it first: ${reader.name} {path:${JSON.stringify(display)}} or bash ${BASH_PRINT(display)}. ${PIPE_NOTE}`;
 }
 
 /**
@@ -141,7 +145,11 @@ export function judgeChange(
 }
 
 function rereadRefusal(display: string, reader: Reader): string {
-	return `${display}: your earlier read of it is no longer in your context. Read it again with \`${reader.name}\` before modifying it.`;
+	const again =
+		reader === BASH_READER
+			? `bash ${BASH_PRINT(display)}`
+			: `${reader.name} {path:${JSON.stringify(display)}} or bash ${BASH_PRINT(display)}`;
+	return `${display}: your earlier read of it is no longer in your context (a compaction dropped it). Read it again first: ${again}.`;
 }
 
 export class FileGuard {

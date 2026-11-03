@@ -1,15 +1,15 @@
-import { sessionWorkspace } from "../shared/home/workspace.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 import { repoKey } from "../shared/home/repo.ts";
 import {
 	type AgentDb,
-	sharedAgentDb,
 	type MemoryFilter,
 	type MemoryScope,
 	memories,
 	meta,
 	type Row,
 	type ScopeFilter,
-} from "../agentdb/api.ts";
+} from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 export type { MemoryFilter, ScopeFilter };
 import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { clipText, DAY_MS, stringOrEmpty } from "../shared/util.ts";
@@ -18,17 +18,6 @@ import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, 
 /** `reference`: a pointer to something outside the repository (a URL, dashboard or ticket). */
 export const MEMORY_KINDS = ["preference", "fact", "decision", "gotcha", "procedure", "reference"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
-/** The kinds the `kind` column's CHECK allows; a newer one is stored in `extended_kind`, with `kind` = `fact` for older builds. */
-const CHECKED_KINDS: readonly string[] = ["preference", "fact", "decision", "gotcha", "procedure"];
-const storedKind = (kind: MemoryKind): { kind: string; extendedKind: string | null } =>
-	CHECKED_KINDS.includes(kind) ? { kind, extendedKind: null } : { kind: "fact", extendedKind: kind };
-/** A row's kind: `extended_kind` while `kind` is still the `fact` stored beside it (an older build's edit to another kind wins). */
-function rowKind(row: Row): MemoryKind {
-	const known = (value: unknown): value is MemoryKind => (MEMORY_KINDS as readonly unknown[]).includes(value);
-	if (row.kind === "fact" && known(row.extended_kind)) return row.extended_kind;
-	return known(row.kind) ? row.kind : "fact";
-}
-
 export interface Memory {
 	id: number;
 	scope: MemoryScope;
@@ -85,9 +74,9 @@ const SETTING_AUTO = "memory_auto";
 function toMemory(row: Row): Memory {
 	return {
 		id: Number(row.id),
-		scope: memories.memoryScope(row),
+		scope: row.scope as MemoryScope,
 		repoKey: (row.repo_key as string | null) ?? null,
-		kind: rowKind(row),
+		kind: row.kind as MemoryKind,
 		title: stringOrEmpty(row.title),
 		body: stringOrEmpty(row.body),
 		keywords: stringOrEmpty(row.keywords),
@@ -108,28 +97,24 @@ function toMemory(row: Row): Memory {
 export class MemoryStore {
 	private readonly agentDb: AgentDb;
 	readonly repoKey: string;
-	readonly workspace: string | undefined;
-	constructor(agentDb: AgentDb, repoKey: string, workspace?: string) {
+	readonly workspaceId: string | undefined;
+	constructor(agentDb: AgentDb, repoKey: string, workspaceId?: string) {
 		this.agentDb = agentDb;
 		this.repoKey = repoKey;
-		this.workspace = workspace;
+		this.workspaceId = workspaceId;
 	}
 
 	private get context(): memories.MemoryContext {
-		return this.workspace
-			? { repoKey: this.repoKey, workspaceKey: memories.workspaceMemoryKey(this.workspace) }
-			: this.repoKey;
+		return { repoKey: this.repoKey, workspaceId: this.workspaceId };
 	}
-
-	private storageScope(scope: MemoryScope): { scope: string; repoKey: string | null } {
-		if (scope === "workspace" && !this.workspace) throw new MemoryError("No workspace is bound.");
+	private storageScope(scope: MemoryScope) {
+		if (scope === "workspace" && !this.workspaceId) throw new MemoryError("No workspace is bound.");
 		return {
-			scope: scope === "workspace" ? "project" : scope,
-			repoKey:
-				scope === "global" ? null : scope === "workspace" ? memories.workspaceMemoryKey(this.workspace!) : this.repoKey,
+			scope,
+			repoKey: scope === "project" ? this.repoKey : null,
+			workspaceId: scope === "workspace" ? this.workspaceId! : null,
 		};
 	}
-
 	private get db() {
 		return this.agentDb.db;
 	}
@@ -153,7 +138,7 @@ export class MemoryStore {
 	/** The `updatedAt` of each of `ids` that still exists, in one query. */
 	updatedAt(ids: readonly number[]): Map<number, number> {
 		if (ids.length === 0) return new Map();
-		return memories.updatedAt(this.db, ids);
+		return memories.updatedAt(this.db, this.context, ids);
 	}
 
 	count(scope: ScopeFilter = "all", options: MemoryFilter = {}): number {
@@ -245,7 +230,7 @@ export class MemoryStore {
 		const title = storedText(input.title);
 		if (!title) throw new MemoryError("A new memory needs a title.");
 		const body = storedText(input.body);
-		const scope = input.scope ?? (this.workspace ? "workspace" : "project");
+		const scope = input.scope ?? (this.workspaceId ? "workspace" : "project");
 		const keywords = storedText(input.keywords);
 		const duplicate = this.duplicateOf(scope, `${title} ${keywords} ${body}`, title);
 		if (duplicate)
@@ -254,7 +239,7 @@ export class MemoryStore {
 			);
 		const id = memories.insert(this.db, {
 			...this.storageScope(scope),
-			...storedKind(input.kind ?? "fact"),
+			kind: input.kind ?? "fact",
 			title,
 			body,
 			keywords,
@@ -289,7 +274,7 @@ export class MemoryStore {
 		}
 		memories.update(this.db, id, {
 			...this.storageScope(scope),
-			...storedKind(input.kind ?? current.kind),
+			kind: input.kind ?? current.kind,
 			title,
 			body,
 			keywords,
@@ -313,16 +298,18 @@ export class MemoryStore {
 	}
 
 	delete(id: number): Memory {
-		const current = this.get(id);
-		if (!current) throw noMemory(id);
-		memories.remove(this.db, id);
-		return current;
+		return this.agentDb.transaction(() => {
+			const current = this.get(id);
+			if (!current) throw noMemory(id);
+			memories.remove(this.db, id);
+			return current;
+		});
 	}
 
 	/** Records that `ids` were handed to the model. */
 	markUsed(ids: readonly number[], now = Date.now()): void {
 		if (ids.length === 0) return;
-		this.agentDb.transaction(() => memories.markUsed(this.db, ids, now));
+		this.agentDb.transaction(() => memories.markUsed(this.db, this.context, ids, now));
 	}
 
 	/** `/memory auto on|off`, shared by every session (the environment can still turn it off). */
@@ -369,7 +356,9 @@ export function memoryToolLine(memory: Memory, bodyChars: number, now = Date.now
 
 /** The memory store of `cwd`'s repository in the shared agent DB (the DB reopens when its path changes). */
 export function memoryStore(cwd: string, env: NodeJS.ProcessEnv = process.env): MemoryStore {
-	return new MemoryStore(sharedAgentDb(env), repoKey(cwd).key, sessionWorkspace(cwd, env));
+	const db = sharedAgentDb(env);
+	const workspace = registeredWorkspace(cwd, db);
+	return new MemoryStore(db, repoKey(workspace.root).key, workspace.id);
 }
 
 /** The full view of one memory, for `get`. */

@@ -104,6 +104,6 @@ List installed packages from user and project settings.
 Options:
   --trust            Record your trust for this folder first
 `);
-			return;
+			break;
 	}
 }

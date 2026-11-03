@@ -156,6 +156,7 @@ export async function prepareAcpMcpServers(
 					if ((error as NodeJS.ErrnoException).code === "ENOENT")
 						throw new Error(
 							"ACP MCP registration did not initialize; the worker's MCP host did not register the client servers.",
+							{ cause: error },
 						);
 					throw new Error(
 						`ACP MCP registration state could not be read: ${error instanceof Error ? error.message : String(error)}`,

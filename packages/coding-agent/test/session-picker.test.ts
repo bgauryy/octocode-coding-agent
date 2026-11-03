@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SettingsManager } from "../src/core/settings-manager.ts";
 import { selectSession } from "../src/cli/session-picker.ts";
-import type * as Liveness from "../src/octocode/agentdb/liveness.ts";
+import type * as Liveness from "../src/octocode/shared/session-liveness.ts";
 
 const { confirm, livePid, selectors, ui } = vi.hoisted(() => ({
 	confirm: vi.fn(),
@@ -9,7 +9,7 @@ const { confirm, livePid, selectors, ui } = vi.hoisted(() => ({
 	selectors: [] as unknown[][],
 	ui: { stop: vi.fn(), addChild: vi.fn(), setFocus: vi.fn(), requestRender: vi.fn() },
 }));
-vi.mock("../src/octocode/agentdb/liveness.ts", async (importOriginal) => ({
+vi.mock("../src/octocode/shared/session-liveness.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof Liveness>()),
 	sessionFileRunningPid: livePid,
 }));

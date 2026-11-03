@@ -1,4 +1,4 @@
-import { constants as bufferConstants } from "buffer";
+import { constants as bufferConstants } from "node:buffer";
 import {
 	appendFileSync,
 	closeSync,
@@ -10,9 +10,9 @@ import {
 	rmSync,
 	writeFileSync,
 	writeSync,
-} from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { findMostRecentSession, loadEntriesFromFile, SessionManager } from "../../src/core/session-manager.ts";
 import { assistantMsg, readSessionFileRoles, userMsg } from "../utilities.ts";

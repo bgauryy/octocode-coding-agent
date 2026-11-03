@@ -74,6 +74,12 @@ jobs:
       - name: Check
         working-directory: octocodecode
         run: yarn run check
+      # The bundle build fails on an unresolved import or a lazy entry it cannot find; the CLI then runs from the bundle.
+      - name: Build
+        working-directory: octocodecode
+        run: |
+          yarn run build:offline
+          node packages/coding-agent/dist/bundle/cli.js --version
       # Isolated home and credentials; includes the native feature suite. Live provider tests stay off.
       - name: Test
         working-directory: octocodecode

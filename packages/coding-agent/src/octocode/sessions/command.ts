@@ -1,19 +1,22 @@
-import fs from "node:fs";
 import path from "node:path";
 import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionExtras } from "../../core/session-picker.ts";
-import { runningPid } from "../agentdb/api.ts";
+import { runningPid } from "../shared/session-liveness.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { formatCost } from "../shared/format.ts";
-import { sessionDir, sessionsRoot } from "../shared/home.ts";
+import { currentSessionWorkspace, sessionDir, sessionDirName, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
 import { listingScope, quickList } from "./catalog.ts";
+import { pickerRemoval } from "./delete.ts";
 import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
-import { isWithin, repoKey } from "../shared/home/repo.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { workspaces } from "../../../../db/src/api.ts";
+import { readWorkspaceIdentity } from "../../config/workspace.ts";
+import fs from "node:fs";
 
 /** Random tail of a session id (Octocode's UUIDv7 ids share their leading timestamp digits). */
 const shortId = (id: string): string => id.replace(/[^\w]/g, "").slice(-6);
@@ -74,7 +77,7 @@ function details(row: ListedSession, current: string | undefined): string {
 		...(info.parentSessionPath ? [`forked from: ${info.parentSessionPath}`] : []),
 		...(info.firstMessage && info.name ? [`first prompt: ${shownLine(info.firstMessage, 300)}`] : []),
 		`tokens: ${extra?.tokens ?? 0} · live: ${live(row) ? `yes (pid ${runningPid(extra?.pid, extra?.pid_started)})` : "no"}`,
-		`octocode data: ${sessionDir(info.id)}`,
+		`octocode data: ${sessionDir(info.id, undefined, currentSessionWorkspace() ? info.cwd : undefined)}`,
 	].join("\n");
 }
 
@@ -171,7 +174,7 @@ function pickerExtrasOf(index: SessionIndex | undefined, ids: readonly string[])
 	);
 }
 
-/** Open the host's session picker (interactive mode): Enter resumes, ctrl+r renames, ctrl+o lists the details and forget actions. */
+/** Open the host's session picker (interactive mode): Enter resumes, ctrl+r renames, Ctrl+X marks rows and Ctrl+D deletes the marked rows (or the selected one) after one confirmation, ctrl+o lists the details and forget actions. */
 async function pick(
 	pickSession: NonNullable<ExtensionCommandContext["ui"]["pickSession"]>,
 	ctx: ExtensionCommandContext,
@@ -187,6 +190,7 @@ async function pick(
 		quickList: (scope) =>
 			index ? quickList(index, listingScope(ctx.sessionManager, ctx.cwd, scope === "all")) : Promise.resolve([]),
 		extras: (ids) => pickerExtrasOf(index, ids),
+		...(index ? { removeSessions: pickerRemoval(index, () => current) } : {}),
 		actions: [
 			{ label: "Details", run: (s) => say(ctx, details(row(s), current)) },
 			{ label: "Forget Octocode data", run: (s) => forget(ctx, index, row(s), current) },
@@ -219,7 +223,10 @@ export function registerSessionsCommand(
 			const current = options.current();
 			// `B12` alone lists the sessions that held or hold that item: the repository's in this folder's list, any in `all`.
 			const seq = itemOf(query);
-			const only = seq !== undefined && index ? index.heldItem(seq, all ? undefined : repoKey(ctx.cwd).key) : undefined;
+			const only =
+				seq !== undefined && index
+					? index.heldItem(seq, all ? undefined : registeredWorkspace(ctx.cwd, index.agent).id)
+					: undefined;
 			if (seq !== undefined && only?.size === 0)
 				return say(ctx, `No session has held ${itemRef(seq)}.${all ? "" : " Try /resume all."}`);
 			if (ctx.hasUI && ctx.ui.pickSession)
@@ -263,16 +270,28 @@ async function resume(ctx: ExtensionCommandContext, row: ListedSession, current:
 	await ctx.switchSession(row.info.path);
 }
 
-/** The folder `forget` may delete: a session's own, strictly inside the sessions folder; undefined for an id that names anything else. */
-function forgettableDir(id: string): string | undefined {
+/** The folders `forget` may delete: a session's own, strictly inside the workspace's session roots; undefined when its workspace cannot be verified. */
+function forgettableDirs(row: ListedSession, index: SessionIndex): string[] | undefined {
 	try {
-		const dir = sessionDir(id);
-		return isWithin(dir, sessionsRoot()) && dir !== sessionsRoot() ? dir : undefined;
+		const name = sessionDirName(row.info.id);
+		let cwd: string | undefined;
+		if (currentSessionWorkspace()) {
+			const workspace = row.extra?.workspace_id ? workspaces.byId(index.agent.db, row.extra.workspace_id) : undefined;
+			const marker = workspace && readWorkspaceIdentity(workspace.root);
+			if (!workspace || marker?.id !== workspace.id || marker.binding !== workspace.binding) return undefined;
+			cwd = workspace.root;
+		}
+		const roots = new Set([sessionsRoot(undefined, cwd), sessionTempRoot(undefined, cwd)]);
+		return [...roots].map((root) => path.join(root, name));
 	} catch {
 		return undefined;
 	}
 }
 
+/**
+ * Forget Octocode data: the session's folders (output, bash logs, checkpoints) and its extras row. The transcript and its
+ * database mirror stay, so the session still lists and can be resumed; `removeSessions` is the path that deletes a session.
+ */
 async function forget(
 	ctx: ExtensionCommandContext,
 	index: SessionIndex | undefined,
@@ -289,15 +308,19 @@ async function forget(
 			"warning",
 		);
 	// Never let a malformed id resolve to the sessions folder itself or outside it: the delete is recursive.
-	const dir = forgettableDir(row.info.id);
-	if (!dir)
-		return notify(ctx.ui, `Refusing to forget "${title(row)}": its id does not name a session folder.`, "warning");
+	const dirs = index && forgettableDirs(row, index);
+	if (!index || !dirs)
+		return notify(
+			ctx.ui,
+			`Refusing to forget "${title(row)}": its session folder or workspace could not be verified.`,
+			"warning",
+		);
 	const ok = await ctx.ui.confirm(
 		"Forget Octocode data",
-		`Delete Octocode's saved output, bash logs, checkpoints and extras for "${title(row)}"? Octocode's session file stays.`,
+		`Delete Octocode's saved output, bash logs, checkpoints and extras (cost, branch, files) for "${title(row)}"? The session file and its transcript index stay; delete the session itself with ctrl+d.`,
 	);
 	if (!ok) return;
-	fs.rmSync(dir, { recursive: true, force: true });
-	index?.forget(row.info.id);
+	for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
+	index.forget(row.info.id);
 	notify(ctx.ui, `Forgot Octocode data for "${title(row)}".`, "info");
 }

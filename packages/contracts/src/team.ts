@@ -18,7 +18,7 @@ export interface Member {
 	checkout?: string;
 	/** The tmux pane a main session runs in (`%12`, from `TMUX_PANE`); absent outside tmux, for subagents and in rows older builds wrote. */
 	tmuxPane?: string;
-	/** The id of the session a main agent runs (`/resume` shows its name on that session's row); absent for a subagent, whose session id is its name, and in rows older builds wrote. */
+	/** The session manager ID of this agent's conversation. The team address can be reused independently of the session ID. */
 	sessionId?: string;
 	joinedAt: number;
 	updatedAt: number;

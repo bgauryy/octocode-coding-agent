@@ -10,6 +10,12 @@ Short recipes for common tasks. Each links to the page that owns the details. Co
 
 Details: [session commands](native-features.md#session-workflow-commands), [worktrees](native-features.md#worktrees).
 
+## Recover a saved conversation
+
+Persistent sessions write a JSONL transcript to `.octa/code/sessions/` in the checkout by default. `--session-dir` selects another directory. SQLite also keeps the header and every entry in file order, including tool results, child reports, branch history and compactions. If SQLite is unavailable after a file write, Octocode reports the pending mirror and retries when the transcript is next opened or written.
+
+Use `octocode --fork <full-session-id>` in the target checkout to continue from a saved copy. When the original checkout is gone, the same command reads the retained transcript from the shared database and creates a new session in the target workspace. `--no-session` keeps the conversation in memory.
+
 ## Rename a session, and turn off automatic titles
 
 - `/rename <name>` names the current session, `octocode --name "<name>"` names a new one, and Ctrl+R in the `/resume` picker renames any session. A name you give is never overwritten.
@@ -46,7 +52,7 @@ Details and the full checklist: [memory](memory.md#memory).
 
 - In a second terminal, run `octocode --worktree <name>`. It creates `.octocode/worktrees/<name>` on branch `worktree-<name>` at the current HEAD, or reuses it. From a session, `/worktree new <name>` does the same (inside tmux it opens a window).
 - Add `.octocode/worktrees/` to `.gitignore`. List `.env`-style untracked files to copy in a `.worktreeinclude` file; dependencies are not installed.
-- `/worktree list` shows each worktree's branch and unsaved work. Backlog, memory and the agent team stay shared.
+- `/worktree list` shows each worktree's branch and unsaved work. Each worktree has its own backlog and workspace memories. The agent team and project memories span the repository.
 
 Details: [worktrees](native-features.md#worktrees), [worktree files](../../../CONFIGURATIONS.md#where-each-configuration-belongs) (the **Worktree files** paragraph).
 
@@ -69,7 +75,7 @@ Details: [modes](permissions.md#modes), [project trust](permissions.md#project-t
 ## Plan work as an epic with child items and steps
 
 - Ask the agent to create an epic and its items: the `backlog` tool takes `type: "epic"` for the epic and `parentId` on each child. `backlog list` with `parentId` lists an epic's items; `backlog get` on the epic shows its derived state and a done count.
-- Steps of one piece of work are tasks under the item you claim: the `steps` tool (`add`, `list`, `update`, `move`). An item cannot be done while it has open tasks.
+- Steps of one piece of work are tasks under the item you claim: the `steps` tool (`add`, `list`, `update`). An item cannot be done while it has open tasks.
 - To see the hierarchy, run `/web backlogs` and open the **Tree** view (epic, item, task). `/backlog tui` shows the terminal board.
 
 Details: [backlog view](web-workspace.md#backlog-view), [web controls for epics, items and tasks](web-workspace.md#web-controls-for-epics-items-and-tasks).

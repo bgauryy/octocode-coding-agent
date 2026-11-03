@@ -231,14 +231,13 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "quit":
 			// Quitting mid-reply discards the reply; ask, as /new and /fork do for running work.
-			if (host.session.isStreaming && !(await host.showExtensionConfirm("Quit", "Stop the running reply and quit?")))
-				return;
-			await host.shutdown();
-			return;
+			if (!host.session.isStreaming || (await host.showExtensionConfirm("Quit", "Stop the running reply and quit?")))
+				await host.shutdown();
 	}
 }
 
 export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
+	// oxlint-disable-next-line typescript/no-misused-promises -- the editor ignores the callback's result
 	host.defaultEditor.onSubmit = async (text: string) => {
 		text = text.trim();
 		if (!text) return;

@@ -5,24 +5,20 @@ import { type AgentProfile, profileExcludes, profileSelectsBrowser, profileTools
 import { BROWSER_SERVER, mcpNamespace } from "../../../../../common/src/mcp-names.ts";
 import type { Identity } from "./env.ts";
 
-/** Where a child saves its conversation: Octocode's session folder and the session id (the child's name, so its Octocode folder maps back to it). */
+/** Where a child saves its conversation: Octocode's session folder and the session id. */
 export interface ChildSession {
 	dir: string;
 	id: string;
 }
 
-/**
- * Every child saves its conversation in its scratch folder (`<scratch>/session`, removed with the folder), under its
- * own name (no new child gets the name of an existing scratch folder, `scratchNames`, so none reopens another's): its compaction summary then names a transcript to read, and the parent can find it. Without a scratch
- * folder it goes to the run's private output folder. Whether the child stays reachable is `lingerSeconds`, not this.
- */
-export function childSession(identity: Pick<Identity, "id" | "scratch">): ChildSession {
+/** A fresh conversation gets its own UUID. A resumed child retains the ID recorded in the parent's transcript. */
+export function childSession(identity: Pick<Identity, "id" | "sessionId" | "scratch">): ChildSession {
 	const root = identity.scratch ?? reportDir(identity.id);
 	if (!root)
 		throw new Error(
 			`Subagent ${identity.id} has nowhere to save its session: neither its scratch folder nor the output folder can be written.`,
 		);
-	return { dir: path.join(root, "session"), id: identity.id };
+	return { dir: path.join(root, "session"), id: identity.sessionId ?? identity.id };
 }
 
 /** The saved session file (`<timestamp>_<id>.jsonl`). Strict callers distinguish absent history from unreadable history. */

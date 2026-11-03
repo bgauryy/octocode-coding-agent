@@ -54,8 +54,6 @@ When a dialog, selector or session reset takes the place of `/llama`, the view c
 
 For Ollama, LM Studio, vLLM, SGLang, and other compatible servers, [configure a compatible endpoint](#configure-a-compatible-endpoint) in `models.json`.
 
-To let the main agent offload individual prompts to Ollama while another model drives the session, run `freellama serve` and enable the native [`ollama` tool](native-features.md#tool-selection-and-migration) with `octocode --tools +ollama` or the `defaultTools` setting.
-
 ## Configure a compatible endpoint
 
 Use `models.json` when an endpoint speaks an API Octocode already supports. This includes most Ollama, LM Studio, vLLM, SGLang, and proxy deployments.

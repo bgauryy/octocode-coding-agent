@@ -84,6 +84,10 @@ export const RpcCommandSchema = Type.Union([
 	command("get_tree"),
 	command("get_last_assistant_text"),
 	command("set_session_name", { name: Type.String() }),
+	// Delete saved sessions (transcript, session folders, database rows); the current and running sessions are refused.
+	command("delete_sessions", { sessionIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, maxItems: 500 }) }),
+	// Delete this workspace's or all Octocode data; nothing is deleted unless `confirm` is true (false returns the preview).
+	command("purge", { scope: Type.Union([Type.Literal("workspace"), Type.Literal("all")]), confirm: Type.Boolean() }),
 
 	// Messages
 	command("get_messages"),

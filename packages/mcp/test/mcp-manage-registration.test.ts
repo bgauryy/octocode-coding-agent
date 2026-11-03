@@ -7,7 +7,7 @@ import { reconnect } from "../src/connections.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import { McpExtensionState } from "../src/state.ts";
 
-it("does not claim or remove another extension's server when registration fails during approval", async () => {
+it("lists registered servers and refuses the removed add and remove intents without touching registrations", async () => {
 	const runtime = createExtensionRuntime();
 	const events = createEventBus();
 	let state!: McpExtensionState;
@@ -31,27 +31,18 @@ it("does not claim or remove another extension's server when registration fails 
 		runtime,
 		"<other>",
 	);
+	other.registerMcpServer("notes", { command: "other-owner" });
 	const tool = extension.tools.get("mcp")!.definition;
-	const ctx = {
-		...fakeCtx({ cwd: process.cwd() }),
-		tools: [],
-		executeTool: vi.fn(async () => {
-			throw new Error("Unexpected nested tool call");
-		}),
-	};
-	vi.spyOn(ctx.ui, "confirm").mockImplementation(async () => {
-		other.registerMcpServer("notes", { command: "other-owner" });
-		return true;
-	});
+	const ctx = { ...fakeCtx({ cwd: process.cwd() }), tools: [], executeTool: vi.fn() };
 	const run = (params: Record<string, unknown>) => tool.execute("test", params, undefined, undefined, ctx);
 	try {
-		await expect(run({ intent: "add", server: "notes", config: { command: "new-server" } })).rejects.toThrow(
-			'already registered by extension "<other>"',
-		);
 		state.servers = state.registeredServers().servers;
 		const listed = await run({ intent: "list" });
-		expect(listed.details).toMatchObject({ servers: [{ name: "notes", origin: "configured" }] });
-		await expect(run({ intent: "remove", server: "notes" })).rejects.toThrow("comes from configuration");
+		expect(listed.details).toMatchObject({ servers: [{ name: "notes" }] });
+		await expect(run({ intent: "add", server: "x", config: { command: "new-server" } })).rejects.toThrow(
+			"/mcp or `octocode mcp add`",
+		);
+		await expect(run({ intent: "remove", server: "notes" })).rejects.toThrow("/mcp or `octocode mcp remove`");
 		expect(runtime.mcpServers.list()).toEqual([
 			{ name: "notes", config: { command: "other-owner" }, extensionPath: "<other>" },
 		]);

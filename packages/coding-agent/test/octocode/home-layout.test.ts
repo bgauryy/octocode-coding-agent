@@ -1,3 +1,5 @@
+import { recordFile, reapOrphanJobs, sessionBashDirs } from "../../src/octocode/files/bash-jobs/records.ts";
+import { setCurrentSession, sessionOutputDir, withSessionStorage } from "../../src/config/runtime-paths.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,12 +56,58 @@ describe("layout", () => {
 			skills: path.join(root, ".octocode", "skills"),
 			agents: path.join(root, ".octocode", "agents"),
 			hooks: path.join(root, ".octocode", "hooks.json"),
-			tmp: path.join(root, ".octocode", "tmp"),
+			tmp: path.join(root, ".octa", "code", "temp"),
 		});
 	});
 });
 
 describe("session folders", () => {
+	it("keeps authority to stop jobs in private host state, including when a checkout plants a record", async () => {
+		const workspace = repo().root;
+		const home = tmp();
+		vi.stubEnv("OCTOCODE_HOME", home);
+		try {
+			setCurrentSession("owner", workspace);
+			const logs = sessionOutputDir("bash");
+			const file = recordFile(path.join(logs, "bash-1.log"));
+			expect(path.relative(home, file)).toMatch(/^agent[\\/]job-owners[\\/]/);
+			expect(path.relative(workspace, file)).toMatch(/^\.\./);
+			const forged = path.join(logs, "bash-1.job.json");
+			fs.writeFileSync(
+				forged,
+				JSON.stringify({ id: "bash-1", pid: 999999, log: path.join(logs, "bash-1.log"), owner: { pid: 999998 } }),
+			);
+			expect(await reapOrphanJobs([logs])).toEqual([]);
+			expect(fs.existsSync(forged)).toBe(true);
+			expect(sessionBashDirs()).not.toContain(logs);
+		} finally {
+			setCurrentSession(undefined);
+		}
+	});
+	it("keeps concurrent callbacks and late tool output in the initiating worktree", async () => {
+		const a = repo().root;
+		const b = repo().root;
+		const first = {};
+		const second = {};
+		const name = "session";
+		try {
+			setCurrentSession(name, a, first);
+			const late = withSessionStorage(first, async () => {
+				await new Promise<void>((resolve) => setImmediate(resolve));
+				return [sessionOutputDir("output"), sessionOutputDir("archive")];
+			});
+			setCurrentSession(name, b, second);
+			expect(withSessionStorage(second, () => sessionOutputDir("bash"))).toBe(
+				path.join(b, ".octa/code/temp/sessions", name, "bash"),
+			);
+			expect(await late).toEqual([
+				path.join(a, ".octa/code/temp/sessions", name, "output"),
+				path.join(a, ".octa/code/session-data", name, "archive"),
+			]);
+		} finally {
+			setCurrentSession(undefined);
+		}
+	});
 	it("refuses an id that would name the sessions folder or its parent, and keeps the name of every other id", () => {
 		for (const id of ["", ".", "..", "..."]) {
 			expect(() => sessionDirName(id), JSON.stringify(id)).toThrow(/Invalid session id/);

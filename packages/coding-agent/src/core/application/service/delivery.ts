@@ -1,11 +1,14 @@
 import type { ApplicationEvent, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { cloneDisplay } from "../normalize.ts";
 import type { ApplicationStateStore } from "../state.ts";
-import type { AgentSessionEvent, AgentSessionEventListener } from "../../agent-session/types.ts";
+import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import type { ApplicationSession } from "../session-port.ts";
 
 /** Where a subscriber's failure goes: its own handler (a terminal draws it in the transcript), else stderr. */
 export type ListenerErrorHandler = (error: unknown) => void;
+
+/** A native-event subscriber; a returned promise is awaited and its rejection goes to the subscriber's error handler. */
+export type NativeListener = (event: AgentSessionEvent) => unknown;
 
 /** A failure of the service itself, not of a subscriber; a handler shows its message as it is. */
 export class ApplicationServiceError extends Error {
@@ -46,7 +49,7 @@ export class ApplicationDelivery {
 	private pending: (() => void)[] = [];
 	private running = false;
 	private readonly events = new Map<(event: ApplicationEvent) => void, Subscriber>();
-	private readonly native = new Map<AgentSessionEventListener, Subscriber>();
+	private readonly native = new Map<NativeListener, Subscriber>();
 	/** State subscriptions by their unsubscribe function, with their own error handler. */
 	private readonly subscriptions = new Map<() => void, ListenerErrorHandler | undefined>();
 	private lastServiceFailure: string | undefined;
@@ -119,7 +122,7 @@ export class ApplicationDelivery {
 			this.events.delete(listener);
 		};
 	}
-	subscribeNative(listener: AgentSessionEventListener, onError?: ListenerErrorHandler): () => void {
+	subscribeNative(listener: NativeListener, onError?: ListenerErrorHandler): () => void {
 		this.native.set(listener, { report: listenerFailureReporter("Application listener failed", onError), onError });
 		return () => {
 			this.native.delete(listener);

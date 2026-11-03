@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, statSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { APP_NAME } from "../../config.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { resolvePath } from "../../../../common/src/paths.ts";
@@ -9,6 +9,7 @@ import {
 	getSessionFilePath,
 	migrateToCurrentVersion,
 } from "./entries.ts";
+import { mirrorTranscript, recordFork } from "./mirror.ts";
 import { backupSessionFile, repairSessionFile, type SessionRepair } from "./repair.ts";
 import { isSessionLockTimeout, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
@@ -23,7 +24,8 @@ export function initializeSession(
 	newSessionOptions?: NewSessionOptions,
 	preloadedFileEntries?: FileEntry[],
 ): void {
-	if (state.persist && state.sessionDir && !existsSync(state.sessionDir)) {
+	// An existing file needs no folder yet: a session opened from the legacy folder must not create a missing cwd tree.
+	if (state.persist && state.sessionDir && !(sessionFile && existsSync(sessionFile)) && !existsSync(state.sessionDir)) {
 		mkdirSync(state.sessionDir, { recursive: true });
 	}
 
@@ -66,6 +68,7 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		state.fileSize = sizeBeforeRead ?? statSync(resolvedFile).size;
 		loadEntries(state, entries);
 		state.flushed = true;
+		mirrorTranscript(state, resolvedFile, "open");
 	} else {
 		const explicitPath = resolvedFile;
 		startNewSession(state);
@@ -110,6 +113,8 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 
 	if (state.persist) {
 		state.sessionFile = getSessionFilePath(state.sessionDir, timestamp, state.sessionId);
+		if (options?.parentSession)
+			recordFork(state.cwd, state.sessionId, state.sessionFile, { file: options.parentSession });
 	}
 	return state.sessionFile;
 }
@@ -145,8 +150,9 @@ export function rewriteSessionFile(state: SessionState): void {
 	withSessionFileLock(file, () => {
 		if (state.fileSize !== undefined && existsSync(file)) mergeForeignEntries(state, file);
 		const content = state.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
-		atomicWriteFileSync(file, content);
+		atomicWriteFileSync(file, content, { mode: 0o600 });
 		state.fileSize = Buffer.byteLength(content);
+		mirrorTranscript(state, file, "replace");
 	});
 }
 
@@ -156,6 +162,7 @@ function flushNewSessionFile(state: SessionState, file: string): void {
 		writeNewSessionFile(file, state.fileEntries);
 		state.fileSize = statSync(file).size;
 		state.flushed = true;
+		mirrorTranscript(state, file, "replace");
 	});
 }
 
@@ -197,6 +204,7 @@ export function persistEntry(state: SessionState, entry: SessionEntry): void {
 		const file = state.sessionFile;
 		withSessionFileLock(file, () => {
 			mergeForeignEntries(state, file, entry);
+			const before = statSync(file, { bigint: true });
 			if (assertCompleteSessionTail(file)) {
 				appendFileSync(file, "\n", { flush: true });
 				state.fileSize = (state.fileSize ?? 0) + 1;
@@ -204,6 +212,11 @@ export function persistEntry(state: SessionState, entry: SessionEntry): void {
 			const line = `${JSON.stringify(entry)}\n`;
 			appendFileSync(file, line, { flush: true });
 			state.fileSize = (state.fileSize ?? 0) + Buffer.byteLength(line);
+			mirrorTranscript(state, file, {
+				previousSize: Number(before.size),
+				previousMtime: String(before.mtimeNs),
+				entry,
+			});
 		});
 	}
 }
@@ -237,6 +250,7 @@ export function appendEntry(state: SessionState, entry: SessionEntry): void {
  */
 export function createBranchedSession(state: SessionState, leafId: string): string | undefined {
 	const previousSessionFile = state.sessionFile;
+	const previousSessionId = state.sessionId;
 	const path = getBranchEntries(state, leafId);
 	if (path.length === 0) {
 		throw new Error(`Entry ${leafId} not found`);
@@ -265,6 +279,8 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 			state.flushed = false;
 		}
 
+		if (previousSessionFile)
+			recordFork(state.cwd, newSessionId, newSessionFile, { file: previousSessionFile, expectedId: previousSessionId });
 		return newSessionFile;
 	}
 

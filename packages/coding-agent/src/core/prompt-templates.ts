@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { basename, dirname, join, resolve } from "path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { parseFrontmatter } from "../utils/frontmatter.ts";
 import { isUnderPath, resolvePath } from "../../../common/src/paths.ts";

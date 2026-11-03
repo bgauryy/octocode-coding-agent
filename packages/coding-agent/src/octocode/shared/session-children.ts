@@ -40,6 +40,7 @@ export function childFiles(session: unknown): ChildFiles {
 /** One subagent this session started, as its latest record says. */
 export interface SessionChild {
 	id: string;
+	sessionId?: string;
 	profile: string;
 	goal: string;
 	/** `background` while its report has not arrived; else `done`, `failed` or `stopped`. */
@@ -115,6 +116,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		}
 		const outcome = text(details.outcome);
 		if (outcome) child.outcome = outcome;
+		if (isRecord(details.session) && typeof details.session.id === "string") child.sessionId = details.session.id;
 		const files = childFiles(details.session);
 		if (files.transcript) {
 			child.transcript = files.transcript;

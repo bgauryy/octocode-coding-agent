@@ -96,7 +96,7 @@ export class SessionToolCalls {
 			if (err instanceof Error) {
 				throw err;
 			}
-			throw new Error(`Extension failed, blocking execution: ${String(err)}`);
+			throw new Error(`Extension failed, blocking execution: ${String(err)}`, { cause: err });
 		}
 	}
 

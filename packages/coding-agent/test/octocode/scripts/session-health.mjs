@@ -80,7 +80,7 @@ export function newestSessionFiles(dir) {
 	try {
 		projects = fs.readdirSync(dir, { withFileTypes: true });
 	} catch (error) {
-		throw new Error(`cannot read sessions folder ${dir}: ${error.message}`);
+		throw new Error(`cannot read sessions folder ${dir}: ${error.message}`, { cause: error });
 	}
 	for (const project of projects) {
 		if (!project.isDirectory()) continue;
@@ -396,7 +396,7 @@ function main(argv) {
 		try {
 			text = fs.readFileSync(file, "utf8");
 		} catch (error) {
-			throw new Error(`cannot read ${file}: ${error.code ?? error.message}`);
+			throw new Error(`cannot read ${file}: ${error.code ?? error.message}`, { cause: error });
 		}
 		return analyzeSession(file, text);
 	});

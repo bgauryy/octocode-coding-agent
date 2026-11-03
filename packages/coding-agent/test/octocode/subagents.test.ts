@@ -207,7 +207,7 @@ describe("subagents", () => {
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
 		// Parent/child and teammate communication share one policy: a child messages its parent for a decision.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user\. When you need a decision, send it to your parent by message/,
+			/You cannot ask the user\. When you need a decision or approval, ask your parent as your run mode says/,
 		);
 	});
 
@@ -330,14 +330,14 @@ describe("subagents", () => {
 		expect(profile.prompt).toContain("headless");
 		expect(profile.prompt).toContain("persistent");
 		expect(buildAgentArgs(profile, undefined, SESSION)).not.toContain("--no-mcp");
-		// Read-only roles drop the debugger; roles that rarely call the remote research tools or `clasify` leave their
-		// declarations out (the researcher keeps the whole catalog).
+		// Roles that rarely call the remote research tools or `clasify` leave their declarations out (the researcher keeps
+		// the whole catalog).
 		const remote = ["ghSearchHistory", "ghSearchRepo", "artifactSearch"].map((name) => `mcp__octocode__${name}`);
 		const history = "mcp__octocode__ghGetHistoryItem";
 		const clasify = "mcp__octocode__clasify";
 		for (const [name, excluded] of [
-			["researcher", "debug"],
-			["reviewer", ["debug", ...remote, clasify].join(",")],
+			["researcher", undefined],
+			["reviewer", [...remote, clasify].join(",")],
 			["implementer", [...remote, history, clasify].join(",")],
 		] as const)
 			expect(profiles.get(name)?.excludeTools, name).toBe(excluded);
@@ -348,8 +348,9 @@ describe("subagents", () => {
 		expect(profiles.get("researcher")?.skills).toEqual(["octocode-research"]);
 		expect(profiles.get("reviewer")?.skills).toEqual(["octocode-research"]);
 		expect(profiles.get("browser")?.skills).toEqual(["octocode-chrome-devtools"]);
+		expect(profiles.get("implementer")?.skills).toEqual(["octocode-debugging"]);
 		// An empty list is a choice (no skills), not an absent key (the whole catalog).
-		expect(profiles.get("implementer")?.skills).toEqual([]);
+		expect(parseProfile("none", "---\nskills: []\n---\nTask").skills).toEqual([]);
 		// A task's own `skills` replaces the role's: taskSkillPlan prefers it.
 		expect(taskSkillPlan(profiles.get("implementer"), ["octocode-roast"]).names).toEqual(["octocode-roast"]);
 	});
@@ -506,7 +507,7 @@ describe("subagents", () => {
 			/Adds teammate context.*does not enable messaging or grant authority/,
 		);
 		expect(agent.parameters.properties.model?.description).toMatch(
-			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Fit the task: small:low.*Default: the profile's.*else your model at medium/,
+			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Fit the task: small:low.*Default: the profile's.*no profile: medium; thinking medium/,
 		);
 		expect([...commands.keys()]).toEqual(["agents"]);
 		const notes: string[] = [];

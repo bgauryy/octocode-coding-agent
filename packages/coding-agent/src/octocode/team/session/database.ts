@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/features/index.ts";
-import { AgentDbError } from "../../agentdb/api.ts";
+import { AgentDbError } from "../../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";
 import type { Ask } from "../asks.ts";
@@ -56,7 +56,7 @@ export class TeamDatabase {
 		} catch (error) {
 			const problem = `Team database unavailable: ${errorMessage(error)}`;
 			if (error instanceof AgentDbError) this.schemaProblem = problem;
-			throw new Error(problem);
+			throw new Error(problem, { cause: error });
 		}
 	}
 

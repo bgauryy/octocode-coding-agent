@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sharedAgentDb } from "../../src/octocode/agentdb/api.ts";
-import { closeSharedAgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
 import {
 	FolderGrantRefusedError,
 	grantFolder,
@@ -11,6 +11,7 @@ import {
 	revokeFolder,
 	revokeWorktreeGrant,
 } from "../../src/octocode/trust/grants.ts";
+import { folderEntry } from "../../src/octocode/trust/identity.ts";
 import { folderTrustResolver } from "../../src/octocode/trust/port.ts";
 import { resolveFolderTrust, type TrustOptions } from "../../src/octocode/trust/resolve.ts";
 import { tmp } from "./helpers.ts";
@@ -226,6 +227,36 @@ describe("folder identity", () => {
 		expect(state(cwd)).toBe("undecided");
 		db.exec("UPDATE trusted_folders SET birth = '0'");
 		expect(state(cwd)).toBe("trusted");
+	});
+
+	// Matching across a remount needs the birth time; a platform that reports none falls back to the device and inode.
+	const hasBirth = folderEntry(tmp()).birth !== "0";
+	it.skipIf(!hasBirth)(
+		"keeps a folder trusted after a reboot gives its volume another device number, and stores the new one",
+		() => {
+			const code = dir("code");
+			const cwd = dir("code", "app");
+			grantFolder(cwd, "parent", meta, options);
+			const db = sharedAgentDb(options.env).db;
+			const before = listFolderGrants(options)[0];
+			db.exec("UPDATE trusted_folders SET dev = 'before-reboot'");
+			expect(resolveFolderTrust(cwd, options)).toMatchObject({ state: "trusted", root: code });
+			expect(listFolderGrants(options)).toMatchObject([{ id: before.id, dev: before.dev }]);
+			// Granting again after the remount keeps the one row.
+			db.exec("UPDATE trusted_folders SET dev = 'before-reboot'");
+			expect(grantFolder(cwd, "parent", meta, options).id).toBe(before.id);
+			expect(listFolderGrants(options)).toMatchObject([{ id: before.id, dev: before.dev }]);
+		},
+	);
+
+	it("asks again when the device changed and so did the path or the birth time", () => {
+		const cwd = dir("code", "app");
+		grantFolder(cwd, "folder", meta, options);
+		const db = sharedAgentDb(options.env).db;
+		db.exec("UPDATE trusted_folders SET dev = 'other', path = '/nowhere'");
+		expect(state(cwd)).toBe("undecided");
+		db.prepare("UPDATE trusted_folders SET path = ?, birth = '0'").run(cwd);
+		expect(state(cwd)).toBe("undecided");
 	});
 
 	it("does not match by path text: a row whose stored path is wrong still matches the folder", () => {

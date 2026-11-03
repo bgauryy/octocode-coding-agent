@@ -16,6 +16,8 @@ export interface EnvironmentSettingsApi {
 	getBashBackgroundAfterSeconds(): number;
 	/** Most bytes of a foreground bash result that reach the model; at least 1024. */
 	getBashOutputMaxBytes(): number;
+	/** Whether the agent tool may declare its `external` type; off unless set. */
+	getExternalAgents(): boolean;
 	getNpmCommand(): string[] | undefined;
 	setNpmCommand(command: string[] | undefined): void;
 	getCollapseChangelog(): boolean;

@@ -1,5 +1,7 @@
-import { closeSync, openSync, readSync, statSync } from "fs";
+import { closeSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import lockfile from "proper-lockfile";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { jsonlLines } from "../../../../common/src/jsonl.ts";
 import { generateId } from "./entries.ts";
 import type { SessionState } from "./state.ts";
@@ -41,7 +43,9 @@ export function isSessionLockTimeout(error: unknown): boolean {
 
 /** Run `write` while holding the cross-process lock `<file>.lock`. A failed release is ignored: the lock goes stale and is reclaimed. */
 export function withSessionFileLock<T>(file: string, write: () => T): T {
-	const release = acquireSessionLock(file);
+	// A new session may belong to a folder that does not exist yet (the workspace folder, for a session opened from the legacy one).
+	mkdirSync(dirname(file), { recursive: true });
+	const release = acquireSessionLock(canonicalPath(file));
 	try {
 		return write();
 	} finally {

@@ -1,4 +1,4 @@
-import { basename } from "path";
+import { basename } from "node:path";
 import { walkDirectoryWithFd } from "./autocomplete/fd.ts";
 import {
 	getFileSuggestions,
@@ -232,7 +232,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			return [];
 		}
 
-		return await walkDirectoryWithFd(baseDir, this.fdPath, query, 100, signal, 1);
+		return walkDirectoryWithFd(baseDir, this.fdPath, query, 100, signal, 1);
 	}
 
 	// Fuzzy file search using fd (fast, respects .gitignore)

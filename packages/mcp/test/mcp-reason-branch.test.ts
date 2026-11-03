@@ -26,7 +26,8 @@ describe("MCP reason argument declared outside the root properties", () => {
 				{ type: "object", properties: { x: {} } },
 			],
 		});
-		expect(tool.prepareArguments).toBeUndefined();
+		const args = { reason: "r" };
+		expect(tool.prepareArguments?.(args) ?? args).toBe(args);
 		expect(tool.parameters).toMatchObject({ properties: { reason: { type: "string" } } });
 		expect(tool.validationHint?.({ envelope: true })).toContain('takes only {"reason":"..."}');
 	});
@@ -36,7 +37,8 @@ describe("MCP reason argument declared outside the root properties", () => {
 			$ref: "#/$defs/Args",
 			$defs: { Args: { type: "object", properties: { reason: { type: "string" } } } },
 		});
-		expect(tool.prepareArguments).toBeUndefined();
+		const args = { reason: "r" };
+		expect(tool.prepareArguments?.(args) ?? args).toBe(args);
 	});
 
 	it("still drops an invented reason for the current Octocode tools and leaves it out of the call shape", () => {

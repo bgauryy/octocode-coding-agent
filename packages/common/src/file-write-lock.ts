@@ -109,7 +109,7 @@ async function writeTarget(file: string, hops = 40): Promise<string> {
 			throw failure;
 		});
 		if (link !== undefined) {
-			if (hops === 0) throw new Error(`Too many symbolic links: ${file}`);
+			if (hops === 0) throw new Error(`Too many symbolic links: ${file}`, { cause: error });
 			return writeTarget(path.resolve(path.dirname(file), link), hops - 1);
 		}
 		return path.join(await realpath(path.dirname(file)), path.basename(file));

@@ -31,16 +31,16 @@ afterEach(() => {
 });
 
 describe("panel state", () => {
-	it("maps working to running, idle to pending and a departed agent to done with its finish time", () => {
+	it("maps working to running, idle and departed agents to pending", () => {
 		const working = { member: member("a", { status: "working" }), depth: 0 };
 		const idle = { member: member("b"), depth: 0 };
 		const gone = { member: member("c", { status: "working" }), depth: 0, doneAt: NOW - 1_000 };
 		expect(panelState(working, NOW)).toEqual({ state: "running", label: "working" });
 		expect(panelState(idle, NOW)).toEqual({ state: "pending", label: "idle" });
-		expect(panelState(gone, NOW)).toEqual({ state: "done", label: "done", since: NOW - 1_000 });
+		expect(panelState(gone, NOW)).toEqual({ state: "pending", label: "left" });
 	});
 
-	it("draws the state marks: spinner frame for working, ○ idle, ✓ done, in one table for rows and the compact layout", () => {
+	it("draws the state marks: spinner frame for working, ○ for idle and departed", () => {
 		const frame = SPINNER.braille[Math.floor(NOW / MOTION.spinnerMs) % SPINNER.braille.length];
 		const team = [
 			member("main-aaaaaa"),
@@ -56,7 +56,7 @@ describe("panel state", () => {
 			{ member: team[2], depth: 0, doneAt: NOW - 20_000 },
 		];
 		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 3));
-		expect(compact).toEqual([` ${frame} `, " ○ ", " ✓ "]);
+		expect(compact).toEqual([` ${frame} `, " ○ ", " ○ "]);
 	});
 
 	it("freezes the spinner on its first frame in reduced motion", () => {
@@ -65,7 +65,7 @@ describe("panel state", () => {
 		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.running);
 	});
 
-	it("says how many agents work and are done in the root row", () => {
+	it("says how many agents work and have left in the root row", () => {
 		const team = [
 			member("main-aaaaaa"),
 			member("a-1111", { parentId: "main-aaaaaa", status: "working" }),
@@ -73,7 +73,7 @@ describe("panel state", () => {
 		];
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
-		expect(lines[0]).toBe(" ● main-aaaaaa  general  2 working · 1 done");
+		expect(lines[0]).toBe(" ● main-aaaaaa  general  2 working · 1 left");
 	});
 });
 

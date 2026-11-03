@@ -78,7 +78,7 @@ describe("the reason line of a native tool row", () => {
 	});
 
 	it("is also shown for a native tool that has no call renderer of its own", () => {
-		const text = lines(row("debug", { action: "launch", reason: "inspect the crash" }, false)).join("\n");
+		const text = lines(row("compact", { reason: "inspect the crash" }, false)).join("\n");
 		expect(text).toContain("↳ inspect the crash");
 	});
 

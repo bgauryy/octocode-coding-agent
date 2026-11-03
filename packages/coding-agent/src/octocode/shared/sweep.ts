@@ -1,31 +1,37 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Clearing out runtime files: aged output folders, and moving a file across file systems. */
+/** Aged output folders (listed for the sweep to remove), and moving a file across file systems. */
 
-/** Removes entries of `dir` not modified for `maxAgeMs`, except those named in `keep`, with non-blocking calls. Never rejects. */
-export async function sweepStaleOutputs(
+/**
+ * Paths of the entries of `dir` not modified for `maxAgeMs`, except those named in `keep`; nothing when `dir` is missing,
+ * not a real directory (a link to one is not followed) or unreadable. Age is the entry's own (`lstat`), so a link is
+ * judged by the link, never by its target. Never rejects.
+ */
+export async function staleEntries(
 	dir: string,
 	maxAgeMs: number,
 	keep: ReadonlySet<string> = new Set(),
 	now = Date.now(),
-): Promise<void> {
+): Promise<string[]> {
 	let names: string[];
 	try {
+		if (!(await fs.promises.lstat(dir)).isDirectory()) return [];
 		names = await fs.promises.readdir(dir);
 	} catch {
-		return;
+		return [];
 	}
+	const stale: string[] = [];
 	for (const name of names) {
 		if (keep.has(name)) continue;
 		const file = path.join(dir, name);
 		try {
-			if (now - (await fs.promises.stat(file)).mtimeMs > maxAgeMs)
-				await fs.promises.rm(file, { recursive: true, force: true });
+			if (now - (await fs.promises.lstat(file)).mtimeMs > maxAgeMs) stale.push(file);
 		} catch {
-			// Removed meanwhile, or not ours to remove.
+			// Removed meanwhile.
 		}
 	}
+	return stale;
 }
 
 /** Moves a file, copying across file systems; returns false when it could not. */

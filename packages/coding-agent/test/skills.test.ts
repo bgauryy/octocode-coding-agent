@@ -1,8 +1,9 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join, resolve } from "path";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceDiagnostic } from "../src/core/diagnostics.ts";
+import { getNativeSkillsDir } from "../src/config.ts";
 import { formatSkillsForPrompt, loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 
@@ -50,6 +51,26 @@ describe("skills", () => {
 				}
 			},
 		);
+
+		it("skips a skill whose metadata excludes this host, without a warning", () => {
+			const root = mkdtempSync(join(tmpdir(), "octocode-skills-hosts-"));
+			const skill = (name: string, hosts: string) => {
+				mkdirSync(join(root, name));
+				writeFileSync(
+					join(root, name, "SKILL.md"),
+					`---\nname: ${name}\ndescription: A skill.\nmetadata:\n  excluded-hosts: "${hosts}"\n---\nBody`,
+				);
+			};
+			skill("elsewhere", "claude-code octocode-code");
+			skill("here", "claude-code");
+			try {
+				const { skills, diagnostics } = loadSkillsFromDir({ dir: root, source: "test" });
+				expect(skills.map((loaded) => loaded.name)).toEqual(["here"]);
+				expect(diagnostics).toEqual([]);
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
 
 		it("should load a valid skill", () => {
 			const { skills, diagnostics } = loadSkillsFromDir({
@@ -327,6 +348,46 @@ describe("skills", () => {
 			// One intro line, the load instruction. Octocode ships no `read` tool; bash is the default loader.
 			expect(introText.trim().split("\n")[0]).toBe(
 				"Use bash to load a skill's file when the task matches its description.",
+			);
+		});
+
+		it("groups Octocode's core skills, the bundled Octocode collection and external skills, in that order", () => {
+			const skill = (name: string, dir: string, source?: string) =>
+				createTestSkill({
+					name,
+					description: `${name} work.`,
+					filePath: join(dir, name, "SKILL.md"),
+					baseDir: join(dir, name),
+					source,
+				});
+			const result = formatSkillsForPrompt(
+				[
+					skill("mine", "/home/u/.agents/skills"),
+					skill("octocode-research", "/opt/octocode/skills", "builtin"),
+					skill("octocode-debugging", getNativeSkillsDir()),
+				],
+				"skill",
+			);
+			const catalog = result.slice(result.indexOf("<available_skills>"));
+			const tags = catalog.split("\n").filter((line) => !line.startsWith("  <skill>"));
+			expect(tags).toEqual([
+				"<available_skills>",
+				"<core_skills>",
+				"</core_skills>",
+				"<octocode_skills>",
+				"</octocode_skills>",
+				"<external_skills>",
+				"</external_skills>",
+				"</available_skills>",
+			]);
+			const order = ["octocode-debugging", "octocode-research", "mine"].map((name) =>
+				catalog.indexOf(`<name>${name}</name>`),
+			);
+			expect(order).toEqual([...order].sort((a, b) => a - b));
+			expect(catalog).toMatch(/<core_skills>\n {2}<skill><name>octocode-debugging<\/name>/);
+			// A catalog with only external skills has only that group.
+			expect(formatSkillsForPrompt([skill("mine", "/home/u/.agents/skills")], "skill")).not.toMatch(
+				/<core_skills>|<octocode_skills>/,
 			);
 		});
 

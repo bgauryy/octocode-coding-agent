@@ -1,4 +1,4 @@
-import { USER_AUTHOR } from "../agentdb/api.ts";
+import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { clipText } from "../shared/util.ts";
 import { MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
 import { type Memory, type MemoryStore, memoryGetCall, memoryTags, type ScopeFilter } from "./store.ts";

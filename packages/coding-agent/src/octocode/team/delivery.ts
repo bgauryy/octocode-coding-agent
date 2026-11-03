@@ -73,6 +73,8 @@ export class Delivery {
 		const me = this.inbox.awaitingContext ? this.host.id() : undefined;
 		const ids = me && db ? messages.flatMap((message) => mailIds(message, me)) : [];
 		if (!me || !db || ids.length === 0) return;
+		// The model has these messages now, even if database acknowledgement must wait for the next tick.
+		for (const id of ids) this.mail.forgetForUser(id, me);
 		try {
 			db.quick(() => this.inbox.seen(db, me, ids));
 		} catch {
@@ -107,6 +109,7 @@ export class Delivery {
 		}
 		this.checkWake();
 		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id);
+		this.mail.pruneForUser(db);
 	}
 
 	/**

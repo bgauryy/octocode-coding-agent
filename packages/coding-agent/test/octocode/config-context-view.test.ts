@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { getNativeSkillsDir } from "../../src/config.ts";
+import { getBundledSkillsDir, getNativeSkillsDir } from "../../src/config.ts";
+import { claudeConfigDir } from "../../src/utils/host-config.ts";
 import { collectContextView } from "../../src/core/discovery/context-snapshot.ts";
 import { buildContextView, sourceInfoLabel, sourceSummary } from "../../src/core/discovery/context-view.ts";
 import { formatContextText } from "../../src/core/discovery/context-text.ts";
@@ -214,12 +215,24 @@ describe("source labels", () => {
 	it("names a path from settings or a flag, never 'path'", () => {
 		expect(sourceInfoLabel({ source: "cli", scope: "temporary" })).toBe("command line");
 		expect(sourceInfoLabel({ source: "local", scope: "temporary" })).toBe("settings path");
+		// A built-in extension shares the `builtin` source with the bundled Octocode skills, but not their folder.
 		expect(sourceInfoLabel({ source: "builtin", scope: "user" })).toBe("builtin");
-		expect(
-			sourceInfoLabel({ source: "local", scope: "temporary", path: path.join(getNativeSkillsDir(), "x", "SKILL.md") }),
-		).toBe("builtin");
+		expect(sourceInfoLabel({ source: "builtin", scope: "user", path: "<builtin:llama.cpp>" })).toBe("builtin");
 		expect(sourceInfoLabel({ source: "local", scope: "user" })).toBe("octocode global");
 		expect(sourceInfoLabel({ source: "npm:kit", scope: "project" })).toBe("package npm:kit");
+	});
+
+	it("tells Octocode's core skills, its bundled collection and external skill folders apart", () => {
+		const file = (dir: string) => path.join(dir, "x", "SKILL.md");
+		expect(sourceInfoLabel({ source: "local", scope: "temporary", path: file(getNativeSkillsDir()) })).toBe("core");
+		expect(sourceInfoLabel({ source: "builtin", scope: "user", path: file(getBundledSkillsDir()) })).toBe("octocode");
+		expect(
+			sourceInfoLabel({
+				source: "extension:inline:octocode",
+				scope: "temporary",
+				path: file(path.join(claudeConfigDir(), "skills")),
+			}),
+		).toBe("claude global");
 	});
 
 	it("counts servers per source instead of naming them", () => {

@@ -8,8 +8,9 @@ import type { ExtensionAPI } from "../../core/features/index.ts";
 import type { createMemoryActions } from "../memory/tool.ts";
 import { archiveMutation, archiveRead } from "../shared/archive-operation.ts";
 import { contentText, textResult } from "../shared/util.ts";
-import { sharedAgentDb, agentEvents } from "../agentdb/api.ts";
-import { workspaceHistoryScope, PAGE_CHARS } from "../shared/history.ts";
+import { sharedAgentDb } from "../../config/database.ts";
+import { agentEvents } from "../../../../db/src/api.ts";
+import { historyScope, PAGE_CHARS } from "../shared/history.ts";
 import { HistoryRepair } from "./repair.ts";
 import { createHistoryTool } from "./history-tool.ts";
 import { getRecord, readRecords } from "./reads.ts";
@@ -77,8 +78,8 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 			async execute(callId, input, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
 
-				if (!input.goal?.trim() || !input.reason?.trim())
-					throw new Error("archive needs goal (what you look for) and reason (why history is needed, not the code).");
+				// Recorded calls that carry the former `goal` field still replay: it is ignored.
+				if (!input.reason?.trim()) throw new Error("archive needs reason (why history is needed, not the code).");
 				if (!archiveRead(input) && !archiveMutation(input)) throw new Error("Unknown archive operation.");
 				if (archiveMutation(input)) {
 					if (input.source !== "memories") throw new Error("Only source memories supports set and delete.");
@@ -104,7 +105,7 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 					const repair = new HistoryRepair(sharedAgentDb(), process.env, signal);
 					const repairs = [
 						() => repair.transcript(ctx.sessionManager.getSessionFile()!),
-						...workspaceHistoryScope(ctx.cwd).map((session) => () => repair.archive(session.folder)),
+						...historyScope(ctx.cwd).map((session) => () => repair.archive(session.folder)),
 					];
 					for (const run of repairs) {
 						signal?.throwIfAborted();
@@ -166,7 +167,6 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 					mode: op,
 					hits,
 					nextCursor,
-					goal: input.goal,
 					reason: input.reason,
 				});
 			},

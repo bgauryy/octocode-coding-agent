@@ -1,3 +1,4 @@
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,7 +45,7 @@ const segment = (session: string, tldr: string): Omit<Segment, "n"> => ({
 
 const record = (session: string, cwd: string, overrides: Partial<SessionRecord> = {}): SessionRecord => ({
 	session,
-	repository: fs.realpathSync(cwd),
+	repository: registeredWorkspace(cwd).id,
 	workspace: cwd,
 	goal: { role: "user", text: `goal of ${session}` },
 	ending: [{ role: "assistant", text: `${session} ended well` }],

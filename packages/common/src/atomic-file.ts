@@ -90,10 +90,25 @@ export function writeTargetSync(file: string, hops = 40): string {
 			if (code !== "ENOENT" && code !== "EINVAL") throw failure;
 		}
 		if (link !== undefined) {
-			if (hops === 0) throw new Error(`Too many symbolic links: ${file}`);
+			if (hops === 0) throw new Error(`Too many symbolic links: ${file}`, { cause: error });
 			return writeTargetSync(path.resolve(path.dirname(file), link), hops - 1);
 		}
 		return path.join(fs.realpathSync(path.dirname(file)), path.basename(file));
+	}
+}
+
+/** Flush a newly created or renamed directory entry where the filesystem supports directory fsync. */
+export function syncDirectorySync(dir: string): void {
+	if (process.platform === "win32") return;
+	try {
+		const fd = fs.openSync(dir, "r");
+		try {
+			fs.fsyncSync(fd);
+		} finally {
+			fs.closeSync(fd);
+		}
+	} catch {
+		// See WriteIo.syncDirectory.
 	}
 }
 
@@ -118,19 +133,7 @@ const syncIo: WriteIo = {
 	},
 	rename: (from, to) => fs.renameSync(from, to),
 	remove: (file) => fs.rmSync(file, { force: true }),
-	syncDirectory: (dir) => {
-		if (process.platform === "win32") return;
-		try {
-			const fd = fs.openSync(dir, "r");
-			try {
-				fs.fsyncSync(fd);
-			} finally {
-				fs.closeSync(fd);
-			}
-		} catch {
-			// See WriteIo.syncDirectory.
-		}
-	},
+	syncDirectory: syncDirectorySync,
 };
 
 const asyncIo: WriteIo = {

@@ -63,7 +63,7 @@ beforeEach(() => {
 	vi.stubGlobal("WebSocket", FakeSocket);
 	vi.stubGlobal(
 		"fetch",
-		vi.fn(async (url: string, init: RequestInit = {}) => {
+		vi.fn(async (url: string | URL, init: RequestInit = {}) => {
 			requests.push({
 				url: String(url),
 				method: init.method ?? "GET",

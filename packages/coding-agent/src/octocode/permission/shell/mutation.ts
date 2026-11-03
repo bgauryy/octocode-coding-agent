@@ -43,6 +43,8 @@ export { parsedShell } from "./commands.ts";
 interface ShellMutation {
 	/** Paths the command writes, moves or removes, as written (relative to the command's cwd). */
 	writes: string[];
+	/** The `writes` that only create a directory (`mkdir`'s operands), for a policy that allows a folder it may fill. */
+	directories: string[];
 	/** Directories a change in `opaque` happens in (`.` for where the command runs, `git -C dir`'s repository): what the permission check classifies when no path is named. */
 	areas: string[];
 	/** Changes with no path to name (`git commit`, `sed -i`, `npm install`), one short description each. */
@@ -75,7 +77,7 @@ function place(
 	file: string,
 	dirs: string[] | undefined,
 	moved: boolean,
-	into: "writes" | "areas" = "writes",
+	into: "writes" | "areas" | "directories" = "writes",
 ): void {
 	if (dirs) {
 		found[into].push(...dirs.map((dir) => (file === "." && dir !== "" ? dir : underDirectory(dir, file))));
@@ -89,6 +91,7 @@ function place(
 /** Folds the effect of a script a command runs (`sh -c`) into `into`: the script's relative paths are relative to where the command runs. */
 function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undefined, moved: boolean): void {
 	for (const file of other.writes) place(into, file, dirs, moved);
+	for (const file of other.directories) place(into, file, dirs, moved, "directories");
 	for (const area of other.areas) place(into, area, dirs, moved, "areas");
 	into.opaque.push(...other.opaque);
 	into.uncertain ||= other.uncertain;
@@ -167,7 +170,9 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 			found.opaque.push(`${input.runner} ${name}`);
 			unsure(found, `\`${input.runner} ${name}\` takes operands and options from its input`);
 		} else if (ALL_OPERANDS.has(name)) {
+			const before = found.writes.length;
 			take([...operands, ...(name === "mv" ? optionValues(rest, "t", ["--target-directory"]) : [])]);
+			if (name === "mkdir") found.directories.push(...found.writes.slice(before));
 		} else if (DESTINATION_ONLY.has(name)) {
 			const target = optionValues(rest, "t", ["--target-directory"]);
 			// A hard link makes its source writable through the new name: the source is changed as much as the link.
@@ -273,7 +278,14 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
  * one the parser cannot read at all is `uncertain` (a caller decides whether that matters).
  */
 export function shellMutation(command: string, depth = 0): ShellMutation {
-	const found: ShellMutation = { writes: [], areas: [], opaque: [], uncertain: false, unparsed: false };
+	const found: ShellMutation = {
+		writes: [],
+		directories: [],
+		areas: [],
+		opaque: [],
+		uncertain: false,
+		unparsed: false,
+	};
 	if (readOnlyCommand(command)) return found;
 	const syntax = bashSyntax(command);
 	found.unparsed = syntax.incomplete;
@@ -295,6 +307,11 @@ export function shellMutation(command: string, depth = 0): ShellMutation {
 		} else place(found, target.path, target.dirs, moved);
 	}
 	for (const part of syntax.commands) inspect(part, found, depth, moved);
+	// A path also written another way (`mkdir d && mv x d`, `> d`) is not only a directory: it is written more often than created.
+	const count = (list: string[], file: string) => list.filter((entry) => entry === file).length;
+	found.directories = [...new Set(found.directories)].filter(
+		(file) => count(found.writes, file) === count(found.directories, file),
+	);
 	found.writes = [...new Set(found.writes)];
 	found.areas = [...new Set(found.areas)];
 	return found;

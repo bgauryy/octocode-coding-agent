@@ -1,5 +1,7 @@
 import { Worker } from "node:worker_threads";
+import { isBundledNode } from "../config/package-detection.ts";
 import {
+	IMAGE_RESIZE_WORKER_DATA,
 	IMAGE_RESIZE_WORKER_RESPONSE_TYPE,
 	type ImageResizeOptions,
 	type ResizedImage,
@@ -22,7 +24,7 @@ function isResizeImageWorkerResponse(value: unknown): value is ResizeImageWorker
 }
 
 function createResizeWorker(workerSpecifier: string | URL): Worker {
-	return new Worker(workerSpecifier);
+	return new Worker(workerSpecifier, isBundledNode ? { workerData: IMAGE_RESIZE_WORKER_DATA } : undefined);
 }
 
 async function resizeImageInWorker(
@@ -87,10 +89,10 @@ export async function resizeImage(
 	options?: ImageResizeOptions,
 ): Promise<ResizedImage | null> {
 	const isTypeScriptRuntime = import.meta.url.endsWith(".ts");
-	const workerUrl = new URL(
-		isTypeScriptRuntime ? "./image-resize-worker.ts" : "./image-resize-worker.js",
-		import.meta.url,
-	);
+	// The Node bundle is one file, so its worker is that file again (`bundle.ts` starts the worker from `workerData`).
+	const workerUrl = isBundledNode
+		? new URL(import.meta.url)
+		: new URL(isTypeScriptRuntime ? "./image-resize-worker.ts" : "./image-resize-worker.js", import.meta.url);
 
 	// Bun compiled executables resolve worker entrypoints by string path, not via
 	// new URL(..., import.meta.url). Try the string path first under Bun so the

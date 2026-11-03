@@ -11,6 +11,8 @@ export interface SessionCounts {
 	position: number;
 	shown: number;
 	total: number;
+	/** Rows marked for deletion. */
+	marked?: number;
 }
 
 const sep = () => theme.fg("muted", " · ");
@@ -23,7 +25,7 @@ export class SessionSelectorHeader implements Component {
 	private loading = false;
 	private loadProgress: { loaded: number; total: number } | null = null;
 	private showPath = false;
-	private confirmingDeletePath: string | null = null;
+	private confirmingDeleteCount = 0;
 	private statusMessage: { type: "info" | "error"; message: string } | null = null;
 	private statusTimeout: ReturnType<typeof setTimeout> | null = null;
 	private showRenameHint = false;
@@ -81,8 +83,9 @@ export class SessionSelectorHeader implements Component {
 		this.counts = counts;
 	}
 
-	setConfirmingDeletePath(path: string | null): void {
-		this.confirmingDeletePath = path;
+	/** How many sessions the delete question covers; 0 when none is open. */
+	setConfirmingDeleteCount(count: number): void {
+		this.confirmingDeleteCount = count;
 	}
 
 	private clearStatusTimeout(): void {
@@ -107,7 +110,7 @@ export class SessionSelectorHeader implements Component {
 
 	/** `Resume session (3 of 97) · ◉ This folder ○ All · Sort: Recent`, one line. */
 	render(width: number): string[] {
-		const { position, shown, total } = this.counts();
+		const { position, shown, total, marked = 0 } = this.counts();
 		const of = shown < total ? `${position} of ${shown} · ${total} total` : `${position} of ${total}`;
 		const count = total > 0 ? theme.fg("muted", ` (${of})`) : "";
 		const left = theme.bold("Resume session") + count;
@@ -124,6 +127,7 @@ export class SessionSelectorHeader implements Component {
 		}
 		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
 		const parts = [scopeText];
+		if (marked > 0) parts.push(theme.fg("error", `${marked} marked`));
 		if (this.nameFilter === "named") parts.push(theme.fg("accent", "Named only"));
 		parts.push(theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel));
 		return [truncateToWidth(`${left}${sep()}${parts.join(sep())}`, width, "…")];
@@ -131,8 +135,9 @@ export class SessionSelectorHeader implements Component {
 
 	/** One line: the hints that fit, most useful first; a delete confirmation or status message replaces them. */
 	renderFooter(width: number): string[] {
-		if (this.confirmingDeletePath !== null) {
-			const confirmHint = `Delete session? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`;
+		if (this.confirmingDeleteCount > 0) {
+			const what = this.confirmingDeleteCount === 1 ? "session" : `${this.confirmingDeleteCount} sessions`;
+			const confirmHint = `Delete ${what}? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`;
 			return [theme.fg("error", truncateToWidth(confirmHint, width, "…"))];
 		}
 		if (this.statusMessage) {
@@ -144,6 +149,7 @@ export class SessionSelectorHeader implements Component {
 			theme.fg("dim", "space") + theme.fg("muted", this.previewOpen ? " close preview" : " preview"),
 			keyHint("tui.input.tab", "scope"),
 			...(this.showRenameHint ? [keyHint("app.session.rename", "rename")] : []),
+			keyHint("app.session.mark", "mark"),
 			keyHint("app.session.delete", "delete"),
 			...(this.showActionsHint ? [keyHint("app.session.actions", "actions")] : []),
 			keyHint("app.session.toggleSort", "sort"),

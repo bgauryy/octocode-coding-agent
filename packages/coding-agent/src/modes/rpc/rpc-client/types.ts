@@ -18,7 +18,7 @@ export interface RpcClientOptions {
 	onSessionIdentity?: (sessionId: string) => void;
 	/** Called with the id of a dialog the agent closed without this host's response (`extension_ui_dismiss`); close it. */
 	onExtensionUIDismiss?: (id: string) => void;
-	/** Path to the CLI entry point (default: searches for dist/cli.js) */
+	/** Path to the CLI entry point, run with `node` (default: `dist/bundle/cli.js`, relative to `cwd`) */
 	cliPath?: string;
 	/** Working directory for the agent */
 	cwd?: string;

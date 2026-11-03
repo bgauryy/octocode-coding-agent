@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import { setImmediate as yieldTurn } from "node:timers/promises";
 import { archiveRankedText } from "./archive/ranked.ts";
 import type { HistoryFile } from "./history.ts";
@@ -163,7 +164,13 @@ export async function rankHistory(
 		signal?.throwIfAborted();
 		let lines: string[];
 		try {
-			lines = (await fs.readFile(files[index].file, "utf8")).split("\n");
+			const handle = await fs.open(files[index].file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+			try {
+				if (!(await handle.stat()).isFile()) continue;
+				lines = (await handle.readFile("utf8")).split("\n");
+			} finally {
+				await handle.close();
+			}
 		} catch {
 			continue;
 		}

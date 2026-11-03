@@ -5,7 +5,8 @@ import {
 	type State,
 	deriveEpicState,
 } from "@octocodeai/octocode-contracts/snapshot";
-import { type AgentDb, backlog, dbStamp } from "../agentdb/api.ts";
+import { type AgentDb, backlog, dbStamp, archivedAudits } from "../../../../db/src/api.ts";
+import { historyWindows } from "../../config/retention.ts";
 import { TaskStore } from "./tasks/store.ts";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
 import type { AddInput, ListQuery, UpdateInput } from "./inputs.ts";
@@ -22,7 +23,6 @@ import {
 } from "./reads.ts";
 import { addItem, COMPLETION_GUIDANCE, removeItem, updateItem } from "./writes.ts";
 import { type ItemMarks, itemMarks, reviewNeeded } from "./marks.ts";
-import { archivedAudits } from "./history-archive.ts";
 import type { BacklogCounts } from "./counts.ts";
 
 export { BacklogError, COMPLETION_GUIDANCE, PRIORITIES, parseRef, priorityName };
@@ -31,7 +31,7 @@ export type { Actor, Item };
 export type { UpdateInput };
 
 /**
- * The per-repository backlog in the shared agent database (`backlog`, `backlog_notes`; schema in src/agentdb). Items are
+ * The per-repository backlog in the shared agent database (`backlog`, `backlog_notes`; schema in packages/db). Items are
  * numbered per repository (`B12`); each call is one transaction, so several Octocode processes can work the same board.
  *
  *   backlog   triage inbox: everything an agent proposes lands here
@@ -121,10 +121,18 @@ export class BacklogStore {
 		return itemComments(this.db, this.repo, ref);
 	}
 
-	/** The newest `limit` audit rows, oldest first: the table and, within its 30-day window, the history archive. */
+	/** The newest `limit` audit rows, oldest first: the table and, within the keep window (`historyWindows`), the history archive. */
 	audit(ref?: string, limit = 500, before?: number): BacklogAudit[] {
 		const agentDb = this.agentDb();
-		const archived = archivedAudits(agentDb, this.now(), this.repo, ref, before, Math.min(500, limit));
+		const archived = archivedAudits(
+			agentDb,
+			this.now(),
+			this.repo,
+			ref,
+			before,
+			Math.min(500, limit),
+			historyWindows(),
+		);
 		return auditTrail(agentDb.db, this.repo, ref, limit, before, archived);
 	}
 

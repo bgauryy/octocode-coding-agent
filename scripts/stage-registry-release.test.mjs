@@ -39,7 +39,7 @@ test("prepare keeps exact candidate bytes for a later fixture verification and r
 	};
 	execFileSync(process.execPath, [...args, "--prepare"], { env, stdio: "pipe", timeout: 120_000 });
 	const candidate = JSON.parse(readFileSync(join(output, "candidate.json"), "utf8"));
-	assert.ok(candidate.packages.length >= 2);
+	assert.equal(candidate.packages.length, 1);
 	assert.throws(
 		() =>
 			execFileSync(process.execPath, [...args.slice(0, -1), "http://127.0.0.1:4874/", "--verify"], {

@@ -162,6 +162,7 @@ export class ProcessTerminal implements Terminal {
 		this.keyboardProtocol.beginNegotiation();
 		const programStatusQuery = this.programStatusReporter.beginQuery();
 		const graphicsQuery = this.graphicsProbe.start(
+			// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- `isTTY` is typed boolean but is undefined on a stream that is not a terminal
 			Boolean(process.stdin.isTTY && process.stdout.isTTY),
 			this.capabilitiesHandler,
 		);

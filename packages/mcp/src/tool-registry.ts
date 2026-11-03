@@ -93,6 +93,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				? {
 						compact: {
 							signature: () => presentation.signature(server, tool.name),
+							indexed: () => presentation.indexedTools(server).has(tool.name),
 							...(metadata.summary ? { summary: metadata.summary } : {}),
 						},
 					}

@@ -33,6 +33,7 @@
 			"@octocodeai/octocode-mcp/oauth": ["./packages/mcp/src/client/oauth/index.ts"],
 			"@octocodeai/octocode-mcp/testing": ["./packages/mcp/src/client/testing/index.ts"],
 			"@octocodeai/octocode-mcp/host": ["./packages/mcp/src/index.ts"],
+			"@octocodeai/octocode-db": ["./packages/db/src/api.ts"],
 			"@octocodeai/octocode-common/*": ["./packages/common/src/*.ts"],
 			"@octocodeai/octocode-acp/server": ["./packages/acp/src/server/acp-mode.ts"],
 			"@octocodeai/octocode-acp/client": ["./packages/acp/src/client/client.ts"]

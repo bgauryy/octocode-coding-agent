@@ -20,6 +20,8 @@ export interface RowView {
 	selected: boolean;
 	current: boolean;
 	confirmingDelete: boolean;
+	/** Marked for deletion (Ctrl+X). */
+	marked?: boolean;
 	showPath: boolean;
 	/** The session's folder as text, when the list is not grouped by folder. */
 	folder?: string;
@@ -98,7 +100,13 @@ export function renderSessionRow(view: RowView): string[] {
 	const session = node.session;
 	const prefix = treePrefix(node);
 	const cursor = selected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
-	const mark = current ? theme.fg("accent", "◆") : view.extras?.live ? theme.fg("success", GLYPH.live) : " ";
+	const mark = view.marked
+		? theme.fg("error", GLYPH.failed)
+		: current
+			? theme.fg("accent", "◆")
+			: view.extras?.live
+				? theme.fg("success", GLYPH.live)
+				: " ";
 	const indent = 2 + visibleWidth(prefix) + 2;
 
 	const title = truncateToWidth(rowTitle(session, view.parentTitle), Math.max(1, width - indent), "…");

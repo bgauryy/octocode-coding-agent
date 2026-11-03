@@ -119,7 +119,7 @@ export async function checkCompaction(
 		// Case 2: the response completed successfully. Compact, but do not retry because
 		// agent.continue() cannot continue from a completed assistant response.
 		if (!willRetry) {
-			return await host.runAutoCompaction("overflow", false, messageModel);
+			return host.runAutoCompaction("overflow", false, messageModel);
 		}
 
 		if (run.overflowRecoveryAttempted) {
@@ -192,7 +192,7 @@ export async function checkCompaction(
 	}
 	for (const message of incoming) contextTokens += estimateTokens(message);
 	if (shouldCompact(contextTokens, contextWindow, settings)) {
-		return await host.runAutoCompaction("threshold", false, messageModel);
+		return host.runAutoCompaction("threshold", false, messageModel);
 	}
 	return false;
 }

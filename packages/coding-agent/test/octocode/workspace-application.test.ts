@@ -1,3 +1,4 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,8 +11,7 @@ import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { ApplicationStream } from "../../../webview/src/application-stream.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -23,7 +23,7 @@ function setup() {
 	cleanup.push(() => fs.rmSync(dir, { recursive: true, force: true }));
 	const db = openAgentDb(path.join(dir, "db"));
 	cleanup.push(() => db.close());
-	const store = new BacklogStore(() => db, "repo");
+	const store = fixtureBacklog(() => db, "repo");
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: dir });
 	const listeners = new Set<(event: AgentSessionEvent) => void>();

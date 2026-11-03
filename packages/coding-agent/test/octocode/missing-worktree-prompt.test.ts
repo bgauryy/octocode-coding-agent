@@ -58,7 +58,7 @@ describe("resuming a session whose worktree is gone", () => {
 		const error = missingCwdError(WORKTREE);
 		const showExtensionConfirm = vi.fn(async (_title: string, _message: string) => false);
 		await promptInTui({ showExtensionConfirm } as never, error);
-		expect(String(showExtensionConfirm.mock.calls[0][1])).toContain("/worktree new feature");
+		expect(showExtensionConfirm.mock.calls[0][1]).toContain("/worktree new feature");
 	});
 
 	it("the non-interactive error (--print, --continue) names it as well", () => {

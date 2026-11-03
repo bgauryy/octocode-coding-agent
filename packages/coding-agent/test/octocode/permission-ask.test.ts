@@ -452,7 +452,7 @@ describe("Permission in a subagent whose Octocode reports a UI (RPC)", () => {
 		});
 		permission.setMode("full", ctx);
 		// Its audit entry goes to the parent as a notify the parent never draws (see the relay tests), with the child's nonce.
-		expect(ctx.ui.notes.filter((note) => !String(note.message).startsWith("octocode-audit/1 "))).toEqual([]);
+		expect(ctx.ui.notes.filter((note) => !note.message.startsWith("octocode-audit/1 "))).toEqual([]);
 		expect(ctx.ui.notes).toEqual([
 			{ message: expect.stringMatching(/^octocode-audit\/1 \{.*"action":"mode".*"nonce":"n0nce"/), type: "info" },
 		]);

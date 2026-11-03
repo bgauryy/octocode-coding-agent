@@ -33,6 +33,15 @@ export function canonicalizePath(path: string): string {
 	}
 }
 
+/**
+ * The binding (`inode:birthtimeNs`) survives a rename and a reboot. It leaves out the device number, which macOS
+ * (APFS) renumbers across reboots. Size and modification time identify the version at that location.
+ */
+export function getFileStamp(file: string): { size: number; mtime: string; binding: string } {
+	const { size, mtimeNs, ino, birthtimeNs } = statSync(file, { bigint: true });
+	return { size: Number(size), mtime: String(mtimeNs), binding: `${ino}:${birthtimeNs}` };
+}
+
 export function getFileRevision(path: string): string | undefined {
 	try {
 		const stats = statSync(path, { bigint: true });

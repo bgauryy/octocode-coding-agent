@@ -1,3 +1,4 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,13 +6,11 @@ import type { ConfigSnapshot } from "@octocodeai/octocode-contracts/config";
 import { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeychainBackend } from "../../src/core/auth-storage/keychain.ts";
-import { configAudits } from "../../src/octocode/agentdb/api.ts";
-import { sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { configAudits } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { buildConfigSnapshot } from "../../src/octocode/web-daemon/config-status.ts";
 import { refusalAuditor, writeConfigCredential } from "../../src/octocode/web-daemon/credential-write.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
-import { repoId } from "../../src/octocode/web-daemon/sessions.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
 
 const SECRET = "SENTINEL-KEY-4f9a1c7e";
@@ -259,10 +258,10 @@ describe("secret handling", () => {
 			vi.spyOn(console, level).mockImplementation((...args: unknown[]) => void logs.push(args.map(String).join(" ")));
 
 		const { env, server, call, responses, audits } = await daemon(null);
-		const repoKey = path.join(root, "work");
-		new BacklogStore(() => sharedAgentDb(env), repoKey).add({ title: "x", goal: "y", createdBy: "t" }, { id: "t" });
+		const repoKey = crypto.randomUUID();
+		fixtureBacklog(() => sharedAgentDb(env), repoKey).add({ title: "x", goal: "y", createdBy: "t" }, { id: "t" });
 		const frames: string[] = [];
-		const socket = new WebSocket(`ws://127.0.0.1:${server.port}/r/${repoId(repoKey)}/api/backlogs/live`, {
+		const socket = new WebSocket(`ws://127.0.0.1:${server.port}/r/${repoKey}/api/backlogs/live`, {
 			headers: { Origin: `http://127.0.0.1:${server.port}` },
 		});
 		cleanup.push(() => socket.terminate());

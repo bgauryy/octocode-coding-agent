@@ -1,3 +1,7 @@
+import { getFileStamp } from "../../../common/src/paths.ts";
+import { transcripts } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,7 +12,7 @@ import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const why = { goal: "find recurring tool mistakes", reason: "the user asked which tool errors keep happening" };
+const why = { reason: "the user asked which tool errors keep happening" };
 
 let saved: string | undefined;
 beforeEach(() => {
@@ -37,10 +41,25 @@ function archiveOver(entries: unknown[]) {
 	const transcript = path.join(process.env.OCTOCODE_HOME!, "sessions", "a.jsonl");
 	fs.mkdirSync(path.dirname(transcript), { recursive: true });
 	fs.writeFileSync(transcript, entries.map((line) => JSON.stringify(line)).join("\n") + "\n");
+	const id = "a";
+	const workspaceId = registeredWorkspace(cwd).id;
+	const db = sharedAgentDb();
+	db.transaction(() => {
+		transcripts.bind(db.db, id, workspaceId);
+		transcripts.save(
+			db.db,
+			id,
+			transcript,
+			{ type: "session", id, cwd },
+			getFileStamp(transcript),
+			entries as Parameters<typeof transcripts.save>[5],
+			0,
+		);
+	});
 	setCurrentSession("a");
 	writeSessionRecord({
 		session: "a",
-		repository: fs.realpathSync(cwd),
+		repository: registeredWorkspace(cwd).id,
 		workspace: cwd,
 		transcript,
 		goal: { role: "user", text: "goal of a" },

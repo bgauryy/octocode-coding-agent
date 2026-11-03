@@ -25,7 +25,9 @@ describe("shellMutation", () => {
 			return { writes, uncertain, afterDirectoryChange };
 		};
 		const known = (writes: string[]) => ({ writes, uncertain: false, afterDirectoryChange: undefined });
-		expect(effect("cd /repo && mkdir -p .octocode/tmp/agents/me")).toEqual(known(["/repo/.octocode/tmp/agents/me"]));
+		expect(effect("cd /repo && mkdir -p .octa/code/temp/agents/me")).toEqual(
+			known(["/repo/.octa/code/temp/agents/me"]),
+		);
 		expect(effect("cd /repo/ && echo x > out.txt")).toEqual(known(["/repo/out.txt"]));
 		expect(effect("cd /repo && echo x | tee out.txt")).toEqual(known(["/repo/out.txt"]));
 		expect(effect("cd ./sub && rm ../x")).toEqual(known(["./sub/../x"]));
@@ -123,6 +125,7 @@ describe("shellMutation", () => {
 		for (const command of ["env", "env FOO=1", "command -v rm", "sudo ls", "exec ls src", "time git status"])
 			expect(shellMutation(command), command).toEqual({
 				writes: [],
+				directories: [],
 				areas: [],
 				opaque: [],
 				uncertain: false,
@@ -216,6 +219,7 @@ describe("shellMutation", () => {
 		expect(shellMutation("echo x > $FILE").unparsed).toBe(false);
 		expect(shellMutation("git status")).toEqual({
 			writes: [],
+			directories: [],
 			areas: [],
 			opaque: [],
 			uncertain: false,
@@ -233,6 +237,7 @@ describe("shellMutation", () => {
 		])
 			expect(shellMutation(command), command).toEqual({
 				writes: [],
+				directories: [],
 				areas: [],
 				opaque: [],
 				uncertain: false,

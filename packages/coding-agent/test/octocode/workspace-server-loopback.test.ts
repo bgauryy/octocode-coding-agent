@@ -1,10 +1,10 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import type { RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
@@ -26,7 +26,7 @@ async function board(prepare?: (root: string) => void, workspace?: RevisedWorksp
 	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-loopback-"));
 	prepare?.(directory);
 	const db = openAgentDb(path.join(directory, "db"));
-	const store = new BacklogStore(() => db, "repo");
+	const store = fixtureBacklog(() => db, "repo");
 	const web = await startWorkspaceWeb(
 		{
 			store,

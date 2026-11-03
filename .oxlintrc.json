@@ -57,12 +57,27 @@
 		"import/no-cycle": ["error", { "ignoreTypes": false }],
 		"unicorn/no-useless-spread": "error",
 		"unicorn/no-useless-fallback-in-spread": "error",
+		"typescript/only-throw-error": "error",
+		"typescript/prefer-promise-reject-errors": [
+			"error",
+			{ "allowThrowingAny": true, "allowThrowingUnknown": true }
+		],
+		"eslint/preserve-caught-error": "error",
+		"typescript/return-await": "error",
+		"typescript/no-misused-promises": "error",
+		"typescript/no-deprecated": "error",
+		"oxc/no-accumulating-spread": "error",
+		"unicorn/prefer-node-protocol": "error",
+		"typescript/no-unnecessary-template-expression": "error",
+		"typescript/no-unnecessary-type-conversion": "error",
+		"unicorn/prefer-array-flat-map": "error",
+		"no-useless-return": "error",
 		"no-control-regex": "off",
 		"typescript/unbound-method": "off"
 	},
 	"overrides": [
 		{
-			"files": ["packages/coding-agent/src/**"],
+			"files": ["packages/*/src/**"],
 			"rules": {
 				"no-restricted-imports": [
 					"error",
@@ -70,7 +85,7 @@
 						"paths": [
 							{
 								"name": "node:sqlite",
-								"message": "SQL belongs in octocode/agentdb/queries; call it through octocode/agentdb/api.ts."
+								"message": "SQL belongs in packages/db/src/queries. Call it through packages/db/src/api.ts."
 							}
 						]
 					}
@@ -79,7 +94,7 @@
 		},
 		{
 			"files": [
-				"packages/coding-agent/src/octocode/agentdb/**",
+				"packages/db/src/**",
 				"packages/coding-agent/src/octocode/team/peer-leases.ts"
 			],
 			"rules": {
@@ -98,7 +113,8 @@
 				"react/exhaustive-deps": "error",
 				"react/no-danger": "error",
 				"react/no-array-index-key": "error",
-				"react/react-in-jsx-scope": "off"
+				"react/react-in-jsx-scope": "off",
+				"typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }]
 			}
 		},
 		{
@@ -109,6 +125,7 @@
 				"typescript/no-base-to-string": "off",
 				"typescript/await-thenable": "off",
 				"typescript/no-misused-spread": "off",
+				"typescript/no-misused-promises": "off",
 				"typescript/restrict-template-expressions": "off"
 			}
 		},
@@ -117,18 +134,6 @@
 			"rules": {
 				"no-unused-vars": "off",
 				"prefer-const": "off"
-			}
-		},
-		{
-			"files": [],
-			"rules": {
-				"max-lines": "off"
-			}
-		},
-		{
-			"files": [],
-			"rules": {
-				"import/no-cycle": "error"
 			}
 		}
 	]

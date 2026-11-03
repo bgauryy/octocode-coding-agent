@@ -583,9 +583,8 @@ describe("Models runtime", () => {
 		models.setProvider(
 			testProvider({
 				id: "dynamic",
-				refreshModels: async ({ signal }) => {
+				refreshModels: async () => {
 					controller.abort();
-					if (signal.aborted) return;
 				},
 			}),
 		);

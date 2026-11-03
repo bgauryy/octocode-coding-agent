@@ -32,7 +32,7 @@ import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import { agentToolSpec } from "./agent-tool.ts";
 import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
-import { reportNotes } from "./child-tasks.ts";
+import { finishChildNotes } from "./child-tasks.ts";
 import { itemLink } from "./item-link.ts";
 import { routeSummary } from "./model.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
@@ -51,10 +51,7 @@ export interface AgentControl {
 	background(): number;
 	/** Names of the subagents running now, foreground and background (a narrowing permission change stops them). */
 	running(): string[];
-	/**
-	 * Session shutdown's first step: stops every background subagent and waits (bounded) for their reports. Idempotent.
-	 * `reason`: the shutdown's (`reload`, `quit`…), named in the reports of the runs it stopped.
-	 */
+	/** Stop background agents and wait for their reports before shutdown. */
 	stopAll(reason?: string): Promise<void>;
 	/** Follow-up windows any session holds open for finished children (they live in session folders, not in memory). */
 	parked: typeof Lingering.parkedChildren;
@@ -193,7 +190,6 @@ export function registerAgentTool(
 	api.on("session_shutdown", async (event, ctx) => {
 		cancelLaunches();
 		late.stop();
-		// Usually done already: index.ts runs it before the team leaves.
 		// Reports still waiting in the batch window are saved for the next start, not lost with this runtime.
 		runs.reports.persist();
 		await stopAll(event.reason);
@@ -205,7 +201,6 @@ export function registerAgentTool(
 	});
 	// Worktrees left by a Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
 	api.on("session_start", async (event, ctx) => {
-		// A fork's in-flight children stopped with the session it forked from: the model learns which, and how to continue them.
 		const forked = event.reason === "fork" ? forkNote(ctx.sessionManager.getEntries()) : undefined;
 		if (forked)
 			void api.sendMessage(
@@ -274,11 +269,15 @@ export function registerAgentTool(
 					// An isolated run's name must not repeat a saved ref: `/agents merge <name>` would be ambiguous.
 					const refs = params.isolate ? await pendingRefs(ctx.cwd) : [];
 					launchSignal.throwIfAborted();
-					claimed = claimRun(runs, plan, { ...params, goal, name: resumed?.child.id }, ctx, refs);
-					// Its follow-up window, if one is open, ends: this call continues it.
+					claimed = claimRun(
+						runs,
+						plan,
+						{ ...params, goal, name: resumed?.child.id, sessionId: resumed?.session.id },
+						ctx,
+						refs,
+					);
 					if (resumed) lingering.forget(resumed.child.id);
 				} finally {
-					// From here the run's `release` gives the slot back.
 					if (!claimed) runs.slots.give();
 				}
 				const run = claimed;
@@ -286,10 +285,7 @@ export function registerAgentTool(
 				let finalized: Promise<string> | undefined;
 				// With the report's outcome (the success paths), the item the child worked on gets the report noted on it.
 				const finish = (outcome?: SubagentOutcome) =>
-					(finalized ??= isolation
-						.finish()
-						.then((note) => `${note}${reportNotes(ctx, linked, outcome, run.identity.id, isolation.ref)}`)
-						.finally(run.release));
+					(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id).finally(run.release));
 				let handedOff = false;
 				// From the claim on, every failure goes through `finish`: the slot and the name are given back.
 				try {

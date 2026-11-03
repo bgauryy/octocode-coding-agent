@@ -23,6 +23,8 @@ export interface ResizedImage {
  * (for example `{ "watch:require": [...] }` under `node --watch`), so replies must be identifiable.
  */
 export const IMAGE_RESIZE_WORKER_RESPONSE_TYPE = "octocode:image-resize-response";
+/** `workerData` telling the one-file Node bundle, started as a worker, to run the image worker. */
+export const IMAGE_RESIZE_WORKER_DATA = "octocode:image-resize-worker";
 
 export type ResizeImageWorkerResponse =
 	| { type: typeof IMAGE_RESIZE_WORKER_RESPONSE_TYPE; result: ResizedImage | null }

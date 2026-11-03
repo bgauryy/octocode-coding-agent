@@ -1,5 +1,5 @@
 import { ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { EditorProps } from "../extension.ts";
 import { PRIORITY_OPTIONS, STATE_TITLES } from "../model/backlog.ts";
@@ -96,7 +96,7 @@ export function Editor({ item, correction, onClose }: EditorProps) {
 			if (mounted.current) setSaving(false);
 		}
 	}
-	async function submit(event: FormEvent) {
+	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (pending.current || savedRef || stale) return;
 		pending.current = true;

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { git, gitQuiet } from "../shared/git.ts";
+import { rejectTrackedWorkspaceState, git, gitQuiet } from "../shared/git.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "./approval.ts";
 import { copyIncluded, type IncludeResult } from "./include.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";
@@ -53,16 +53,16 @@ export async function ensureWorktree(cwd: string, name: string, ask?: WorktreeTr
 	else if (existsSync(target))
 		throw new Error(`${target} exists but is not a git worktree of this repository; move or delete it first.`);
 
+	const reuseBranch = await branchExists(repo.main, name);
+	await rejectTrackedWorkspaceState(repo.checkout, reuseBranch ? branch : "HEAD");
 	const recordTrust = await approveWorktree({ path: target, from: repo.main }, "worktree", ask);
 	await mkdir(path.dirname(target), { recursive: true });
 	// Started from the checkout's HEAD; a branch of that name from an earlier worktree is resumed as it is.
-	const add = (await branchExists(repo.main, name))
-		? ["worktree", "add", target, branch]
-		: ["worktree", "add", "-b", branch, target, "HEAD"];
+	const add = reuseBranch ? ["worktree", "add", target, branch] : ["worktree", "add", "-b", branch, target, "HEAD"];
 	try {
 		await git(repo.checkout, add);
 	} catch (error) {
-		throw new Error(`Could not create worktree "${name}": ${errorMessage(error)}`);
+		throw new Error(`Could not create worktree "${name}": ${errorMessage(error)}`, { cause: error });
 	}
 	recordTrust();
 	const include = await copyIncluded(repo.checkout, target);

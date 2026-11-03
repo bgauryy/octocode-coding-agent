@@ -349,11 +349,12 @@ async function main(): Promise<void> {
 		turnElapsedMs.push(elapsedMs);
 
 		const newMessages = session.messages.slice(previousMessagesLength);
-		const assistantMessages = newMessages.filter((message): message is AssistantMessage =>
-			Boolean(message && typeof message === "object" && (message as { role?: unknown }).role === "assistant"),
+		const assistantMessages = newMessages.filter(
+			(message): message is AssistantMessage =>
+				message && typeof message === "object" && (message as { role?: unknown }).role === "assistant",
 		);
-		const toolResults = newMessages.filter((message) =>
-			Boolean(message && typeof message === "object" && (message as { role?: unknown }).role === "toolResult"),
+		const toolResults = newMessages.filter(
+			(message) => message && typeof message === "object" && (message as { role?: unknown }).role === "toolResult",
 		);
 
 		if (assistantMessages.length < 2 || toolResults.length < 1) {

@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
-import { type AgentDb, type Db, USER_AUTHOR, backlog, meta, tasks } from "../agentdb/api.ts";
+import { type AgentDb, type Db, USER_AUTHOR, backlog, meta, tasks } from "../../../../db/src/api.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import {
@@ -24,7 +24,7 @@ import { evidenceLink, mergeLinks, splitEvidence } from "./evidence-links.ts";
 import { derived, getItem, liveHolder, origin } from "./reads.ts";
 
 /** What closing an item takes; the tool guideline, the hand-over prompts and the refusal all say it with these words. */
-export const COMPLETION_GUIDANCE = "Done needs completion: summary, files, verification, operationKey.";
+export const COMPLETION_GUIDANCE = "Done needs completion: summary, files, verification.";
 
 /** The fields a subagent proposal cannot set: hierarchy and dependencies belong to the parent. */
 const SUBAGENT_REFUSED_ADD = ["parentId", "dependsOn"] as const;

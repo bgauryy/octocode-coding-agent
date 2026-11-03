@@ -175,7 +175,7 @@ async function fixture(registered = false, configured = false) {
 const declaredTools = (request: JsonObject): string[] =>
 	(request.tools as Array<{ function?: { name?: string } }>).map((tool) => tool.function?.name ?? "");
 
-it("starts a child with the server the parent's mcp tool added, without writing mcp.json", async () => {
+it("refuses a server add from the model's mcp tool, so nothing reaches the child or mcp.json", async () => {
 	const f = await fixture();
 	try {
 		f.faux.setResponses([
@@ -192,29 +192,18 @@ it("starts a child with the server the parent's mcp tool added, without writing 
 			fauxAssistantMessage("ADDED"),
 		]);
 		await f.session.prompt("Add the echo server.");
+		// Definitions change through `/mcp` or `octocode mcp`; the model's tool refuses before asking the user.
 		const added = f.session.messages.findLast((m) => m.role === "toolResult");
-		expect(added?.isError, JSON.stringify(added)).not.toBe(true);
-		expect(f.confirmations).toHaveLength(1);
+		expect(added?.isError, JSON.stringify(added)).toBe(true);
+		expect(JSON.stringify(added)).toContain('The mcp intent \\"add\\" was removed');
+		expect(f.confirmations).toHaveLength(0);
 
 		f.delegate();
 		await f.session.prompt("Delegate.");
-		const result = f.session.messages.findLast((m) => m.role === "toolResult");
-		expect(result?.isError, JSON.stringify(result)).not.toBe(true);
-
-		// The child's first request carries the server's contract section and declares its tools.
 		expect(f.requests).toHaveLength(1);
-		const request = JSON.stringify(f.requests[0]);
-		expect(request).toContain('<mcp name=\\"echo\\" tools=\\"mcp__echo__*\\"');
-		expect(declaredTools(f.requests[0])).toContain("mcp__echo__shout");
-		// No second confirmation for the child, and nothing was persisted.
-		expect(f.confirmations).toHaveLength(1);
+		expect(declaredTools(f.requests[0]).some((name) => name.startsWith("mcp__echo__"))).toBe(false);
 		expect(fs.existsSync(path.join(f.root, "project", ".mcp.json"))).toBe(false);
 		expect(fs.existsSync(path.join(f.root, "agent", "mcp.json"))).toBe(false);
-		// The handoff file is removed when the run ends.
-		const leftovers = fs
-			.readdirSync(path.join(f.root, "project"), { recursive: true })
-			.filter((entry) => String(entry).includes("mcp-servers-"));
-		expect(leftovers).toEqual([]);
 	} finally {
 		await f.close();
 	}
@@ -273,10 +262,19 @@ it("inherits an extension server even when the child's extension loader does not
 		f.delegate();
 		await f.session.prompt("Delegate with the extension server.");
 		expect(f.requests).toHaveLength(1);
+		// The child's first request carries the server's contract section and declares its tools.
 		expect(declaredTools(f.requests[0])).toContain("mcp__extension_echo__shout");
-		expect(JSON.stringify(f.requests[0])).toContain("mcp__extension_echo");
+		expect(JSON.stringify(f.requests[0])).toContain(
+			'<mcp name=\\"extension-echo\\" tools=\\"mcp__extension_echo__*\\"',
+		);
 		expect(f.confirmations).toHaveLength(0);
+		expect(fs.existsSync(path.join(f.root, "project", ".mcp.json"))).toBe(false);
 		expect(fs.existsSync(path.join(f.root, "agent", "mcp.json"))).toBe(false);
+		// The handoff file is removed when the run ends.
+		const leftovers = fs
+			.readdirSync(path.join(f.root, "project"), { recursive: true })
+			.filter((entry) => String(entry).includes("mcp-servers-"));
+		expect(leftovers).toEqual([]);
 	} finally {
 		await f.close();
 	}

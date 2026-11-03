@@ -206,7 +206,10 @@ const BACKLOG_ENTITIES_CEILING = 1_500;
 // (856) replaced its agent type, and the prompt sections moved to one registry.
 // 32_000 (2026-11-02, measured 31_807 without entity fields; B452 prompt review): `debug` is opt-in and the `agent`
 // tool declares `external` only when an outside agent is reachable, against the added status, referent and MCP lines.
-const MAIN_CEILING = 32_000;
+// 33_300 (2026-11-03, measured 32_833 without entity fields; B472, user-requested): cost-aware model routing, the 5W2H
+// brief, dependency-graph scheduling with RACI ownership, problem reduction, PDCA/OODA/5 Whys and the BLUF/SBAR formats
+// (rendered main policy +1_357: work +478, delegation +751, communication +128), trimmed before measuring.
+const MAIN_CEILING = 33_300;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -246,7 +249,12 @@ const MAIN_CEILING = 32_000;
 // same graph-tool removal and tool-text, agent and section changes.
 // 20_500 (2026-11-02, measured 20_265 without entity fields, now with a backlog item so the backlog tool is declared;
 // B452): the child communication section and the report contract's resume sentence left, and `debug` is opt-in.
-const SPECIALIST_CEILING = 20_500;
+// 21_600 (2026-11-02, measured 21_356 without entity fields; B463, user-requested): decision-layer rules — intent and
+// proving check, unknowns and wrong premises, package manager and error handling, retry side effects, final diff,
+// run-mode approvals, untrusted command output, plus the round-2 review restorations (request limit, coverage).
+// 22_200 (2026-11-03, measured 21_915 without entity fields; B472, user-requested): the same problem-reduction,
+// PDCA/OODA and 5 Whys lines (work +478) and the child's outcome-first line (communication +81).
+const SPECIALIST_CEILING = 22_200;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -259,8 +267,6 @@ describe("prompt size", () => {
 		expect(size.perTool.browser).toBeUndefined();
 		expect(size.perTool.graphQuery).toBeUndefined();
 		expect(size.perTool.graphBuild).toBeUndefined();
-		// `debug` is opt-in (`--tools +debug`): it is not declared by default.
-		expect(size.perTool.debug).toBeUndefined();
 		expect(size.backlogEntities).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);
 		expect(
@@ -309,7 +315,7 @@ describe("prompt size", () => {
 		for (const subagent of [false, true]) {
 			const { policy } = await promptSize({ subagent });
 			for (const sentence of sentences) expect(policy, `policy (subagent=${subagent})`).not.toContain(sentence);
-			expect(policy).not.toContain("Start it with one word");
+			expect(policy).not.toContain("Start it with the outcome word");
 		}
 	});
 });

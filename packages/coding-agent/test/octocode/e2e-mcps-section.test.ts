@@ -4,6 +4,7 @@ import path from "node:path";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
+	fauxToolCall,
 	getCurrentSystemMessage,
 	getCurrentTools,
 	type TranscriptContext,
@@ -31,7 +32,11 @@ const OCTOCODE_OFF = { octocode: { command: "false", enabled: false } };
 interface FirstRequest {
 	sections: Record<string, string>;
 	declared: ReturnType<typeof getCurrentTools>;
+	/** Text of each tool result of the run, in order. */
+	results: Array<{ tool: string; text: string; isError: boolean }>;
 }
+
+type Response = Parameters<ReturnType<typeof createFauxCore>["setResponses"]>[0][number];
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -42,6 +47,7 @@ afterEach(() => {
 async function firstRequest(
 	docs: Record<string, unknown> = {},
 	session: { tools?: string[]; excludeTools?: string[]; settings?: Record<string, unknown> } = {},
+	script: Response[] = [fauxAssistantMessage("ready")],
 ): Promise<FirstRequest> {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-e2e-mcps-"));
 	const cwd = path.join(root, "project");
@@ -124,17 +130,29 @@ async function firstRequest(
 	await agent.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 	let captured: TranscriptContext | undefined;
-	faux.setResponses([
-		(context: TranscriptContext) => {
+	faux.setResponses(
+		script.map((response) => (context: TranscriptContext, ...rest: unknown[]) => {
 			captured ??= context;
-			return fauxAssistantMessage("ready");
-		},
-	]);
+			return typeof response === "function" ? (response as (...args: unknown[]) => never)(context, ...rest) : response;
+		}),
+	);
 	await agent.prompt("hello");
 	if (!captured) throw new Error("The scripted model received no request");
+	const results = agent.messages.flatMap((message) =>
+		message.role === "toolResult"
+			? [
+					{
+						tool: message.toolName,
+						text: message.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+						isError: message.isError,
+					},
+				]
+			: [],
+	);
 	return {
 		sections: (getCurrentSystemMessage(captured.messages)?.sections ?? {}) as Record<string, string>,
 		declared: getCurrentTools(captured.messages),
+		results,
 	};
 }
 
@@ -206,6 +224,44 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 		expect(mcps).toContain("Title words to search for.");
 		for (const left of ["function publish", "Publish a draft page", "legacy", "Import a page", "Delete a page"])
 			expect(mcps, left).not.toContain(left);
+	});
+
+	it("names an indexed tool on one line, keeps it declared and returns its contract on demand", async () => {
+		const call = (name: string, args: Record<string, unknown>) =>
+			fauxAssistantMessage([fauxToolCall(name, { reason: "scripted e2e step", ...args })], { stopReason: "toolUse" });
+		const request = await firstRequest(
+			{ toolExposure: { purge: "hidden" }, toolContract: { publish: "indexed" } },
+			{},
+			[
+				call("mcp__docs__publish", { page: "draft" }),
+				call("mcp", { intent: "tools", server: "docs", tool: "publish" }),
+				call("mcp__docs__publish", { id: "draft" }),
+				fauxAssistantMessage("done"),
+			],
+		);
+		const mcps = request.sections.mcps;
+		expect(mcps).toContain("Title words to search for.");
+		expect(mcps).not.toContain("Publish a draft page");
+		expect(mcps).toContain(
+			'Contracts on demand: publish. Declared and callable; before a first call, read the contract with mcp {intent:"tools", server:"docs"',
+		);
+		expect(docsTools(request)).toContain("mcp__docs__publish");
+		const [refused, contract, published] = request.results;
+		expect(refused).toMatchObject({ tool: "mcp__docs__publish", isError: true });
+		expect(refused.text).toContain("Expected signature (TypeScript):");
+		expect(refused.text).toContain("Id of the draft.");
+		expect(contract).toMatchObject({ tool: "mcp", isError: false });
+		expect(contract.text).toMatch(/Publish a draft page so readers see it\.[\s\S]*id: string/);
+		expect(published).toMatchObject({ tool: "mcp__docs__publish", text: "publish ok", isError: false });
+	});
+
+	it("describes every tool in full with mcpContractTiers off, whatever toolContract says", async () => {
+		const request = await firstRequest(
+			{ toolExposure: { purge: "hidden" }, toolContract: { publish: "auto" }, contract: "auto" },
+			{ settings: { mcpContractTiers: "off" } },
+		);
+		expect(request.sections.mcps).toContain("Publish a draft page so readers see it.");
+		expect(request.sections.mcps).not.toContain("Contracts on demand");
 	});
 
 	it("describes every tool in plain form with mcpPresentation json, and still declares them thin", async () => {

@@ -312,7 +312,14 @@ function walk(root: Node, depth: number): Collected | undefined {
 	// Arithmetic on a variable whose value the line does not show evaluates that value as code (`arithmetic.ts`).
 	const arithmetic = hiddenArithmetic(root);
 	if (arithmetic !== undefined)
-		out.commands.push({ words: [arithmetic], literals: [undefined], program: 0, redirects: [], opaque: true });
+		out.commands.push({
+			words: [arithmetic],
+			literals: [undefined],
+			program: 0,
+			redirects: [],
+			opaque: true,
+			opaqueBecause: `the arithmetic \`${arithmetic.trim()}\` names a variable whose value the line does not show, and bash evaluates that value as an expression that can run a command; give the variable a number in the line (\`S=0\`, \`S=$(date +%s)\`)`,
+		});
 	// A variable set outside a command (`export GIT_SSH_COMMAND=…; git fetch`, `GIT_PAGER=x; git log`) reaches the commands after it.
 	for (const assignment of root.descendantsOfType("variable_assignment")) {
 		const because = assignment?.parent?.type === "command" ? undefined : programSetting(assignment?.text ?? "");

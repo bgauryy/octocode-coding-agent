@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { waitForExit } from "./profile-build.mjs";
-import { bundledDistCliPath, distCliPath, packageDir, srcCliPath } from "./profile-paths.mjs";
+import { bundledDistCliPath, packageDir, srcCliPath } from "./profile-paths.mjs";
 import { parseStartupTimings } from "./profile-timings.mjs";
 
 const agentDirEnvName = "OCTOCODE_CODING_AGENT_DIR";
@@ -68,8 +68,7 @@ async function runTuiBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 		mkdirSync(isolatedAgentDir, { recursive: true });
 	}
 
-	const nodeEntryPath = options.bundle ? bundledDistCliPath : distCliPath;
-	const command = getRuntimeCommand(runtime, "tui", profileDir, profileName, options.cpuProfile, nodeEntryPath);
+	const command = getRuntimeCommand(runtime, "tui", profileDir, profileName, options.cpuProfile, bundledDistCliPath);
 	const child = spawn(command.executable, command.args, {
 		cwd: packageDir,
 		env: createBenchmarkEnv(options, isolatedAgentDir),
@@ -131,8 +130,7 @@ async function runRpcBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 		mkdirSync(isolatedAgentDir, { recursive: true });
 	}
 
-	const nodeEntryPath = options.bundle ? bundledDistCliPath : distCliPath;
-	const command = getRuntimeCommand(runtime, "rpc", profileDir, profileName, options.cpuProfile, nodeEntryPath);
+	const command = getRuntimeCommand(runtime, "rpc", profileDir, profileName, options.cpuProfile, bundledDistCliPath);
 	const child = spawn(command.executable, command.args, {
 		cwd: packageDir,
 		env: createBenchmarkEnv(options, isolatedAgentDir),
@@ -216,7 +214,7 @@ async function runRpcBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 
 export async function runBenchmarkRun(params) {
 	if (params.options.mode === "rpc") {
-		return await runRpcBenchmarkRun(params);
+		return runRpcBenchmarkRun(params);
 	}
-	return await runTuiBenchmarkRun(params);
+	return runTuiBenchmarkRun(params);
 }

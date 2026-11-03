@@ -6,7 +6,8 @@ import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import { hostRender, hostUi } from "./host.ts";
 import type { McpExposure } from "./config.ts";
-import { declaresReason, firstSentence, thinParameters } from "./presentation/declaration.ts";
+import { mcpArgumentNormalizer } from "./arguments.ts";
+import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
 import {
 	type McpToolCaller,
@@ -18,16 +19,6 @@ import {
 
 const OUTPUT_PREVIEW_LINES = 5;
 
-/**
- * Every native tool takes a required `reason`, so models add one to MCP calls too; a server schema that forbids extra
- * keys then rejects the call. The server never sees the key, so dropping it changes no request it could accept. A
- * server that declares `reason` (at its root or in a root alternative) keeps it.
- */
-const dropReason = <T>(args: T): T => {
-	if (typeof args !== "object" || args === null || Array.isArray(args) || !("reason" in args)) return args;
-	const { reason: _reason, ...rest } = args as Record<string, unknown>;
-	return rest as T;
-};
 interface PreparedMcpCall {
 	args: Record<string, unknown>;
 	/** Applied to the server's result before `convertResult`. */
@@ -58,7 +49,7 @@ export interface McpToolDefinitionOptions {
 	 * model reads the tool's description and schema (a typed signature, or the JSON Schema in plain form) in its server's block of the system prompt; calls are validated against the
 	 * server's own input schema, and a failed validation shows `signature()`.
 	 */
-	compact?: { signature: () => string | undefined; summary?: string };
+	compact?: { signature: () => string | undefined; summary?: string; indexed?: () => boolean };
 }
 
 export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpToolDefinition<TSchema, McpToolDetails> {
@@ -68,6 +59,9 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	const description = tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`;
 	const inputSchema = toParameters(tool.inputSchema);
 	const { compact } = options;
+	// Common argument-shape mistakes (an undeclared `reason`, `responseChars` in a query, a JSON-string `queries`) are
+	// rewritten to the accepted shape before validation (`arguments.ts`).
+	const normalize = mcpArgumentNormalizer(tool.inputSchema);
 	return {
 		name: options.name,
 		label,
@@ -86,20 +80,22 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 			? {
 					validationHint: ({ envelope }) => {
 						const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
-						if (shape) return shape;
-						const cap = queriesCap(tool.inputSchema);
 						const block = compact?.signature();
+						// An indexed tool's contract is not in the prompt, so the shape alone would leave the fields unknown.
+						if (shape)
+							return block && compact?.indexed?.() ? `${shape}\n\nExpected signature (TypeScript):\n${block}` : shape;
+						const cap = queriesCap(tool.inputSchema);
 						const hints = [
 							cap === undefined
 								? ""
-								: `If queries has more than ${cap} items: send at most ${cap} per call and put the rest in another call in the same turn.`,
+								: `queries holds at most ${cap}; split into calls of ${cap} or fewer, run them in the same turn.`,
 							block ? `Expected signature (TypeScript):\n${block}` : "",
 						].filter(Boolean);
 						return hints.length ? hints.join("\n\n") : undefined;
 					},
 				}
 			: {}),
-		...(declaresReason(tool.inputSchema) ? {} : { prepareArguments: dropReason }),
+		...(normalize ? { prepareArguments: normalize } : {}),
 		...(options.presentation
 			? options.presentation.outputSchema
 				? { outputSchema: options.presentation.outputSchema }

@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { ENV_AGENT_DIR } from "../../src/config.ts";
 import { hookCalls } from "../../src/octocode/hooks/config/calls.ts";
 import octocode from "../../src/octocode/index.ts";
 import { initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
@@ -12,8 +13,11 @@ import { tmp } from "./helpers.ts";
 beforeAll(initializeBashSyntax);
 afterEach(() => vi.unstubAllEnvs());
 
-/** A main session whose PATH holds one fake ACP adapter (`acp`, default) or no agent at all: `external` is declared only for the first. */
-async function mainSession(options: { acp?: boolean } = {}) {
+/**
+ * A main session whose PATH holds one fake ACP adapter (`acp`, default) or no agent at all, with the `externalAgents`
+ * setting on (`optIn`, default) or unset: `external` is declared only for an adapter and the opt-in together.
+ */
+async function mainSession(options: { acp?: boolean; optIn?: boolean } = {}) {
 	const bin = tmp();
 	if (options.acp === false) vi.stubEnv("PATH", bin);
 	else {
@@ -22,7 +26,10 @@ async function mainSession(options: { acp?: boolean } = {}) {
 	}
 	// A home with no agent database, as before any session collaborated: the suite's own holds a trust decision, and a
 	// team that finds a database opens it, which needs the session to have started.
-	vi.stubEnv("OCTOCODE_HOME", tmp());
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", home);
+	vi.stubEnv(ENV_AGENT_DIR, home); // the suite points the agent directory elsewhere; settings come from here
+	if (options.optIn !== false) writeFileSync(join(home, "settings.json"), JSON.stringify({ externalAgents: true }));
 	const fake = fakeHost();
 	await octocode(fake.api);
 	return { fake, agent: fake.tools.get("agent")!, ctx: fakeCtx({ cwd: tmp() }) };
@@ -53,6 +60,12 @@ describe("agent with flat fields in a main session", () => {
 		expect(fake.tools.has("externalAgent")).toBe(false);
 		const { agent: found } = await mainSession();
 		expect((found.parameters.properties.type as { enum: string[] }).enum).toContain("external");
+	});
+
+	it("does not declare the external type unless the externalAgents setting is on, even with an ACP agent on PATH", async () => {
+		const { agent, fake } = await mainSession({ optIn: false });
+		expect((agent.parameters.properties.type as { enum: string[] }).enum).toEqual(["coordinate", "message", "task"]);
+		expect(fake.tools.has("externalAgent")).toBe(false);
 	});
 
 	it("runs coordinate and refuses fields of another type or the old envelope", async () => {

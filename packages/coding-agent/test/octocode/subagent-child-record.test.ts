@@ -114,24 +114,26 @@ describe("what the parent keeps of a child's run", () => {
 	it("records the child's session id and transcript file in a foreground run's details", async () => {
 		const result = await s.run({ task: "compacts" });
 		const id = result.details.id as string;
+		const sessionId = result.details.session.id as string;
+		expect(sessionId).not.toBe(id);
 		expect(result.details.session).toEqual({
-			id,
+			id: sessionId,
 			dir: expect.stringMatching(new RegExp(`agents[\\\\/]${id}[\\\\/]session$`)),
-			file: expect.stringMatching(new RegExp(`agents[\\\\/]${id}[\\\\/]session[\\\\/].*_${id}\\.jsonl$`)),
+			file: expect.stringMatching(new RegExp(`agents[\\\\/]${id}[\\\\/]session[\\\\/].*_${sessionId}\\.jsonl$`)),
 		});
 		expect(path.dirname(result.details.session.file)).toBe(result.details.session.dir);
 		expect(fs.existsSync(result.details.session.file)).toBe(true);
 		// A prompt handled without starting a conversation has only its id and prospective transcript folder.
 		const bare = await s.run({ task: "handled" });
 		expect(bare.details.session).toEqual({
-			id: bare.details.id,
+			id: expect.stringMatching(/^[0-9a-f-]{36}$/),
 			dir: expect.stringMatching(new RegExp(`agents[\\\\/]${bare.details.id}[\\\\/]session$`)),
 		});
 	});
 
 	it("records the folder of the child's archive of compacted history next to its session, only once it exists, and tells the parent where it is", async () => {
 		const result = await s.run({ task: "archives" });
-		const id = result.details.id as string;
+		const id = result.details.session.id as string;
 		const folder = archiveFolder(id);
 		expect(result.details.session).toEqual({
 			id,
@@ -178,7 +180,7 @@ describe("what the parent keeps of a child's run", () => {
 			// Its own folder and its own conversation; the first one is untouched.
 			const [firstFile, secondFile] = [first.details.session.file as string, second.details.session.file as string];
 			expect(path.dirname(secondFile)).not.toBe(path.dirname(firstFile));
-			expect(secondFile).toMatch(new RegExp(`_${secondId}\\.jsonl$`));
+			expect(secondFile).toMatch(new RegExp(`_${second.details.session.id}\\.jsonl$`));
 			expect(fs.readdirSync(path.dirname(secondFile))).toEqual([path.basename(secondFile)]);
 			expect(fs.existsSync(firstFile)).toBe(true);
 		} finally {
@@ -186,20 +188,22 @@ describe("what the parent keeps of a child's run", () => {
 		}
 	});
 
-	it("never gives a new child the name of an archived session from another repository: it would read that history as its own", async () => {
+	it("keeps archived conversations distinct when different workspaces reuse an agent name", async () => {
 		const random = vi.spyOn(Math, "random").mockReturnValue(0);
 		try {
-			// A child in repository A compacted: its archive is global, keyed by its name, and outlives A's scratch folder.
+			// A child in workspace A compacted and has a saved summary.
 			const inA = setup(tmp("octocode-agent-cwd-"));
 			const archived = await inA.run({ task: "archives" });
 			inA.team.stop();
 			const name = archived.details.id as string;
-			expect(fs.existsSync(path.join(archiveFolder(name), LIBRARY_FILE))).toBe(true);
+			const sessionId = archived.details.session.id as string;
+			expect(fs.existsSync(path.join(archiveFolder(sessionId), LIBRARY_FILE))).toBe(true);
 			// A child in repository B draws the same first free name; it never compacts.
 			const inB = setup(tmp("octocode-agent-cwd-"));
 			const fresh = await inB.run({ task: "report" });
 			inB.team.stop();
-			expect(fresh.details.id).not.toBe(name);
+			expect(fresh.details.id).toBe(name);
+			expect(fresh.details.session.id).not.toBe(sessionId);
 			expect(fresh.details.session.archive).toBeUndefined();
 			expect(fresh.content[0].text).not.toContain("archived in");
 		} finally {
@@ -296,7 +300,7 @@ describe("what the parent keeps of a child's run", () => {
 		expect(s.sent[0].message.details).toMatchObject({
 			status: "done",
 			compactions: { done: 1, aborted: 1, failed: 1 },
-			session: { id: expect.stringMatching(/^[a-z]+-[a-z]+$/), file: expect.stringMatching(/\.jsonl$/) },
+			session: { id: expect.stringMatching(/^[0-9a-f-]{36}$/), file: expect.stringMatching(/\.jsonl$/) },
 			usage: { input: 150 },
 		});
 	});
@@ -315,7 +319,7 @@ describe("what the parent keeps of a child's run", () => {
 		);
 		expect(text).not.toContain("compacting on the standalone request");
 		expect(text).toContain("Compactions: 1 aborted.");
-		expect(text).toContain(`Session ${result.details.id}: `);
+		expect(text).toContain(`Session ${result.details.session.id}: `);
 		expect(result.details.notices.kept.map((notice: { level: string }) => notice.level)).toEqual(["warning", "error"]);
 	});
 

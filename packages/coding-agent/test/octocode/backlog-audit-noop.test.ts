@@ -1,9 +1,10 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -22,14 +23,14 @@ afterEach(() => {
 });
 
 const REPO = "audit-repo";
-const store = () => new BacklogStore(() => sharedAgentDb(), REPO);
+const store = () => fixtureBacklog(() => sharedAgentDb(), REPO);
 
 /** The audit rows of the backlog row itself (not its notes, comments or links), by action. */
 function itemAudits(ref: string): string[] {
 	return (
 		sharedAgentDb()
 			.db.prepare(
-				"SELECT action FROM backlog_audits WHERE repo_key = ? AND backlog_id = ? AND entity = 'backlog' ORDER BY id",
+				"SELECT action FROM backlog_audits WHERE workspace_id = ? AND backlog_id = ? AND entity = 'backlog' ORDER BY id",
 			)
 			.all(REPO, ref) as Array<{ action: string }>
 	).map((row) => row.action);
@@ -83,10 +84,12 @@ describe("backlog audit rows carry a change", () => {
 		const rows = itemAudits("B1").length;
 		const raw = sharedAgentDb().db;
 		// What an older build's note-only update or same-value setter does.
-		raw.prepare("UPDATE backlog SET version = version + 1, updated_at = updated_at + 1 WHERE repo_key = ?").run(REPO);
-		raw.prepare("UPDATE backlog SET type = type WHERE repo_key = ?").run(REPO);
+		raw
+			.prepare("UPDATE backlog SET version = version + 1, updated_at = updated_at + 1 WHERE workspace_id = ?")
+			.run(REPO);
+		raw.prepare("UPDATE backlog SET type = type WHERE workspace_id = ?").run(REPO);
 		expect(itemAudits("B1")).toHaveLength(rows);
-		raw.prepare("UPDATE backlog SET title = 'changed' WHERE repo_key = ?").run(REPO);
+		raw.prepare("UPDATE backlog SET title = 'changed' WHERE workspace_id = ?").run(REPO);
 		expect(itemAudits("B1")).toHaveLength(rows + 1);
 		closeSharedAgentDb();
 		openAgentDb(process.env.OCTOCODE_AGENT_DB).close();
@@ -98,17 +101,14 @@ describe("backlog audit rows carry a change", () => {
 		expect(triggers.n).toBe(1);
 	});
 
-	it("reads a stored `task` row as `feature` without rewriting it or adding an audit row", () => {
+	it("rejects retired backlog types before changing the item or writing an audit", () => {
 		const s = store();
 		s.add({ ...base, title: "one", state: "todo" });
-		const raw = sharedAgentDb().db;
-		raw.prepare("UPDATE backlog SET type = 'task' WHERE repo_key = ?").run(REPO);
 		const rows = itemAudits("B1").length;
-		closeSharedAgentDb();
+		expect(() =>
+			sharedAgentDb().db.prepare("UPDATE backlog SET type = 'task' WHERE workspace_id = ?").run(REPO),
+		).toThrow(/CHECK/);
 		expect(store().get("B1")!.type).toBe("feature");
 		expect(itemAudits("B1")).toHaveLength(rows);
-		expect(sharedAgentDb().db.prepare("SELECT type FROM backlog WHERE repo_key = ?").get(REPO)).toMatchObject({
-			type: "task",
-		});
 	});
 });

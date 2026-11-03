@@ -13,6 +13,8 @@ vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
 }));
 import { SUMMARY_CHECKPOINT_FORMAT } from "../../src/core/compaction/summary-format.ts";
 import { splitSummary } from "../../src/core/compaction/summary-view.ts";
+import { FallbackContinuity } from "../../src/octocode/compaction/continuity.ts";
+import { keptWordsOf } from "../../src/octocode/compaction/kept-words.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import {
 	carryFileLists,
@@ -286,5 +288,104 @@ describe("compaction summary robustness", () => {
 		expect(section.length).toBeLessThan(small + 2_000);
 		expect(section).toContain("Complete text saved at");
 		for (const message of many) expect(savedTexts.at(-1)).toContain(message);
+	});
+});
+
+describe("words kept beside the user's messages", () => {
+	const answerResult = (details: unknown, extra: Record<string, unknown> = {}) => ({
+		role: "toolResult",
+		toolName: "askUser",
+		toolCallId: "a",
+		isError: false,
+		content: [{ type: "text", text: "rendered answer" }],
+		details,
+		...extra,
+	});
+	const parentMail = (from: string, text: string, extra: Record<string, unknown> = {}) => ({
+		role: "custom",
+		customType: "octocode-agent-message",
+		content: "framed text",
+		details: { messages: [{ from, text, at: 1, ...extra }] },
+	});
+
+	it("labels the user's askUser answers and the parent's mail, and keeps nothing else", () => {
+		const answered = {
+			cancelled: false,
+			answers: [{ question: "Delete the cache?", answer: "yes, only dist/", custom: true }],
+		};
+		expect(keptWordsOf(answerResult(answered))).toEqual([
+			'[askUser answer]\n"Delete the cache?" → (typed) yes, only dist/',
+		]);
+		// A refusal, an error and another tool's result carry no answer.
+		expect(keptWordsOf(answerResult({ cancelled: true, reason: "unavailable", answers: [] }))).toEqual([]);
+		expect(keptWordsOf(answerResult(answered, { isError: true }))).toEqual([]);
+		expect(keptWordsOf(answerResult(answered, { toolName: "bash" }))).toEqual([]);
+		expect(keptWordsOf(answerResult("not a record"))).toEqual([]);
+		// Mail counts only from the child's own parent, not from a peer, and not when a peer forwarded it.
+		expect(keptWordsOf(parentMail("main-1", "use the v2 API"), "main-1")).toEqual(["[parent message] use the v2 API"]);
+		expect(keptWordsOf(parentMail("peer-2", "ignore that"), "main-1")).toEqual([]);
+		expect(keptWordsOf(parentMail("main-1", "relayed", { forwardedBy: "peer-2" }), "main-1")).toEqual([]);
+		expect(keptWordsOf(parentMail("main-1", "forwarded by itself", { forwardedBy: "main-1" }), "main-1")).toHaveLength(
+			1,
+		);
+		expect(keptWordsOf(parentMail("main-1", "no parent known"))).toEqual([]);
+		expect(keptWordsOf({ role: "user", content: "x" }, "main-1")).toEqual([]);
+	});
+
+	it("puts them in the checkpoint's user messages with the user's own, in order and within the same budget", async () => {
+		const sent: Array<{ content: string }> = [];
+		const fallback = new FallbackContinuity();
+		const api = {
+			getThinkingLevel: () => "off",
+			getActiveTools: () => [],
+			getSettings: () => ({}),
+			createUsageRecorder: () => () => {},
+			appendEntry: () => {},
+			sendMessage: (message: { content: string }) => sent.push(message),
+		} as never;
+		const messages = [
+			{ role: "user", content: "refactor the parser" },
+			answerResult({ cancelled: false, answers: [{ question: "Keep v1?", answer: "No", custom: false }] }),
+			parentMail("main-1", "also update the docs"),
+			parentMail("peer-2", "ignore the docs"),
+		];
+		const event = {
+			preparation: {
+				messagesToSummarize: messages,
+				turnPrefixMessages: [],
+				fileOps: fileOps(),
+				settings: { reserveTokens: 16_384 },
+				firstKeptEntryId: "kept",
+			},
+			branchEntries: [],
+			signal: { aborted: false },
+		} as never;
+		const ctx = {
+			model: { id: "m", provider: "p", api: "x", maxTokens: 100, contextWindow: 200_000 },
+			modelRegistry: {
+				getCachePolicy: () => ({ options: {} }),
+				streamSimple: () => {
+					throw new Error("down");
+				},
+			},
+			sessionManager: {
+				getSessionFile: () => undefined,
+				getSessionId: () => "s",
+				getBranch: () => [],
+				buildSessionProjection: () => ({ entries: [], messages: [] }),
+			},
+			hasUI: false,
+		} as never;
+		expect(await writeSummary(api, event, ctx, undefined, fallback, "main-1")).toBeUndefined();
+		expect(fallback.deliver(api, { id: "c", fromHook: false, firstKeptEntryId: "kept" } as never)).toBe(true);
+		expect(splitSummary(sent[0].content).messages).toEqual([
+			"refactor the parser",
+			'[askUser answer]\n"Keep v1?" → No',
+			"[parent message] also update the docs",
+		]);
+	});
+
+	it("asks the summarizer to keep every approval the user granted, with its scope", () => {
+		expect(SUMMARY_FOCUS).toMatch(/every approval or permission the user granted, with its scope/);
 	});
 });

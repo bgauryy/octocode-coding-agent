@@ -61,5 +61,7 @@ The process exits when stdin closes, on `SIGTERM` or `SIGHUP` (`SIGTERM` only on
 | `get_tree` |  | The session tree and current leaf. |
 | `get_last_assistant_text` |  | Text of the last assistant message, or `null`. |
 | `set_session_name` | `name`: string | Set the display name; empty names are refused. |
+| `delete_sessions` | `sessionIds`: string[] | Delete saved sessions by id: transcript (to the trash when available), session folders and database rows, as the `/resume` picker does. The current session and sessions another process runs come back in `data.refused`; unknown ids in `data.notFound`. |
+| `purge` | `scope`: "workspace" \| "all"<br>`confirm`: boolean | Delete this workspace's (`workspace`) or every workspace's and the global (`all`) Octocode data, as `/purge` does. `confirm` is required: `false` deletes nothing and returns the preview in `data.lines`; `true` deletes unless another live Octocode process holds sessions in scope (`data.refused` names it). The current session, settings, credentials and MCP configuration stay. |
 | `get_messages` |  | The message history. |
 | `get_commands` |  | Extension commands (with `argumentHint` when set), prompt templates and skill commands that a `prompt` can invoke. |

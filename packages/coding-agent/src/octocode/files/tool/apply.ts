@@ -53,7 +53,7 @@ export function applyEdit(
 		} catch (error: unknown) {
 			throwIfAborted();
 			const detail = error instanceof Error && "code" in error ? `Error code: ${String(error.code)}` : String(error);
-			throw new Error(`Could not edit file: ${display}. ${detail}.`);
+			throw new Error(`Could not edit file: ${display}. ${detail}.`, { cause: error });
 		}
 		throwIfAborted();
 		const buffer = await ops.readFile(file);

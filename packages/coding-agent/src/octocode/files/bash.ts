@@ -169,8 +169,9 @@ export function registerBashTool(
 			description:
 				"Run a command in the working directory. Foreground calls return combined output. " +
 				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
+			// User request (2026-11-03): name the platform CLIs worth reaching for, and keep code research on the research tools.
 			promptSnippet:
-				"Run builds, tests, git, formatters and other CLIs; search and read code with the declared search and read tools; narrow output with CLI flags and pipes (tail, head, sort, jq); change file contents with `file`, not sed",
+				"Run builds, tests, git, formatters and the platform's CLIs: move, copy and unpack files (mv, cp, tar, unzip), inspect binaries (file, strings), transform streams (sed, awk, jq); search and read code with the declared search and read tools, locally and on GitHub or package registries; cut long output with flags and pipes (tail, head, grep -c, sort); change file contents with `file`",
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined

@@ -271,7 +271,7 @@ async function loginOpenAIChatGPT(
 		}
 		return withOpenAIAccounts(credential, options?.previousCredential);
 	} catch (error) {
-		if (interaction.signal.aborted) throw new Error("Login cancelled");
+		if (interaction.signal.aborted) throw new Error("Login cancelled", { cause: error });
 		throw error;
 	} finally {
 		callback.close();

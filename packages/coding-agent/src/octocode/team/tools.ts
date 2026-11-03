@@ -8,7 +8,8 @@ import { storedText } from "../../../../common/src/sanitize.ts";
 import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
 import { EDIT_RETENTION_MINUTES, unjoinedAgent } from "./edits.ts";
 import type { ShellParse } from "../shared/shell-commands.ts";
-import { interpreterRefusal } from "./interpreter.ts";
+import { CONFINE_FLAGS } from "./interpreter-confinement.ts";
+import { confineNode, registerConfinedNote } from "./node-confine.ts";
 import { lockAdvice } from "./lock-advice.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
@@ -25,11 +26,14 @@ const DEFAULT_CHANGES_WINDOW_MIN = 60;
 const POWERSHELL_HELD =
 	"This PowerShell command was not run: the paths it writes cannot be checked against reservations, so while another agent holds one only read-only commands run. Use the file tool for edits.";
 const INTERPRETER_HELD = ({ name, cause }: { name: string; cause: string }): string =>
-	`This command runs ${name} on inline code, whose writes cannot be checked against reservations, so while another agent holds one only read-only commands run. Why this line is not the read-only form: ${cause}. ${
+	`This command runs ${name} on inline code, whose writes cannot be checked against reservations, so while another agent holds one only read-only commands run (${cause}). Instead: write the code to a script file under .octa/code/temp/ and run that file, or use the file tool for edits. ${
 		name === "node" || name === "nodejs"
-			? "To read with Node, put `--permission --no-experimental-sqlite --allow-fs-read=*` before `-e`: Node then refuses writes and child processes. "
-			: "Read files with the read tools. "
-	}Use the file tool for edits.`;
+			? `To read with Node, put \`${CONFINE_FLAGS}\` before \`-e\`: Node then refuses writes and child processes.`
+			: "To read, use the read tools."
+	}`;
+/** A refused run that is no interpreter: a reader given a computed word, a wrapper hiding its command, arithmetic on an unknown value. */
+const NOT_CHECKED_HELD = ({ name, cause }: { name: string; cause: string }): string =>
+	`This command was not run: what it writes cannot be checked against reservations, so while another agent holds one it is refused${/^[\w.+-]+$/.test(name) ? ` (\`${name}\`)` : ""}. Why: ${cause}. Instead: write the command to a script file under .octa/code/temp/ and run that file, or use the file tool for edits.`;
 const DEFAULT_CHANGES_LIMIT = 20;
 
 type StopAgent = (id: string, by: string) => string | undefined;
@@ -73,6 +77,7 @@ export function registerCollab(
 	registerSendMessageTool(api, team, options.registerTool);
 	registerTeamEvents(api, team, options.beforeLeave, options.shellChanges);
 	registerRecordedSpend(api, team);
+	const markConfined = registerConfinedNote(api);
 	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
 	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
@@ -91,15 +96,25 @@ export function registerCollab(
 			const reason = team.reservation(undefined, "");
 			return reason ? { block: true, reason: `${POWERSHELL_HELD} ${reason}` } : undefined;
 		}
-		const command = event.toolName === "bash" ? optionalString(input.command) : undefined;
+		let command = event.toolName === "bash" ? optionalString(input.command) : undefined;
 		// The same rule for inline interpreter code (`python3 -c`, `node -e`, a heredoc fed to `python -`): its writes are not named
-		// either, except for Node under `--permission`, whose runtime refuses them (`interpreterRefusal`).
-		// Runs only while a reservation is held: the parse is then worth its cost.
+		// either, except for Node under `--permission`, whose runtime refuses them (`interpreterRefusal`); a `node` that lacks
+		// only those flags gets them (`confineNode`), and its result says so. Runs only while a reservation is held: the parse is then worth its cost.
 		const held = command === undefined ? undefined : team.reservation(undefined, "");
 		if (command !== undefined && held && !options.shellReadOnly?.(command)) {
-			const parsed = options.shellCommands ? ((await options.shellCommands(command)) ?? null) : undefined;
-			const interpreter = interpreterRefusal(command, process.env, parsed);
-			if (interpreter) return { block: true, reason: `${INTERPRETER_HELD(interpreter)} ${held}` };
+			const parse = options.shellCommands;
+			const verdict = await confineNode(command, process.env, async (text) =>
+				parse ? ((await parse(text)) ?? null) : undefined,
+			);
+			if (verdict && "refusal" in verdict)
+				return {
+					block: true,
+					reason: `${(verdict.refusal.interpreter ? INTERPRETER_HELD : NOT_CHECKED_HELD)(verdict.refusal)} ${held}`,
+				};
+			if (verdict && isRecord(event.input)) {
+				event.input.command = command = verdict.command;
+				markConfined(event.toolCallId);
+			}
 		}
 		const files =
 			command !== undefined
@@ -131,7 +146,7 @@ function registerCoordinateTool(
 			name: "coordinate",
 			label: "Coordinate",
 			description:
-				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/tmp/` scratch are per worktree.",
+				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octa/code/temp/` scratch are per worktree.",
 			promptGuidelines: [
 				"Other agents may be editing this repository. Before overlapping edits, lock your paths with `agent` type `coordinate` (the call's `reason` tells others what you will change), then unlock when done. A check failing in a file you did not change: `changes` shows who did; resolve conflicts with the owner.",
 			],
@@ -233,10 +248,12 @@ function registerCoordinateTool(
 				const target = paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? "");
 				const { id, goal } = args as Partial<CoordinateParams>;
 				const summary = [
+					/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
 					String(args.action ?? ""),
 					id === undefined ? "" : String(id),
 					target,
 					goal ? `"${String(goal)}"` : "",
+					/* oxlint-enable typescript/no-unnecessary-type-conversion */
 				]
 					.filter(Boolean)
 					.join(" ");

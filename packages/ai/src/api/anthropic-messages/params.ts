@@ -176,6 +176,7 @@ export function buildParams(
 		model.compat?.supportsMidConvoEffort !== true &&
 		compat.supportsTemperature
 	) {
+		// oxlint-disable-next-line typescript/no-deprecated -- the SDK deprecates temperature for newer models; the compat checks above send it only where the model still accepts it
 		params.temperature = options.temperature;
 	}
 

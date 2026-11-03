@@ -182,7 +182,8 @@ describe("a finished child's report", () => {
 });
 
 describe("the subagents a session started", () => {
-	const foreground = scratch("review-fg");
+	const foregroundId = "709e2c37-ae38-40e3-9061-683eb0d5dd4f";
+	const foreground = scratch(foregroundId);
 	const background = scratch("general-bg", true);
 	const entries = [
 		...agentCall(
@@ -194,7 +195,7 @@ describe("the subagents a session started", () => {
 				goal: "Review the diff",
 				status: "done",
 				outcome: "done",
-				session: { id: "review-fg", file: foreground.file },
+				session: { id: foregroundId, file: foreground.file },
 			},
 		),
 		...agentCall(
@@ -231,6 +232,7 @@ describe("the subagents a session started", () => {
 		expect(sessionChildren(entries)).toEqual([
 			{
 				id: "review-fg",
+				sessionId: foregroundId,
 				profile: "review",
 				goal: "Review the diff",
 				status: "done",
@@ -239,13 +241,21 @@ describe("the subagents a session started", () => {
 			},
 			{
 				id: "general-bg",
+				sessionId: "general-bg",
 				profile: "general",
 				goal: "Fix the build",
 				status: "stopped",
 				transcript: background.file,
 				report: path.join(background.dir, "report.md"),
 			},
-			{ id: "general-iso", profile: "general", goal: "Try a worktree", status: "failed", isolated: true },
+			{
+				id: "general-iso",
+				sessionId: "general-iso",
+				profile: "general",
+				goal: "Try a worktree",
+				status: "failed",
+				isolated: true,
+			},
 		]);
 		expect(describeChild(sessionChildren(entries)[1])).toBe(
 			`general-bg (general, goal "Fix the build", stopped, transcript ${tildePath(background.file)}, report ${tildePath(path.join(background.dir, "report.md"))})`,
@@ -256,6 +266,7 @@ describe("the subagents a session started", () => {
 		expect(() => resumableChild(entries, "general-other", new Set())).toThrow(
 			/No subagent "general-other" in this session\. Its subagents: review-fg \(review, goal "Review the diff", done/,
 		);
+		expect(resumableChild(entries, "review-fg", new Set()).session.id).toBe(foregroundId);
 		expect(() => resumableChild(entries, "general-iso", new Set())).toThrow(/ran in an isolated worktree/);
 		expect(() => resumableChild(entries, "general-bg", new Set(["general-bg"]))).toThrow(/general-bg is running/);
 	});

@@ -3,7 +3,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import * as importedModule1 from "vitest";
 import { describe, expect, it } from "vitest";
-import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/schema.ts";
+import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 import { pathKey } from "../../src/octocode/team/store/workspace.ts";
@@ -395,7 +395,10 @@ describe("agents view", () => {
 describe("collaboration prompt", () => {
 	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
-			"own user communication, approvals and integration, and verify reports against acceptance checks",
+			"own user communication, approvals and integration.",
+		);
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
+			"Treat a report as a claim: check the result your next step depends on.",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
@@ -549,14 +552,14 @@ describe("team database schema", () => {
 		expect(pragma(file, "application_id")).toBe(AGENT_APPLICATION_ID);
 	});
 
-	it("opens an agent database whatever version number another build left on it, keeping its data", () => {
+	it("refuses a newer agent database and preserves its data", () => {
 		const file = path.join(tmp(), "team.sqlite");
 		const cwd = repo();
 		const other = open(cwd, file);
 		other.save(member("a-0001"));
 		other.close();
 		exec(file, "PRAGMA user_version=99;");
-		open(cwd, file).close();
+		expect(() => open(cwd, file)).toThrow(/unsupported Octocode schema/);
 		const db = new DatabaseSync(file);
 		expect((db.prepare("SELECT id FROM agents").all() as Array<{ id: string }>).map((row) => row.id)).toEqual([
 			"a-0001",

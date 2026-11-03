@@ -13,6 +13,7 @@ import type { FileGuard } from "../files/tool/guard.ts";
 import { readOnlyCommand } from "../permission/shell/read-only.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { estimateTokens } from "../../core/compaction/tokens.ts";
+import { trailingUpdateRewritesPrefix, type TranscriptModel } from "@octocodeai/octocode-ai";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { shortPath } from "../shared/format.ts";
@@ -123,21 +124,23 @@ function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<str
 }
 
 /**
- * Share of the working context past which a request that rewrites the prefix anyway (a system update, a model switch,
- * a cold cache) clears old results first: the rewrite is paid regardless, so the clearing costs nothing extra, and the
+ * Share of the working context past which a request that rewrites the prefix anyway (a model switch, a cold cache, or
+ * a system update that the model's transcript folds into the leading prompt) clears old results first: the rewrite is paid regardless, so the clearing costs nothing extra, and the
  * smaller history is read back cheaper on every request that follows.
  */
 const CLEAR_ABOVE_CONTEXT_SHARE = 0.5;
 
 /**
- * Whether the request about to be made rewrites the history's cache entry anyway: its last message is a system update
- * (a section patch or tool change recorded after the leading system message), or the model is not the one that
- * answered last (a model switch).
+ * Whether the request about to be made rewrites the history's cache entry anyway: the way the model's transcript is
+ * sent changes the leading prompt for the trailing system updates (`trailingUpdateRewritesPrefix`: never for a model
+ * that keeps them in the history, only when a collapsing model folds one into the leading message or changes its
+ * tools), or the model is not the one that answered last (a model switch).
  */
-export function prefixRewritten(messages: readonly unknown[], model: { provider?: string; id?: string } | undefined) {
-	const last = messages.at(-1);
-	const firstSystem = messages.findIndex((message) => isRecord(message) && message.role === "system");
-	if (isRecord(last) && last.role === "system" && firstSystem >= 0 && firstSystem !== messages.length - 1) return true;
+export function prefixRewritten(
+	messages: readonly unknown[],
+	model: (TranscriptModel & { provider?: string; id?: string }) | undefined,
+) {
+	if (trailingUpdateRewritesPrefix(messages.filter(isRecord) as { role: string }[], model)) return true;
 	if (!model?.provider || !model.id) return false;
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];

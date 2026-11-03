@@ -1,5 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
 import type { AnyModel } from "../../src/types.ts";
 import {
 	createModelDataManifest,

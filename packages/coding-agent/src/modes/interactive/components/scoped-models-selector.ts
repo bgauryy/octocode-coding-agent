@@ -235,7 +235,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 				new Text(
 					theme.fg(
 						"muted",
-						`  ${selected.model ? `Model Name: ${plainText(String(selected.model.name))}` : "Model unavailable"}`,
+						`  ${selected.model ? `Model Name: ${plainText(selected.model.name)}` : "Model unavailable"}`,
 					),
 					0,
 					0,

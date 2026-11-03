@@ -62,7 +62,7 @@ function startStream(source: AttachSource, peer: Peer, streamId: string, cursor:
 	const connection = application.connect({ sessionId: source.sessionId, cursor: cursor as never });
 	peer.streams.set(streamId, connection);
 	// The answer goes out first; frames follow after it.
-	setImmediate(async () => {
+	const forward = async () => {
 		try {
 			for await (const frame of connection) {
 				if (peer.streams.get(streamId) !== connection) break;
@@ -89,7 +89,8 @@ function startStream(source: AttachSource, peer: Peer, streamId: string, cursor:
 				peer.send({ event: "application.end", streamId });
 			}
 		}
-	});
+	};
+	setImmediate(() => void forward());
 }
 
 async function answer(source: AttachSource, peer: Peer, request: AttachRequest): Promise<unknown> {

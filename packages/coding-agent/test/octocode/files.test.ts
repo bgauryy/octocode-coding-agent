@@ -71,7 +71,7 @@ describe("file tool", () => {
 		fs.writeFileSync(file, "one");
 		for (const mode of ["write", "edit", "delete"] as const)
 			expect(guard.check(file, mode, "a.txt")).toMatch(
-				/already exists and was not read in this session\. Read it with `localFetch`/,
+				/already exists and was not read in this session\. Read it first: localFetch \{path:"a\.txt"\} or bash `sed -n '1,200p' a\.txt`\./,
 			);
 		guard.record(file);
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
@@ -84,7 +84,9 @@ describe("file tool", () => {
 		fs.writeFileSync(file, "one\ntwo\nthree\nfour");
 		const guard = new FileGuard();
 		guard.reader = BASH_READER;
-		expect(guard.check(file, "edit", "a.txt")).toMatch(/was not read in this session\. Read it with `bash`/);
+		expect(guard.check(file, "edit", "a.txt")).toMatch(
+			/was not read in this session\. Read it first: bash `sed -n '1,200p' a\.txt`/,
+		);
 		guard.record(file, undefined, true, [1, 2]);
 		expect(guard.check(file, "write", "a.txt")).toMatch(/Read the rest with `bash` \(sed -n '3,4p' <file>\)/);
 		fs.writeFileSync(file, "changed");

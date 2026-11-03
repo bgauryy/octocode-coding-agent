@@ -7,6 +7,7 @@ import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } fr
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { resolveTranscript } from "../utils/transcript.ts";
+import { collapseOptionsFor } from "../utils/transcript-prefix.ts";
 import { buildChatPayload } from "./mistral-conversations/request.ts";
 import { consumeChatStream } from "./mistral-conversations/stream-events.ts";
 import { createMistralToolCallIdNormalizer } from "./mistral-conversations/tool-call-ids.ts";
@@ -49,7 +50,7 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 			const normalizedContext = resolveTranscript(
 				{ messages: transformedMessages } as TranscriptContext,
 				model.compat?.supportsMidConvoSystemMessages,
-				{ holdAfterToolResult: true },
+				collapseOptionsFor(model.api),
 			);
 
 			let payload = buildChatPayload(model, normalizedContext, normalizedContext.messages, options);

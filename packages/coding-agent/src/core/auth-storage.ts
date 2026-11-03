@@ -10,7 +10,7 @@ import {
 	type CredentialInfo,
 	type CredentialStore,
 } from "@octocodeai/octocode-ai";
-import { join } from "path";
+import { join } from "node:path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";

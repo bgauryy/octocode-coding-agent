@@ -44,7 +44,7 @@ beforeEach(() => {
 	vi.stubGlobal("WebSocket", FakeSocket);
 	vi.stubGlobal(
 		"fetch",
-		vi.fn(async (url: string) => {
+		vi.fn(async (url: string | URL) => {
 			requests.push(String(url));
 			const reply = replies.shift();
 			const body = typeof reply === "function" ? await reply() : reply;

@@ -110,6 +110,6 @@ describe("ConfigView credential editing", () => {
 		expect(await screen.findByRole("alert")).toHaveTextContent("Could not save to the system keychain");
 		await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
 		expect(container.textContent).not.toContain(SECRET);
-		expect((screen.getByLabelText("API key for OpenAI") as HTMLInputElement).type).toBe("password");
+		expect(screen.getByLabelText<HTMLInputElement>("API key for OpenAI").type).toBe("password");
 	});
 });

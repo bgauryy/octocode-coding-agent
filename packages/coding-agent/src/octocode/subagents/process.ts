@@ -57,7 +57,7 @@ export async function runSubagent(...call: Parameters<typeof runChild>): Promise
 			if (waited > 0 && left <= 0) throw error;
 			const wait = waited === 0 ? delay : Math.min(delay, left);
 			await pause(wait, signal);
-			if (signal?.aborted) throw new Error("Subagent cancelled");
+			if (signal?.aborted) throw new Error("Subagent cancelled", { cause: error });
 			waited += wait;
 			delay *= 2;
 		}

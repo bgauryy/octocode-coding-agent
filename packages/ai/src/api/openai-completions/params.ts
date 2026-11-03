@@ -103,6 +103,7 @@ export function buildParams(
 			(cacheRetention === "long" && compat.supportsLongCacheRetention)
 				? clampOpenAIPromptCacheKey(resolvePromptCacheKey(options))
 				: undefined,
+		// oxlint-disable-next-line typescript/no-deprecated -- sent only to hosts that accept it (`acceptsPromptCacheRetention`); `prompt_cache_options.ttl` is not accepted by them
 		prompt_cache_retention:
 			cacheRetention === "long" && compat.supportsLongCacheRetention && acceptsPromptCacheRetention(model)
 				? "24h"
@@ -119,7 +120,7 @@ export function buildParams(
 
 	if (options?.maxTokens) {
 		if (compat.maxTokensField === "max_tokens") {
-			// Deprecated by OpenAI, but some OpenAI-compatible providers only accept max_tokens.
+			// oxlint-disable-next-line typescript/no-deprecated -- deprecated by OpenAI, but some OpenAI-compatible providers only accept max_tokens
 			params.max_tokens = options.maxTokens;
 		} else {
 			params.max_completion_tokens = options.maxTokens;

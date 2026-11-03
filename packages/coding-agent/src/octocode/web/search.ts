@@ -247,7 +247,9 @@ export async function search(
 			if (signal?.aborted) throw error;
 			failures.push(`${provider.name}: ${errorMessage(error)}`);
 			if (deadline.aborted)
-				throw new Error(`Search deadline reached (${failures.join("; ")}). Try a known URL or a narrower search.`);
+				throw new Error(`Search deadline reached (${failures.join("; ")}). Try a known URL or a narrower search.`, {
+					cause: error,
+				});
 		}
 	}
 	if (empty.length > 0) return { provider: empty.join(", "), hits: [], failures };

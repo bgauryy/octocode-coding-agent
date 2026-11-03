@@ -62,9 +62,9 @@ export function createAgentLoopConfig(
 			agent.prepareNextTurnWithContext || agent.prepareNextTurn
 				? async (context) => {
 						if (agent.prepareNextTurnWithContext) {
-							return await agent.prepareNextTurnWithContext(context, agent.signal);
+							return agent.prepareNextTurnWithContext(context, agent.signal);
 						}
-						return await agent.prepareNextTurn?.(agent.signal);
+						return agent.prepareNextTurn?.(agent.signal);
 					}
 				: undefined,
 		convertToLlm: agent.convertToLlm,

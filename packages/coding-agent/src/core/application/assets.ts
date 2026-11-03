@@ -1,6 +1,7 @@
+import { runtimeTempDir } from "../../config/runtime-paths.ts";
 import { createHash, type Hash } from "node:crypto";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
 import {
 	APPLICATION_UPLOAD_BYTES,
@@ -35,8 +36,8 @@ export class ApplicationAssets {
 			pending?: { chunks: Buffer[]; bytes: number };
 		}
 	>();
-	private readonly options: { memory?: boolean };
-	constructor(options: { memory?: boolean } = {}) {
+	private readonly options: { memory?: boolean; tempDir?: () => string };
+	constructor(options: { memory?: boolean; tempDir?: () => string } = {}) {
 		this.options = options;
 	}
 
@@ -48,6 +49,17 @@ export class ApplicationAssets {
 		slot?: string,
 	): ApplicationAsset {
 		const value = Buffer.from(data, encoding === "base64" ? "base64" : "utf8");
+		return this.putValue(value, mimeType, encoding, name, slot);
+	}
+
+	/** Store bytes already decoded and validated by upload without decoding the base64 a second time. */
+	private putValue(
+		value: Buffer,
+		mimeType: string,
+		encoding: ApplicationAssetPayload["encoding"],
+		name?: string,
+		slot?: string,
+	): ApplicationAsset {
 		if (value.length > ASSET_BYTES) throw new Error("Application asset exceeds the 32 MiB limit");
 		const digest = createHash("sha256").update(mimeType).update("\0").update(encoding).update("\0").update(value);
 		const hash = slot && encoding === "utf8" ? digest.copy() : undefined;
@@ -65,7 +77,7 @@ export class ApplicationAssets {
 			...(name ? { name: name.slice(0, 255) } : {}),
 		};
 		if (!this.options.memory) {
-			this.directory ??= mkdtempSync(join(tmpdir(), "octocode-application-"));
+			this.directory ??= mkdtempSync(join((this.options.tempDir ?? runtimeTempDir)(), "octocode-application-"));
 			writeFileSync(join(this.directory, id), value, { mode: 0o600, flag: existing ? "w" : "wx" });
 		}
 		this.assets.set(id, { asset, encoding, ...(this.options.memory ? { value } : {}), ...(hash ? { hash } : {}) });
@@ -121,7 +133,7 @@ export class ApplicationAssets {
 		const value = Buffer.from(input.data, "base64");
 		if (value.length > APPLICATION_UPLOAD_BYTES || value.toString("base64") !== input.data)
 			throw new Error("Image data is invalid or exceeds 20 MiB");
-		return this.put(input.data, input.mimeType, "base64", input.name);
+		return this.putValue(value, input.mimeType, "base64", input.name);
 	}
 
 	clear(): void {

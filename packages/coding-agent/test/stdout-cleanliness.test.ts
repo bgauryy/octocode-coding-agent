@@ -72,7 +72,7 @@ async function runCli(
 	const env = { ...process.env, [ENV_AGENT_DIR]: agentDir, OCTOCODE_HOME: join(tempRoot, "octocode") };
 	if (options.trusted) trustFolder(projectDir, env);
 
-	return await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolvePromise, reject) => {
+	return new Promise<{ stdout: string; stderr: string; code: number | null }>((resolvePromise, reject) => {
 		const child = spawn(process.execPath, ["--import", sourceResolverUrl, cliPath, ...args], {
 			cwd: projectDir,
 			env,

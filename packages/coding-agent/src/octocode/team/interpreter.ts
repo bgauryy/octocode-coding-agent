@@ -197,7 +197,11 @@ function parsedRuns(parsed: ParsedShell): Run[] {
 		const redirects = command.redirects.map((word) => word.replace(QUOTES, QUOTED));
 		const run = parsedRun(command, tokens, redirects);
 		if (run) runs.push(run);
-		const runner = command.literals.slice(start).find((word) => word !== undefined && CODE_RUNNERS.has(baseName(word)));
+		// The runner is the program or a word before it; past a known program the words are its operands (`rg x .`).
+		const end = command.program === undefined ? command.literals.length : command.program + 1;
+		const runner = command.literals
+			.slice(start, end)
+			.find((word) => word !== undefined && CODE_RUNNERS.has(baseName(word)));
 		// Opaque code with no shell or runner named is a wrapper's hidden command (`env -S "$X"`, `timeout $T …`), named by
 		// the wrapper, or a computed program (`$PY -c …`, `$(…) a b`), named by its source text.
 		const wrapper = command.literals[start] ?? command.words[start] ?? "env";
@@ -233,9 +237,11 @@ export function inlineInterpreter(command: string, parsed?: ParsedShell): string
 const UNPARSED = /(?<![\w.-])(python[\d.]*|node(?:js)?|perl|ruby|deno|bash|sh|zsh|dash|ksh|eval)(?:\.exe)?(?![\w.-])/;
 
 /** The interpreter a command runs on code nothing bounds, and `cause`: the part of the line that keeps it from the confined form (`confinementFault`). */
-interface InterpreterRefusal {
+export interface InterpreterRefusal {
 	name: string;
 	cause: string;
+	/** False when the parse named a reason that is not inline code (`Run.because`: a reader given a computed word, arithmetic, a program git runs). */
+	interpreter: boolean;
 }
 
 /**
@@ -251,14 +257,24 @@ export function interpreterRefusal(
 	env: NodeJS.ProcessEnv = process.env,
 	parsed?: ParsedShell | null,
 ): InterpreterRefusal | undefined {
+	return interpreterRefusals(command, env, parsed)[0];
+}
+
+/** Every refusal `interpreterRefusal` could name, in line order, then the failed parse's (`node-confine.ts` needs them all). */
+export function interpreterRefusals(
+	command: string,
+	env: NodeJS.ProcessEnv,
+	parsed?: ParsedShell | null,
+): InterpreterRefusal[] {
+	const refusals: InterpreterRefusal[] = [];
 	for (const run of inlineRuns(command, parsed ?? undefined)) {
 		const cause = confinementFault(run, command, env);
-		if (cause !== undefined) return { name: run.name, cause };
+		if (cause !== undefined) refusals.push({ name: run.name, cause, interpreter: run.because === undefined });
 	}
 	const named = parsed === null ? UNPARSED.exec(command)?.[1] : undefined;
-	return named === undefined
-		? undefined
-		: { name: named, cause: "the line could not be parsed, so it may run inline code" };
+	if (named !== undefined)
+		refusals.push({ name: named, cause: "the line could not be parsed, so it may run inline code", interpreter: true });
+	return refusals;
 }
 
 /** The name of the interpreter `interpreterRefusal` finds, or undefined. */

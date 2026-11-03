@@ -19,7 +19,7 @@ export async function handleRepoRequest(
 	self: string | undefined,
 	reply: Reply,
 ): Promise<boolean> {
-	const store = () => catalog.store(repo.key);
+	const store = () => catalog.store(repo.id);
 	if (url.pathname === WORKSPACE_ROUTES.backlogs) {
 		if (req.method !== "GET") {
 			reply(405, { error: "The board is read-only in the web daemon; use the session's own board to edit." });
@@ -44,7 +44,8 @@ export async function handleRepoRequest(
 	}
 	if (url.pathname === WORKSPACE_ROUTES.reports || url.pathname === `${WORKSPACE_ROUTES.reports}/file`) {
 		if (!repo.root) {
-			reply(404, { error: "Report not found in this workspace" });
+			if (url.pathname === WORKSPACE_ROUTES.reports) reply(200, { reports: [] });
+			else reply(404, { error: "Report not found in this workspace" });
 			return true;
 		}
 		return handleReportsRequest(req, url, repo.root, reply);

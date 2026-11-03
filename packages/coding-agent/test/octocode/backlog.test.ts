@@ -1,11 +1,14 @@
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { itemCounts } from "./counts-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { USER_AUTHOR } from "../../src/octocode/agentdb/author.ts";
-import { type AgentDb, closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { USER_AUTHOR } from "../../../db/src/author.ts";
+import { type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
 import { boardRows } from "../../src/octocode/backlog/board-model.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { countsText, itemDetail, itemLine } from "../../src/octocode/backlog/format.ts";
@@ -42,7 +45,12 @@ afterEach(() => {
 });
 
 function storeFor(repo: string, db: AgentDb = sharedAgentDb()): BacklogStore {
-	return new BacklogStore(() => db, repo);
+	return fixtureBacklog(() => db, repo);
+}
+
+function workspaceStore(cwd: string): BacklogStore {
+	const agent = sharedAgentDb();
+	return new BacklogStore(() => agent, registeredWorkspace(cwd, agent).id);
 }
 
 /** Record a session row, as the sessions feature does at session_start. */
@@ -319,7 +327,7 @@ describe("backlog store", () => {
 
 describe("backlog done-item corrections", () => {
 	it("lets only the user force a correction of a done item's why; the goal stays locked", () => {
-		const store = storeFor(repoDir());
+		const store = workspaceStore(repoDir());
 		const item = store.add({ ...READY, title: "t", createdBy: "agent", state: "todo" });
 		store.update(item.ref, { state: "done", completion: completed() }, { id: "agent-1" });
 		expect(() => store.update(item.ref, { why: "x", force: true }, { id: "agent-1" })).toThrow(/Reopen before/);
@@ -430,7 +438,7 @@ describe("backlog tool", () => {
 		await expect(
 			t.call({ op: "add", why: "Required work", title: "idea", goal: "it works", note: "context" }),
 		).rejects.toThrow(/note only with state ongoing or done/);
-		expect(storeFor(fs.realpathSync(t.cwd)).counts().items).toMatchObject({ backlog: 0, todo: 0, done: 0 });
+		expect(workspaceStore(t.cwd).counts().items).toMatchObject({ backlog: 0, todo: 0, done: 0 });
 		expect(
 			await t.text({
 				op: "add",
@@ -454,7 +462,7 @@ describe("backlog tool", () => {
 		await expect(t.call({ op: "remove" })).rejects.toThrow(/needs an id/);
 		await t.text({ op: "add", why: "Required work", title: "held", goal: "it works", state: "todo" });
 		session("other-session", process.ppid);
-		storeFor(fs.realpathSync(t.cwd)).update("B2", { state: "ongoing" }, { id: "other-session" });
+		workspaceStore(t.cwd).update("B2", { state: "ongoing" }, { id: "other-session" });
 		await expect(t.call({ op: "remove", id: "B2" })).rejects.toThrow(/ongoing for other-session/);
 	});
 
@@ -462,7 +470,7 @@ describe("backlog tool", () => {
 		const t = setup();
 		await t.text({ op: "add", why: "Required work", title: "task", goal: "it works", state: "todo" });
 		session("other-session", process.ppid);
-		storeFor(fs.realpathSync(t.cwd)).update("B1", { state: "ongoing" }, { id: "other-session" });
+		workspaceStore(t.cwd).update("B1", { state: "ongoing" }, { id: "other-session" });
 		await expect(t.call({ op: "update", id: "B1", state: "ongoing" })).rejects.toThrow(/other-session/);
 	});
 
@@ -482,7 +490,7 @@ describe("backlog tool", () => {
 			goal: "it works",
 			state: "todo",
 		});
-		storeFor(fs.realpathSync(parent.cwd)).update("B1", { state: "ongoing" }, { id: "parent-session" });
+		workspaceStore(parent.cwd).update("B1", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
 		expect(sub.tool.parameters.properties.op.enum).toEqual(["list", "get", "add", "update"]);
 		expect(sub.tool.parameters.properties.state.enum).toEqual(["ongoing", "done"]);
@@ -502,7 +510,7 @@ describe("backlog tool", () => {
 				state: "todo",
 			}),
 		).toBe("Added B3 [backlog p2] follow-up");
-		expect(storeFor(fs.realpathSync(sub.cwd)).get("B3")!.createdBy).toBe("agent:general-1");
+		expect(workspaceStore(sub.cwd).get("B3")!.createdBy).toBe("agent:general-1");
 		// A proposal takes no note, and the parent has not claimed it, so the hint points at plan, not a later update.
 		await expect(
 			sub.call({ op: "add", why: "Required work", title: "with note", goal: "it works", note: "details" }),
@@ -521,17 +529,17 @@ describe("backlog tool", () => {
 		).rejects.toThrow("A subagent proposal cannot set parentId, dependsOn:");
 		// A proposal may carry references as links (shorthands expand as for the parent); an update still may not.
 		await sub.text({ op: "add", ...READY, title: "referenced", links: [{ relation: "output", target: "docs/r.md" }] });
-		expect(storeFor(fs.realpathSync(sub.cwd)).get("B4")!.links).toEqual([
+		expect(workspaceStore(sub.cwd).get("B4")!.links).toEqual([
 			{
 				relation: "output",
-				target: { resource: "files", repositoryKey: storeFor(fs.realpathSync(sub.cwd)).repo, path: "docs/r.md" },
+				target: { resource: "files", repositoryKey: workspaceStore(sub.cwd).repo, path: "docs/r.md" },
 			},
 		]);
 		await expect(sub.call({ op: "update", id: "B1", links: [] })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B2", state: "ongoing" })).rejects.toThrow(/not claimed by your parent/);
 		await expect(sub.call({ op: "update", id: "B1", title: "renamed" })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B1", state: "todo" })).rejects.toThrow(/sets only ongoing or done/);
-		expect(storeFor(fs.realpathSync(sub.cwd)).get("B1")!.state).toBe("ongoing");
+		expect(workspaceStore(sub.cwd).get("B1")!.state).toBe("ongoing");
 		expect(
 			await sub.text({
 				op: "update",
@@ -547,7 +555,7 @@ describe("backlog tool", () => {
 	it("in a subagent: why and goal on a parent-owned claim are kept as the parent set them, with a note", async () => {
 		const parent = setup();
 		await parent.text({ op: "add", why: "Parent reason", title: "delegated", goal: "parent goal", state: "todo" });
-		storeFor(fs.realpathSync(parent.cwd)).update("B1", { state: "ongoing" }, { id: "parent-session" });
+		workspaceStore(parent.cwd).update("B1", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
 		// The description says a claim needs why and goal, so a child that sends them is not refused.
 		const result = await sub.text({
@@ -559,7 +567,7 @@ describe("backlog tool", () => {
 			note: "started",
 		});
 		expect(result).toBe("Updated B1 [ongoing p2] delegated (parent)\n(goal/why kept: your parent owns them.)");
-		const item = storeFor(fs.realpathSync(sub.cwd)).get("B1")!;
+		const item = workspaceStore(sub.cwd).get("B1")!;
 		expect([item.why, item.goal]).toEqual(["Parent reason", "parent goal"]);
 		// The permission rule stands: the other fields stay the parent's, and so does an item it has not claimed.
 		await expect(sub.call({ op: "update", id: "B1", why: "x", title: "renamed" })).rejects.toThrow(
@@ -634,7 +642,7 @@ describe("backlog tool", () => {
 		await t.text({ op: "update", id: "B2", completion: { ...completed(), summary: "Fixed", replaces: id } });
 		expect(await t.text({ op: "get", id: "B2" })).toMatch(/^Result \(completion \d+\): Fixed$/m);
 		// Without replaces, a new completion on a done item replaces the latest one, and a retry of it is a no-op.
-		const store = storeFor(fs.realpathSync(t.cwd));
+		const store = workspaceStore(t.cwd);
 		const fixed = store.get("B2")!.completions.at(-1)!.id;
 		const again = { ...completed(), summary: "Fixed again" };
 		await t.text({ op: "update", id: "B2", completion: again });
@@ -663,7 +671,7 @@ describe("backlog tool", () => {
 		);
 		expect(rendered(t.tool.renderCall({ op: "add", from: "B1" }, theme, {}))).toContain("from B1");
 
-		storeFor(fs.realpathSync(t.cwd)).update("B1", { state: "ongoing" }, { id: "parent-session" });
+		workspaceStore(t.cwd).update("B1", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
 		expect(
 			await sub.text({
@@ -840,7 +848,7 @@ describe("/backlog", () => {
 		await t.command.handler("B9", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
 		await t.command.handler("export", ctx);
-		const file = path.join(t.cwd, ".octocode", "backlog.md");
+		const file = path.join(t.cwd, ".octa", "code", "backlog.md");
 		expect(ctx.ui.notes.at(-1)!.message).toContain(file);
 		const markdown = fs.readFileSync(file, "utf8");
 		expect(markdown).toMatch(/^<!-- Generated by Octocode .* not read back\. -->/);
@@ -856,7 +864,7 @@ describe("/backlog", () => {
 
 	it('"do" marks the item ongoing and sends it to the agent, as a follow-up while busy', async () => {
 		const t = setup();
-		storeFor(fs.realpathSync(t.cwd)).add({
+		workspaceStore(t.cwd).add({
 			...READY,
 			title: "Fix login",
 			goal: "Login submits without freezing; focused tests pass.",
@@ -875,7 +883,7 @@ describe("/backlog", () => {
 		expect(sent.message).toContain("Mark it done only after verifying its goal");
 		expect(sent.message).toContain("If blocked, record what is blocked, why, and what you need from whom instead.");
 		expect(sent.message).toContain("Follow existing permissions");
-		expect(storeFor(fs.realpathSync(t.cwd)).get("B1")).toMatchObject({
+		expect(workspaceStore(t.cwd).get("B1")).toMatchObject({
 			state: "ongoing",
 			assignee: "session-test",
 		});
@@ -885,7 +893,7 @@ describe("/backlog", () => {
 
 	it("falls back to select lists without a custom component: actions, move, priority, delegate, delete", async () => {
 		const t = setup();
-		const store = storeFor(fs.realpathSync(t.cwd));
+		const store = workspaceStore(t.cwd);
 		store.add({
 			...READY,
 			title: "first",
@@ -967,7 +975,7 @@ describe("/backlog", () => {
 
 	it("rejects extra arguments before acting and completes the same item references that dispatch accepts", async () => {
 		const t = setup();
-		const store = storeFor(fs.realpathSync(t.cwd));
+		const store = workspaceStore(t.cwd);
 		const before = store.add({ ...READY, title: "keep me", state: "todo", createdBy: "user" });
 		const ctx = fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { inputs: ["Completed", ""] } });
 		const confirm = vi.spyOn(ctx.ui, "confirm");
@@ -985,7 +993,7 @@ describe("/backlog", () => {
 		}
 		expect(t.sent).toEqual([]);
 		expect(confirm).not.toHaveBeenCalled();
-		expect(fs.existsSync(path.join(t.cwd, ".octocode", "backlog.md"))).toBe(false);
+		expect(fs.existsSync(path.join(t.cwd, ".octa", "code", "backlog.md"))).toBe(false);
 		expect(t.commands.complete("backlog #1 d")!.map((item) => item.value)).toEqual([
 			"backlog #1 done",
 			"backlog #1 delete",
@@ -998,7 +1006,7 @@ describe("/backlog", () => {
 
 	it('shows the board, moves items with arrows, and "d" hands the selected item over', async () => {
 		const t = setup();
-		const store = storeFor(fs.realpathSync(t.cwd));
+		const store = workspaceStore(t.cwd);
 		store.add({ ...READY, title: "alpha", state: "todo", createdBy: "user" });
 		store.add({ ...READY, title: "beta", state: "backlog", createdBy: "user" });
 		const frames: string[] = [];
@@ -1166,9 +1174,9 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		await expect(t.call({ op: "add", why: "Required work", title: "blank goal", goal: "  " })).rejects.toThrow(
 			/add needs a goal/,
 		);
-		expect(storeFor(fs.realpathSync(t.cwd)).list({ states: ["backlog"] }).total).toBe(0);
+		expect(workspaceStore(t.cwd).list({ states: ["backlog"] }).total).toBe(0);
 		await t.command.handler("add by the user", fakeCtx({ cwd: t.cwd, hasUI: false }));
-		expect(storeFor(fs.realpathSync(t.cwd)).get("B1")).toMatchObject({ title: "by the user", goal: "" });
+		expect(workspaceStore(t.cwd).get("B1")).toMatchObject({ title: "by the user", goal: "" });
 	});
 
 	it("does not let an agent clear a goal by update, and still lets it change one", async () => {
@@ -1176,9 +1184,9 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		await t.text({ op: "add", why: "Required work", title: "Item", goal: "Tests pass." });
 		for (const goal of ["", " \n "])
 			await expect(t.call({ op: "update", id: "B1", goal })).rejects.toThrow(/update cannot clear the goal/);
-		expect(storeFor(fs.realpathSync(t.cwd)).get("B1")).toMatchObject({ goal: "Tests pass." });
+		expect(workspaceStore(t.cwd).get("B1")).toMatchObject({ goal: "Tests pass." });
 		await t.text({ op: "update", id: "B1", goal: "Tests and lint pass." });
-		expect(storeFor(fs.realpathSync(t.cwd)).get("B1")).toMatchObject({ goal: "Tests and lint pass." });
+		expect(workspaceStore(t.cwd).get("B1")).toMatchObject({ goal: "Tests and lint pass." });
 	});
 
 	it("describes each field by its decision rule, and offers no body", () => {
@@ -1195,13 +1203,13 @@ describe("backlog fields: where, why, evidence, plan", () => {
 	it("lets a subagent propose with every field, but update only state and notes", async () => {
 		const parent = setup();
 		await parent.text({ op: "add", why: "Required work", title: "delegated", goal: "Done.", state: "todo" });
-		storeFor(fs.realpathSync(parent.cwd)).update("B1", { state: "ongoing" }, { id: "parent-session" });
+		workspaceStore(parent.cwd).update("B1", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
 		expect(Object.keys(sub.tool.parameters.properties)).toEqual(
 			expect.arrayContaining(["paths", "why", "evidence", "plan"]),
 		);
 		await sub.text({ op: "add", title: "found", ...FIELDS, from: "B1" });
-		expect(storeFor(fs.realpathSync(sub.cwd)).get("B2")).toMatchObject({
+		expect(workspaceStore(sub.cwd).get("B2")).toMatchObject({
 			paths: FIELDS.paths,
 			evidence: FIELDS.evidence,
 			why: FIELDS.why,
@@ -1215,7 +1223,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 
 	it('hands every saved field to the agent with "do"', async () => {
 		const t = setup();
-		storeFor(fs.realpathSync(t.cwd)).add({
+		workspaceStore(t.cwd).add({
 			title: "Fix search",
 			...FIELDS,
 			state: "todo",
@@ -1231,7 +1239,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 
 	it("shows the fields in /backlog <id> and in the markdown export", async () => {
 		const t = setup();
-		storeFor(fs.realpathSync(t.cwd)).add({
+		workspaceStore(t.cwd).add({
 			title: "Fix search",
 			...FIELDS,
 			state: "todo",
@@ -1244,7 +1252,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 			/Goal: .*\nWhere: src\/backlog\/store\.ts, src\/backlog\/\nWhy: .*\nEvidence:\n- .*\n- .*\nPlan: /,
 		);
 		await t.command.handler("export", ctx);
-		const markdown = fs.readFileSync(path.join(t.cwd, ".octocode", "backlog.md"), "utf8");
+		const markdown = fs.readFileSync(path.join(t.cwd, ".octa", "code", "backlog.md"), "utf8");
 		expect(markdown).toContain(
 			"  Where: src/backlog/store.ts, src/backlog/\n  Why: Agents lose the reason behind an item after a resume.\n  Evidence:\n  - src/backlog/store.ts:87",
 		);

@@ -26,6 +26,7 @@ describe.runIf(posix)("api socket permissions", () => {
 			// Synchronously after `listen`, before its callback: no window in which group or other could connect.
 			expect(fs.statSync(file).mode & 0o777).toBe(0o600);
 			await listening;
+			// oxlint-disable-next-line typescript/no-deprecated -- reads the process umask to prove the bind restored it
 			expect(process.umask()).toBe(0o000);
 		} finally {
 			process.umask(before);

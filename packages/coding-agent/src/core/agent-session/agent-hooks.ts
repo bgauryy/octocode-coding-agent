@@ -231,7 +231,7 @@ export function installAgentNextTurnRefresh(host: AgentHooksHost): void {
 	const previousPrepareNextTurnWithContext =
 		agent.prepareNextTurnWithContext ??
 		(agent.prepareNextTurn
-			? async (_turn: PrepareNextTurnContext, signal?: AbortSignal) => await agent.prepareNextTurn?.(signal)
+			? async (_turn: PrepareNextTurnContext, signal?: AbortSignal) => agent.prepareNextTurn?.(signal)
 			: undefined);
 	agent.prepareNextTurnWithContext = async (turn, signal) => {
 		const context = await compactBeforeNextAssistantResponse(host, turn.context);

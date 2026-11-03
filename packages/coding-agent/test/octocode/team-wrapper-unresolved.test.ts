@@ -62,6 +62,23 @@ describe("reservation gate: a wrapper line with no resolvable command", () => {
 		expect(await owner.gate(command)).toBeUndefined();
 	});
 
+	it("names a reader given a computed word, and arithmetic on an unknown value, without calling them inline code", async () => {
+		const db = path.join(tmp(), "team.sqlite");
+		const cwd = tmp();
+		const owner = await member(db, cwd);
+		const peer = await member(db, cwd);
+		await owner.lock(["src/a.ts"]);
+		const reader = await peer.gate('for id in a b; do rg -l "$id" .; done');
+		expect(reader?.reason).toContain('(`rg`). Why: `rg` is given `"$id"`');
+		expect(reader?.reason).not.toContain("inline code");
+		const arithmetic = await peer.gate("echo $(( $(cat n)-S ))");
+		expect(arithmetic?.reason).toContain("names a variable whose value the line does not show");
+		expect(arithmetic?.reason).not.toContain("inline code");
+		// A number the line computes is not code.
+		expect(await peer.gate('S=$(date +%s); sleep 0; echo "$(( $(date +%s)-S ))s"')).toBeUndefined();
+		expect(await peer.gate("N=$(ls | wc -l); echo $((N+1))")).toBeUndefined();
+	});
+
 	it("still runs a wrapper line whose command it resolves", async () => {
 		const db = path.join(tmp(), "team.sqlite");
 		const cwd = tmp();

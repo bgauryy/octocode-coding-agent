@@ -3,7 +3,7 @@ import { FINISHED_MS, type Finished } from "./panel-compact.ts";
 
 /**
  * Remembers this session's subagents that left the team (a finished child removes its own row), so the panel can keep a
- * `✓ done` row for `FINISHED_MS`. An agent that went silent first (killed, hung) was already out of `live` and is not remembered.
+ * neutral `left` row for `FINISHED_MS`. An agent that went silent first (killed, hung) was already out of `live` and is not remembered.
  */
 export class FinishedTracker {
 	private self: string | undefined;

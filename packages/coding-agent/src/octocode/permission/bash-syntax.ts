@@ -2,6 +2,7 @@ import type { BashCommand, BashSyntax } from "./bash-types.ts";
 import { RELATIVE_AFTER_CD, directoriesAt, directoryCommand, directoryStates } from "./bash-cwd.ts";
 import { bashCandidates } from "./bash-wrappers.ts";
 import { herestringError, misreadHerestring, onlyMisreadHerestrings } from "./bash-herestring.ts";
+import { literalVariables, resolvedWord } from "./bash-variables.ts";
 import { ansiC, wrappedCommand } from "./shell/words.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -178,7 +179,10 @@ export function bashSyntax(source: string): BashSyntax {
 		const pending: Array<{ node: Node; depth: number }> = [{ node: tree.rootNode, depth: 0 }];
 		let count = 0;
 		const directoryChanges: number[] = [];
-		const states = directoryStates(tree.rootNode, staticWord);
+		// Arguments and targets read a variable the line gave a plain literal (`D=/x; echo > $D/a`); a program name does not.
+		const variables = literalVariables(tree.rootNode, staticWord);
+		const word = (node: Node): string | undefined => resolvedWord(node, variables, staticWord);
+		const states = directoryStates(tree.rootNode, word);
 		while (pending.length) {
 			const { node, depth } = pending.pop()!;
 			if (++count > MAX_NODES || depth > MAX_DEPTH || performance.now() > deadline)
@@ -220,7 +224,7 @@ export function bashSyntax(source: string): BashSyntax {
 					raw: rawNode.text,
 					tokens: tokenNodes.map((token) => ({
 						raw: token.text,
-						literal: staticWord(token),
+						literal: token.id === name?.id ? staticWord(token) : word(token),
 						start: token.startIndex - rawNode.startIndex,
 						end: token.endIndex - rawNode.startIndex,
 					})),
@@ -267,7 +271,7 @@ export function bashSyntax(source: string): BashSyntax {
 						.sort((a, b) => a.startIndex - b.startIndex);
 					for (const argument of argumentsInOrder) {
 						if (argument.startIndex < rawNode.startIndex + command.tokens[readerIndex].end) continue;
-						const value = staticWord(argument);
+						const value = word(argument);
 						if (countValue) {
 							countValue = false;
 							result.targets.push({
@@ -346,7 +350,7 @@ export function bashSyntax(source: string): BashSyntax {
 				const destination = node.childForFieldName("destination");
 				const operator = node.children.find((child) => child && !child.isNamed)?.text;
 				if (destination) {
-					const value = staticWord(destination);
+					const value = word(destination);
 					if (/^(?:>&|<&)$/.test(operator ?? "") && value !== undefined && /^(?:\d+|-)$/.test(value)) continue;
 					if (value !== "/dev/null")
 						result.targets.push({

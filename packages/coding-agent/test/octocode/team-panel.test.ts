@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AgentsView, trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import { collapsedRows, shownWorking } from "../../src/octocode/team/panel-compact.ts";
+import { FinishedTracker } from "../../src/octocode/team/panel-finished.ts";
 import { describeMembers } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -215,26 +216,38 @@ describe("agents panel", () => {
 		);
 	});
 
-	it("keeps a finished agent as a final done row for ten seconds, after the live ones", () => {
+	it("keeps a departed agent as a neutral row for ten seconds, after the live ones", () => {
 		const gone = member("sly-crab", { parentId: "main-aaaaaa", status: "working", joinedAt: NOW - 24_000 });
 		const finished = [{ member: gone, at: NOW - 9_000 }];
 		const main = member("main-aaaaaa");
 		const live = member("wobbly-siphon", { parentId: "main-aaaaaa", status: "working" });
 		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
-		expect(lines[0]).toBe(" ● main-aaaaaa  main  1 working · 1 done");
+		expect(lines[0]).toBe(" ● main-aaaaaa  main  1 working · 1 left");
 		expect(lines[1]).toContain("wobbly-siphon");
-		expect(lines[2]).toMatch(/^ └ ✓ sly-crab +done +15s/);
+		expect(lines[2]).toMatch(/^ └ ○ sly-crab +left +15s/);
 		expect(lines[2]).not.toContain("working");
 		// The elapsed time stays the run's length while the row is shown (ten seconds after it left, inclusive).
 		const later = widgetLines([main, live], "main-aaaaaa", NOW + 1_000, theme, 120, [], undefined, finished);
-		expect(later[2]).toMatch(/done +15s/);
-		// Then the row is gone; a lone finished agent keeps the panel for those ten seconds only.
+		expect(later[2]).toMatch(/left +15s/);
+		// Then the row is gone; a lone departed agent keeps the panel for those ten seconds only.
 		expect(widgetLines([main, live], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toHaveLength(2);
 		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(2);
 		expect(widgetLines([main], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toEqual([]);
-		// Collapsed to one row per agent (few terminal rows) it still reads done.
+		// Collapsed to one row per agent (few terminal rows) it still reads left.
 		const [row] = collapsedRows([{ member: gone, depth: 0, doneAt: NOW - 9_000 }], NOW, theme, 120);
-		expect(row).toBe(" ✓ sly-crab · done · 15s");
+		expect(row).toBe(" ○ sly-crab · left · 15s");
+	});
+
+	it("does not claim a departed child succeeded when its outcome is unknown", () => {
+		const main = member("main-aaaaaa");
+		const child = member("reviewer-a1b2", { parentId: main.id, status: "working" });
+		const tracker = new FinishedTracker();
+		tracker.update(main.id, [main, child], [child], NOW);
+		tracker.update(main.id, [main], [], NOW + 1_000);
+		const lines = widgetLines([main], main.id, NOW + 1_000, theme, 120, [], undefined, tracker.finished);
+		expect(lines.join("\n")).toContain("reviewer-a1b2");
+		expect(lines.join("\n")).toContain("left");
+		expect(lines.join("\n")).not.toContain("done");
 	});
 
 	it("shows every token with the cached share and marks a model without pricing in the row and the root row", () => {

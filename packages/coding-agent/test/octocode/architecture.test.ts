@@ -42,12 +42,11 @@ const ALLOWED: Record<string, string[]> = {
 	shared: [],
 	"mcp-host": ["shared", "skill", "trust", "web"],
 	llama: ["shared"],
-	ollama: ["shared"],
 	api: ["shared"],
 	external: ["shared", "api"],
 	ask: ["shared"],
 	files: ["shared", "permission"],
-	team: ["shared", "agentdb"],
+	team: ["shared"],
 	discovery: ["shared"],
 	hooks: ["shared", "discovery"],
 	plugins: ["shared", "hooks", "discovery"],
@@ -55,21 +54,19 @@ const ALLOWED: Record<string, string[]> = {
 	harness: ["shared", "plugins", "hooks", "discovery"],
 	web: ["shared", "permission"],
 	compaction: ["shared", "files", "permission", "archive"],
-	archive: ["shared", "agentdb", "memory", "permission"],
+	archive: ["shared", "memory", "permission"],
 	ui: ["shared", "permission"],
 	subagents: ["shared", "discovery", "team", "permission", "instructions", "backlog", "trust", "worktrees"],
 	instructions: ["shared"],
-	agentdb: ["shared"],
-	sessions: ["shared", "agentdb", "files", "subagents", "backlog", "archive"],
-	backlog: ["shared", "agentdb"],
-	trust: ["shared", "agentdb"],
-	workspace: ["shared", "agentdb", "backlog", "team", "subagents"],
-	"web-daemon": ["shared", "agentdb", "backlog", "workspace", "trust"],
+	sessions: ["shared", "files", "subagents", "backlog", "archive"],
+	backlog: ["shared"],
+	trust: ["shared"],
+	workspace: ["shared", "backlog", "team", "subagents"],
+	"web-daemon": ["shared", "backlog", "workspace", "trust"],
 	remote: ["shared", "web-daemon", "workspace"],
-	memory: ["shared", "agentdb", "permission"],
+	memory: ["shared", "permission"],
 	plan: ["shared"],
 	permission: ["shared", "plan"],
-	debug: ["shared"],
 	skill: ["shared"],
 	"context-optimization": ["shared"],
 	"native-skills": [],
@@ -154,7 +151,7 @@ describe("source layout", () => {
 
 	it("names the .octocode folder only in shared/home.ts", () => {
 		// Every path under `~/.octocode` or `<repo root>/.octocode` goes through src/shared/home.ts, so one module decides
-		// where things live. Prose that mentions `.octocode/tmp/` (prompts, tool descriptions) is fine; path segments are not.
+		// where things live. Prose that mentions `.octa/code/temp/` (prompts, tool descriptions) is fine; path segments are not.
 		const owners = new Set(["shared/home.ts"]);
 		const segment = /(['"`])\.octocode\1|homedir\(\)\s*,\s*(['"`])\.octocode/;
 		const hits = files

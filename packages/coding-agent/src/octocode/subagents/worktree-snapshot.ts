@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import os from "node:os";
+import { workspaceScratchDir } from "../shared/home.ts";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { git, gitQuiet, type GitOptions } from "../shared/git.ts";
+import { EXCLUDE_WORKSPACE_STATE, git, gitQuiet, type GitOptions } from "../shared/git.ts";
 
 /** Temporary Git indexes keep both snapshot and delta generation off the parent's branch and index. */
 const IDENTITY = ["-c", "user.name=Octocode", "-c", "user.email=octocode@localhost"];
@@ -13,8 +13,8 @@ const onIndex = (index: string): GitOptions => ({ env: { GIT_INDEX_FILE: index }
 /** Diff output that `git apply` and a report can read whatever the user's Git configuration (color, prefixes) says. */
 export const PLAIN_DIFF = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"];
 
-async function withIndex<T>(work: (index: string, dir: string) => Promise<T>): Promise<T> {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-worktree-index-"));
+async function withIndex<T>(repo: string, work: (index: string, dir: string) => Promise<T>): Promise<T> {
+	const dir = fs.mkdtempSync(path.join(workspaceScratchDir(repo, "indexes"), "index-"));
 	fs.chmodSync(dir, 0o700);
 	try {
 		return await work(path.join(dir, "index"), dir);
@@ -25,7 +25,7 @@ async function withIndex<T>(work: (index: string, dir: string) => Promise<T>): P
 
 /** The paths of `git ls-files` with `flags` in `repo` (NUL separated, so any file name is safe). */
 const listFiles = async (repo: string, flags: string[], config: string[] = []): Promise<string[]> =>
-	(await git(repo, [...config, "ls-files", ...flags, "-z"])).split("\0").filter(Boolean);
+	(await git(repo, [...config, "ls-files", ...flags, "-z", "--", EXCLUDE_WORKSPACE_STATE])).split("\0").filter(Boolean);
 
 /** The Git filter driver of each of `files` that has one: `git add` would run its configured clean/process command. */
 async function filterDrivers(repo: string, files: string[]): Promise<Map<string, string>> {
@@ -84,14 +84,14 @@ export async function rejectNestedRepositories(repo: string, from: string, head:
 
 /** Capture tracked and non-ignored untracked files as a private commit, without touching the parent's index. */
 export function snapshotWorkingCopy(repo: string, base: string): Promise<string> {
-	return withIndex(async (index) => {
+	return withIndex(repo, async (index) => {
 		if ((await git(repo, ["rev-parse", "HEAD"])) !== base)
 			throw new Error("HEAD changed before the working-copy snapshot; retry after the checkout settles.");
 		await rejectCleanFilters(repo);
 		await git(repo, ["read-tree", base], onIndex(index));
-		await git(repo, ["add", "-A", "--", "."], onIndex(index));
+		await git(repo, ["add", "-A", "--", EXCLUDE_WORKSPACE_STATE], onIndex(index));
 		const tree = await git(repo, ["write-tree"], onIndex(index));
-		await git(repo, ["add", "-A", "--", "."], onIndex(index));
+		await git(repo, ["add", "-A", "--", EXCLUDE_WORKSPACE_STATE], onIndex(index));
 		if ((await git(repo, ["write-tree"], onIndex(index))) !== tree || (await git(repo, ["rev-parse", "HEAD"])) !== base)
 			throw new Error("Working copy or HEAD changed while snapshotting; retry when edits settle.");
 		return git(repo, [
@@ -147,11 +147,20 @@ export function workerDeltaCommit(
 	head: string,
 	agentId: string,
 ): Promise<string> {
-	return withIndex(async (index, dir) => {
+	return withIndex(repo, async (index, dir) => {
 		await git(repo, ["read-tree", base], onIndex(index));
 		// Git writes the patch itself: no output buffer caps the size of the child's change.
 		const patchFile = path.join(dir, "worker.patch");
-		await git(repo, ["diff", ...PLAIN_DIFF, "--binary", `--output=${patchFile}`, snapshot, head]);
+		await git(repo, [
+			"diff",
+			...PLAIN_DIFF,
+			"--binary",
+			`--output=${patchFile}`,
+			snapshot,
+			head,
+			"--",
+			EXCLUDE_WORKSPACE_STATE,
+		]);
 		await git(repo, ["apply", "--cached", "--3way", "--whitespace=nowarn", patchFile], onIndex(index));
 		const tree = await git(repo, ["write-tree"], onIndex(index));
 		if (tree === (await git(repo, ["rev-parse", `${base}^{tree}`]))) return base;
@@ -183,7 +192,9 @@ export async function saveWorkerRef(repo: string, ref: string, head: string): Pr
 		} catch (error) {
 			const existing = await gitQuiet(repo, ["rev-parse", "--verify", "--quiet", candidate]);
 			if (existing === undefined)
-				throw new Error(`Could not save the subagent's changes under ${candidate}: ${errorMessage(error)}`);
+				throw new Error(`Could not save the subagent's changes under ${candidate}: ${errorMessage(error)}`, {
+					cause: error,
+				});
 		}
 	}
 	throw new Error(`Could not save the subagent's changes: ${ref} and its fallbacks are taken.`);

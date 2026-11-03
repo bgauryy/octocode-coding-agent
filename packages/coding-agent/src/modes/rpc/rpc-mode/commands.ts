@@ -6,6 +6,7 @@ import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "
 import { error, success } from "./responses.ts";
 import type { RpcOutput } from "./ui-context.ts";
 import { handlePrompt } from "./prompt.ts";
+import { handleDeleteSessions, handlePurge } from "./session-delete.ts";
 
 /** What command handling reads from the running RPC mode; `session` follows session rebinds. */
 export interface RpcCommandHost {
@@ -235,6 +236,12 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			const result = await runtimeHost.switchSession(command.sessionPath);
 			return success(id, "switch_session", result);
 		}
+
+		case "delete_sessions":
+			return handleDeleteSessions(host, command);
+
+		case "purge":
+			return handlePurge(host, command);
 
 		case "fork": {
 			const result = await runtimeHost.fork(command.entryId);

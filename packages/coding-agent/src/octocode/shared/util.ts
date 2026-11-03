@@ -143,9 +143,7 @@ export const stringList = (value: unknown): string[] | undefined =>
 /** `text` as a regular-expression source that matches it literally. */
 export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export const MINUTE_MS = 60_000;
-export const HOUR_MS = 60 * MINUTE_MS;
-export const DAY_MS = 24 * HOUR_MS;
+export { MINUTE_MS, HOUR_MS, DAY_MS } from "../../../../common/src/time.ts";
 
 /** Octocode's wording for an extension context used after its session was replaced or reloaded. */
 const STALE_SESSION = "stale after session replacement";

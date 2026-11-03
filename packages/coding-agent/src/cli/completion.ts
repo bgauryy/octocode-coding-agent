@@ -14,7 +14,7 @@ import { FLAG_SPECS } from "./args/flags.ts";
 
 /** Top-level flags, from the same table the parser and `--help` read. */
 export const CLI_FLAGS = [
-	...FLAG_SPECS.filter((spec) => !spec.hidden).flatMap((spec) => [spec.name, ...(spec.short ? [spec.short] : [])]),
+	...FLAG_SPECS.flatMap((spec) => (spec.hidden ? [] : [spec.name, ...(spec.short ? [spec.short] : [])])),
 	"--",
 ];
 /** Subcommands and their actions. A first argument named here is a command, not a prompt. */
@@ -45,10 +45,7 @@ const values: Record<string, readonly string[]> = {
 	"--exposure": MCP_EXPOSURES,
 };
 const byCompletion = (kind: "path" | "text") =>
-	FLAG_SPECS.filter((spec) => spec.completion === kind).flatMap((spec) => [
-		spec.name,
-		...(spec.short ? [spec.short] : []),
-	]);
+	FLAG_SPECS.flatMap((spec) => (spec.completion === kind ? [spec.name, ...(spec.short ? [spec.short] : [])] : []));
 const paths = new Set([...byCompletion("path"), "--cwd"]);
 const textFlags = new Set([
 	...byCompletion("text"),

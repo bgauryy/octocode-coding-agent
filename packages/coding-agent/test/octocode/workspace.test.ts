@@ -1,9 +1,11 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import { type AgentDb } from "../../../db/src/api.ts";
+import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { presentAgentReport } from "../../src/octocode/subagents/presentation.ts";
@@ -15,7 +17,7 @@ let store: BacklogStore;
 beforeEach(() => {
 	dir = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-"));
 	db = openAgentDb(path.join(dir, "db"));
-	store = new BacklogStore(() => db, "repo");
+	store = fixtureBacklog(() => db, "repo");
 });
 afterEach(() => {
 	db.close();
@@ -81,21 +83,15 @@ describe("workspace data and commands", () => {
 		expect(store.audit(item.ref)).toEqual(before);
 	});
 
-	it("preserves legacy notes as comment entities once", () => {
+	it("keeps a comment and its audit across a database reopen", () => {
 		const item = add();
-		db.db.exec("DROP TRIGGER backlog_note_comment");
-		db.db
-			.prepare("INSERT INTO backlog_notes(item,at,author,kind,text) VALUES (?,123,'old-agent','note','Legacy note')")
-			.run(item.rowId);
-		expect(store.comments(item.ref)).toEqual([]);
+		store.comment(item.ref, "Review this", actor);
+		const before = store.comments(item.ref);
+		expect(before).toHaveLength(1);
 		db.close();
 		db = openAgentDb(path.join(dir, "db"));
-		const migrated = store.comments(item.ref);
-		expect(migrated).toHaveLength(1);
-		expect(migrated[0]).toMatchObject({ backlogId: item.ref, author: "old-agent", at: 123, text: "Legacy note" });
-		db.close();
-		db = openAgentDb(path.join(dir, "db"));
-		expect(store.comments(item.ref)).toEqual(migrated);
+		expect(store.comments(item.ref)).toEqual(before);
+		expect(store.audit(item.ref).some((event) => event.entity === "backlog_comments")).toBe(true);
 	});
 
 	it("queues a delegation once, retains receipts across reconnects and refuses altered retries", async () => {

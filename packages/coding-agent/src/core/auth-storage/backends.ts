@@ -4,10 +4,10 @@
 
 import type { AuthOperationOptions, Credential } from "@octocodeai/octocode-ai";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
-import { setTimeout as sleep } from "timers/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { getAgentDir } from "../../config.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";

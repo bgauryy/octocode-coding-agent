@@ -1,17 +1,34 @@
+import { fixtureBacklog, registerFixtureWorkspace } from "./backlog-fixture.ts";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { agents, backlog, commands, leases, meta, sessionLinks, sessions } from "../../src/octocode/agentdb/api.ts";
-import { type AgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import {
+	workspaces,
+	agents,
+	backlog,
+	commands,
+	leases,
+	meta,
+	sessionLinks,
+	sessions,
+	type AgentDb,
+} from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { tmp } from "./helpers.ts";
 
 let agent: AgentDb;
 beforeEach(() => {
 	agent = openAgentDb(path.join(tmp(), "queries.db"));
+	registerFixtureWorkspace(agent, "r");
 });
 afterEach(() => agent.close());
 
+function workspace(root: string) {
+	const value = { id: `id-${root}`, binding: root, name: path.basename(root), root };
+	workspaces.register(agent.db, value);
+	return value;
+}
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
 	role: "main",
@@ -40,38 +57,43 @@ describe("meta", () => {
 
 describe("agents", () => {
 	it("keeps a taken id and refreshes a row only for the process it names", () => {
-		expect(agents.insert(agent.db, "w", "/w", member("a"))).toBe(true);
-		expect(agents.insert(agent.db, "w", "/w", member("a", { pid: 200 }))).toBe(false);
-		expect(agents.refresh(agent.db, member("a", { status: "working" }), "/w")).toBe(true);
-		expect(agents.refresh(agent.db, member("a", { pid: 200 }), "/w")).toBe(false);
-		expect(agents.refresh(agent.db, member("a", { started: "t1" }), "/w")).toBe(false);
+		expect(agents.insert(agent.db, "w", workspace("/w"), member("a"))).toBe(true);
+		expect(agents.insert(agent.db, "w", workspace("/w"), member("a", { pid: 200 }))).toBe(false);
+		expect(agents.refresh(agent.db, member("a", { status: "working" }), workspace("/w"))).toBe(true);
+		expect(agents.refresh(agent.db, member("a", { pid: 200 }), workspace("/w"))).toBe(false);
+		expect(agents.refresh(agent.db, member("a", { started: "t1" }), workspace("/w"))).toBe(false);
 		expect(agents.processOf(agent.db, "a")).toEqual({ pid: 100, started: "t0" });
 	});
 
 	it("records the checkout a member works in and lists the leases of every checkout of a team", () => {
-		expect(agents.insert(agent.db, "team", "/w1", member("x"))).toBe(true);
-		expect(agents.insert(agent.db, "team", "/w2", member("y"))).toBe(true);
-		expect(agents.insert(agent.db, "other", "/o", member("z"))).toBe(true);
-		agents.refresh(agent.db, member("y"), "/w2-moved");
+		expect(agents.insert(agent.db, "team", workspace("/w1"), member("x"))).toBe(true);
+		expect(agents.insert(agent.db, "team", workspace("/w2"), member("y"))).toBe(true);
+		expect(agents.insert(agent.db, "other", workspace("/o"), member("z"))).toBe(true);
+		agents.refresh(agent.db, member("y"), workspace("/w2-moved"));
 		expect(agents.inTeam(agent.db, "team").map((row) => [row.id, row.checkout])).toEqual([
 			["x", "/w1"],
 			["y", "/w2-moved"],
 		]);
 		const held = { path: "src/a.ts", pathKey: "src/a.ts", kind: "file", reason: "r" };
-		leases.insert(agent.db, "/w1", "x", held, 0, 100);
-		leases.insert(agent.db, "/w2", "y", held, 0, 100);
-		leases.insert(agent.db, "/o", "z", held, 0, 100);
+		leases.insert(agent.db, workspace("/w1").id, "x", held, 0, 100);
+		leases.insert(agent.db, workspace("/w2").id, "y", held, 0, 100);
+		leases.insert(agent.db, workspace("/o").id, "z", held, 0, 100);
 		expect(leases.liveInTeam(agent.db, "team", 10).map((row) => row.owner)).toEqual(["x", "y"]);
 		expect(leases.conflicting(agent.db, "/w1", "x", 10, "src/a.ts", [], "file")).toBeUndefined();
 	});
 });
 
 describe("leases", () => {
-	const lease = (key: string, kind = "file") => ({ path: key, pathKey: key, kind, reason: "r" });
+	const lease = (key: string, kind = "file") => ({
+		path: key,
+		pathKey: key,
+		kind,
+		reason: "r",
+	});
 
 	it("finds a lease of another owner on the same key, under a tree, or below a tree request", () => {
-		leases.insert(agent.db, "w", "a", lease("/w/src", "tree"), 0, 100);
-		leases.insert(agent.db, "w", "a", lease("/w/lib/x.ts"), 0, 100);
+		leases.insert(agent.db, workspace("w").id, "a", lease("/w/src", "tree"), 0, 100);
+		leases.insert(agent.db, workspace("w").id, "a", lease("/w/lib/x.ts"), 0, 100);
 		const found = (self: string, key: string, ancestors: string[], kind: "file" | "tree") =>
 			leases.conflicting(agent.db, "w", self, 10, key, ancestors, kind) !== undefined;
 		expect(found("b", "/w/src/a.ts", ["/w/src", "/w"], "file")).toBe(true);
@@ -82,8 +104,8 @@ describe("leases", () => {
 	});
 
 	it("releases an owner's leases and counts them", () => {
-		leases.insert(agent.db, "w", "a", lease("/w/1"), 0, 100);
-		leases.insert(agent.db, "w", "a", lease("/w/2"), 0, 100);
+		leases.insert(agent.db, workspace("w").id, "a", lease("/w/1"), 0, 100);
+		leases.insert(agent.db, workspace("w").id, "a", lease("/w/2"), 0, 100);
 		expect(leases.releaseByOwner(agent.db, "a")).toBe(2);
 		expect(leases.live(agent.db, "w", 1)).toEqual([]);
 	});
@@ -149,16 +171,11 @@ describe("backlog", () => {
 		expect(backlog.listItems(agent.db, filter, -1, 0).map((row) => row.title)).toEqual(["50% done"]);
 	});
 
-	it("copies uncopied notes of an older build into comments once", () => {
+	it("adds one comment per authored note and keeps change records separate", () => {
 		backlog.insertItem(agent.db, item(1, "a"));
 		const rowId = backlog.itemBySeq(agent.db, "r", 1)!.id;
-		// A trigger copies new notes into comments; an older build had no such trigger, so its notes have no copy.
-		agent.db.exec("DROP TRIGGER backlog_note_comment");
 		backlog.addNote(agent.db, rowId, 1, "agent", "note", "hello");
 		backlog.addNote(agent.db, rowId, 2, "agent", "change", "moved");
-		expect(backlog.hasUncopiedNotes(agent.db)).toBe(true);
-		backlog.copyNotesToComments(agent.db);
-		expect(backlog.hasUncopiedNotes(agent.db)).toBe(false);
 		expect(backlog.commentsOf(agent.db, rowId).map((row) => row.text)).toEqual(["hello"]);
 	});
 });
@@ -187,12 +204,12 @@ describe("session links", () => {
 	};
 
 	it("shows the ongoing claims of a session, at most three, and the agent whose session_id matches", () => {
-		const store = new BacklogStore(() => agent, "repo");
+		const store = fixtureBacklog(() => agent, "repo");
 		const items = ["a", "b", "c", "d"].map((title) => claim(store, title, "s1"));
 		claim(store, "elsewhere", "s2");
-		agents.insert(agent.db, "w", "/w", member("inky-kraken", { sessionId: "s1" }));
-		// A name alone links nothing: only `session_id` does, and a subagent row carries none.
-		agents.insert(agent.db, "w", "/w", member("s2", { role: "general" }));
+		agents.insert(agent.db, "w", workspace("/w"), member("inky-kraken", { sessionId: "s1" }));
+		// A name alone links nothing. Only an explicit session ID identifies the conversation.
+		agents.insert(agent.db, "w", workspace("/w"), member("s2", { role: "general" }));
 
 		const links = sessionLinks.linksOf(agent.db, ["s1", "s2", "s3"]);
 		expect(links.get("s1")?.items).toHaveLength(sessionLinks.MAX_SESSION_ITEMS);
@@ -203,11 +220,15 @@ describe("session links", () => {
 	});
 
 	it("drops a done claim from the chip but still finds its session by item number, through claims and steps", () => {
-		const store = new BacklogStore(() => agent, "repo");
+		const store = fixtureBacklog(() => agent, "repo");
 		const done = claim(store, "finished", "s1", "done");
 		const open = claim(store, "held", "s2");
 		store.tasks.add({ goal: "a step", item: open.ref, state: "ongoing" }, { id: "s3", kind: "agent" });
-		claim(new BacklogStore(() => agent, "other-repo"), "other holder", "s9");
+		claim(
+			fixtureBacklog(() => agent, "other-repo"),
+			"other holder",
+			"s9",
+		);
 
 		expect(sessionLinks.linksOf(agent.db, ["s1"]).has("s1")).toBe(false);
 		expect(sessionLinks.heldItem(agent.db, done.seq, "repo")).toEqual(["s1"]);
@@ -219,11 +240,11 @@ describe("session links", () => {
 	});
 
 	it("records the session an agent runs, on insert and on refresh", () => {
-		agents.insert(agent.db, "w", "/w", member("a"));
+		agents.insert(agent.db, "w", workspace("/w"), member("a"));
 		expect(sessionLinks.linksOf(agent.db, ["s1"]).has("s1")).toBe(false);
-		agents.refresh(agent.db, member("a", { sessionId: "s1" }), "/w");
+		agents.refresh(agent.db, member("a", { sessionId: "s1" }), workspace("/w"));
 		expect(sessionLinks.linksOf(agent.db, ["s1"]).get("s1")?.agent).toBe("a");
-		agents.refresh(agent.db, member("a", { sessionId: "s2" }), "/w");
+		agents.refresh(agent.db, member("a", { sessionId: "s2" }), workspace("/w"));
 		expect(sessionLinks.linksOf(agent.db, ["s1"]).has("s1")).toBe(false);
 		expect(agents.inTeam(agent.db, "w")[0]?.session_id).toBe("s2");
 	});

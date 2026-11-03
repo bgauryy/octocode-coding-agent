@@ -50,7 +50,7 @@ export async function exportToHtml(
 		cwd: session.sessionManager.getCwd(),
 	});
 
-	return await exportSessionToHtml(session.sessionManager, session.agent.state, {
+	return exportSessionToHtml(session.sessionManager, session.agent.state, {
 		outputPath,
 		themeName,
 		toolRenderer,

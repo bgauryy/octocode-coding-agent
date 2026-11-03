@@ -24,6 +24,16 @@ export interface SessionAction {
 	run(session: SessionInfo): void | Promise<void>;
 }
 
+/** What a host's removal of picked sessions did: the files it removed and one line per session it refused or could not remove. */
+export interface SessionRemoval {
+	/** `path` of each session whose transcript is gone; the picker drops these rows. */
+	removed: string[];
+	/** Why a session was kept, for example `"fix typo": it is open in another Octocode process (pid 41)`. */
+	problems: string[];
+	/** How the transcripts were removed: `trash` when they went to the trash. */
+	method?: "trash" | "unlink";
+}
+
 /** What a host supplies to the session picker. */
 export interface SessionPickerPorts {
 	/** A fast first page (a catalog); the full transcript listing replaces it when it arrives. */
@@ -32,6 +42,11 @@ export interface SessionPickerPorts {
 	extras?(ids: readonly string[]): ReadonlyMap<string, SessionExtras>;
 	/** Host actions behind the one key `app.session.actions`; each runs after the picker has closed. */
 	actions?: readonly SessionAction[];
+	/**
+	 * Removes the sessions the user deleted (Ctrl+D on one row or on the rows marked with Ctrl+X) after one confirmation.
+	 * Without it the picker moves each transcript to the trash or unlinks it, and knows nothing of liveness.
+	 */
+	removeSessions?(sessions: readonly SessionInfo[]): Promise<SessionRemoval>;
 	/** Terminal rows the picker may fill; defaults to the terminal height. */
 	viewportRows?(): number;
 }

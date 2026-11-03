@@ -1,7 +1,7 @@
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
-import type { Db } from "../../agentdb/api.ts";
+import type { Db } from "../../../../../db/src/api.ts";
 import { type Actor, type Item, BacklogError, auditActor, parseRef } from "../item.ts";
-import { getItem, liveHolder } from "../reads.ts";
+import { getItem, list, liveHolder } from "../reads.ts";
 
 /**
  * Who may touch which tasks, in the item rules' terms. The user may touch any task. A subagent touches only the tasks
@@ -45,8 +45,14 @@ export function taskAccess(db: Db, repo: string, task: BacklogTask, actor: Actor
 export function openItemFor(db: Db, repo: string, ref: string, actor: Actor): Item {
 	const item = getItem(db, repo, ref);
 	if (!item) throw new BacklogError(`No backlog item ${ref}.`);
-	if (item.type === "epic")
-		throw new BacklogError(`${item.ref} is an epic: it groups items, so put the task under one of its items.`);
+	if (item.type === "epic") {
+		const open = list(db, repo, { parentId: item.ref, states: ["backlog", "todo", "ongoing"], limit: 10 }).items;
+		const children =
+			open.length > 0 ? `its open items: ${open.map((child) => child.ref).join(", ")}` : "it has no open items";
+		throw new BacklogError(
+			`${item.ref} is an epic: epics group items and hold no steps (${children}). Pass one of its items as item, or omit item for steps on this session.`,
+		);
+	}
 	if (item.state === "done") throw new BacklogError(`Reopen ${item.ref} before adding tasks to it.`);
 	itemAccess(db, item, actor);
 	return item;

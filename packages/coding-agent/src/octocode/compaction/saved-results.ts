@@ -6,7 +6,7 @@ import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../shared/format.ts";
-import { sessionsRoot, tildePath } from "../shared/home.ts";
+import { sessionTempRoot, tildePath } from "../shared/home.ts";
 import { saveFullOutput } from "../shared/spill.ts";
 import { contentText, escapeRegExp } from "../shared/util.ts";
 
@@ -65,7 +65,7 @@ function resolveSaved(spelling: string, root: string): string | undefined {
 
 /** The files in the sessions folder that `text` names, absolute, in order of appearance. */
 function savedPaths(text: string): string[] {
-	const root = sessionsRoot();
+	const root = sessionTempRoot();
 	return [...text.matchAll(savedPathPattern(root))].flatMap((match) => resolveSaved(match[0], root) ?? []);
 }
 

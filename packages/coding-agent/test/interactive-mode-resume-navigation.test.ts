@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleResumeSession } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
-import type * as Liveness from "../src/octocode/agentdb/liveness.ts";
+import type * as Liveness from "../src/octocode/shared/session-liveness.ts";
 
 const { livePid } = vi.hoisted(() => ({ livePid: vi.fn() }));
-vi.mock("../src/octocode/agentdb/liveness.ts", async (importOriginal) => ({
+vi.mock("../src/octocode/shared/session-liveness.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof Liveness>()),
 	sessionFileRunningPid: livePid,
 }));

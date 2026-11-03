@@ -1,10 +1,12 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import { type AgentDb } from "../../../db/src/api.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 
 let dir: string;
 let file: string;
@@ -22,7 +24,7 @@ beforeEach(() => {
 	file = path.join(dir, "db");
 	db = openAgentDb(file);
 	clock = 1_000;
-	store = new BacklogStore(
+	store = fixtureBacklog(
 		() => db,
 		"repo",
 		() => ++clock,
@@ -92,11 +94,10 @@ describe("moving a task between owners", () => {
 		expect(auditOf(to.ref)).toHaveLength(2);
 	});
 
-	it("gets the new trigger on a database made before it existed", () => {
-		db.db.exec("DROP TRIGGER backlog_tasks_audit_leave");
+	it("keeps task transfer audits after reopening the database", () => {
 		db.close();
 		db = openAgentDb(file);
-		store = new BacklogStore(
+		store = fixtureBacklog(
 			() => db,
 			"repo",
 			() => ++clock,

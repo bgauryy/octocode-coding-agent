@@ -85,7 +85,7 @@ export class ExternalAgents {
 
 	/**
 	 * Whether there is anything to connect to: a known ACP agent on PATH, or another live Octocode instance. The `agent`
-	 * tool declares its `external` type only then; `/agents external` stays available either way. Reads only; nothing is
+	 * tool declares its `external` type only then, and only with the `externalAgents` setting on; `/agents external` stays available either way. Reads only; nothing is
 	 * started or pruned.
 	 */
 	discoverable(): boolean {

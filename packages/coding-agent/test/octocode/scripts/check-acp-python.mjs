@@ -193,7 +193,7 @@ async function main() {
 		writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 		console.log(`ACP Python interoperability report: ${reportPath}`);
 	}
-	if (failure) throw failure;
+	if (failure) throw failure instanceof Error ? failure : new Error(String(failure), { cause: failure });
 	assert(!report.cleanupErrors && report.temporaryRemoved, "Interoperability fixture cleanup failed.");
 	assert(
 		report.processesBeforeFallback.every((record) => record.stopped),

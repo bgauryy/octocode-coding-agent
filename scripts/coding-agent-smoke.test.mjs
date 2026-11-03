@@ -52,50 +52,35 @@ function createFixture(t, { importUndeclared = false } = {}) {
 			name: codingAgentName,
 			version: "1.0.0",
 			type: "module",
-			main: "./dist/index.js",
-			types: "./dist/index.d.ts",
+			main: "./dist/bundle/index.js",
+			types: "./dist/types/index.d.ts",
 			exports: {
-				".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
-				"./mcp": "./dist/mcp/client/index.js",
-				"./mcp/oauth": "./dist/mcp/client/oauth/index.js",
-				"./mcp/testing": "./dist/mcp/client/testing/index.js",
+				".": { types: "./dist/types/index.d.ts", import: "./dist/bundle/index.js" },
+				"./mcp": "./dist/bundle/mcp.js",
+				"./mcp/oauth": "./dist/bundle/mcp-oauth.js",
+				"./mcp/testing": "./dist/bundle/mcp-testing.js",
 			},
 			files: ["dist"],
 			bin: { octocode: "dist/bundle/cli.js", "octocode-api": "dist/bundle/octocode-api.js" },
 			dependencies: { "octocode-mcp": "1.0.0", "@agentclientprotocol/sdk": "1.0.0" },
 		},
 		{
-			"dist/index.js": `${importUndeclared ? 'import "@octocodeai/undeclared";' : ""}
+			"dist/bundle/index.js": `${importUndeclared ? 'import "@octocodeai/undeclared";' : ""}
 export class RpcClient {}
 export function runRpcMode() {}
 export function runPrintMode() {}
 export function main() {}
 `,
-			"dist/core/session-manager.js": "export class SessionManager { static inMemory() {} }\n",
-			"dist/core/model-runtime.js": "export class ModelRuntime { static create() {} }\n",
-			"dist/index.d.ts": "export {};\n",
-			"dist/acp/server/acp-mode.js": "export function runAcpMode() {}\n",
-			"dist/acp/client/client.js": "export class AcpBackend { static connect() {} }\n",
-			"dist/mcp/client/index.js": "export class McpClient {}\nexport class StdioTransport {}\n",
-			"dist/mcp/client/oauth/index.js": "export class McpOAuthProvider {}\n",
-			"dist/mcp/client/testing/index.js": "export function createInMemoryTransportPair() {}\n",
-			"dist/cli.js": 'console.log("1.0.0");\n',
+			"dist/types/index.d.ts": "export {};\n",
+			"dist/bundle/mcp.js": "export class McpClient {}\nexport class StdioTransport {}\n",
+			"dist/bundle/mcp-oauth.js": "export class McpOAuthProvider {}\n",
+			"dist/bundle/mcp-testing.js": "export function createInMemoryTransportPair() {}\n",
 			"dist/bundle/cli.js": 'console.log("1.0.0");\n',
 			"dist/bundle/octocode-api.js": 'console.log("octocode-api list");\n',
-			"dist/octocode/index.js": "export default function octocode() {};\n",
-			"dist/mcp/presets/octocode/launch.js": `import { fileURLToPath } from "node:url";
-export function octocodeLaunch() {
-	return { command: process.execPath, args: [fileURLToPath(new URL("./dist/cli.js", import.meta.resolve("octocode-mcp/package.json")))] };
-}
-`,
-			"dist/config.js": `import { fileURLToPath } from "node:url";
-export function getSubagentsDir() { return fileURLToPath(new URL("./octocode/instructions/roles", import.meta.url)); }
-export function getCliInvocation() {
-	return { command: process.execPath, prefix: [fileURLToPath(new URL("./bundle/cli.js", import.meta.url))] };
-}
-`,
 			"dist/octocode/native-skills/octocode-context-optimization/SKILL.md":
 				"---\nname: octocode-context-optimization\ndescription: Test\n---\n",
+			"dist/octocode/native-skills/octocode-debugging/SKILL.md":
+				"---\nname: octocode-debugging\ndescription: Test\n---\n",
 			"dist/octocode/instructions/roles/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
 			"dist/octocode/instructions/policy/work.md": "# Work and verification\n",
 		},
@@ -113,7 +98,7 @@ test("accepts a valid coding-agent package with a CLI-only MCP dependency", (t) 
 test("rejects a missing MCP executable", (t) => {
 	const directory = createFixture(t);
 	rmSync(join(directory, "node_modules", "octocode-mcp", "dist/cli.js"));
-	assert.throws(() => smokeTestCodingAgent(directory), /MCP executable exists/);
+	assert.throws(() => smokeTestCodingAgent(directory), /missing its MCP executable/);
 });
 
 // #9132: smoke-test the package root (CLI and RPC exports), not just a bundled CLI that hides missing imports.
@@ -148,12 +133,12 @@ test("rejects a broken API executable despite a working agent CLI", (t) => {
 
 test("rejects a missing public MCP export despite a working package root", (t) => {
 	const directory = createFixture(t);
-	rmSync(join(directory, "node_modules", codingAgentName, "dist/mcp/client/index.js"));
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/bundle/mcp.js"));
 	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find module/);
 });
 
-test("rejects a missing ACP backend despite a working bundled CLI", (t) => {
+test("rejects an installed CLI that reports another version", (t) => {
 	const directory = createFixture(t);
-	rmSync(join(directory, "node_modules", codingAgentName, "dist/acp/client/client.js"));
-	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find module/);
+	writeFileSync(join(directory, "node_modules", codingAgentName, "dist/bundle/cli.js"), 'console.log("0.0.1");\n');
+	assert.throws(() => smokeTestCodingAgent(directory), /Unexpected version from the installed CLI/);
 });

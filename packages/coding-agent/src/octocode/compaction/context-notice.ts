@@ -26,8 +26,8 @@ export function noticeBand(tokens: number, limit: number): number | undefined {
 
 const kilo = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
-/** From this band on, an agent with the `compact` tool is told it can compact at a task boundary. */
-const COMPACT_HINT_BAND = 0.75;
+/** From this band on (the first notice), an agent with the `compact` tool is told it can compact at a task boundary, as the tool's own description says ("over half full"). */
+const COMPACT_HINT_BAND = CONTEXT_NOTICE_BANDS[0];
 
 /** Octocode always compacts automatically at the limit (`getCompactionEnabled`). */
 export function contextNoticeText(tokens: number, limit: number, window: number, compactHint = false): string {

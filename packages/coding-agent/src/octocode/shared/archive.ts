@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
+import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../../common/src/env.ts";
 import { formatTokens } from "./format.ts";
 import { sessionFolder, sessionOutputDir } from "./home.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
@@ -61,8 +61,10 @@ export function archiveSearch(): string {
 const UNREADABLE_HEADER = "unreadable header";
 
 /** The archive folder of `id` (the current session without it); nothing is created. */
-export const archiveFolder = (id?: string, env: NodeJS.ProcessEnv = process.env): string =>
-	sessionFolder("archive", id, env);
+export function archiveFolder(id?: string, env: NodeJS.ProcessEnv = process.env, cwd?: string): string {
+	const parent = id && id === env[PARENT_SESSION_ENV] ? env[TEAM_WORKSPACE_ENV] : undefined;
+	return sessionFolder("archive", id, env, cwd ?? (parent && path.isAbsolute(parent) ? parent : undefined));
+}
 
 /** The sessions this one was forked from, nearest first (`setSessionLineage`). */
 let lineage: readonly string[] = [];

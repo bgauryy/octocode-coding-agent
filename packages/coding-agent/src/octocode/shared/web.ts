@@ -47,7 +47,7 @@ export function webLauncher(api: ExtensionAPI, open = openFile) {
 				await open(url.href);
 			} catch (error) {
 				// The server is running: give the address, so a headless or SSH session can still reach it.
-				throw new Error(`no browser could be started (${errorMessage(error)}); open ${url.href}`);
+				throw new Error(`no browser could be started (${errorMessage(error)}); open ${url.href}`, { cause: error });
 			}
 			return url.href;
 		});

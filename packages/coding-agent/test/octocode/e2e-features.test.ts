@@ -579,7 +579,7 @@ describe("Native features through the SDK", () => {
 			await session.prompt("/memory");
 			await session.prompt("/memory search answer");
 			await session.prompt("/resume");
-			out = notify.mock.calls.map((call) => String(call[0]));
+			out = notify.mock.calls.map((call) => call[0]);
 		} finally {
 			notify.mockRestore();
 			runner.setUIContext(ui, "rpc");

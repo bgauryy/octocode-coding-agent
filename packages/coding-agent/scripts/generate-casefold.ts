@@ -15,7 +15,7 @@ export interface CasefoldSource {
 
 /** The text of `casefold-table.generated.ts` for a parsed `unicode16.json`. */
 export function renderCasefoldTable(table: CasefoldSource): string {
-	const hex = (value: number) => Number(value).toString(16).toUpperCase();
+	const hex = (value: number) => value.toString(16).toUpperCase();
 	const lines = Object.entries(table.casefold)
 		.map(([from, to]): [number, number[]] => [Number(from), to])
 		.sort((a, b) => a[0] - b[0])

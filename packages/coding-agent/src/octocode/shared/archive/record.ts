@@ -22,7 +22,7 @@ export interface RecordMessage {
  */
 export interface SessionRecord {
 	session: string;
-	/** `repoKey(cwd).key`: one repository however it was reached (worktrees included). */
+	/** The registered workspace UUID. The checkout path follows in workspace. */
 	repository: string;
 	workspace: string;
 	/** The session it was forked from. */

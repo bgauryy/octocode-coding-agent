@@ -24,6 +24,8 @@ import { nativeCall } from "./e2e-calls.ts";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // Hermetic: a run from inside a Octocode subagent inherits its identity and settings, which change the prompt, tools and limits.
+// OCTOCODE_HOME and OCTOCODE_AGENT_DB stay: setup-env.ts points them at this worker's sandbox, and without them the
+// agent database (trust grants included) resolves to the developer's real ~/.octocode.
 for (const key of [
 	"OCTOCODE_SUBAGENT",
 	"OCTOCODE_BROWSER_VISIBLE",
@@ -31,8 +33,6 @@ for (const key of [
 	"OCTOCODE_AGENT_ID",
 	"OCTOCODE_AGENT_GOAL",
 	"OCTOCODE_MAX_SUBAGENTS",
-	"OCTOCODE_HOME",
-	"OCTOCODE_AGENT_DB",
 	"OCTOCODE_MEMORY_AUTO",
 	"OCTOCODE_MCP",
 ]) {
@@ -397,6 +397,35 @@ describe("with Octocode MCP (default)", () => {
 		expect(afterRead.lastResults[0].text).toContain("export const seen = 1;");
 		expect(afterEdit.lastResults[0].text).toMatch(/OK edit seen\.ts/);
 		expect(fs.readFileSync(seen, "utf8")).toBe("export const seen = 2;\n");
+	}, 60_000);
+
+	// The server leaves a row's `path` out when it repeats the request's: a relative read still names its file.
+	it("credits a relative-path localFetch read, whole or by range, for later changes", async () => {
+		const whole = path.join(s.cwd, "relative.ts");
+		const ranged = path.join(s.cwd, "ranged.ts");
+		fs.writeFileSync(whole, "export const relative = 1;\n");
+		fs.writeFileSync(ranged, "one\ntwo\nthree\nfour\n");
+		const change = (query: Record<string, unknown>) =>
+			calls(nativeCall("file", { reason: "Change a read file", queries: [{ reason: "change", ...query }] }));
+		const turns = await s.run("read relative paths then change them", [
+			calls(
+				fauxToolCall("mcp__octocode__localFetch", {
+					queries: [{ path: "relative.ts" }, { path: "ranged.ts", ranges: [{ startLine: 2, endLine: 3 }] }],
+				}),
+			),
+			change({ type: "edit", path: "relative.ts", edits: [{ oldText: "relative = 1", newText: "relative = 2" }] }),
+			change({ type: "edit", path: "ranged.ts", edits: [{ oldText: "two", newText: "TWO" }] }),
+			// The range counts as the lines it showed, not the whole file: a full write is still refused.
+			change({ type: "write", path: "ranged.ts", content: "replaced\n" }),
+			say("done"),
+		]);
+		const [afterRead, afterWhole, afterRanged, afterWrite] = turns.slice(-4);
+		expect(afterRead.lastResults[0].isError).toBe(false);
+		expect(afterWhole.lastResults[0].text).toMatch(/OK edit relative\.ts/);
+		expect(afterRanged.lastResults[0].text).toMatch(/OK edit ranged\.ts/);
+		expect(afterWrite.lastResults[0].text).toMatch(/ranged\.ts: a write replaces the whole file, but you have seen/);
+		expect(fs.readFileSync(whole, "utf8")).toBe("export const relative = 2;\n");
+		expect(fs.readFileSync(ranged, "utf8")).toBe("one\nTWO\nthree\nfour\n");
 	}, 60_000);
 
 	it("gives the model a page over 20 KB of UTF-8 whole, with no truncation marker", async () => {
@@ -889,5 +918,29 @@ describe("a subagent session with MCP enabled", () => {
 		]);
 		const results = turns.at(-1)!.lastResults;
 		expect(results.find((result) => result.toolName === "mcp__octocode__localFetch")?.text).toContain("answer = 41");
+	}, 60_000);
+
+	it("credits a relative-path localFetch read for a later edit", async () => {
+		const file = path.join(s.cwd, "child.ts");
+		fs.writeFileSync(file, "export const child = 1;\n");
+		const turns = await s.run("read then edit", [
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: "child.ts" }] })),
+			calls(
+				nativeCall("file", {
+					reason: "Bump the child value",
+					queries: [
+						{
+							reason: "bump",
+							type: "edit",
+							path: "child.ts",
+							edits: [{ oldText: "child = 1", newText: "child = 2" }],
+						},
+					],
+				}),
+			),
+			say("done"),
+		]);
+		expect(turns.at(-1)!.lastResults[0].text).toMatch(/OK edit child\.ts/);
+		expect(fs.readFileSync(file, "utf8")).toBe("export const child = 2;\n");
 	}, 60_000);
 });

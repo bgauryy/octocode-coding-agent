@@ -195,7 +195,7 @@ export const DaemonSessionsSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-/** A repository with a backlog in the agent database or a live session. `repoId` is a hash of its key; no route takes a path. */
+/** A workspace in the persistent catalog or a live session. Its UUID also identifies its web routes. */
 export const DaemonRepoSchema = Type.Object(
 	{
 		id: Text(64),

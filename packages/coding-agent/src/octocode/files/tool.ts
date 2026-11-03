@@ -71,7 +71,7 @@ export function registerFileTool(
 				promptSnippet: "Create, edit, delete or patch files",
 				description:
 					"Applies a batch of file changes; it does not read files. Pass queries (one object per change: type, path, edits or content) or a Codex-style patch string, not both; put a file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
-					"Read an existing file before changing it; edits need exact text matching once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval.",
+					"Read an existing file before changing it (a bash read counts only unpiped and unredirected; a write needs every line read); edits need exact text matching once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval.",
 				promptGuidelines: [
 					"File changes made here are checkpointed for /rewind and respect peer reservations; shell redirection, sed -i, interpreters and heredocs do neither. Batch related files in one call, and inspect what a formatter or generator rewrote.",
 					"A call cut off by the output limit is not executed: write a very large file in parts (create it, then append with edits).",

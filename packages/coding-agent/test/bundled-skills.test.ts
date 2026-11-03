@@ -22,6 +22,15 @@ import { ConfigSelectorComponent } from "../src/modes/interactive/components/con
 import { initTheme } from "../src/theme/theme.ts";
 import { prepareOctocodeSkillLaunch } from "../../mcp/src/presets/octocode/skill-paths.ts";
 
+/** Bundled skills this application serves: each `<name>/SKILL.md` whose `metadata.excluded-hosts` does not name it. */
+const servedSkills = (bundle: string): string[] =>
+	readdirSync(bundle)
+		.filter((name) => existsSync(join(bundle, name, "SKILL.md")))
+		.filter(
+			(name) => !/^\s*excluded-hosts:.*\boctocode-code\b/m.test(readFileSync(join(bundle, name, "SKILL.md"), "utf8")),
+		)
+		.sort();
+
 describe("bundled public skills", () => {
 	let root: string;
 	let cwd: string;
@@ -43,9 +52,9 @@ describe("bundled public skills", () => {
 
 	it("loads the entire installed public collection without installing packages", async () => {
 		const bundle = getBundledSkillsDir();
-		const expected = readdirSync(bundle)
-			.filter((name) => existsSync(join(bundle, name, "SKILL.md")))
-			.sort();
+		const expected = servedSkills(bundle);
+		// The installer guide for other clients is marked for other hosts only.
+		expect(expected).not.toContain("octocode-get-started");
 		expect(expected.length).toBeGreaterThan(0);
 		const loader = new DefaultResourceLoader({
 			cwd,
@@ -145,10 +154,7 @@ describe("bundled public skills", () => {
 		it("lists every bundled skill, once, in a home with no installed copies", async () => {
 			const loader = await load();
 			const names = loader.getSkills().skills.map((skill) => skill.name);
-			const expected = readdirSync(getBundledSkillsDir()).filter((name) =>
-				existsSync(join(getBundledSkillsDir(), name, "SKILL.md")),
-			);
-			expect(names.sort()).toEqual(expected.sort());
+			expect(names.sort()).toEqual(servedSkills(getBundledSkillsDir()));
 			expect(loader.getSkills().diagnostics).toEqual([]);
 		});
 
@@ -228,8 +234,7 @@ describe("bundled public skills", () => {
 			const loader = await load();
 			const directories = loadedSkillDirectories(loader.getSkills());
 			const bundleDir = realpathSync(getBundledSkillsDir());
-			for (const name of readdirSync(bundleDir).filter((entry) => existsSync(join(bundleDir, entry, "SKILL.md"))))
-				expect(directories).toContain(join(bundleDir, name));
+			for (const name of servedSkills(bundleDir)) expect(directories).toContain(join(bundleDir, name));
 			const prepared = prepareOctocodeSkillLaunch(
 				{ name: "octocode", source: "mcp.json", config: { command: "octocode-mcp" } },
 				cwd,

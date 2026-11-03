@@ -1,3 +1,4 @@
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 import {
 	type AgentDb,
 	type agentEvents,
@@ -7,9 +8,8 @@ import {
 	deliveries,
 	history,
 	leases,
-	openAgentDb,
-	sharedAgentDb,
-} from "../agentdb/api.ts";
+} from "../../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../config/database.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
@@ -47,20 +47,7 @@ import { MessageRefs } from "./store/refs.ts";
 import { pathKey, teamScope, teamWorkspace } from "./store/workspace.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 
-/**
- * The team tables of the agent database: who works in this repository, what they say to each other, and which files
- * they have reserved. One SQLite file shared by every Octocode process on the machine (WAL, so readers never block).
- * Two scopes: the team (the repository: its git common dir, shared by every worktree) holds agents, messages and
- * deliveries, so agents in sibling worktrees see and message each other; the checkout (the worktree root) holds leases and
- * the edit log, because those name files. Entities, after the octocode-agents-communication skill:
- *   agents      one live agent; its owner rewrites the row as it works (status, tool, tokens, heartbeat)
- *   messages    immutable; may require a reply and may answer another message (replyTo)
- *   deliveries  one row per recipient: delivered when the model saw it, completed when answered, dead when the recipient left unread
- *               (the sender is told once: notified_at); `wake` says whether it may start a turn of an idle recipient
- *               (1), or also stop a busy one's current step (2, an interrupt)
- *   leases      cooperative file/tree reservations that expire unless the owner keeps renewing them
- */
-
+/** Repository-wide roster and mail, with identified checkout-local edits and physical file reservations. */
 export class TeamStore {
 	private readonly db: Db;
 	/** Who changed which file recently, in the same database. */
@@ -73,27 +60,38 @@ export class TeamStore {
 
 	private readonly agent: AgentDb;
 	/** The checkout (worktree root): scopes leases, edits and the paths they name. Not the team's scope. */
-	readonly workspace: string;
+	get workspace(): string {
+		return this.edits.workspace;
+	}
+	private readonly memberWorkspace: agents.MemberWorkspace;
+	get workspaceId(): string {
+		return this.memberWorkspace.id;
+	}
 	/** The team (the repository's git common dir): scopes agents, messages and deliveries, whatever worktree they work in. */
 	readonly team: string;
 	private readonly ownsConnection: boolean;
 	private constructor(
 		agent: AgentDb,
-		workspace: string,
-		team: string,
+		cwd: string,
+		env: NodeJS.ProcessEnv,
 		/** Whether `close` closes the connection: true for `open`, false for the process connection `shared` borrows. */
 		ownsConnection: boolean,
 	) {
 		this.agent = agent;
-		this.workspace = workspace;
-		this.team = team;
+		const origin = registeredWorkspace(cwd, agent);
+		const leaseRoot = teamWorkspace(cwd, env);
+		const leaseWorkspace = leaseRoot === origin.root ? origin : registeredWorkspace(leaseRoot, agent);
+		this.memberWorkspace =
+			origin.id === leaseWorkspace.id ? { id: origin.id } : { id: origin.id, leaseWorkspaceId: leaseWorkspace.id };
+		this.team = teamScope(cwd, env);
 		this.ownsConnection = ownsConnection;
 
 		this.db = agent.db;
-		this.edits = new EditLog(agent.db, workspace);
+		this.edits = new EditLog(agent.db, leaseWorkspace.id);
 		this.refs = new MessageRefs(
 			agent.db,
-			team,
+			this.team,
+			this.workspaceId,
 			(work) => this.transaction(work),
 			() => this.reachable(),
 		);
@@ -103,7 +101,7 @@ export class TeamStore {
 	static open(cwd: string, file = agentDbPath(), env: NodeJS.ProcessEnv = process.env): TeamStore {
 		const agent = openAgentDb(file, env);
 		try {
-			const store = new TeamStore(agent, teamWorkspace(cwd, env), teamScope(cwd, env), true);
+			const store = new TeamStore(agent, cwd, env, true);
 			store.housekeep();
 			return store;
 		} catch (error) {
@@ -114,7 +112,7 @@ export class TeamStore {
 
 	/** The team over the process's one agent database connection (`sharedAgentDb`), which sessions, memory and backlog use too. */
 	static shared(cwd: string, env: NodeJS.ProcessEnv = process.env): TeamStore {
-		const store = new TeamStore(sharedAgentDb(env), teamWorkspace(cwd, env), teamScope(cwd, env), false);
+		const store = new TeamStore(sharedAgentDb(env), cwd, env, false);
 		store.housekeep();
 		return store;
 	}
@@ -165,7 +163,6 @@ export class TeamStore {
 	}
 
 	lifecycle: agentEvents.LifecycleContext | undefined;
-	// ── agents ────────────────────────────────────────────────────────────────
 
 	/**
 	 * Heartbeat: refreshes the member row and runs the periodic prune (at most once a minute). The row is matched by id,
@@ -174,7 +171,7 @@ export class TeamStore {
 	 */
 	save(member: Member): boolean {
 		this.prune(member.updatedAt);
-		return this.transaction(() => saveMember(this.db, this.team, this.workspace, member, this.lifecycle));
+		return this.transaction(() => saveMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle));
 	}
 
 	/**
@@ -183,7 +180,7 @@ export class TeamStore {
 	 * retired first (its unread mail becomes dead letters) and the name is taken over.
 	 */
 	join(member: Member): boolean {
-		return this.transaction(() => claimMember(this.db, this.team, this.workspace, member, this.lifecycle));
+		return this.transaction(() => claimMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle));
 	}
 
 	/**
@@ -239,7 +236,7 @@ export class TeamStore {
 	}
 
 	/** Ids of this team's agents that can still read mail: every one whose process runs, stale (stalled) ones included. */
-	private reachable(): Set<string> {
+	reachable(): Set<string> {
 		return reachableMembers(this.db, this.team);
 	}
 
@@ -262,7 +259,9 @@ export class TeamStore {
 		now = Date.now(),
 	): { id: number | undefined; departed: string[]; woken: string[] } {
 		// Read in the same IMMEDIATE transaction as the insert: no recipient can leave in between.
-		return this.transaction(() => insertMessage(this.db, this.team, this.reachable(), from, to, body, options, now));
+		return this.transaction(() =>
+			insertMessage(this.db, this.team, this.workspaceId, this.reachable(), from, to, body, options, now),
+		);
 	}
 
 	/** The sender of message `id` in this team and whether it asked for a reply; undefined when there is no such message. */
@@ -323,8 +322,6 @@ export class TeamStore {
 		return recent(this.db, this.team, limit, now, windowMs);
 	}
 
-	// ── leases ────────────────────────────────────────────────────────────────
-
 	/** The live leases in this checkout (paths relative to it): the ones that can conflict with this checkout's files. */
 	leases(now = Date.now()): Lease[] {
 		return liveLeases(this.db, this.workspace, now);
@@ -347,11 +344,7 @@ export class TeamStore {
 		return this.reap(owner, judged, now);
 	}
 
-	/**
-	 * Reserve every request or none: a conflict with another live lease rejects the whole set. The requests must not
-	 * overlap each other (a tree and a path under it, two spellings of one path, a path twice): that is an error, as in
-	 * the agents-communication package, because the caller's intent is then unclear (ask for the tree alone).
-	 */
+	/** Reserve all requests atomically. Reject overlaps between the requests or with another agent's live lease. */
 	lock(
 		owner: string,
 		requests: LeaseRequest[],
@@ -366,7 +359,7 @@ export class TeamStore {
 				return heldBy ? [{ path: request.path, heldBy }] : [];
 			});
 			if (conflicts.length > 0) return { ok: false as const, conflicts };
-			writeLeases(this.db, this.workspace, owner, requests, now);
+			writeLeases(this.db, this.workspace, this.edits.workspaceId, owner, requests, now);
 			return { ok: true as const, leases: this.leases(now).filter((lease) => lease.owner === owner) };
 		});
 	}
@@ -386,10 +379,11 @@ export class TeamStore {
 
 	/** `kind:key` of every live lease the owner holds in this checkout. */
 	owned(owner: string, now = Date.now()): Set<string> {
+		const root = this.workspace;
 		return new Set(
 			this.leases(now)
 				.filter((lease) => lease.owner === owner)
-				.map((lease) => `${lease.kind}:${pathKey(this.workspace, lease.path)}`),
+				.map((lease) => `${lease.kind}:${pathKey(root, lease.path)}`),
 		);
 	}
 

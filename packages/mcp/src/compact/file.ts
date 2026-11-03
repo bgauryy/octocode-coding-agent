@@ -85,9 +85,8 @@ export function toolBlock(text: string, fn: string): string | undefined {
 	const range = file.blocks.get(fn);
 	if (!range) return undefined;
 	const own = file.lines.slice(range[0], range[1] + 1).join("\n");
-	const typeLines = [...file.types]
-		.filter(([name]) => new RegExp(`\\b${escapeRegExp(name)}\\b`).test(own))
-		.flatMap(([, [start, end]]) => file.lines.slice(start, end + 1));
+	// Hoisted types the block names, and those they name: the block reads complete on its own (an indexed contract).
+	const typeLines = typesUsedBy(file, own).flatMap(([start, end]) => file.lines.slice(start, end + 1));
 	const body = typeLines.length ? `${HOISTED_HEAD}\n${typeLines.join("\n")}\n${own}` : own;
 	const used = [...file.shared].filter(([field]) =>
 		new RegExp(`(^|[\\s{;/])"?${escapeRegExp(field)}"?\\??:`, "m").test(body),

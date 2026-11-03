@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AttachRecord, DaemonSession, DaemonUnavailableSession } from "@octocodeai/octocode-contracts/daemon";
-import { runningPid, sessions, sharedAgentDb } from "../agentdb/api.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { runningPid } from "../shared/session-liveness.ts";
+import { sessions } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 import { AttachClient } from "./attach-client.ts";
 import { webDaemonPaths } from "./paths.ts";
 import { readAttachRecord, recordProcessAlive, removeRecord } from "./records.ts";
@@ -10,9 +11,6 @@ import { byAttention, SessionWatch } from "./session-state.ts";
 
 const POLL_MS = 1000;
 const RETRY_MS = 3000;
-
-/** A route-safe name for a repository key: a hash, so no route carries a path. */
-export const repoId = (key: string): string => sha256(key).slice(0, 16);
 
 interface Link {
 	record: AttachRecord;
@@ -150,7 +148,7 @@ export class SessionRegistry {
 			.filter((link) => link.client?.connected)
 			.map(({ record, watch }) => ({
 				id: record.sessionId,
-				repoId: repoId(record.repo.key),
+				repoId: record.repo.key,
 				repoName: record.repo.name.slice(0, 256),
 				cwd: record.cwd.slice(0, 4096),
 				startedAt: record.startedAt,

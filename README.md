@@ -25,7 +25,7 @@ yarn start research --help
 yarn start native --help
 ```
 
-Local dependencies make this a development checkout. Publication is blocked while they remain configured. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
+Local dependencies make this a development checkout. `@octocodeai/octocodecode` is the only package published to npm; everything else compiles into its one bundle file. `yarn run publish:dry` rehearses a release and `yarn run publish` runs it: both write the published manifest into the tarball with the exact npm versions in `octocodeRelease`, add this repository's `docs/` as `docs/project/`, install that tarball from npm and run a real session against a scripted model, and refuse to publish if anything fails. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
 
 ## Validate a registry release candidate
 

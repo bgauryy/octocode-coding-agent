@@ -1,4 +1,4 @@
-import { type Db, deliveries, num } from "../../agentdb/api.ts";
+import { type Db, deliveries, num } from "../../../../../db/src/api.ts";
 import { type Message, type OpenQuestion, type SendOptions, toMessage, toOpenQuestion, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
 import { insertMessage } from "./mail.ts";
@@ -7,7 +7,7 @@ import { insertMessage } from "./mail.ts";
  * Stored messages used by reference (`msg#N`): read one by id, forward it to more recipients without copying its body,
  * store a resumed run's message, and the B200 relay (a child's message to an agent it cannot reach, held as a delivery to
  * its parent with `relay_to`, which the parent process settles; `team/relay.ts`). Rows are those of `mail.ts`;
- * the columns are described in `agentdb/schema.ts`. Authorization is the caller's (`team/session/references.ts`).
+ * the columns are described in `packages/db/src/schema-sql.ts`. Authorization is the caller's (`team/session/references.ts`).
  */
 
 /** A stored message and who holds a delivery of it. */
@@ -32,11 +32,13 @@ type Transaction = <T>(work: () => T) => T;
 export class MessageRefs {
 	private readonly db: Db;
 	private readonly team: string;
+	private readonly workspaceId: string;
 	private readonly transaction: Transaction;
 	private readonly reachable: () => Set<string>;
-	constructor(db: Db, team: string, transaction: Transaction, reachable: () => Set<string>) {
+	constructor(db: Db, team: string, workspaceId: string, transaction: Transaction, reachable: () => Set<string>) {
 		this.db = db;
 		this.team = team;
+		this.workspaceId = workspaceId;
 		this.transaction = transaction;
 		this.reachable = reachable;
 	}
@@ -110,7 +112,7 @@ export class MessageRefs {
 		now = Date.now(),
 	): { id: number; at: number } {
 		return this.transaction(() => {
-			const { id } = insertMessage(this.db, this.team, new Set([to]), from, [to], body, options, now);
+			const { id } = insertMessage(this.db, this.team, this.workspaceId, new Set([to]), from, [to], body, options, now);
 			deliveries.markDelivered(this.db, to, [id!], now);
 			return { id: id!, at: now };
 		});
@@ -152,7 +154,17 @@ export class MessageRefs {
 	): number | undefined {
 		return this.transaction(() => {
 			const { replyTo, ...rest } = options;
-			const { id } = insertMessage(this.db, this.team, this.reachable(), from, [parent], body, rest, now);
+			const { id } = insertMessage(
+				this.db,
+				this.team,
+				this.workspaceId,
+				this.reachable(),
+				from,
+				[parent],
+				body,
+				rest,
+				now,
+			);
 			if (id === undefined) return undefined;
 			deliveries.markRelay(this.db, id, parent, target, WAKE.none);
 			if (replyTo !== undefined) {

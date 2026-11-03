@@ -48,10 +48,7 @@ export function getBuiltinThemes(): Record<string, ValidatedThemeJson> {
 			fs
 				.readdirSync(themesDir, { withFileTypes: true })
 				.filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-				.map((entry) => [
-					path.basename(entry.name, ".json"),
-					readJsonFile(path.join(themesDir, entry.name)) as ValidatedThemeJson,
-				]),
+				.map((entry) => [path.basename(entry.name, ".json"), readJsonFile(path.join(themesDir, entry.name))]),
 		);
 	}
 	return BUILTIN_THEMES;
@@ -145,7 +142,7 @@ function parseThemeJsonContent(label: string, content: string): ValidatedThemeJs
 	try {
 		json = JSON.parse(stripBom(content));
 	} catch (error) {
-		throw new Error(`Failed to parse theme ${label}: ${String(error)}`);
+		throw new Error(`Failed to parse theme ${label}: ${String(error)}`, { cause: error });
 	}
 	return parseThemeJson(label, json);
 }

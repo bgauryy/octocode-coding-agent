@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
-import { USER_AUTHOR } from "../agentdb/api.ts";
+import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { lastInjection } from "./inject.ts";

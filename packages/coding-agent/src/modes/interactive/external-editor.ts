@@ -1,6 +1,7 @@
+import { runtimeTempDir } from "../../config/runtime-paths.ts";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { stripBom } from "../../../../common/src/text.ts";
@@ -20,7 +21,7 @@ export type ExternalEditorResult = { status: "complete"; content: string } | { s
 export async function editInExternalEditor(options: ExternalEditorOptions): Promise<ExternalEditorResult> {
 	let directory: string | undefined;
 	try {
-		directory = mkdtempSync(join(tmpdir(), "octocode-editor-"));
+		directory = mkdtempSync(join(runtimeTempDir(), "octocode-editor-"));
 		const filePath = join(directory, "prompt.md");
 		writeFileSync(filePath, options.content, "utf-8");
 		const [editor, ...editorArgs] = options.command.split(" ");

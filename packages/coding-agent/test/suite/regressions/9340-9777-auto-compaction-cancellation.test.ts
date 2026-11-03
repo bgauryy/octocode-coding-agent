@@ -92,7 +92,7 @@ describe("automatic compaction cancellation regressions", () => {
 			authSignal = options?.signal;
 			markAuthStarted();
 			if (!authSignal) throw new Error("Missing auth abort signal");
-			return await new Promise<never>((_resolve, reject) => {
+			return new Promise<never>((_resolve, reject) => {
 				authSignal?.addEventListener("abort", () => reject(authSignal?.reason), { once: true });
 			});
 		});

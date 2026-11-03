@@ -12,7 +12,7 @@ function calculate(expression: string): CalculateResult {
 		const result = new Function(`return ${expression}`)();
 		return { content: [{ type: "text", text: `${expression} = ${result}` }], details: undefined };
 	} catch (e: any) {
-		throw new Error(e.message || String(e));
+		throw new Error(e.message || String(e), { cause: e });
 	}
 }
 

@@ -22,6 +22,7 @@ import {
 	resolveTier,
 	routeModel,
 	SUBAGENT_DEFAULT_THINKING,
+	SUBAGENT_DEFAULT_TIER,
 	SUBAGENT_THINKING_ENV,
 	subagentThinking,
 	supportedThinking,
@@ -109,7 +110,9 @@ export function describeModels(
 					: " (no cheaper capable model)";
 	const tiers = MODEL_TIERS.map((tier) => {
 		const chosen = resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
-		return `  ${tier}: ${chosen ? name(chosen) : parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model"}`;
+		const fallback = parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model";
+		const usedBy = tier === SUBAGENT_DEFAULT_TIER ? "; also a task with no profile or model" : "";
+		return `  ${tier}: ${chosen ? name(chosen) : fallback}${usedBy}`;
 	});
 	const thinking = subagentThinking();
 	const set = thinking !== SUBAGENT_DEFAULT_THINKING || process.env[SUBAGENT_THINKING_ENV] !== undefined;

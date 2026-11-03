@@ -33,7 +33,7 @@ beforeEach(() => {
 	);
 	vi.stubGlobal(
 		"fetch",
-		vi.fn(async (url: string) => {
+		vi.fn(async (url: string | URL) => {
 			const id = new NativeURL(String(url), "http://localhost").pathname.split("/").at(-1)!;
 			reads.push(id);
 			return new Response(

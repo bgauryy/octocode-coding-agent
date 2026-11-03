@@ -26,15 +26,17 @@ describe("team store on a busy database", () => {
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const file = path.join(tmp(), "team.sqlite");
-		TeamStore.open(cwd, file).close();
+		const initial = TeamStore.open(cwd, file);
+		const workspaceId = initial.workspaceId;
+		initial.close();
 		// Another process mid-write: an expired lease is left for the prune to remove.
 		const other = new DatabaseSync(file);
 		other.exec("PRAGMA busy_timeout=5000");
 		other
 			.prepare(
-				"INSERT INTO leases (workspace, path, path_key, kind, owner, reason, acquired_at, expires_at) VALUES (?, 'a.ts', 'a.ts', 'file', 'gone', '', 0, 1)",
+				"INSERT INTO leases (workspace_id, path, path_key, kind, owner, reason, acquired_at, expires_at) VALUES (?, 'a.ts', 'a.ts', 'file', 'gone', '', 0, 1)",
 			)
-			.run(fs.realpathSync(cwd));
+			.run(workspaceId);
 		other.exec("BEGIN IMMEDIATE");
 		const started = Date.now();
 		let store: TeamStore | undefined;

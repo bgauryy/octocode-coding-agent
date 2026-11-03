@@ -82,7 +82,7 @@ function toolCallChunk(): unknown {
 }
 
 async function runOpenAICompletionsStream(messages: AssistantMessage[] = []): Promise<AssistantMessage> {
-	return await streamOpenAICompletions(model(), normalizeContext({ messages, tools: [readTool] }), {
+	return streamOpenAICompletions(model(), normalizeContext({ messages, tools: [readTool] }), {
 		apiKey: "test",
 	}).result();
 }

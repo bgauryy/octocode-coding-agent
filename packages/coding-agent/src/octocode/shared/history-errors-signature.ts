@@ -43,6 +43,7 @@ const FAMILIES: ReadonlyArray<readonly [RegExp, string]> = [
 		"file already exists and was not read in this session",
 	],
 	[/^(?:\S+ )?changed on disk since you last read it\b/, "file changed on disk since it was last read"],
+	[/^(?:\S+ )?your earlier read of it is no longer in your context\b/, "file read is no longer in the context"],
 	// Edit matching (`core/tools/edit-diff.ts`): one edit says "the exact text", several say `edits[N]`; a hint may follow.
 	[
 		/^Could not find (?:the exact text|edits\[N\]) in\b/,
@@ -57,6 +58,10 @@ const FAMILIES: ReadonlyArray<readonly [RegExp, string]> = [
 	[
 		/^This command runs \S+ on inline code\b/,
 		"inline interpreter code refused while another agent holds a reservation",
+	],
+	[
+		/^This command was not run: what it writes cannot be checked against reservations\b/,
+		"unreadable command refused while another agent holds a reservation",
 	],
 	[/^`[^`]*` is refused: this is a read-only role\b/, "`<command>` is refused: this is a read-only role"],
 	[

@@ -30,7 +30,7 @@ describe("invalid tool schema diagnostics", () => {
 				};
 				const cases: ToolCall["arguments"][] = [{}, { value: 1 }];
 				for (const args of cases) {
-					expect(() => validateToolArguments(tool, call(args))).toThrowError(
+					expect(() => validateToolArguments(tool, call(args))).toThrow(
 						'Invalid schema for tool "mcp__docs__search": URI malformed. Fix the tool definition before retrying.',
 					);
 				}
@@ -43,7 +43,7 @@ describe("invalid tool schema diagnostics", () => {
 		const tool: Tool = { name: "mcp__docs__search", description: "Search", parameters: malformed("#/$defs/%") };
 		const args = { value: "unchanged" };
 		const original = structuredClone(tool.parameters);
-		expect(() => validateToolArguments(tool, call(args))).toThrowError(
+		expect(() => validateToolArguments(tool, call(args))).toThrow(
 			expect.objectContaining({ name: "Error", cause: expect.any(URIError) }),
 		);
 		expect(tool.parameters).toEqual(original);

@@ -13,6 +13,7 @@ import {
 } from "@octocodeai/octocode-contracts/docs";
 import { mermaidScript } from "@octocodeai/octocode-webview";
 import { redactData } from "../../../../common/src/sanitize.ts";
+import { WORKSPACE_STATE, workspaceStateDir } from "../../config/workspace.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { firstHeading, isSymlink, readFrontmatter, truncate } from "./reports.ts";
 
@@ -20,6 +21,7 @@ import { firstHeading, isSymlink, readFrontmatter, truncate } from "./reports.ts
 const EXCLUDED_TOP = new Set(["skills"]);
 /** Scratch space: listed only when the request opts in. */
 const SCRATCH_TOP = "tmp";
+const RUNTIME_PREFIX = WORKSPACE_STATE.split(path.sep).join("/") + "/";
 const SKIPPED_FOLDERS = new Set(["view", "node_modules"]);
 const MAX_DOC_BYTES = 512 * 1024;
 const MAX_DOCS = 1000;
@@ -68,9 +70,9 @@ function readHead(filePath: string): string {
 	}
 }
 
-function summarize(base: string, relativePath: string, size: number, modified: Date): DocSummary | undefined {
+function summarize(file: string, relativePath: string, size: number, modified: Date): DocSummary | undefined {
 	try {
-		const head = readHead(path.join(base, ...relativePath.split("/")));
+		const head = readHead(file);
 		const frontmatter = readFrontmatter(head);
 		const parts = relativePath.split("/");
 		return {
@@ -88,16 +90,16 @@ function summarize(base: string, relativePath: string, size: number, modified: D
 	}
 }
 
-/** Every Markdown document under `.octocode/`, newest first. Symbolic links are never followed. */
+/** Authored documents, the backlog export, and optional runtime scratch, newest first. Skip symbolic links. */
 export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
-	const base = workspaceOctocodeDir(root);
 	const docs: DocSummary[] = [];
 	let seen = 0;
 	let capped = false;
-	const walk = (relativeDir: string, depth: number): void => {
+	const walk = (directory: string, relativeDir: string, depth: number): void => {
+		if (isSymlink(directory)) return;
 		let entries: fs.Dirent[];
 		try {
-			entries = fs.readdirSync(path.join(base, ...relativeDir.split("/").filter(Boolean)), { withFileTypes: true });
+			entries = fs.readdirSync(directory, { withFileTypes: true });
 		} catch {
 			return;
 		}
@@ -106,9 +108,10 @@ export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
 			if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
 			const relative = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
 			const top = relative.split("/")[0];
+			const file = path.join(directory, entry.name);
 			if (entry.isDirectory()) {
 				if (depth < MAX_DEPTH && !skipped(top, includeTmp) && !SKIPPED_FOLDERS.has(entry.name))
-					walk(relative, depth + 1);
+					walk(file, relative, depth + 1);
 				continue;
 			}
 			if (!entry.isFile() || !/\.md$/i.test(entry.name) || relative.length > 300 || skipped(top, includeTmp)) continue;
@@ -117,16 +120,28 @@ export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
 				return;
 			}
 			try {
-				const stat = fs.statSync(path.join(base, ...relative.split("/")));
+				const stat = fs.statSync(file);
 				if (stat.size > MAX_DOC_BYTES) continue;
-				const doc = summarize(base, relative, stat.size, stat.mtime);
+				const doc = summarize(file, relative, stat.size, stat.mtime);
 				if (doc) docs.push(doc);
 			} catch {
 				continue;
 			}
 		}
 	};
-	walk("", 0);
+	walk(workspaceOctocodeDir(root), "", 0);
+	try {
+		const state = workspaceStateDir(root);
+		const file = path.join(state, "backlog.md");
+		const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+		if (stat?.isFile() && stat.size <= MAX_DOC_BYTES) {
+			const doc = summarize(file, RUNTIME_PREFIX + "backlog.md", stat.size, stat.mtime);
+			if (doc) docs.push(doc);
+		}
+		if (includeTmp) walk(path.join(state, "temp"), RUNTIME_PREFIX + "temp", 1);
+	} catch {
+		// Runtime output is optional; an inaccessible state directory cannot hide authored documents.
+	}
 	docs.sort((a, b) => (a.updated < b.updated ? 1 : a.updated > b.updated ? -1 : a.path.localeCompare(b.path)));
 	const index: DocsIndex = {
 		docs: docs.slice(0, MAX_DOCS),
@@ -138,19 +153,24 @@ export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
 }
 
 /**
- * One document. The path must be a relative `.md` path with plain segments; every segment below `.octocode/` must exist
+ * One document. The path must be a relative `.md` path with plain segments; every segment below its permitted base must exist
  * as a regular entry, never a symbolic link, and the resolved file must stay inside the real `.octocode/`, so a request
  * never turns into an arbitrary host file read.
  */
 export function readDocFile(root: string, relativePath: string, includeTmp = false): DocFile | undefined {
 	if (relativePath.length > 300 || relativePath.includes("\0") || relativePath.includes("\\")) return undefined;
-	const segments = relativePath.split("/");
+	const runtime = relativePath.startsWith(RUNTIME_PREFIX);
+	const relative = runtime ? relativePath.slice(RUNTIME_PREFIX.length) : relativePath;
+	if (runtime && relative !== "backlog.md" && !(includeTmp && relative.startsWith("temp/"))) return undefined;
+	const segments = relative.split("/");
 	if (segments.some((part) => !part || part === "." || part === ".." || part.startsWith("."))) return undefined;
 	if (!/\.md$/i.test(relativePath) || skipped(segments[0], includeTmp)) return undefined;
 	if (segments.slice(0, -1).some((part) => SKIPPED_FOLDERS.has(part)) || segments.length - 1 > MAX_DEPTH)
 		return undefined;
 	try {
-		const realBase = fs.realpathSync(workspaceOctocodeDir(root));
+		const base = runtime ? workspaceStateDir(root) : workspaceOctocodeDir(root);
+		if (isSymlink(base)) return undefined;
+		const realBase = fs.realpathSync(base);
 		let current = realBase;
 		for (const part of segments) {
 			current = path.join(current, part);

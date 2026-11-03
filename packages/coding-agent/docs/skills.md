@@ -131,6 +131,16 @@ Inheritance supplies instructions and reference roots. It does not activate exec
 
 ## Add it to Octocode
 
+Every loaded skill belongs to one of three groups, which the agent's skill list (`<core_skills>`, `<octocode_skills>` and `<external_skills>` in that order), `/skills` and the startup and `/harness config` source labels (`core`, `octocode`, and the external folder's own label) keep apart:
+
+| Group    | What it is                                                               | Where it comes from                                                               |
+| -------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Core     | Skills that are part of how Octocode works, such as `octocode-debugging` | `octocode/native-skills/` of the package, next to the binary when standalone      |
+| Octocode | The public Octocode skill collection                                     | The installed research CLI, or beside the standalone executable                   |
+| External | Everything you or another tool added                                     | User and project folders, Claude and Codex folders, packages, settings, `--skill` |
+
+When the list exceeds its budget, external skills lose their descriptions first.
+
 All public Octocode skills ship with the installed research CLI and are available automatically, including their scripts, references, and assets. Startup reads the installed files without downloading or copying skills into your home directory. Standalone releases include the same collection beside the executable. Updating Octocode updates these defaults.
 
 When two skills share a name, the bundled skill beats a user-level copy another tool installed, so the agent gets the version this build ships. `npx octocode skill install` writes such copies into `~/.agents/skills/`, `~/.claude/skills/` and `~/.pi/agent/skills/` (also `$CODEX_HOME/skills/`); the same-name copy there is skipped and the bundled one is listed. Everything you chose on purpose beats the bundle, and wins over those copies too:
@@ -152,7 +162,10 @@ Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agen
 
 Native sessions add the folders other agents use, so one install works everywhere: `~/.claude/skills/` without its `synced/` subtree, `$CODEX_HOME/skills/` (default `~/.codex/skills/`), and, after the project is trusted with `/trust`, `.claude/skills/` from the working directory up to the repository root. These host folders load after every folder above, so a same-name skill there loses with a collision warning, except that the user-level `~/.claude/skills/` and `$CODEX_HOME/skills/` copies of a bundled skill yield to the bundle (see above). `OCTOCODE_EXTRA_SKILLS=0` turns them off.
 
-The application also ships `octocode-context-optimization` (in `octocode/native-skills/` of the package, next to the binary in a standalone build), which rewrites what agents read of skills and MCP servers: skill descriptions with `octocode context` ([optimized descriptions](#optimized-descriptions)), and an MCP server's generated file, its descriptions and triggers, with `octocode mcp compact`, plus assigning the server to agents ([compact presentation](mcp-reference.md#compact-presentation)). A root native session discovers it whatever `OCTOCODE_EXTRA_SKILLS` says; a native subagent receives it through its parent's inventory like every other skill.
+The application also ships its core skills (in `octocode/native-skills/` of the package, next to the binary in a standalone build). A root native session discovers them whatever `OCTOCODE_EXTRA_SKILLS` says; a native subagent receives them through its parent's inventory like every other skill.
+
+- `octocode-context-optimization` rewrites what agents read of skills and MCP servers: skill descriptions with `octocode context` ([optimized descriptions](#optimized-descriptions)), and an MCP server's generated file, its descriptions and triggers, with `octocode mcp compact`, plus assigning the server to agents ([compact presentation](mcp-reference.md#compact-presentation)).
+- `octocode-debugging` teaches the agent to debug and profile running programs through `bash`: batch lldb, gdb and pdb runs, a Node inspector script that prints each pause as JSON, crash and hang stacks, and CPU and heap profiles summarized by a bundled script. It replaces the former `debug` tool.
 
 Extra user skill discovery honors `CLAUDE_CONFIG_DIR/skills` and `CODEX_HOME/skills` when those environment variables are set. Claude skills retain their description fallback, argument syntax and boolean parsing under a custom directory, including when discovery filters out the `synced/` subtree. Codex canonicalizes its selected home and requires it to exist. Missing or invalid selected homes do not fall back to another user profile; project roots and their trust checks are unchanged. These settings select local discovery paths, not vendor credentials or cloud connections.
 
@@ -164,16 +177,16 @@ Project skills can instruct the model to run scripts or modify files. Review unf
 
 Skill files may declare the following portable fields and invocation extensions. Informational fields remain in the file; the loader retains the name, description and invocation controls.
 
-| Field                      | Purpose                                                                        |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `name`                     | Command and display name                                                       |
-| `description`              | Routing description shown to the model                                         |
-| `license`                  | Informational license name or bundled license file; not enforced by the loader |
-| `compatibility`            | Informational environment requirements; not checked by the loader              |
-| `metadata`                 | Informational key-value metadata; not retained in the loaded skill record      |
-| `allowed-tools`            | Portable experimental metadata; Octocode does not apply a permission grant     |
-| `disable-model-invocation` | Omit the skill from the model’s advertised list                                |
-| `user-invocable`           | Set `false` to disable user command discovery and expansion                    |
+| Field                      | Purpose                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                     | Command and display name                                                                                                                                                                   |
+| `description`              | Routing description shown to the model                                                                                                                                                     |
+| `license`                  | Informational license name or bundled license file; not enforced by the loader                                                                                                             |
+| `compatibility`            | Informational environment requirements; not checked by the loader                                                                                                                          |
+| `metadata`                 | Key-value metadata, not retained; `excluded-hosts` naming `octocode-code` (a space-separated list) skips the skill here, silently: the bundled `octocode-get-started` is for other clients |
+| `allowed-tools`            | Portable experimental metadata; Octocode does not apply a permission grant                                                                                                                 |
+| `disable-model-invocation` | Omit the skill from the model’s advertised list                                                                                                                                            |
+| `user-invocable`           | Set `false` to disable user command discovery and expansion                                                                                                                                |
 
 Names use lowercase letters, numbers, and hyphens, with no leading, trailing, or consecutive hyphens. They can contain at most 64 characters; descriptions can contain at most 1024.
 

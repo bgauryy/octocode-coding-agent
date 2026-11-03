@@ -14,8 +14,9 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const tool = "mcp__octocode__localFetch";
-const output = (file: string, content: string, extra: object = {}) => ({
-	results: [{ data: { path: file, content, ...extra } }],
+// A row as the server publishes it: its query's `index`, and `path` only when it differs from the requested one.
+const output = (file: string | undefined, content: string, extra: object = {}) => ({
+	results: [{ index: 0, data: { ...(file === undefined ? {} : { path: file }), content, ...extra } }],
 });
 
 describe("local MCP read evidence", () => {
@@ -181,6 +182,55 @@ describe("local MCP read evidence", () => {
 		expect(await completedLocalReads(new Map(), output(file, "1\tone\n"), cwd)).toEqual([]);
 		fs.writeFileSync(file, "new\n");
 		expect(await completedLocalReads(before, output(file, "1\tone\n", { totalLines: 1 }), cwd)).toEqual([]);
+	});
+
+	it("names a row without `path` by the request query at its index, relative paths against the cwd", async () => {
+		const cwd = fs.realpathSync(tmp());
+		const whole = path.join(cwd, "a.txt");
+		const ranged = path.join(cwd, "src", "b.txt");
+		fs.writeFileSync(whole, "one\n");
+		fs.mkdirSync(path.dirname(ranged));
+		fs.writeFileSync(ranged, "one\ntwo\nthree\n");
+		const input = { queries: [{ path: "a.txt" }, { path: "src/b.txt", ranges: [{ startLine: 2, endLine: 3 }] }] };
+		const before = await snapshotLocalReads(tool, input, cwd);
+		// The server publishes rows by query index; their order is not the request's.
+		const result = {
+			results: [
+				{ index: 1, data: { content: "2\ttwo\n3\tthree\n", totalLines: 3 } },
+				{ index: 0, data: { content: "1\tone\n", totalLines: 1 } },
+			],
+		};
+		expect(await completedLocalReads(before, result, cwd, input)).toMatchObject([
+			{ file: ranged, whole: false, lines: [2, 3] },
+			{ file: whole, whole: true },
+		]);
+		// Without the request, a row that names no file credits nothing.
+		expect(await completedLocalReads(before, result, cwd)).toEqual([]);
+		// A row's own `path` still wins over its query's.
+		const moved = { results: [{ index: 0, data: { path: "src/b.txt", content: "2\ttwo\n", totalLines: 3 } }] };
+		expect(await completedLocalReads(before, moved, cwd, input)).toMatchObject([{ file: ranged, lines: [2, 2] }]);
+	});
+
+	it("credits a relative read through the result hook, with the call's input", async () => {
+		const cwd = fs.realpathSync(tmp());
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one\n");
+		const fake = fakeHost();
+		const snapshots = registerReadReceipts(fake.api);
+		const input = { queries: [{ path: "a.txt" }] };
+		snapshots.set("call", await snapshotLocalReads(tool, input, cwd));
+		const results = await fake.emit(
+			"tool_result",
+			{
+				toolCallId: "call",
+				input,
+				isError: false,
+				content: [{ type: "text", text: "read" }],
+				structuredContent: output(undefined, "1\tone\n", { totalLines: 1 }),
+			},
+			{ cwd },
+		);
+		expect(results[0]).toMatchObject({ details: { localReads: [{ file, whole: true }] } });
 	});
 });
 

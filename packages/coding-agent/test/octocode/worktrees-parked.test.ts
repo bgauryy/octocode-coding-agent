@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { scratchRoot } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { allParked, writeParked, type ParkedWorker } from "../../src/octocode/subagents/parked.ts";
 import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";

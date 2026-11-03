@@ -1,5 +1,5 @@
 import { TASK_STATES, type BacklogTask, type TaskState, type TaskTally } from "@octocodeai/octocode-contracts/backlogs";
-import { type Db, tasks } from "../../agentdb/api.ts";
+import { type Db, tasks } from "../../../../../db/src/api.ts";
 import { BacklogError } from "../item.ts";
 import { getItem } from "../reads.ts";
 import type { ListTasksQuery } from "./inputs.ts";

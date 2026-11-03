@@ -243,7 +243,7 @@ function resolveLocalExtensionSource(
 			}
 		}
 	} catch {
-		return;
+		// An unreadable local source adds no resources.
 	}
 }
 
@@ -258,6 +258,5 @@ export async function installParsedSource(
 	}
 	if (parsed.type === "git") {
 		await installGit(host, parsed, scope);
-		return;
 	}
 }

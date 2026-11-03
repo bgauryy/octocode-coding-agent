@@ -37,7 +37,7 @@ const validate = (tool: ReturnType<typeof define>, count: number) =>
 
 // localFetch refused 6-14 queries 30 times: the server's cap message named no way forward.
 describe("MCP queries batch cap", () => {
-	const next = /send at most 5 per call and put the rest in another call in the same turn/;
+	const next = /queries holds at most 5; split into calls of 5 or fewer, run them in the same turn\./;
 
 	it("tells a model that sent too many queries to split the batch", () => {
 		expect(() => validate(define(batchSchema(5)), 7)).toThrow(next);
@@ -46,7 +46,7 @@ describe("MCP queries batch cap", () => {
 	it("adds the cap beside a compact tool's typed signature", () => {
 		const tool = define(batchSchema(5), { signature: () => "declare function localFetch(q: Q): R;" });
 		expect(() => validate(tool, 6)).toThrow(
-			/send at most 5 per call[\s\S]*Expected signature \(TypeScript\):\ndeclare function localFetch/,
+			/split into calls of 5 or fewer[\s\S]*Expected signature \(TypeScript\):\ndeclare function localFetch/,
 		);
 	});
 
@@ -111,6 +111,6 @@ describe("MCP envelope errors", () => {
 		expect(nested).toContain("Expected signature (TypeScript):");
 		expect(nested).not.toContain("takes only");
 		const long = fail({ queries: Array.from({ length: 6 }, () => ({ path: "a" })) });
-		expect(long).toContain("send at most 5 per call");
+		expect(long).toContain("queries holds at most 5; split into calls of 5 or fewer, run them in the same turn.");
 	});
 });

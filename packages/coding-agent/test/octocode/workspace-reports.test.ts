@@ -1,11 +1,11 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, expect, it } from "vitest";
 import { ReportFileSchema, ReportsIndexSchema } from "@octocodeai/octocode-contracts/protocol";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { readReportFile, readReportsIndex } from "../../src/octocode/workspace/reports.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 
@@ -182,7 +182,7 @@ it("serves reports only through the authenticated board routes", async () => {
 	const db = openAgentDb(path.join(repoRoot, "db"));
 	cleanup.push(() => db.close());
 	const web = await startWorkspaceWeb({
-		store: new BacklogStore(() => db, "repo"),
+		store: fixtureBacklog(() => db, "repo"),
 		actor: { id: "parent" },
 		session: "session",
 		repoName: "repo",

@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "../../../core/features/index.ts";
-import { USER_AUTHOR } from "../../agentdb/api.ts";
+import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { say } from "../../shared/commands.ts";
 import { TASK_STATES, type BacklogTask, type TaskState, isOpenTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { Backlog } from "../context.ts";

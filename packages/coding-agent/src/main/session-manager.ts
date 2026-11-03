@@ -1,11 +1,15 @@
 import { createInterface } from "node:readline";
+import { dirname } from "node:path";
+import { canonicalPath } from "../../../common/src/canonical-path.ts";
+import { transcripts } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../config/database.ts";
 import chalk from "chalk";
 import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
 import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
-import { sessionFileRunningPid } from "../octocode/agentdb/api.ts";
+import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -16,6 +20,7 @@ type ResolvedSession =
 	| { type: "path"; path: string } // Direct file path
 	| { type: "local"; path: string } // Found in current project
 	| { type: "global"; path: string; cwd: string } // Found in different project
+	| { type: "stored"; id: string; path: string } // An indexed transcript in another or unavailable checkout
 	| { type: "not_found"; arg: string }; // Not found anywhere
 
 /**
@@ -36,8 +41,19 @@ function findLocalSessionByExactId(
  * `--fork --session-id` must not reuse it: two files with one id share its output, checkpoint, parked-child and pending-report folders.
  */
 async function findSessionFileAnywhere(sessionId: string, sessionDir?: string): Promise<string | undefined> {
-	const sessions = await SessionManager.listAll(sessionDir);
-	return sessions.find((session) => session.id === sessionId)?.path;
+	const indexed = storedTranscriptPath(sessionId);
+	if (indexed) return indexed;
+	return (await SessionManager.listAll(sessionDir)).find((session) => session.id === sessionId)?.path;
+}
+
+/** JSONL discovery still works while the database is unavailable. */
+function storedTranscriptPath(id: string, sessionDir?: string): string | undefined {
+	try {
+		const row = transcripts.stamp(sharedAgentDb().db, id);
+		return row && (!sessionDir || dirname(row.file) === canonicalPath(sessionDir)) ? row.file : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: string): Promise<ResolvedSession> {
@@ -53,23 +69,17 @@ async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: 
 		return exactLocalMatch;
 	}
 
-	const localSessions = await SessionManager.list(cwd, sessionDir);
-	const localMatch = localSessions.find((s) => s.id.startsWith(sessionArg));
+	const stored = storedTranscriptPath(sessionArg, sessionDir);
+	const localMatch = (await SessionManager.list(cwd, sessionDir)).find((session) => session.id.startsWith(sessionArg));
+	if (!stored && localMatch) return { type: "local", path: localMatch.path };
 
-	if (localMatch) {
-		return { type: "local", path: localMatch.path };
-	}
-
-	// Try global search across all projects
-	const allSessions = await SessionManager.listAll(sessionDir);
-	const globalMatch =
-		allSessions.find((s) => s.id === sessionArg) ?? allSessions.find((s) => s.id.startsWith(sessionArg));
-
-	if (globalMatch) {
-		return { type: "global", path: globalMatch.path, cwd: globalMatch.cwd };
-	}
-
-	// Not found anywhere
+	const all = await SessionManager.listAll(sessionDir);
+	const exact = all.find((session) => session.id === sessionArg);
+	if (exact) return { type: "global", path: exact.path, cwd: exact.cwd };
+	// An exact historical ID wins over any similarly named live session.
+	if (stored) return { type: "stored", id: sessionArg, path: stored };
+	const globalMatch = all.find((session) => session.id.startsWith(sessionArg));
+	if (globalMatch) return { type: "global", path: globalMatch.path, cwd: globalMatch.cwd };
 	return { type: "not_found", arg: sessionArg };
 }
 
@@ -136,7 +146,12 @@ function openSessionOrExit(path: string, sessionDir?: string): SessionManager {
 	}
 }
 
-function forkSessionOrExit(sourcePath: string, cwd: string, sessionDir?: string, sessionId?: string): SessionManager {
+function forkSessionOrExit(
+	sourcePath: string | { storedId: string },
+	cwd: string,
+	sessionDir?: string,
+	sessionId?: string,
+): SessionManager {
 	try {
 		return SessionManager.forkFrom(sourcePath, cwd, sessionDir, { id: sessionId });
 	} catch (error: unknown) {
@@ -211,6 +226,9 @@ export async function createSessionManager(
 			case "global":
 				return forkSessionOrExit(resolved.path, cwd, sessionDir, parsed.sessionId);
 
+			case "stored":
+				return forkSessionOrExit({ storedId: resolved.id }, cwd, sessionDir, parsed.sessionId);
+
 			case "not_found":
 				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
 				process.exit(1);
@@ -226,14 +244,19 @@ export async function createSessionManager(
 				await confirmSessionNotRunning(resolved.path, parsed, settingsManager);
 				return openSessionOrExit(resolved.path, sessionDir);
 
-			case "global": {
-				console.log(chalk.yellow(`Session found in different project: ${resolved.cwd}`));
+			case "global":
+			case "stored": {
+				console.log(chalk.yellow(`Saved session found at ${resolved.path}`));
 				const shouldFork = await promptConfirm("Fork this session into current directory?");
 				if (!shouldFork) {
 					console.log(chalk.dim("Aborted."));
 					process.exit(0);
 				}
-				return forkSessionOrExit(resolved.path, cwd, sessionDir);
+				return forkSessionOrExit(
+					resolved.type === "stored" ? { storedId: resolved.id } : resolved.path,
+					cwd,
+					sessionDir,
+				);
 			}
 
 			case "not_found":

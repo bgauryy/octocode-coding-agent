@@ -1,6 +1,6 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
+import { git, gitQuiet, NO_HOOKS, rejectTrackedWorkspaceState } from "../shared/git.ts";
 import { ID_PATTERN, LEGACY_REF_PREFIX, REF_PREFIX, repoRoot } from "./worktree-base.ts";
 
 /** The agent's saved ref under the current path, else the legacy one, else undefined. */
@@ -29,6 +29,7 @@ export async function mergeAgent(
 		};
 	}
 	try {
+		await rejectTrackedWorkspaceState(repo, ref);
 		await git(repo, [...NO_HOOKS, "merge", "--no-ff", "--no-edit", ref]);
 	} catch (error) {
 		const conflicts = (await gitQuiet(repo, ["diff", "--name-only", "--diff-filter=U"])) ?? "";

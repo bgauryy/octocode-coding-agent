@@ -4,7 +4,9 @@ import path from "node:path";
 import { stripTerminalSequences, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { type AgentDb, closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { countsText } from "../../src/octocode/backlog/format.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -43,13 +45,13 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const store = () => new BacklogStore(() => sharedAgentDb(), fs.realpathSync(cwd));
+const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
 
 /** The same database file through a second connection: what another session or process writing while the board is open looks like. */
 const second: AgentDb[] = [];
 const otherWriter = () => {
 	second[0] ??= openAgentDb(path.join(tmp, "home", "octocode.db"));
-	return new BacklogStore(() => second[0], fs.realpathSync(cwd));
+	return new BacklogStore(() => second[0], registeredWorkspace(cwd, second[0]).id);
 };
 
 /** Paints every colour as a zero-width escape that names its token, so a test reads which token painted what. */

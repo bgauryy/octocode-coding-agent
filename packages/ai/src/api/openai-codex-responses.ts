@@ -230,7 +230,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						});
 					} catch (error) {
 						if (headerTimeoutSignal?.aborted && !options?.signal?.aborted) {
-							throw new Error(`Codex SSE response headers timed out after ${httpTimeoutMs}ms`);
+							throw new Error(`Codex SSE response headers timed out after ${httpTimeoutMs}ms`, { cause: error });
 						}
 						throw error;
 					} finally {

@@ -43,5 +43,6 @@ export * from "./utils/overflow.ts";
 export * from "./utils/retry.ts";
 export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "./utils/text.ts";
 export * from "./utils/transcript.ts";
+export * from "./utils/transcript-prefix.ts";
 export { uuidv7 } from "./utils/uuid.ts";
 export * from "./utils/validation.ts";

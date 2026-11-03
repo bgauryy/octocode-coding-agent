@@ -9,8 +9,6 @@ import { declaresReason, liftNestedReason, withoutReason, withReason } from "../
  */
 const NATIVE_PERMISSION_OWNERS = new Map([
 	["bash", "gate/classify: shell and destructive commands"],
-	["debug", "gate/classify: debugger execution; termination and launch help (no adapter) run nothing"],
-	["ollama", "gate/classify: a task runs the FreeLlama CLI on a local model; models and route read its state"],
 	["web", "gate/classify plus Web tool: search, resolved URLs and private hosts"],
 	["file", "File tool: checked mutation transaction and source-policy projection"],
 	["archive", "Archive tool: persistent memory scope checks"],

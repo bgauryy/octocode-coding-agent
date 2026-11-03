@@ -1,14 +1,5 @@
 import { spawn } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	renameSync,
-	rmSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -40,25 +31,7 @@ function createTempDir(): string {
 	return dir;
 }
 
-function hasSessionWithId(root: string, sessionId: string): boolean {
-	if (!existsSync(root)) return false;
-	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		const path = join(root, entry.name);
-		if (entry.isDirectory() && hasSessionWithId(path, sessionId)) return true;
-		if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-
-		try {
-			const firstLine = readFileSync(path, "utf8").split("\n", 1)[0];
-			const header = JSON.parse(firstLine) as { type?: string; id?: string };
-			if (header.type === "session" && header.id === sessionId) return true;
-		} catch {
-			// Ignore malformed session files.
-		}
-	}
-	return false;
-}
-
-async function runCli(args: string[]): Promise<{ code: number | null; agentDir: string }> {
+async function runCli(args: string[]): Promise<{ code: number | null; projectDir: string }> {
 	const tempRoot = createTempDir();
 	const agentDir = join(tempRoot, "agent");
 	const projectDir = join(tempRoot, "project");
@@ -79,7 +52,7 @@ async function runCli(args: string[]): Promise<{ code: number | null; agentDir: 
 		child.on("close", resolvePromise);
 	});
 
-	return { code, agentDir };
+	return { code, projectDir };
 }
 
 function args(overrides: Partial<Args>): Args {
@@ -118,7 +91,7 @@ describe("--session-id", () => {
 		const result = await runCli(["--session-id", "read-only-help", "--help"]);
 
 		expect(result.code).toBe(0);
-		expect(hasSessionWithId(join(result.agentDir, "sessions"), "read-only-help")).toBe(false);
+		expect(existsSync(join(result.projectDir, ".octa", "code", "sessions"))).toBe(false);
 	});
 
 	it("creates missing IDs and reopens existing IDs in process", async () => {

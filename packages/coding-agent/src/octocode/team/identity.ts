@@ -151,8 +151,6 @@ export function newMember(
 	const started = processStartTime(process.pid);
 	// The pane a person can switch to; a subagent inherits its parent's variables but has no pane of its own.
 	const tmuxPane = !parentId && env.TMUX && /^%\d+$/u.test(env.TMUX_PANE ?? "") ? env.TMUX_PANE : undefined;
-	// A subagent's session id is its own name: its row names no session.
-	const sessionId = parentId ? undefined : ctx.sessionManager.getSessionId();
 	return {
 		id,
 		role: env[AGENT_ROLE_ENV] ?? "main",
@@ -163,7 +161,7 @@ export function newMember(
 		...(stored ? { goal: stored } : {}),
 		...(ctx.model ? { model: storedText(ctx.model.id, LINE_MAX) } : {}),
 		...(tmuxPane ? { tmuxPane } : {}),
-		...(sessionId ? { sessionId } : {}),
+		sessionId: ctx.sessionManager.getSessionId(),
 		joinedAt: now,
 		updatedAt: now,
 		toolCalls: 0,

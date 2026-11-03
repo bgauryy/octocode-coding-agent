@@ -1,10 +1,10 @@
-import { type SpawnSyncReturns, spawnSync } from "child_process";
-import { chmodSync, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "fs";
-import { arch, platform } from "os";
-import { join } from "path";
-import { Readable } from "stream";
-import { pipeline } from "stream/promises";
-import type { ReadableStream as NodeWebReadableStream } from "stream/web";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
+import { chmodSync, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { arch, platform } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { APP_NAME, getBinDir } from "../config.ts";
 import { isOfflineModeEnabled } from "./env-flag.ts";
 import { fetchWithRetry } from "./management-http.ts";

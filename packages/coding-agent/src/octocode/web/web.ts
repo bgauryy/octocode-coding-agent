@@ -186,7 +186,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 									kind: "notice",
 									reason: fetched.reason,
 								});
-							return imageResult(fetched, ctx.model);
+							return await imageResult(fetched, ctx.model);
 						}
 						const text = visibleControls(fetched);
 						const lines = text.split("\n").length;
@@ -234,7 +234,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 							details,
 						);
 					} catch (error) {
-						throw new Error(`Search failed: ${errorMessage(error)}`);
+						throw new Error(`Search failed: ${errorMessage(error)}`, { cause: error });
 					}
 				} catch (error) {
 					// Page text, URLs and provider answers reach the model in errors too.

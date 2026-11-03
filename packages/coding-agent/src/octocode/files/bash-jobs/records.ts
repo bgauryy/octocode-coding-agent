@@ -2,7 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claimSuffix, releaseDeadClaims } from "../../shared/claims.ts";
-import { sessionsRoot } from "../../shared/home.ts";
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { WORKSPACE_STATE } from "../../../config/workspace.ts";
+import { currentSessionWorkspace, globalPaths, sessionTempRoot } from "../../shared/home.ts";
 import {
 	groupAlive,
 	groupStartTimes,
@@ -43,8 +45,17 @@ export interface OrphanJob {
 	stopped: boolean;
 }
 
-/** The owner record that goes with a job's log. */
-export const recordFile = (log: string): string => log.replace(/\.log$/, "") + RECORD_SUFFIX;
+/** A checkout can supply arbitrary files. Keep process-signalling authority in private host state, separately from workspace logs. */
+const ownersRoot = () => path.join(globalPaths().agentState, "job-owners");
+function ownerDir(dir: string): string {
+	const sessions = path.dirname(path.dirname(dir));
+	return path.basename(dir) === "bash" && sessions.endsWith(path.sep + path.join(WORKSPACE_STATE, "temp", "sessions"))
+		? path.join(ownersRoot(), sha256(dir))
+		: dir;
+}
+
+export const recordFile = (log: string): string =>
+	path.join(ownerDir(path.dirname(log)), path.basename(log).replace(/\.log$/, "") + RECORD_SUFFIX);
 
 /** A readable owner record, else undefined. A pid of 1 or less would make a stop signal init, a group or everything. */
 function parseRecord(text: string): JobRecord | undefined {
@@ -76,9 +87,10 @@ const foreign = (record: JobRecord): boolean => record.host !== undefined && rec
  */
 export async function liveJobFiles(dir: string): Promise<Set<string>> {
 	const live = new Set<string>();
-	const names = await fs.promises.readdir(dir).catch((): string[] => []);
+	const folder = ownerDir(dir);
+	const names = await fs.promises.readdir(folder).catch((): string[] => []);
 	for (const name of names.filter((each) => each.endsWith(RECORD_SUFFIX))) {
-		const text = await fs.promises.readFile(path.join(dir, name), "utf8").catch(() => undefined);
+		const text = await fs.promises.readFile(path.join(folder, name), "utf8").catch(() => undefined);
 		const record = text === undefined ? undefined : parseRecord(text);
 		if (text !== undefined && (!record || (!foreign(record) && !sameProcess(record.owner.pid, record.owner.started))))
 			continue;
@@ -89,9 +101,14 @@ export async function liveJobFiles(dir: string): Promise<Set<string>> {
 }
 
 /** Every session's `bash/` folder (most do not exist; the reader skips those). */
-export function sessionBashDirs(root = sessionsRoot()): string[] {
+export function sessionBashDirs(): string[] {
+	const bound = currentSessionWorkspace() !== undefined;
+	const root = bound ? ownersRoot() : sessionTempRoot();
 	try {
-		return fs.readdirSync(root).map((name) => path.join(root, name, "bash"));
+		return fs
+			.readdirSync(root, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => (bound ? path.join(root, entry.name) : path.join(root, entry.name, "bash")));
 	} catch {
 		return [];
 	}
@@ -111,7 +128,8 @@ export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob
 	const found: OrphanJob[] = [];
 	const stops: Array<Promise<void>> = [];
 	const entries: Array<{ file: string; record: JobRecord | undefined }> = [];
-	for (const dir of dirs) {
+	for (const input of dirs) {
+		const dir = ownerDir(input);
 		try {
 			await releaseDeadClaims(dir, fs.readdirSync(dir), CLAIM_MARKER, (original) => original.endsWith(RECORD_SUFFIX));
 			for (const name of fs.readdirSync(dir))

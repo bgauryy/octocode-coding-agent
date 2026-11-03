@@ -6,7 +6,7 @@ import { formatMs } from "./profile-timings.mjs";
 import { repoRoot } from "./profile-paths.mjs";
 
 export async function waitForExit(child, errorPrefix) {
-	return await new Promise((resolve, reject) => {
+	return new Promise((resolve, reject) => {
 		child.once("error", reject);
 		child.once("exit", (code, signal) => {
 			if (signal) {
@@ -18,35 +18,14 @@ export async function waitForExit(child, errorPrefix) {
 	});
 }
 
-export async function runBuild(bundle) {
-	process.stdout.write(
-		`Building dependencies and the ${bundle ? "bundled" : "unbundled"} coding-agent Node entrypoint...\n`,
-	);
+/** Builds the workspace libraries and the coding-agent bundle the Node profile runs (`yarn run build:offline`). */
+export async function runBuild() {
+	process.stdout.write("Building the workspace and the coding-agent bundle...\n");
 	const startedAt = performance.now();
-	const commands = [
-		{
-			label: "Dependency build",
-			args: [
-				"run",
-				"build",
-				"--workspace",
-				"packages/tui",
-				"--workspace",
-				"packages/telemetry",
-				"--workspace",
-				"packages/ai",
-				"--workspace",
-				"packages/agent",
-			],
-		},
-		{
-			label: "Coding-agent build",
-			args: ["run", bundle ? "build" : "build:unbundled", "--workspace", "packages/coding-agent"],
-		},
-	];
+	const commands = [{ label: "Build", args: ["run", "build:offline"] }];
 
 	for (const command of commands) {
-		const child = spawn("npm", command.args, {
+		const child = spawn("yarn", command.args, {
 			cwd: repoRoot,
 			env: process.env,
 			stdio: ["ignore", "pipe", "pipe"],

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ENV_AGENT_DIR } from "../../src/config.ts";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -9,7 +10,11 @@ import { tmp } from "./helpers.ts";
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
 	saved = { ...process.env };
-	process.env.OCTOCODE_HOME = tmp();
+	const home = tmp();
+	process.env.OCTOCODE_HOME = home;
+	process.env[ENV_AGENT_DIR] = home;
+	// The agent tool declares its external type only with this opt-in setting.
+	fs.writeFileSync(path.join(home, "settings.json"), JSON.stringify({ externalAgents: true }));
 });
 afterEach(() => {
 	process.env = saved;

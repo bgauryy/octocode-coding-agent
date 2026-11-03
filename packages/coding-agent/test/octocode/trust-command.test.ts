@@ -3,8 +3,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runTrustCommand } from "../../src/cli/trust-command.ts";
 import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
-import { sharedAgentDb, trust } from "../../src/octocode/agentdb/api.ts";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
+import { trust, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { registerTrustCommand } from "../../src/octocode/trust/command.ts";
 import { grantFolder, listFolderGrants, refuseFolder } from "../../src/octocode/trust/grants.ts";
@@ -111,10 +111,16 @@ describe("/trust", () => {
 		);
 		const t = session(app);
 		await t.run("list");
-		const date = new Date().toISOString().slice(0, 10);
+		// Local date and time, the way the user reads a clock.
+		const now = new Date();
+		const date = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+			.map((part) => String(part).padStart(2, "0"))
+			.join("-");
 		expect(t.text()).toContain(`${path.join(root, "code")} and everything under it`);
 		expect(t.text()).toMatch(
-			new RegExp(`trusted .*${path.join(root, "code")}\\s+subtree \u00b7 prompt \u00b7 ada \u00b7 ${date}`),
+			new RegExp(
+				`trusted .*${path.join(root, "code")}\\s+subtree \u00b7 prompt \u00b7 ada \u00b7 ${date} \\d{2}:\\d{2}`,
+			),
 		);
 		expect(t.text()).toMatch(/refused .*bad\s+this folder \u00b7 prompt/);
 		expect(t.text()).toMatch(/ignored .*home folder: a grant here would cover every project/);

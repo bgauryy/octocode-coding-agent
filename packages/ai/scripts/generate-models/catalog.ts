@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { withOpenCodeEndpoint } from "../../src/providers/opencode-endpoints.ts";
 import type { AnyModel, Api, ClassifierApi, ClassifierModel, ImageApi, ImageModel, Model } from "../../src/types.ts";
 import { readModelDataProviderIds, validateGeneratedModelData } from "../model-data.ts";

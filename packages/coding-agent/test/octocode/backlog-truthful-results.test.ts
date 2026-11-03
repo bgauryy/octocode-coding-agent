@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../common/src/env.ts";
@@ -93,6 +93,37 @@ describe("backlog completion replay", () => {
 		expect(replay).toMatch(/^Completion ship-1 of B1 was already recorded \(.+\); nothing was written\./);
 		expect(replay).toContain("B1 has changed since: it is now ongoing. Close it with a new operationKey.");
 		expect(replay).toMatch(/\nB1 \[ongoing p2\] Ship it/);
+	});
+});
+
+describe("backlog completion without an operationKey", () => {
+	const keyless = {
+		summary: "Implemented",
+		files: [],
+		verification: { status: "passed", summary: "Focused check passed" },
+	};
+
+	it("derives a key so a retry of the same completion writes nothing", async () => {
+		const t = setup();
+		await t.call("backlog", { op: "add", title: "Ship it", ...READY, state: "ongoing" });
+		const done = { op: "update", id: "B1", state: "done", completion: keyless };
+		expect(await t.call("backlog", done)).toMatch(/^Updated B1 \[done p2\]/);
+		// Same content, keys written in another order: still the same completion.
+		const reordered = {
+			...done,
+			completion: { verification: keyless.verification, files: [], summary: keyless.summary },
+		};
+		expect(await t.call("backlog", reordered)).toMatch(/was already recorded \(.+\); nothing was written\./);
+	});
+
+	it("lets an explicit key win and treats different content as a new completion", async () => {
+		const t = setup();
+		await t.call("backlog", { op: "add", title: "Ship it", ...READY, state: "ongoing" });
+		const explicit = { op: "update", id: "B1", state: "done", completion: completion("mine-1") };
+		await t.call("backlog", explicit);
+		expect(await t.call("backlog", explicit)).toMatch(/^Completion mine-1 of B1 was already recorded/);
+		const fixed = { ...explicit, completion: { ...keyless, summary: "Implemented, then corrected" } };
+		expect(await t.call("backlog", fixed)).toMatch(/^Updated B1 \[done p2\]/);
 	});
 });
 

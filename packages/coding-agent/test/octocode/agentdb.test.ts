@@ -2,11 +2,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/schema.ts";
+import { closeSharedAgentDb, workspaces } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
+import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
 import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
-import { loadSqlite } from "../../src/octocode/agentdb/sqlite.ts";
+import { loadSqlite } from "../../../db/src/sqlite.ts";
 import { tmp } from "./helpers.ts";
 import { repoKey } from "../../src/octocode/shared/home/repo.ts";
 
@@ -28,7 +29,7 @@ afterEach(() => {
 describe("agent state paths", () => {
 	it("keeps the database and session folders at their own paths under <home>/agent and creates nothing on lookup", () => {
 		const home = tmp();
-		expect(agentDbPath({ OCTOCODE_HOME: home })).toBe(path.join(home, "agent", "octocode.db"));
+		expect(agentDbPath({ OCTOCODE_HOME: home })).toBe(path.join(home, "agent", "workspaces.db"));
 		expect(agentDbPath({ OCTOCODE_HOME: home, OCTOCODE_AGENT_DB: "x/y.db" })).toBe(path.resolve("x/y.db"));
 		expect(sessionDir("a/b c:1", { OCTOCODE_HOME: home })).toBe(path.join(home, "agent", "sessions", "a_b_c_1"));
 		expect(fs.existsSync(path.join(home, "agent"))).toBe(false);
@@ -101,8 +102,9 @@ describe("openAgentDb", () => {
 	it("enforces the backlog states and priorities", () => {
 		const agent = openAgentDb(path.join(tmp(), "a.db"));
 		try {
+			workspaces.register(agent.db, { id: "r", root: "/r", name: "r", binding: "r" });
 			const add = agent.db.prepare(
-				"INSERT INTO backlog (repo_key, seq, title, state, priority, created_by, created_at, updated_at) VALUES ('r', ?, 't', ?, ?, 'me', 1, 1)",
+				"INSERT INTO backlog (workspace_id, seq, title, state, priority, created_by, created_at, updated_at) VALUES ('r', ?, 't', ?, ?, 'me', 1, 1)",
 			);
 			for (const [seq, state] of ["backlog", "todo", "ongoing", "done"].entries()) add.run(seq + 1, state, 2);
 			expect(() => add.run(9, "blocked", 2)).toThrow();
@@ -128,83 +130,75 @@ describe("openAgentDb", () => {
 		check.close();
 	});
 
-	it("adds the agents.started column to a database from before it existed", () => {
-		const { DatabaseSync } = loadSqlite();
-		const file = path.join(tmp(), "older.db");
-		const old = new DatabaseSync(file);
-		old.exec(`PRAGMA application_id=${AGENT_APPLICATION_ID};
-      CREATE TABLE agents (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, role TEXT NOT NULL, parent_id TEXT, pid INTEGER NOT NULL, status TEXT NOT NULL, task TEXT, activity TEXT, joined_at INTEGER NOT NULL, seen_at INTEGER NOT NULL);
-      INSERT INTO agents (id, workspace, role, pid, status, joined_at, seen_at) VALUES ('a1', 'w', 'main', 42, 'idle', 1, 2);`);
-		old.close();
-		const agent = openAgentDb(file);
+	it("creates the workspace database beside the previous development database", () => {
+		const home = tmp();
+		const legacy = path.join(home, "agent", "octocode.db");
+		fs.mkdirSync(path.dirname(legacy));
+		fs.writeFileSync(legacy, "previous development data");
+		const fresh = openAgentDb(undefined, { OCTOCODE_HOME: home });
 		try {
-			expect(agent.db.prepare("SELECT id, pid, started FROM agents").all()).toEqual([
-				{ id: "a1", pid: 42, started: null },
-			]);
+			expect(fresh.file).toBe(path.join(home, "agent", "workspaces.db"));
+			expect(workspaces.list(fresh.db)).toEqual([]);
+			expect(fs.readFileSync(legacy, "utf8")).toBe("previous development data");
+		} finally {
+			fresh.close();
+		}
+	});
+
+	it.each([0, 5, 99])("refuses unsupported version %i before changing the file", (version) => {
+		const { DatabaseSync } = loadSqlite();
+		const file = path.join(tmp(), "other.db");
+		const old = new DatabaseSync(file);
+		old.exec(`PRAGMA application_id=${AGENT_APPLICATION_ID}; PRAGMA user_version=${version};
+			CREATE TABLE sample(x); INSERT INTO sample VALUES ('preserve');`);
+		old.close();
+		const bytes = fs.readFileSync(file);
+		expect(() => openAgentDb(file)).toThrow(/unsupported Octocode schema/);
+		expect(fs.readFileSync(file)).toEqual(bytes);
+	});
+
+	it("keeps workspaces with colliding names and roots in history, and refuses a copied identity", () => {
+		const agent = openAgentDb(path.join(tmp(), "workspaces.db"));
+		try {
+			const one = { id: "a", root: "/first/demo", name: "demo", binding: "1:23" };
+			const two = { id: "b", root: "/second/demo", name: "demo", binding: "1:34" };
+			workspaces.register(agent.db, one);
+			workspaces.register(agent.db, two);
+			workspaces.register(agent.db, { ...one, root: "/moved/demo" });
+			workspaces.register(agent.db, { ...two, id: "c", root: "/first/demo", binding: "1:45" });
+			expect(workspaces.byName(agent.db, "demo").map((row) => row.id)).toEqual(["c", "a", "b"]);
+			expect(() => workspaces.register(agent.db, { ...two, id: "a" })).toThrow(/different directory/);
+			expect(workspaces.byId(agent.db, "a")?.root).toBe("/moved/demo");
 		} finally {
 			agent.close();
 		}
 	});
 
-	it("adds what a database from another build lacks, and never removes or rewrites anything", () => {
-		const { DatabaseSync } = loadSqlite();
-		const file = path.join(tmp(), "old.db");
-		const old = new DatabaseSync(file);
-		// Another build's shape: backlog without goal/started_at but with a column this build does not know, a table and an
-		// index it does not know (a newer build's, or another tool's), a leftover version number.
-		old.exec(`PRAGMA application_id=${AGENT_APPLICATION_ID}; PRAGMA user_version=5;
-      CREATE TABLE backlog (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_key TEXT NOT NULL, seq INTEGER NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
-        state TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 2, tags TEXT NOT NULL DEFAULT '', assignee TEXT, created_by TEXT NOT NULL, source_session TEXT,
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, done_at INTEGER, version INTEGER NOT NULL DEFAULT 1, from_item INTEGER, legacy TEXT, UNIQUE(repo_key, seq));
-      CREATE TABLE backlog_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, item INTEGER NOT NULL REFERENCES backlog(id) ON DELETE CASCADE, at INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'note');
-      CREATE INDEX backlog_stale ON backlog(title);
-      CREATE TABLE retired (x);
-      INSERT INTO backlog (repo_key, seq, title, state, created_by, created_at, updated_at, legacy) VALUES ('r', 1, 'keep me', 'todo', 'u', 1, 2, 'gone');
-      INSERT INTO backlog_notes (item, at, author, text) VALUES (1, 3, 'u', 'a note');`);
-		old.close();
-		const agent = openAgentDb(file);
+	it("groups verified Git checkouts independently of workspace identity", () => {
+		const agent = openAgentDb(path.join(tmp(), "workspaces.db"));
 		try {
-			expect(agent.db.prepare("SELECT title, goal, started_at, state FROM backlog").all()).toEqual([
-				{ title: "keep me", goal: "", started_at: null, state: "todo" },
+			const main = { id: "one", root: "/main", name: "demo", binding: "a" };
+			const worktree = { id: "two", root: "/other", name: "demo", binding: "b" };
+			const plain = { id: "three", root: "/elsewhere", name: "demo", binding: "c" };
+			const commonDir = "/main/.git";
+			workspaces.register(agent.db, { ...main, git: { commonDir, linkedWorktree: false } });
+			workspaces.register(agent.db, { ...worktree, git: { commonDir, linkedWorktree: true } });
+			workspaces.register(agent.db, plain);
+			workspaces.register(agent.db, main);
+			expect(workspaces.inRepository(agent.db, commonDir)).toEqual([
+				{ ...main, git: { commonDir, linkedWorktree: false } },
+				{ ...worktree, git: { commonDir, linkedWorktree: true } },
 			]);
-			// The where/why/evidence/plan columns are added with an empty default, so an older row reads as having none.
-			expect(agent.db.prepare("SELECT paths, why, evidence, plan FROM backlog").all()).toEqual([
-				{ paths: "", why: "", evidence: "", plan: "" },
-			]);
-			expect(agent.db.prepare("SELECT text, kind FROM backlog_notes").all()).toEqual([
-				{ text: "a note", kind: "note" },
-			]);
-			const names = (
-				agent.db.prepare("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").all() as Array<{
-					name: string;
-				}>
-			).map((row) => row.name);
-			expect(names).toEqual(expect.arrayContaining(["agents", "backlog_board", "memories", "edits", "memories_fts"]));
-			// What this build does not know stays, data included: another build sharing the file still needs it.
-			expect(names).toEqual(expect.arrayContaining(["retired", "backlog_stale"]));
-			expect(agent.db.prepare("SELECT legacy FROM backlog").get()).toEqual({ legacy: "gone" });
-			// Nothing was rebuilt: ids continue from the old counter, and foreign keys are on.
-			agent.db
-				.prepare(
-					"INSERT INTO backlog (repo_key, seq, title, state, created_by, created_at, updated_at) VALUES ('r', 2, 'next', 'todo', 'u', 1, 1)",
-				)
-				.run();
-			expect(agent.db.prepare("SELECT id FROM backlog WHERE seq = 2").get()).toEqual({ id: 2 });
-			expect(agent.db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
+			expect(workspaces.byName(agent.db, "demo")).toHaveLength(3);
+			expect(() => agent.db.prepare("UPDATE workspaces SET linked_worktree=1 WHERE id=?").run(plain.id)).toThrow(
+				/CHECK/,
+			);
+			workspaces.register(agent.db, { ...worktree, git: null });
+			expect(workspaces.byId(agent.db, worktree.id)).toEqual(worktree);
+			expect(workspaces.inRepository(agent.db, commonDir).map((row) => row.id)).toEqual([main.id]);
 		} finally {
 			agent.close();
 		}
-		// Brought up to date once: reopening writes nothing.
-		const sql = () => {
-			const db = new DatabaseSync(file);
-			const all = db.prepare("SELECT name, sql FROM sqlite_master ORDER BY name").all();
-			db.close();
-			return all;
-		};
-		const before = sql();
-		openAgentDb(file).close();
-		expect(sql()).toEqual(before);
 	});
 
 	it("opens an up-to-date file without the write lock, so a long writer elsewhere does not block start-up", () => {
@@ -239,7 +233,7 @@ describe("openAgentDb", () => {
 			const dir = path.join(home, "agent");
 			fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
 			fs.chmodSync(dir, 0o755);
-			const file = path.join(dir, "octocode.db");
+			const file = path.join(dir, "workspaces.db");
 			openAgentDb(undefined, { OCTOCODE_HOME: home }).close();
 			fs.chmodSync(file, 0o644);
 			openAgentDb(undefined, { OCTOCODE_HOME: home }).close();
@@ -294,7 +288,7 @@ describe("sharedAgentDb", () => {
 	it("opens once per file named by the env and remembers a refused file", () => {
 		const home = tmp();
 		const first = sharedAgentDb({ OCTOCODE_HOME: home });
-		expect(first.file).toBe(path.join(home, "agent", "octocode.db"));
+		expect(first.file).toBe(path.join(home, "agent", "workspaces.db"));
 		expect(sharedAgentDb({ OCTOCODE_HOME: home })).toBe(first);
 		const moved = path.join(tmp(), "b.db");
 		const second = sharedAgentDb({ OCTOCODE_AGENT_DB: moved });

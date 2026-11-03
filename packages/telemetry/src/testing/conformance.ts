@@ -229,12 +229,14 @@ export function createTelemetryAdapterConformance(
 				const asyncError = { kind: "async" };
 				await rejectsWithSameValue(
 					fixture.context.startSpan({ name: "async-error" }, async () => {
+						// oxlint-disable-next-line typescript/only-throw-error -- conformance requires a non-Error value to reach the caller unchanged
 						throw asyncError;
 					}),
 					asyncError,
 				);
 
 				await rejectsWithSameValue(
+					// oxlint-disable-next-line typescript/prefer-promise-reject-errors -- conformance requires a non-Error value to reach the caller unchanged
 					fixture.context.startSpan({ name: "undefined-error" }, () => Promise.reject(undefined)),
 					undefined,
 				);

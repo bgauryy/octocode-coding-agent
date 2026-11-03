@@ -1,8 +1,8 @@
-import type { ChildProcess } from "child_process";
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
+import type { ChildProcess } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Type } from "typebox";
-import { fileURLToPath } from "url";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { complete, stream } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";

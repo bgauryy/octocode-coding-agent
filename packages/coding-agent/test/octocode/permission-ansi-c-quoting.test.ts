@@ -110,7 +110,7 @@ describe("a read-only role", () => {
 		const env = {
 			[SUBAGENT_ENV]: "1",
 			[READ_ONLY_ENV]: "1",
-			[AGENT_SCRATCH_ENV]: path.join(cwd, ".octocode/tmp/agents/rev-1"),
+			[AGENT_SCRATCH_ENV]: path.join(cwd, ".octa/code/temp/agents/rev-1"),
 			[PERMISSION_ENV]: "full",
 		};
 		const ctx = fakeCtx({ cwd, hasUI: false });

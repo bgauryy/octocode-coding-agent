@@ -35,7 +35,7 @@ export async function fetchWithLoginCancellation(input: string, init: RequestIni
 		});
 	} catch (error) {
 		if (init.signal?.aborted) {
-			throw new Error("Login cancelled");
+			throw new Error("Login cancelled", { cause: error });
 		}
 		throw error;
 	}
@@ -92,7 +92,9 @@ export async function refreshAccessToken(refreshToken: string, signal: AbortSign
 			signal,
 		});
 	} catch (error) {
-		throw new Error(`OpenAI Codex token refresh error: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`OpenAI Codex token refresh error: ${error instanceof Error ? error.message : String(error)}`, {
+			cause: error,
+		});
 	}
 
 	return readTokenResponse(response, "refresh");

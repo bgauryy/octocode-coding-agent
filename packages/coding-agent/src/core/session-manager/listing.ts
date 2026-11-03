@@ -1,14 +1,13 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { Message } from "@octocodeai/octocode-ai";
-import { createReadStream, existsSync, readdirSync, type Stats } from "fs";
-import { readdir, stat } from "fs/promises";
-import { basename, join } from "path";
-import { createInterface } from "readline";
-import { getSessionsDir } from "../../config.ts";
+import { createReadStream, existsSync, readdirSync, type Stats } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { createInterface } from "node:readline";
+import { defaultSessionDirectories, knownSessionDirectories, type CwdSessionDirectory } from "./directories.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import {
-	getDefaultSessionDir,
 	getDefaultSessionDirPath,
 	getSessionHeaderCwd,
 	readSessionHeaderForDiscovery,
@@ -237,23 +236,29 @@ async function listSessionsFromDir(
 	}
 }
 
+/** The folders `cwd` lists: the one custom folder (filtered by cwd unless it is the default), or the default folders. */
+function cwdFolders(cwd: string, sessionDir?: string): CwdSessionDirectory[] {
+	const dir = sessionDir ? normalizePath(sessionDir) : undefined;
+	if (!dir || dir === getDefaultSessionDirPath(cwd)) return defaultSessionDirectories(cwd);
+	return [{ dir, filterCwd: true }];
+}
+
 /** Find an exact session ID without loading transcript bodies (`SessionManager.findById()`). */
 export function findSessionFileById(cwd: string, id: string, sessionDir?: string): string | undefined {
-	const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-	const filterCwd = sessionDir !== undefined && dir !== getDefaultSessionDirPath(cwd);
 	const resolvedCwd = resolvePath(cwd);
-
-	try {
-		for (const file of readdirSync(dir)) {
-			if (!file.endsWith(".jsonl")) continue;
-			const path = join(dir, file);
-			const header = readSessionHeaderForDiscovery(path);
-			if (header?.id !== id) continue;
-			if (filterCwd && !sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd)) continue;
-			return path;
+	for (const { dir, filterCwd } of cwdFolders(cwd, sessionDir)) {
+		try {
+			for (const file of readdirSync(dir)) {
+				if (!file.endsWith(".jsonl")) continue;
+				const path = join(dir, file);
+				const header = readSessionHeaderForDiscovery(path);
+				if (header?.id !== id) continue;
+				if (filterCwd && !sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd)) continue;
+				return path;
+			}
+		} catch {
+			// Exact session discovery is best-effort, matching list().
 		}
-	} catch {
-		// Exact session discovery is best-effort, matching list().
 	}
 	return undefined;
 }
@@ -265,14 +270,17 @@ export async function listSessions(
 	onProgress?: SessionListProgress,
 	signal?: AbortSignal,
 ): Promise<SessionInfo[]> {
-	const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-	const filterCwd = sessionDir !== undefined && dir !== getDefaultSessionDirPath(cwd);
 	const resolvedCwd = resolvePath(cwd);
-	const includeSession = (session: SessionInfo) => !filterCwd || sessionCwdMatches(session.cwd, resolvedCwd);
-	const progress: SessionListProgress | undefined = onProgress
-		? (loaded, total, partialSessions) => onProgress(loaded, total, partialSessions?.filter(includeSession))
-		: undefined;
-	const sessions = (await listSessionsFromDir(dir, progress, signal)).filter(includeSession);
+	const sessions: SessionInfo[] = [];
+	for (const { dir, filterCwd } of cwdFolders(cwd, sessionDir)) {
+		const includeSession = (session: SessionInfo) => !filterCwd || sessionCwdMatches(session.cwd, resolvedCwd);
+		// Progress covers each folder in turn; partial snapshots add what earlier folders listed.
+		const progress: SessionListProgress | undefined = onProgress
+			? (loaded, total, partial) =>
+					onProgress(loaded, total, partial && sortSessionInfos([...sessions, ...partial.filter(includeSession)]))
+			: undefined;
+		sessions.push(...(await listSessionsFromDir(dir, progress, signal)).filter(includeSession));
+	}
 	return sortSessionInfos(sessions);
 }
 
@@ -299,14 +307,8 @@ export async function listAllSessions(
 		return sortSessionInfos(await listSessionsFromDir(customSessionDir, progress, abortSignal));
 	}
 
-	const sessionsDir = getSessionsDir();
-
 	try {
-		if (!existsSync(sessionsDir)) return [];
-		const entries = await readdir(sessionsDir, { withFileTypes: true });
-		const dirs = entries
-			.filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-			.map((entry) => join(sessionsDir, entry.name));
+		const dirs = await knownSessionDirectories();
 
 		const dirFiles = await mapWithConcurrency(
 			dirs,
@@ -320,7 +322,7 @@ export async function listAllSessions(
 			},
 			abortSignal,
 		);
-		const allFiles = dirFiles.flat();
+		const allFiles = [...new Set(dirFiles.flat())];
 		const candidates = await mapWithConcurrency(
 			allFiles,
 			MAX_CONCURRENT_SESSION_DISCOVERY_LOADS,

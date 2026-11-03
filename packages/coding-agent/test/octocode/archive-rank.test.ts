@@ -10,7 +10,7 @@ import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const why = { goal: "find how the login redirect was fixed", reason: "the user asked what was decided earlier" };
+const why = { reason: "the user asked what was decided earlier" };
 
 let saved: string | undefined;
 beforeEach(() => {

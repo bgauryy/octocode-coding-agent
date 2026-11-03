@@ -25,7 +25,7 @@ describe("session session manager defaults", () => {
 		}
 	});
 
-	it("uses agentDir for the default persisted session path", async () => {
+	it("uses the checkout for the default transcript even with a separate configuration directory", async () => {
 		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		expect(model).toBeTruthy();
 
@@ -35,8 +35,7 @@ describe("session session manager defaults", () => {
 			model: model,
 		});
 
-		const safePath = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-		const expectedSessionDir = join(agentDir, "sessions", safePath);
+		const expectedSessionDir = join(realpathSync(cwd), ".octa", "code", "sessions");
 		const sessionDir = session.sessionManager.getSessionDir();
 		const sessionFile = session.sessionManager.getSessionFile();
 

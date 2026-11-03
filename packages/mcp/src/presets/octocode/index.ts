@@ -22,6 +22,9 @@ export function octocodePreset(
 		},
 		defineTool: defineOctocodeTool,
 		compactOverrides: octocodeCompactOverrides,
+		// Before usage is recorded: the local readers most sessions call (26-42% of 152 sessions, 2026-10-20..11-03);
+		// the other tools (10% or fewer) start on demand.
+		coreTools: ["localFetch", "localSearch", "structureSearch"],
 		takeWarnings: takeOctocodeWarnings,
 		prepareLaunch(entry, cwd, trusted) {
 			if (entry.scope === "default") {

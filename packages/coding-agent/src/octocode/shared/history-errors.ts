@@ -1,9 +1,8 @@
-import fs from "node:fs";
-import path from "node:path";
+import { setImmediate } from "node:timers/promises";
+import { transcripts } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 import type { HistorySession } from "./history.ts";
 import { paginate } from "./history.ts";
-import { octocodeHome } from "./home.ts";
-import { canonicalPath, isWithin } from "./home/repo.ts";
 import { classifyError } from "./history-errors-signature.ts";
 import { matchTexts } from "./history-search.ts";
 import { clip, oneLine, plural } from "./render/text.ts";
@@ -11,7 +10,7 @@ import { clip, oneLine, plural } from "./render/text.ts";
 export { errorSignature } from "./history-errors-signature.ts";
 
 /**
- * Finding errors in history without a model: streams the JSONL transcripts that the session records in scope name, and
+ * Finding errors in history without a model: streams the database mirrors of the sessions in scope, and
  * groups every tool result marked as an error by tool and a signature (`history-errors-signature.ts`), with counts,
  * sessions, models, dates, samples, what the next call to the same tool did, and error rates by tool, model and day.
  * A bash command's own failure (a test, linter or formatter exiting non-zero) is grouped apart from refusals by the
@@ -25,8 +24,6 @@ const SAMPLES = 2;
 const SAMPLE_CHARS = 240;
 /** How far into a line the entry kind, time and tool name are looked for before the line is parsed. */
 const HEAD_CHARS = 400;
-/** Bytes read from a transcript at a time. */
-const CHUNK_BYTES = 1 << 20;
 /** Days shown in the trend, the latest ones. */
 const TREND_DAYS = 14;
 /** Characters of error text gathered before a query filter tests them in the archive-search worker. */
@@ -106,20 +103,6 @@ export function sinceTime(since: string): string {
 	return new Date(at).toISOString();
 }
 
-/** The transcript `session`'s record names, when it is a JSONL file in the Octocode home or the record's workspace. */
-function transcriptOf(session: HistorySession, env: NodeJS.ProcessEnv): string | undefined {
-	const named = session.record?.transcript;
-	if (!named || path.extname(named) !== ".jsonl") return undefined;
-	const file = canonicalPath(named);
-	const roots = [octocodeHome(env), session.record?.workspace].filter((root): root is string => Boolean(root));
-	if (!roots.some((root) => isWithin(file, canonicalPath(root)))) return undefined;
-	try {
-		return fs.statSync(file).isFile() ? file : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
 const bump = (counts: Map<string, number>, key: string): void => {
 	counts.set(key, (counts.get(key) ?? 0) + 1);
 };
@@ -134,27 +117,6 @@ const errorText = (content: unknown): string =>
 		: typeof content === "string"
 			? content
 			: "";
-
-/**
- * The lines of `file`, split from large chunks: about a third faster than `readline` over the hundreds of megabytes of
- * transcripts a repository accumulates, which this scan reads in full. Leaving the loop closes the stream.
- */
-async function* fileLines(file: string): AsyncGenerator<string> {
-	let rest = "";
-	for await (const chunk of fs.createReadStream(file, {
-		encoding: "utf8",
-		highWaterMark: CHUNK_BYTES,
-	}) as AsyncIterable<string>) {
-		let from = 0;
-		for (let at = chunk.indexOf("\n"); at !== -1; at = chunk.indexOf("\n", from)) {
-			yield from === 0 ? rest + chunk.slice(0, at) : chunk.slice(from, at);
-			rest = "";
-			from = at + 1;
-		}
-		rest = from === 0 ? rest + chunk : chunk.slice(from);
-	}
-	if (rest) yield rest;
-}
 
 /** A bash call in an assistant line: its id and the start of its command (the arguments' other keys come first or not at all). */
 const BASH_CALL =
@@ -193,7 +155,7 @@ export async function findErrors(
 		groups: [],
 	};
 	const groups = new Map<string, ErrorGroup>();
-	const seen = new Set<string>();
+	const db = sharedAgentDb(env).db;
 	// Transcripts read but not yet grouped: a query filter is a model-supplied regex, so it runs over their error texts
 	// in the bounded search worker, never on this thread.
 	const batch: Array<{ session: string; results: ToolResult[] }> = [];
@@ -224,20 +186,24 @@ export async function findErrors(
 	};
 	for (const session of sessions) {
 		signal?.throwIfAborted();
-		const file = transcriptOf(session, env);
-		if (!file) {
+		const mirror = transcripts.stamp(db, session.id);
+		if (!mirror || mirror.workspace_id !== session.workspaceId) {
 			found.unread++;
 			continue;
 		}
-		if (seen.has(file)) continue;
-		seen.add(file);
 		found.transcripts++;
 		let model = "unknown model";
 		// Shell commands by call id, to name the program of a command that failed.
 		const commands = new Map<string, string>();
 		const results: ToolResult[] = [];
 		try {
-			for await (const line of fileLines(file)) {
+			let scanned = 0;
+			for (const line of transcripts.entries(db, session.id)) {
+				scanned += line.length;
+				if (scanned >= 1024 * 1024) {
+					scanned = 0;
+					await setImmediate();
+				}
 				signal?.throwIfAborted();
 				const head = line.slice(0, HEAD_CHARS);
 				if (head.includes('"type":"model_change"')) {

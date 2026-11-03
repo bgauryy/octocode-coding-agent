@@ -1,5 +1,6 @@
 import { registerArchiveLifecycle } from "./archive/lifecycle.ts";
 import { registerRunGuards } from "./run-guards.ts";
+import { registerCapabilityUsage } from "./capabilities/index.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
 import { registerHarnessCommand } from "./harness/command.ts";
 import { registerPlanning } from "./plan/register.ts";
@@ -22,9 +23,8 @@ import { registerBacklog } from "./backlog/index.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
 import { registerArchiveTool } from "./archive/tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
-import { registerDebugTool } from "./debug/tool.ts";
-import { registerOllamaTool } from "./ollama/tool.ts";
 import type { ExternalAgents } from "./external/manager.ts";
+import { externalAgentsEnabled } from "./external/enabled.ts";
 import { externalPermissionDialog } from "./external/permission-dialog.ts";
 import { externalIdentity, registerExternal } from "./external/register.ts";
 import { registerBashTool } from "./files/bash.ts";
@@ -114,7 +114,7 @@ export default function octocode(api: ExtensionAPI): void {
 
 	api.on("session_start", async (_event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
-		setCurrentSession(ctx.sessionManager.getSessionId());
+		setCurrentSession(ctx.sessionManager.getSessionId(), ctx.cwd, ctx.sessionManager);
 		// Every start (resume and fork included) re-applies the start mode, so `full` never comes back silently.
 		permission.start(ctx);
 		provenance.clear();
@@ -172,6 +172,14 @@ export default function octocode(api: ExtensionAPI): void {
 		isSubagent,
 		...(isSubagent && process.env[AGENT_GOAL_ENV] ? { goal: process.env[AGENT_GOAL_ENV] } : {}),
 		filesChanged: () => new Set(checkpoints.list().map((entry) => entry.path)).size,
+		team: {
+			reservations: () => team.members().find((member) => member.id === team.id)?.locks ?? [],
+			questions: () =>
+				team
+					.openQuestions()
+					.filter((question) => question.recipient === team.id)
+					.map(({ id, from, text }) => ({ id, from, text })),
+		},
 	});
 	const workspace = isSubagent
 		? undefined
@@ -202,8 +210,6 @@ export default function octocode(api: ExtensionAPI): void {
 		),
 	);
 	registerWebTool(api, permission);
-	registerDebugTool(api);
-	if (!isSubagent) registerOllamaTool(api);
 	const agentTool = agentModes();
 	const collab = registerCollab(api, team, {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
@@ -238,6 +244,7 @@ export default function octocode(api: ExtensionAPI): void {
 		registerModelsTool(api, () => profiles);
 	}
 	registerSkills(api);
+	registerCapabilityUsage(api, { isSubagent, role: process.env[AGENT_ROLE_ENV] });
 	registerUi(api, isSubagent);
 	// What the agent does now: Octocode's working line (main session) and the team panel's activity column (every agent).
 	const activity = registerActivity(api, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });
@@ -312,14 +319,15 @@ export default function octocode(api: ExtensionAPI): void {
 				},
 				permission: externalPermissionDialog,
 			},
-			agentTool.collect,
+			// Opt-in: without the `externalAgents` setting the `agent` tool does not declare `external` (`/agents external` stays).
+			externalAgentsEnabled() ? agentTool.collect : () => undefined,
 		);
 		permission.onRevoke(() => void external?.reset());
 	}
 	agentTool.register(api);
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
 	// paths to the file lists Octocode carries into its summary. Octocode writes the summary itself.
-	registerCompactTool(api, registerCompaction(api, guard, isSubagent), isSubagent);
+	registerCompactTool(api, registerCompaction(api, guard, isSubagent, team.parentId), isSubagent);
 	if (isSubagent) registerIdentityReminder(api);
 	registerArchiveCommand(commands);
 	registerArchiveTool(api, memoryTool);

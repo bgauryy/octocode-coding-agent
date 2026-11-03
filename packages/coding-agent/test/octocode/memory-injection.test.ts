@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { injectedIds, MEMORY_MESSAGE_TYPE, selectInjection, unchangedIds } from "../../src/octocode/memory/inject.ts";
 import { MemoryStore } from "../../src/octocode/memory/store.ts";
 import { tmp } from "./helpers.ts";

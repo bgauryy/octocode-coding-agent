@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { WORKSPACE_STATE } from "../../config/workspace.ts";
 import path from "node:path";
 import { OCTOCODE_DIR, octocodeHome, resolveToolPath } from "../shared/home.ts";
 import type { ActionClass } from "./mode.ts";
@@ -9,11 +10,17 @@ import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
  * Repository paths that load code, hooks or agent instructions in later sessions (git config, Octocode, Claude Code, Codex
  * and Octocode project config, skills): a change there outlives the session, so it asks like an outside change.
  */
-const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents", OCTOCODE_DIR].map((entry) =>
-	entry.toLowerCase(),
-);
+const RUNS_LATER_AT_ROOT = [
+	".git",
+	".pi",
+	".claude",
+	".codex",
+	".agents",
+	OCTOCODE_DIR,
+	WORKSPACE_STATE.split(path.sep).join("/"),
+].map((entry) => entry.toLowerCase());
 /** Octocode's scratch folder: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
-const SCRATCH_AT_ROOT = `${OCTOCODE_DIR}/tmp`.toLowerCase();
+const SCRATCH_AT_ROOT = `${WORKSPACE_STATE.split(path.sep).join("/")}/temp`;
 /** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
 const RUNS_LATER_ANYWHERE = [
 	".git/hooks",
@@ -58,7 +65,13 @@ export function changesOnlyWorkspace(file: string, root: string): boolean {
 
 /** The refusal for a change inside Octocode's state folder (its trust store, agent database, config), in every mode. */
 export function stateFolderRefusal(file: string, shown: string, tool: string): string | undefined {
-	if (!isWithin(canonicalPath(file), canonicalPath(octocodeHome()))) return undefined;
+	const real = canonicalPath(file);
+	const parts = real.toLowerCase().split(path.sep);
+	const [octa, code] = WORKSPACE_STATE.split(path.sep);
+	const state = parts.some(
+		(name, i) => name === octa && parts[i + 1] === code && (parts[i + 2] !== "temp" || parts[i + 3] === "sessions"),
+	);
+	if (!state && !isWithin(real, canonicalPath(octocodeHome()))) return undefined;
 	return `${shown} is in Octocode's state folder; ${tool} does not change it. Ask the user to change it themselves.`;
 }
 

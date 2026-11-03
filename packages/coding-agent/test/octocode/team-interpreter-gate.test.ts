@@ -234,7 +234,13 @@ describe("the reservation gate for inline interpreter code", () => {
 		const lock = (paths: string[]) =>
 			fake.tools.get("coordinate").execute("c", { action: "lock", paths, reason: "auth" }, undefined, undefined, ctx);
 		const gate = (command: string) => reservationGate({ toolName: "bash", input: { command } } as never, ctx);
-		return { team, lock, gate };
+		/** The command the call runs once the gate let it through (a blocked call fails the test). */
+		const ran = async (command: string) => {
+			const input = { command };
+			expect(await reservationGate({ toolName: "bash", input } as never, ctx), command).toBeUndefined();
+			return input.command;
+		};
+		return { team, lock, gate, ran };
 	}
 
 	it("blocks inline interpreter code while a peer holds a reservation, and only then", async () => {
@@ -250,7 +256,8 @@ describe("the reservation gate for inline interpreter code", () => {
 		await owner.lock(["src/a.ts"]);
 		for (const command of [
 			write,
-			"node -e 'x'",
+			// The read-only flags would not confine it: Node reads an option after the code.
+			"node -e 'x' --inspect",
 			"perl -pi -e 's/a/b/' f",
 			"python - <<'EOF'\nx\nEOF",
 			"deno eval 'x'",
@@ -260,12 +267,14 @@ describe("the reservation gate for inline interpreter code", () => {
 				block: true,
 				reason: expect.stringContaining(`reserved by ${owner.team.id}`),
 			});
-			expect(refused?.reason).toContain("Use the file tool");
+			expect(refused?.reason).toContain("script file under .octa/code/temp/");
 			// The next step it names must work for that interpreter: Node has the permission flag, the others the read tools.
 			expect(refused?.reason).toContain(
 				command.startsWith("node") ? "--permission --no-experimental-sqlite --allow-fs-read=*" : "read tools",
 			);
 		}
+		// Node that only lacks the read-only flags runs with them added.
+		expect(await peer.ran("node -e 'x'")).toBe("node --permission --no-experimental-sqlite --allow-fs-read=* -e 'x'");
 		// Commands that run no inline code are unchanged; the holder's own interpreter runs.
 		expect(await peer.gate("python3 script.py")).toBeUndefined();
 		expect(await peer.gate("cat src/b.ts")).toBeUndefined();
@@ -287,7 +296,6 @@ describe("the reservation gate for inline interpreter code", () => {
 		}
 		for (const command of [
 			"node --permission --allow-fs-write=* -e 'x'",
-			"node --permission --allow-fs-read=* -e 'x'",
 			"NODE_OPTIONS=--allow-fs-write=* node --permission -e 'x'",
 			"node -e 'x' --permission",
 			"node --permission --no-experimental-sqlite -p 1; python3 -c 'x'",
@@ -304,6 +312,10 @@ describe("the reservation gate for inline interpreter code", () => {
 				reason: expect.stringContaining(`reserved by ${owner.team.id}`),
 			});
 		}
+		// Only `--no-experimental-sqlite` is missing: the gate adds the whole set, and Node takes a repeated flag.
+		expect(await peer.ran("node --permission --allow-fs-read=* -e 'x'")).toBe(
+			"node --permission --no-experimental-sqlite --allow-fs-read=* --permission --allow-fs-read=* -e 'x'",
+		);
 	});
 
 	it("refuses the confined form when the inherited environment carries NODE_OPTIONS", async () => {
@@ -348,7 +360,9 @@ describe("the reservation gate for inline interpreter code", () => {
 		const owner = await member(db, cwd);
 		const peer = await member(db, cwd, (command) => command === "node -p 1");
 		await owner.lock(["src/a.ts"]);
-		expect(await peer.gate("node -p 1")).toBeUndefined();
-		expect(await peer.gate("node -p 2")).toMatchObject({ block: true });
+		// The classifier lets `node -p 1` run as written; `node -p 2` goes through the interpreter rule, which adds the flags.
+		expect(await peer.ran("node -p 1")).toBe("node -p 1");
+		expect(await peer.ran("node -p 2")).toBe("node --permission --no-experimental-sqlite --allow-fs-read=* -p 2");
+		expect(await peer.gate("python3 -c 2")).toMatchObject({ block: true });
 	});
 });

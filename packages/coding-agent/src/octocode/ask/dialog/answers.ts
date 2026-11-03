@@ -1,3 +1,7 @@
+import type { AskAnswer } from "../../shared/ask-answer.ts";
+
+export type { AskAnswer };
+
 /** Questions, answers and the rows each question shows, shared by the dialog and the RPC fallback (`tool.ts`). */
 
 interface AskOption {
@@ -10,15 +14,6 @@ export interface AskQuestion {
 	header?: string;
 	options: AskOption[];
 	multiSelect?: boolean;
-}
-
-export interface AskAnswer {
-	question: string;
-	answer: string;
-	custom: boolean;
-	/** Multi-select with a write-in: the toggled option labels, kept apart from the typed text so the model can tell them apart. */
-	picks?: string[];
-	typed?: string;
 }
 
 export interface AskResult {

@@ -47,7 +47,7 @@ export class FullContentReader {
 			seen.add(asset.id);
 			const value = this.read(asset, reader);
 			if (!value) break;
-			merged = { ...merged, ...value };
+			merged = Object.assign(merged ?? {}, value);
 			asset =
 				value.full && typeof value.full === "object" && "id" in value.full
 					? (value.full as ApplicationAsset)
@@ -97,6 +97,8 @@ export class ContentAttachmentComponent extends Container {
 	private imageProtocol = getCapabilities().images;
 	private image?: Image;
 	private imageKey?: string;
+	private imageReader?: AssetReader;
+	private pngTranscoderRequested = false;
 	private block: ApplicationContentBlock;
 	private options: ContentOptions;
 	constructor(block: ApplicationContentBlock, options: ContentOptions = {}) {
@@ -132,11 +134,18 @@ export class ContentAttachmentComponent extends Container {
 		this.clear();
 		const block = this.block;
 		if (block.type === "image" && this.options.showImages !== false && getCapabilities().images) {
-			const payload = this.options.readAsset?.(block.asset.id);
-			if (payload?.encoding === "base64") {
-				const key = `${block.asset.id}:${block.asset.revision ?? 0}:${this.options.imageWidthCells ?? 60}`;
-				if (this.imageKey !== key || !this.image) {
+			const key = JSON.stringify([
+				block.asset.id,
+				block.asset.revision,
+				block.asset.mimeType,
+				block.asset.name,
+				this.options.imageWidthCells ?? 60,
+			]);
+			if (this.imageKey !== key || !this.image || this.imageReader !== this.options.readAsset) {
+				const payload = this.options.readAsset?.(block.asset.id);
+				if (payload?.encoding === "base64") {
 					this.imageKey = key;
+					this.imageReader = this.options.readAsset;
 					this.image = new Image(
 						payload.data,
 						block.asset.mimeType,
@@ -146,13 +155,21 @@ export class ContentAttachmentComponent extends Container {
 							filename: block.asset.name,
 						},
 					);
+				} else {
+					this.imageKey = undefined;
+					this.imageReader = undefined;
+					this.image = undefined;
 				}
+			}
+			if (this.image) {
 				this.addChild(this.image);
-				if (block.asset.mimeType !== "image/png")
+				if (block.asset.mimeType !== "image/png" && this.imageProtocol === "kitty" && !this.pngTranscoderRequested) {
+					this.pngTranscoderRequested = true;
 					ensurePngTranscoder(() => {
 						this.image?.invalidate();
 						this.options.requestRender?.();
 					});
+				}
 				return;
 			}
 		}

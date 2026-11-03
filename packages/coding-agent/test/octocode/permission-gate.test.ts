@@ -16,7 +16,7 @@ import { headlessFileTool } from "./permission-file-harness.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
-import { runsLater, shellTargetAccess } from "../../src/octocode/permission/file-access.ts";
+import { runsLater, shellTargetAccess, stateFolderRefusal } from "../../src/octocode/permission/file-access.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
 
 const call = (toolName: string, input: Record<string, unknown>, extra: Partial<ToolCallEvent> = {}) =>
@@ -137,6 +137,21 @@ describe("the purpose from a call's reason", () => {
 });
 
 describe("permission gate", () => {
+	it("protects workspace identity, session state and job records while permitting ordinary handoffs", () => {
+		const root = tmp();
+		for (const target of [
+			"workspace/id",
+			"sessions/conversation.jsonl",
+			"session-data/s/archive/SESSION.md",
+			"temp/sessions/s/bash/job.json",
+		]) {
+			expect(stateFolderRefusal(path.join(root, ".octa/code", target), target, "file")).toContain("state folder");
+		}
+		expect(
+			stateFolderRefusal(path.join(root, ".octa/code/temp/agents/worker/report.md"), "report", "file"),
+		).toBeUndefined();
+	});
+
 	it("lets workspace run shell and asks in manual", async () => {
 		expect(await setup("workspace").gate(call("bash", { command: "ls" }), setup("workspace").ctx)).toBeUndefined();
 		const manual = setup("manual", { selects: ["Deny"] });
@@ -249,8 +264,8 @@ describe("permission gate", () => {
 			"docs/npmrc.md",
 			"src/gitmodules.ts",
 			".github/workflows-notes.md",
-			".octocode/tmp/agents/x/report.md",
-			".octocode/tmp",
+			".octa/code/temp/agents/x/report.md",
+			".octa/code/temp",
 		]) {
 			expect(runsLater(path.join(root, file), root), file).toBe(false);
 		}
@@ -263,9 +278,9 @@ describe("permission gate", () => {
 			".HUSKY/pre-commit",
 			".GitHub/Workflows/ci.yml",
 			// Outside the scratch folder `.octocode/` still loads later; a hook inside scratch still runs.
-			".octocode/tmp-not-scratch/x",
+			".octa/code/temp-not-scratch/x",
 			".octocode/settings.json",
-			".octocode/tmp/repo/.git/hooks/pre-commit",
+			".octa/code/temp/repo/.git/hooks/pre-commit",
 		])
 			expect(runsLater(path.join(root, file), root), file).toBe(true);
 	});

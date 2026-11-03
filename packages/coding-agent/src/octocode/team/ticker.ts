@@ -1,4 +1,4 @@
-import { dbStamp } from "../agentdb/api.ts";
+import { dbStamp } from "../../../../db/src/api.ts";
 import { onSecond } from "../shared/clock.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 

@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { stageHostSources } from "./build-host-sources.mjs";
 import { readWorkspacePackages, sourceWorkspaceGroups } from "./source-workspaces.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -23,19 +21,4 @@ test("ACP has one source owner and ships inside coding-agent without a private r
 	assert.deepEqual(sourceWorkspaceGroups(packages).issues, []);
 	assert.equal(existsSync(join(root, "packages/coding-agent/src/modes/acp")), false);
 	assert.equal(existsSync(join(root, "packages/coding-agent/src/octocode/external/acp.ts")), false);
-});
-
-test("host staging relocates inbound ACP, outbound ACP and MCP handoff to the shipped tree", (t) => {
-	const stage = mkdtempSync(join(tmpdir(), "octocode-acp-stage-"));
-	t.after(() => rmSync(stage, { recursive: true, force: true }));
-	stageHostSources(root, "coding-agent", stage);
-	const read = (file) => readFileSync(join(stage, "src", file), "utf8");
-	assert.match(read("main.ts"), /import\("\.\/main\/acp-host\.ts"\)/);
-	assert.match(read("main/acp-host.ts"), /import\("\.\.\/acp\/server\/acp-mode\.ts"\)/);
-	assert.match(read("octocode/external/manager.ts"), /from "\.\.\/\.\.\/acp\/client\/client\.ts"/);
-	assert.match(read("acp/server/mcp.ts"), /from "\.\.\/\.\.\/mcp\/config\.ts"/);
-	assert.match(read("acp/server/acp-mode.ts"), /from "\.\.\/\.\.\/common\/env\.ts"/);
-	assert.match(read("acp/client/client.ts"), /from "\.\.\/\.\.\/common\/abort\.ts"/);
-	// acp reaches host state only through ports; the shipped tree must not import coding-agent modules from it.
-	assert.doesNotMatch(read("acp/server/acp-mode.ts"), /from "\.\.\/\.\.\/(core|modes|octocode|config|cli)\//);
 });

@@ -18,7 +18,8 @@ export class Mail {
 	private noticePending = false;
 	private generation = 0;
 	/** Exact messages this process created for the user; shared database ids and sender columns alone are forgeable. */
-	private readonly forUser = new Map<number, { text: string; recipients: ReadonlySet<string> }>();
+	private readonly forUser = new Map<number, { text: string; recipients: Set<string> }>();
+	private lastProvenancePrune = 0;
 
 	/** `secret`: what the parent gave this process (a subagent), which checks a user message the parent signed (`userProof`). */
 	private readonly api: Pick<ExtensionAPI, "sendMessage">;
@@ -46,6 +47,23 @@ export class Mail {
 	/** Binds in-process user provenance to the exact text and recipients, as the child proof does. */
 	createdForUser(id: number, text: string, recipients: readonly string[]): void {
 		this.forUser.set(id, { text, recipients: new Set(recipients) });
+	}
+
+	/** A recipient reached the model or left without reading; retain proof only for recipients still awaiting mail. */
+	forgetForUser(id: number, recipient: string): void {
+		const created = this.forUser.get(id);
+		if (!created) return;
+		created.recipients.delete(recipient);
+		if (created.recipients.size === 0) this.forUser.delete(id);
+	}
+
+	/** Retire proofs for agents whose process can no longer receive their queued message. */
+	pruneForUser(db: TeamStore, now = Date.now()): void {
+		if (this.forUser.size === 0 || (now >= this.lastProvenancePrune && now - this.lastProvenancePrune < 30_000)) return;
+		const live = db.reachable();
+		for (const [id, created] of this.forUser)
+			for (const recipient of created.recipients) if (!live.has(recipient)) this.forgetForUser(id, recipient);
+		this.lastProvenancePrune = now;
 	}
 
 	/** A team notice for this agent, read at its next step; never starts a turn. False when the session cannot take it. */
@@ -131,6 +149,7 @@ export class Mail {
 		this.notified = [];
 		this.noticePending = false;
 		this.forUser.clear();
+		this.lastProvenancePrune = 0;
 		this.releaseInterrupt();
 	}
 

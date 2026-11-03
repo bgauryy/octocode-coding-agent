@@ -1,4 +1,4 @@
-import { cleanupDays } from "../../../../common/src/env.ts";
+import { resolveRetention } from "../../config/retention.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 
 /**
@@ -35,7 +35,7 @@ interface PromptInputs {
 	canMcp?: boolean;
 	/** Whether this agent drives its own isolated browser: its profile declares `browser.control` and it holds the browser server. */
 	browserControl?: boolean;
-	/** Days an untouched scratch folder is kept (`OCTOCODE_CLEANUP_DAYS`; 0 keeps it); default from the environment. */
+	/** Days an untouched scratch folder is kept (`retention.days`; 0 keeps it); default from `resolveRetention`. */
 	scratchDays?: number;
 }
 
@@ -46,7 +46,7 @@ function policyFlags(input: PromptInputs) {
 	const readOnly = input.readOnly === true && !main;
 	const shell = input.canShell !== false;
 	const web = input.canWeb !== false;
-	const days = input.scratchDays ?? cleanupDays();
+	const days = input.scratchDays ?? resolveRetention().days;
 	return {
 		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).
 		main,

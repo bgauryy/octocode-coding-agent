@@ -39,7 +39,7 @@ export interface AgentProfile {
 	/**
 	 * True: the child investigates and reports without changing source (`OCTOCODE_READ_ONLY`). Its prompt says so, and the
 	 * permission gate enforces it in every mode (`permission/read-only-role.ts`): `file` writes are refused outside its
-	 * scratch folder, `.octocode/tmp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
+	 * scratch folder, `.octa/code/temp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
 	 * the workspace. It is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen.
 	 */
 	readOnly?: true;
@@ -330,15 +330,13 @@ export function profileReach(profile: AgentProfile | undefined, defaultTools?: r
 		nativeDefaults;
 	return [
 		...(profileSelectsTool(profile, "file", configured) ? ["file.workspace" as const] : []),
-		...(profileSelectsTool(profile, "bash", configured) || profileSelectsTool(profile, "debug", configured)
-			? ["shell" as const]
-			: []),
+		...(profileSelectsTool(profile, "bash", configured) ? ["shell" as const] : []),
 	];
 }
 
 const REACH_TEXT: Record<string, string> = {
 	"file.workspace": "edit files in the repository",
-	shell: "run shell commands or debugger operations",
+	shell: "run shell commands",
 };
 
 /**

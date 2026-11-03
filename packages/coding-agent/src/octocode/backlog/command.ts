@@ -102,7 +102,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	/** Without a custom component (RPC): the board as a select list. */
 	const selectBoard = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
 		const ADD = "+ Add an item";
-		const EXPORT = "Export to .octocode/backlog.md";
+		const EXPORT = "Export to .octa/code/backlog.md";
 		const HTML = "Open as HTML";
 		for (;;) {
 			const items = backlog.store.list().items;
@@ -137,8 +137,8 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 			description: "open the interactive terminal board",
 			run: async (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog tui", "warning");
-				if (ctx.hasUI && ctx.mode === "tui") return await board(ctx, backlog);
-				if (ctx.hasUI) return await selectBoard(ctx, backlog);
+				if (ctx.hasUI && ctx.mode === "tui") return board(ctx, backlog);
+				if (ctx.hasUI) return selectBoard(ctx, backlog);
 				say(ctx, boardText(backlog.store, backlog.session));
 			},
 		},
@@ -155,7 +155,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		},
 		export: {
 			args: "",
-			description: "write .octocode/backlog.md",
+			description: "write .octa/code/backlog.md",
 			run: (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog export", "warning");
 				doExport(ctx, backlog);
@@ -163,7 +163,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		},
 		html: {
 			args: "",
-			description: "write .octocode/backlog.html and open it in the browser",
+			description: "write .octa/code/backlog.html and open it in the browser",
 			run: (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog html", "warning");
 				return doHtml(ctx, backlog);

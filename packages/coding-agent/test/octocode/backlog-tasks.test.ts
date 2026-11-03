@@ -1,11 +1,12 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backlog } from "../../src/octocode/agentdb/api.ts";
-import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
+import { backlog, type AgentDb } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
-import { type BacklogError, BacklogStore, TaskError } from "../../src/octocode/backlog/store.ts";
+import { type BacklogError, type BacklogStore, TaskError } from "../../src/octocode/backlog/store.ts";
 
 let dir: string;
 let file: string;
@@ -34,7 +35,7 @@ beforeEach(() => {
 	file = path.join(dir, "db");
 	db = openAgentDb(file);
 	clock = 1_000;
-	store = new BacklogStore(
+	store = fixtureBacklog(
 		() => db,
 		"repo",
 		() => ++clock,
@@ -59,9 +60,9 @@ describe("task lifecycle", () => {
 			reason: "Store needs it",
 		});
 		expect(second).toMatchObject({ ref: "T2", position: 1 });
-		expect(
-			new BacklogStore(() => db, "elsewhere").tasks.add({ goal: "Other repo", session: "s" }, { id: "s" }).ref,
-		).toBe("T1");
+		expect(fixtureBacklog(() => db, "elsewhere").tasks.add({ goal: "Other repo", session: "s" }, { id: "s" }).ref).toBe(
+			"T1",
+		);
 
 		const started = store.tasks.update("T1", { state: "ongoing" }, agent);
 		expect(started).toMatchObject({ state: "ongoing", assignee: agent.id, version: 2 });
@@ -340,21 +341,24 @@ describe("item types", () => {
 		expect(() => add("Unknown", { type: "story" })).toThrow(/Invalid backlog entity fields/);
 	});
 
-	it("adds the tasks table to a database that predates it, without touching its items", () => {
-		const item = add("Survivor");
-		db.db.exec(
-			"DROP TRIGGER backlog_tasks_audit_insert; DROP TRIGGER backlog_tasks_audit_update; DROP TRIGGER backlog_tasks_audit_delete; DROP TABLE backlog_tasks;",
-		);
-		db.close();
-		db = openAgentDb(file);
-		store = new BacklogStore(
-			() => db,
-			"repo",
-			() => ++clock,
-		);
-		expect(store.get(item.ref)!.title).toBe("Survivor");
-		expect(store.tasks.add({ goal: "Works again", item: item.ref }, user).ref).toBe("T1");
-		expect(store.audit(item.ref).some((entry) => entry.entity === "backlog_tasks")).toBe(true);
+	it("rejects task, parent, and origin relationships into another workspace", () => {
+		const item = add("First workspace");
+		const other = fixtureBacklog(() => db, "second");
+		const foreign = other.add({ goal: "g", title: "Other workspace", createdBy: "user" });
+		for (const column of ["parent_id", "from_item"]) {
+			expect(() =>
+				db.db.prepare(`UPDATE backlog SET ${column} = ? WHERE id = ?`).run(foreign.rowId, item.rowId),
+			).toThrow(/FOREIGN KEY/);
+		}
+		expect(() =>
+			db.db
+				.prepare(
+					"INSERT INTO backlog_tasks(workspace_id,seq,item_id,goal,created_at,updated_at) VALUES ('repo',1,?,'g',1,1)",
+				)
+				.run(foreign.rowId),
+		).toThrow(/FOREIGN KEY/);
+		expect(store.tasks.add({ goal: "same workspace", item: item.ref }, user).ref).toBe("T1");
+		expect(db.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
 	});
 
 	it("holds the owner invariant in the table: an item or a session, never both or neither", () => {
@@ -362,7 +366,7 @@ describe("item types", () => {
 		const insert = (itemId: number | null, session: string | null) => () =>
 			db.db
 				.prepare(
-					"INSERT INTO backlog_tasks (repo_key, seq, item_id, session_id, goal, created_at, updated_at) VALUES ('repo', 99, ?, ?, 'g', 1, 1)",
+					"INSERT INTO backlog_tasks (workspace_id, seq, item_id, session_id, goal, created_at, updated_at) VALUES ('repo', 99, ?, ?, 'g', 1, 1)",
 				)
 				.run(itemId, session);
 		expect(insert(null, null)).toThrow(/CHECK/);

@@ -28,7 +28,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	const { session, run } = host;
 	checkSessionDispatch(session);
 	if (run.isEmittingAgentSettled) {
-		run.deferredSettledActions.push(async () => await session.prompt(text, options));
+		run.deferredSettledActions.push(async () => session.prompt(text, options));
 		return;
 	}
 	const expandPromptTemplates = options?.expandPromptTemplates ?? true;
@@ -194,7 +194,7 @@ export async function sendCustomMessage<T = unknown>(
 		}
 	} else if (options?.triggerTurn) {
 		if (run.isEmittingAgentSettled) {
-			run.deferredSettledActions.push(async () => await session.sendCustomMessage(message, options));
+			run.deferredSettledActions.push(async () => session.sendCustomMessage(message, options));
 			return;
 		}
 		await host.runLoop.startRun({ messageType: "custom", message: appMessage });

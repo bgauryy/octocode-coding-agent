@@ -32,7 +32,6 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 ## Tools and customization
 
 - [MCP](mcp.md)
-- [Optional native debugger](debugging.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
 - [Hook events: what each source profile accepts](hook-events.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)

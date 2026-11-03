@@ -88,7 +88,7 @@ describe("resuming a subagent of this session by id", () => {
 			const { details } = await t.call({ goal: "linger first", task: "linger first", background: true });
 			const id = details.id as string;
 			const session = details.session as { id: string; dir: string };
-			expect(session.id).toBe(id);
+			expect(session.id).not.toBe(id);
 			expect(canonicalPath(session.dir)).toBe(canonicalPath(path.join(scratchRoot(cwd), id, "session")));
 		} finally {
 			await t.control.stopAll();
@@ -113,10 +113,10 @@ describe("resuming a subagent of this session by id", () => {
 			first.team.stop();
 		}
 		const id = details.id as string;
-		const dir = (details.session as { dir: string }).dir;
+		const { id: sessionId, dir } = details.session as { id: string; dir: string };
 		// The fixture answers without saving its conversation; Octocode would have written this file.
 		fs.mkdirSync(dir, { recursive: true });
-		fs.writeFileSync(path.join(dir, `2026-01-01T00-00-00-000Z_${id}.jsonl`), "{}\n");
+		fs.writeFileSync(path.join(dir, `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`), "{}\n");
 		const resumed = setup(cwd, recorded(input, details, true));
 		try {
 			await resumed.f.emit("session_start", { reason: "resume" }, resumed.ctx);
@@ -134,7 +134,7 @@ describe("resuming a subagent of this session by id", () => {
 				result.details.runId,
 			);
 			const [report] = resumed.reports();
-			expect(report).toContain(`--session-dir ${dir} --session-id ${id}`);
+			expect(report).toContain(`--session-dir ${dir} --session-id ${sessionId}`);
 			expect(report).toContain("Follow-up from your parent:\nlinger again");
 			const failed = await resumed.call({ goal: "Recover", task: "error please", resume: id, background: true });
 			await resumed.control.settle();

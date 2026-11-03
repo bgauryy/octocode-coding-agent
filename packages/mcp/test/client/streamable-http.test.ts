@@ -424,7 +424,7 @@ describe("StreamableHttpTransport", () => {
 			const message = JSON.parse(await readBody(request)) as Record<string, unknown>;
 			if (message.method !== "tools/call") return protocolHandler(request, response, requests, message);
 			// The server never answers: only the client giving up can end this exchange.
-			response.on("close", () => closed.push(String((message.params as { name: string }).name)));
+			response.on("close", () => closed.push((message.params as { name: string }).name));
 			arrived();
 		});
 		const client = new McpClient({ name: "http-test", version: "1.0.0" });

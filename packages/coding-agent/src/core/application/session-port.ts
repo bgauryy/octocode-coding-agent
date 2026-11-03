@@ -71,7 +71,7 @@ export function invokeOperation<K extends ApplicationOperation<ApplicationOperat
 	operation: K,
 	args: ApplicationOperationArgs<ApplicationOperations, K>,
 ): ApplicationOperationResult<ApplicationOperations, K> {
-	if (!OPERATIONS.has(operation)) throw new Error(`${String(operation)} is not an application operation`);
+	if (!OPERATIONS.has(operation)) throw new Error(`${operation} is not an application operation`);
 	const method = session[operation] as (
 		...parameters: typeof args
 	) => ApplicationOperationResult<ApplicationOperations, K>;

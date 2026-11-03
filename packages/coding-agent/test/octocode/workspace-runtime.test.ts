@@ -1,11 +1,13 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationService } from "../../src/core/application/index.ts";
 import type { AgentSession } from "../../src/core/agent-session.ts";
-import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import { type AgentDb } from "../../../db/src/api.ts";
+import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -17,7 +19,7 @@ const applications: ApplicationService[] = [];
 beforeEach(() => {
 	dir = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-runtime-"));
 	db = openAgentDb(path.join(dir, "db"));
-	store = new BacklogStore(() => db, "repo");
+	store = fixtureBacklog(() => db, "repo");
 });
 afterEach(() => {
 	for (const application of applications.splice(0)) application.dispose();

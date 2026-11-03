@@ -1,17 +1,21 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
-import { Container, Text, resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
+import { Container, Image, Text, resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
 import { ApplicationAssets } from "../src/core/application/assets.ts";
-import { FullContentReader } from "../src/modes/interactive/components/application-content.ts";
+import {
+	ContentAttachmentComponent,
+	FullContentReader,
+} from "../src/modes/interactive/components/application-content.ts";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { SkillInvocationMessageComponent } from "../src/modes/interactive/components/skill-invocation-message.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
 import { getMarkdownTheme, initTheme } from "../src/theme/theme.ts";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
+import * as imageConvert from "../src/utils/image-convert.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPuoAAAAASUVORK5CYII=";
@@ -135,6 +139,55 @@ describe("shared application data in the TUI", () => {
 		f.host.chatContainer.invalidate();
 		expect(f.text()).toContain("Image attachment: image/png");
 		expect(f.host.chatContainer.render(100).join("\n")).not.toContain("\x1b_G");
+	});
+
+	it("reuses an image through text revisions and reloads changed or unavailable assets", () => {
+		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
+		const asset = { id: "image-id", revision: "first", mimeType: "image/png", size: 68, name: "first.png" };
+		const block = { id: "image-block", type: "image" as const, asset };
+		const readAsset = vi.fn(() => ({ asset, encoding: "base64" as const, data: PNG }));
+		const attachment = new ContentAttachmentComponent(block, { readAsset });
+		const image = attachment.children[0];
+		expect(image).toBeInstanceOf(Image);
+		for (let i = 0; i < 20; i++) attachment.updateBlock({ ...block, asset: { ...asset } });
+		expect(readAsset).toHaveBeenCalledTimes(1);
+		expect(attachment.children[0]).toBe(image);
+
+		const changed = { ...block, asset: { ...asset, revision: "second" } };
+		attachment.updateBlock(changed);
+		expect(readAsset).toHaveBeenCalledTimes(2);
+		expect(attachment.children[0]).not.toBe(image);
+		const newId = { ...changed, asset: { ...changed.asset, id: "next-image-id" } };
+		attachment.updateBlock(newId);
+		expect(readAsset).toHaveBeenCalledTimes(3);
+
+		const missing = vi.fn(() => undefined);
+		attachment.updateBlock(newId, { readAsset: missing });
+		expect(missing).toHaveBeenCalledTimes(1);
+		expect(attachment.children[0]).not.toBeInstanceOf(Image);
+		attachment.updateBlock(newId, { readAsset });
+		expect(readAsset).toHaveBeenCalledTimes(4);
+		expect(attachment.children[0]).toBeInstanceOf(Image);
+	});
+
+	it("registers one deferred image conversion callback through streamed updates", () => {
+		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
+		const callbacks: Array<() => void> = [];
+		const registration = vi.spyOn(imageConvert, "ensurePngTranscoder").mockImplementation((callback) => {
+			callbacks.push(callback);
+		});
+		try {
+			const asset = { id: "jpeg-id", revision: "first", mimeType: "image/jpeg", size: 4 };
+			const block = { id: "jpeg-block", type: "image" as const, asset };
+			const attachment = new ContentAttachmentComponent(block, {
+				readAsset: () => ({ asset, encoding: "base64", data: "AAAA" }),
+			});
+			for (let i = 0; i < 20; i++) attachment.updateBlock({ ...block, asset: { ...asset } });
+			attachment.updateBlock({ ...block, asset: { ...asset, revision: "second" } });
+			expect(callbacks).toHaveLength(1);
+		} finally {
+			registration.mockRestore();
+		}
 	});
 
 	it("preserves assistant block order and final execution arguments in live and restored transcripts", async () => {

@@ -52,7 +52,7 @@ export class RpcConnection {
 
 		const invocation = this.options.invocation ?? {
 			command: "node",
-			args: [this.options.cliPath ?? "dist/cli.js"],
+			args: [this.options.cliPath ?? "dist/bundle/cli.js"],
 		};
 		const args = ["--mode", "rpc"];
 
@@ -109,7 +109,9 @@ export class RpcConnection {
 		// Wait a moment for process to initialize
 		await new Promise((resolve) => setTimeout(resolve, 100));
 
-		if (this.exitError) throw this.exitError;
+		// The exit handlers set `exitError` during the wait; control-flow analysis only sees the reset above.
+		const exited = this.exitError as Error | null;
+		if (exited) throw exited;
 		if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
 			const error = this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
 			this.closed(error);

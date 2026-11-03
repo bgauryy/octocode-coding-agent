@@ -160,10 +160,10 @@ describe("subagent thinking", () => {
 		expect(model("lean")).toBe("p/tiny:low");
 		expect(model("implementer")).toBe("p/mid:medium");
 		expect(model("reviewer")).toBe("p/mid:high");
-		// No profile, no level: the coordinator's model at the subagent default, not the coordinator's high.
-		expect(model(undefined)).toBe("p/big:medium");
+		// No profile, no level: the medium purpose at the subagent default, not the coordinator's model or its high.
+		expect(model(undefined)).toBe("p/mid:medium");
 		vi.stubEnv(SUBAGENT_THINKING_ENV, "low");
-		expect(model(undefined)).toBe("p/big:low");
+		expect(model(undefined)).toBe("p/mid:low");
 		expect(model("reviewer")).toBe("p/mid:high");
 	});
 
@@ -177,6 +177,27 @@ describe("subagent thinking", () => {
 		expect(model("reviewer", "small")).toBe("p/tiny:high");
 		// A root cause or a design decision on the coordinator's own model.
 		expect(model(undefined, "p/big:high")).toBe("p/big:high");
+	});
+
+	it("routes a task without a profile or model to the medium purpose, and a profile without a model to the parent's", () => {
+		const ctx = (models: readonly object[]) => ({
+			modelRegistry: { getAvailable: () => models, getProvider: () => undefined } as never,
+			model: parent as never,
+		});
+		const profiles = new Map([["plain", { name: "plain", description: "", prompt: "" }]]);
+		// The route says what chose it, so the coordinator sees why the child is not on its own model.
+		expect(planRun(profiles, {}, ctx(reasoning)).route).toMatchObject({
+			model: "p/mid:medium",
+			via: "default: medium",
+		});
+		// A profile without a model (a plugin agent's `model: inherit`) keeps the parent's.
+		const plain = planRun(profiles, { profile: "plain" }, ctx(reasoning)).route;
+		expect(plain.model).toBe("p/big:medium");
+		expect(plain).not.toHaveProperty("via");
+		// No capable model in the medium band: the parent's model, with no default label.
+		const alone = planRun(profiles, {}, ctx(reasoning.filter((model) => model.id !== "mid"))).route;
+		expect(alone.model).toBe("p/big:medium");
+		expect(alone).not.toHaveProperty("via");
 	});
 
 	it("reports the level the child will really run at", () => {

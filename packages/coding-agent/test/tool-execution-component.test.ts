@@ -469,7 +469,7 @@ describe("ToolExecutionComponent parity", () => {
 			...createBaseToolDefinition(),
 			renderCall: () => new Text("call", 0, 0),
 			renderResult: (_result, _options, _theme, context) =>
-				new Text(`arg:${String((context.args as { foo: string }).foo)}`, 0, 0),
+				new Text(`arg:${(context.args as { foo: string }).foo}`, 0, 0),
 		};
 
 		const component = new ToolExecutionComponent(

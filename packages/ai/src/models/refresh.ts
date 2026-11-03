@@ -123,16 +123,16 @@ export class ProviderModelsRefresher {
 				const signal = AbortSignal.any([callerSignal, controller.signal]);
 				const operation = (async () => {
 					let storedCredential: Credential | undefined;
-					let credentialError: unknown;
+					let credentialFailure: { error: unknown } | undefined;
 					try {
 						storedCredential = await readCredential(this.host.credentials, provider.id, signal);
 					} catch (error) {
-						credentialError = error;
+						credentialFailure = { error };
 					}
 
 					// Restore cached provider state before auth resolution or network access.
 					await this.runProviderRefreshPhase(provider, storedCredential, false, undefined, generation, signal);
-					if (credentialError !== undefined) throw credentialError;
+					if (credentialFailure) throw credentialFailure.error;
 					if (!allowNetwork || signal.aborted) return;
 
 					const credential = await resolveRefreshCredential(

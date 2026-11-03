@@ -1,3 +1,7 @@
+import { getFileStamp } from "../../../common/src/paths.ts";
+import { transcripts } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,7 +14,7 @@ import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const why = { goal: "find recurring tool mistakes", reason: "the user asked which tool errors keep happening" };
+const why = { reason: "the user asked which tool errors keep happening" };
 
 let saved: string | undefined;
 beforeEach(() => {
@@ -56,13 +60,29 @@ const bashCall = (day: string, id: string, command: string) => ({
 });
 
 /** A session of `cwd`'s repository whose record names a transcript of `entries` at `transcript`. */
-function session(id: string, cwd: string, transcript: string, entries: unknown[]): void {
+function session(id: string, cwd: string, transcript: string, entries: unknown[], mirrored = true): void {
 	fs.mkdirSync(path.dirname(transcript), { recursive: true });
 	fs.writeFileSync(transcript, entries.map((line) => JSON.stringify(line)).join("\n") + "\n");
+	if (mirrored) {
+		const workspaceId = registeredWorkspace(cwd).id;
+		const db = sharedAgentDb();
+		db.transaction(() => {
+			transcripts.bind(db.db, id, workspaceId);
+			transcripts.save(
+				db.db,
+				id,
+				transcript,
+				{ type: "session", id, cwd },
+				getFileStamp(transcript),
+				entries as Parameters<typeof transcripts.save>[5],
+				0,
+			);
+		});
+	}
 	setCurrentSession(id);
 	writeSessionRecord({
 		session: id,
-		repository: fs.realpathSync(cwd),
+		repository: registeredWorkspace(cwd).id,
 		workspace: cwd,
 		transcript,
 		goal: { role: "user", text: `goal of ${id}` },
@@ -91,7 +111,7 @@ const late = "2026-10-25";
 
 /** Session a (kimi, early): 4 results, 3 errors. Session b (opus, late): 2 results, 1 error. Session c: not readable. */
 function history(cwd: string): void {
-	const agents = path.join(cwd, ".octocode", "tmp", "agents");
+	const agents = path.join(cwd, ".octa", "code", "temp", "agents");
 	session("a", cwd, path.join(agents, "a", "session", "a.jsonl"), [
 		model("kimi"),
 		result(early, "file", invalid("queries.0"), true),
@@ -106,10 +126,30 @@ function history(cwd: string): void {
 		result(late, "file", "wrote 3 lines", false),
 	]);
 	// A record naming a transcript outside the Octocode home and its workspace is not read.
-	session("c", cwd, path.join(tmp(), "c.jsonl"), [result(late, "file", invalid("queries.0"), true)]);
+	session("c", cwd, path.join(tmp(), "c.jsonl"), [result(late, "file", invalid("queries.0"), true)], false);
 }
 
 describe("archive errors", () => {
+	it("refuses a forged Markdown record pointing to a different workspace's mirrored transcript", async () => {
+		const here = repo();
+		const other = repo();
+		const transcript = path.join(other, "private.jsonl");
+		session("foreign", other, transcript, [result(late, "file", "private failure", true)]);
+		setCurrentSession("foreign");
+		writeSessionRecord({
+			session: "foreign",
+			repository: registeredWorkspace(here).id,
+			workspace: here,
+			transcript,
+			ending: [],
+			toolCalls: 0,
+		});
+		setCurrentSession("me");
+		const found = await tool(here)({ ...why, errors: true });
+		expect(found.details).toMatchObject({ mode: "errors", hits: 0, files: 0 });
+		expect(found.text).not.toContain("private failure");
+	});
+
 	it("groups error results across transcripts by tool and signature, with rates, models, days and samples", async () => {
 		const cwd = repo();
 		history(cwd);
@@ -155,14 +195,14 @@ describe("archive errors", () => {
 		);
 	});
 
-	it("reports no errors when no session names a readable transcript", async () => {
+	it("reads the retained session mirror after the JSONL file is removed", async () => {
 		const cwd = repo();
 		session("gone", cwd, path.join(cwd, ".octocode", "t.jsonl"), []);
 		fs.rmSync(path.join(cwd, ".octocode", "t.jsonl"));
 		const found = await tool(cwd)({ ...why, errors: true });
-		expect(found.details).toMatchObject({ mode: "errors", hits: 0, files: 0 });
+		expect(found.details).toMatchObject({ mode: "errors", hits: 0, files: 1 });
 		expect(found.text).toContain(
-			"0 tool errors in 0 tool results (0%), from 0 transcripts of 1 session; 1 session without a readable transcript.",
+			"0 tool errors in 0 tool results (0%), from 1 transcript of 1 session; 0 sessions without a readable transcript.",
 		);
 	});
 });
@@ -286,6 +326,9 @@ describe("errorSignature", () => {
 			// The reader named differently, and the older text without the sentence naming the reader.
 			"1. FAILED edit a/b.ts: a/b.ts already exists and was not read in this session. Read it with `localFetch`, or print it in `bash` with a plain `cat FILE` or `sed -n 'A,Bp' FILE` (no pipe or redirect), before modifying it.",
 			"1. FAILED edit a/b.ts: a/b.ts already exists and was not read in this session.",
+			// The wording that names the exact call.
+			"1. FAILED edit a/b.ts: a/b.ts already exists and was not read in this session. Read it first: localFetch {path:\"a/b.ts\"} or bash `sed -n '1,200p' a/b.ts`. A read piped or redirected, or after `||`, does not count.",
+			"2. FAILED write a/b.ts: a/b.ts already exists and was not read in this session. Read it first: bash `sed -n '1,200p' a/b.ts` (a plain `cat` or `sed -n` print counts, alone or chained with `;` or `&&`). A read piped or redirected, or after `||`, does not count.",
 		];
 		for (const text of wordings) expect(errorSignature(text)).toBe(notRead);
 

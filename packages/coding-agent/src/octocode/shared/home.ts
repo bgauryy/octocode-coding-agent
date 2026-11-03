@@ -1,3 +1,19 @@
+import { globalPaths } from "../../config/state-paths.ts";
+export { agentDbPath, globalPaths, HOME_NAMES } from "../../config/state-paths.ts";
+export {
+	currentSessionId,
+	currentSessionWorkspace,
+	PID_SESSION_PREFIX,
+	sessionDir,
+	sessionDirName,
+	sessionFolder,
+	sessionFolderNames,
+	sessionOutputDir,
+	sessionsRoot,
+	sessionTempRoot,
+	setCurrentSession,
+} from "../../config/runtime-paths.ts";
+import { privateDir } from "../../../../common/src/file-mode.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +22,9 @@ import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../c
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
+import { ensureWorkspaceStateDir, workspaceStateDir } from "../../config/workspace.ts";
+
+export { privateDir };
 
 /** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */
 export const OCTOCODE_DIR = ".octocode";
@@ -28,20 +47,6 @@ export function outputDir(name: string, env: NodeJS.ProcessEnv = process.env): s
 	return privateDir(path.join(octocodeHome(env), name));
 }
 
-/**
- * Creates `dir` (and missing parents) owner-only (0700), and tightens an existing `dir` to 0700: runtime state is
- * not for other users on the machine. A folder this user does not own keeps its mode.
- */
-export function privateDir(dir: string): string {
-	fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-	try {
-		fs.chmodSync(dir, 0o700);
-	} catch {
-		// Not ours to change (a shared OCTOCODE_HOME); the files in it are still owner-only.
-	}
-	return dir;
-}
-
 /** Resolve tracked and reserved files with the same rules as the native file tools. */
 export function resolveToolPath(cwd: string, raw: string): string {
 	return resolveToCwd(raw, cwd);
@@ -61,64 +66,9 @@ export function readPaths(toolName: string, input: Record<string, unknown>, cwd:
 	return toolName === "read" && typeof input.path === "string" ? [resolveReadPath(input.path, cwd)] : [];
 }
 
-/**
- * `<workspace>/.octocode/tmp/<name>`: where agents hand results to each other as files, so a long result is read on
- * demand instead of riding in a model's context. The `tmp` folder ignores itself (`.gitignore` of `*`), so nothing in
- * it is committed, in this repository or any other. Created on first use.
- */
+/** Private, Git-ignored scratch for artifacts handed between agents. */
 export function workspaceScratchDir(workspace: string, name: string): string {
-	const root = path.join(workspace, OCTOCODE_DIR, "tmp");
-	const dir = path.join(root, name);
-	fs.mkdirSync(dir, { recursive: true });
-	const ignore = path.join(root, ".gitignore");
-	if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, "*\n");
-	return dir;
-}
-
-/**
- * Where Octocode keeps things. `.octocode` is the one place, at two levels:
- *   global     `OCTOCODE_HOME` or `~/.octocode/octocodecode`: user config and runtime state
- *              (team DB, logs, spilled output, checkpoints, worktrees; the agent database holds folder trust)
- *   workspace  `<repo root>/.octocode`: project config (a session only starts in a trusted folder) and `tmp/` scratch
- * Workspace paths resolve from the repository root, so a session started in a subfolder reads the same files.
- * Other agents' files (`.claude/…`, `.codex/…`) are read too; their names live here as well so the loaders agree on
- * the list.
- */
-
-/** Entry names under the Octocode home. On-disk names are kept stable: existing files must keep resolving. */
-export const HOME_NAMES = {
-	skills: "skills",
-	agents: "agents",
-	hooks: "hooks.json",
-	team: "team",
-	api: "api",
-	worktrees: "worktrees",
-	/** Durable agent state: `octocode.db` and `sessions/<id>/{output,bash,checkpoints}`. */
-	agentState: "agent",
-	/** The octocode-agents-communication package's folder: `communication.sqlite` holds its sessions, messages and path leases. */
-	peerCommunication: "agents-communication",
-} as const;
-
-type GlobalPaths = { readonly [K in keyof typeof HOME_NAMES]: string } & { readonly home: string };
-
-/** Native state paths; peer communication keeps the external package's shared root. Nothing is created. */
-export function globalPaths(env: NodeJS.ProcessEnv = process.env, home = os.homedir()): GlobalPaths {
-	const base = octocodeHome(env, home);
-	const entries = Object.entries(HOME_NAMES).map(([key, name]) => [key, path.join(base, name)]);
-	return {
-		home: base,
-		...Object.fromEntries(entries),
-		peerCommunication: path.join(
-			env.OCTOCODE_HOME?.trim() ? base : path.join(home, OCTOCODE_DIR),
-			HOME_NAMES.peerCommunication,
-		),
-	} as GlobalPaths;
-}
-
-/** The durable agent database: `OCTOCODE_AGENT_DB`, else `<agentState>/octocode.db`. Nothing is created. */
-export function agentDbPath(env: NodeJS.ProcessEnv = process.env): string {
-	const override = env.OCTOCODE_AGENT_DB?.trim();
-	return override ? path.resolve(override) : path.join(globalPaths(env).agentState, "octocode.db");
+	return ensureWorkspaceStateDir(workspace, `temp${path.sep}${name}`);
 }
 
 /** The agents-communication package's database (its default; the package takes no environment override). Nothing is created. */
@@ -134,87 +84,8 @@ export function peerRegistryDir(env: NodeJS.ProcessEnv = process.env): string {
 	return path.join(globalPaths(env).peerCommunication, "active-databases");
 }
 
-/**
- * A session id as a folder name. An empty id or one made only of dots (`.`, `..`) would name the sessions folder or
- * its parent, so it is refused; every other id keeps the name it always had, so no saved data is orphaned.
- */
-export function sessionDirName(id: string): string {
-	const name = id.replace(/[^\w.-]/g, "_");
-	if (/^\.*$/.test(name)) throw new Error(`Invalid session id ${JSON.stringify(id)}: it cannot name a session folder.`);
-	return name;
-}
-
-/** `<agentState>/sessions`: one folder per session. Nothing is created. */
-export const sessionsRoot = (env: NodeJS.ProcessEnv = process.env): string =>
-	path.join(globalPaths(env).agentState, "sessions");
-
-/** `<agentState>/sessions/<sanitized id>`. Nothing is created. */
-export const sessionDir = (id: string, env: NodeJS.ProcessEnv = process.env): string =>
-	path.join(sessionsRoot(env), sessionDirName(id));
-
-/**
- * The folder names under `sessionsRoot` (each a session's sanitized id): a subagent's session id is its name, so a new
- * subagent avoids these to never inherit another run's archive or output, from any repository.
- */
-export function sessionFolderNames(env: NodeJS.ProcessEnv = process.env): string[] {
-	try {
-		return fs.readdirSync(sessionsRoot(env));
-	} catch {
-		return [];
-	}
-}
-
-let currentSession: string | undefined;
-
-/** Sets the process-wide current session (the first `session_start` handler does, before anything writes output). */
-export function setCurrentSession(id: string | undefined): void {
-	currentSession = id?.trim() || undefined;
-}
-
-/** The process-wide current session id, if one is set. */
-export const currentSessionId = (): string | undefined => currentSession;
-
-/** Folder name for a process with no session yet (unit tests, before `session_start`); swept once the process is gone. */
-export const PID_SESSION_PREFIX = "_pid-";
-
-/** Session folders already created and tightened by `sessionOutputDir`: later calls only check they still exist. */
-const preparedOutputDirs = new Set<string>();
-
-/** The folders a session keeps under its own: spilled output, bash logs, checkpoint blobs and the archive of compacted history. */
-type SessionFolder = "output" | "bash" | "checkpoints" | "archive";
-
-/**
- * A session's `output`, `bash`, `checkpoints` or `archive` folder (the current session's, without `id`), by path only:
- * nothing is created. With no session set it is `<agentState>/sessions/_pid-<pid>/<kind>`.
- */
-export function sessionFolder(
-	kind: SessionFolder,
-	id: string | undefined = currentSession,
-	env: NodeJS.ProcessEnv = process.env,
-): string {
-	return path.join(
-		id ? sessionDir(id, env) : path.join(sessionsRoot(env), `${PID_SESSION_PREFIX}${process.pid}`),
-		kind,
-	);
-}
-
-/**
- * The current session's private `output`, `bash`, `checkpoints` or `archive` folder, created on use. The folder and its
- * parents are made private once; a folder removed since (a sweep, a test) is made again.
- */
-export function sessionOutputDir(kind: SessionFolder, env: NodeJS.ProcessEnv = process.env): string {
-	const folder = sessionFolder(kind, currentSession, env);
-	const dir = path.dirname(folder);
-	if (preparedOutputDirs.has(folder) && fs.existsSync(folder)) return folder;
-	privateDir(path.dirname(dir));
-	privateDir(dir);
-	privateDir(folder);
-	preparedOutputDirs.add(folder);
-	return folder;
-}
-
 interface WorkspacePaths {
-	/** The repository root every workspace path hangs from. */
+	/** The project configuration root. Runtime paths follow the nearest workspace declaration. */
 	root: string;
 	dir: string;
 	skills: string;
@@ -258,7 +129,7 @@ export function inContextProject(dirs: ContextOptimizationDirs, file: string): b
 	return isWithin(real, dirs.project.root);
 }
 
-/** `<repo root>/.octocode` paths for `cwd`. Nothing is created. */
+/** Project configuration paths and workspace runtime paths for `cwd`. Nothing is created. */
 export function workspacePaths(cwd: string): WorkspacePaths {
 	const { root } = repoKey(cwd);
 	const dir = path.join(root, OCTOCODE_DIR);
@@ -268,8 +139,15 @@ export function workspacePaths(cwd: string): WorkspacePaths {
 		skills: path.join(dir, "skills"),
 		agents: path.join(dir, "agents"),
 		hooks: path.join(dir, "hooks.json"),
-		tmp: path.join(dir, "tmp"),
+		get tmp() {
+			return workspaceStateDir(cwd, "temp");
+		},
 	};
+}
+
+/** `<workspace root>/.octocode/tmp`: agent scratch that retention expires. Other `.octocode/<topic>/` folders hold durable output. */
+export function octocodeTmpDir(root: string): string {
+	return path.join(root, OCTOCODE_DIR, "tmp");
 }
 
 /** Trust-gated project hook files: Claude Code, Codex, then Octocode's. */

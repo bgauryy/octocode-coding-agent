@@ -1,7 +1,7 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isWithin } from "../shared/home/repo.ts";
-import { git } from "../shared/git.ts";
+import { EXCLUDE_WORKSPACE_STATE, git } from "../shared/git.ts";
 import { canonical, locateRepo, worktreesFolder, type WorktreeEntry } from "./repo.ts";
 
 export interface WorktreeStatus {
@@ -20,7 +20,11 @@ export interface WorktreeStatus {
 
 /** Counts of changed and untracked files in the worktree at `dir`. */
 export async function dirtyCounts(dir: string): Promise<{ dirty: number; untracked: number }> {
-	const out = await git(dir, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { raw: true });
+	const out = await git(
+		dir,
+		["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", EXCLUDE_WORKSPACE_STATE],
+		{ raw: true },
+	);
 	let dirty = 0;
 	let untracked = 0;
 	const fields = out.split("\0");

@@ -1,9 +1,11 @@
 import type { ExtensionContext, ExtensionCommandContext } from "../../core/features/index.ts";
-import { sharedAgentDb } from "../agentdb/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
-import { repoKey } from "../shared/home/repo.ts";
+import { historyWindows } from "../../config/retention.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { sessionWorkspace } from "../shared/home/workspace.ts";
 import { type Actor, BacklogStore } from "./store.ts";
-import { scheduleHistoryArchive } from "./retention.ts";
+import { scheduleHistoryArchive } from "../../../../db/src/api.ts";
 
 export interface BacklogOptions {
 	isSubagent: boolean;
@@ -22,16 +24,21 @@ export interface Backlog {
 	repoRoot: string;
 }
 
-/** The backlog of `ctx.cwd`'s repository (worktrees share their main repository's) and who is acting in it. */
+/** A workspace owns its board. A child delegated an item works on the board that issued it. */
 export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">, options: BacklogOptions): Backlog {
-	const repo = repoKey(ctx.cwd);
 	const env = options.env ?? process.env;
-	const store = new BacklogStore(() => sharedAgentDb(env), repo.key);
+	const agent = sharedAgentDb(env);
+	const cwd = options.isSubagent && env[BACKLOG_ITEM_ENV] ? sessionWorkspace(ctx.cwd, env) : ctx.cwd;
+	const workspace = registeredWorkspace(cwd, agent);
+	const store = new BacklogStore(() => agent, workspace.id);
 	const session = ctx.sessionManager.getSessionId();
 	if (!options.isSubagent) {
 		// Daily history housekeeping (the parent session runs it; its subagents share the database).
-		scheduleHistoryArchive(() => sharedAgentDb(env));
-		return { store, actor: { id: session }, session, repoName: repo.name, repoRoot: repo.root };
+		scheduleHistoryArchive(
+			() => agent,
+			() => historyWindows(env),
+		);
+		return { store, actor: { id: session }, session, repoName: workspace.name, repoRoot: workspace.root };
 	}
 	const id = options.agentId?.() || session;
 	// A subagent never claims: it may update only what the session that started it holds (named by the parent, not inferred).
@@ -42,7 +49,7 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 		);
 	const item = env[BACKLOG_ITEM_ENV];
 	const actor: Actor = { id, owners: new Set([parent]), ...(item ? { item } : {}) };
-	return { store, actor, session, repoName: repo.name, repoRoot: repo.root };
+	return { store, actor, session, repoName: workspace.name, repoRoot: workspace.root };
 }
 
 export interface BacklogWeb {

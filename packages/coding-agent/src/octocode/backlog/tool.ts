@@ -15,6 +15,7 @@ import { contentText, textResult } from "../shared/util.ts";
 import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
+import { withOperationKey, type CompletionArgument } from "./completion-key.ts";
 import { entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
 import { withReason } from "../shared/reason.ts";
 import { type Item, PRIORITIES } from "./store.ts";
@@ -144,9 +145,11 @@ export function registerBacklogTool(
 						args.op,
 						args.id,
 						args.state ? `→ ${args.state}` : "",
+						/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
 						args.from ? `from ${clip(String(args.from), 20)}` : "",
 						args.title ? `"${clip(String(args.title), 80)}"` : "",
 						args.query ? `"${clip(String(args.query), 80)}"` : "",
+						/* oxlint-enable typescript/no-unnecessary-type-conversion */
 					]
 						.filter(Boolean)
 						.join(" ");
@@ -192,8 +195,9 @@ export function registerBacklogTool(
 		...(plan !== undefined ? { plan } : {}),
 	});
 
-	function run(backlog: Backlog, given: Params) {
-		if (given.op === "list") return runList(backlog, given);
+	function run(backlog: Backlog, args: Omit<Params, "completion"> & { completion?: CompletionArgument }) {
+		if (args.op === "list") return runList(backlog, args);
+		const given: Params = keyed(args);
 		const { store, actor, session } = backlog;
 		// The description tells every role that a claim needs why and goal. A subagent's items have both, set by the
 		// parent, which `updateItem` keeps: drop the child's copies here and say so, rather than refuse a claim the
@@ -326,6 +330,14 @@ function replayText(item: Item, done: Completion): string {
 		return `${head} ${item.ref} has changed since: it is now ${item.state}. Close it with a new operationKey.`;
 	const latest = item.completions.at(-1);
 	return latest && latest.id !== done.id ? `${head} A later completion (${latest.id}) replaced it.` : head;
+}
+
+/** The call with its completion's retry key filled in: an explicit one wins, else derived from item and content. */
+function keyed<P extends { id?: string; completion?: CompletionArgument }>(
+	p: P,
+): Omit<P, "completion"> & { completion?: NonNullable<EntityInput["completion"]> } {
+	const { completion, ...rest } = p;
+	return completion ? { ...rest, completion: withOperationKey(completion, p.id) } : rest;
 }
 
 function entities(p: EntityInput): EntityInput {

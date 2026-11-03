@@ -10,7 +10,7 @@ This workspace owns Octocode's inbound and outbound Agent Client Protocol v1 int
 | `packages/coding-agent` | CLI selection, RPC workers, model execution, native permissions, persistence, external-agent manager and local session API |
 | `packages/mcp`          | MCP configuration, connections and tool registration used by the inbound handoff                                           |
 
-The private workspace and coding-agent form one compilation unit, following the repository's source-workspace convention. `octocodeSource` declares the `acp` mount; `scripts/build-host-sources.mjs` stages these sources under the host, rewrites relative imports, and compiles them into coding-agent's `dist/acp/`. Source maps point back to the original files. Bundled entry points include the same implementation.
+The private workspace and coding-agent form one compilation unit, following the repository's source-workspace convention. `octocodeSource` declares the `acp` mount; coding-agent imports these sources by relative path, so `scripts/build-coding-agent.mjs` bundles them into coding-agent's one bundle file.
 
 Coding-agent declares this workspace as a development dependency and ships its runtime dependencies, including the ACP SDK. The workspace is **not independently publishable or installable**, but its source imports nothing from `packages/coding-agent`: everything it needs from the host arrives through the ports below. Pure helpers it shares live in `packages/common` (`cutText`, `untilAborted`, `PRIVATE_FILE_MODE`, `ACP_WORKER_ENV`) and the external-agent protocol types in `packages/contracts/src/external.ts`.
 

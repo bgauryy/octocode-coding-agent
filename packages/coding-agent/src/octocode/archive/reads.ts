@@ -1,9 +1,10 @@
-import { agentEvents, agents, compactions, sharedAgentDb } from "../agentdb/api.ts";
+import { agentEvents, agents, compactions } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 import { memoryStore, describeMemory, noMemory, memoryToolLine } from "../memory/store.ts";
-import { sessionWorkspace } from "../shared/home/workspace.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 import { matchTexts, HISTORY_BYTES } from "../shared/history-search.ts";
 import { ownArchives } from "../shared/archive.ts";
-import { workspaceHistoryScope } from "../shared/history.ts";
+import { historyScope } from "../shared/history.ts";
 import path from "node:path";
 
 const SOURCES = ["memories", "compactions", "events", "agents", "sessions"] as const;
@@ -72,7 +73,7 @@ export function getRecord(cwd: string, id: string, store = memoryStore(cwd)): st
 		return describeMemory(memory);
 	}
 	const agent = sharedAgentDb();
-	const workspace = sessionWorkspace(cwd);
+	const workspace = registeredWorkspace(cwd, agent).id;
 	if (id.startsWith("event:")) {
 		const event = agentEvents.get(agent.db, workspace, id.slice(6));
 		if (event) return JSON.stringify(event, null, 2);
@@ -83,7 +84,7 @@ export function getRecord(cwd: string, id: string, store = memoryStore(cwd)): st
 		if (row && (row.workspace === workspace || own.has(row.sessionId))) return summaryText(row);
 	} else if (id.startsWith("session:")) {
 		const sessionId = id.slice(8);
-		const history = workspaceHistoryScope(cwd).find((row) => row.id === sessionId);
+		const history = historyScope(cwd).find((row) => row.id === sessionId);
 		const own = new Set(ownArchives().map((folder) => path.basename(path.dirname(folder))));
 		const summaries = compactions
 			.forSession(agent.db, sessionId)
@@ -124,7 +125,7 @@ export async function readRecords(
 	const selected = params.source === "all" || !params.source ? [...SOURCES] : [params.source as DataSource];
 	const limit = Math.min(50, Math.max(1, Math.floor(params.limit ?? 10)));
 	const agent = sharedAgentDb();
-	const workspace = sessionWorkspace(cwd);
+	const workspace = registeredWorkspace(cwd, agent).id;
 	const own = ownArchives().map((folder) => path.basename(path.dirname(folder)));
 	const collected: RecordHit[] = [];
 	const scanned = new Map<DataSource, number>();

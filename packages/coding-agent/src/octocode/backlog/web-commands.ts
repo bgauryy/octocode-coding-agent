@@ -1,6 +1,6 @@
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { BacklogCommand } from "@octocodeai/octocode-contracts/protocol";
-import { USER_AUTHOR } from "../agentdb/api.ts";
+import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { BacklogError, type Actor, type Item } from "./item.ts";
 import type { BacklogStore } from "./store.ts";
 

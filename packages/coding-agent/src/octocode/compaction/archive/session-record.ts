@@ -1,47 +1,28 @@
-import fs from "node:fs";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { transcripts } from "../../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../../config/database.ts";
+import { readWorkspaceIdentity } from "../../../config/workspace.ts";
 import type { ExtensionContext } from "../../../core/features/index.ts";
 import type { RecordMessage, SessionRecord } from "../../shared/archive/record.ts";
-import { repoKey } from "../../shared/home/repo.ts";
+import { registeredWorkspace } from "../../../config/workspace-database.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PARENT_SESSION_ENV } from "../../../../../common/src/env.ts";
 
-/** The most forks a lineage follows back: a chain of session files that points in a circle stops here too. */
-const LINEAGE_DEPTH = 32;
-
-/** The id and source of the session file `file` (its first line, Octocode's header); undefined when it cannot be read. */
-function sessionHeaderOf(file: string): { id: string; parentSession?: string } | undefined {
-	let fd: number | undefined;
+/** Ancestry is recorded when the host forks. Header paths supplied by imported and historical files are never opened here. */
+export function forkLineage(
+	sessions: Pick<ExtensionContext["sessionManager"], "getSessionId" | "getSessionFile" | "getCwd">,
+): string[] {
+	const file = sessions.getSessionFile();
+	if (!file) return [];
 	try {
-		fd = fs.openSync(file, "r");
-		const buffer = Buffer.alloc(64 * 1024);
-		const read = fs.readSync(fd, buffer, 0, buffer.length, 0);
-		const header: unknown = JSON.parse(buffer.subarray(0, read).toString("utf8").split("\n")[0] ?? "");
-		if (!isRecord(header) || header.type !== "session" || typeof header.id !== "string") return undefined;
-		return {
-			id: header.id,
-			...(typeof header.parentSession === "string" ? { parentSession: header.parentSession } : {}),
-		};
+		const workspace = readWorkspaceIdentity(sessions.getCwd());
+		if (!workspace) return [];
+		const agent = sharedAgentDb();
+		registeredWorkspace(workspace.root, agent);
+		return transcripts.lineage(agent.db, sessions.getSessionId(), canonicalPath(file), workspace.id);
 	} catch {
-		return undefined;
-	} finally {
-		if (fd !== undefined) fs.closeSync(fd);
+		return [];
 	}
-}
-
-/**
- * The sessions this one was forked from, nearest first: Octocode's header names the source session's file
- * (`parentSession`), whose own header may name an earlier one. A source that is gone ends the chain.
- */
-export function forkLineage(sessions: Pick<ExtensionContext["sessionManager"], "getHeader">): string[] {
-	const ids: string[] = [];
-	let source = sessions.getHeader()?.parentSession;
-	while (source && ids.length < LINEAGE_DEPTH) {
-		const header = sessionHeaderOf(source);
-		if (!header || ids.includes(header.id)) break;
-		ids.push(header.id);
-		source = header.parentSession;
-	}
-	return ids;
 }
 
 /** A message's text, without thinking, tool calls or images. */
@@ -103,7 +84,7 @@ export function sessionRecordOf(
 	const lastActive = sessions.getBranch().at(-1)?.timestamp;
 	return {
 		session: sessions.getSessionId(),
-		repository: repoKey(cwd).key,
+		repository: registeredWorkspace(cwd).id,
 		workspace: cwd,
 		...(lineage[0] ? { forkedFrom: lineage[0] } : {}),
 		...(parent ? { parent } : {}),

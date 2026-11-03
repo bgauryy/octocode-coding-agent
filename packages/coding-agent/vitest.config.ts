@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig, mergeConfig } from "vitest/config";
 import baseConfig from "../../vitest.base.ts";
 
@@ -9,6 +10,8 @@ export default mergeConfig(
 			exclude: ["test/octocode/**", "**/node_modules/**"],
 			environment: "node",
 			setupFiles: ["test/setup-env.ts"],
+			// Absolute: the common and mcp configs inherit this config from their own roots.
+			globalSetup: [fileURLToPath(new URL("test/home-guard.global.ts", import.meta.url))],
 			testTimeout: 30000,
 			// Tests run offline by default; opt in with allowNetwork() from test/test-network-env.ts.
 			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MODELS_DEV: "0", OCTOCODE_API: "0" },

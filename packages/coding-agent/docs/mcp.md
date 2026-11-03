@@ -109,7 +109,7 @@ The host supports stdio and Streamable HTTP, with stateful MCP through `2025-11-
 
 ## Let the model manage servers
 
-The agent's `mcp` tool can inspect tools and connection state, connect/restart/stop a server, or temporarily add/remove one for its session. Adding requires user confirmation and does not write configuration. Child agents use separate connections. [Management and permission details](mcp-reference.md#model-management-and-permissions).
+The agent's `mcp` tool can list connection state, inspect tools, and restart (also starting a stopped or failed server) or stop a server for its session, without writing configuration. Adding and removing servers stays with `/mcp` and `octocode mcp`. Child agents use separate connections. [Management and permission details](mcp-reference.md#model-management-and-permissions).
 
 ## Catalog caching
 

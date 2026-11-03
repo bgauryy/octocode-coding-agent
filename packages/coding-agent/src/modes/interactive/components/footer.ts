@@ -1,9 +1,9 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { type Component, ELLIPSIS, SEPARATOR, truncateToWidth } from "@octocodeai/octocode-tui";
+import { type Component, ELLIPSIS, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ContextUsage } from "../../../core/features/types.ts";
-import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import type { ReadonlyFooterDataProvider, StatusEntry } from "../../../core/footer-data-provider.ts";
 import {
 	addUsageToTotals,
 	createUsageTotals,
@@ -205,14 +205,25 @@ export class FooterComponent implements Component {
 		if (githubStatus) lines.push(truncateToWidth(paintStatus(githubStatus, theme), width, ELLIPSIS));
 
 		// Add extension statuses on a single line, sorted by key alphabetically
-		const extensionStatuses =
+		const extensionStatuses: ReadonlyMap<string, StatusEntry> =
 			data?.statuses ??
 			new Map([...this.footerData.getExtensionStatuses()].map(([key, text]) => [key, { text }] as const));
 		if (extensionStatuses.size > 0) {
-			const sortedStatuses = Array.from(extensionStatuses.entries())
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([, status]) => paintStatus({ ...status, text: styledLine(status.text) }, theme));
-			const statusLine = sortedStatuses.join(" ");
+			const statuses = Array.from(extensionStatuses.entries()).sort(([a], [b]) => a.localeCompare(b));
+			const renderStatuses = () =>
+				statuses.map(([, status]) => paintStatus({ ...status, text: styledLine(status.text) }, theme)).join(" ");
+			let statusLine = renderStatuses();
+			if (visibleWidth(statusLine) > width) {
+				// Put actionable failures ahead of routine status when the terminal cuts this line.
+				const priority = (tone?: string): number => {
+					if (tone === "error") return 0;
+					if (tone === "warning") return 1;
+					if (tone === "accent") return 2;
+					return tone === "muted" || tone === "dim" ? 4 : 3;
+				};
+				statuses.sort(([a, left], [b, right]) => priority(left.tone) - priority(right.tone) || a.localeCompare(b));
+				statusLine = renderStatuses();
+			}
 			// Truncate to terminal width with dim ellipsis for consistency with footer style
 			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", ELLIPSIS)));
 		}

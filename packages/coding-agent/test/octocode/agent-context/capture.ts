@@ -27,6 +27,7 @@ import type { SlashCommandInfo } from "../../../src/core/slash-commands.ts";
 import { writeRolePrompt } from "../../../src/octocode/instructions/role.ts";
 import { withIdentity } from "../../../src/octocode/instructions/task.ts";
 import { shortPath } from "../../../src/octocode/shared/format.ts";
+import { bundledSkillDirs } from "../../../src/octocode/skills.ts";
 import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.ts";
 import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
@@ -83,7 +84,7 @@ export function fixture(): Fixture {
 	const home = dir("home");
 	const agentDir = dir("agent");
 	const octocodeHome = dir("octocode-home");
-	const scratch = path.join(cwd, ".octocode", "tmp", "agents", "child-example");
+	const scratch = path.join(cwd, ".octa", "code", "temp", "agents", "child-example");
 	fs.mkdirSync(scratch, { recursive: true });
 	fs.writeFileSync(path.join(cwd, "AGENTS.md"), PROJECT_INSTRUCTIONS);
 	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {} }));
@@ -296,7 +297,11 @@ async function captureMain(): Promise<AgentContext> {
  * (`subagentProcessEnv`), the tools, extensions and skills through its command line (`buildAgentArgs`), the skills
  * through the snapshot file the parent wrote, and the task through `childTaskInput` and `withIdentity`.
  */
-async function captureChild(name: string, roleName: string | undefined): Promise<AgentContext> {
+export async function captureChild(
+	name: string,
+	roleName: string | undefined,
+	parent: { task: string; goal: string } = { task: CHILD_TASK, goal: CHILD_GOAL },
+): Promise<AgentContext> {
 	const fx = fixture();
 	try {
 		const profiles = loadProfiles(fx.cwd, fx.home, false, {});
@@ -310,6 +315,8 @@ async function captureChild(name: string, roleName: string | undefined): Promise
 				agentDir: fx.agentDir,
 				settingsManager: SettingsManager.inMemory({}),
 				disabledFeatures: ["mcp", "llama.cpp"],
+				// The core skills a real parent gets from the Octocode extension (`registerSkills`), so a role can name one.
+				additionalSkillPaths: bundledSkillDirs(),
 				noPromptTemplates: true,
 				noThemes: true,
 			});
@@ -328,7 +335,7 @@ async function captureChild(name: string, roleName: string | undefined): Promise
 		const identity: Identity = {
 			id: "child-example",
 			role: profile?.name ?? GENERAL_PROFILE,
-			goal: CHILD_GOAL,
+			goal: parent.goal,
 			parentId: "parent-example",
 			parentSession: "parent-session-example",
 			scratch: fx.scratch,
@@ -339,7 +346,7 @@ async function captureChild(name: string, roleName: string | undefined): Promise
 		const env = subagentProcessEnv(profile, baseEnv(fx), identity, undefined, rolePromptFile, snapshotFile);
 		const skillText = skillPlan.inTask ? taskSkillText(snapshot, skillPlan.inline) : "";
 		const task = withIdentity(
-			childTaskInput(CHILD_TASK, { referenced: "", browserMode: profile?.headless, skillText }),
+			childTaskInput(parent.task, { referenced: "", browserMode: profile?.headless, skillText }),
 			identity,
 		);
 		const parsed = parseArgs(

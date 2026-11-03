@@ -1,8 +1,14 @@
 import type { ImageDimensions } from "./types.ts";
 
+/** Fixed-header formats need only the first few decoded bytes. Keep the full decoder for noncanonical input. */
+function decodeHeader(base64Data: string, bytes: number): Buffer {
+	const prefix = base64Data.slice(0, Math.ceil(bytes / 3) * 4);
+	return /[^A-Za-z0-9+/_=-]/.test(prefix) ? Buffer.from(base64Data, "base64") : Buffer.from(prefix, "base64");
+}
+
 export function getPngDimensions(base64Data: string): ImageDimensions | null {
 	try {
-		const buffer = Buffer.from(base64Data, "base64");
+		const buffer = decodeHeader(base64Data, 24);
 
 		if (buffer.length < 24) {
 			return null;
@@ -66,13 +72,13 @@ export function getJpegDimensions(base64Data: string): ImageDimensions | null {
 
 export function getGifDimensions(base64Data: string): ImageDimensions | null {
 	try {
-		const buffer = Buffer.from(base64Data, "base64");
+		const buffer = decodeHeader(base64Data, 10);
 
 		if (buffer.length < 10) {
 			return null;
 		}
 
-		const sig = buffer.slice(0, 6).toString("ascii");
+		const sig = buffer.subarray(0, 6).toString("ascii");
 		if (sig !== "GIF87a" && sig !== "GIF89a") {
 			return null;
 		}
@@ -88,19 +94,19 @@ export function getGifDimensions(base64Data: string): ImageDimensions | null {
 
 export function getWebpDimensions(base64Data: string): ImageDimensions | null {
 	try {
-		const buffer = Buffer.from(base64Data, "base64");
+		const buffer = decodeHeader(base64Data, 30);
 
 		if (buffer.length < 30) {
 			return null;
 		}
 
-		const riff = buffer.slice(0, 4).toString("ascii");
-		const webp = buffer.slice(8, 12).toString("ascii");
+		const riff = buffer.subarray(0, 4).toString("ascii");
+		const webp = buffer.subarray(8, 12).toString("ascii");
 		if (riff !== "RIFF" || webp !== "WEBP") {
 			return null;
 		}
 
-		const chunk = buffer.slice(12, 16).toString("ascii");
+		const chunk = buffer.subarray(12, 16).toString("ascii");
 		if (chunk === "VP8 ") {
 			if (buffer.length < 30) return null;
 			const width = buffer.readUInt16LE(26) & 0x3fff;

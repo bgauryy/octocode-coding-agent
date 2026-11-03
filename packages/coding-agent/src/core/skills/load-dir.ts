@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import ignore from "ignore";
-import { basename, dirname, join, relative, resolve, sep } from "path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import { addIgnoreRules, type IgnoreMatcher, toPosixPath } from "../../utils/ignore.ts";
 import { claudeConfigDir } from "../../utils/host-config.ts";
@@ -16,6 +16,15 @@ const MAX_NAME_LENGTH = 64;
 
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
+
+/** This application's id in a skill's `metadata.excluded-hosts`, a space-separated list (Agent Skills metadata is a string map). */
+const SKILL_HOST_ID = "octocode-code";
+
+function excludesThisHost(metadata: unknown): boolean {
+	if (!metadata || typeof metadata !== "object") return false;
+	const hosts = (metadata as Record<string, unknown>)["excluded-hosts"];
+	return typeof hosts === "string" && hosts.split(/\s+/).includes(SKILL_HOST_ID);
+}
 
 /**
  * Validate skill name per Agent Skills spec.
@@ -241,6 +250,8 @@ export function loadSkillFromFile(
 		}
 		return { skill: null, diagnostics };
 	}
+	// A skill written for other hosts (an installer guide for other clients) names this one in `metadata.excluded-hosts`.
+	if (excludesThisHost(frontmatter.metadata)) return { skill: null, diagnostics };
 
 	// Claude reads only `<name>/SKILL.md`; other Markdown in a Claude root (a README, notes) is not described by its first line.
 	const description =

@@ -6,21 +6,18 @@ Part of the [native feature guide](native-features.md).
 
 ## Workspace notes
 
-Notes live in the existing agent database selected by `OCTOCODE_AGENT_DB`. New notes default to `workspace`: the canonical checkout root, or the parent's checkout inherited by an isolated child. Independent worktrees have separate workspace notes. Outside Git, the starting directory supplies the workspace. No marker file is needed.
+Notes live in the agent database selected by `OCTOCODE_AGENT_DB`. New notes belong to the workspace identified by `.octa/code/workspace/id`. Every Git worktree has its own workspace, including a child agent's isolated worktree. The ID follows a moved checkout.
 
-Existing `project` notes stay shared across the repository's worktrees; `global` notes remain available everywhere. Reads with scope `all` see this workspace, this repository's project notes and global notes. Moving a workspace does not automatically transfer its notes. IDs remain `M<n>`.
+Use `project` to share a note across a repository's worktrees or `global` to make it available everywhere. Reads with scope `all` see this workspace, its repository's project notes and global notes. Workspace notes reference the workspace catalog by ID. Memory IDs use `M<n>`.
 
-For compatibility, workspace notes use a reserved `workspace:v1:<encoded-root>` repository key under the existing database constraint. Older builds cannot see or change them through their memory tool. Existing rows are not rewritten.
-
-Kinds are `preference`, `fact`, `decision`, `gotcha`, `procedure` and `reference`. `reference` retains its existing additive `extended_kind` representation. A pinned note is eligible for automatic injection in its scope; pin only short, durable knowledge.
+Kinds are `preference`, `fact`, `decision`, `gotcha`, `procedure` and `reference`. Pin short, durable notes to make them eligible for automatic injection.
 
 ## Agent calls
 
-Every call includes `goal` and `reason`. Use `op: list | search | get | set | delete` and `source: all | sessions | compactions | memories | agents | events`. Explicit reads default to `all`; set/delete require `source: memories`.
+Every call includes `reason` (a recorded call that still carries the former `goal` field is read as before; the field is ignored). Use `op: list | search | get | set | delete` and `source: all | sessions | compactions | memories | agents | events`. Explicit reads default to `all`; set/delete require `source: memories`.
 
 ```json
 {
-	"goal": "Remember the deployment preference",
 	"reason": "The user requested it",
 	"op": "set",
 	"source": "memories",
@@ -33,7 +30,7 @@ Use `id: "M1"` with set to edit a note, with get to read it, or with delete to r
 
 Global and pinned changes keep the existing permission check: manual/workspace modes ask; full mode allows them. Headless sessions cannot satisfy an approval request. Plan mode and subagents may read but cannot save or delete notes. Secret rejection, duplicate detection, source-provenance checks and the warning for long bodies remain in place. History and notes are data, not instructions.
 
-Legacy Archive calls without op/source retain query, keywords, file, line, page and error-analysis behavior. Both call forms search the current workspace and inherited session history (fork sources and parent); other workspaces in the same repository are excluded unless inherited. Error analysis reads original transcripts; expiration of an archive copy does not erase those transcripts. Update tool selectors and RPC scripts from `memory` to `archive`, adding source and goal. Historical tool results remain readable.
+Archive calls without op/source retain query, keywords, file, line, page and error-analysis behavior. Both call forms search the current workspace and inherited session history (fork sources and parent); other workspaces in the same repository are excluded unless inherited. Error analysis reads original transcripts; expiration of an archive copy does not erase those transcripts. Update tool selectors and RPC scripts from `memory` to `archive`, adding `reason` and `source` for record operations. The former `goal` argument is ignored when recorded calls replay. Historical tool results remain readable.
 
 ## User commands and automatic recall
 
@@ -47,6 +44,6 @@ Before each prompt, automatic recall considers pinned and relevant notes. Existi
 
 Built-in hooks record init, create, update, delete and committed compaction events in the same database. Each activation, including resume and reload, receives its own init event. Repeated delivery is idempotent. Registration IDs distinguish reused agent names; heartbeat counters and activity text do not generate audit events. Nonpersistent agents do not produce automatic durable events.
 
-`.octocode/agents.txt` is a generated JSON Lines view of the latest 50 workspace events. Each line has time, event id, name, parentId, sessionId, type, data and schema version. Older events remain in the database and available through Archive. The first writer binds the view to its configured database via data.storeKey; a different database or malformed file is refused. Remove this generated file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused. Projection failure does not undo database commits.
+`.octa/code/agents.txt` is a generated JSON Lines view of the latest 50 workspace events. Each line has time, event id, name, parentId, sessionId, type, data and schema version. Older events remain in the database and available through Archive. The first writer binds the view to its configured database via data.storeKey; a different database or malformed file is refused. Remove this generated file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused. Projection failure does not undo database commits.
 
 Complete compaction summaries survive indefinitely. Detailed archive copies expire according to `OCTOCODE_CLEANUP_DAYS` (default 30, zero disables), measured from committed compaction time, not reads, resume or file mtime. A copy is removed only after its full summary and trustworthy timestamp have been retained. Unverifiable legacy copies stay. Forks reference source compactions; repair never recreates expired copies. Original transcripts remain available for resume and branching. `--no-session` skips automatic lifecycle/compaction persistence; explicitly saving a memory retains its existing behavior.

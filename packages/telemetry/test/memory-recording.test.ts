@@ -104,6 +104,7 @@ describe("InMemoryTelemetryContext span behavior", () => {
 		).rejects.toThrow("bad input");
 		await expect(
 			telemetry.startSpan({ name: "plain" }, () => {
+				// oxlint-disable-next-line typescript/only-throw-error -- a non-Error rejection value is what this test records
 				throw "text";
 			}),
 		).rejects.toBe("text");

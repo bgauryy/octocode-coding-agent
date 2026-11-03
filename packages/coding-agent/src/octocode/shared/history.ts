@@ -1,12 +1,13 @@
-import { sessionWorkspace } from "./home/workspace.ts";
+import { readWorkspaceIdentity } from "../../config/workspace.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
-import { PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
+import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../../common/src/env.ts";
 import { HISTORY_BYTES, matchHistory } from "./history-search.ts";
-import { sessionsRoot } from "./home.ts";
+import { sessionsRoot, sessionTempRoot } from "./home.ts";
 import { RECORD_FILE, type RecordHeader, readRecordHeader } from "./archive/record.ts";
-import { canonicalPath, isWithin, repoKey } from "./home/repo.ts";
+import { canonicalPath, isWithin } from "./home/repo.ts";
 
 /**
  * The history a session may read: archives of compacted messages and session records (`shared/archive.ts`). Its own
@@ -20,6 +21,8 @@ type Relation = "this session" | "forked from" | "parent session" | "same reposi
 export interface HistorySession {
 	/** The session's folder name (its id as a folder name). */
 	id: string;
+	/** Scope verified from the active checkout or the explicitly inherited parent checkout. */
+	workspaceId: string;
 	/** Its archive folder. */
 	folder: string;
 	relation: Relation;
@@ -41,10 +44,10 @@ function archiveOwner(file: string, env: NodeJS.ProcessEnv): { id: string; folde
  * whose record names the repository of `cwd`. Any other path, another repository's archive included, is not.
  */
 export function readableHistory(file: string, cwd: string, env: NodeJS.ProcessEnv = process.env): boolean {
+	if (ownArchives(env).some((dir) => isWithin(canonicalPath(file), canonicalPath(dir)))) return true;
 	const owner = archiveOwner(file, env);
 	if (!owner) return false;
-	if (ownArchives(env).some((dir) => canonicalPath(dir) === owner.folder)) return true;
-	return readRecordHeader(owner.folder)?.repository === repoKey(cwd).key;
+	return readRecordHeader(owner.folder)?.repository === registeredWorkspace(cwd).id;
 }
 
 /**
@@ -53,13 +56,17 @@ export function readableHistory(file: string, cwd: string, env: NodeJS.ProcessEn
  * repository's session, are not.
  */
 export function readableSessionFolder(file: string, cwd: string, env: NodeJS.ProcessEnv = process.env): boolean {
-	const root = canonicalPath(sessionsRoot(env));
 	const real = canonicalPath(file);
-	if (!isWithin(real, root)) return false;
+	if (ownArchives(env).some((dir) => isWithin(real, canonicalPath(path.dirname(dir))))) return true;
+	const root = [sessionsRoot(env), sessionTempRoot(env)]
+		.map((dir) => canonicalPath(dir))
+		.find((dir) => isWithin(real, dir));
+	if (!root) return false;
 	const [id] = path.relative(root, real).split(path.sep);
 	if (!id) return false;
-	if (ownArchives(env).some((dir) => path.basename(path.dirname(dir)) === id)) return true;
-	return readRecordHeader(path.join(root, id, "archive"))?.repository === repoKey(cwd).key;
+	const folder = archiveFolder(id, env);
+	if (ownArchives(env).includes(folder)) return true;
+	return readRecordHeader(folder)?.repository === registeredWorkspace(cwd).id;
 }
 
 /**
@@ -68,6 +75,7 @@ export function readableSessionFolder(file: string, cwd: string, env: NodeJS.Pro
  * with neither a record nor a segment is left out.
  */
 export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env): HistorySession[] {
+	const key = registeredWorkspace(cwd).id;
 	const seen = new Set<string>();
 	const sessions: HistorySession[] = [];
 	const add = (folder: string, relation: Relation, record = readRecordHeader(folder)) => {
@@ -75,7 +83,10 @@ export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env):
 		if (seen.has(id)) return;
 		seen.add(id);
 		const segments = readSegments(id, env);
-		if (record || segments.length > 0) sessions.push({ id, folder, relation, ...(record ? { record } : {}), segments });
+		if (!record && !segments.length) return;
+		const parentRoot = relation === "parent session" ? env[TEAM_WORKSPACE_ENV] : undefined;
+		const workspaceId = parentRoot && path.isAbsolute(parentRoot) ? registeredWorkspace(parentRoot).id : key;
+		sessions.push({ id, workspaceId, folder, relation, ...(record ? { record } : {}), segments });
 	};
 	const byId = (id: string | undefined, relation: Relation) => {
 		if (!id) return;
@@ -88,7 +99,7 @@ export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env):
 	add(archiveFolder(undefined, env), "this session");
 	for (const id of sessionLineage()) byId(id, "forked from");
 	byId(env[PARENT_SESSION_ENV]?.trim(), "parent session");
-	const key = repoKey(cwd).key;
+
 	const root = sessionsRoot(env);
 	let names: string[] = [];
 	try {
@@ -99,28 +110,22 @@ export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env):
 	const others = names.flatMap((name) => {
 		if (seen.has(name)) return [];
 		const folder = path.join(root, name, "archive");
+		if (canonicalPath(folder) !== path.join(canonicalPath(root), name, "archive")) return [];
 		const record = readRecordHeader(folder);
-		return record?.repository === key ? [{ folder, record }] : [];
+		return record?.repository === key &&
+			(!fs.existsSync(record.workspace) || readWorkspaceIdentity(record.workspace)?.id === key)
+			? [{ folder, record }]
+			: [];
 	});
 	others.sort((a, b) => (b.record.lastActive ?? "").localeCompare(a.record.lastActive ?? ""));
 	for (const { folder, record } of others) add(folder, "same repository", record);
 	return sessions;
 }
 
-/** Workspace records plus inherited lineage; all Archive calls share this policy. */
-export function workspaceHistoryScope(cwd: string): HistorySession[] {
-	const workspace = sessionWorkspace(cwd);
-	return historyScope(cwd).filter(
-		(session) =>
-			session.relation !== "same repository" ||
-			(session.record?.workspace && sessionWorkspace(session.record.workspace, {}) === workspace),
-	);
-}
-
 /** One file of a session's history: its record, or a segment. */
 export interface HistoryFile {
 	file: string;
-	session: HistorySession;
+	session: Pick<HistorySession, "id" | "relation">;
 	/** `record`, or `segment <n> · <TL;DR>`. */
 	label: string;
 }
@@ -219,7 +224,7 @@ const readLines = (file: string): string[] | undefined => {
 	const tooLarge = () =>
 		new Error("Archive read exceeds 32 MiB; split the archive into smaller files before reading it.");
 	try {
-		fd = fs.openSync(file, "r");
+		fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
 		const stat = fs.fstatSync(fd);
 		if (!stat.isFile()) return undefined;
 		if (stat.size > HISTORY_BYTES) throw tooLarge();

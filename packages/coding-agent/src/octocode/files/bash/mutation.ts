@@ -8,7 +8,7 @@ import { recordMutation } from "../feedback/revisions.ts";
 
 /**
  * Whether `command` changes the workspace, as far as the shell guard's parse shows (`permission/shell/mutation.ts`): a
- * write inside the repository (scratch under `.octocode/tmp/` aside), a change with no path to name (`git commit`,
+ * write inside the repository (scratch under `.octa/code/temp/` aside), a change with no path to name (`git commit`,
  * `sed -i`, `npm install`), or a write it could not resolve. Writes elsewhere (`/tmp`, `~`) do not count. A command whose
  * effect no parse shows (`node script.js`) is not seen, so a receipt can stay fresh after one.
  */

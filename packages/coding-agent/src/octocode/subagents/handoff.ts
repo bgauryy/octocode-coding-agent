@@ -226,7 +226,6 @@ export class ReportQueue {
 			} catch {
 				// The session ended before the subagent finished: the report waits for the next start.
 				this.retain(report);
-				return;
 			}
 		});
 		this.recorded();

@@ -2,13 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { type CompactionEntry } from "../../core/session-manager.ts";
-import { type AgentDb, agentEvents, compactions } from "../agentdb/api.ts";
+import { type AgentDb, agentEvents, compactions, transcripts } from "../../../../db/src/api.ts";
 import { archiveFolder, segmentFiles } from "../shared/archive.ts";
 import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 
 export function saveCompaction(
 	agent: AgentDb,
-	workspace: string,
+	cwd: string,
 	sessionId: string,
 	entry: CompactionEntry,
 	options: {
@@ -21,11 +22,13 @@ export function saveCompaction(
 		detail?: { n: number; name: string } | null;
 	} = {},
 ): void {
+	const workspace = registeredWorkspace(cwd, agent).id;
 	const known = compactions.get(agent.db, sessionId, entry.id);
+	if (known && known.workspace !== workspace) throw new Error("Compaction belongs to another workspace");
 	const segment =
 		options.detail !== undefined
 			? options.detail
-			: segmentFiles(archiveFolder(sessionId, options.env)).find(({ name }) => name.endsWith(`-${entry.id}.md`));
+			: segmentFiles(archiveFolder(sessionId, options.env, cwd)).find(({ name }) => name.endsWith(`-${entry.id}.md`));
 	if (
 		known?.originVerified &&
 		known.summary === entry.summary &&
@@ -36,6 +39,7 @@ export function saveCompaction(
 	const committedAt = Number.isFinite(timestamp) ? timestamp : null;
 	const verified = options.verified ?? true;
 	agent.transaction(() => {
+		transcripts.bind(agent.db, sessionId, workspace);
 		const member = options.agentId ? agentEvents.member(agent.db, options.agentId) : undefined;
 		compactions.save(agent.db, {
 			workspace,
@@ -51,7 +55,7 @@ export function saveCompaction(
 				...(options.transcript ? { transcript: options.transcript } : {}),
 				...(segment ? { segment: segment.n } : {}),
 			},
-			detailFile: segment ? path.join(archiveFolder(sessionId, options.env), segment.name) : null,
+			detailFile: segment ? path.join(archiveFolder(sessionId, options.env, cwd), segment.name) : null,
 			detailState: segment ? "present" : "missing",
 		});
 		if (verified && committedAt !== null)
@@ -85,10 +89,11 @@ export async function writeSummaryLibrary(
 	agent: AgentDb,
 	sessionId: string,
 	env: NodeJS.ProcessEnv = process.env,
+	cwd?: string,
 ): Promise<void> {
 	const rows = compactions.forSession(agent.db, sessionId);
 	if (!rows.length) return;
-	const folder = archiveFolder(sessionId, env);
+	const folder = archiveFolder(sessionId, env, cwd);
 	await fs.promises.mkdir(folder, { recursive: true, mode: 0o700 });
 	const content = [
 		"# Compaction archive",

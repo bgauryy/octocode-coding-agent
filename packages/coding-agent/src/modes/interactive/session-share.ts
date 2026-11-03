@@ -1,8 +1,9 @@
+import { runtimeTempDir } from "../../config/runtime-paths.ts";
 import { getApplicationPort } from "../../core/application/index.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
+
 import * as path from "node:path";
 import type { Container, EditorComponent, TUI } from "@octocodeai/octocode-tui";
 import { getShareViewerUrl } from "../../config.ts";
@@ -73,7 +74,7 @@ function runGh(args: string[], onSpawn?: (proc: ChildProcess) => void): Promise<
 
 /** Share the current session as a secret GitHub gist: unlisted, but readable by anyone who has the link. */
 export async function shareSession(context: SessionShareContext): Promise<void> {
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-share-"));
+	const tempDir = fs.mkdtempSync(path.join(runtimeTempDir(), "octocode-share-"));
 	const htmlFile = path.join(tempDir, "session.html");
 
 	try {

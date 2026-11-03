@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";

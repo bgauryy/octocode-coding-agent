@@ -1,4 +1,4 @@
-import { type Db, deliveries, num } from "../../agentdb/api.ts";
+import { type Db, deliveries, num } from "../../../../../db/src/api.ts";
 import type { Ask } from "../asks.ts";
 import { type DeadLetter, type Message, type SendOptions, toAsk, toMessage, toTraffic, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
@@ -12,6 +12,7 @@ export type SignProof = (id: number, recipient: string) => string | undefined;
 export function insertMessage(
 	db: Db,
 	team: string,
+	workspaceId: string,
 	/** The recipients that can still read mail (`TeamStore.reachable`), read in the same transaction. */
 	live: Set<string>,
 	from: string,
@@ -31,7 +32,7 @@ export function insertMessage(
 		if (question?.replyRequired && deliveries.holdsOpen(db, options.replyTo, from)) asker = question.from;
 		completesReply = question !== undefined && recipients.includes(question.from);
 	}
-	const id = deliveries.insertMessage(db, team, from, body, options.replyRequired, options.replyTo, now);
+	const id = deliveries.insertMessage(db, team, workspaceId, from, body, options.replyRequired, options.replyTo, now);
 	const woken: string[] = [];
 	for (const recipient of recipients) {
 		const wake = options.interrupt

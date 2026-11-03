@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../src/core/http-dispatcher.ts";
 import { type Settings, SettingsManager } from "../src/core/settings-manager.ts";
@@ -414,6 +414,24 @@ describe("SettingsManager", () => {
 
 			expect(SettingsManager.create(projectDir, agentDir).getCacheWarmingMode()).toBe("off");
 			expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"))).toEqual({ cacheWarming: "off" });
+		});
+	});
+
+	describe("retention", () => {
+		it("warns about an invalid global value and about a project file that sets it", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ retention: { days: -1, sessionDays: 90 } }));
+			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ retention: { days: 5 } }));
+			const warnings = SettingsManager.create(projectDir, agentDir, { projectTrusted: true })
+				.drainWarnings()
+				.map(({ scope, message }) => `${scope}: ${message}`);
+			expect(warnings).toHaveLength(2);
+			expect(warnings[0]).toContain('global: Setting "retention.days" must be a whole number');
+			expect(warnings[1]).toContain('project: Setting "retention" is global only');
+		});
+
+		it("accepts valid values without a warning", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ retention: { days: 0, sessionDays: 365 } }));
+			expect(SettingsManager.create(projectDir, agentDir).drainWarnings()).toEqual([]);
 		});
 	});
 

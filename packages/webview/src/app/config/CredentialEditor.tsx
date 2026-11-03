@@ -1,6 +1,6 @@
 import type { ConfigCredentialCommand, ProviderCredentialStatus } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { type FormEvent, useId, useState } from "react";
+import { type SubmitEvent, useId, useState } from "react";
 import { Button } from "../ui/primitives.tsx";
 
 export type SaveCredential = (command: ConfigCredentialCommand) => Promise<void>;
@@ -54,7 +54,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 		}
 	}
 
-	const submit = (event: FormEvent) => {
+	const submit = (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!ready) return;
 		void apply({

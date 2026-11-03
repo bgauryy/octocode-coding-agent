@@ -20,7 +20,7 @@ import {
 	type ApplicationOperationArgs,
 	type ApplicationOperationResult,
 } from "@octocodeai/octocode-contracts";
-import type { AgentSessionEvent, AgentSessionEventListener } from "../agent-session/types.ts";
+import type { AgentSessionEvent } from "../agent-session/types.ts";
 import { type ApplicationOperations, type ApplicationSession, invokeOperation } from "./session-port.ts";
 import { commandImages, dispatchCommand, invokeCommand } from "./service/commands.ts";
 import { ApplicationTranscript } from "./transcript.ts";
@@ -29,7 +29,7 @@ import { lifecycleEvent } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
 import { ApplicationActivities } from "./service/activities.ts";
-import { ApplicationDelivery, type ListenerErrorHandler } from "./service/delivery.ts";
+import { ApplicationDelivery, type ListenerErrorHandler, type NativeListener } from "./service/delivery.ts";
 import { ContextSource } from "./service/context-source.ts";
 import { cloneDisplay } from "./normalize.ts";
 import {
@@ -48,7 +48,7 @@ type Args<K extends Method> = ApplicationOperationArgs<ApplicationOperations, K>
 type Result<K extends Method> = ApplicationOperationResult<ApplicationOperations, K>;
 export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, ApplicationOperations> {
 	private readonly state = createApplicationState();
-	private readonly transcript = new ApplicationTranscript(this.state);
+	private readonly transcript = new ApplicationTranscript(this.state, () => this.session.sessionManager);
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
 	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());
 	private readonly source = new ContextSource();
@@ -307,7 +307,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			if (!this.disposed) this.checkSession();
 		});
 	}
-	subscribeNative(listener: AgentSessionEventListener, onError?: ListenerErrorHandler): () => void {
+	subscribeNative(listener: NativeListener, onError?: ListenerErrorHandler): () => void {
 		this.attach();
 		return this.delivery.subscribeNative(listener, onError);
 	}

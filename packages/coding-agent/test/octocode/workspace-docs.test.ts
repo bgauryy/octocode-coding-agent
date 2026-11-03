@@ -1,11 +1,11 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, expect, it } from "vitest";
 import { DocsIndexSchema } from "@octocodeai/octocode-contracts/docs";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { docKind, readDocFile, readDocsIndex } from "../../src/octocode/workspace/docs.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 
@@ -33,6 +33,23 @@ function docsWorkspace(): string {
 	write(".hidden/secret.md", "# Hidden\n");
 	return root;
 }
+
+it("exposes runtime Markdown exports and opted-in agent scratch while keeping private session data out", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-docs-runtime-"));
+	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
+	const state = path.join(root, ".octa", "code");
+	fs.mkdirSync(path.join(state, "temp", "agents"), { recursive: true });
+	fs.mkdirSync(path.join(state, "session-data"), { recursive: true });
+	fs.writeFileSync(path.join(state, "backlog.md"), "# Board");
+	fs.writeFileSync(path.join(state, "temp", "agents", "report.md"), "# Handoff");
+	fs.writeFileSync(path.join(state, "session-data", "private.md"), "# Private");
+	expect(readDocsIndex(root).docs.map((doc) => doc.path)).toEqual([".octa/code/backlog.md"]);
+	const handoff = ".octa/code/temp/agents/report.md";
+	expect(readDocsIndex(root, true).docs.map((doc) => doc.path)).toContain(handoff);
+	expect(readDocFile(root, handoff)).toBeUndefined();
+	expect(readDocFile(root, handoff, true)?.markdown).toBe("# Handoff");
+	expect(readDocFile(root, ".octa/code/session-data/private.md", true)).toBeUndefined();
+});
 
 it("lists every Markdown document with kind, title, status and date, except skills/ and tmp/", () => {
 	const root = docsWorkspace();
@@ -88,7 +105,7 @@ it("serves the library and the Mermaid script only through the authenticated boa
 	const db = openAgentDb(path.join(repoRoot, "db"));
 	cleanup.push(() => db.close());
 	const web = await startWorkspaceWeb({
-		store: new BacklogStore(() => db, "repo"),
+		store: fixtureBacklog(() => db, "repo"),
 		actor: { id: "parent" },
 		session: "session",
 		repoName: "repo",

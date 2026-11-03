@@ -27,7 +27,7 @@ function projectEdit(query: Record<string, unknown>, path: string, snapshots: Pa
 	try {
 		return snapshots.projectEdit(query, path, snapshots.cwd);
 	} catch (error) {
-		throw new Error(`${EDIT_PROJECTION_ERROR} (${errorMessage(error)})`);
+		throw new Error(`${EDIT_PROJECTION_ERROR} (${errorMessage(error)})`, { cause: error });
 	}
 }
 

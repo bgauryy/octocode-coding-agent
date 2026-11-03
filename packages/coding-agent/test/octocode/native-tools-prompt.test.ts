@@ -46,7 +46,7 @@ describe("native tools and the system prompt", () => {
 		for (const tool of tools) expect(section, `<tools> lists ${tool.name}`).toContain(`\n- ${tool.name}: `);
 	});
 
-	it("declares neither `debug` nor `ollama` unless the user names it", async () => {
+	it("declares bash by default and points its line at the search and read tools", async () => {
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
@@ -54,8 +54,8 @@ describe("native tools and the system prompt", () => {
 		Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const tools = fake.api.getAllTools() as Registered[];
-		expect(tools.find((tool) => tool.name === "ollama")?.defaultActive).toBe(false);
-		expect(tools.find((tool) => tool.name === "debug")?.defaultActive).toBe(false);
+		// The local-model tool was removed on 2026-11-02; nothing registers it.
+		expect(tools.find((tool) => tool.name === "ollama")).toBeUndefined();
 		// The bash line says where search and reads go, so the habit of `rg`/`cat` in bash has a counter-rule in every session.
 		expect(tools.find((tool) => tool.name === "bash")?.promptSnippet).toMatch(
 			/search and read code with the declared search and read tools/,
@@ -67,16 +67,6 @@ describe("native tools and the system prompt", () => {
 				tools: new Map(tools.map((tool) => [tool.name, { definition: tool }])),
 			} as never,
 		]);
-		expect(names).not.toContain("debug");
-		expect(
-			defaultToolNames([
-				{
-					owner: "native",
-					sourceInfo: { owner: "native", path: "<inline:octocode>" },
-					tools: new Map(tools.map((tool) => [tool.name, { definition: tool }])),
-				} as never,
-			]),
-		).toContain("bash");
-		expect(names).not.toContain("ollama");
+		expect(names).toContain("bash");
 	});
 });

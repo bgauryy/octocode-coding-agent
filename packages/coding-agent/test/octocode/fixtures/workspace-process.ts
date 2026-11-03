@@ -1,12 +1,12 @@
-import { openAgentDb } from "../../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../../src/octocode/backlog/store.ts";
+import { fixtureBacklog } from "../backlog-fixture.ts";
+import { openAgentDb } from "../../../src/config/database.ts";
 import { sharedWorkspaceWeb } from "../../../src/octocode/backlog/shared-web.ts";
 import { startWorkspaceWeb } from "../../../src/octocode/workspace/server.ts";
 
 const [repoRoot, file, session] = process.argv.slice(2);
 if (!repoRoot || !file || !session) throw new Error("Expected repository, database and session");
 const db = openAgentDb(file);
-const store = new BacklogStore(() => db, "shared-repo");
+const store = fixtureBacklog(() => db, "shared-repo");
 const backlog = { store, actor: { id: session }, session, repoName: "Workspace test", repoRoot };
 const open = sharedWorkspaceWeb(async (_ctx, current, changed) => startWorkspaceWeb(current, changed, {
 	snapshot: () => ({ sessionId: session, agents: [], traffic: [], events: [], receipts: [] }),

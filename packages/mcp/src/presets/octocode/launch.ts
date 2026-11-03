@@ -47,7 +47,12 @@ export function octocodeAllowedPaths(
 	const user = paths.researchRoots?.(env);
 	for (const warning of user?.warnings ?? []) warnOnce(warning);
 	return [
-		...new Set([cwd, paths.sessionsRoot(env), ...[...new Set(skillDirectories)].sort(), ...(user?.roots ?? [])]),
+		...new Set([
+			cwd,
+			...paths.sessionRoots(cwd, env),
+			...[...new Set(skillDirectories)].sort(),
+			...(user?.roots ?? []),
+		]),
 	].join(",");
 }
 

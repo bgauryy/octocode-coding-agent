@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { publishedManifest } from "./publish-stage.mjs";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
 import { execNpmSync } from "./npm-command.mjs";
 import { execYarnSync } from "./yarn-command.mjs";
@@ -24,8 +25,10 @@ function packPackages(packages, tarballDirectory) {
 	mkdirSync(tarballDirectory, { recursive: true });
 	const packedPackages = [];
 	for (const pkg of packages) {
-		const packageJson = JSON.parse(readFileSync(join(pkg.directory, "package.json"), "utf8"));
-		if (packageJson.name !== pkg.name) throw new Error(`Unexpected package name in ${pkg.directory}`);
+		const sourceManifest = JSON.parse(readFileSync(join(pkg.directory, "package.json"), "utf8"));
+		if (sourceManifest.name !== pkg.name) throw new Error(`Unexpected package name in ${pkg.directory}`);
+		// The same dependencies a registry consumer gets: what the bundle compiled in is not installed separately.
+		const packageJson = publishedManifest(sourceManifest);
 		let output = execNpmSync(["pack", "--ignore-scripts", "--json", "--pack-destination", tarballDirectory], {
 			cwd: pkg.directory,
 			encoding: "utf8",
@@ -49,7 +52,7 @@ function packPackages(packages, tarballDirectory) {
 				packageJson[section][name] = localDependencies[name];
 			}
 		}
-		if (Object.keys(localDependencies).length > 0) {
+		if (Object.keys(localDependencies).length > 0 || packageJson !== sourceManifest) {
 			const stagingDirectory = mkdtempSync(join(tmpdir(), "octocode-local-artifact-"));
 			try {
 				execFileSync("tar", ["-xzf", originalPath, "-C", stagingDirectory]);
@@ -69,9 +72,10 @@ function packPackages(packages, tarballDirectory) {
 			} finally {
 				rmSync(stagingDirectory, { recursive: true, force: true });
 			}
-			console.log(
-				`  ${pkg.name}: nonportable local development artifact (${Object.keys(localDependencies).join(", ")})`,
-			);
+			if (Object.keys(localDependencies).length > 0)
+				console.log(
+					`  ${pkg.name}: nonportable local development artifact (${Object.keys(localDependencies).join(", ")})`,
+				);
 		}
 		const contents = readFileSync(originalPath);
 		const digest = createHash("sha512").update(contents).digest();

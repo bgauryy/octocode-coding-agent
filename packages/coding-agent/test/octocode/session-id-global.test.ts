@@ -6,7 +6,7 @@ import type { Args } from "../../src/cli/args.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createSessionManager } from "../../src/main/session-manager.ts";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 
 const tempDirs: string[] = [];
 let mainDir: string;
@@ -84,6 +84,18 @@ describe("--session-id across folders", () => {
 		savedSession("source", mainDir);
 		await expect(open({ fork: "source", sessionId: "taken" })).rejects.toThrow("exit 1");
 		expect(console.error).toHaveBeenCalledWith(expect.stringContaining(file));
+		expect(sessionFiles()).toHaveLength(2);
+	});
+
+	it("forks an exact historical ID after its checkout and transcript file disappear", async () => {
+		const source = savedSession("historical", worktreeDir);
+		rmSync(source);
+		rmSync(worktreeDir, { recursive: true });
+		savedSession("historical-prefix", mainDir);
+		const copy = await open({ fork: "historical" });
+		expect(copy.getSessionId()).not.toBe("historical");
+		expect(copy.getHeader()?.parentSession).toBe(source);
+		expect(copy.getEntries().filter((entry) => entry.type === "message")).toHaveLength(2);
 		expect(sessionFiles()).toHaveLength(2);
 	});
 

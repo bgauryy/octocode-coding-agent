@@ -9,10 +9,13 @@ import {
 	readSync,
 	statSync,
 	writeFileSync,
-} from "fs";
-import { join, resolve } from "path";
-import { StringDecoder } from "string_decoder";
-import { getAgentDir as getDefaultAgentDir } from "../../config.ts";
+} from "node:fs";
+import { join, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
+import { transcripts } from "../../../../db/src/api.ts";
+import { defaultSessionDirectories, legacySessionDirectoryPath } from "./directories.ts";
+import { sharedAgentDb } from "../../config/database.ts";
+import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../config/workspace.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import {
@@ -60,23 +63,13 @@ export function assertCompleteSessionTail(file: string): boolean {
 	}
 }
 
-/**
- * Compute the default session directory for a cwd.
- * Encodes cwd into a safe directory name under ~/.octocode/agent/sessions/.
- */
-export function getDefaultSessionDirPath(cwd: string, agentDir: string = getDefaultAgentDir()): string {
-	const resolvedCwd = resolvePath(cwd);
-	const resolvedAgentDir = resolvePath(agentDir);
-	const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-	return join(resolvedAgentDir, "sessions", safePath);
+/** Default transcript directory shared by all working directories in this checkout. */
+export function getDefaultSessionDirPath(cwd: string): string {
+	return workspaceStateDir(cwd, "sessions");
 }
 
-export function getDefaultSessionDir(cwd: string, agentDir: string = getDefaultAgentDir()): string {
-	const sessionDir = getDefaultSessionDirPath(cwd, agentDir);
-	if (!existsSync(sessionDir)) {
-		mkdirSync(sessionDir, { recursive: true });
-	}
-	return sessionDir;
+export function getDefaultSessionDir(cwd: string): string {
+	return ensureWorkspaceStateDir(cwd, "sessions");
 }
 
 const SESSION_READ_BUFFER_SIZE = 1024 * 1024;
@@ -239,9 +232,31 @@ export function findMostRecentSession(sessionDir: string, cwd?: string): string 
 	}
 }
 
+/**
+ * The newest session of `cwd`: in a custom `sessionDir` (only sessions whose header names `cwd`), else across its
+ * default transcript folders (workspace and legacy), or null.
+ */
+export function findMostRecentForCwd(cwd: string, sessionDir?: string): string | null {
+	if (sessionDir && normalizePath(sessionDir) !== getDefaultSessionDirPath(cwd))
+		return findMostRecentSession(sessionDir, cwd);
+	let best: { path: string; mtime: number } | undefined;
+	for (const { dir, filterCwd } of defaultSessionDirectories(cwd)) {
+		const path = findMostRecentSession(dir, filterCwd ? cwd : undefined);
+		if (!path) continue;
+		let mtime: number;
+		try {
+			mtime = statSync(path).mtimeMs;
+		} catch {
+			continue;
+		}
+		if (!best || mtime > best.mtime) best = { path, mtime };
+	}
+	return best?.path ?? null;
+}
+
 /** Create a session file that must not exist yet, writing every entry and syncing before close. */
 export function writeNewSessionFile(sessionFile: string, fileEntries: readonly FileEntry[]): void {
-	const fd = openSync(sessionFile, "wx");
+	const fd = openSync(sessionFile, "wx", 0o600);
 	try {
 		for (const e of fileEntries) {
 			writeFileSync(fd, `${JSON.stringify(e)}\n`);
@@ -278,8 +293,10 @@ export function resolveOpenedSession(path: string, sessionDir?: string, cwdOverr
 		}
 	}
 	const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : undefined) ?? process.cwd();
-	// If no sessionDir provided, derive from file's parent directory
-	const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, "..");
+	// Without a sessionDir the file's folder is kept, except the legacy per-cwd folder: new sessions go to the workspace.
+	const parent = resolve(resolvedPath, "..");
+	const legacy = parent === legacySessionDirectoryPath(cwd);
+	const dir = sessionDir ? normalizePath(sessionDir) : legacy ? getDefaultSessionDirPath(cwd) : parent;
 	return { cwd, dir, resolvedPath, preloadedFileEntries };
 }
 
@@ -288,14 +305,24 @@ export function resolveOpenedSession(path: string, sessionDir?: string, cwdOverr
  * Returns the arguments `SessionManager.forkFrom()` opens the new session with.
  */
 export function forkSessionFile(
-	sourcePath: string,
+	sourcePath: string | { storedId: string },
 	targetCwd: string,
 	sessionDir?: string,
 	options?: NewSessionOptions,
-): { cwd: string; dir: string; sessionFile: string } {
-	const resolvedSourcePath = resolvePath(sourcePath);
+): { cwd: string; dir: string; sessionFile: string; sourceFile: string; sourceId: string } {
+	let resolvedSourcePath: string;
+	let sourceEntries: FileEntry[];
+	if (typeof sourcePath === "string") {
+		resolvedSourcePath = resolvePath(sourcePath);
+		sourceEntries = loadEntriesFromFile(resolvedSourcePath);
+	} else {
+		const agent = sharedAgentDb();
+		const old = transcripts.stamp(agent.db, sourcePath.storedId);
+		if (!old) throw new Error(`No saved transcript for session ${sourcePath.storedId}`);
+		resolvedSourcePath = old.file;
+		sourceEntries = transcripts.records(agent.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry);
+	}
 	const resolvedTargetCwd = resolvePath(targetCwd);
-	const sourceEntries = loadEntriesFromFile(resolvedSourcePath);
 	if (sourceEntries.length === 0) {
 		throw new Error(`Cannot fork: source session file is empty or invalid: ${resolvedSourcePath}`);
 	}
@@ -306,6 +333,9 @@ export function forkSessionFile(
 	}
 	migrateToCurrentVersion(sourceEntries);
 
+	// The fork is new work in targetCwd even when its caller chooses a separate JSONL directory.
+	if (sessionDir && statSync(resolvedTargetCwd, { throwIfNoEntry: false })?.isDirectory())
+		workspaceIdentity(resolvedTargetCwd);
 	const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(resolvedTargetCwd);
 	if (!existsSync(dir)) {
 		mkdirSync(dir, { recursive: true });
@@ -322,11 +352,18 @@ export function forkSessionFile(
 	// A new header pointing to the source as parent, with the target cwd, then every non-header entry of the source.
 	// The copy is written whole to a temporary sibling and renamed into place, so a failure leaves no partial fork.
 	const newHeader = createSessionHeader(newSessionId, timestamp, resolvedTargetCwd, resolvedSourcePath);
+	if (typeof sourcePath !== "string") newHeader.parentSessionId = sourcePath.storedId;
 	const content = [newHeader, ...sourceEntries.filter((entry) => entry.type !== "session")]
 		.map((entry) => `${JSON.stringify(entry)}\n`)
 		.join("");
 	if (existsSync(newSessionFile)) throw new Error(`Cannot fork: session file already exists: ${newSessionFile}`);
-	atomicWriteFileSync(newSessionFile, content);
+	atomicWriteFileSync(newSessionFile, content, { mode: 0o600 });
 
-	return { cwd: resolvedTargetCwd, dir, sessionFile: newSessionFile };
+	return {
+		cwd: resolvedTargetCwd,
+		dir,
+		sessionFile: newSessionFile,
+		sourceFile: resolvedSourcePath,
+		sourceId: sourceHeader.id,
+	};
 }

@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { repoKey } from "../../src/octocode/shared/home/repo.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -17,7 +18,7 @@ function setup() {
 	const fake = fakeHost();
 	const commands = new Subcommands();
 	registerBacklog(fake.api, { commands, isSubagent: false, env });
-	const store = new BacklogStore(() => sharedAgentDb(env), repoKey(cwd).key);
+	const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(cwd, sharedAgentDb(env)).id);
 	const rpc = (selects: Array<string | undefined>, inputs: Array<string | undefined> = []) =>
 		fakeCtx({ cwd, mode: "rpc", ui: { selects, inputs } });
 	return { store, rpc, command: commands.get("backlog")! };

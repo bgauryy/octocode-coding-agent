@@ -8,6 +8,7 @@ import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { showAskDialog } from "./dialog.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { answerLine } from "../shared/ask-answer.ts";
 import { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
 
 /** RPC hosts have dialogs but no custom TUI components: fall back to select/input per question. */
@@ -73,11 +74,7 @@ async function askWithDialogs(
 }
 
 export function formatAnswers(result: AskResult): string {
-	const answered = result.answers.map((entry) => {
-		if (!entry.custom) return `"${entry.question}" → ${entry.answer}`;
-		// Toggled options plus a write-in: name both parts, since the joined answer cannot be split back.
-		return `"${entry.question}" → ${entry.picks?.length ? `${entry.picks.join(", ")} + (typed) ${entry.typed ?? ""}` : `(typed) ${entry.answer}`}`;
-	});
+	const answered = result.answers.map(answerLine);
 	if (!result.cancelled) return answered.join("\n");
 	// The status leads, so a cancelled call is not read as answers; it is not `isError`: a refusal is the user's choice, the
 	// call itself worked, and an error flag would invite a retry of the same question.
@@ -169,10 +166,12 @@ export function registerAskUser(api: ExtensionAPI): void {
 			renderCall(args, theme, context) {
 				const questions = args.questions ?? [];
 				const headers = questions
+					// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 					.map((q) => clip(String(q?.header ?? ""), 24))
 					.filter(Boolean)
 					.join(", ");
 				// Without headers the row names the first question, so the transcript shows what was asked.
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const first = String(questions[0]?.question ?? "")
 					.split("\n")[0]
 					.trim();
@@ -190,6 +189,7 @@ export function registerAskUser(api: ExtensionAPI): void {
 				// Every answer is shown, collapsed or not: the user just gave them and there are at most four.
 				const lines = answers.map(
 					(entry) =>
+						// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- recorded details are read back from the session and may predate the current shape
 						`${stateMark(theme, "done")} ${theme.fg("muted", clip(String(entry.question), 120))} ${theme.fg("dim", "→")} ${clip(String(entry.answer), 200)}`,
 				);
 				// Declined or unavailable: `✗`; interrupted: `◼`. The same state marks the header.

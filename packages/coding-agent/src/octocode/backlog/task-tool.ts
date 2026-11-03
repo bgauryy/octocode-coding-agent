@@ -1,6 +1,6 @@
 import { type BacklogTask, TASK_STATES, type TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import { StringEnum } from "@octocodeai/octocode-ai";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
@@ -16,24 +16,31 @@ const OPEN: TaskState[] = ["todo", "ongoing"];
 
 interface TaskToolDetails {
 	task?: BacklogTask;
-	/** promote: the item the task became. */
-	item?: Item;
 	/** list: tasks shown, and how many matched. */
 	shown?: number;
 	total?: number;
 }
 
 interface Params {
-	op: "list" | "add" | "update" | "promote" | "move";
+	op: "list" | "add" | "update";
 	id?: string;
 	goal?: string;
 	why?: string;
 	item?: string;
 	state?: TaskState;
 	result?: string;
-	position?: number;
 	limit?: number;
 	offset?: number;
+}
+
+/** Ops and fields earlier versions accepted; a call or replayed session that still names one learns it is gone. */
+const REMOVED_OPS = ["move", "promote"];
+
+function assertCurrentOp(op: unknown): void {
+	if (typeof op === "string" && REMOVED_OPS.includes(op))
+		throw new Error(
+			`The steps op "${op}" was removed: steps take list, add and update. Ask the user to reorder or promote a step on the backlog board.`,
+		);
 }
 
 /**
@@ -45,7 +52,7 @@ function taskPrompt(subagent: boolean) {
 	return {
 		promptSnippet: "Work with several steps; skip it for one step or a few calls",
 		description:
-			"Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, it needs item. move reorders a step or hands it to a held item.",
+			"Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, it needs item.",
 		promptGuidelines: [
 			"Set a step ongoing when you start it and done when finished. " +
 				"Leave unfinished steps todo (they persist with the session and show on resume); drop only a step you decided against." +
@@ -75,9 +82,8 @@ function itemScopes({ store }: Backlog, ref: string): string[] {
 }
 
 const taskSummary = (op: unknown, details: TaskToolDetails, text: string): string => {
-	const { task, item } = details;
+	const { task } = details;
 	if (op === "list") return plural(details.shown ?? 0, "step");
-	if (op === "promote" && task && item) return `${task.ref} → ${item.ref}`;
 	const goal = task ? ` · ${clip(visibleControls(task.goal), 80)}` : "";
 	if (task && op === "add") return `Added ${task.ref} · ${task.state}${goal}`;
 	if (task && op === "update") return `${task.ref} → ${task.state}${goal}`;
@@ -92,23 +98,19 @@ export function registerTaskTool(
 	const subagent = options.isSubagent;
 	const parameters = Type.Object(
 		{
-			op: StringEnum(
-				subagent
-					? (["list", "add", "update", "move"] as const)
-					: (["list", "add", "update", "move", "promote"] as const),
-				{
-					description:
-						"list: open steps of item, else of this session and its items" +
-						(subagent ? "" : "; promote: a session step becomes an item"),
-				},
-			),
-			id: Type.Optional(Type.String({ description: "update/move/promote: e.g. T7; list: only this step" })),
+			op: StringEnum(["list", "add", "update"] as const, {
+				description: "list: open steps of item, else of this session and its items",
+			}),
+			id: Type.Optional(Type.String({ description: "update: e.g. T7; list: only this step" })),
 			goal: Type.Optional(Type.String({ description: "add/update: what done means" })),
 			why: Type.Optional(Type.String({ description: "add/update: why" })),
-			item: Type.Optional(Type.String({ description: "list/add/move: e.g. B12; list: an epic covers its items" })),
+			item: Type.Optional(
+				Type.String({
+					description: "list/add: e.g. B12; add: not an epic (epics hold no steps); list: an epic covers its items",
+				}),
+			),
 			state: Type.Optional(StringEnum(TASK_STATES, { description: "list: filter; add: todo/ongoing; update: new" })),
 			result: Type.Optional(Type.String({ description: "update: outcome" })),
-			position: Type.Optional(Type.Integer({ description: "move: 0 is first" })),
 			limit: Type.Optional(
 				Type.Integer({ description: `list: page size, capped at ${MAX_LIST_LIMIT} (default ${DEFAULT_LIST_LIMIT})` }),
 			),
@@ -167,31 +169,6 @@ export function registerTaskTool(
 			return textResult(`Added ${taskLine(task)}`, { task });
 		}
 		if (!params.id?.trim()) throw new Error(`${params.op} needs an id, e.g. "T7".`);
-		if (params.op === "move") {
-			if (params.position === undefined && !params.item?.trim())
-				throw new Error("move needs a position (0 is first), an item to hand the step to, or both.");
-			let task = tasks.get(params.id);
-			if (!task) throw new Error(`No step ${visibleControls(params.id)}.`);
-			if (params.item?.trim()) {
-				const target = store.get(params.item);
-				const held = heldItems(backlog).map((item) => item.ref);
-				if (!target) throw new Error(`No backlog item ${visibleControls(params.item)}.`);
-				if (target.type !== "epic" && !held.includes(target.ref))
-					throw new Error(
-						`${target.ref} is not held by this session: move a step only onto an item you hold (${held.join(", ") || "none"}).`,
-					);
-				task = tasks.reparent(params.id, { item: target.ref }, actor);
-			}
-			if (params.position !== undefined) task = tasks.move(params.id, params.position, actor);
-			return textResult(`Moved ${taskLine(task)} to position ${task.position}`, { task });
-		}
-		if (params.op === "promote") {
-			const { item, task } = tasks.promote(params.id, params.goal ? { goal: params.goal } : {}, actor);
-			return textResult(
-				`Promoted ${task.ref} to ${item.ref} [${item.state}] "${visibleControls(item.title)}"; the step is now under it. Claim the item with backlog to work on it.`,
-				{ task, item },
-			);
-		}
 		if (
 			params.goal === undefined &&
 			params.why === undefined &&
@@ -219,8 +196,14 @@ export function registerTaskTool(
 				label: "Steps",
 				...taskPrompt(subagent),
 				parameters,
+				// A removed op fails the schema's enum with a bare list; this says it is gone.
+				prepareArguments(args) {
+					assertCurrentOp((args as { op?: unknown } | null)?.op);
+					return args as Static<typeof parameters>;
+				},
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
+					assertCurrentOp(params.op);
 					const result = run(openBacklog(ctx, options), params);
 					if (params.op !== "list") options.changed?.(ctx);
 					return result;
@@ -231,6 +214,7 @@ export function registerTaskTool(
 						args.id,
 						args.item ? `in ${args.item}` : "",
 						args.state ? `→ ${args.state}` : "",
+						// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 						args.goal ? `"${clip(String(args.goal), 80)}"` : "",
 					]
 						.filter(Boolean)

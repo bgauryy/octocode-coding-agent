@@ -1,7 +1,7 @@
 import { TASK_STATES, isOpenTask, type BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import { storedText } from "../../../../../common/src/sanitize.ts";
 import { cutText } from "../../../../../common/src/text.ts";
-import { type AgentDb, type Db, tasks } from "../../agentdb/api.ts";
+import { type AgentDb, type Db, tasks } from "../../../../../db/src/api.ts";
 import { type Actor, type Item, auditActor, refuseSecrets, storedTitle } from "../item.ts";
 import { addItem } from "../writes.ts";
 import { getItem } from "../reads.ts";

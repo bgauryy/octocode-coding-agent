@@ -86,7 +86,7 @@ describe("lean profiles", () => {
 		const text = Object.values(allSections(event)).join("\n");
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("octocode_lean");
 		expect(text).toContain("You are a subagent: do exactly the task, then stop.");
-		expect(text).not.toContain("Start it with one word");
+		expect(text).not.toContain("Start it with the outcome word");
 		expect(text).not.toContain("# Work and verification");
 		expect(text).not.toContain("Octocode MCP");
 		expect(event.systemPromptOptions.skills).toEqual([]);

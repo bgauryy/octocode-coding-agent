@@ -1,7 +1,7 @@
 /** User bash commands run by the session (`!` and `!!`), recorded in session history. */
 
 import { randomUUID } from "node:crypto";
-import { sessionOutputDir } from "../../octocode/shared/home.ts";
+import { sessionOutputDir, withSessionStorage } from "../../config/runtime-paths.ts";
 import { readOutputFile } from "../../utils/output-files.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";
@@ -44,23 +44,25 @@ export class SessionBash {
 		const resolvedCommand = prefix ? `${prefix}\n${command}` : command;
 
 		try {
-			const result = await executeBashWithOperations(
-				resolvedCommand,
-				session.sessionManager.getCwd(),
-				options?.operations ?? createLocalBashOperations({ shellPath }),
-				{
-					onChunk: (delta) => {
-						onChunk?.(delta);
-						this.host.emit({
-							type: "bash_execution_update",
-							id: executionId,
-							delta,
-						});
+			const result = await withSessionStorage(session.sessionManager, () =>
+				executeBashWithOperations(
+					resolvedCommand,
+					session.sessionManager.getCwd(),
+					options?.operations ?? createLocalBashOperations({ shellPath }),
+					{
+						onChunk: (delta) => {
+							onChunk?.(delta);
+							this.host.emit({
+								type: "bash_execution_update",
+								id: executionId,
+								delta,
+							});
+						},
+						signal: abortController.signal,
+						maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
+						outputDir: sessionOutputDir("bash"),
 					},
-					signal: abortController.signal,
-					maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
-					outputDir: sessionOutputDir("bash"),
-				},
+				),
 			);
 
 			this.host.recordBashResult(command, result, options);

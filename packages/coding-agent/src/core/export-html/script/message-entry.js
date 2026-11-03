@@ -50,6 +50,7 @@ async function copyToClipboard(text, button) {
 			textarea.style.opacity = "0";
 			document.body.appendChild(textarea);
 			textarea.select();
+			// oxlint-disable-next-line typescript/no-deprecated -- fallback for pages where the async Clipboard API is unavailable
 			success = document.execCommand("copy");
 			document.body.removeChild(textarea);
 		} catch (err) {

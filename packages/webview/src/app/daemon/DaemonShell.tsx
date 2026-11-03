@@ -36,7 +36,7 @@ function usePolled<T>(load: (signal: AbortSignal) => Promise<T>): Loaded<T> {
 					},
 				)
 				.finally(() => {
-					if (!controller.signal.aborted) timer = setTimeout(run, REFRESH_MS);
+					if (!controller.signal.aborted) timer = setTimeout(() => void run(), REFRESH_MS);
 				});
 		void run();
 		return () => {

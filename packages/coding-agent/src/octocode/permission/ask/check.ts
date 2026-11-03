@@ -238,7 +238,7 @@ export async function checkPermission(
 								via: "cancelled",
 								message: DISMISSED,
 							});
-						return checkPermission(host, ctx, prepared.request, dialog, {
+						return await checkPermission(host, ctx, prepared.request, dialog, {
 							inheritedHookApproval: true,
 							updatedPermissions: answer.updatedPermissions,
 							commit: prepared.commit,

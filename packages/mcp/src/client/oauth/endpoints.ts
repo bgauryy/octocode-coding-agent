@@ -52,6 +52,7 @@ export function registerClient(
 	},
 ): Promise<OAuthClientInformationFull> {
 	return sdkOAuth(() =>
+		// oxlint-disable-next-line typescript/no-deprecated -- Dynamic Client Registration is deprecated in the protocol but still the only way to register with servers that have no pre-registered client
 		sdkRegister(authorizationServerUrl, {
 			metadata: options.metadata,
 			clientMetadata: resolveClientMetadata({ clientMetadata: options.clientMetadata, redirectUrl: undefined }),

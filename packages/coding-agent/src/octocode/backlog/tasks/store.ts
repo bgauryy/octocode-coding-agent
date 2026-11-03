@@ -1,5 +1,5 @@
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
-import type { AgentDb } from "../../agentdb/api.ts";
+import type { AgentDb } from "../../../../../db/src/api.ts";
 import type { Actor, Item } from "../item.ts";
 import type { AddTaskInput, ListTasksQuery, PromoteTaskInput, TaskTarget, UpdateTaskInput } from "./inputs.ts";
 import { type TaskCounts, getTask, listTasks, taskCounts } from "./reads.ts";

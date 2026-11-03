@@ -152,6 +152,7 @@ export class BashJobs {
 				host: os.hostname(),
 				owner: { pid: process.pid, started: processStartTime(process.pid) },
 			};
+			privateDir(path.dirname(record));
 			atomicWriteFileSync(record, JSON.stringify(owned), { mode: PRIVATE_FILE_MODE });
 		} catch {
 			// Without its record only this Octocode can stop the job.

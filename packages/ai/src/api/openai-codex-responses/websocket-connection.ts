@@ -233,7 +233,8 @@ export async function* parseWebSocket(
 	const queue: Record<string, unknown>[] = [];
 	let pending: (() => void) | null = null;
 	let done = false;
-	let failed: Error | null = null;
+	// Assigned from socket callbacks, which control-flow analysis cannot see: declare the full type up front.
+	let failed = null as Error | null;
 	let sawCompletion = false;
 
 	const wake = () => {

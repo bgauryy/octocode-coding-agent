@@ -15,6 +15,7 @@ import type {
 	AgentEvent,
 	AgentLoopConfig,
 	AgentMessage,
+	AgentRequestUpdate,
 	PrepareNextTurnContext,
 	StreamFn,
 } from "./types.ts";
@@ -182,6 +183,20 @@ function createAgentStream(): EventStream<AgentEvent, AgentMessage[]> {
 	);
 }
 
+/** The config with the model and thinking level an update replaces; `"off"` clears reasoning. */
+function withModelUpdate(config: AgentLoopConfig, update: AgentRequestUpdate): AgentLoopConfig {
+	return {
+		...config,
+		model: update.model ?? config.model,
+		reasoning:
+			update.thinkingLevel === undefined
+				? config.reasoning
+				: update.thinkingLevel === "off"
+					? undefined
+					: update.thinkingLevel,
+	};
+}
+
 /**
  * Main loop logic shared by agentLoop and agentLoopContinue.
  */
@@ -215,16 +230,7 @@ async function runLoop(
 				if (nextTurnSnapshot) {
 					currentContext = nextTurnSnapshot.context ?? currentContext;
 					preparedMessages = nextTurnSnapshot.messages ?? [];
-					config = {
-						...config,
-						model: nextTurnSnapshot.model ?? config.model,
-						reasoning:
-							nextTurnSnapshot.thinkingLevel === undefined
-								? config.reasoning
-								: nextTurnSnapshot.thinkingLevel === "off"
-									? undefined
-									: nextTurnSnapshot.thinkingLevel,
-					};
+					config = withModelUpdate(config, nextTurnSnapshot);
 				}
 				// Preparation can be long-running (for example, compaction). Pick up steering
 				// queued while it ran. Only poll again if the earlier poll returned nothing;
@@ -264,16 +270,7 @@ async function runLoop(
 			);
 			if (requestUpdate) {
 				currentContext = requestUpdate.context ?? currentContext;
-				config = {
-					...config,
-					model: requestUpdate.model ?? config.model,
-					reasoning:
-						requestUpdate.thinkingLevel === undefined
-							? config.reasoning
-							: requestUpdate.thinkingLevel === "off"
-								? undefined
-								: requestUpdate.thinkingLevel,
-				};
+				config = withModelUpdate(config, requestUpdate);
 			}
 
 			// Stream assistant response

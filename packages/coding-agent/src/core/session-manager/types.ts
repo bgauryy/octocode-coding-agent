@@ -18,6 +18,8 @@ export interface SessionHeader {
 	timestamp: string;
 	cwd: string;
 	parentSession?: string;
+	/** A historical fork restored from SQLite. The parent path is descriptive only. */
+	parentSessionId?: string;
 }
 
 export interface NewSessionOptions {

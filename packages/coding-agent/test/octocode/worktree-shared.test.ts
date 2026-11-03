@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { HOME_NAMES } from "../../src/octocode/shared/home.ts";
 import { shortHash } from "../../../common/src/atomic-file.ts";

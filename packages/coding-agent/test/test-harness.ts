@@ -466,12 +466,12 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	}
 
 	const tempDir = createTempDir();
-	return await createHarnessWithResourceLoader(options, options.resourceLoader ?? createTestResourceLoader(), tempDir);
+	return createHarnessWithResourceLoader(options, options.resourceLoader ?? createTestResourceLoader(), tempDir);
 }
 
 export async function createHarnessWithExtensions(options: HarnessOptions = {}): Promise<Harness> {
 	const tempDir = createTempDir();
 	const extensionsResult = await createTestExtensionsResult(options.extensionFactories ?? [], tempDir);
 	const resourceLoader = options.resourceLoader ?? createTestResourceLoader({ extensionsResult });
-	return await createHarnessWithResourceLoader(options, resourceLoader, tempDir);
+	return createHarnessWithResourceLoader(options, resourceLoader, tempDir);
 }

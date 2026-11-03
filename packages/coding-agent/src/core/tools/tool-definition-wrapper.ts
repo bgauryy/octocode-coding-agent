@@ -1,3 +1,4 @@
+import { withSessionStorage } from "../../config/runtime-paths.ts";
 import { captureToolInvocation } from "./tool-invocation.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import type { ExtensionToolContext, ToolDefinition } from "../features/types.ts";
@@ -35,7 +36,9 @@ export function wrapToolDefinition<TDetails = unknown>(
 				get: () => (active ? invocation : undefined),
 			});
 			try {
-				return await definition.execute(toolCallId, params, signal, onUpdate, context);
+				return await withSessionStorage(base.sessionManager, () =>
+					definition.execute(toolCallId, params, signal, onUpdate, context),
+				);
 			} finally {
 				active = false;
 			}

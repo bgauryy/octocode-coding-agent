@@ -39,7 +39,7 @@ beforeEach(() => {
 	vi.stubGlobal("Blob", NodeBlob);
 	vi.stubGlobal(
 		"fetch",
-		vi.fn(async (url: string, init: RequestInit = {}) => {
+		vi.fn(async (url: string | URL, init: RequestInit = {}) => {
 			requests.push({ url: String(url), init });
 			return new Response(JSON.stringify(responses.shift()), { status: 200 });
 		}),

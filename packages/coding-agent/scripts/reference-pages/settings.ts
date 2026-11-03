@@ -61,6 +61,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 		heading: "Sessions, queues and tools",
 		fields: [
 			"sessionDir",
+			"retention",
 			"steeringMode",
 			"followUpMode",
 			"branchSummary",
@@ -68,6 +69,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"treeFilterMode",
 			"defaultTools",
 			"mcpPresentation",
+			"mcpContractTiers",
 		],
 	},
 	{

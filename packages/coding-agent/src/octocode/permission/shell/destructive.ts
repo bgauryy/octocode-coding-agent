@@ -180,7 +180,7 @@ function destructiveIn(command: string, start: Place): string | undefined {
 			return "dd writing to a device";
 		const device = writesDevice(tokens);
 		if (device) return `a write to ${device}`;
-		if (name === "cd" || name === "pushd") place = { ...place, cwd: afterCd(tokens, place) };
+		if (name === "cd" || name === "pushd") place = { home: place.home, cwd: afterCd(tokens, place) };
 		for (const script of nestedScripts(name, tokens, bodies, fromPipe)) {
 			const danger = destructiveIn(script, place);
 			if (danger) return danger;

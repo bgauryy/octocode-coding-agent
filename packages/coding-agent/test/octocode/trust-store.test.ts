@@ -1,8 +1,8 @@
-import fs from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { trust } from "../../src/octocode/agentdb/api.ts";
-import { type AgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { trust, type AgentDb } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { tmp } from "./helpers.ts";
 
 let file: string;
@@ -94,13 +94,40 @@ describe("trusted_folders queries", () => {
 		expect(insert("trusted", "everything")).toThrow(/CHECK/);
 	});
 
-	it("revokes only live rows and refreshes a display path", () => {
+	it("revokes only live rows and refreshes where a folder was seen", () => {
 		const { id } = trust.decide(agent.db, input("1"), 1);
-		trust.refreshPath(agent.db, id, "/moved");
+		trust.refreshSeen(agent.db, id, "/moved", "1");
 		expect(trust.liveAt(agent.db, "1", "1")?.path).toBe("/moved");
 		expect(trust.revoke(agent.db, id, 2, "ada")).toBe(true);
 		expect(trust.revoke(agent.db, id, 3, "bob")).toBe(false);
 		expect(trust.list(agent.db)[0]).toMatchObject({ revokedAt: 2, revokedBy: "ada" });
+	});
+
+	it("keeps one row for a folder whose device number changed after a remount", () => {
+		const birth = "1730000000123456789";
+		const first = trust.decide(agent.db, input("7", { birth }), 1);
+		// macOS numbers a volume at mount time: after a reboot the same folder reports another device.
+		const seen = input("7", { birth, dev: "2" });
+		const [candidate] = trust.liveFoldersFor(agent.db, [seen]);
+		expect(trust.sameFolder(candidate, seen)).toBe("remounted");
+		expect(trust.sameFolder(candidate, { ...seen, path: "/elsewhere" })).toBeUndefined();
+		expect(trust.sameFolder(candidate, { ...seen, birth: "1" })).toBeUndefined();
+		// The same decision again is a no-op that stores the new device; a different one supersedes the remounted row.
+		expect(trust.decide(agent.db, seen, 2)).toEqual({ id: first.id, created: false });
+		expect(trust.liveAt(agent.db, "2", "7")?.id).toBe(first.id);
+		const refused = trust.decide(agent.db, input("7", { birth, dev: "3", decision: "refused" }), 3);
+		expect(refused.created).toBe(true);
+		expect(
+			trust
+				.list(agent.db)
+				.filter((row) => row.revokedAt === undefined)
+				.map((row) => row.id),
+		).toEqual([refused.id]);
+	});
+
+	it("does not treat a row on another device as the folder without a recorded birth time", () => {
+		trust.decide(agent.db, input("7"), 1);
+		expect(trust.liveFoldersFor(agent.db, [input("7", { dev: "2" })])).toEqual([]);
 	});
 
 	it("revokes by source and path or identity, and nothing else", () => {
@@ -119,15 +146,17 @@ describe("trusted_folders queries", () => {
 });
 
 describe("the schema", () => {
-	it("adds trusted_folders to a database that predates it, keeping what was there", () => {
-		agent.db.exec("DROP TABLE trusted_folders");
+	it("refuses a pre-versioned database without creating trust grants or changing existing data", () => {
+		agent.db.exec("DROP TABLE trusted_folders; PRAGMA user_version=0");
 		agent.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		agent.close();
-		agent = openAgentDb(file);
-		expect(trust.list(agent.db)).toEqual([]);
-		trust.decide(agent.db, input("1"), 1);
-		expect(trust.liveAt(agent.db, "1", "1")).toBeDefined();
-		expect(fs.existsSync(file)).toBe(true);
-		expect(agent.db.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
+		expect(() => openAgentDb(file)).toThrow(/unsupported Octocode schema version 0/);
+		const original = new DatabaseSync(file, { readOnly: true });
+		try {
+			expect(original.prepare("SELECT name FROM sqlite_schema WHERE name='trusted_folders'").get()).toBeUndefined();
+			expect(original.prepare("SELECT value FROM meta WHERE key='keep'").get()).toEqual({ value: "me" });
+		} finally {
+			original.close();
+		}
 	});
 });

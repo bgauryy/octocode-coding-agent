@@ -4,14 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AGENTS, captureAll, type AgentContext } from "./agent-context/capture.ts";
 import { isMcpTool } from "./agent-context/analyze.ts";
-import {
-	renderIndex,
-	renderMessages,
-	renderSizes,
-	renderSystem,
-	renderTools,
-	systemText,
-} from "./agent-context/render.ts";
+import { renderIndex, renderMessages, renderSystem, renderTools, systemText } from "./agent-context/render.ts";
 
 /**
  * The full context each agent receives with its first model request, captured from real sessions on a scripted model:
@@ -20,7 +13,7 @@ import {
  * rewrites them (`vitest -u`). The checks below say what each agent's context must hold.
  */
 const RENDERED = fileURLToPath(new URL("../../src/octocode/instructions/rendered/", import.meta.url));
-const FILES = ["system.md", "tools.md", "messages.md", "sizes.md"] as const;
+const FILES = ["system.md", "tools.md", "messages.md"] as const;
 
 const POLICY = [
 	"octocode_work",
@@ -177,7 +170,6 @@ describe.each(AGENTS)("$name context", (agent) => {
 			"system.md": renderSystem(context()),
 			"tools.md": renderTools(context()),
 			"messages.md": renderMessages(context()),
-			"sizes.md": renderSizes(context()),
 		};
 		for (const [file, text] of Object.entries(files)) {
 			expect(text, `${agent.name}/${file}`).not.toMatch(/\/(?:Users|home|private|var)\//);
@@ -188,9 +180,9 @@ describe.each(AGENTS)("$name context", (agent) => {
 });
 
 describe("rendered index", () => {
-	it("lists every agent with its sizes and matches its snapshot", async () => {
-		const index = renderIndex(contexts);
-		for (const agent of AGENTS) expect(index).toContain(`[${agent.name}](${agent.name}/sizes.md)`);
+	it("lists every agent and matches its snapshot", async () => {
+		const index = renderIndex();
+		for (const agent of AGENTS) expect(index).toContain(`](${agent.name}/system.md)`);
 		await expect(index).toMatchFileSnapshot(path.join(RENDERED, "README.md"));
 	});
 });

@@ -1,4 +1,4 @@
-import { type Db, type agentEvents, agents, deliveries, leases } from "../../agentdb/api.ts";
+import { type Db, type agentEvents, agents, deliveries, leases } from "../../../../../db/src/api.ts";
 import { sameProcess } from "../../shared/process.ts";
 import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
@@ -27,26 +27,27 @@ function retire(db: Db, id: string, now: number, reason: string): void {
 export function claimMember(
 	db: Db,
 	team: string,
-	checkout: string,
+	workspace: agents.MemberWorkspace,
 	member: Member,
 	context?: agentEvents.LifecycleContext,
 ): boolean {
-	if (agents.insert(db, team, checkout, member, context) || agents.refresh(db, member, checkout, context)) return true;
+	if (agents.insert(db, team, workspace, member, context) || agents.refresh(db, member, workspace, context))
+		return true;
 	const holder = agents.processOf(db, member.id);
 	if (holder && sameProcess(holder.pid, holder.started)) return false;
 	retire(db, member.id, Date.now(), "replaced dead registration");
-	return agents.insert(db, team, checkout, member, context);
+	return agents.insert(db, team, workspace, member, context);
 }
 
 /** Refresh or restore presence; the caller owns its write transaction. */
 export function saveMember(
 	db: Db,
 	team: string,
-	checkout: string,
+	workspace: agents.MemberWorkspace,
 	member: Member,
 	context?: agentEvents.LifecycleContext,
 ): boolean {
-	return agents.refresh(db, member, checkout, context) || agents.insert(db, team, checkout, member, context);
+	return agents.refresh(db, member, workspace, context) || agents.insert(db, team, workspace, member, context);
 }
 
 /** Retires `id` unless its row now names another process than `owner` (`TeamStore.remove`); whether it did. */

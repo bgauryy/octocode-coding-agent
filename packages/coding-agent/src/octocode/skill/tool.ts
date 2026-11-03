@@ -123,7 +123,7 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 				try {
 					loaded = body(entry, ctx.sessionManager.getSessionId(), ctx.cwd);
 				} catch (error) {
-					throw new Error(`Skill "${skill.name}" could not be read: ${errorMessage(error)}`);
+					throw new Error(`Skill "${skill.name}" could not be read: ${errorMessage(error)}`, { cause: error });
 				}
 				const lines = loaded.text.split("\n").length;
 				const baseDir = path.dirname(entry.file);

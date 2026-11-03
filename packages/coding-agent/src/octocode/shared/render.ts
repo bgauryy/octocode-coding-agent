@@ -222,7 +222,14 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	if (summary)
 		rows.push({
 			lead: theme.fg("dim", GUTTER),
-			text: `${theme.fg(summaryColor, error && !/^(error|failed)\b|\bfailed\b/i.test(summary) ? `Error: ${summary}` : stopped ? summary.replace(/^error:\s*/i, "") : summary)}`,
+			text: theme.fg(
+				summaryColor,
+				error && !/^(error|failed)\b|\bfailed\b/i.test(summary)
+					? `Error: ${summary}`
+					: stopped
+						? summary.replace(/^error:\s*/i, "")
+						: summary,
+			),
 			// An error or stop explains what to do next: wrap it whole instead of clipping it to one row.
 			...(error || stopped ? { wrap: true, indent: INDENT } : {}),
 		});

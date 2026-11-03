@@ -9,6 +9,8 @@ const { name, root, cwd, bundle } = JSON.parse(process.argv[2]);
 const privateHome = path.join(root, name, 'home');
 const agentDir = path.join(root, name, 'agent');
 for (const dir of [privateHome, agentDir]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+// The agent tool declares its external type only with this opt-in setting.
+fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ externalAgents: true }));
 os.homedir = () => privateHome;
 syncBuiltinESMExports();
 Object.assign(process.env, {
@@ -16,13 +18,14 @@ Object.assign(process.env, {
   OCTOCODE_API: '1', OCTOCODE_API_HTTP: '0', OCTOCODE_MCP: '0',
   OCTOCODE_MEMORY_AUTO: '0', OCTOCODE_EXTRA_SKILLS: '0', OCTOCODE_NOTIFY: 'off', OCTOCODE_PERMISSION: 'full',
 });
-// The package root exports only the CLI and RPC, so the session pieces come from the compiled modules, as the runner's bundle does.
-const compiled = (file) => new URL(`../../../dist/core/${file}`, import.meta.url).href;
-const { SettingsManager } = await import(compiled('settings-manager.js'));
-const { DefaultResourceLoader } = await import(compiled('resource-loader.js'));
-const { SessionManager } = await import(compiled('session-manager.js'));
-const { ModelRuntime } = await import(compiled('model-runtime.js'));
-const { createSessionFromServices } = await import(compiled('agent-session/create-session.js'));
+// The package root exports only the CLI and RPC, so the session pieces come from source, as the runner's modules do
+// (the runner preloads the source resolver, so workspace packages resolve to source too).
+const core = (file) => new URL(`../../../src/core/${file}`, import.meta.url).href;
+const { SettingsManager } = await import(core('settings-manager.ts'));
+const { DefaultResourceLoader } = await import(core('resource-loader.ts'));
+const { SessionManager } = await import(core('session-manager.ts'));
+const { ModelRuntime } = await import(core('model-runtime.ts'));
+const { createSessionFromServices } = await import(core('agent-session/create-session.ts'));
 const { fauxProvider, fauxAssistantMessage } = await import('@octocodeai/octocode-ai');
 const { apiDir, listInstances, OctocodeBackend } = await import(bundle);
 const entry = fileURLToPath(bundle);

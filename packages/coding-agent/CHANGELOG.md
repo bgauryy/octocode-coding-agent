@@ -4,6 +4,9 @@ Entries are shown once by `octocode` after an update and on demand with `/change
 
 ## [Unreleased]
 
+- `@octocodeai/octocodecode` is now the only package published to npm. The other workspaces are private and compile into one bundle file, `dist/bundle/octocode.js`, so an install no longer pulls them or their dependencies.
+- **Breaking: the package no longer ships TypeScript declarations.** The JavaScript exports (`.`, `./rpc-entry`, `./mcp`, `./mcp/oauth`, `./mcp/testing`) are unchanged.
+- The package includes the project documentation under `docs/project/`, its MIT `LICENSE` and `dist/licenses/THIRD_PARTY_NOTICES.md`, which lists every third-party package compiled into the bundle with its license text.
 - Unified saved memory and lifecycle retrieval under `archive`; new notes default to workspace scope while legacy project/global notes and M IDs remain. `/memory` remains available.
 - Added durable agent events and complete compaction summaries in the agent database, with a generated, database-bound `.octocode/agents.txt` containing the latest 50 events.
 - Archive detail retention now measures the existing cleanup duration from committed compaction time and preserves summaries and original transcripts. Unknown legacy timestamps prevent expiry; expired copies are not rebuilt.

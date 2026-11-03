@@ -1,6 +1,6 @@
 import type { EntityInput, ItemType } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
-import type { backlog } from "../agentdb/api.ts";
+import type { backlog } from "../../../../db/src/api.ts";
 
 export interface AddInput extends EntityInput {
 	note?: string;

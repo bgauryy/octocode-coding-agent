@@ -1,8 +1,10 @@
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { exportMarkdown } from "../../src/octocode/backlog/format.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -34,7 +36,7 @@ function setup() {
 	registerBacklog(fake.api, { commands, isSubagent: false, open: async () => undefined });
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
-	const repo = fs.realpathSync(cwd);
+	const repo = registeredWorkspace(cwd).id;
 	const store = new BacklogStore(() => sharedAgentDb(), repo);
 	for (const title of ["one", "two", "three"])
 		store.add({ title, goal: "g", why: "Required work", state: "todo", createdBy: "agent" });
@@ -43,9 +45,9 @@ function setup() {
 		repo,
 		store,
 		command: commands.get("backlog")!,
-		file: path.join(repo, ".octocode", "backlog.md"),
+		file: path.join(cwd, ".octa", "code", "backlog.md"),
 		body: (seq: number, text: string) =>
-			sharedAgentDb().db.prepare("UPDATE backlog SET body = ? WHERE seq = ? AND repo_key = ?").run(text, seq, repo),
+			sharedAgentDb().db.prepare("UPDATE backlog SET body = ? WHERE seq = ? AND workspace_id = ?").run(text, seq, repo),
 	};
 }
 
@@ -89,7 +91,7 @@ describe("/backlog export refuses stored secrets like /backlog html", () => {
 		const t = setup();
 		sharedAgentDb()
 			.db.prepare(
-				"INSERT INTO backlog_audits (repo_key, backlog_id, at, actor, action, entity, after_value) VALUES (?, 'B1', 1, 'x', 'insert', 'backlog', ?)",
+				"INSERT INTO backlog_audits (workspace_id, backlog_id, at, actor, action, entity, after_value) VALUES (?, 'B1', 1, 'x', 'insert', 'backlog', ?)",
 			)
 			.run(t.repo, JSON.stringify({ body: SECRET }));
 		const ctx = fakeCtx({ cwd: t.cwd });

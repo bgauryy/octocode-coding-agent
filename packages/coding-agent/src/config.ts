@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, realpathSync } from "fs";
-import { createRequire } from "module";
-import { homedir } from "os";
-import { dirname, join, resolve } from "path";
-import { pathToFileURL } from "url";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
 import { normalizePath } from "../../common/src/paths.ts";
 import { readJsonFile } from "../../common/src/json.ts";

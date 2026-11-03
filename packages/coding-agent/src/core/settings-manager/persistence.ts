@@ -1,3 +1,4 @@
+import { retentionProblems } from "../../config/retention.ts";
 import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
 import { describeIgnoredKey, ignoredSettingsKeys } from "./ignored-keys.ts";
@@ -59,12 +60,19 @@ export class SettingsPersistence {
 		this.state.errors.push(toSettingsError(scope, error, this.state.settingsPaths[scope]));
 	}
 
-	/** Queue a warning for each root key of freshly loaded `settings` that Octocode does not read. */
+	/**
+	 * Queue a warning for each root key of freshly loaded `settings` that Octocode does not read, and for each invalid
+	 * `retention` value (a project file's `retention` is ignored: retention is global).
+	 */
 	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
 		const path = this.state.settingsPaths[scope];
-		for (const key of ignoredSettingsKeys(settings)) {
-			this.state.warnings.push({ scope, ...(path ? { path } : {}), message: describeIgnoredKey(key) });
-		}
+		const messages = [
+			...ignoredSettingsKeys(settings).map(describeIgnoredKey),
+			...(scope === "project" && settings.retention !== undefined
+				? ['Setting "retention" is global only; a project settings file cannot set it, so it does nothing.']
+				: retentionProblems(settings.retention)),
+		];
+		for (const message of messages) this.state.warnings.push({ scope, ...(path ? { path } : {}), message });
 	}
 
 	clearModifiedScope(scope: SettingsScope): void {

@@ -115,7 +115,8 @@ export const headerField = (header: string, label: string): string | undefined =
 export function readHeader(file: string, end = `\n${MESSAGES_HEADING}\n`): string | undefined {
 	let fd: number | undefined;
 	try {
-		fd = fs.openSync(file, "r");
+		fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+		if (!fs.fstatSync(fd).isFile()) return undefined;
 		const buffer = Buffer.alloc(16_384);
 		// A character split across two chunks is decoded whole.
 		const decoder = new StringDecoder("utf8");

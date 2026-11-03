@@ -5,6 +5,7 @@ import { DefaultPackageManager, type PathMetadata, type ResolvedResource } from 
 import { withTogglePattern } from "../../../core/package-manager/patterns.ts";
 import type { Skill } from "../../../core/skills.ts";
 import { loadSkillFromFile } from "../../../core/skills/load-dir.ts";
+import { SKILL_CATEGORIES, skillCategory } from "../../../core/skills/category.ts";
 import { isSyntheticPath } from "../../../core/source-info.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { canonicalizePath } from "../../../../../common/src/paths.ts";
@@ -50,9 +51,20 @@ function state(entry: SkillEntry): string {
 	return entry.loaded.userInvocable === false ? "loaded, model-only" : "loaded, model+user";
 }
 
-function describe(entry: SkillEntry): string {
+function category(entry: SkillEntry) {
+	return skillCategory(entry.loaded ?? { filePath: entry.path, sourceInfo: { source: entry.metadata.source } });
+}
+
+/** `core`, `octocode`, or `external · <scope>/<source>`: where an external skill came from matters, the others ship with Octocode. */
+function origin(entry: SkillEntry): string {
+	const kind = category(entry);
+	if (kind !== "external") return kind;
 	const source = entry.metadata.source === "auto" ? (entry.metadata.baseDir ?? "auto") : entry.metadata.source;
-	return `${entry.name} — ${state(entry)} · ${entry.metadata.scope} · ${source}\n${entry.path}`;
+	return `external · ${entry.metadata.scope}/${source}`;
+}
+
+function describe(entry: SkillEntry): string {
+	return `${entry.name} — ${state(entry)} · ${origin(entry)}\n${entry.path}`;
 }
 
 async function catalog(host: SkillsHost): Promise<{ entries: SkillEntry[]; resolved: ResolvedResource[] }> {
@@ -115,7 +127,13 @@ async function catalog(host: SkillsHost): Promise<{ entries: SkillEntry[]; resol
 		}
 	}
 	return {
-		entries: [...byPath.values()].sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path)),
+		// Core skills first, then the Octocode collection, then external skills; by name within each.
+		entries: [...byPath.values()].sort(
+			(a, b) =>
+				SKILL_CATEGORIES.indexOf(category(a)) - SKILL_CATEGORIES.indexOf(category(b)) ||
+				a.name.localeCompare(b.name) ||
+				a.path.localeCompare(b.path),
+		),
 		resolved,
 	};
 }
@@ -211,9 +229,7 @@ export async function handleSkillsCommand(host: SkillsHost, args: string): Promi
 				);
 				return true;
 			}
-			const labels = shown.map(
-				(entry) => `[${state(entry)}] ${entry.name} · ${entry.metadata.scope}/${entry.metadata.source} · ${entry.path}`,
-			);
+			const labels = shown.map((entry) => `[${state(entry)}] ${entry.name} · ${origin(entry)} · ${entry.path}`);
 			const choice = await host.showExtensionSelector("Skills — source and load state", labels);
 			const index = choice === undefined ? -1 : labels.indexOf(choice);
 			if (index >= 0) await inspectEntry(host, shown[index], resolved);

@@ -59,7 +59,23 @@ function contexts(root: Node): string[] {
 	return found;
 }
 
-/** Names this line gives only numbers or arithmetic: `i=0`, `i=$((i+1))`, `for ((i=0; …; i++))`, `((n++))`. */
+/**
+ * Commands whose output is a number (or digits and a file name that arithmetic rejects without evaluating a variable):
+ * `date +%s`, `nproc`, `id -u`, and `wc -l` reading its input, also as the last stage of a pipeline (`ls | wc -l`).
+ */
+const NUMERIC_COMMAND = /^(?:date(?:\s+-u)?\s+(['"]?)\+(?:%s|%N|%\dN)+\1|nproc|id\s+-[ug]|wc\s+-[lcmw]+)$/;
+
+/** Whether `value` is `$(…)` (bare or alone in double quotes) of one numeric command or a pipeline ending in one. */
+function numericSubstitution(value: Node): boolean {
+	const substitution = value.type === "string" && value.namedChildCount === 1 ? value.namedChild(0) : value;
+	if (substitution?.type !== "command_substitution" || substitution.namedChildCount !== 1) return false;
+	let last = substitution.namedChild(0);
+	if (last?.type === "pipeline") last = last.namedChild(last.namedChildCount - 1);
+	if (last?.type === "redirected_statement") last = last.childForFieldName("body");
+	return last?.type === "command" && NUMERIC_COMMAND.test(last.text.trim().replace(/\s+/g, " "));
+}
+
+/** Names this line gives only numbers or arithmetic: `i=0`, `i=$((i+1))`, `S=$(date +%s)`, `for ((i=0; …; i++))`, `((n++))`. */
 function numericNames(root: Node): Set<string> {
 	const numeric = new Set<string>();
 	const other = new Set<string>();
@@ -67,7 +83,8 @@ function numericNames(root: Node): Set<string> {
 		const name = assignment?.childForFieldName("name")?.text;
 		const value = assignment?.childForFieldName("value");
 		if (!name) continue;
-		if (value && (value.type === "number" || value.type === "arithmetic_expansion")) numeric.add(name);
+		if (value && (value.type === "number" || value.type === "arithmetic_expansion" || numericSubstitution(value)))
+			numeric.add(name);
 		else other.add(name);
 	}
 	for (const loop of root.descendantsOfType("for_statement")) {

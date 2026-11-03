@@ -1,5 +1,5 @@
 import type { ApplicationAsset, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { choice, plural } from "../model/format.ts";
@@ -111,7 +111,7 @@ function SessionComposerForSession() {
 			id: crypto.randomUUID(),
 		});
 
-	async function submit(event: FormEvent<HTMLFormElement>) {
+	async function submit(event: SubmitEvent<HTMLFormElement>) {
 		event.preventDefault();
 		refocus.current = event.currentTarget.contains(document.activeElement);
 		if (attachments.length && !acceptsImages) return;

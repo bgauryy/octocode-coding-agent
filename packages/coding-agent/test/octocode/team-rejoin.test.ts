@@ -105,7 +105,7 @@ describe("resuming a session rejoins the team", () => {
 		expect(child.entries).toEqual([]);
 	});
 
-	it("records the session a main agent runs, follows a switch to another session, and leaves a subagent's row without one", () => {
+	it("follows a main agent's session switch and links a child's display name to its own session", () => {
 		const env = { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") };
 		const cwd = tmp();
 		const session = (id: string) =>
@@ -124,8 +124,8 @@ describe("resuming a session rejoins the team", () => {
 		expect(sessionOf(id)).toBe("sess-b");
 
 		const child = team({ ...env, OCTOCODE_AGENT_ID: "zesty-eel", OCTOCODE_PARENT_ID: id });
-		child.team.start(session("zesty-eel"));
-		expect(main.team.members().find((member) => member.id === "zesty-eel")).not.toHaveProperty("sessionId");
+		child.team.start(session("child-session"));
+		expect(sessionOf("zesty-eel")).toBe("child-session");
 	});
 
 	it("a session with no recorded name still joins only on its first team action", () => {

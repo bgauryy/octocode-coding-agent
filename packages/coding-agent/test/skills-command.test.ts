@@ -62,6 +62,8 @@ it("lists discovered skills with source and load state", async () => {
 	expect(
 		labels.some((label) => label.includes("review") && label.includes(skillPath) && label.includes("not loaded")),
 	).toBe(true);
+	// A user's own skill is external and says where it came from.
+	expect(labels.find((label) => label.includes(skillPath))).toMatch(/ · external · \w+\/\S+ · /);
 	expect(host.showError).not.toHaveBeenCalled();
 });
 

@@ -193,7 +193,7 @@ describe("subagent dialogs relayed to the parent", () => {
 		for (const request of cases) {
 			const dialogs = ui(async () => DENY);
 			const result = await relay([request], { permission: parent("workspace").permission, ui: dialogs });
-			expect(dialogs.select, String(request.id)).toHaveBeenCalledTimes(1);
+			expect(dialogs.select, request.id).toHaveBeenCalledTimes(1);
 			expect(result.answers[0]).toMatchObject({ value: DENY });
 		}
 		// In full, a hook's ask does not ask.
@@ -215,7 +215,7 @@ describe("subagent dialogs relayed to the parent", () => {
 			const dialogs = ui(async () => DENY);
 			const full = parent("full");
 			const result = await relay([request], { permission: full.permission, ui: dialogs });
-			expect(dialogs.select, String(request.id)).toHaveBeenCalledTimes(1);
+			expect(dialogs.select, request.id).toHaveBeenCalledTimes(1);
 			expect(dialogs.select.mock.calls[0][0]).toContain("octocode-permission/1");
 			expect(result.answers[0]).toMatchObject({ value: DENY });
 			expect(full.entries()).toEqual([]);

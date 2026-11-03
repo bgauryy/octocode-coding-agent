@@ -1,10 +1,12 @@
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import { itemCounts } from "./counts-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { boardText, countsText, openTaskCount } from "../../src/octocode/backlog/format.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
@@ -37,7 +39,7 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const store = () => new BacklogStore(() => sharedAgentDb(), fs.realpathSync(cwd));
+const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
 
 /** One epic with two items (one with two open tasks), a done item and a session task of this session. */
 function seed(s: BacklogStore) {
@@ -256,7 +258,7 @@ describe("counts, headless board and resume brief carry the tasks", () => {
 			previous: { branch: null, head: null },
 			lastActive: Date.now() - 3 * 3_600_000,
 			sessionId: "sess-brief",
-			repoKey: fs.realpathSync(cwd),
+			repoKey: registeredWorkspace(cwd).id,
 			git: { dirty: 0 },
 		})!;
 		// The header counts the open steps per item, then the session's own, and says how to list them.

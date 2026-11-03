@@ -10,7 +10,7 @@ export function registerReadReceipts(api: ExtensionAPI) {
 		snapshotsByCall.delete(event.toolCallId);
 		const details = asRecord(event.details);
 		if (!snapshots || event.isError || details.outputTruncated || details.fullOutputPath) return;
-		const reads = await completedLocalReads(snapshots, event.structuredContent, ctx.cwd);
+		const reads = await completedLocalReads(snapshots, event.structuredContent, ctx.cwd, event.input);
 		if (reads.length)
 			return {
 				content: appendReadDigests(event.content, reads, { nested: Boolean(event.parentToolCallId) }),

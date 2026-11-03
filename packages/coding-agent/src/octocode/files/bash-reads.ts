@@ -4,12 +4,14 @@ import { resolveToolPath } from "../shared/home.ts";
 import type { LineRange } from "./coverage.ts";
 
 /**
- * Which files a `bash` command showed the model, for the file guard, whichever reader its refusals name. Only a lone, fully
- * literal command that prints file text is credited: `cat FILE...`, `head [-n N] FILE`, `tail -n +N FILE` and
- * `sed -n 'A,Bp' FILE`, optionally after `cd DIR &&` or `cd DIR;` steps that relative files resolve against (DIR is `.`, or
- * starts with `/` or `./`, with no `..`: `followableCdTarget`). A
- * pipe, redirect, other list, substitution, glob, variable or unknown option shows nothing certain, so it is not credited;
- * the model then reads again with one of these commands.
+ * Which files a `bash` command showed the model, for the file guard, whichever reader its refusals name. Each fully
+ * literal command that prints file text is credited with what it printed: `cat FILE...`, `head [-n N] FILE`,
+ * `tail -n +N FILE` and `sed -n 'A,Bp' FILE`, alone or as a segment of a list joined only by `;` or only by `&&` (the
+ * tool succeeded, so each ran), after `cd DIR` steps that relative files resolve against (DIR is `.`, or starts with `/`
+ * or `./`, with no `..`: `followableCdTarget`). A list mixing `;` and `&&` credits only its last command after `cd` steps.
+ * Besides prints and `cd`, only `echo`, `printf`, `pwd`, `ls`, `true` and `wc` may share the list. A pipe, redirect, `||`, substitution, glob,
+ * variable or unknown option, or any other command in the list shows nothing certain, so nothing in it is credited; the
+ * model then reads again with one of these commands.
  */
 
 /** What one command showed of one file. */
@@ -90,37 +92,48 @@ function sedRange(script: string): LineRange | undefined {
 	return last && last >= first ? [first, last] : undefined;
 }
 
-const CD_STEP = /^cd[ \t]+('[^']*'|"[^"$`\\]*"|[^\s'"|&;<>()$`*?[\]{}~!#\\]+)[ \t]*(&&|;)/;
+/**
+ * The other commands a credited list may hold: they write no file and change no directory or variable, so the printed
+ * files are what the model saw. Any other segment (`sed -i`, `rm`, `source`, an assignment) could change them after the print.
+ */
+const HARMLESS = new Set(["echo", "printf", "pwd", "ls", "true", "wc"]);
 
 /**
- * The directory leading literal `cd DIR &&` / `cd DIR;` steps end in, and the command after them; undefined when a step is
- * not a plain `cd` to a literal directory. After `;` the printer runs even when the `cd` failed, in the old directory, so
- * that directory must exist for the printed file to be the one named.
+ * `command` split at unquoted `;` and `&&` into segments and the operators between them; undefined when the text holds a
+ * backslash or newline, an unterminated quote (where a split could land inside a quoted word) or an empty segment.
  */
-function afterCd(command: string, cwd: string): { command: string; cwd: string } | undefined {
-	let rest = command;
-	let dir = cwd;
-	for (let step = CD_STEP.exec(rest); step; step = CD_STEP.exec(rest)) {
-		const target = literalWords(step[1])?.[0];
-		// A bare name goes through `CDPATH` and `..` is followed on the spelling, not the real directories.
-		if (!target || !followableCdTarget(target)) return undefined;
-		dir = resolveToolPath(dir, target);
-		if (step[2] === ";" && !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return undefined;
-		rest = rest.slice(step[0].length).trimStart();
+function chain(command: string): { segments: string[]; ops: string[] } | undefined {
+	if (/[\\\n\r]/.test(command)) return undefined;
+	const segments: string[] = [];
+	const ops: string[] = [];
+	let quote = "";
+	let start = 0;
+	for (let i = 0; i < command.length; i++) {
+		const char = command[i];
+		if (quote) {
+			if (char === quote) quote = "";
+		} else if (char === "'" || char === '"') {
+			quote = char;
+		} else if (char === ";" || (char === "&" && command[i + 1] === "&")) {
+			const op = char === ";" ? ";" : "&&";
+			segments.push(command.slice(start, i).trim());
+			ops.push(op);
+			i += op.length - 1;
+			start = i + 1;
+		}
 	}
-	return { command: rest, cwd: dir };
+	if (quote) return undefined;
+	const last = command.slice(start).trim();
+	// A trailing `;` ends the list; a trailing `&&` waits for more input.
+	if (last === "" && ops.at(-1) === ";") ops.pop();
+	else segments.push(last);
+	return segments.length === ops.length + 1 && segments.every((segment) => segment !== "")
+		? { segments, ops }
+		: undefined;
 }
 
-/**
- * The files `command` showed. `truncated`: the tool cut the output, so no view is certain to be whole or to hold the
- * lines asked for; the files still count as read in part.
- */
-export function bashReads(command: string, shellCwd: string, truncated = false): BashRead[] {
-	const target = afterCd(command.trim(), shellCwd);
-	if (!target) return [];
-	const cwd = target.cwd;
-	const words = literalWords(target.command);
-	if (!words?.length) return [];
+/** What one literal command printed of a file, `cwd` being its directory; `truncated`: the tool cut the output. */
+function printed(words: string[], cwd: string, truncated: boolean): BashRead[] {
 	const [name, ...args] = words;
 	const read = (file: string, whole: boolean, lines?: LineRange): BashRead => ({
 		file: resolveToolPath(cwd, file),
@@ -150,4 +163,45 @@ export function bashReads(command: string, shellCwd: string, truncated = false):
 		return range && file && !file.startsWith("-") && extra.length === 0 ? [read(file, false, range)] : [];
 	}
 	return [];
+}
+
+/** The directory a literal `cd DIR` segment leads to, or undefined when it is not a followable literal one. */
+function cdTarget(words: string[], cwd: string): string | undefined {
+	const [, target, ...extra] = words;
+	return target && extra.length === 0 && followableCdTarget(target) ? resolveToolPath(cwd, target) : undefined;
+}
+
+/**
+ * The files `command` showed. `truncated`: the tool cut the output, so no view is certain to be whole or to hold the
+ * lines asked for; the files still count as read in part.
+ */
+export function bashReads(command: string, shellCwd: string, truncated = false): BashRead[] {
+	const parts = chain(command.trim());
+	if (!parts) return [];
+	const { segments, ops } = parts;
+	// The command succeeded (a failed one is no result here), so every segment of an all-`&&` list ran, and every one of an
+	// all-`;` list runs whatever its exit. A mix proves neither (`a && b; c` succeeds when `a` failed): then only leading
+	// `cd` steps may precede the final command.
+	const uniform = ops.every((op) => op === ops[0]);
+	const steps = segments.map((segment) => literalWords(segment));
+	// One segment that is not a print, a literal `cd` or harmless, or is not literal, voids the list: it may change what was printed.
+	const known = (words: string[] | undefined): words is string[] =>
+		words !== undefined &&
+		words.length > 0 &&
+		(words[0] === "cd" || HARMLESS.has(words[0]) || printed(words, shellCwd, false).length > 0);
+	if (!steps.every(known)) return [];
+	const reads: BashRead[] = [];
+	let cwd = shellCwd;
+	for (const [index, words] of steps.entries()) {
+		if (words[0] === "cd") {
+			const dir = cdTarget(words, cwd);
+			// After `;` the next step runs even when the `cd` failed, in the old directory, so the new one must exist.
+			if (!dir || (ops[index] === ";" && !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())) return [];
+			cwd = dir;
+		} else if (!HARMLESS.has(words[0])) {
+			if (!uniform && index < segments.length - 1) return [];
+			reads.push(...printed(words, cwd, truncated));
+		}
+	}
+	return reads;
 }

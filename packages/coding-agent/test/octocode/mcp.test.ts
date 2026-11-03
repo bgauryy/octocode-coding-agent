@@ -18,7 +18,10 @@ describe("Octocode launch policy", () => {
 			command: process.execPath,
 			args: ["/x/octocode-mcp/bin.js"],
 			cwd: "/work/app",
-			env: { WORKSPACE_ROOT: "/work/app", ALLOWED_PATHS: "/work/app,/h/.octocode/agent/sessions" },
+			env: {
+				WORKSPACE_ROOT: "/work/app",
+				ALLOWED_PATHS: "/work/app,/work/app/.octa/code/session-data,/work/app/.octa/code/temp/sessions",
+			},
 		});
 		// The real bundled bin resolves (octocode-mcp is a dependency).
 		expect(fs.existsSync(octocodeLaunch("/w").args[0])).toBe(true);
@@ -28,7 +31,12 @@ describe("Octocode launch policy", () => {
 		const home = "/h/.octocode";
 		const { env } = octocodeLaunch("/work/app", { OCTOCODE_HOME: home }, "/x/bin.js", ["/skills/review"]);
 		const roots = env.ALLOWED_PATHS.split(",");
-		expect(roots).toEqual(["/work/app", `${home}/agent/sessions`, "/skills/review"]);
+		expect(roots).toEqual([
+			"/work/app",
+			"/work/app/.octa/code/session-data",
+			"/work/app/.octa/code/temp/sessions",
+			"/skills/review",
+		]);
 		expect(roots).not.toContain(home);
 		// Spilled output and bash logs, which the model reads back, are under the session folders.
 		expect(path.join(home, "pi-trust.json").startsWith(`${roots[1]}${path.sep}`)).toBe(false);
@@ -146,6 +154,25 @@ describe("Octocode tool results and rendering", () => {
 		const structured = { content: [{ type: "text" as const, text: "{}" }], structuredContent: { a: 1 } };
 		expect((await toToolResult("t", structured, true)).structuredContent).toEqual({ a: 1 });
 		expect(await toToolResult("t", structured, false)).not.toHaveProperty("structuredContent");
+	});
+
+	// The Octocode server answers with one JSON text block and no separate structured copy.
+	it("takes structuredContent from a lone JSON text block when the server sends none", async () => {
+		const rows = { results: [{ index: 0, data: { content: "1\tone\u202e\n", totalLines: 1 } }] };
+		const text = (value: string) => ({ content: [{ type: "text" as const, text: value }] });
+		const derived = await toToolResult("localFetch", text(JSON.stringify(rows)), true);
+		expect(derived.structuredContent).toEqual({
+			results: [{ index: 0, data: { content: "1\tone\\u{202e}\n", totalLines: 1 } }],
+		});
+		expect(derived.isError).toBeUndefined();
+		expect(await toToolResult("localFetch", text(JSON.stringify(rows)), false)).not.toHaveProperty("structuredContent");
+		for (const other of [text("not json"), text("[1]"), { content: [...text("{}").content, ...text("{}").content] }])
+			expect(await toToolResult("localFetch", other, true)).not.toHaveProperty("structuredContent");
+		// Too large to keep: no structured copy and no error; the text is capped and saved as any long text is.
+		const huge = await toToolResult("localFetch", text(JSON.stringify({ a: "x".repeat(TEXT_MAX_CHARS) })), true);
+		expect(huge).not.toHaveProperty("structuredContent");
+		expect(huge.isError).toBeUndefined();
+		expect(huge.details).toMatchObject({ outputTruncated: true });
 	});
 
 	it("gives every Octocode tool the host's shared exposure", () => {

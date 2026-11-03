@@ -57,13 +57,15 @@ function setup(
 	});
 	team.start(ctx);
 	const reports = () => f.sent.map((entry) => String(entry.message.content)).filter((text) => text.includes("LINGER"));
-	const start = async (task: string, extra: Record<string, unknown> = {}) =>
-		(
-			await f.tools
-				.get("agent")
-				.execute("call-1", { task, goal: "linger test", background: true, ...extra }, undefined, undefined, ctx)
-		).details.id as string;
-	return { f, team, control, ctx, reports, start, permission };
+	const sessionIds = new Map<string, string>();
+	const start = async (task: string, extra: Record<string, unknown> = {}) => {
+		const { details } = await f.tools
+			.get("agent")
+			.execute("call-1", { task, goal: "linger test", background: true, ...extra }, undefined, undefined, ctx);
+		sessionIds.set(details.id, details.session.id);
+		return details.id as string;
+	};
+	return { f, team, control, ctx, reports, start, permission, sessionIds };
 }
 
 describe("a background subagent that reported blocked", () => {
@@ -224,7 +226,7 @@ describe("a lingering background subagent", () => {
 			expect(saved[0].run.profile.headless).toBe(false);
 			const archive = path.join(saved[0].run.identity.scratch, "session");
 			fs.mkdirSync(archive, { recursive: true });
-			fs.writeFileSync(path.join(archive, `2026-01-01T00-00-00-000Z_${id}.jsonl`), "{}\n");
+			fs.writeFileSync(path.join(archive, `2026-01-01T00-00-00-000Z_${saved[0].run.identity.sessionId}.jsonl`), "{}\n");
 			first.team.stop();
 			const reopened = setup("full", cwd, profiles);
 			try {
@@ -255,7 +257,7 @@ describe("a lingering background subagent", () => {
 			const saved = JSON.parse(fs.readFileSync(path.join(sessionDir("session-test"), "parked-workers.json"), "utf8"));
 			const archive = path.join(saved[0].run.identity.scratch, "session");
 			fs.mkdirSync(archive, { recursive: true });
-			const transcript = path.join(archive, `2026-01-01T00-00-00-000Z_${id}.jsonl`);
+			const transcript = path.join(archive, `2026-01-01T00-00-00-000Z_${saved[0].run.identity.sessionId}.jsonl`);
 			fs.writeFileSync(transcript, "{}\n");
 			expect(readParked("session-test", cwd).map((entry) => entry.run.identity.id)).toContain(id);
 			const registry = path.join(sessionDir("session-test"), "parked-workers.json");
@@ -287,7 +289,7 @@ describe("a lingering background subagent", () => {
 				);
 				await reopened.control.settle();
 				expect(reopened.reports()[0]).toContain("linger after restart");
-				expect(reopened.reports()[0]).toContain(`--session-id ${id}`);
+				expect(reopened.reports()[0]).toContain(`--session-id ${saved[0].run.identity.sessionId}`);
 			} finally {
 				await reopened.control.stopAll();
 				reopened.team.stop();
@@ -303,7 +305,10 @@ describe("a lingering background subagent", () => {
 		const t = setup("full");
 		let servers: Record<string, unknown> = { old: { command: "echo", env: { TOKEN: "SECRET-PARKED-123" } } };
 		Object.assign(t.f.api, {
-			events: { on: () => () => undefined, emit: (_name: string, reply: (handoff: unknown) => void) => reply({ servers, stopped: [] }) },
+			events: {
+				on: () => () => undefined,
+				emit: (_name: string, reply: (handoff: unknown) => void) => reply({ servers, stopped: [] }),
+			},
 		});
 		try {
 			const id = await t.start("linger with servers");
@@ -491,7 +496,9 @@ describe("a lingering background subagent", () => {
 			const id = await t.start("hang");
 			// The fixture must have received its prompt; cancelling the queued launch has no conversation to resume.
 			await vi.waitFor(() =>
-				expect(childSessionFile({ dir: path.join(scratchRoot(t.ctx.cwd), id, "session"), id })).toBeDefined(),
+				expect(
+					childSessionFile({ dir: path.join(scratchRoot(t.ctx.cwd), id, "session"), id: t.sessionIds.get(id)! }),
+				).toBeDefined(),
 			);
 			t.permission.setMode("manual", t.ctx);
 			await t.control.settle();
@@ -594,16 +601,16 @@ describe("a lingering background subagent", () => {
 	it("continues its own conversation when messaged after it finished, and reports again", async () => {
 		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
 		try {
-			const { team, reports, start } = setup();
+			const { team, reports, start, sessionIds } = setup();
 			const id = await start("linger first");
 			await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 10_000 });
-			expect(reports()[0]).toContain(`--session-id ${id}`);
+			expect(reports()[0]).toContain(`--session-id ${sessionIds.get(id)}`);
 			// The first report says how long it stays reachable.
 			expect(reports()[0]).toMatch(/reachable for 60 s/);
 			const sent = await team.send(id, "linger second: add the tests", { replyRequired: false });
 			expect(sent).toMatchObject({ resumed: expect.stringContaining(`Resumed ${id}`) });
 			await vi.waitFor(() => expect(reports()).toHaveLength(2), { timeout: 10_000 });
-			expect(reports()[1]).toContain(`--session-id ${id}`);
+			expect(reports()[1]).toContain(`--session-id ${sessionIds.get(id)}`);
 			expect(reports()[1]).toContain("linger second: add the tests");
 			team.stop();
 		} finally {

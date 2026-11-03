@@ -913,6 +913,21 @@ describe("Image transcoding", () => {
 		assert.strictEqual(calls.filter((data) => data === jpeg).length, 1);
 	});
 
+	it("bounds the shared conversion cache by bytes and distinguishes MIME types", () => {
+		let conversions = 0;
+		setImageTranscoder((data, mimeType) => {
+			conversions++;
+			return mimeType === "image/jpeg" ? png : data;
+		});
+		const large = "a".repeat(17 * 1024 * 1024);
+		render(large, "image/jpeg");
+		render(large, "image/jpeg");
+		assert.strictEqual(conversions, 2, "an oversized source must not be retained globally");
+		render(jpeg, "image/jpeg");
+		render(jpeg, "image/webp");
+		assert.strictEqual(conversions, 4, "the declared format changes conversion");
+	});
+
 	it("does not convert PNG data or iTerm2 output", () => {
 		setImageTranscoder(transcode);
 		assert.ok(render(png, "image/png")[0].includes(`;${png}\x1b\\`));

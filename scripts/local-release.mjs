@@ -105,11 +105,6 @@ const repoRoot = process.cwd();
 const rootPackageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
 if (rootPackageJson.name !== "@octocodeai/octocode-monorepo")
 	throw new Error("Run this script from the repository root");
-execFileSync(process.execPath, ["scripts/generate-coding-agent-install-lock.mjs", "--check", "--require-registry"], {
-	cwd: repoRoot,
-	stdio: "inherit",
-});
-
 execYarnSync(["run", "generate:models"], { cwd: repoRoot, stdio: "inherit" });
 if (!options.skipCheck) execYarnSync(["run", "check"], { cwd: repoRoot, stdio: "inherit" });
 

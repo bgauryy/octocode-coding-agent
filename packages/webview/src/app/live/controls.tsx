@@ -1,6 +1,6 @@
 import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { WorkspaceCommand } from "@octocodeai/octocode-contracts/workspace";
-import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { type SubmitEvent, type ReactNode, useId, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Field, Select } from "../ui/fields.tsx";
@@ -52,7 +52,7 @@ function AgentMessageForm({ item, agentId }: { item?: SnapshotItem; agentId?: st
 	function edit(patch: { text?: string; to?: string }) {
 		workspace.getState().setDraft(draftKey, { text, to, ...patch, id: crypto.randomUUID() });
 	}
-	async function submit(event: FormEvent) {
+	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (sending.current) return;
 		if (!text.trim() || !to) {

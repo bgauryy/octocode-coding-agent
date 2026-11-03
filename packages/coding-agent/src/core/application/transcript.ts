@@ -1,3 +1,4 @@
+import { withSessionStorage, runtimeTempDir } from "../../config/runtime-paths.ts";
 import { createHash } from "node:crypto";
 import type {
 	ApplicationEvent,
@@ -35,12 +36,16 @@ type ToolEvent = Extract<
 
 /** Ordered, interface-independent conversation state. Only snapshots are windowed; history remains queryable. */
 export class ApplicationTranscript {
-	readonly assets = new ApplicationAssets();
-	private readonly stream = new TranscriptStream(this.assets);
+	readonly assets: ApplicationAssets;
+	private readonly stream: TranscriptStream;
 	private readonly toolCalls = new ToolCallStream();
 	private readonly messageEntries: ApplicationCollection<ApplicationMessage>;
 	private readonly toolEntries: ApplicationCollection<ApplicationTool>;
-	constructor(state: ApplicationStateStore) {
+	constructor(state: ApplicationStateStore, manager?: () => object) {
+		this.assets = new ApplicationAssets({
+			tempDir: manager ? () => withSessionStorage(manager(), runtimeTempDir) : undefined,
+		});
+		this.stream = new TranscriptStream(this.assets);
 		this.messageEntries = new ApplicationCollection(
 			() => state.getState().messages,
 			(messages) => state.setState({ messages }),

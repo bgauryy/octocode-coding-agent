@@ -1,7 +1,8 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { registerSessions } from "../../src/octocode/sessions/register.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { titleFromReply } from "../../src/octocode/sessions/title.ts";

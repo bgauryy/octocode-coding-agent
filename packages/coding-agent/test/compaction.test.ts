@@ -2,8 +2,8 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { calculateContextTokens, ESTIMATED_IMAGE_TOKENS } from "@octocodeai/octocode-ai/utils/estimate";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	type CompactionSettings,

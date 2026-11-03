@@ -13,7 +13,9 @@ export type ImageTranscoder = (base64Data: string, mimeType: string) => string |
 
 let imageTranscoder: ImageTranscoder | undefined;
 // Backstop for callers that recreate Image instances. Keyed by source data, least recently used first.
-const pngCache = new Map<string, string | null>();
+const MAX_PNG_CACHE_BYTES = 32 * 1024 * 1024;
+const pngCache = new Map<string, { mimeType: string; png: string | null; bytes: number }>();
+let pngCacheBytes = 0;
 
 /**
  * Register the converter used for non-PNG images on Kitty-protocol terminals, which only accept PNG.
@@ -22,15 +24,28 @@ const pngCache = new Map<string, string | null>();
 export function setImageTranscoder(transcoder: ImageTranscoder | undefined): void {
 	imageTranscoder = transcoder;
 	pngCache.clear();
+	pngCacheBytes = 0;
 }
 
 function toPng(base64Data: string, mimeType: string): string | null {
 	if (!imageTranscoder) return null;
 	const cached = pngCache.get(base64Data);
-	const png = cached === undefined ? imageTranscoder(base64Data, mimeType) : cached;
-	pngCache.delete(base64Data);
-	pngCache.set(base64Data, png);
-	if (pngCache.size > 32) pngCache.delete(pngCache.keys().next().value!);
+	const png = cached?.mimeType === mimeType ? cached.png : imageTranscoder(base64Data, mimeType);
+	if (cached) {
+		pngCache.delete(base64Data);
+		pngCacheBytes -= cached.bytes;
+	}
+	// Base64 is ASCII; count two bytes per character conservatively for either V8 string representation.
+	const bytes = 2 * (base64Data.length + (png?.length ?? 0));
+	if (bytes <= MAX_PNG_CACHE_BYTES) {
+		pngCache.set(base64Data, { mimeType, png, bytes });
+		pngCacheBytes += bytes;
+	}
+	while (pngCache.size > 32 || pngCacheBytes > MAX_PNG_CACHE_BYTES) {
+		const oldest = pngCache.keys().next().value!;
+		pngCacheBytes -= pngCache.get(oldest)!.bytes;
+		pngCache.delete(oldest);
+	}
 	return png;
 }
 

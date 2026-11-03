@@ -44,6 +44,14 @@ export const MODEL_TIERS = ["small", "medium"] as const;
 type ModelTier = (typeof MODEL_TIERS)[number];
 export const isModelTier = (value: string): value is ModelTier => (MODEL_TIERS as readonly string[]).includes(value);
 
+/**
+ * The purpose of a child whose call names no model and no profile. Not the parent's: the coordinator's model is usually
+ * the dearest, and a worker needs only the tier its task needs (user request, 2026-11-03: an Opus coordinator sends work
+ * to Sonnet). With no capable model in the band, the purpose falls back to the parent's model. A profile without a
+ * model keeps the parent's (a plugin agent's `model: inherit`).
+ */
+export const SUBAGENT_DEFAULT_TIER: ModelTier = "medium";
+
 /** A subagent starts fresh but reads files and tool output: a model with a smaller window is not a candidate. */
 const MIN_SUBAGENT_CONTEXT = 100_000;
 

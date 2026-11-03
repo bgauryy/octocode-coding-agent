@@ -242,8 +242,8 @@ describe("registerTurnSetup", () => {
 			});
 			return run(fake, ["read", "file"]);
 		};
-		const first = await sectionFor("researcher-1a2b", "main-aaaaaa", "/repo/.octocode/tmp/agents/researcher-1a2b");
-		const second = await sectionFor("researcher-9z8y", "main-bbbbbb", "/other/.octocode/tmp/agents/researcher-9z8y");
+		const first = await sectionFor("researcher-1a2b", "main-aaaaaa", "/repo/.octa/code/temp/agents/researcher-1a2b");
+		const second = await sectionFor("researcher-9z8y", "main-bbbbbb", "/other/.octa/code/temp/agents/researcher-9z8y");
 		expect(second).toBe(first);
 		expect(first).not.toMatch(/researcher-1a2b|main-aaaaaa|\.octocode\/tmp/);
 	});

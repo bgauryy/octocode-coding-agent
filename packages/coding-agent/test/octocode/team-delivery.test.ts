@@ -600,18 +600,6 @@ describe("headless subagent exit", () => {
 		}
 	});
 
-	it("tells a parent that reused its pid from the parent by its start time", () => {
-		const ppid = vi.spyOn(process, "ppid", "get").mockReturnValue(1);
-		try {
-			// Through a launcher (the parent is not our ppid): the recorded start time decides.
-			expect(parentProcessGone(`${process.pid} Thu Jan  1 00:00:00 1970`)).toBe(process.platform !== "win32");
-			expect(parentProcessGone(String(process.pid))).toBe(false);
-			expect(parentProcessGone("garbage")).toBe(false);
-		} finally {
-			ppid.mockRestore();
-		}
-	});
-
 	it("keeps a child whose launcher exited while its parent still runs", () => {
 		vi.useFakeTimers();
 		const kill = vi.spyOn(process, "kill").mockImplementation(() => true);

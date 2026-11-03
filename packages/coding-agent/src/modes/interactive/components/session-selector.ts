@@ -7,7 +7,7 @@ import { SessionSelectorHeader } from "./session-selector/header.ts";
 import { SessionLoads, type SessionsLoader } from "./session-selector/loads.ts";
 import { type ActionsMenu, actionsMenuFor, renamePanel } from "./session-selector/panels.ts";
 import { SessionList } from "./session-selector/session-list.ts";
-import type { SessionPickerPorts, SessionScope } from "./session-selector/types.ts";
+import type { SessionPickerPorts, SessionRemoval, SessionScope } from "./session-selector/types.ts";
 import { deleteSessionFile } from "./session-selector/utils.ts";
 import type { NameFilter, SortMode } from "./session-selector-search.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -174,33 +174,17 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			this.header.setShowPath(showPath);
 			this.requestRender();
 		};
-		this.sessionList.onDeleteConfirmationChange = (path) => {
-			this.header.setConfirmingDeletePath(path);
+		this.sessionList.onDeleteConfirmationChange = (paths) => {
+			this.header.setConfirmingDeleteCount(paths?.length ?? 0);
 			this.requestRender();
 		};
+		this.sessionList.onMarksChange = () => this.requestRender();
 		this.sessionList.onError = (msg) => {
 			this.header.setStatusMessage({ type: "error", message: msg }, 3000);
 			this.requestRender();
 		};
 
-		// Handle session deletion
-		this.sessionList.onDeleteSession = async (sessionPath: string) => {
-			const result = await deleteSessionFile(sessionPath);
-
-			if (result.ok) {
-				this.loads.remove(sessionPath);
-				this.sessionList.setSessions(this.loads.sessionsFor(this.scope) ?? [], this.scope === "all");
-
-				const msg = result.method === "trash" ? "Session moved to trash" : "Session deleted";
-				this.header.setStatusMessage({ type: "info", message: msg }, 2000);
-				await this.loads.refresh();
-			} else {
-				const reason = result.error ?? "Unknown error";
-				this.header.setStatusMessage({ type: "error", message: `Failed to delete: ${reason}` }, 3000);
-			}
-
-			this.requestRender();
-		};
+		this.sessionList.onDeleteSessions = (sessionPaths) => this.deleteSessions(sessionPaths);
 
 		// Start loading immediately
 		void this.loads.load(this.scope);
@@ -210,6 +194,54 @@ export class SessionSelectorComponent extends Container implements Focusable {
 	dispose(): void {
 		this.header.setStatusMessage(null);
 		this.loads.cancel();
+	}
+
+	/** Deletes the confirmed sessions through the host's removal when it has one, else file by file, and reports the outcome. */
+	private async deleteSessions(paths: string[]): Promise<void> {
+		const known = new Map(
+			(this.loads.sessionsFor(this.scope) ?? []).map((session) => [session.path, session] as const),
+		);
+		const sessions = paths.flatMap((file) => known.get(file) ?? []);
+		let outcome: SessionRemoval;
+		try {
+			outcome = await (this.ports.removeSessions ? this.ports.removeSessions(sessions) : this.removeFiles(sessions));
+		} catch (err) {
+			this.header.setStatusMessage({ type: "error", message: `Failed to delete: ${errorMessage(err)}` }, 5000);
+			this.requestRender();
+			return;
+		}
+		for (const file of outcome.removed) this.loads.remove(file);
+		this.sessionList.setSessions(this.loads.sessionsFor(this.scope) ?? [], this.scope === "all");
+		const { removed, problems } = outcome;
+		const done =
+			removed.length === 0
+				? ""
+				: removed.length === 1
+					? outcome.method === "trash"
+						? "Session moved to trash"
+						: "Session deleted"
+					: `${removed.length} sessions ${outcome.method === "trash" ? "moved to trash" : "deleted"}`;
+		const kept = problems.length === 0 ? "" : `${problems.length} not deleted: ${problems.join("; ")}`;
+		this.header.setStatusMessage(
+			{ type: problems.length > 0 ? "error" : "info", message: [done, kept].filter(Boolean).join(" · ") },
+			problems.length > 0 ? 8000 : 2000,
+		);
+		this.requestRender();
+		await this.loads.refresh();
+		this.requestRender();
+	}
+
+	/** Without a host removal: each transcript to the trash, else unlinked. */
+	private async removeFiles(sessions: readonly SessionInfo[]): Promise<SessionRemoval> {
+		const outcome: SessionRemoval = { removed: [], problems: [] };
+		for (const session of sessions) {
+			const result = await deleteSessionFile(session.path);
+			if (result.ok) {
+				outcome.removed.push(session.path);
+				outcome.method = result.method;
+			} else outcome.problems.push(`${session.name ?? session.id}: ${result.error ?? "unknown error"}`);
+		}
+		return outcome;
 	}
 
 	private enterRenameMode(sessionPath: string, currentName: string | undefined): void {

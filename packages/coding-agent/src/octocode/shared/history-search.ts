@@ -27,7 +27,7 @@ try {
 		let fd;
 		let text;
 		try {
-			fd = fs.openSync(files[index], "r");
+			fd = fs.openSync(files[index], fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
 			const stat = fs.fstatSync(fd);
 			if (!stat.isFile()) continue;
 			if (stat.size > maxBytes - bytes) throw new Error("archive search exceeds 32 MiB; narrow file to a session folder or one archive file.");

@@ -1,5 +1,5 @@
-import { type FSWatcher, existsSync, readFileSync, type Stats, unwatchFile, watchFile } from "fs";
-import { dirname, join } from "path";
+import { type FSWatcher, existsSync, readFileSync, type Stats, unwatchFile, watchFile } from "node:fs";
+import { dirname, join } from "node:path";
 import { closeWatcher, FS_WATCH_RETRY_DELAY_MS, watchWithErrorHandler } from "../utils/fs-watch.ts";
 import {
 	findGitPaths,

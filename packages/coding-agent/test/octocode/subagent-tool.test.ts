@@ -150,7 +150,7 @@ const reportOf = (text: string) =>
 describe("subagent scratch sweep", () => {
 	it("keeps old folders whose owning Octocode process is alive (another session's background subagent) and removes the rest", async () => {
 		const s = setup();
-		const root = path.join(s.cwd, ".octocode", "tmp", "agents");
+		const root = path.join(s.cwd, ".octa", "code", "temp", "agents");
 		// Past the default OCTOCODE_CLEANUP_DAYS (30).
 		const old = (Date.now() - 31 * 24 * 3_600_000) / 1000;
 		const folder = (name: string, owner?: number) => {
@@ -201,15 +201,7 @@ describe("agent tool with a scripted child", () => {
 		expect(valid.isError).toBeUndefined();
 		expect(valid.details.structured).toMatchObject({ status: "valid", data: { verdict: "pass" } });
 		expect(valid.details.outcome).toBe("done");
-		const snapshot = path.join(
-			s.cwd,
-			".octocode",
-			"tmp",
-			"agents",
-			valid.details.id,
-			"session",
-			"result-schema-v1.json",
-		);
+		const snapshot = path.join(valid.details.session.dir, "result-schema-v1.json");
 		expect(JSON.parse(fs.readFileSync(snapshot, "utf8"))).toMatchObject({
 			version: 1,
 			schemaHash: valid.details.structured.schemaHash,
@@ -291,11 +283,11 @@ describe("agent tool with a scripted child", () => {
 		expect(facts.parent).toBe(s.team.id);
 		expect(facts.cwd).toBe(fs.realpathSync(s.cwd));
 		// Each subagent gets a handoff folder in the workspace, which ignores itself in git.
-		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octocode", "tmp", "agents", facts.id));
+		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octa", "code", "temp", "agents", facts.id));
 		// Its saved conversation keeps the handoff folder available for an explicit resume.
 		expect(fs.existsSync(result.details.session.file)).toBe(true);
 		expect(path.dirname(result.details.session.file)).toBe(path.join(facts.scratch, "session"));
-		expect(fs.readFileSync(path.join(s.cwd, ".octocode", "tmp", ".gitignore"), "utf8")).toBe("*\n");
+		expect(fs.readFileSync(path.join(s.cwd, ".octa", "code", ".gitignore"), "utf8")).toBe("*\n");
 		expect(facts.args).toEqual(
 			expect.arrayContaining([
 				"--mode",
@@ -303,7 +295,7 @@ describe("agent tool with a scripted child", () => {
 				"--session-dir",
 				path.join(facts.scratch, "session"),
 				"--session-id",
-				facts.id,
+				result.details.session.id,
 				"--model",
 				"faux/model:medium",
 				"--tools",
@@ -597,7 +589,7 @@ describe("agent tool with a scripted child", () => {
 	it("keeps a long report short in context and saves it whole as a doc", async () => {
 		const result = await s.run({ task: "long report" });
 		const text = result.content[0].text as string;
-		const file = path.join(fs.realpathSync(s.cwd), ".octocode", "tmp", "agents", result.details.id, "report.md");
+		const file = path.join(fs.realpathSync(s.cwd), ".octa", "code", "temp", "agents", result.details.id, "report.md");
 		const savedReport = fs.readFileSync(file, "utf8");
 		const sha256 = createHash("sha256").update(savedReport).digest("hex");
 		const version = path.join(path.dirname(file), `report-${sha256}.md`);
@@ -610,7 +602,9 @@ describe("agent tool with a scripted child", () => {
 		expect(fs.readFileSync(file, "utf8")).toMatch(/the end$/);
 		// A short report is not written to disk.
 		const short = await s.run({ task: "report" });
-		expect(fs.existsSync(path.join(s.cwd, ".octocode", "tmp", "agents", short.details.id, "report.md"))).toBe(false);
+		expect(fs.existsSync(path.join(s.cwd, ".octa", "code", "temp", "agents", short.details.id, "report.md"))).toBe(
+			false,
+		);
 		expect(short.details.reportArtifact).toEqual({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
 	});
 
@@ -1639,7 +1633,7 @@ describe("background report delivery", () => {
 
 	it("delivers without a turn a report whose file the parent already read since it was written", () => {
 		const cwd = tmp();
-		const scratch = path.join(cwd, ".octocode", "tmp", "agents", "general-abcdef");
+		const scratch = path.join(cwd, ".octa", "code", "temp", "agents", "general-abcdef");
 		fs.mkdirSync(scratch, { recursive: true });
 		const file = path.join(scratch, "report.md");
 		fs.writeFileSync(file, "report");
@@ -1647,7 +1641,7 @@ describe("background report delivery", () => {
 		fs.utimesSync(file, past, past);
 		const read = new ReadReports();
 		read.track("general-abcdef", scratch);
-		read.observe("read", { path: ".octocode/tmp/agents/general-abcdef/report.md" }, cwd);
+		read.observe("read", { path: ".octa/code/temp/agents/general-abcdef/report.md" }, cwd);
 		expect(read.consume("general-abcdef")).toBe(true);
 		// Rewritten after the read: the parent has not seen the final version.
 		read.track("general-abcdef", scratch);
@@ -1666,7 +1660,7 @@ describe("background report delivery", () => {
 		const s = setup();
 		const result = await s.run({ task: "long report" });
 		const { id } = result.details as { id: string };
-		const scratch = path.join(s.cwd, ".octocode", "tmp", "agents", id);
+		const scratch = path.join(s.cwd, ".octa", "code", "temp", "agents", id);
 		expect(fs.existsSync(path.join(scratch, "report.md"))).toBe(true);
 		const late = await s.team.send(id, "more");
 		expect("error" in late && late.error).toContain(`(files it handed back, and its full report when cut, are in`);
@@ -1757,7 +1751,7 @@ describe("a child bound to a backlog item", () => {
 		expect(facts.item).toBe("B1");
 		expect(facts.task).toContain("## You\n");
 		expect(facts.task).toContain(
-			" Your backlog item is `B1`: note progress on it and close it when its goal is verified; you may update no other item.",
+			" Your backlog item is `B1`: note progress on it, and close it only when the item's own Goal is verified, not when only your part of it is done; you may update no other item.",
 		);
 		// The parent's own line, after the fence, says the report was noted.
 		expect(text).toMatch(

@@ -1,6 +1,7 @@
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { canonicalizePath, isUnderPath } from "../../../../common/src/paths.ts";
-import { getNativeSkillsDir } from "../../config.ts";
+import { skillCategory } from "../skills/category.ts";
+import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 import type { ConfigItem, ConfigKind, Product, Provenance } from "./types.ts";
 
 /**
@@ -96,23 +97,29 @@ const GROUPS: ReadonlyArray<{ id: string; title: string; noun: readonly [string,
 export const PI_CODE_HINT = "convert to hooks.json or a plugin";
 const UNTRUSTED_NOTE = "folder not trusted";
 
-/** `octocode global`, `pi project`, `claude global`, `plugin <name>` (origin `plugin:<name>`), `builtin`. */
+/** `octocode global`, `pi project`, `claude global`, `plugin <name>` (origin `plugin:<name>`), `octocode` (the bundled collection). */
 function sourceLabel(provenance: Pick<Provenance, "scope" | "origin">): string {
-	if (provenance.scope === "builtin") return "builtin";
+	if (provenance.scope === "builtin") return "octocode";
 	if (provenance.origin.startsWith("plugin")) return provenance.origin.replace(":", " ");
 	return `${provenance.origin} ${provenance.scope}`;
 }
 
 /**
- * The label for a loaded file that discovery does not list: a package, the user or project folder, the built-in
- * folder, a flag (`--skill`, `--prompt-template`) or a path that the `skills`/`prompts` settings name.
+ * The label for a loaded file that discovery does not list: Octocode's core skills (`core`), the bundled Octocode
+ * collection (`octocode`), a package, the user or project folder, the Claude or Codex skill folder, a flag (`--skill`,
+ * `--prompt-template`) or a path that the `skills`/`prompts` settings name. The skill labels follow `skillCategory`.
  */
 export function sourceInfoLabel(info: { source: string; scope: string; path?: string } | undefined): string {
 	if (!info) return "other";
-	// Skills the application ships itself are handed to the loader as extra paths; they are built in, not the user's.
-	if (info.path && isUnderPath(info.path, getNativeSkillsDir())) return "builtin";
+	// Skills the application ships itself are handed to the loader as extra paths; they are its core, not the user's.
+	const category = info.path ? skillCategory({ filePath: info.path }) : "external";
+	if (category === "core") return "core";
 	if (info.source.startsWith("npm:") || info.source.startsWith("git:")) return `package ${info.source}`;
-	if (info.source === "builtin") return "builtin";
+	// Built-in extensions share the `builtin` source with the bundled skill collection.
+	if (info.source === "builtin") return category === "octocode" ? "octocode" : "builtin";
+	// The native extension adds the other hosts' user skill folders as extra paths too.
+	if (info.path && isUnderPath(info.path, join(claudeConfigDir(), "skills"))) return "claude global";
+	if (info.path && isUnderPath(info.path, join(codexConfigDir(), "skills"))) return "codex global";
 	if (info.source === "cli") return "command line";
 	if (info.scope === "user") return "octocode global";
 	if (info.scope === "project") return "octocode project";

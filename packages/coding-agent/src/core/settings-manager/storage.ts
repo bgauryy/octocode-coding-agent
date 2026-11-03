@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync } from "fs";
-import { dirname, join } from "path";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";

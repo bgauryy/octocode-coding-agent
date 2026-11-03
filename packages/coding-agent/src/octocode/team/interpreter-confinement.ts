@@ -60,16 +60,18 @@ function shellWordLifts(command: string): string | undefined {
 /** Words the shell takes literally: no expansion, quote, escape or glob character, and no `=` (so no assignment or `--opt=value`). */
 const LITERAL = /^[A-Za-z0-9_./+:,@%-]+$/;
 const READ_OPTION = /^--allow-fs-read=[A-Za-z0-9_./*+:,@%-]+$/;
-const NODE_PROGRAM = /^(?:\/(?:[A-Za-z0-9_.+-]+\/)*)?node(?:js)?$/;
+export const NODE_PROGRAM = /^(?:\/(?:[A-Za-z0-9_.+-]+\/)*)?node(?:js)?$/;
 /**
  * Wrappers that may precede confined Node, bare or with a duration (`timeout 5`): each runs the same program with the same
  * words and writes nothing itself. Not `xargs` (it appends words, which Node reads as options), `sudo`/`doas` (another
  * environment and `PATH`), or any wrapper option (`time -o file` writes a file).
  */
 export const CONFINED_WRAPPERS = new Set(["time", "timeout", "nice", "nohup", "exec", "command", "env"]);
-const DURATION = /^\d+(?:\.\d+)?[smhd]?$/;
+export const DURATION = /^\d+(?:\.\d+)?[smhd]?$/;
 /** `node:sqlite` opens and creates database files outside the permission model (checked on Node 26.4), so it must be off. */
 const NO_SQLITE = "--no-experimental-sqlite";
+/** The flags that put Node in the read-only form, as the refusal advises them and the gate adds them (`node-confine.ts`). */
+export const CONFINE_FLAGS = `--permission ${NO_SQLITE} --allow-fs-read=*`;
 const CODE_OPTIONS = new Set(["-e", "-p", "--eval", "--print", "-"]);
 /** A word after the code that Node cannot read as an option: it starts with a plain character (or `<` or `>` of a redirect) and holds no expansion or glob. A quoted word starts with `QUOTED`, which may hide a leading dash. */
 const POSITIONAL = /^[A-Za-z0-9_./+:,@%<>][^$`\\*?[~{]*$/;
@@ -96,7 +98,9 @@ function expansionOf(command: string): string | undefined {
 		: `\`${found}\` outside single quotes (the shell may expand it: quote the code in single quotes and keep \`$\` out of the line)`;
 }
 
-const NODE_FORM = "node --permission --no-experimental-sqlite --allow-fs-read=* -e '<code>'";
+const NODE_FORM = `node ${CONFINE_FLAGS} -e '<code>'`;
+/** The fault of a Node run that only lacks the flags; the gate adds them to a line with no other fault (`node-confine.ts`). */
+export const NODE_FLAGS_FAULT = `node needs both \`--permission\` and \`${NO_SQLITE}\` before the code (${NODE_FORM})`;
 
 /**
  * Why this run is not confined, or undefined when it is: Node runs the code under its permission model with filesystem
@@ -144,8 +148,7 @@ export function confinementFault(run: Run, command: string, env: NodeJS.ProcessE
 		else if (!READ_OPTION.test(word)) break;
 	}
 	const option = run.rest[index++];
-	if (!permission || !noSqlite)
-		return `node needs both \`--permission\` and \`${NO_SQLITE}\` before the code (${NODE_FORM})`;
+	if (!permission || !noSqlite) return NODE_FLAGS_FAULT;
 	if (option === undefined) return "no code option (-e or -p) follows the node flags";
 	if (!CODE_OPTIONS.has(option))
 		return `\`${option}\` between node and its code is not \`--allow-fs-read=<path>\` or a code option (-e, -p)`;

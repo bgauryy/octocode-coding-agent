@@ -1,12 +1,27 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import path from "node:path";
+import { WORKSPACE_STATE } from "../../config/workspace.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 
 const execFileAsync = promisify(execFile);
 
 /** Config that keeps the repository's hooks from running in a git command Octocode starts on its own. */
 export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
+
+// Project operations must exclude private runtime files even if the repository overrides ignore rules.
+const stateGlob = `**/${WORKSPACE_STATE.split(path.sep).join("/")}/**`;
+export const WORKSPACE_STATE_PATHSPEC = `:(top,glob,icase)${stateGlob}`;
+export const EXCLUDE_WORKSPACE_STATE = `:(top,glob,icase,exclude)${stateGlob}`;
+
+/** Refuse to check out or automatically commit a staged or tracked workspace marker or transcript. */
+export async function rejectTrackedWorkspaceState(cwd: string, tree: string): Promise<void> {
+	if (await git(cwd, ["ls-files", "--cached", `--with-tree=${tree}`, "--", WORKSPACE_STATE_PATHSPEC]))
+		throw new Error(
+			"Git tracks private workspace state under .octa/code. Remove it from the index and commit before using worktrees.",
+		);
+}
 
 const DEFAULT_MAX_BUFFER = 16 * 1024 * 1024;
 
@@ -70,21 +85,4 @@ export async function git(cwd: string, args: readonly string[], options: GitOpti
 export const gitQuiet = (cwd: string, args: readonly string[], options?: GitOptions): Promise<string | undefined> =>
 	git(cwd, args, options).catch(() => undefined);
 
-/**
- * `git` for code that cannot wait (path resolution, permission checks on a synchronous path): stdout as git wrote it,
- * stderr dropped, a mandatory `timeoutMs`. Throws when git fails or times out.
- */
-export function gitSync(
-	cwd: string,
-	args: readonly string[],
-	options: { timeoutMs: number; maxBuffer?: number },
-): string {
-	return execFileSync("git", [...args], {
-		cwd,
-		encoding: "utf8",
-		timeout: options.timeoutMs,
-		...(options.maxBuffer ? { maxBuffer: options.maxBuffer } : {}),
-		stdio: ["ignore", "pipe", "ignore"],
-		windowsHide: true,
-	});
-}
+export { gitSync } from "../../utils/git-command.ts";

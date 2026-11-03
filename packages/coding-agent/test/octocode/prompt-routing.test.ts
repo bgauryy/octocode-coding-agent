@@ -44,7 +44,7 @@ describe("Octocode research routing in the policy", () => {
 	it("gives the parent delegation guidance and leaves skill loading to the skills section", () => {
 		const root = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
 		expect(root).toContain("give coupled work one owner");
-		expect(root).toContain("verify reports against acceptance checks");
+		expect(root).toContain("Treat a report as a claim: check the result your next step depends on.");
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
 		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false });
@@ -223,8 +223,10 @@ describe("registerTurnSetup routing and child trim", () => {
 				profiles: () => new Map(),
 			});
 			const { octocode } = await run(fake, { selectedTools: ["mcp__octocode__localFetch"] });
-			expect(octocode).toContain("A permission refusal is not a reason to retry through another tool");
-			expect(octocode).toContain("exact recovery identifiers");
+			expect(octocode).toContain(
+				"Never bypass a hook, a safety check (such as `--no-verify`) or a permission refusal, for example by retrying through another tool",
+			);
+			expect(octocode).toContain("exact identifiers (paths, item, agent, job and message ids, cursors)");
 			expect(octocode).toContain("state truncation or coverage gaps");
 			expect(octocode).toContain("Fetch only the evidence the next decision needs");
 			expect(octocode).not.toContain("Use bash for builds");

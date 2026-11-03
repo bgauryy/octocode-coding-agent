@@ -8,7 +8,7 @@ import type { SessionInfo, SessionListProgress } from "../core/session-manager.t
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { SessionSelectorComponent } from "../modes/interactive/components/session-selector.ts";
 import { createStartupTui, showStartupSelector, startStartupTui } from "./startup-ui.ts";
-import { sessionFileRunningPid } from "../octocode/agentdb/api.ts";
+import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
 
@@ -27,6 +27,7 @@ export async function selectSession(
 		const selector = new SessionSelectorComponent(
 			currentSessionsLoader,
 			allSessionsLoader,
+			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; it resolves the enclosing promise itself
 			async (path: string) => {
 				if (resolved) return;
 				const runningPid = sessionFileRunningPid(path);

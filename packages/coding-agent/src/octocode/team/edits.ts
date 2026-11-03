@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type Db, edits, num } from "../agentdb/api.ts";
+import { type Db, edits, num, workspaces } from "../../../../db/src/api.ts";
 import { formatAgo } from "../shared/format.ts";
 import { DAY_MS, MINUTE_MS } from "../shared/util.ts";
 import { canonicalIn } from "./store/workspace.ts";
@@ -55,21 +55,27 @@ const EDIT_RETENTION_MS = DAY_MS;
 
 export class EditLog {
 	private readonly db: Db;
-	readonly workspace: string;
-	constructor(db: Db, workspace: string) {
+	readonly workspaceId: string;
+	get workspace(): string {
+		const checkout = workspaces.byId(this.db, this.workspaceId);
+		if (!checkout) throw new Error(`Unknown reservation workspace: ${this.workspaceId}`);
+		return checkout.root;
+	}
+	constructor(db: Db, workspaceId: string) {
 		this.db = db;
-		this.workspace = workspace;
+		this.workspaceId = workspaceId;
 	}
 
 	/** Records that `agent` changed `files` (absolute) with `tool`; files outside the workspace are skipped. */
 	record(agent: string, tool: string, files: string[], now = Date.now()): void {
+		const root = this.workspace;
 		const relatives: string[] = [];
 		for (const file of files) {
-			const relative = path.relative(this.workspace, canonicalIn(this.workspace, file));
+			const relative = path.relative(root, canonicalIn(root, file));
 			if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
 			relatives.push(relative.split(path.sep).join("/"));
 		}
-		edits.record(this.db, this.workspace, relatives, agent, tool, now);
+		edits.record(this.db, this.workspaceId, relatives, agent, tool, now);
 	}
 
 	/**
@@ -77,7 +83,7 @@ export class EditLog {
 	 * change and the count), optionally only under `prefixes` (workspace-relative, `/`-separated) and only by `agent`.
 	 */
 	changes(options: { withinMs: number; prefixes?: string[]; agent?: string }, now = Date.now()): Change[] {
-		const rows = edits.changesSince(this.db, this.workspace, now - options.withinMs, options.agent);
+		const rows = edits.changesSince(this.db, this.workspaceId, now - options.withinMs, options.agent);
 		const prefixes = options.prefixes?.map((prefix) => prefix.replace(/\/+$/, ""));
 		const under = (file: string) =>
 			!prefixes?.length || prefixes.some((prefix) => prefix === "" || file === prefix || file.startsWith(`${prefix}/`));
@@ -107,7 +113,13 @@ export class EditLog {
 	 */
 	adoptUnjoined(agent: string): void {
 		try {
-			edits.reassign(this.db, this.workspace, unjoinedAgent(), agent, Date.now() - Math.ceil(process.uptime() * 1000));
+			edits.reassign(
+				this.db,
+				this.workspaceId,
+				unjoinedAgent(),
+				agent,
+				Date.now() - Math.ceil(process.uptime() * 1000),
+			);
 		} catch {
 			/* keep the pid label */
 		}

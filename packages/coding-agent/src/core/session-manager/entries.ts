@@ -1,6 +1,6 @@
 import { uuidv7 } from "@octocodeai/octocode-ai";
-import { randomUUID } from "crypto";
-import { join } from "path";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { jsonlLines, parseJsonlLine } from "../../../../common/src/jsonl.ts";
 import { CURRENT_SESSION_VERSION, type CompactionEntry, type FileEntry, type SessionHeader } from "./types.ts";
 

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { runningPid } from "../agentdb/api.ts";
+import { runningPid } from "../shared/session-liveness.ts";
 
 /**
  * The agents-communication package lists the non-default databases its live processes use (a session started with

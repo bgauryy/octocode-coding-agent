@@ -1,14 +1,15 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import type * as Meta from "../../src/octocode/agentdb/queries/meta.ts";
+import { type AgentDb } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import type * as Meta from "../../../db/src/queries/meta.ts";
 import { claimSweep } from "../../src/octocode/sessions/sweep.ts";
 import { tmp } from "./helpers.ts";
 
 /** Runs once inside the next `last_sweep` read: what another process does between a claim's read and its write. */
 const between = vi.hoisted(() => ({ run: undefined as (() => void) | undefined }));
 
-vi.mock("../../src/octocode/agentdb/queries/meta.ts", async (original) => {
+vi.mock("../../../db/src/queries/meta.ts", async (original) => {
 	const meta = await original<typeof Meta>();
 	return {
 		...meta,

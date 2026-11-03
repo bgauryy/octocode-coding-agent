@@ -30,16 +30,13 @@ export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
 /** `0` turns automatic memory injection off for this process (`/memory auto off` turns it off everywhere). */
 export const MEMORY_AUTO_ENV = "OCTOCODE_MEMORY_AUTO";
 
-/** Days kept output and bash logs survive in a kept session folder (default 30); `0` turns the session sweep off. */
-const CLEANUP_DAYS_ENV = "OCTOCODE_CLEANUP_DAYS";
-
 /**
- * The one retention for session output and subagent scratch folders (`OCTOCODE_CLEANUP_DAYS`, default 30; `0` keeps
- * everything), so a path a kept transcript cites stays readable as long as the rest of the session's files.
+ * `OCTOCODE_CLEANUP_DAYS` overrides the `retention.days` setting: days output, logs, scratch and session data survive.
+ * `OCTOCODE_SESSION_RETENTION_DAYS` overrides `retention.sessionDays`: days a transcript survives. `0` keeps everything.
+ * Only the names live here; the one resolver is `resolveRetention` in the coding-agent `config/retention.ts`.
  */
-export function cleanupDays(env: NodeJS.ProcessEnv = process.env): number {
-	return envInt(env, CLEANUP_DAYS_ENV, 30, { min: 0 });
-}
+export const CLEANUP_DAYS_ENV = "OCTOCODE_CLEANUP_DAYS";
+export const SESSION_RETENTION_DAYS_ENV = "OCTOCODE_SESSION_RETENTION_DAYS";
 
 /** Set in child processes so a subagent cannot spawn further subagents (and skips the root session's extras). */
 export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
@@ -53,7 +50,7 @@ export const SKILLS_IN_TASK_ENV = "OCTOCODE_SKILLS_IN_TASK";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
 export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 
-/** A subagent's own handoff folder (`<workspace>/.octocode/tmp/agents/<id>`): long results go there as files, not into its report. */
+/** A subagent's own handoff folder (`<workspace>/.octa/code/temp/agents/<id>`): long results go there as files, not into its report. */
 export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
 /** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
 export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";

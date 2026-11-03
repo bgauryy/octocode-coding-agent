@@ -1,3 +1,6 @@
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { webCommand } from "../../src/octocode/workspace/command.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { EventEmitter } from "node:events";
@@ -6,12 +9,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { embeddedJson, renderBacklogHtml } from "@octocodeai/octocode-webview";
 import { type Snapshot, STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { openFile } from "../../src/octocode/shared/open.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
@@ -37,7 +40,7 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const storeFor = (repo: string) => new BacklogStore(() => sharedAgentDb(), repo);
+const storeFor = (repo: string) => fixtureBacklog(() => sharedAgentDb(), repo);
 
 /** The JSON block of a page, parsed back, and the page script. */
 function parts(html: string): { data: Snapshot; script: string } {
@@ -160,11 +163,11 @@ describe("backlog snapshot", () => {
 		populate(store);
 		const raw = sharedAgentDb().db;
 		// Text stored before the write-time check, or by another build, bypasses `refuseSecrets`: plant it directly.
-		raw.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND repo_key = 'secret'").run(`token at ${SECRET}`);
+		raw.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND workspace_id = 'secret'").run(`token at ${SECRET}`);
 		expect(() => backlogSnapshot(store, "r", NOW)).toThrow(
 			/Not written: the body of B3 looks like it contains a GitHub token/,
 		);
-		raw.prepare("UPDATE backlog SET body = '' WHERE seq = 3 AND repo_key = 'secret'").run();
+		raw.prepare("UPDATE backlog SET body = '' WHERE seq = 3 AND workspace_id = 'secret'").run();
 		const item = store.get("B2")!;
 		raw
 			.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent', 'note', ?)")
@@ -190,7 +193,7 @@ describe("backlog html page", () => {
 		});
 		const raw = sharedAgentDb().db;
 		raw
-			.prepare("UPDATE backlog SET title = ?, body = ? WHERE seq = 1 AND repo_key = 'xss'")
+			.prepare("UPDATE backlog SET title = ?, body = ? WHERE seq = 1 AND workspace_id = 'xss'")
 			.run(title, `${title}\n${note}`);
 		raw
 			.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent-1', 'note', ?)")
@@ -313,7 +316,7 @@ describe("/backlog html", () => {
 			commands,
 			cwd,
 			command: commands.get("backlog")!,
-			store: storeFor(fs.realpathSync(cwd)),
+			store: new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id),
 		};
 	}
 
@@ -356,14 +359,14 @@ describe("/backlog html", () => {
 	});
 
 	it.each(["html"])(
-		"command %s writes <repo>/.octocode/backlog.html atomically with every item, opens it with a UI and says where it is",
+		"command %s writes <repo>/.octa/code/backlog.html atomically with every item, opens it with a UI and says where it is",
 		async (command) => {
 			const open = vi.fn(async () => undefined);
 			const t = setup(open);
 			populate(t.store);
 			const ctx = fakeCtx({ cwd: t.cwd });
 			await t.command.handler(command, ctx);
-			const file = path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html");
+			const file = path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html");
 			expect(open).toHaveBeenCalledExactlyOnceWith(file);
 			expect(ctx.ui.notes.at(-1)!.message).toContain(file);
 			expect(ctx.ui.notes.at(-1)!.message).toMatch(/snapshot, not live/);
@@ -387,7 +390,7 @@ describe("/backlog html", () => {
 		stderr.mockRestore();
 		expect(open).not.toHaveBeenCalled();
 		expect(headless.ui.notes.at(-1)!.message).toMatch(/^Wrote .*backlog\.html/);
-		expect(fs.existsSync(path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html"))).toBe(true);
+		expect(fs.existsSync(path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html"))).toBe(true);
 
 		const failing = setup(async () => {
 			throw new Error("spawn xdg-open ENOENT");
@@ -404,7 +407,7 @@ describe("/backlog html", () => {
 		const open = vi.fn(async () => undefined);
 		const t = setup(open);
 		t.store.add({ title: "one", state: "todo", createdBy: "user" });
-		const file = path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html");
+		const file = path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html");
 		await t.command.handler("html", fakeCtx({ cwd: t.cwd }));
 		const before = fs.readFileSync(file, "utf8");
 		sharedAgentDb().db.prepare("UPDATE backlog SET why = ? WHERE seq = 1").run(`key ${SECRET}`);
@@ -436,7 +439,7 @@ describe("/backlog html", () => {
 		t.store.add({ title: "one", state: "todo", createdBy: "user" });
 		const ctx = fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { selects: ["Open as HTML", undefined] } });
 		await t.command.handler("tui", ctx);
-		expect(open).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html"));
+		expect(open).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html"));
 	});
 
 	it("opens from the board with a configured HTML action key", async () => {
@@ -474,7 +477,7 @@ describe("backlog store fixes found by the HTML review", () => {
 
 	it("counts clearing the link of a derived item (its origin was removed) as an update", () => {
 		let at = 1_000;
-		const store = new BacklogStore(
+		const store = fixtureBacklog(
 			() => sharedAgentDb(),
 			"removed",
 			() => at,

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import { KeychainCommandError, type KeychainBackend } from "../../src/core/auth-storage/keychain.ts";
 import { ReadOnlyAuthStorage } from "../../src/core/auth-storage/read-only.ts";
-import type { ConfigAuditEntry } from "../../src/octocode/agentdb/queries/config-audits.ts";
+import type { ConfigAuditEntry } from "../../../db/src/queries/config-audits.ts";
 import { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts";
 import { writeConfigCredential } from "../../src/octocode/web-daemon/credential-write.ts";
 

@@ -1,4 +1,5 @@
 import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
+import { RETENTION_DEFAULTS } from "../config/retention.ts";
 import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
 
 /** Tokens kept free for the reply when compacting or summarizing a branch. */
@@ -39,7 +40,9 @@ export const SETTINGS_DEFAULTS = {
 	quietStartup: false,
 	bashBackgroundAfterSeconds: 90,
 	bashOutputMaxBytes: RESULT_DEFAULT_BYTES,
+	externalAgents: false,
 	mcpPresentation: "compact",
+	mcpContractTiers: "auto",
 	collapseChangelog: false,
 	enableInstallTelemetry: true,
 	enableAnalytics: false,
@@ -68,6 +71,7 @@ export const SETTINGS_DEFAULTS = {
 		anthropicExtraUsage: true,
 	},
 	cacheWarming: "idle",
+	retention: RETENTION_DEFAULTS,
 	remote: { transport: "ssh", autoStart: "off" },
 	sessions: { autoTitle: true },
 	cacheRetention: "long",

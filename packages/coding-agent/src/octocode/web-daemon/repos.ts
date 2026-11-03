@@ -1,25 +1,19 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { DaemonRepo } from "@octocodeai/octocode-contracts/daemon";
-import { backlog, sharedAgentDb } from "../agentdb/api.ts";
+import { workspaces } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
+import { isCurrentWorkspace } from "../../config/workspace.ts";
 import { BacklogStore } from "../backlog/store.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
-import { repoId, type SessionRegistry } from "./sessions.ts";
+import type { SessionRegistry } from "./sessions.ts";
 
 export interface RepoInfo {
 	id: string;
-	key: string;
 	name: string;
-	/** The checkout whose `.octocode/` report folders may be served; known only for repositories of a live session or derived from the key. */
 	root?: string;
 	sessions: number;
 }
 
-/**
- * The repositories the daemon serves: every `repo_key` with backlog items in the agent database, plus those of attached
- * sessions. Routes name a repository by `repoId`; the id resolves only to a key this catalog holds, so no request can
- * reach a path it did not already index.
- */
 export class RepoCatalog {
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly registry: SessionRegistry;
@@ -28,54 +22,54 @@ export class RepoCatalog {
 		this.registry = registry;
 	}
 
-	private keys(): string[] {
-		try {
-			return backlog.repoKeys(sharedAgentDb(this.env).db);
-		} catch {
-			return [];
+	private live(): Map<string, RepoInfo> {
+		const entries = new Map<string, RepoInfo>();
+		for (const { repoId, repoName } of this.registry.list()) {
+			const previous = entries.get(repoId);
+			if (previous) previous.sessions++;
+			else entries.set(repoId, { id: repoId, name: repoName, sessions: 1 });
 		}
+		return entries;
 	}
 
-	list(): RepoInfo[] {
-		const repos = new Map<string, RepoInfo>();
-		const live = this.registry.list();
-		for (const session of live) {
-			const attached = this.registry.get(session.id)?.record.repo;
-			if (!attached) continue;
-			const existing = repos.get(attached.key);
-			if (existing) existing.sessions++;
-			else
-				repos.set(attached.key, {
-					id: repoId(attached.key),
-					key: attached.key,
-					name: attached.name,
-					root: attached.root,
-					sessions: 1,
-				});
-		}
-		for (const key of this.keys()) {
-			if (repos.has(key)) continue;
-			// A git key is the common `.git` folder; without git the key is the root itself.
-			const root = path.basename(key) === ".git" ? path.dirname(key) : key;
-			repos.set(key, { id: repoId(key), key, name: path.basename(root), root, sessions: 0 });
-		}
-		return [...repos.values()].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name));
-	}
-
+	/** A missing checkout keeps its board. Only its bound directory can supply files to the web interface. */
 	resolve(id: string): RepoInfo | undefined {
-		return this.list().find((repo) => repo.id === id);
+		const live = this.live().get(id);
+		try {
+			const row = workspaces.byId(sharedAgentDb(this.env).db, id);
+			if (row)
+				return {
+					id,
+					name: row.name,
+					sessions: live?.sessions ?? 0,
+					root: isCurrentWorkspace(row) ? row.root : undefined,
+				};
+		} catch {
+			// Attached sessions can still be reached when the database is unavailable.
+		}
+		return live;
 	}
 
 	summaries(): DaemonRepo[] {
-		return this.list().map((repo) => ({
-			id: repo.id,
-			name: repo.name.slice(0, 256),
-			sessions: repo.sessions,
-			hasReports: repo.root !== undefined && fs.existsSync(workspaceOctocodeDir(repo.root)),
-		}));
+		const live = this.live();
+		const entries = new Map<string, DaemonRepo>();
+		for (const item of live.values()) entries.set(item.id, { ...item, hasReports: false });
+		try {
+			for (const row of workspaces.list(sharedAgentDb(this.env).db)) {
+				entries.set(row.id, {
+					id: row.id,
+					name: row.name.slice(0, 256),
+					sessions: live.get(row.id)?.sessions ?? 0,
+					hasReports: fs.existsSync(workspaceOctocodeDir(row.root)) && isCurrentWorkspace(row),
+				});
+			}
+		} catch {
+			// Serve attached sessions when the persistent catalog cannot be read.
+		}
+		return [...entries.values()].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name));
 	}
 
-	store(key: string): BacklogStore {
-		return new BacklogStore(() => sharedAgentDb(this.env), key);
+	store(id: string): BacklogStore {
+		return new BacklogStore(() => sharedAgentDb(this.env), id);
 	}
 }

@@ -1,12 +1,6 @@
-<!--
-Section `octocode_research`. Flags: octocode (the research MCP server is declared or discoverable), shell, web, readOnly (a read-only subagent: the handoff line goes, its report is the handoff).
-With the server this block says nothing about it: its instructions, tool descriptions and schemas (the `mcps` section and
-the declarations) own when and how to use it, and `mcp_status` names a server that is not ready. Without it the block
-names the native fallbacks. It names no server tool, so it stays identical before and after the server connects.
--->
 # Context and research
 {{#unless readOnly}}
-- Before a handoff or compaction, write the goal, open decisions and exact recovery identifiers (paths, ids, cursors) into the handoff message or a scratch file the receiver can read.
+- Before a handoff or compaction, write what the receiver needs: the goal, what is blocked or undecided, where you stopped, and exact identifiers (paths, item, agent, job and message ids, cursors), in the handoff message or a scratch file the receiver can read.
 {{/unless}}
 - Fetch only the evidence the next decision needs. Keep large results behind paths or cursors and state truncation or coverage gaps.
 {{#unless octocode}}

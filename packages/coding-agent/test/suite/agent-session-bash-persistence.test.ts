@@ -18,7 +18,7 @@ interface ControlledBashInvocation {
 function createControlledBashOperations(invocations: ControlledBashInvocation[]): BashOperations {
 	return {
 		exec: async (_command, _cwd, options) => {
-			return await new Promise<{ exitCode: number | null }>((resolve) => {
+			return new Promise<{ exitCode: number | null }>((resolve) => {
 				invocations.push({
 					signal: options.signal,
 					finish: () => resolve({ exitCode: 0 }),
@@ -128,7 +128,7 @@ describe("AgentSession bash and persistence characterization", () => {
 		harnesses.push(harness);
 		const operations: BashOperations = {
 			exec: async (_command, _cwd, options) => {
-				return await new Promise<{ exitCode: number | null }>((_resolve, reject) => {
+				return new Promise<{ exitCode: number | null }>((_resolve, reject) => {
 					options.signal?.addEventListener(
 						"abort",
 						() => {

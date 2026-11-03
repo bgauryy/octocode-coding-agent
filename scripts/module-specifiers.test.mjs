@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { moduleSpecifiers, rewriteModuleSpecifiers } from "./module-specifiers.mjs";
+import { moduleSpecifiers } from "./module-specifiers.mjs";
 
 test("finds static, deferred, CommonJS and type-only module sources", () => {
 	const source = `
@@ -69,7 +69,7 @@ test("handles JSX and declaration-file syntax", () => {
 		);
 });
 
-test("decodes escaped paths and preserves all surrounding source and quote styles", () => {
+test("decodes escaped paths in every quote style and skips look-alikes in strings and comments", () => {
 	const source = String.raw`// π 🚀 import '../private';
 const example = "import '../private'";
 import '../pr\u0069vate';
@@ -79,33 +79,6 @@ const pending = import /* defer */ (\`../private\`);
 	assert.deepEqual(
 		moduleSpecifiers(source, "fixture.ts").map((specifier) => specifier.value),
 		["../private", "../private", "../private"],
-	);
-	const rewritten = rewriteModuleSpecifiers(source, "fixture.ts", () => "./mounted");
-	assert.equal(
-		rewritten,
-		`// π 🚀 import '../private';
-const example = "import '../private'";
-import './mounted';
-export * from "./mounted";
-const pending = import /* defer */ (\`./mounted\`);
-`,
-	);
-	assert.equal(
-		rewriteModuleSpecifiers(source, "fixture.ts", (specifier) => specifier),
-		source,
-	);
-});
-
-test("escapes replacement paths without changing their value or interpreting template syntax", () => {
-	const replacement = "./quote'\"backtick`template${x}backslash\\";
-	const rewritten = rewriteModuleSpecifiers(
-		`import './old'; export * from "./old"; const pending = import(\`./old\`);`,
-		"fixture.ts",
-		() => replacement,
-	);
-	assert.deepEqual(
-		moduleSpecifiers(rewritten, "fixture.ts").map((specifier) => specifier.value),
-		[replacement, replacement, replacement],
 	);
 });
 
@@ -132,10 +105,6 @@ for (const source of [
 ]) {
 	test(`preserves calls to locally bound require: ${source}`, () => {
 		assert.deepEqual(moduleSpecifiers(source, "fixture.ts"), []);
-		assert.equal(
-			rewriteModuleSpecifiers(source, "fixture.ts", () => "./changed"),
-			source,
-		);
 	});
 }
 
@@ -248,19 +217,6 @@ require("after-loop");
 	assert.deepEqual(
 		moduleSpecifiers(source, "fixture.ts").map((specifier) => specifier.value),
 		["iterable", "body", "default", "after-loop"],
-	);
-});
-
-test("rewrites control characters with JavaScript escapes for every quote style", () => {
-	const replacement = "./line\u2028separator\u2029control\u0000\t\b\f\v\n\r";
-	const rewritten = rewriteModuleSpecifiers(
-		`import './old'; export * from "./old"; const pending = import(\`./old\`);`,
-		"fixture.ts",
-		() => replacement,
-	);
-	assert.deepEqual(
-		moduleSpecifiers(rewritten, "fixture.ts").map((specifier) => specifier.value),
-		[replacement, replacement, replacement],
 	);
 });
 

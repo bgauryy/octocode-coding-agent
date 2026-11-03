@@ -24,8 +24,10 @@ export function octocodeToolName(tool: string): string {
  * dimension mapping (only the path if resizing fails). Repository, GitHub and registry text is untrusted: terminal control
  * characters, bidi overrides and invisible characters (Unicode tags among them) are shown as visible escapes
  * (`\u{200d}`, `\r`) in every string before the model reads it or the terminal draws it, so nothing the server
- * returned disappears and nothing raw reaches the terminal. `structuredContent` is the server's, kept for tools that declare an
- * `outputSchema`. Oversized structured results become explicit errors with a saved JSON recovery path.
+ * returned disappears and nothing raw reaches the terminal. `structuredContent` is kept for tools that declare an
+ * `outputSchema`: the server's own, or, when the server sends its JSON result only as one text block, that JSON parsed.
+ * Oversized structured results the server sent become explicit errors with a saved JSON recovery path; a parsed one that
+ * large is left out, and its text is capped and saved like any other.
  * An error result is the server's text as an error.
  */
 export async function toToolResult(
@@ -36,12 +38,12 @@ export async function toToolResult(
 ): Promise<AgentToolResult<{ tool: string }>> {
 	const content: AgentToolResult["content"] = [];
 	let outputTruncated = false;
+	const sent = result.structuredContent;
+	const structured = declaresOutput ? (sent ?? jsonText(result, hostOutput().textMaxChars)) : undefined;
 	let structuredContent =
-		declaresOutput && result.structuredContent !== undefined
-			? (sanitizeJson(result.structuredContent) as AgentToolResult["structuredContent"])
-			: undefined;
+		structured !== undefined ? (sanitizeJson(structured) as AgentToolResult["structuredContent"]) : undefined;
 	let failed = result.isError;
-	if (structuredContent !== undefined) {
+	if (sent !== undefined && structuredContent !== undefined) {
 		const serialized = JSON.stringify(structuredContent);
 		if (serialized.length > hostOutput().textMaxChars) {
 			const file = hostOutput().saveFullOutput(serialized, `mcp-${tool}-structured`);
@@ -79,6 +81,21 @@ export async function toToolResult(
 		...(structuredContent !== undefined ? { structuredContent } : {}),
 		...(failed ? { isError: true } : {}),
 	};
+}
+
+/**
+ * The JSON object of a result whose only content is one text block holding it, as the Octocode server answers (it sends
+ * no separate `structuredContent`); undefined for other text or text longer than `maxChars`.
+ */
+function jsonText(result: CallToolResult, maxChars: number): unknown {
+	const [part, ...rest] = result.content;
+	if (rest.length || part?.type !== "text" || part.text.length > maxChars) return undefined;
+	try {
+		const value: unknown = JSON.parse(part.text);
+		return isRecord(value) ? value : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /** Every string in a JSON value with its control and invisible characters made visible; the same object when nothing changed. */

@@ -635,10 +635,10 @@ describe("AgentSessionRuntime characterization", () => {
 		expect(realpathSync(runtime.cwd)).toBe(realpathSync(secondDir));
 	});
 
-	it("starts a new session in another folder and keeps the old one saved", async () => {
+	it("starts a new session in a separately declared workspace and keeps the old one saved", async () => {
 		const { runtime, tempDir } = await createRuntimeForTest(() => {});
 		const otherDir = join(tempDir, "worktree");
-		mkdirSync(otherDir);
+		mkdirSync(join(otherDir, ".octa", "code", "workspace"), { recursive: true });
 		await runtime.session.prompt("before");
 		const oldFile = runtime.session.sessionFile!;
 
@@ -658,10 +658,12 @@ describe("AgentSessionRuntime characterization", () => {
 
 	it("resolves a relative new-session folder against the session's folder, not the process directory", async () => {
 		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const workspaceDir = runtime.session.sessionManager.getSessionDir();
 		mkdirSync(join(tempDir, "worktree"));
 		expect(realpathSync(process.cwd())).not.toBe(realpathSync(tempDir));
 		await runtime.newSession({ cwd: "worktree" });
 		expect(realpathSync(runtime.cwd)).toBe(realpathSync(join(tempDir, "worktree")));
+		expect(runtime.session.sessionManager.getSessionDir()).toBe(workspaceDir);
 		// From there, `..` is the folder the session just left.
 		await runtime.newSession({ cwd: ".." });
 		expect(realpathSync(runtime.cwd)).toBe(realpathSync(tempDir));

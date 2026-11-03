@@ -5,7 +5,7 @@ import {
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@octocodeai/octocode-tui";
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
 import { Compile } from "typebox/compile";
 import { getAgentDir } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
@@ -123,6 +123,10 @@ const APP_KEYBINDINGS = {
 	"app.session.delete": {
 		defaultKeys: "ctrl+d",
 		description: "Delete session",
+	},
+	"app.session.mark": {
+		defaultKeys: "ctrl+x",
+		description: "Mark session for deletion",
 	},
 	"app.session.actions": {
 		defaultKeys: "ctrl+o",
@@ -266,7 +270,7 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		// Discovery lists Octocode's file first; later files override earlier ones.
 		return files.reduceRight<KeybindingsConfig>((merged, item) => {
 			const rawConfig = loadRawConfig(item.provenance.path);
-			return rawConfig ? { ...merged, ...toKeybindingsConfig(rawConfig) } : merged;
+			return rawConfig ? Object.assign(merged, toKeybindingsConfig(rawConfig)) : merged;
 		}, {});
 	}
 }

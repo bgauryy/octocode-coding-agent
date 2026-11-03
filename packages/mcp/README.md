@@ -2,7 +2,7 @@
 
 This private workspace owns the MCP protocol client, transports, configuration, registry, lifecycle, tools, authentication and Octocode default presets. The client lives in `src/client/`; the host integration lives beside it, with the default presets in `src/presets/octocode/` (research) and `src/presets/browser/` (the `@octocodeai/octocode-chrome-devtools` browser server).
 
-The protocol client can run without an agent session and uses the official `@modelcontextprotocol/client` SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-host-sources.mjs` compiles its sources into coding-agent's `dist/mcp/`. The temporary compilation tree is removed after each build. Source maps point to the original files and the MCP SDK license ships with the host.
+The protocol client can run without an agent session and uses the official `@modelcontextprotocol/client` SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-coding-agent.mjs` bundles its sources into coding-agent's one bundle file, behind the `/mcp` exports. The MCP SDK license ships with the host.
 
 The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocodecode/mcp`, `/mcp/oauth` and `/mcp/testing`. Internal workspace exports resolve directly to source.
 
@@ -75,7 +75,7 @@ const tools: AgentTool[] = (await client.listTools()).map((tool) => ({
 }));
 ```
 
-Hosts can also forward progress and retain `structuredContent` for programmatic consumers. The SDK's `onProgress` callback supplies `progress`, `total` and `message`; the opaque `progressToken` remains available through `onNotification("notifications/progress", ...)`. Progress renews the idle timeout, while the host enforces a separate absolute total deadline. A nonpositive or nonfinite idle timeout maps to the platform's maximum timer delay (about 24.8 days); the default 30-minute total deadline and caller cancellation still apply.
+Hosts can also forward progress and retain `structuredContent` for programmatic consumers. The Octocode server sends its JSON result only as one text block, so for its tools that declare output (its local readers always do) the preset parses that block into `structuredContent`, unless the text is longer than the result text cap. The SDK's `onProgress` callback supplies `progress`, `total` and `message`; the opaque `progressToken` remains available through `onNotification("notifications/progress", ...)`. Progress renews the idle timeout, while the host enforces a separate absolute total deadline. A nonpositive or nonfinite idle timeout maps to the platform's maximum timer delay (about 24.8 days); the default 30-minute total deadline and caller cancellation still apply.
 
 ### OAuth
 

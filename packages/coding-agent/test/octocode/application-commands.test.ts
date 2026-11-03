@@ -1,9 +1,11 @@
+import { registerFixtureWorkspace } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ApplicationCommand } from "@octocodeai/octocode-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import { type AgentDb } from "../../../db/src/api.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";
 import { ApplicationCommands } from "../../src/octocode/workspace/application-commands.ts";
 
@@ -12,6 +14,8 @@ let db: AgentDb;
 beforeEach(() => {
 	dir = fs.mkdtempSync(path.join(os.tmpdir(), "application-receipts-"));
 	db = openAgentDb(path.join(dir, "db"));
+	registerFixtureWorkspace(db, "repo");
+	registerFixtureWorkspace(db, "other-repo");
 });
 afterEach(() => {
 	db.close();

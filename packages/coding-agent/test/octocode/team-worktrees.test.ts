@@ -4,10 +4,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
+import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { newMember } from "../../src/octocode/team/identity.ts";
 import { PARENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { teamScope } from "../../src/octocode/team/store/workspace.ts";
 import { tmp } from "./helpers.ts";
@@ -66,6 +69,31 @@ describe("team across the worktrees of one repository", () => {
 		expect(a.team).toBe(fs.realpathSync(path.join(main, ".git")));
 		expect(a.workspace).toBe(main);
 		expect(b.workspace).toBe(billing);
+		expect(a.workspaceId).not.toBe(b.workspaceId);
+		expect(open(main).workspaceId).toBe(a.workspaceId);
+	});
+
+	it("keeps workspace notes with a moved worktree and only shares explicitly wider scopes", () => {
+		const env = { OCTOCODE_AGENT_DB: file };
+		try {
+			const notes = memoryStore(billing, env);
+			const local = notes.set({ title: "Billing exports", author: "user" }).memory;
+			const project = notes.set({ title: "Repository build", scope: "project", author: "user" }).memory;
+			const sibling = memoryStore(main, env);
+			expect(sibling.get(local.id)).toBeUndefined();
+			expect(sibling.get(project.id)?.scope).toBe("project");
+			const holder = open(billing);
+			holder.join(member("billing-agent"));
+			expect(holder.lock("billing-agent", [{ path: "invoice.ts", kind: "file", reason: "fix" }]).ok).toBe(true);
+			const moved = path.join(path.dirname(billing), "billing-moved");
+			git(main, "worktree", "move", billing, moved);
+			const reopened = memoryStore(moved, env);
+			expect(reopened.workspaceId).toBe(notes.workspaceId);
+			expect(reopened.get(local.id)?.title).toBe(local.title);
+			expect(open(moved).conflict("invoice.ts", "other-agent")?.owner).toBe("billing-agent");
+		} finally {
+			closeSharedAgentDb();
+		}
 	});
 
 	it("lists members of both worktrees with their checkout, and messages and replies cross between them", () => {
@@ -136,9 +164,9 @@ describe("team across the worktrees of one repository", () => {
 		const row = newMember(inTmux, ctx, "main-aaaaaa", undefined, Date.now());
 		expect(row.tmuxPane).toBe("%7");
 		// A subagent inherits the variables but owns no pane; outside tmux, or with a malformed id, nothing is recorded.
-		expect(newMember({ ...inTmux, [PARENT_ID_ENV]: "main-aaaaaa" }, ctx, "kid-cccccc", undefined, 1_000).tmuxPane).toBe(
-			undefined,
-		);
+		const child = newMember({ ...inTmux, [PARENT_ID_ENV]: "main-aaaaaa" }, ctx, "kid-cccccc", undefined, 1_000);
+		expect(child.tmuxPane).toBeUndefined();
+		expect(child.sessionId).toBe("sess-team");
 		expect(newMember({ TMUX_PANE: "%7" }, ctx, "x-dddddd", undefined, 1_000).tmuxPane).toBeUndefined();
 		expect(newMember({ ...inTmux, TMUX_PANE: "7; rm" }, ctx, "x-eeeeee", undefined, 1_000).tmuxPane).toBeUndefined();
 
@@ -156,6 +184,7 @@ describe("team across the worktrees of one repository", () => {
 		const parent = open(auth);
 		const child = open(billing, { [TEAM_WORKSPACE_ENV]: auth });
 		expect(child.workspace).toBe(auth);
+		expect(child.workspaceId).not.toBe(parent.workspaceId);
 		expect(child.team).toBe(parent.team);
 		expect(teamScope(billing, { [TEAM_WORKSPACE_ENV]: auth })).toBe(parent.team);
 		parent.join(member("auth-cccccc"));
@@ -164,6 +193,24 @@ describe("team across the worktrees of one repository", () => {
 		// Same checkout: the child's files conflict with its parent's, as before.
 		expect(parent.lock("auth-cccccc", [{ path: "x.ts", kind: "file", reason: "edit" }]).ok).toBe(true);
 		expect(child.lock("worker-dddddd", [{ path: "x.ts", kind: "file", reason: "edit" }]).ok).toBe(false);
+		const moved = path.join(path.dirname(auth), "auth-moved");
+		git(main, "worktree", "move", auth, moved);
+		const reopened = open(moved);
+		expect(reopened.workspaceId).toBe(parent.workspaceId);
+		expect(reopened.list().map((agent) => agent.checkout)).toEqual([moved, moved]);
+		const db = openAgentDb(file);
+		try {
+			expect(agents.inWorkspace(db.db, parent.workspaceId)).toMatchObject([
+				{ id: "auth-cccccc", lease_workspace_id: null, checkout: moved },
+			]);
+			expect(agents.inWorkspace(db.db, child.workspaceId)).toMatchObject([
+				{ id: "worker-dddddd", lease_workspace_id: parent.workspaceId, checkout: moved },
+			]);
+		} finally {
+			db.close();
+		}
+		expect(child.workspace).toBe(moved);
+		expect(child.conflict("x.ts", "worker-dddddd")?.owner).toBe("auth-cccccc");
 	});
 
 	it("keeps unrelated repositories on separate teams", () => {

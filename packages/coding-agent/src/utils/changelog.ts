@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
 
 export interface ChangelogEntry {
 	major: number;

@@ -144,6 +144,7 @@ export async function showProviderManager(host: ProviderManagerHost, query = "")
 		const selector = new OAuthSelectorComponent(
 			"manage",
 			providers,
+			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; the handler reports its own failures
 			async (id) => {
 				done();
 				try {

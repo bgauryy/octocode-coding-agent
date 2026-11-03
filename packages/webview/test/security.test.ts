@@ -109,7 +109,9 @@ describe("offline export security", () => {
 				}
 				window.Element.prototype.insertAdjacentHTML = trap("insertAdjacentHTML");
 				window.Range.prototype.createContextualFragment = trap("createContextualFragment");
+				// oxlint-disable-next-line typescript/no-deprecated -- the trap proves rendered content never reaches these sinks
 				window.document.write = trap("document.write");
+				// oxlint-disable-next-line typescript/no-deprecated -- the trap proves rendered content never reaches these sinks
 				window.document.writeln = trap("document.writeln");
 				for (const name of ["eval", "fetch", "WebSocket", "XMLHttpRequest", "EventSource", "DOMParser"])
 					Object.defineProperty(window, name, { value: trap(name), configurable: true });

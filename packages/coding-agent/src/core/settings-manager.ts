@@ -1,5 +1,5 @@
 import { mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { join } from "path";
+import { join } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
 import type { Settings } from "./settings-schema.ts";

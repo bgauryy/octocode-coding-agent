@@ -1,11 +1,11 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { fork, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 
 const children: ChildProcess[] = [];
 const roots: string[] = [];
@@ -84,7 +84,7 @@ it("routes three live processes to their own sessions while synchronizing databa
 	roots.push(root);
 	const db = openAgentDb(path.join(root, "db"));
 	try {
-		const item = new BacklogStore(() => db, "shared-repo").add({ title: "Shared entity", createdBy: "user" });
+		const item = fixtureBacklog(() => db, "shared-repo").add({ title: "Shared entity", createdBy: "user" });
 		const sessions = await Promise.all(["first", "second", "third"].map((session) => launch(root, session)));
 		expect(new Set(sessions.map((session) => session.url)).size).toBe(3);
 		for (const session of sessions) {

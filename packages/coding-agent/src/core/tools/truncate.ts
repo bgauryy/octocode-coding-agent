@@ -275,5 +275,5 @@ function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
 		start++;
 	}
 
-	return buf.slice(start).toString("utf-8");
+	return buf.subarray(start).toString("utf-8");
 }

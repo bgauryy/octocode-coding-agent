@@ -1,3 +1,5 @@
+import { SessionManager } from "../../src/core/session-manager.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,7 +46,7 @@ function fileFor(id: string, body: string, cwd?: string): void {
 	if (cwd)
 		writeSessionRecord({
 			session: id,
-			repository: fs.realpathSync(cwd),
+			repository: registeredWorkspace(cwd).id,
 			workspace: cwd,
 			goal: { role: "user", text: `goal of ${id}` },
 			ending: [],
@@ -78,7 +80,7 @@ function tool(cwd: string) {
 	};
 }
 
-const why = { goal: "find the login fix", reason: "the user asked what was decided last week" };
+const why = { reason: "the user asked what was decided last week" };
 
 describe("the archive tool", () => {
 	it.each([{}, { op: "list", source: "sessions" }])("keeps other workspaces out of history for %j", async (form) => {
@@ -89,7 +91,7 @@ describe("the archive tool", () => {
 		setCurrentSession("elsewhere");
 		writeSessionRecord({
 			session: "elsewhere",
-			repository: fs.realpathSync(cwd),
+			repository: registeredWorkspace(cwd).id,
 			workspace: other,
 			goal: { role: "user", text: "foreign decision" },
 			ending: [],
@@ -110,16 +112,21 @@ describe("the archive tool", () => {
 		registerArchiveTool(fake.api);
 		const archive = fake.tools.get("archive");
 		expect(archive.promptSnippet).toMatch(/earlier sessions/);
+		expect(Object.keys(archive.parameters.properties)).toContain("reason");
+		expect(Object.keys(archive.parameters.properties)).not.toContain("goal");
 		expect(archive.parameters.properties.query.description).toMatch(/With errors: filters by tool name or error text/);
 	});
 
-	it("needs a goal and a reason, and records both with the result", async () => {
+	it("needs only a reason, records it with the result, and ignores the former goal field of old calls", async () => {
 		const call = tool(repo());
-		await expect(call({ goal: " ", reason: "x" })).rejects.toThrow(/needs goal .* and reason/);
-		await expect(call({ goal: "x" })).rejects.toThrow(/needs goal .* and reason/);
+		await expect(call({ reason: " " })).rejects.toThrow(/needs reason/);
+		await expect(call({ goal: "x" })).rejects.toThrow(/needs reason/);
 		const empty = await call(why);
 		expect(empty.text).toMatch(/^No history yet/);
 		expect(empty.details).toMatchObject({ ...why, mode: "list" });
+		const replayed = await call({ ...why, goal: "recorded by an older version" });
+		expect(replayed.text).toMatch(/^No history yet/);
+		expect(replayed.details).not.toHaveProperty("goal");
 	});
 
 	it("lists, searches with a continuation, and reads from a hit's line", async () => {
@@ -175,63 +182,34 @@ describe("the archive tool", () => {
 	});
 });
 
-/** A Octocode session file whose first line is its header. */
-function sessionFile(id: string, parentSession?: string): string {
-	const file = path.join(tmp(), `${id}.jsonl`);
-	fs.writeFileSync(
-		file,
-		`${JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-01-01T00:00:00Z", cwd: "/r", ...(parentSession ? { parentSession } : {}) })}\n{"type":"message"}\n`,
-	);
-	return file;
-}
-
 describe("fork lineage (B155)", () => {
-	it("follows each session file back to the first, nearest first, and stops at a loop or a missing file", () => {
-		const root = sessionFile("root");
-		const middle = sessionFile("middle", root);
-		expect(
-			forkLineage({
-				getHeader: () => ({ type: "session", id: "me", timestamp: "", cwd: "/r", parentSession: middle }),
-			}),
-		).toEqual(["middle", "root"]);
-		expect(
-			forkLineage({
-				getHeader: () => ({
-					type: "session",
-					id: "me",
-					timestamp: "",
-					cwd: "/r",
-					parentSession: path.join(tmp(), "gone.jsonl"),
-				}),
-			}),
-		).toEqual([]);
-		const loop = path.join(tmp(), "loop.jsonl");
+	it("retains host-created ancestors after source files disappear and rejects a forged header", () => {
+		const cwd = repo();
+		const root = SessionManager.create(cwd);
+		root.materialize();
+		const middle = SessionManager.forkFrom(root.getSessionFile()!, cwd);
+		const tip = SessionManager.forkFrom(middle.getSessionFile()!, cwd);
+		fs.unlinkSync(root.getSessionFile()!);
+		fs.unlinkSync(middle.getSessionFile()!);
+		expect(forkLineage(tip)).toEqual([middle.getSessionId(), root.getSessionId()]);
+		const forged = path.join(cwd, "imported.jsonl");
 		fs.writeFileSync(
-			loop,
-			`${JSON.stringify({ type: "session", id: "loop", timestamp: "", cwd: "/r", parentSession: loop })}\n`,
+			forged,
+			JSON.stringify({ ...tip.getHeader(), id: "imported", parentSession: tip.getSessionFile() }) + "\n",
 		);
-		expect(
-			forkLineage({
-				getHeader: () => ({ type: "session", id: "me", timestamp: "", cwd: "/r", parentSession: loop }),
-			}),
-		).toEqual(["loop"]);
-		expect(forkLineage({ getHeader: () => null })).toEqual([]);
+		expect(forkLineage(SessionManager.open(forged))).toEqual([]);
 	});
 
 	it("sets the lineage at session start, so the pointer names the source's archive and it reads as the session's own", async () => {
-		fileFor("source", "before the fork");
+		const cwd = repo();
+		const source = SessionManager.create(cwd, undefined, { id: "source" });
+		source.materialize();
+		const fork = SessionManager.forkFrom(source.getSessionFile()!, cwd);
+		fileFor("source", "before the fork", cwd);
 		const fake = fakeHost();
 		registerCompaction(fake.api, new FileGuard());
-		const ctx = fakeCtx({ cwd: repo() });
-		Object.assign(ctx.sessionManager, {
-			getHeader: () => ({
-				type: "session",
-				id: "me",
-				timestamp: "",
-				cwd: "/r",
-				parentSession: sessionFile("source"),
-			}),
-		});
+		const ctx = fakeCtx({ cwd });
+		Object.assign(ctx, { sessionManager: fork });
 		await fake.fire("session_start", { type: "session_start", reason: "fork" }, ctx);
 		expect(sessionLineage()).toEqual(["source"]);
 		expect(ownArchives()).toContain(archiveFolder("source"));
@@ -280,7 +258,7 @@ describe("session record", () => {
 		const made = sessionRecordOf(manager(cwd, "/t/me.jsonl") as never, ["source"])!;
 		expect(made).toMatchObject({
 			session: "me",
-			repository: fs.realpathSync(cwd),
+			repository: registeredWorkspace(cwd).id,
 			workspace: cwd,
 			forkedFrom: "source",
 			parent: "boss",

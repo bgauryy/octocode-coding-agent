@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { octocodeHome } from "../shared/home.ts";
-import { git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
+import { EXCLUDE_WORKSPACE_STATE, rejectTrackedWorkspaceState, git, gitQuiet, NO_HOOKS } from "../shared/git.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";
 import { ID_PATTERN, owner, repoRoot, type Worktree, worktreesDir } from "./worktree-base.ts";
 import { snapshotWorkingCopy } from "./worktree-snapshot.ts";
@@ -24,7 +24,8 @@ export async function createWorktree(
 	const repo = repoRoot(cwd);
 	const base = await gitQuiet(repo, ["rev-parse", "--verify", "HEAD"]);
 	if (!base) throw new Error("isolate needs at least one commit to start the worktree from.");
-	const dirty = workingCopy ? "" : await git(repo, ["status", "--porcelain"]);
+	await rejectTrackedWorkspaceState(repo, base);
+	const dirty = workingCopy ? "" : await git(repo, ["status", "--porcelain", "--", EXCLUDE_WORKSPACE_STATE]);
 	const dir = worktreesDir(repo, home);
 	const worktree = path.join(dir, agentId);
 	// Settled before anything is created, so a "No" leaves nothing behind.

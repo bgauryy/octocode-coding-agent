@@ -152,15 +152,14 @@ describe("defaultTools setting", () => {
 
 	it.each([
 		// Browsing is the built-in browser MCP server; the native `browser` tool is retired, so `+browser` adds nothing.
-		{ defaults: undefined, options: {}, expected: ["debug", "web"] },
-		{ defaults: ["-browser"], options: {}, expected: ["debug", "web"] },
-		{ defaults: ["-debug"], options: {}, expected: ["web"] },
-		{ defaults: ["+browser"], options: {}, expected: ["debug", "web"] },
-		{ defaults: ["-web"], options: {}, expected: ["debug"] },
-		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: ["debug"] },
+		{ defaults: undefined, options: {}, expected: ["web"] },
+		{ defaults: ["-browser"], options: {}, expected: ["web"] },
+		{ defaults: ["+browser"], options: {}, expected: ["web"] },
+		{ defaults: ["-web"], options: {}, expected: [] },
+		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: [] },
 		{ defaults: undefined, options: { tools: ["file"] }, expected: [] },
 	])(
-		"activates debug by default, never a native browser, and preserves selections through startup: %j",
+		"activates web by default, never a native browser, and preserves selections through startup: %j",
 		async ({ defaults, options, expected }) => {
 			const session = await createSession(defaults, options, [], true);
 			try {
@@ -168,19 +167,16 @@ describe("defaultTools setting", () => {
 				expect(
 					session
 						.getActiveToolNames()
-						.filter((name) => ["browser", "debug", "web"].includes(name))
+						.filter((name) => ["browser", "web"].includes(name))
 						.sort(),
 				).toEqual(expected);
 				if (!options.tools) expect(session.getActiveToolNames()).toContain("agent");
-				for (const name of ["browser", "debug"])
-					expect(session.agent.state.tools.some((tool) => tool.name === name)).toBe(
-						expected.some((entry) => entry === name),
-					);
+				expect(session.agent.state.tools.some((tool) => tool.name === "browser")).toBe(false);
 				await session.reload();
 				expect(
 					session
 						.getActiveToolNames()
-						.filter((name) => ["browser", "debug", "web"].includes(name))
+						.filter((name) => ["browser", "web"].includes(name))
 						.sort(),
 				).toEqual(expected);
 			} finally {
@@ -190,7 +186,7 @@ describe("defaultTools setting", () => {
 		},
 	);
 
-	it.each([{ tools: ["file", "web"] }, { tools: ["agent", "debug"] }])(
+	it.each([{ tools: ["file", "web"] }, { tools: ["agent", "archive"] }])(
 		"retains SDK selected native tools after session startup: $tools",
 		async ({ tools }) => {
 			const session = await createSession([], { tools }, [], true);

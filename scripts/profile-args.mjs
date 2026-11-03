@@ -7,8 +7,8 @@ export function printHelp() {
   node scripts/profile-coding-agent-node.mjs [options]
 
 Profiles coding-agent startup with the runtime selected below:
-- yarn run profile:tui     -> builds packages/coding-agent and profiles TUI startup with Node
-- yarn run profile:rpc     -> builds packages/coding-agent and profiles RPC startup with Node
+- yarn run profile:tui     -> builds the coding-agent bundle and profiles TUI startup with Node
+- yarn run profile:rpc     -> builds the coding-agent bundle and profiles RPC startup with Node
 - bun run profile:tui     -> profiles TUI startup from src/cli.ts directly with Bun
 - bun run profile:rpc     -> profiles RPC startup from src/cli.ts directly with Bun
 
@@ -22,9 +22,8 @@ Options:
   --runtime <name>       node, bun, or auto (default: auto)
   --agent-dir <dir>      Use a specific OCTOCODE_CODING_AGENT_DIR for the benchmark run
   --isolated-agent-dir   Use a fresh temporary agent dir instead of the normal one
-  --bundle               Build and profile the bundled Node entrypoint instead of dist/cli.js
   --no-offline           Do not force OCTOCODE_OFFLINE=1 / OCTOCODE_SKIP_VERSION_CHECK=1
-  --skip-build           Reuse the selected build output without rebuilding first (Node only)
+  --skip-build           Reuse the existing bundle without rebuilding first (Node only)
   --cpu-profile          Write CPU profiles for benchmark runs
   --help                 Show this help
 
@@ -61,7 +60,6 @@ function parseMode(value) {
 export function parseArgs(argv) {
 	const options = {
 		mode: "tui",
-		bundle: false,
 		runs: 1,
 		warmup: 0,
 		profileDir: undefined,
@@ -89,11 +87,6 @@ export function parseArgs(argv) {
 
 		if (arg === "--isolated-agent-dir") {
 			options.isolatedAgentDir = true;
-			continue;
-		}
-
-		if (arg === "--bundle") {
-			options.bundle = true;
 			continue;
 		}
 

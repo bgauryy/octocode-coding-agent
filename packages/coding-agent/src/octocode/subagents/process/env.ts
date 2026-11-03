@@ -30,7 +30,7 @@ import {
 	AGENT_SCRATCH_ENV,
 	TEAM_WORKSPACE_ENV,
 } from "../../../../../common/src/env.ts";
-import { sessionOutputDir } from "../../shared/home.ts";
+import { outputDir } from "../../shared/home.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
@@ -56,6 +56,8 @@ export interface Identity {
 	/** The parent chose its skills: they ride in its task and its prompt lists none (`SKILLS_IN_TASK_ENV`). */
 	skillsInTask?: boolean;
 	id: string;
+	/** Stable conversation ID, independent of the agent display name and individual run IDs. */
+	sessionId?: string;
 	role?: string;
 	parentId?: string;
 	goal?: string;
@@ -153,7 +155,7 @@ export function subagentProcessEnv(
 export function writeNonceFile(nonce: string, id: string): string | undefined {
 	try {
 		const file = path.join(
-			sessionOutputDir("output"),
+			outputDir("child-credentials"),
 			`nonce-${id.replace(/[^\w.-]/g, "_")}-${randomBytes(8).toString("hex")}`,
 		);
 		fs.writeFileSync(file, nonce, { flag: "wx", mode: PRIVATE_FILE_MODE });

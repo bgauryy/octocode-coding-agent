@@ -4,10 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV, READ_ONLY_ENV } from "../../../common/src/env.ts";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { repoKey } from "../../src/octocode/shared/home/repo.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
@@ -68,11 +69,11 @@ function setup(options: { subagent?: { id: string; env: Record<string, string> }
 function storeOfRepo(): BacklogStore {
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
-	return new BacklogStore(() => sharedAgentDb(), repoKey(cwd).key);
+	return new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
 }
 
 describe("task tool", () => {
-	it("adds, updates, lists and promotes session tasks, and get shows an item's tasks", async () => {
+	it("adds, updates and lists session tasks, and get shows an item's tasks", async () => {
 		const t = setup();
 		// `why` is the task's stored reason; the call's own `reason` (every tool takes one) is the registry's, never stored.
 		expect(
@@ -95,17 +96,14 @@ describe("task tool", () => {
 		expect(await t.task({ op: "list" })).toBe("T2 [ongoing] Patch it (session)");
 		expect(await t.task({ op: "list", state: "done" })).toBe("T1 [done] Read the loader (session) — in config.ts");
 		await t.task({ op: "update", id: "T2", why: "The loader drops overrides" });
-		expect(await t.task({ op: "move", id: "T2", position: 0 })).toContain("to position 0");
 		await expect(t.task({ op: "update", id: "T2" })).rejects.toThrow(/needs something to change/);
 		await expect(t.task({ op: "add" })).rejects.toThrow(/needs a goal/);
 		await expect(t.task({ op: "update", goal: "x" })).rejects.toThrow(/needs an id/);
 
-		const promoted = await t.task({ op: "promote", id: "T2", goal: "Patch lands in main" });
-		expect(promoted).toMatch(/^Promoted T2 to B1 \[backlog\] "Patch it"; the step is now under it/);
-		expect(t.store().get("B1")).toMatchObject({ goal: "Patch lands in main", createdBy: SESSION });
-		await expect(t.task({ op: "promote", id: "T2" })).rejects.toThrow(/already belongs to B1/);
+		await t.backlog({ op: "add", title: "Work", state: "ongoing", ...READY });
+		await t.task({ op: "add", goal: "Under B1" });
 		const detail = await t.backlog({ op: "get", id: "B1" });
-		expect(detail).toContain("Steps (1):\n- T2 [ongoing] Patch it\n  why: The loader drops overrides");
+		expect(detail).toContain("Steps (1):\n- T3 [todo] Under B1");
 	});
 
 	it("puts a task under the one item the session holds, and asks for item when it holds several", async () => {
@@ -130,21 +128,18 @@ describe("task tool", () => {
 		expect(await t.task({ op: "list", item: "B1", state: "done" })).toBe("No done steps.");
 	});
 
-	it("moves a step onto an item the session holds, and only onto one", async () => {
+	it("declares list, add and update only, and names the removed move and promote ops", async () => {
 		const t = setup();
-		for (const title of ["First", "Second", "Third"]) await t.backlog({ op: "add", title, state: "todo", ...READY });
-		await t.task({ op: "add", goal: "Loose step" });
-		await t.backlog({ op: "update", id: "B1", state: "ongoing" });
-		await t.backlog({ op: "update", id: "B2", state: "ongoing" });
-		expect(await t.task({ op: "move", id: "T1", item: "B1" })).toBe("Moved T1 [todo] Loose step (B1) to position 0");
-		expect(t.store().tasks.get("T1")!.owner).toMatchObject({ kind: "item", ref: "B1" });
-		expect(await t.task({ op: "move", id: "T1", item: "B2", position: 0 })).toContain("(B2)");
-		await expect(t.task({ op: "move", id: "T1", item: "B3" })).rejects.toThrow(
-			/B3 is not held by this session: move a step only onto an item you hold \(B1, B2\)/,
-		);
-		await expect(t.task({ op: "move", id: "T1", item: "B9" })).rejects.toThrow(/No backlog item B9/);
-		await expect(t.task({ op: "move", id: "T1" })).rejects.toThrow(/needs a position.*an item/);
-		expect(t.store().tasks.get("T1")!.owner).toMatchObject({ ref: "B2" });
+		const tool = t.tools.get("steps");
+		expect(tool.parameters.properties.op.enum).toEqual(["list", "add", "update"]);
+		expect(tool.parameters.properties.position).toBeUndefined();
+		await t.task({ op: "add", goal: "A step" });
+		for (const op of ["move", "promote"]) {
+			const message = new RegExp(`"${op}" was removed: steps take list, add and update`);
+			await expect(t.task({ op, id: "T1", position: 0 })).rejects.toThrow(message);
+			expect(() => tool.prepareArguments({ op, id: "T1" })).toThrow(message);
+		}
+		expect(t.store().tasks.get("T1")!.owner).toMatchObject({ kind: "session" });
 	});
 
 	it("shows the tree: type, parent, blocked-by, open steps, stale claims and an epic's items", async () => {
@@ -260,7 +255,9 @@ describe("task tool", () => {
 		const detail = await t.backlog({ op: "get", id: "B1" });
 		expect(detail).toContain("B1 [backlog p2 epic] Group");
 		expect(detail).toContain("State from its items: ongoing");
-		await expect(t.task({ op: "add", goal: "On an epic", item: "B1" })).rejects.toThrow(/is an epic/);
+		await expect(t.task({ op: "add", goal: "On an epic", item: "B1" })).rejects.toThrow(
+			/B1 is an epic: epics group items and hold no steps \(its open items: B2\)\. Pass one of its items as item, or omit item/,
+		);
 	});
 
 	describe("as a subagent", () => {
@@ -290,7 +287,7 @@ describe("task tool", () => {
 			expect(store.tasks.get("T2")!.owner).toEqual({ kind: "session", id: "child-1" });
 		});
 
-		it("cannot touch tasks of items its parent does not hold or promote a task", async () => {
+		it("cannot touch tasks of items its parent does not hold", async () => {
 			const store = storeOfRepo();
 			store.add({ ...READY, title: "Unclaimed", state: "todo", createdBy: "user" });
 			const t = setup({ subagent: child() });
@@ -302,8 +299,7 @@ describe("task tool", () => {
 			);
 			const own = await t.task({ op: "add", goal: "Own" });
 			expect(own).toContain("T1");
-			await expect(t.task({ op: "promote", id: "T1" })).rejects.toThrow(/subagent cannot promote/);
-			expect(t.tools.get("steps").parameters.properties.op.enum).toEqual(["list", "add", "update", "move"]);
+			expect(t.tools.get("steps").parameters.properties.op.enum).toEqual(["list", "add", "update"]);
 			const parent = setup();
 			await expect(parent.task({ op: "update", id: "T1", state: "done" })).rejects.toThrow(/belong to session child-1/);
 		});

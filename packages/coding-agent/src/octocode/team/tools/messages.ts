@@ -27,6 +27,7 @@ export function registerMessageRenderer(api: ExtensionAPI): void {
 			: [{ from: "agent", text: typeof message.content === "string" ? message.content : "", at: Date.now() }];
 		for (const entry of entries) {
 			// The sender's role and goal are already on its Agent row; the number is what `replyTo` takes.
+			// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- details are another process's data
 			const from = clip(String(entry?.from ?? "agent"), 64);
 			const meta = [
 				typeof entry?.id === "number" ? `#${entry.id}` : "",
@@ -42,6 +43,7 @@ export function registerMessageRenderer(api: ExtensionAPI): void {
 			);
 			// resultBlock sanitizes the body.
 			box.addChild(
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- details are another process's data
 				resultBlock(theme, { expanded: true }, { summary: "", body: String(entry?.text ?? ""), error: false }),
 			);
 		}
@@ -214,6 +216,7 @@ export function registerSendMessageTool(
 				);
 			},
 			renderCall(args, theme, context) {
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const to = args.to === undefined ? "" : `→ ${String(args.to)}`;
 				const reply = args.replyTo === undefined ? "" : `reply to #${String(args.replyTo)}`;
 				const forward = args.forward === undefined ? "" : `forward #${String(args.forward)}`;
@@ -234,6 +237,7 @@ export function registerSendMessageTool(
 					Array.isArray(details.departed) && details.departed.length
 						? ` · not sent to ${details.departed.map(String).join(", ")}`
 						: "";
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const message = isRecord(context.args) ? String(context.args.message ?? "") : "";
 				// Collapsed, the first line of what was sent; the whole message shows when expanded.
 				const first = context.expanded ? "" : clip(message.trimStart(), PREVIEW_CHARS);

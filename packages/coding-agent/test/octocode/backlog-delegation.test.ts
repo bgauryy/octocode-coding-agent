@@ -1,13 +1,15 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type AgentDb, closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { delegatePrompt, doItPrompt } from "../../src/octocode/backlog/actions.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { attachReport, heldItem } from "../../src/octocode/backlog/delegation.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
-import { BacklogError, BacklogStore, COMPLETION_GUIDANCE } from "../../src/octocode/backlog/store.ts";
+import { BacklogError, type BacklogStore, COMPLETION_GUIDANCE } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -37,7 +39,7 @@ afterEach(() => {
 });
 
 function storeFor(repo: string, db: AgentDb = sharedAgentDb()): BacklogStore {
-	return new BacklogStore(() => db, repo);
+	return fixtureBacklog(() => db, repo);
 }
 
 /** Record a session row, as the sessions feature does at session_start. */
@@ -116,12 +118,7 @@ describe("write rules live in the store", () => {
 		// The guideline leaves the completion fields to the description ("done needs completion") and the schema's `required`.
 		expect(t.tool.promptGuidelines.join("\n")).not.toContain(COMPLETION_GUIDANCE);
 		expect(t.tool.description).toContain("done needs completion");
-		expect(t.tool.parameters.properties.completion.required).toEqual([
-			"summary",
-			"files",
-			"verification",
-			"operationKey",
-		]);
+		expect(t.tool.parameters.properties.completion.required).toEqual(["summary", "files", "verification"]);
 		// A child's guideline names the one item it may update, sends follow-ups to its report and leaves the fields to the schema and the store error.
 		const child = setup({ isSubagent: true, parentSession: "p" }).tool;
 		const childGuideline = child.promptGuidelines.join("\n");
@@ -152,8 +149,7 @@ describe("write rules live in the store", () => {
 		const parent = setup();
 		await parent.text({ op: "add", ...READY, title: "one", state: "todo" });
 		await parent.text({ op: "add", ...READY, title: "two", state: "todo" });
-		const repo = fs.realpathSync(parent.cwd);
-		const store = storeFor(repo);
+		const store = openBacklog(fakeCtx({ cwd: parent.cwd }), { isSubagent: false }).store;
 		store.update("B1", { state: "ongoing" }, { id: "parent-session" });
 		store.update("B2", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session", item: "B2" });
@@ -191,11 +187,15 @@ describe("the item a parent hands to a child", () => {
 		const b = backlog();
 		b.store.add({ ...READY, title: "held", state: "todo", createdBy: "user" });
 		b.store.update("B1", { state: "ongoing" }, { id: "session-test" });
-		attachReport(b, "B1", { agent: "inky-kraken", outcome: "partial", file: "/repo/.octocode/tmp/agents/x/report.md" });
+		attachReport(b, "B1", {
+			agent: "inky-kraken",
+			outcome: "partial",
+			file: "/repo/.octa/code/temp/agents/x/report.md",
+		});
 		attachReport(b, "B1", { agent: "inky-kraken", outcome: undefined, checks: ["yarn test"] });
 		const notes = b.store.notes(b.store.get("B1")!, -1).filter((note) => note.kind === "note");
 		expect(notes.map((note) => note.text)).toEqual([
-			"Report from inky-kraken: partial. Saved at /repo/.octocode/tmp/agents/x/report.md.",
+			"Report from inky-kraken: partial. Saved at /repo/.octa/code/temp/agents/x/report.md.",
 			"Report from inky-kraken: no outcome word.",
 		]);
 		expect(notes.every((note) => note.author === "session-test")).toBe(true);

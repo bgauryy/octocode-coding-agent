@@ -1,10 +1,12 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
-import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
-import { repoKey } from "../../src/octocode/shared/home/repo.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -21,7 +23,7 @@ function setup() {
 	registerBacklogTool(fake.api, { isSubagent: false, env, changed });
 	const tool = fake.tools.get("backlog");
 	const ctx = fakeCtx({ cwd });
-	const store = new BacklogStore(() => sharedAgentDb(env), repoKey(cwd).key);
+	const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(cwd, sharedAgentDb(env)).id);
 	const call = (params: Record<string, unknown>) => tool.execute("call", params, undefined, undefined, ctx);
 	return { tool, store, call, changed };
 }
@@ -66,7 +68,7 @@ describe("backlog input and retrieval boundaries", () => {
 	it("enriches a whole page with one statement and preserves relations and completion history", () => {
 		const db = openAgentDb(path.join(tmp(), "agent.db"));
 		try {
-			const store = new BacklogStore(() => db, "repo");
+			const store = fixtureBacklog(() => db, "repo");
 			const parent = store.add({ title: "parent", type: "epic", createdBy: "user" });
 			const child = store.add({
 				title: "child",

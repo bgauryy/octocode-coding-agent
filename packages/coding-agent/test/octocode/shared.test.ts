@@ -25,7 +25,7 @@ import { workspaceScratchDir } from "../../src/octocode/shared/home.ts";
 import { getPackageDir } from "../../src/config.ts";
 import { findManifest } from "../../../common/src/package.ts";
 import { killTree, processAlive, stopTree } from "../../src/octocode/shared/process.ts";
-import { sweepStaleOutputs } from "../../src/octocode/shared/sweep.ts";
+import { staleEntries } from "../../src/octocode/shared/sweep.ts";
 import {
 	addReply,
 	capChars,
@@ -234,19 +234,19 @@ describe("paths", () => {
 });
 
 describe("workspace scratch", () => {
-	it("creates a self-ignoring folder and sweeps stale entries except kept ones", async () => {
+	it("creates a self-ignoring folder and lists stale entries except kept ones, removing nothing", async () => {
 		const workspace = tmp("octocode-scratch-");
 		const dir = workspaceScratchDir(workspace, path.join("agents", "a-1"));
-		expect(dir).toBe(path.join(workspace, ".octocode", "tmp", "agents", "a-1"));
-		expect(fs.readFileSync(path.join(workspace, ".octocode", "tmp", ".gitignore"), "utf8")).toBe("*\n");
+		expect(dir).toBe(path.join(fs.realpathSync(workspace), ".octa", "code", "temp", "agents", "a-1"));
+		expect(fs.readFileSync(path.join(workspace, ".octa", "code", ".gitignore"), "utf8")).toBe("*\n");
 		workspaceScratchDir(workspace, path.join("agents", "a-2"));
 		workspaceScratchDir(workspace, path.join("agents", "a-3"));
 		const root = path.dirname(dir);
 		const old = new Date(Date.now() - 10_000);
 		for (const name of ["a-1", "a-2"]) fs.utimesSync(path.join(root, name), old, old);
-		await sweepStaleOutputs(root, 5_000, new Set(["a-2"]));
-		expect(fs.readdirSync(root).sort()).toEqual(["a-2", "a-3"]);
-		await expect(sweepStaleOutputs(path.join(workspace, "missing"), 0)).resolves.toBeUndefined();
+		expect(await staleEntries(root, 5_000, new Set(["a-2"]))).toEqual([path.join(root, "a-1")]);
+		expect(fs.readdirSync(root).sort()).toEqual(["a-1", "a-2", "a-3"]);
+		await expect(staleEntries(path.join(workspace, "missing"), 0)).resolves.toEqual([]);
 	});
 });
 

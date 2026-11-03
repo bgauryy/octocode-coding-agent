@@ -1,5 +1,5 @@
 import type { BacklogAudit, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { navigate } from "../hooks.ts";
 import { stamp } from "../model/format.ts";
@@ -92,7 +92,7 @@ function CommentForm({ item }: { item: SnapshotItem }) {
 	const [error, setError] = useState("");
 	const sending = useRef(false);
 
-	async function submit(event: FormEvent) {
+	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (sending.current || !text.trim()) return;
 		const sessionId = workspace.getState().snapshot?.sessionId;

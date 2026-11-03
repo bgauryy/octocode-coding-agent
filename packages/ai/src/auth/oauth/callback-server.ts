@@ -160,7 +160,8 @@ export async function waitForCallbackOrManualInput<T>(
 	prompt: { message: string; placeholder: string },
 ): Promise<{ type: "callback"; value: T } | { type: "manual"; input: string }> {
 	const manualAbort = new AbortController();
-	let manualError: Error | undefined;
+	// Assigned from the prompt's rejection handler, which control-flow analysis cannot see.
+	let manualError = undefined as Error | undefined;
 	const manual = raceWithAbortSignal(
 		interaction.prompt({
 			type: "manual_code",
@@ -183,7 +184,9 @@ export async function waitForCallbackOrManualInput<T>(
 		if (manualError) throw manualError;
 		if (value !== undefined) return { type: "callback", value };
 		const input = await manual;
-		if (manualError) throw manualError;
+		// The prompt's rejection handler ran during the await above; control-flow analysis still sees `undefined`.
+		const failed = manualError as Error | undefined;
+		if (failed) throw failed;
 		return { type: "manual", input: input ?? "" };
 	} finally {
 		manualAbort.abort();

@@ -15,7 +15,7 @@ import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to
  * investigate and report, and this refuses what would change the repository whatever mode the session is in. It
- * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octocode/tmp/` and to Markdown docs under
+ * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octa/code/temp/` and to Markdown docs under
  * `.octocode/` except where a later session loads the folder as configuration (`LOADED_BY_LATER_SESSIONS`: skills,
  * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
  * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
@@ -51,15 +51,16 @@ const LOADED_BY_LATER_SESSIONS = new Set(
 );
 
 /**
- * Whether a read-only child may write `target` (canonical): its scratch folder, `.octocode/tmp/`, a topic's
+ * Whether a read-only child may write `target` (canonical): its scratch folder, `.octa/code/temp/`, a topic's
  * `.octocode/<topic>/tmp/`, or a Markdown doc under `.octocode/` outside the folders later sessions load.
  */
 function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
 	const scratch = env[AGENT_SCRATCH_ENV];
-	if (scratch && isWithin(target, canonicalPath(scratch))) return true;
+	if (scratch && canonicalPath(scratch) === scratch && isWithin(target, scratch)) return true;
 	const { dir, tmp } = workspacePaths(cwd);
-	if (isWithin(target, canonicalPath(tmp))) return true;
-	if (!isWithin(target, canonicalPath(dir))) return false;
+	if (canonicalPath(tmp) === tmp && isWithin(target, tmp))
+		return !isWithin(target.toLowerCase(), path.join(tmp, "sessions").toLowerCase());
+	if (canonicalPath(dir) !== dir || !isWithin(target, dir)) return false;
 	const [entry = "", second] = path.relative(canonicalPath(dir), target).split(path.sep);
 	if (LOADED_BY_LATER_SESSIONS.has(entry.toLowerCase())) return false;
 	// A skill keeps its run scratch (ledgers, probes) in `.octocode/<topic>/tmp/`.
@@ -67,8 +68,16 @@ function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean 
 	return target.toLowerCase().endsWith(".md");
 }
 
+/**
+ * Whether a read-only child may create the directory `target` (canonical) with `mkdir`: one it may write, or one it may
+ * write a Markdown doc into, which the `file` tool would create anyway. No new authority: the folder's contents stay
+ * under `mayWrite`.
+ */
+const mayCreateDirectory = (target: string, cwd: string, env: NodeJS.ProcessEnv): boolean =>
+	mayWrite(target, cwd, env) || mayWrite(path.join(target, "notes.md"), cwd, env);
+
 const refusal = (what: string): string =>
-	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octocode/tmp/\` or a Markdown doc under \`.octocode/\`.`;
+	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octa/code/temp/\`, a topic's \`.octocode/<topic>/tmp/\` or a Markdown doc under \`.octocode/\` (not in a folder later sessions load, such as skills, agents or prompts). The file tool creates missing folders.`;
 
 /** The refusal for a call a read-only child must not make, or undefined when it may (or this is not a read-only child). */
 export function readOnlyRoleRefusal(
@@ -79,8 +88,6 @@ export function readOnlyRoleRefusal(
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
 	if (event.toolName === "archive" && archiveMutation(input)) return refusal("Saving shared memory");
-	if (event.toolName === "debug" && input.action !== "terminate")
-		return refusal("Debugging (the adapter can execute code)");
 	if (browserMcpTool(event.toolName) !== undefined) {
 		const { control, outside } = browserEscalations(event.toolName, input, cwd);
 		const first =
@@ -102,9 +109,11 @@ export function readOnlyRoleRefusal(
 			: refusal("This PowerShell command (its effects cannot be parsed)");
 	const effect = shellMutation(command);
 	const root = workspaceRoot(cwd) ?? path.resolve(cwd);
+	const directories = new Set(effect.directories);
 	const changed = effect.writes.find((file) => {
 		const target = canonicalPath(shellPath(cwd, file));
-		return isWithin(target, canonicalPath(root)) && !mayWrite(target, cwd, env);
+		if (!isWithin(target, canonicalPath(root))) return false;
+		return directories.has(file) ? !mayCreateDirectory(target, cwd, env) : !mayWrite(target, cwd, env);
 	});
 	if (changed !== undefined)
 		return refusal(

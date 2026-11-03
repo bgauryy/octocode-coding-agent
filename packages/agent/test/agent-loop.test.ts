@@ -580,7 +580,7 @@ describe("agentLoop with AgentMessage", () => {
 			async execute(_toolCallId, params) {
 				executed.push(params.value);
 				return {
-					content: [{ type: "text", text: `echoed: ${String(params.value)}` }],
+					content: [{ type: "text", text: `echoed: ${params.value}` }],
 					details: { value: params.value },
 				};
 			},

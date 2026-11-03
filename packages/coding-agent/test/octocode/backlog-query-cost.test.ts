@@ -1,10 +1,10 @@
+import { fixtureBacklog, registerFixtureWorkspace } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sessionLinks } from "../../src/octocode/agentdb/api.ts";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { sessionLinks, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -29,9 +29,10 @@ const actor = { id: "session-a" };
 /** Inserts `n` plain items in one transaction, much faster than `store.add` per item. */
 function seed(repo: string, n: number): void {
 	const db = sharedAgentDb();
+	registerFixtureWorkspace(db, repo);
 	db.transaction(() => {
 		const insert = db.db.prepare(
-			"INSERT INTO backlog (repo_key, seq, title, state, created_by, created_at, updated_at, type) VALUES (?, ?, ?, 'todo', 'agent', 1, 1, 'feature')",
+			"INSERT INTO backlog (workspace_id, seq, title, state, created_by, created_at, updated_at, type) VALUES (?, ?, ?, 'todo', 'agent', 1, 1, 'feature')",
 		);
 		for (let seq = 1; seq <= n; seq += 1) insert.run(repo, seq, `item ${seq}`);
 	});
@@ -59,7 +60,7 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 	const filtered = (items: number): number => {
 		const repo = `repo-${items}`;
 		seed(repo, items);
-		const store = new BacklogStore(() => sharedAgentDb(), repo);
+		const store = fixtureBacklog(() => sharedAgentDb(), repo);
 		const original = Array.prototype.filter;
 		let visited = 0;
 		const filter = vi.spyOn(Array.prototype, "filter").mockImplementation(function (
@@ -80,7 +81,7 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 	});
 
 	it("still refuses waiting cycles", () => {
-		const store = new BacklogStore(() => sharedAgentDb(), "cycles");
+		const store = fixtureBacklog(() => sharedAgentDb(), "cycles");
 		store.add({ ...base, title: "epic", state: "todo", type: "epic" });
 		store.add({ ...base, title: "a", state: "todo", parentId: "B1" });
 		store.add({ ...base, title: "b", state: "todo", dependsOn: ["B2"] });
@@ -90,7 +91,7 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 	});
 
 	it("refuses removing an item with children or dependants, and removes a free one", () => {
-		const store = new BacklogStore(() => sharedAgentDb(), "remove");
+		const store = fixtureBacklog(() => sharedAgentDb(), "remove");
 		store.add({ ...base, title: "epic", state: "todo", type: "epic" });
 		store.add({ ...base, title: "child", state: "todo", parentId: "B1" });
 		store.add({ ...base, title: "needs child", state: "todo", dependsOn: ["B2"] });
@@ -103,7 +104,7 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 
 describe("item marks are batched per page (R3d-5)", () => {
 	it("reads a page of done epics with a fixed number of statements, with the same marks", () => {
-		const store = new BacklogStore(() => sharedAgentDb(), "marks");
+		const store = fixtureBacklog(() => sharedAgentDb(), "marks");
 		for (let epic = 0; epic < 20; epic += 1) {
 			store.add({ ...base, title: `epic ${epic}`, state: "todo", type: "epic" });
 			const epicRef = `B${store.list().total}`;
@@ -114,7 +115,7 @@ describe("item marks are batched per page (R3d-5)", () => {
 		}
 		const db = sharedAgentDb().db;
 		// Close the epics behind the store's back, as a board left by an older build may hold them.
-		db.prepare("UPDATE backlog SET state = 'done' WHERE type = 'epic' AND repo_key = 'marks'").run();
+		db.prepare("UPDATE backlog SET state = 'done' WHERE type = 'epic' AND workspace_id = 'marks'").run();
 		const page = store.list({ states: ["done"] }).items;
 		expect(page).toHaveLength(20);
 		let marks = new Map();
@@ -127,13 +128,13 @@ describe("item marks are batched per page (R3d-5)", () => {
 	});
 
 	it("lists the open items at any depth below a done item", () => {
-		const store = new BacklogStore(() => sharedAgentDb(), "depth");
+		const store = fixtureBacklog(() => sharedAgentDb(), "depth");
 		store.add({ ...base, title: "epic", state: "todo", type: "epic" });
 		store.add({ ...base, title: "child", state: "todo", parentId: "B1" });
 		const db = sharedAgentDb().db;
 		store.add({ ...base, title: "grandchild", state: "todo" });
-		db.prepare("UPDATE backlog SET parent_id = ? WHERE seq = 3 AND repo_key = 'depth'").run(store.get("B2")!.rowId);
-		db.prepare("UPDATE backlog SET state = 'done' WHERE seq IN (1, 2) AND repo_key = 'depth'").run();
+		db.prepare("UPDATE backlog SET parent_id = ? WHERE seq = 3 AND workspace_id = 'depth'").run(store.get("B2")!.rowId);
+		db.prepare("UPDATE backlog SET state = 'done' WHERE seq IN (1, 2) AND workspace_id = 'depth'").run();
 		const marks = store.marks(store.list({ states: ["done"] }).items);
 		expect(marks.get("B1")?.openBelow).toEqual(["B3"]);
 		expect(marks.get("B2")?.openBelow).toEqual(["B3"]);
@@ -170,8 +171,8 @@ describe("session links use an index (Q4)", () => {
 	});
 
 	it("returns the same holders with and without a repository", () => {
-		const store = new BacklogStore(() => sharedAgentDb(), "held");
-		const other = new BacklogStore(() => sharedAgentDb(), "held-other");
+		const store = fixtureBacklog(() => sharedAgentDb(), "held");
+		const other = fixtureBacklog(() => sharedAgentDb(), "held-other");
 		store.add({ ...base, title: "one", state: "todo" });
 		other.add({ ...base, title: "one", state: "todo" });
 		store.update("B1", { state: "ongoing" }, { id: "session-a" });

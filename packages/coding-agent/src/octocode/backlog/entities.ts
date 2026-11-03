@@ -1,13 +1,11 @@
 import {
-	DEFAULT_ITEM_TYPE,
-	isItemType,
 	type BacklogRef,
 	type Completion,
 	type EntityInput,
 	type WorkLink,
 } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
-import { type Db, backlog } from "../agentdb/api.ts";
+import { type Db, backlog } from "../../../../db/src/api.ts";
 import { refText, type toItem } from "./row.ts";
 import type { Item } from "./item.ts";
 import { mergeLinks, splitEvidence } from "./evidence-links.ts";
@@ -53,8 +51,7 @@ export function enrichItems(db: Db, repo: string, bases: ReturnType<typeof toIte
 		return {
 			...base,
 			evidence: evidence.text,
-			// A row whose stored type is not an item type reads as the default.
-			type: isItemType(row.type) ? row.type : DEFAULT_ITEM_TYPE,
+			type: row.type,
 			...(row.parent_seq === null ? {} : { parentId: refText(row.parent_seq) }),
 			dependsOn: links
 				.filter((link) => link.relation === "depends_on")

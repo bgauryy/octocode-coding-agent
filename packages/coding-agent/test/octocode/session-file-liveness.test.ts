@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { closeSharedAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { sessionFileRunningPid } from "../../src/octocode/agentdb/liveness.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
+import { sessionFileRunningPid } from "../../src/octocode/shared/session-liveness.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { tmp } from "./helpers.ts";

@@ -3,7 +3,7 @@
  * Used by auth-storage.ts and model-registry.ts.
  */
 
-import { execSync, spawnSync } from "child_process";
+import { execSync, spawnSync } from "node:child_process";
 
 /** How to start a shell on this host; `getShellConfig` of the coding agent is the usual provider. */
 export interface ConfigValueShell {

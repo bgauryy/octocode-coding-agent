@@ -2685,7 +2685,7 @@ describe("Editor component", () => {
 
 			const mockProvider: AutocompleteProvider = {
 				getSuggestions: async (_lines, _cursorLine, _cursorCol, options) => {
-					return await new Promise((resolve) => {
+					return new Promise((resolve) => {
 						const timeout = setTimeout(() => {
 							resolve({ items: [{ value: "@main.ts", label: "main.ts" }], prefix: "@main" });
 						}, 500);

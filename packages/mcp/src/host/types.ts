@@ -11,6 +11,7 @@ import type { AutocompleteItem, Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
 import type { McpServerConfig, RegisteredMcpServer } from "../servers.ts";
 import type { McpPresentationMode } from "../presentation/mode.ts";
+import type { McpContractTiersSetting } from "../contract-tiers.ts";
 
 /** The colours and weights MCP renderers draw with. */
 export interface McpTheme {
@@ -165,7 +166,7 @@ export interface McpExtensionApi {
 	getAllTools(): McpToolInfo[];
 	setActiveTools(toolNames: string[]): void;
 	selectsTools?(prefix: string, activeByDefault: boolean): boolean;
-	getSettings?(): { mcpPresentation?: McpPresentationMode };
+	getSettings?(): { mcpPresentation?: McpPresentationMode; mcpContractTiers?: McpContractTiersSetting };
 	getSkillDirectories(): string[];
 	registerMcpServer(name: string, config: McpServerConfig): void;
 	unregisterMcpServer(name: string): void;

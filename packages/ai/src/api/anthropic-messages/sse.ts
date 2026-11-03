@@ -40,7 +40,9 @@ export async function* iterateAnthropicEvents(
 			yield event;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`Could not parse Anthropic SSE event ${sse.event}: ${message}; data=${sse.data}`);
+			throw new Error(`Could not parse Anthropic SSE event ${sse.event}: ${message}; data=${sse.data}`, {
+				cause: error,
+			});
 		}
 	}
 

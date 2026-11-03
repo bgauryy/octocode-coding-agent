@@ -53,7 +53,7 @@ describe("skills the application ships", () => {
 		return loader;
 	};
 
-	it("holds octocode-context-optimization as a valid skill whose scripts only call the CLI", () => {
+	it("holds the core skills as valid skills, and octocode-context-optimization's scripts only call the CLI", () => {
 		const { skills, diagnostics } = loadSkills({
 			cwd: path.join(root, "project"),
 			agentDir: path.join(root, "agent"),
@@ -61,7 +61,7 @@ describe("skills the application ships", () => {
 			includeDefaults: false,
 		});
 		expect(diagnostics).toEqual([]);
-		expect(skills.map((skill) => skill.name)).toEqual(["octocode-context-optimization"]);
+		expect(skills.map((skill) => skill.name).sort()).toEqual(["octocode-context-optimization", "octocode-debugging"]);
 		const dir = path.join(getNativeSkillsDir(), "octocode-context-optimization");
 		expect(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8")).toContain("octocode-agentic-prompts");
 		for (const script of fs.readdirSync(path.join(dir, "scripts"))) {
@@ -181,6 +181,115 @@ process.exit(args.includes("fail") ? 3 : 0);
 			);
 			expect(calls()).toEqual([["mcp", "compact", "check", "demo", "--overrides", "o.json"]]);
 			expect(run("apply.mjs", ["demo", "--overrides", "o.json"], bin).status).toBe(1);
+		});
+	});
+
+	describe("octocode-debugging scripts", () => {
+		const scripts = path.join(getNativeSkillsDir(), "octocode-debugging", "scripts");
+		const program = (name: string, source: string) => {
+			fs.writeFileSync(path.join(root, name), source);
+			return name;
+		};
+		const run = (script: string, args: string[]) =>
+			spawnSync(process.execPath, [path.join(scripts, script), ...args], {
+				cwd: root,
+				encoding: "utf8",
+				timeout: 30_000,
+			});
+		const events = (stdout: string) =>
+			stdout
+				.split("\n")
+				.filter((line) => line.startsWith("{"))
+				.map((line) => JSON.parse(line) as Record<string, unknown>);
+		const loop =
+			"function total(xs) {\n\tlet s = 0;\n\tfor (const x of xs) {\n\t\ts += x * 2;\n\t}\n\treturn s;\n}\nconsole.log(total([1, 2, 3]));\nprocess.exitCode = 3;\n";
+
+		it("node-break reports each conditional hit with the evaluated values, names unbound breakpoints and keeps the exit code", () => {
+			const result = run("node-break.mjs", [
+				"--break",
+				"loop.mjs:4:x > 1",
+				"--break",
+				"missing.mjs:1",
+				"--eval",
+				"s",
+				"--eval",
+				"x",
+				"--",
+				program("loop.mjs", loop),
+			]);
+			expect(result.status).toBe(3);
+			expect(result.stdout).toContain("12");
+			expect(events(result.stdout)).toEqual([
+				expect.objectContaining({ event: "hit", thread: "main", at: "total loop.mjs:4", values: { s: 2, x: 2 } }),
+				expect.objectContaining({ event: "hit", at: "total loop.mjs:4", values: { s: 6, x: 3 } }),
+				{ event: "unbound", break: "missing.mjs:1" },
+				{ event: "exit", code: 3, signal: null, pauses: 2 },
+			]);
+		});
+
+		it("node-break stops where an exception is thrown in the program, not in Node's own frames", () => {
+			const source = "function ratio(o) {\n\tthrow new Error(`bad ${o.k}`);\n}\nratio({ k: 3 });\n";
+			const result = run("node-break.mjs", ["--exceptions", "all", "--", program("throw.mjs", source)]);
+			expect(result.status).toBe(1);
+			const found = events(result.stdout);
+			expect(found.filter((event) => event.event === "exception")).toEqual([
+				expect.objectContaining({
+					at: "ratio throw.mjs:2",
+					values: { o: "Object {k: 3}" },
+					stack: ["ratio throw.mjs:2", "<anonymous> throw.mjs:4"],
+				}),
+			]);
+		});
+
+		it("node-break prints where a hanging program is stuck and stops it at the timeout", () => {
+			const result = run("node-break.mjs", [
+				"--timeout",
+				"1",
+				"--",
+				program("hang.mjs", "let i = 0;\nwhile (true) i++;\n"),
+			]);
+			expect(result.status).not.toBe(0);
+			expect(events(result.stdout)).toEqual([
+				expect.objectContaining({ event: "timeout", thread: "main", stack: [expect.stringMatching(/hang\.mjs:2$/)] }),
+				expect.objectContaining({ event: "exit", signal: "SIGKILL" }),
+			]);
+		});
+
+		it("profile-top ranks the hottest function of the newest CPU profile in a directory", () => {
+			const source =
+				"function hot(n) {\n\tlet s = 0;\n\tfor (let i = 0; i < n; i++) s += Math.sqrt(i);\n\treturn s;\n}\nconsole.log(hot(3e7) > 0);\n";
+			const profiled = spawnSync(process.execPath, ["--cpu-prof", "--cpu-prof-dir=prof", program("hot.mjs", source)], {
+				cwd: root,
+			});
+			expect(profiled.status).toBe(0);
+			const result = run("profile-top.mjs", ["prof", "--top", "1", "--filter", "hot.mjs"]);
+			expect(result.status).toBe(0);
+			const lines = result.stdout.trim().split("\n");
+			expect(lines[1]).toMatch(/^CPU profile: \d+ ms wall/);
+			expect(lines.slice(3)).toEqual([expect.stringMatching(/%\s+hot\s+hot\.mjs:1$/)]);
+		});
+
+		it("profile-top reads a heap profile as bytes, counting a recursive function's total once", () => {
+			const frame = (functionName: string, lineNumber: number) => ({
+				functionName,
+				url: "file:///app/a.js",
+				lineNumber,
+			});
+			const head = {
+				callFrame: frame("(root)", -1),
+				selfSize: 0,
+				children: [
+					{
+						callFrame: frame("walk", 0),
+						selfSize: 100,
+						children: [{ callFrame: frame("walk", 0), selfSize: 300, children: [] }],
+					},
+				],
+			};
+			fs.writeFileSync(path.join(root, "a.heapprofile"), JSON.stringify({ head }));
+			const result = run("profile-top.mjs", ["a.heapprofile"]);
+			expect(result.stdout).toContain("Heap profile: 400 bytes sampled live");
+			expect(result.stdout).toMatch(/\b400\s+100\.0%\s+400\s+100\.0%\s+walk\s+\/app\/a\.js:1/);
 		});
 	});
 });

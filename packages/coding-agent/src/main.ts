@@ -378,6 +378,5 @@ export async function main(args: string[]) {
 		if (exitCode !== 0) {
 			process.exitCode = exitCode;
 		}
-		return;
 	}
 }

@@ -6,8 +6,18 @@ import { vi } from "vitest";
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and settings: start from none, so results never depend on who ran the tests.
 for (const name of Object.keys(process.env)) if (name.startsWith("OCTOCODE_")) delete process.env[name];
 
-// Tests must never touch the user's real ~/.octocode (its agent database is shared with every running Octocode): tests that
-// "restore" OCTOCODE_HOME/OCTOCODE_AGENT_DB restore these per-worker temporary paths, so late async work stays sandboxed.
+// Tests must never touch the user's real home: ~/.octocode (its agent database is shared with every running Octocode), the
+// skills and host configuration discovered under it. A test that blanks OCTOCODE_HOME falls back to <HOME>/.octocode/octocodecode,
+// which is also temporary. Set before any module that reads either is imported.
+// The folder trust gate ignores a trusted subtree that contains the home folder, so HOME sits beside the temporary
+// directory the projects are created in (test/home-guard.global.ts makes one per run), never inside it.
+const userHome =
+	process.env.VITEST_TEST_USER_HOME ?? fs.mkdtempSync(path.join(path.dirname(os.tmpdir()), "octocode-test-userhome-"));
+process.env.HOME = userHome;
+process.env.USERPROFILE = userHome;
+delete process.env.CLAUDE_CONFIG_DIR;
+delete process.env.CODEX_HOME;
+// Tests that "restore" OCTOCODE_HOME/OCTOCODE_AGENT_DB restore these per-worker temporary paths, so late async work stays sandboxed.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-test-home-"));
 process.env.OCTOCODE_HOME = home;
 delete process.env.OCTOCODE_AGENT_DB;

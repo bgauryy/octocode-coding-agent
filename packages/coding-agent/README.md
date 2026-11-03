@@ -2,7 +2,18 @@
 
 The CLI and RPC server for [octocode-code](../../README.md), a fork of [Pi](https://github.com/earendil-works/pi) with the former Octocode Pi extension integrated into the runtime.
 
-Follow the [root setup instructions](../../README.md#run-from-source) for prerequisites and development commands. The package is `@octocodeai/octocodecode`; its executables are `octocode` and `octocode-api`. Registry publication is blocked while local sibling dependencies are configured.
+## Install
+
+Octocode needs Node 24.15 or later.
+
+```sh
+npm install -g @octocodeai/octocodecode
+octocode
+```
+
+Use `/login` to connect an AI account or API key, then `/model` to choose a model. The package installs the commands `octocode` and `octocode-api`. If the separate `octocode` research package is installed globally, npm reports `EEXIST` for the shared command name: remove that package first, or install with `--force` to replace its command.
+
+To work on Octocode itself, follow the [root setup instructions](../../README.md#run-from-source).
 
 ## Native features
 
@@ -94,4 +105,4 @@ A native session supports one active `AgentSession` per process. Sequential CLI/
 
 For an existing session, `getApplicationPort(session)` returns the shared application service. Its `getSnapshot()` and `subscribeState(listener)` methods expose copied runtime snapshots through the `ApplicationStateSource` contract. Read once for the initial value, then unsubscribe when the view closes. The service's Zustand vanilla store also supplies terminal semantic events and serialized web snapshots. Commands still pass through the service and execution owners. See [interface architecture](../../docs/INTERFACE_ARCHITECTURE.md#runtime-state-and-database-ownership) for state lifetimes and [runtime storage](docs/configuration.md#runtime-storage) for persistence.
 
-MIT; original Pi copyright notices are retained in [LICENSE](../../LICENSE).
+MIT; original Pi copyright notices are retained in [LICENSE](LICENSE). Licenses of the third-party code compiled into the bundle are in `dist/licenses/THIRD_PARTY_NOTICES.md`.

@@ -1,7 +1,3 @@
-<!--
-Appended by `teamTask` to the task of a collaborating subagent. Values: parentId, teammates (the "- `id`: role: goal"
-lines of the subagents running now; empty when none).
--->
 ## Teammates
 You collaborate with the other subagents that {{parentId}} started for the same goal. Running now:
 {{#if teammates}}

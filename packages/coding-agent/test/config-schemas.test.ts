@@ -118,6 +118,7 @@ describe("generated configuration schemas", () => {
 			valid: {
 				theme: "dark",
 				cacheWarming: "idle",
+				retention: { days: 30, sessionDays: 0 },
 				extensionSetting: { enabled: true },
 				queueMode: "all",
 				websockets: true,

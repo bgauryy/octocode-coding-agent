@@ -1,10 +1,11 @@
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { sharedAgentDb, compactions, agentEvents } from "../../src/octocode/agentdb/api.ts";
+import { closeSharedAgentDb, compactions, agentEvents } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { saveCompaction } from "../../src/octocode/archive/summaries.ts";
 import { expireArchiveDetails, mayRemoveArchive } from "../../src/octocode/archive/retention.ts";
@@ -32,29 +33,34 @@ beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "archive-workspace-")));
 	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
-	setCurrentSession("session-a");
+	setCurrentSession("session-a", root);
 	setSessionLineage([]);
 });
 afterEach(() => {
+	setCurrentSession(undefined);
 	closeSharedAgentDb();
 	vi.unstubAllEnvs();
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-it("shares workspace notes while preserving legacy ids and hiding them from old repository readers", () => {
+it("shares explicit project notes and isolates default workspace notes", () => {
 	const db = sharedAgentDb();
-	const legacy = new MemoryStore(db, root);
-	const old = legacy.set({ title: "legacy shared decision", author: "user" }).memory;
+	const project = new MemoryStore(db, root);
+	const old = project.set({ title: "shared project decision", author: "user" }).memory;
 	const workspace = memoryStore(root);
 	const note = workspace.set({ title: "workspace-only preference", author: "user" }).memory;
 	const other = path.join(root, "other");
-	fs.mkdirSync(other);
+	fs.mkdirSync(path.join(other, ".git"), { recursive: true });
 	expect(note.scope).toBe("workspace");
 	expect(workspace.get(old.id)?.scope).toBe("project");
 	expect(memoryStore(root).get(note.id)?.title).toBe(note.title);
-	expect(memoryStore(other).get(note.id)).toBeUndefined();
-	expect(legacy.get(note.id)).toBeUndefined();
-	expect(() => legacy.delete(note.id)).toThrow("No memory");
+	const sibling = memoryStore(other);
+	expect(sibling.get(note.id)).toBeUndefined();
+	expect(sibling.updatedAt([note.id])).toEqual(new Map());
+	sibling.markUsed([note.id]);
+	expect(workspace.get(note.id)?.useCount).toBe(0);
+	expect(project.get(note.id)).toBeUndefined();
+	expect(() => project.delete(note.id)).toThrow("No memory");
 });
 
 it("exposes one tool and retains scoped write checks and plan classification", async () => {
@@ -102,7 +108,9 @@ it("retains searchable complete summaries after expiry and does not resurrect de
 	});
 	saveCompaction(db, root, "session-a", entry, { recovered: true });
 	expect(compactions.get(db.db, "session-a", entry.id)?.detailState).toBe("expired");
-	expect(agentEvents.list(db.db, root).filter((row) => row.type === "compaction")).toHaveLength(1);
+	expect(
+		agentEvents.list(db.db, registeredWorkspace(root, db).id).filter((row) => row.type === "compaction"),
+	).toHaveLength(1);
 	expect(await mayRemoveArchive(db, folder, process.env, Date.parse("2026-01-01"))).toBe(false);
 	const fake = fakeHost();
 	registerArchiveTool(fake.api);
@@ -129,18 +137,63 @@ it("indexes inherited compactions at their origin without duplicate fork events"
 		[{ ...header, id: "fork", parentSession: parent }, entry].map((row) => JSON.stringify(row)).join("\n") + "\n",
 	);
 	const db = sharedAgentDb();
+	registeredWorkspace(root, db);
 	await new HistoryRepair(db).transcript(fork);
 	await new HistoryRepair(db).transcript(fork);
 	expect(compactions.forSession(db.db, "parent")).toHaveLength(1);
 	expect(compactions.forSession(db.db, "fork")).toHaveLength(0);
-	expect(agentEvents.list(db.db, root)).toHaveLength(1);
+	expect(agentEvents.list(db.db, registeredWorkspace(root, db).id)).toHaveLength(1);
+});
+
+it("does not create a workspace in the directory named by an imported transcript", async () => {
+	const other = fs.mkdtempSync(path.join(root, "unregistered-"));
+	fs.mkdirSync(path.join(other, ".git"));
+	const file = path.join(root, "imported.jsonl");
+	const header = { type: "session", id: "imported", cwd: other };
+	fs.writeFileSync(file, [header, entry].map((record) => JSON.stringify(record)).join("\n") + "\n");
+	const db = sharedAgentDb();
+	await new HistoryRepair(db).transcript(file);
+	expect(fs.existsSync(path.join(other, ".octa"))).toBe(false);
+	expect(compactions.forSession(db.db, header.id)).toEqual([]);
+});
+
+it("refuses foreign transcript pointers in an archive record and fork header", async () => {
+	const db = sharedAgentDb();
+	const current = registeredWorkspace(root, db);
+	const foreign = fs.mkdtempSync(path.join(root, "worktree-"));
+	fs.mkdirSync(path.join(foreign, ".git"));
+	registeredWorkspace(foreign, db);
+	const named = path.join(foreign, "foreign.jsonl");
+	const imported = { type: "session", id: "victim", cwd: foreign };
+	fs.writeFileSync(named, [imported, entry].map((row) => JSON.stringify(row)).join("\n") + "\n");
+	const folder = archiveFolder("victim", process.env, root);
+	fs.mkdirSync(folder, { recursive: true });
+	fs.writeFileSync(
+		path.join(folder, "SESSION.md"),
+		["- Session: victim", `- Repository: ${current.id}`, `- Workspace: ${root}`, `- Transcript: ${named}`].join("\n"),
+	);
+	const repair = new HistoryRepair(db);
+	await repair.archive(folder);
+	const child = path.join(root, "child.jsonl");
+	fs.writeFileSync(
+		child,
+		[
+			{ ...imported, id: "child", cwd: root, parentSession: named },
+			{ ...entry, id: "local" },
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n") + "\n",
+	);
+	await repair.transcript(child);
+	expect(compactions.forSession(db.db, "victim")).toEqual([]);
+	expect(compactions.get(db.db, "child", "local")?.originVerified).toBe(false);
 });
 
 it("finds old lifecycle events beyond 50 and filters them without treating a partial page as the whole corpus", async () => {
 	const db = sharedAgentDb();
 	for (let i = 0; i < 65; i++)
 		db.transaction(() =>
-			agentEvents.append(db.db, root, {
+			agentEvents.append(db.db, registeredWorkspace(root, db).id, {
 				id: `event-${i}`,
 				time: entry.timestamp,
 				name: "agent",
@@ -222,7 +275,7 @@ it("uses the full memory index and summary corpus for keyword search, including 
 	expect(sessions.text).toContain("session:session-a");
 });
 
-it("keeps retention repair and its library in the explicitly configured home", async () => {
+it("repairs archive files in their workspace when another home or workspace is active", async () => {
 	const db = sharedAgentDb();
 	const env = { ...process.env, OCTOCODE_HOME: path.join(root, "alternate-home"), OCTOCODE_CLEANUP_DAYS: "1" };
 	const folder = archiveFolder("configured-home", env);
@@ -233,7 +286,11 @@ it("keeps retention repair and its library in the explicitly configured home", a
 	await expireArchiveDetails(db, env, Date.parse("2026-01-01"));
 	expect(fs.existsSync(detail)).toBe(false);
 	expect(fs.readFileSync(path.join(folder, "LIBRARY.md"), "utf8")).toContain("detail: expired");
+	const other = fs.mkdtempSync(path.join(root, "other-"));
+	fs.mkdirSync(path.join(other, ".git"));
+	setCurrentSession("other", other);
 	expect(fs.existsSync(archiveFolder("configured-home"))).toBe(false);
+	expect(fs.existsSync(path.join(env.OCTOCODE_HOME, "agent", "sessions", "configured-home"))).toBe(false);
 });
 
 it("uses the configured memory store for both archive writes and reads", async () => {
@@ -275,7 +332,7 @@ it("compares event time filters as instants, with inclusive timezone boundaries"
 		["end", "2026-01-01T00:00:00.000Z"],
 		["after", "2026-01-01T00:00:00.001Z"],
 	])
-		agentEvents.append(db.db, root, {
+		agentEvents.append(db.db, registeredWorkspace(root, db).id, {
 			id,
 			time,
 			name: "agent",

@@ -1,5 +1,5 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
-import { type FormEvent, useState } from "react";
+import { type SubmitEvent, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
@@ -53,7 +53,7 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 			setSent(undefined);
 		}
 	};
-	const submit = (event: FormEvent<HTMLFormElement>) => {
+	const submit = (event: SubmitEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		if (text.trim()) void send({ text });
 	};

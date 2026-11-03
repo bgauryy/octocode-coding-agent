@@ -69,7 +69,6 @@ describe("bashReads", () => {
 		"cd ./sub & cat a.txt",
 		"(cd ./sub && cat a.txt)",
 		"cd ./sub && cat a.txt | head",
-		"cd ./sub && ls && cat a.txt",
 		"cd ./missing; cat a.txt",
 		// A bare name goes through CDPATH, and `..` is followed on the spelling, not the real directories (symlinks).
 		"cd sub && cat a.txt",
@@ -89,7 +88,7 @@ describe("bashReads", () => {
 		"cat a.txt | head -3",
 		"cat a.txt > b.txt",
 		"cat a.txt && rm a.txt",
-		"cat a.txt; ls",
+		"cat a.txt; sed -i 's/a/b/' a.txt",
 		"cat $(echo a.txt)",
 		"cat `echo a.txt`",
 		"cat *.txt",
@@ -159,7 +158,7 @@ describe("the file tool and plain bash prints", () => {
 		const { change } = setup();
 		const outcome = await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] });
 		expect(outcome.ok).toBe(false);
-		expect(outcome.message).toMatch(/was not read in this session\. Read it with `bash`/);
+		expect(outcome.message).toMatch(/was not read in this session\. Read it first: bash `sed -n '1,200p' a\.txt`/);
 	});
 
 	it("lets an existing file be edited after a bash cat, and written after the rest was read", async () => {
@@ -190,6 +189,33 @@ describe("the file tool and plain bash prints", () => {
 		expect(refused.message).toMatch(/changed on disk since you last read it\. Read it again with `bash`/);
 		await bash("cat a.txt");
 		expect(await change({ type: "delete" })).toMatchObject({ ok: true });
+	});
+
+	it("credits plain reads chained with `;` or `&&`, one segment at a time", async () => {
+		expect(bashReads("sed -n '1,5p' a.txt; sed -n '9,12p' b.txt", CWD)).toEqual([
+			{ file: abs("a.txt"), whole: false, lines: [1, 5] },
+			{ file: abs("b.txt"), whole: false, lines: [9, 12] },
+		]);
+		expect(bashReads("echo '--- a ---' && cat a.txt && cat b.txt;", CWD)).toEqual([
+			{ file: abs("a.txt"), whole: true },
+			{ file: abs("b.txt"), whole: true },
+		]);
+		expect(bashReads("cat a.txt; ls", CWD)).toEqual([{ file: abs("a.txt"), whole: true }]);
+		// A `;` inside quotes is part of the word, not a separator.
+		expect(bashReads("cat 'a;b.txt'", CWD)).toEqual([{ file: abs("a;b.txt"), whole: true }]);
+	});
+
+	it("does not credit a chained segment that is piped, redirected, mixed with another operator or after a state change", () => {
+		expect(bashReads("cat a.txt | head -2; cat b.txt", CWD)).toEqual([]);
+		// One unprovable segment voids the list: it may change what an earlier print showed.
+		expect(bashReads("cat a.txt; cat b.txt > out.txt", CWD)).toEqual([]);
+		expect(bashReads("cat a.txt; cat b.txt || cat c.txt", CWD)).toEqual([]);
+		expect(bashReads("cat a.txt; rm a.txt", CWD)).toEqual([]);
+		// `a && b; c` succeeds when `a` failed, so `b` may not have run.
+		expect(bashReads("cat a.txt && cat b.txt; cat c.txt", CWD)).toEqual([]);
+		expect(bashReads("PATH=/x; cat a.txt", CWD)).toEqual([]);
+		expect(bashReads("source env.sh; cat a.txt", CWD)).toEqual([]);
+		expect(bashReads("cat $F; cat a.txt", CWD)).toEqual([]);
 	});
 
 	it("does not credit what cannot be proven: pipes, background jobs, failures and nested calls", async () => {
@@ -244,8 +270,12 @@ describe("the file tool and plain bash prints", () => {
 	it("refusal says what counts as a read, naming localFetch or a plain bash print", async () => {
 		const edit = { type: "edit", edits: [{ oldText: "two", newText: "2" }] };
 		const local = await setup(LOCAL_FETCH_READER).change(edit);
-		expect(local.message).toMatch(/Read it with `localFetch`, or print it in `bash` with a plain `cat FILE`/);
+		expect(local.message).toMatch(
+			/Read it first: localFetch \{path:"a\.txt"\} or bash `sed -n '1,200p' a\.txt`\. A read piped or redirected/,
+		);
 		const bash = await setup().change(edit);
-		expect(bash.message).toMatch(/Read it with `bash` \(a plain `cat FILE` or `sed -n 'A,Bp' FILE`/);
+		expect(bash.message).toMatch(
+			/Read it first: bash `sed -n '1,200p' a\.txt` \(a plain `cat` or `sed -n` print counts, alone or chained/,
+		);
 	});
 });

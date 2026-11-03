@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { printHelp, parseArgs, resolveLabel, resolveRuntime } from "./profile-args.mjs";
 import { runBuild } from "./profile-build.mjs";
-import { bundledDistCliPath, distCliPath, resolveProfileDir, srcCliPath, toDisplayPath } from "./profile-paths.mjs";
+import { bundledDistCliPath, resolveProfileDir, srcCliPath, toDisplayPath } from "./profile-paths.mjs";
 import { runBenchmarkRun } from "./profile-runs.mjs";
 import { formatMs, summarize, summarizeTimingMaps, toMetricName } from "./profile-timings.mjs";
 
@@ -21,14 +21,11 @@ async function main() {
 	}
 
 	const runtime = resolveRuntime(options.runtime);
-	if (options.bundle && runtime !== "node") {
-		throw new Error("--bundle only supports the Node runtime");
-	}
 	options.label = resolveLabel(options.mode, options.label);
 	const profileDir = resolveProfileDir(runtime, options.profileDir);
 
 	if (runtime === "node" && options.build) {
-		await runBuild(options.bundle);
+		await runBuild();
 	}
 	if (runtime === "bun") {
 		process.stdout.write(
@@ -36,16 +33,7 @@ async function main() {
 		);
 	}
 
-	const entryPath = runtime === "bun" ? srcCliPath : options.bundle ? bundledDistCliPath : distCliPath;
-	if (
-		runtime === "node" &&
-		!options.bundle &&
-		!options.build &&
-		existsSync(distCliPath) &&
-		readFileSync(distCliPath, "utf8").includes('import "./bundle/cli.js";')
-	) {
-		throw new Error("dist/cli.js is a bundled facade; rerun without --skip-build for an unbundled profile");
-	}
+	const entryPath = runtime === "bun" ? srcCliPath : bundledDistCliPath;
 	if (!existsSync(entryPath)) {
 		throw new Error(`CLI entrypoint not found: ${entryPath}`);
 	}
@@ -83,7 +71,7 @@ async function main() {
 	const maxElapsedRun = measuredRuns.reduce((slowest, run) => (run.elapsedMs > slowest.elapsedMs ? run : slowest));
 	if (measuredRuns.length === 1) {
 		process.stdout.write("\nResult\n");
-		process.stdout.write(`  runtime:          ${runtime}${options.bundle ? " (bundle)" : ""}\n`);
+		process.stdout.write(`  runtime:          ${runtime}\n`);
 		process.stdout.write(`  mode:             ${options.mode}\n`);
 		process.stdout.write(`  elapsed:          ${formatMs(measuredRuns[0].elapsedMs)}\n`);
 		for (const [label, summary] of timingSummaries.entries()) {
@@ -101,7 +89,7 @@ async function main() {
 	}
 
 	process.stdout.write("\nSummary\n");
-	process.stdout.write(`  runtime:          ${runtime}${options.bundle ? " (bundle)" : ""}\n`);
+	process.stdout.write(`  runtime:          ${runtime}\n`);
 	process.stdout.write(`  mode:             ${options.mode}\n`);
 	process.stdout.write(`  elapsed min:      ${formatMs(elapsedSummary.min)}\n`);
 	process.stdout.write(`  elapsed median:   ${formatMs(elapsedSummary.median)}\n`);

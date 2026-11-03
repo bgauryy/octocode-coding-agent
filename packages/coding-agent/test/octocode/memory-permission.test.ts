@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";

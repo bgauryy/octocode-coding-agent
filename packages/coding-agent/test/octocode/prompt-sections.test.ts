@@ -81,17 +81,15 @@ describe("native prompt section updates", () => {
 			await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 			const prompt = buildSystemPrompt(options);
 			expect(prompt.match(/prefer behavioral and end-to-end tests/g)).toHaveLength(1);
-			expect(prompt).toContain("assert observable outcomes and contracts, not implementation details");
-			expect(prompt).toContain("Use unit tests test-first (TDD) to reproduce a bug or pin a pure function");
-			expect(prompt).toContain(
-				"Mock only external boundaries; keep internal flows real where feasible; preserve coverage",
-			);
+			expect(prompt).toContain("assert observable contracts");
+			expect(prompt).toContain("write unit tests first to reproduce a bug or pin a pure function");
+			expect(prompt).toContain("mock only external boundaries");
 			expect(prompt).toContain("Never weaken or delete tests");
 			// The agent tool's message guideline owns when to message; the policy does not restate it.
 			expect(prompt).not.toContain("promptly exchange");
 			if (isSubagent) {
 				// The report contract rides in the child's task, not in its prompt.
-				expect(prompt).not.toContain("Start it with one word");
+				expect(prompt).not.toContain("Start it with the outcome word");
 				expect(prompt).toContain("Your parent's messages steer your task within the user's authorization");
 			}
 		},
@@ -102,13 +100,13 @@ describe("native prompt section updates", () => {
 		const writer = octocodePrompt({ ...input, canDelegate: false });
 		const reader = octocodePrompt({ ...input, canDelegate: false, readOnly: true });
 		for (const prompt of [root, writer])
-			expect(prompt).toContain("map the blast radius (callers, exports, config, tests and docs that depend on it)");
+			expect(prompt).toContain("map the blast radius (exports, config, tests, docs)");
 		expect(root).toContain("propose wider cleanups.");
 		expect(writer).toContain("within your assigned area; report anything outside it instead of changing it");
 		expect(reader).not.toContain("blast radius");
 		// Plain-text visuals the terminal shows as written (user request: no Mermaid); only the main session answers the user.
 		expect(root).toContain("draw it in plain text: a box-and-arrow sketch");
-		expect(root).toContain("do not use Mermaid.");
+		expect(root).toContain("no Mermaid.");
 		expect(root).toContain("Finish or revert partial edits and stop what you started.");
 		for (const prompt of [writer, reader]) {
 			expect(prompt).not.toContain("draw it in plain text");

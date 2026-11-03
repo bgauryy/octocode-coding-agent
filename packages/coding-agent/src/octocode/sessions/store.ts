@@ -8,8 +8,8 @@ import {
 	type SessionLinks,
 	sessionLinks,
 	sessions,
-} from "../agentdb/api.ts";
-import { git } from "../shared/git.ts";
+} from "../../../../db/src/api.ts";
+import { EXCLUDE_WORKSPACE_STATE, git } from "../shared/git.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 
@@ -58,7 +58,8 @@ export async function gitState(cwd: string): Promise<{ branch?: string; head?: s
 /** Changed or untracked paths in the working tree of `cwd` (0 outside git or when git is slow). Never rejects. */
 export async function gitDirty(cwd: string): Promise<number> {
 	try {
-		return (await sessionGit(cwd, ["status", "--porcelain"])).split("\n").filter(Boolean).length;
+		return (await sessionGit(cwd, ["status", "--porcelain", "--", EXCLUDE_WORKSPACE_STATE])).split("\n").filter(Boolean)
+			.length;
 	} catch {
 		return 0;
 	}
@@ -153,6 +154,11 @@ export class SessionIndex {
 
 	forget(id: string): void {
 		sessions.forget(this.agent.db, id);
+	}
+
+	/** Removes everything the database holds for the given sessions, mirror included, in one transaction (`sessions.erase`). */
+	erase(ids: readonly string[]): void {
+		sessions.erase(this.agent.db, ids);
 	}
 
 	/** Session dirs other than Octocode's default that a session ran from (meta `session_dirs`): the sweep lists their sessions too. */

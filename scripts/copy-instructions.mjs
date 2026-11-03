@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const NOT_SHIPPED = new Set(["rendered"]);
 
 /** The prompt folders under `source`: every directory except those that are not shipped. */
-export function instructionFolders(source) {
+function instructionFolders(source) {
 	return readdirSync(source, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory() && !NOT_SHIPPED.has(entry.name))
 		.map((entry) => entry.name);

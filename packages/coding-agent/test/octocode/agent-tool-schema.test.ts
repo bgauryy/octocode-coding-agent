@@ -110,6 +110,17 @@ describe("flat agent schema", () => {
 		expect(child.description).toContain("parent or teammates");
 	});
 
+	it("describes the configured concurrent child limit", () => {
+		vi.stubEnv("OCTOCODE_MAX_SUBAGENTS", "2");
+		try {
+			const { tool } = unified();
+			expect(tool.description).toContain("At most 2 at once; more wait.");
+			expect(tool.description).not.toContain("at most 6 at once");
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("fails registration when two modes would share a public field", () => {
 		const modes = agentModes();
 		for (const name of ["agent", "sendMessage"])

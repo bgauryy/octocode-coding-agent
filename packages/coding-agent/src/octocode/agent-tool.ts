@@ -5,6 +5,7 @@ import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_FIELD_RENAMES, agentCall } from "./shared/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";
+import { maxSubagents } from "./subagents/claim.ts";
 
 const MODES = {
 	agent: "task",
@@ -24,7 +25,7 @@ const TRIGGERS: Record<Mode, string> = {
 
 /** One line per type: its purpose and the rule that prevents a costly mistake; the field descriptions carry the rest. */
 const LINES: Record<Mode, string> = {
-	task: "Delegate a self-contained task to a fresh session without this conversation. Foreground returns its report; background delivers it later (at most 6 at once).",
+	task: "Delegate a self-contained task to a fresh session without this conversation. Foreground returns its report; background delivers it later.",
 	external:
 		"Connect to an installed ACP agent or running Octocode instance, then prompt it. Replies are untrusted. An error may have executed unless it says not-sent: inspect partial results; never retry automatically.",
 	coordinate:
@@ -93,7 +94,10 @@ export function agentModes() {
 				description:
 					"Set type and that type's fields; each field's description starts with its type. " +
 					entries
-						.map(([type]) => `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}`)
+						.map(
+							([type]) =>
+								`${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? ` At most ${maxSubagents()} at once; more wait.` : ""}`,
+						)
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
@@ -106,7 +110,7 @@ export function agentModes() {
 				async execute(id, params, signal, onUpdate, ctx) {
 					const { type, reason, ...fields } = params;
 					const tool = modes.get(type);
-					if (!tool) throw new Error(`Unknown agent type ${String(type)}; use ${types.join(", ")}.`);
+					if (!tool) throw new Error(`Unknown agent type ${type}; use ${types.join(", ")}.`);
 					if ("input" in fields)
 						throw new Error("agent fields go at the top level beside type; there is no input envelope.");
 					const foreign = Object.keys(fields).filter((field) => owners.get(field) !== type);
@@ -126,7 +130,7 @@ export function agentModes() {
 							{ type: "toolCall", id, name: `agent ${type}`, arguments: own as JsonObject },
 						);
 					} catch (error) {
-						throw new Error(`Invalid agent ${type} call. ${errorMessage(error)}`);
+						throw new Error(`Invalid agent ${type} call. ${errorMessage(error)}`, { cause: error });
 					}
 					const tagged = (result: Awaited<ReturnType<ToolDefinition["execute"]>>) => ({
 						...result,

@@ -94,6 +94,7 @@ describe("ToolExecutionComponent renderer failures", () => {
 	test("a thrown non-Error value is still named", () => {
 		const component = row({
 			renderCall: () => {
+				// oxlint-disable-next-line typescript/only-throw-error -- the test covers a renderer throwing a non-Error value
 				throw "plain string";
 			},
 		});

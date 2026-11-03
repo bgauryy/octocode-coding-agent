@@ -10,6 +10,7 @@ export const PACKAGE_POLICY = {
 	acp: ["ai", "common", "contracts", "mcp"],
 	agent: ["ai"],
 	common: ["contracts"],
+	db: ["common", "contracts"],
 	mcp: ["agent", "ai", "common", "contracts", "tui"],
 	ai: ["contracts", "telemetry"],
 	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "webview"],

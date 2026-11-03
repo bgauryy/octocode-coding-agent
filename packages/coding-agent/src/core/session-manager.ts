@@ -1,16 +1,17 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
 import { normalizePath, resolvePath } from "../../../common/src/paths.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { SessionManagerApi } from "./session-manager/api.ts";
 import * as appends from "./session-manager/appends.ts";
 import { buildContextEntries, buildSessionProjection } from "./session-manager/context.ts";
 import { findSessionFileById, listAllSessions, listSessions } from "./session-manager/listing.ts";
+import { recordFork } from "./session-manager/mirror.ts";
 import * as persistence from "./session-manager/persistence.ts";
 import type { SessionRepair } from "./session-manager/repair.ts";
 import * as sessionState from "./session-manager/state.ts";
 import {
-	findMostRecentSession,
+	findMostRecentForCwd,
 	forkSessionFile,
 	getDefaultSessionDir,
 	getDefaultSessionDirPath,
@@ -41,7 +42,7 @@ export {
 	sessionEntryToContextMessages,
 } from "./session-manager/context.ts";
 export { assertValidSessionId, migrateSessionEntries, parseSessionEntries } from "./session-manager/entries.ts";
-export { findMostRecentSession, getDefaultSessionDir, loadEntriesFromFile } from "./session-manager/storage.ts";
+export { findMostRecentSession, loadEntriesFromFile } from "./session-manager/storage.ts";
 export { repairSessionFile, type SessionRepair } from "./session-manager/repair.ts";
 export * from "./session-manager/types.ts";
 
@@ -56,7 +57,6 @@ export * from "./session-manager/types.ts";
  * Use buildSessionContext() to get the resolved message list for the LLM, which
  * handles compaction summaries and follows the path from root to current leaf.
  *
- * Instance methods are documented on `SessionManagerApi`.
  */
 export class SessionManager implements SessionManagerApi {
 	/** Entry, label and leaf state shared with the `session-manager/` modules. */
@@ -213,10 +213,6 @@ export class SessionManager implements SessionManagerApi {
 		return appends.appendContextEdit(this.state, targetId, replacement);
 	}
 
-	// =========================================================================
-	// Tree Traversal
-	// =========================================================================
-
 	getLeafId(): string | null {
 		return this.state.leafId;
 	}
@@ -300,7 +296,7 @@ export class SessionManager implements SessionManagerApi {
 	/**
 	 * Create a new session.
 	 * @param cwd Working directory (stored in session header)
-	 * @param sessionDir Optional session directory. If omitted, uses default (~/.octocode/agent/sessions/<encoded-cwd>/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octa/code/sessions/).
 	 */
 	static create(cwd: string, sessionDir?: string, options?: NewSessionOptions): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
@@ -321,12 +317,11 @@ export class SessionManager implements SessionManagerApi {
 	/**
 	 * Continue the most recent session, or create new if none.
 	 * @param cwd Working directory
-	 * @param sessionDir Optional session directory. If omitted, uses default (~/.octocode/agent/sessions/<encoded-cwd>/).
+	 * @param sessionDir Optional session directory. If omitted, uses the default folders (workspace and legacy).
 	 */
 	static continueRecent(cwd: string, sessionDir?: string): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-		const filterCwd = sessionDir !== undefined && dir !== getDefaultSessionDirPath(cwd);
-		return new SessionManager(cwd, dir, findMostRecentSession(dir, filterCwd ? cwd : undefined) ?? undefined, true);
+		return new SessionManager(cwd, dir, findMostRecentForCwd(cwd, sessionDir && dir) ?? undefined, true);
 	}
 
 	/** Create an in-memory session (no file persistence), optionally from entries held outside the filesystem. */
@@ -342,20 +337,27 @@ export class SessionManager implements SessionManagerApi {
 	 * @param sessionDir Optional session directory. If omitted, uses default for targetCwd.
 	 */
 	static forkFrom(
-		sourcePath: string,
+		sourcePath: string | { storedId: string },
 		targetCwd: string,
 		sessionDir?: string,
 		options?: NewSessionOptions,
 	): SessionManager {
-		const { cwd, dir, sessionFile } = forkSessionFile(sourcePath, targetCwd, sessionDir, options);
-		return new SessionManager(cwd, dir, sessionFile, true);
+		const { cwd, dir, sessionFile, sourceFile, sourceId } = forkSessionFile(sourcePath, targetCwd, sessionDir, options);
+		const fork = new SessionManager(cwd, dir, sessionFile, true);
+		recordFork(
+			cwd,
+			fork.getSessionId(),
+			sessionFile,
+			typeof sourcePath === "string" ? { file: sourceFile, expectedId: sourceId } : sourcePath,
+		);
+		return fork;
 	}
 
 	/**
 	 * Find an exact session ID without loading transcript bodies.
 	 * @param cwd Working directory (used to compute default session directory)
 	 * @param id Exact session ID
-	 * @param sessionDir Optional session directory. If omitted, uses default (~/.octocode/agent/sessions/<encoded-cwd>/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octa/code/sessions/).
 	 */
 	static findById(cwd: string, id: string, sessionDir?: string): string | undefined {
 		return findSessionFileById(cwd, id, sessionDir);
@@ -364,7 +366,7 @@ export class SessionManager implements SessionManagerApi {
 	/**
 	 * List all sessions for a directory.
 	 * @param cwd Working directory (used to compute default session directory)
-	 * @param sessionDir Optional session directory. If omitted, uses default (~/.octocode/agent/sessions/<encoded-cwd>/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octa/code/sessions/).
 	 * @param onProgress Optional callback for progress updates (loaded, total)
 	 */
 	static async list(

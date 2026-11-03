@@ -222,13 +222,13 @@ export function showModelSelector(host: ModelControlsHost, initialSearchInput?: 
 			host.session.model,
 			host.session.modelRuntime,
 			host.session.scopedModels,
-			(model) => selectModel(model, false),
+			(model) => void selectModel(model, false),
 			() => {
 				done();
 				host.ui.requestRender();
 			},
 			initialSearchInput,
-			(model) => selectModel(model, true),
+			(model) => void selectModel(model, true),
 			defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
 		);
 		return { component: selector, focus: selector, dispose: () => selector.dispose() };

@@ -128,6 +128,27 @@ describe("footer statuses as data", () => {
 		expect(out).toContain(theme.fg("success", "GitHub ✓ @octo"));
 		expect(stripAnsi(out)).toContain("2 bash jobs lint ok");
 	});
+
+	it("shows an error before routine statuses when the status line is clipped", () => {
+		initTheme("dark");
+		const footer = new FooterComponent(createSession({ sessionName: "test" }), {
+			...createFooterData(1),
+			getState: () => ({
+				branch: "main",
+				providerCount: 1,
+				statuses: new Map([
+					["a-routine", { text: "routine background status", tone: "muted" as const }],
+					["z-error", { text: "team unavailable", tone: "error" as const }],
+				]),
+				githubStatus: undefined,
+			}),
+			subscribe: () => () => {},
+		});
+		const narrow = footer.render(20).at(-1)!;
+		expect(stripAnsi(narrow)).toMatch(/^team unavailable/);
+		expect(visibleWidth(narrow)).toBeLessThanOrEqual(20);
+		expect(stripAnsi(footer.render(80).at(-1)!)).toBe("routine background status team unavailable");
+	});
 });
 
 describe("formatCwdForFooter", () => {

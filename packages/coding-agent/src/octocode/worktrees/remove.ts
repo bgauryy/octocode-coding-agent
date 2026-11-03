@@ -48,8 +48,8 @@ export async function removeWorktree(cwd: string, name: string, options: RemoveO
 		const { dirty, untracked } = await dirtyCounts(target);
 		const unmerged = await unmergedCount(entry);
 		const blockers = [
-			dirty > 0 ? `${plural(dirty, "changed file")}` : "",
-			untracked > 0 ? `${plural(untracked, "untracked file")}` : "",
+			dirty > 0 ? plural(dirty, "changed file") : "",
+			untracked > 0 ? plural(untracked, "untracked file") : "",
 			unmerged > 0 ? `${plural(unmerged, "commit")} not on any other branch` : "",
 		].filter(Boolean);
 		if (blockers.length > 0)

@@ -1,7 +1,7 @@
 import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isWithin } from "../shared/home/repo.ts";
-import { git } from "../shared/git.ts";
+import { EXCLUDE_WORKSPACE_STATE, git } from "../shared/git.ts";
 
 /** The optional file at a checkout's root that lists, in `.gitignore` syntax, untracked files a new worktree takes along. */
 const WORKTREE_INCLUDE = ".worktreeinclude";
@@ -94,9 +94,13 @@ export async function copyIncluded(source: string, destination: string): Promise
 	const result: IncludeResult = { copied: [], skipped: [] };
 	const include = patterns(source);
 	if (!include) return result;
-	const listing = await git(source, ["ls-files", "-z", "--others", "--ignored", `--exclude-from=${include.file}`], {
-		raw: true,
-	});
+	const listing = await git(
+		source,
+		["ls-files", "-z", "--others", "--ignored", `--exclude-from=${include.file}`, "--", EXCLUDE_WORKSPACE_STATE],
+		{
+			raw: true,
+		},
+	);
 	const realSource = realpathSync.native(source);
 	const realDestination = realpathSync.native(destination);
 	const named = namedFolders(include.text);

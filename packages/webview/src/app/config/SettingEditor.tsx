@@ -1,6 +1,6 @@
 import type { ConfigSetting, ConfigSettingCommand, ConfigSettingScope } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { type FormEvent, useId, useState } from "react";
+import { type SubmitEvent, useId, useState } from "react";
 import { Button } from "../ui/primitives.tsx";
 
 export type SaveSetting = (command: ConfigSettingCommand) => Promise<void>;
@@ -47,7 +47,7 @@ export function SettingEditor({ setting, save, workspace }: SettingEditorProps) 
 		}
 	}
 
-	const submit = (event: FormEvent) => {
+	const submit = (event: SubmitEvent) => {
 		event.preventDefault();
 		const trimmed = value.trim();
 		if (trimmed) void apply(trimmed);

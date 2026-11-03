@@ -56,6 +56,38 @@ describe("file tool: a single flat change", () => {
 		expect(fs.readFileSync(path.join(cwd, "a.txt"), "utf8")).toBe("x");
 	});
 
+	it("takes the call's reason from its changes when every change has one, and still requires one otherwise", async () => {
+		const cwd = tmp();
+		const tool = fileTool();
+		const result = await call(
+			tool,
+			{
+				queries: [
+					{ type: "write", path: "a.txt", content: "a", reason: "Add a" },
+					{ type: "write", path: "b.txt", content: "b", reasoning: "Add b" },
+				],
+			},
+			cwd,
+		);
+		expect(result.details.outcomes).toMatchObject([{ ok: true }, { ok: true }]);
+		expect(tool.prepareArguments({ queries: [{ type: "delete", path: "a", reason: "x" }] })).toMatchObject({
+			reason: "x",
+		});
+		await expect(
+			call(
+				tool,
+				{
+					queries: [
+						{ type: "write", path: "c.txt", content: "c", reason: "Add c" },
+						{ type: "write", path: "d.txt", content: "d" },
+					],
+				},
+				cwd,
+			),
+		).rejects.toThrow(/reason/);
+		expect(fs.existsSync(path.join(cwd, "c.txt"))).toBe(false);
+	});
+
 	it("keeps the call's reason on the wrapped change", () => {
 		const prepared = fileTool().prepareArguments({ reason: "r", type: "delete", path: "b.txt" }) as {
 			reason: string;

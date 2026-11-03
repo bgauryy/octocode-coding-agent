@@ -1,6 +1,5 @@
 /** Connects the model's `mcp` tool to this session's servers. */
 
-import type { McpServerConfig } from "./servers.ts";
 import { reconnect } from "./connections.ts";
 import { toolCatalog } from "./inspection.ts";
 import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
@@ -9,11 +8,9 @@ import { registerMcpAddedServers } from "./session-servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import { hideTools } from "./tool-registry.ts";
 
-// The model's `mcp` tool acts on this session's servers only; configuration files stay unchanged.
+// The model's `mcp` tool lists, inspects, restarts and stops this session's servers; configuration files stay unchanged.
 export function registerMcpManageTool(state: McpExtensionState): void {
 	const { api } = state;
-	/** Servers the `mcp` tool added for this session; only these can be removed through it. */
-	const addedHere = new Map<string, McpServerConfig>();
 	// Children inherit enabled extension registrations, including session additions, and the names of servers stopped
 	// for this session (they skip those unless their own tool selection names the server; see `session-servers.ts`).
 	registerMcpAddedServers(api.events, () => ({
@@ -34,12 +31,12 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		defaultActive: false,
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
+			contract: (name, tool) => state.presentation.contractOf(name, tool),
 			servers: (): ManagedMcpServer[] =>
 				state.servers.map((server) => ({
 					name: server.entry.name,
 					state: server.connection?.isStopped ? "stopped" : describeState(server, false),
 					connected: server.connection?.state === "connected",
-					origin: addedHere.has(server.entry.name) ? ("added" as const) : ("configured" as const),
 					...(server.connection?.error ? { error: server.connection.error } : {}),
 				})),
 			restart: async (name) => {
@@ -60,17 +57,6 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 				await connection.stop();
 				hideTools(state, name);
 				state.emitChange();
-				return undefined;
-			},
-			add: (name, config) => {
-				api.registerMcpServer(name, config);
-				addedHere.set(name, config);
-			},
-			remove: async (name) => {
-				if (!addedHere.has(name))
-					return `MCP server "${name}" comes from configuration; stop it for this session instead.`;
-				api.unregisterMcpServer(name);
-				addedHere.delete(name);
 				return undefined;
 			},
 		}),

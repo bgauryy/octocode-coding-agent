@@ -55,7 +55,7 @@ describe("read-only subagent roles", () => {
 	});
 
 	it("does not infer a read-only role from a main session without file tools", async () => {
-		for (const selectedTools of [["bash"], ["debug"]]) {
+		for (const selectedTools of [["bash"], ["web"]]) {
 			const fake = fakeHost();
 			registerTurnSetup(fake.api, {
 				isSubagent: false,
@@ -73,7 +73,7 @@ describe("read-only subagent roles", () => {
 			expect(prompt).toContain("Make the smallest complete change");
 			expect(prompt).not.toContain("Investigate and report; do not modify repository source");
 			expect(prompt).not.toContain("Run only read-only commands");
-			if (selectedTools[0] === "debug") expect(prompt).not.toContain("Search with bash");
+			if (selectedTools[0] === "web") expect(prompt).not.toContain("Search with bash");
 		}
 	});
 });

@@ -6,7 +6,7 @@ import {
 } from "@octocodeai/octocode-contracts/backlogs";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
-import { type ComponentProps, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type ComponentProps, type SubmitEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { TaskList } from "../features/Tasks.tsx";
 import type { HierarchyControls } from "../extension.ts";
 import { navigate } from "../hooks.ts";
@@ -74,7 +74,7 @@ function AddForm({
 }) {
 	const { run, pending, error } = useEdit();
 	const [text, setText] = useState("");
-	async function submit(event: FormEvent) {
+	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (!text.trim()) return;
 		if (await run(() => onAdd(text.trim()))) setText("");
@@ -116,7 +116,7 @@ function TaskTools({ task, siblings }: { task: BacklogTask; siblings: readonly B
 		event.preventDefault();
 		void move(event.key === "ArrowUp" ? -1 : 1);
 	}
-	async function save(event: FormEvent) {
+	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (!goal.trim()) return;
 		if (

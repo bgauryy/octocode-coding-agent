@@ -7,7 +7,7 @@ import { type PanelEntry, panelColor, panelMark, panelState } from "./panel-stat
 
 export { type PanelEntry, shownWorking } from "./panel-state.ts";
 
-/** A subagent that left the team keeps a final `✓ done` row this long, so its result does not just vanish. */
+/** A subagent that left the team keeps a neutral `left` row this long, so its departure does not just vanish. */
 export const FINISHED_MS = 10_000;
 
 /** An agent that left the team (its row is gone from the database): its last snapshot and when it was last seen. */

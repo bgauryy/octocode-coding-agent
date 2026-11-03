@@ -1,5 +1,5 @@
-import { existsSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { existsSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { canonicalizePath, isUnderPath, resolvePath } from "../../../common/src/paths.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
@@ -11,6 +11,7 @@ import {
 	type Skill,
 } from "./skills/identity.ts";
 import { loadSkillFromFile, loadSkillsFromDirInternal } from "./skills/load-dir.ts";
+import { SKILL_CATEGORIES, type SkillCategory, skillCategory, sortByCategory } from "./skills/category.ts";
 
 export {
 	type ExplicitSkill,
@@ -65,13 +66,19 @@ export interface FormatSkillsOptions {
  *
  * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
  * returns its directory, so its entries omit `<location>` paths; `indirect` names none, for a reader that is reachable only through another tool. The entries fit `options.budgetChars` (see {@link SKILLS_PROMPT_BUDGET_CHARS}).
+ *
+ * Entries are grouped by {@link skillCategory} in `<core_skills>`, `<octocode_skills>` and `<external_skills>`, in that
+ * order, so external skills are the first to lose descriptions when the catalog does not fit.
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
 	fileReadTool: "bash" | "indirect" | "octocode" | "skill" = "bash",
 	options: FormatSkillsOptions = {},
 ): string {
-	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
+	const visibleSkills = sortByCategory(
+		skills.filter((s) => !s.disableModelInvocation),
+		skillCategory,
+	);
 
 	if (visibleSkills.length === 0) {
 		return "";
@@ -81,7 +88,11 @@ export function formatSkillsForPrompt(
 	const when = visibleSkills.every((s) => !s.description)
 		? "when your task names the skill"
 		: "when the task matches its description";
-	const budget = options.budgetChars ?? SKILLS_PROMPT_BUDGET_CHARS;
+	const categories = visibleSkills.map(skillCategory);
+	const groups = SKILL_CATEGORIES.filter((category) => categories.includes(category));
+	// The group tags are part of the catalog, so the entries get what is left of the budget.
+	const tags = groups.reduce((sum, category) => sum + 2 * groupTag(category).length + 4, 0);
+	const budget = Math.max(0, (options.budgetChars ?? SKILLS_PROMPT_BUDGET_CHARS) - tags);
 	let fitted = fitSkillEntries(visibleSkills, budget, fileReadTool !== "skill");
 	// Reserve a bounded share for names outside the XML list; appending every omitted name bypasses the catalog budget.
 	const overflowBudget = fitted.unlisted.length ? Math.min(512, Math.max(0, Math.floor(budget / 4))) : 0;
@@ -110,7 +121,10 @@ export function formatSkillsForPrompt(
 			: []),
 		"",
 		"<available_skills>",
-		...entries,
+		...groups.flatMap((category) => {
+			const listed = entries.filter((_, index) => categories[index] === category);
+			return listed.length ? [`<${groupTag(category)}>`, ...listed, `</${groupTag(category)}>`] : [];
+		}),
 		"</available_skills>",
 		...(unlisted.length > 0
 			? [
@@ -120,6 +134,10 @@ export function formatSkillsForPrompt(
 	];
 
 	return lines.join("\n");
+}
+
+function groupTag(category: SkillCategory): string {
+	return `${category}_skills`;
 }
 
 function skillEntry(skill: Skill, withDescription: boolean, withLocation: boolean): string {

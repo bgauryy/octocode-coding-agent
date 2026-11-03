@@ -7,6 +7,9 @@ import { graphemeSegmenter, graphemeSegments, isPrintableAscii, visibleWidth } f
  * Split text into words while keeping ANSI codes attached.
  */
 function splitIntoTokensWithAnsi(text: string): string[] {
+	// Most transcript rows are printable ASCII. Preserve runs of spaces without
+	// scanning each character for an ANSI sequence or creating grapheme slices.
+	if (isPrintableAscii(text)) return text.match(/ +|[^ ]+/g) ?? [];
 	const tokens: string[] = [];
 	let current = "";
 	let pendingAnsi = ""; // ANSI codes waiting to be attached to next visible content
@@ -144,6 +147,7 @@ function wrapSingleLine(line: string, width: number): string[] {
 
 	const wrapped: string[] = [];
 	const tracker = new AnsiCodeTracker();
+	const ascii = isPrintableAscii(line);
 	const tokens = splitIntoTokensWithAnsi(line);
 
 	let currentLine = "";
@@ -201,7 +205,8 @@ function wrapSingleLine(line: string, width: number): string[] {
 			currentVisibleLength += tokenVisibleLength;
 		}
 
-		updateTrackerFromText(token, tracker);
+		// Printable ASCII cannot change the active terminal style.
+		if (!ascii) updateTrackerFromText(token, tracker);
 	}
 
 	if (currentLine) {

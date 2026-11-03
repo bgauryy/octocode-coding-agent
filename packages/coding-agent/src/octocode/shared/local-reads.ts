@@ -56,11 +56,15 @@ export async function snapshotLocalReads(
 	return snapshots;
 }
 
-/** Credit only successful, untransformed source windows from files unchanged throughout retrieval. */
+/**
+ * Credit only successful, untransformed source windows from files unchanged throughout retrieval. The server leaves a
+ * row's `path` out when it repeats the request's, so such a row names the file of `input.queries[row.index]`.
+ */
 export async function completedLocalReads(
 	snapshots: Map<string, Snapshot>,
 	output: unknown,
 	cwd: string,
+	input?: unknown,
 ): Promise<LocalRead[]> {
 	// MCP results may expose server data directly or wrap it in CallToolResult.
 	if (isRecord(output) && isRecord(output.structuredContent)) {
@@ -68,23 +72,30 @@ export async function completedLocalReads(
 		output = output.structuredContent;
 	}
 	if (!isRecord(output) || !Array.isArray(output.results)) return [];
+	const queries = isRecord(input) && Array.isArray(input.queries) ? input.queries : [];
 	const reads: LocalRead[] = [];
-	for (const row of output.results) {
+	for (const [position, row] of output.results.entries()) {
 		if (!isRecord(row) || row.status === "error" || !isRecord(row.data)) continue;
 		const data = row.data;
+		const query: unknown = queries[nonnegative(row.index) ? row.index : position];
 		if (
 			data.error ||
 			(data.contentView && data.contentView !== "none") ||
 			data.selection ||
 			data.isSkeleton ||
 			data.matchNotFound ||
-			typeof data.content !== "string" ||
-			typeof data.path !== "string"
+			typeof data.content !== "string"
 		)
 			continue;
-		const root = output.root ?? output.base;
-		const baseDir = typeof root === "string" && path.isAbsolute(root) ? root : cwd;
-		const file = canonicalPath(path.isAbsolute(data.path) ? data.path : resolveToolPath(baseDir, data.path));
+		let file: string;
+		if (typeof data.path === "string") {
+			const root = output.root ?? output.base;
+			const baseDir = typeof root === "string" && path.isAbsolute(root) ? root : cwd;
+			file = canonicalPath(path.isAbsolute(data.path) ? data.path : resolveToolPath(baseDir, data.path));
+		} else if (isRecord(query) && typeof query.path === "string") {
+			// The request's own path, resolved as `snapshotLocalReads` resolved it.
+			file = canonicalPath(resolveToolPath(cwd, query.path));
+		} else continue;
 		const before = snapshots.get(file);
 		if (!before) continue;
 		try {

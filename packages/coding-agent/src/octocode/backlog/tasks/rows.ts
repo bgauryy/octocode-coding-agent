@@ -1,5 +1,5 @@
 import type { BacklogTask, TaskState } from "@octocodeai/octocode-contracts/backlogs";
-import type { TaskRow } from "../../agentdb/api.ts";
+import type { TaskRow } from "../../../../../db/src/api.ts";
 import { refText } from "../row.ts";
 
 /** `T12`, `t12` or `12` → 12. */

@@ -56,16 +56,18 @@ export function resumableChild(
 	if (child.isolated)
 		throw new Error(`${id} ran in an isolated worktree, which is gone; start a new agent with the context it needs.`);
 	// A run that never reported recorded only its folder: Octocode named the file in it.
-	const transcript = child.transcript ?? (child.folder ? childSessionFile({ dir: child.folder, id }) : undefined);
+	const sessionId = child.sessionId ?? id;
+	const transcript =
+		child.transcript ?? (child.folder ? childSessionFile({ dir: child.folder, id: sessionId }) : undefined);
 	const folder = child.folder ?? (transcript ? path.dirname(transcript) : undefined);
 	if (child.startupFailed && child.task && folder && !(transcript && fs.existsSync(transcript)))
-		return { child, session: { dir: folder, id }, restart: child.task };
+		return { child, session: { dir: folder, id: sessionId }, restart: child.task };
 	if (!transcript) throw new Error(`${id} has no saved transcript to continue.`);
 	if (!fs.existsSync(transcript))
 		throw new Error(
 			`${id}'s transcript ${tildePath(transcript)} is gone; start a new agent with the context it needs.`,
 		);
-	return { child, session: { dir: path.dirname(transcript), id } };
+	return { child, session: { dir: path.dirname(transcript), id: sessionId } };
 }
 
 /**

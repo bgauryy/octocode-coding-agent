@@ -80,13 +80,20 @@ function wrapSingleChange(args: Record<string, unknown>): Record<string, unknown
 
 /**
  * The call's arguments with `reasoning` (top level and per query) read as `reason`; a change without one takes the
- * call's. A single flat change becomes a one-item `queries`.
+ * call's. A single flat change becomes a one-item `queries`. A call with no `reason` of its own whose every change has
+ * one takes theirs, joined, instead of failing validation: the reasons were given, only one level lower.
  */
 export function renameReasoning(args: unknown): Static<typeof Params> {
 	if (!isRecord(args)) return args as Static<typeof Params>;
-	const renamed = aliased(wrapSingleChange(args));
-	if (!Array.isArray(renamed.queries)) return renamed as Static<typeof Params>;
-	const queries = renamed.queries.map((query) => {
+	let renamed = aliased(wrapSingleChange(args));
+	const sent: unknown = renamed.queries;
+	if (!Array.isArray(sent)) return renamed as Static<typeof Params>;
+	if (renamed.reason === undefined && sent.length > 0) {
+		const given = sent.map((query: unknown) => (isRecord(query) ? aliased(query).reason : undefined));
+		if (given.every((reason) => typeof reason === "string" && reason.trim()))
+			renamed = { ...renamed, reason: [...new Set(given as string[])].join("; ") };
+	}
+	const queries = sent.map((query: unknown) => {
 		if (!isRecord(query)) return query;
 		const named = aliased(query);
 		return named.reason === undefined && typeof renamed.reason === "string"

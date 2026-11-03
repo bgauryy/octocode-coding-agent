@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parsedShell } from "../../src/octocode/permission/shell/commands.ts";
@@ -14,13 +16,11 @@ const CONFINED = "node --permission --no-experimental-sqlite --allow-fs-read=*";
 const REFUSED: Array<[string, string]> = [
 	// Groups, function bodies, control flow, subshells, substitutions.
 	["{ python3 -c 'x'; }", "python3"],
-	["{ node -e 'x'; } > out.txt", "node"],
 	["node(){ /usr/bin/env node -e 'x'; }; node --permission --no-experimental-sqlite -e '1'", "node"],
 	["run() { perl -pi -e 's/a/b/' f; }; run", "perl"],
 	["function go { ruby -e 'x'; }; go", "ruby"],
 	["if true; then python3 -c 'x'; fi", "python3"],
 	["if python3 -c 'x'; then echo ok; fi", "python3"],
-	["while read l; do node -e 'x'; done < list.txt", "node"],
 	["for f in a b; do python3 -c 'x'; done", "python3"],
 	["case $1 in a) deno eval 'x';; esac", "deno"],
 	["(python3 -c 'x')", "python3"],
@@ -52,7 +52,6 @@ const REFUSED: Array<[string, string]> = [
 	["echo it\\'s; python3 -c 'x'", "python3"],
 	["# it's a comment\npython3 -c 'x'", "python3"],
 	["cat <<EOF\nit's\nEOF\npython3 -c 'x'", "python3"],
-	["echo \"it's\" && node -e 'x'", "node"],
 	// Code another program runs: a shell's script, eval, trap, find -exec.
 	["bash -c \"python3 -c 'x'\"", "python3"],
 	["sh -c 'node -e 1'", "node"],
@@ -153,6 +152,14 @@ const REFUSED: Array<[string, string]> = [
 	[`{ ${CONFINED} -p 1; }; echo x | python3`, "python3"],
 ];
 
+/** Lines whose only fault is a `node` without the read-only flags: the gate adds them after each `node` while a peer holds a reservation. */
+const REWRITTEN: Array<[string, string]> = [
+	["{ node -e 'x'; } > out.txt", `{ ${CONFINED} -e 'x'; } > out.txt`],
+	["while read l; do node -e 'x'; done < list.txt", `while read l; do ${CONFINED} -e 'x'; done < list.txt`],
+	["echo \"it's\" && node -e 'x'", `echo "it's" && ${CONFINED} -e 'x'`],
+	["node -e 'a' | timeout 5 node -p 'b'", `${CONFINED} -e 'a' | timeout 5 ${CONFINED} -p 'b'`],
+];
+
 /** Commands that run no inline code, and the confined Node forms, wherever they sit. */
 const ALLOWED = [
 	// Options after the script operand belong to the script.
@@ -232,6 +239,11 @@ describe("inline interpreter detection by the shell parse", () => {
 		const parsed = await parsedShell(command);
 		expect(parsed, "the line parses").toBeDefined();
 		expect(unconfinedInterpreter(command, process.env, parsed)).toBe(name);
+	});
+
+	it.each(REWRITTEN)("finds unconfined node in %j and none once the flags are added", async (command, rewritten) => {
+		expect(unconfinedInterpreter(command, process.env, await parsedShell(command))).toBe("node");
+		expect(unconfinedInterpreter(rewritten, process.env, await parsedShell(rewritten))).toBeUndefined();
 	});
 
 	it.each(ALLOWED)("does not refuse %j", async (command) => {
@@ -350,7 +362,32 @@ describe("the reservation gate with the shell parse", () => {
 		const lock = (paths: string[]) =>
 			fake.tools.get("coordinate").execute("c", { action: "lock", paths, reason: "auth" }, undefined, undefined, ctx);
 		const gate = (command: string) => reservationGate({ toolName: "bash", input: { command } } as never, ctx);
-		return { team, lock, gate };
+		/** Runs the gate on a call with an id, then the result hooks on a plain result; returns the verdict, the command the call runs and the result text. */
+		const call = async (command: string) => {
+			const event = { type: "tool_call", toolCallId: "call-1", toolName: "bash", input: { command } };
+			const verdict = await reservationGate(event as never, ctx);
+			const results = await fake.emit(
+				"tool_result",
+				{
+					type: "tool_result",
+					toolCallId: "call-1",
+					toolName: "bash",
+					input: event.input,
+					content: [{ type: "text", text: "ok" }],
+					isError: false,
+				},
+				ctx,
+			);
+			const content = (results as Array<{ content?: Array<{ text: string }> } | undefined>).find(
+				(result) => result?.content,
+			)?.content;
+			return {
+				verdict,
+				command: event.input.command,
+				text: (content ?? [{ text: "ok" }]).map((part) => part.text).join("\n"),
+			};
+		};
+		return { team, lock, gate, call };
 	}
 
 	it.each(REFUSED)("refuses %j while a peer holds a reservation", async (command, name) => {
@@ -367,8 +404,77 @@ describe("the reservation gate with the shell parse", () => {
 			reason: expect.stringContaining(`reserved by ${owner.team.id}`),
 		});
 		expect(refused?.reason).toContain(`runs ${name} on inline code`);
+		expect(refused?.reason).toContain(
+			"write the code to a script file under .octa/code/temp/ and run that file, or use the file tool for edits",
+		);
 		// The holder's own commands run.
 		expect(await owner.gate(command)).toBeUndefined();
+	});
+
+	it.each(REWRITTEN)(
+		"runs %j with the flags added while a peer holds a reservation, and says so",
+		async (command, rewritten) => {
+			const db = path.join(tmp(), "team.sqlite");
+			const cwd = tmp();
+			const owner = await member(db, cwd);
+			const peer = await member(db, cwd);
+			// Nobody holds anything: the command runs as written, with no note.
+			expect(await peer.call(command)).toEqual({ verdict: undefined, command, text: "ok" });
+			await owner.lock(["src/a.ts"]);
+			const confined = await peer.call(command);
+			expect(confined.verdict).toBeUndefined();
+			expect(confined.command).toBe(rewritten);
+			expect(confined.text).toContain("ERR_ACCESS_DENIED");
+			expect(confined.text).toContain("--permission --no-experimental-sqlite --allow-fs-read=*");
+			// The holder's own command runs as written.
+			expect(await owner.call(command)).toEqual({ verdict: undefined, command, text: "ok" });
+		},
+	);
+
+	it("refuses rather than rewrites when node is not the only fault or the node words do not match the runs", async () => {
+		const db = path.join(tmp(), "team.sqlite");
+		const cwd = tmp();
+		const owner = await member(db, cwd);
+		const peer = await member(db, cwd);
+		await owner.lock(["src/a.ts"]);
+		for (const [command, name, cause] of [
+			// Python, Perl and Ruby have no read-only form: the refusal names them, not the node beside them.
+			["node -e 'x'; python3 -c 'x'", "python3", "python3 has no read-only form"],
+			["node -e 'x' && perl -pi -e 's/a/b/' f", "perl", "perl has no read-only form"],
+			["ruby -e 'x'", "ruby", "ruby has no read-only form"],
+			// A confined node already in the line counts as a node word but not as a faulty run.
+			[`${CONFINED} -p 1 && node -e 'x'`, "node", "needs both"],
+			// The flags added, another fault remains: that one is named.
+			["node -e 'x' --inspect", "node", "`--inspect` after the code"],
+		] as const) {
+			const { verdict, command: ran } = await peer.call(command);
+			expect(verdict, command).toMatchObject({ block: true });
+			expect(verdict?.reason).toContain(`runs ${name} on inline code`);
+			expect(verdict?.reason).toContain(cause);
+			expect(ran).toBe(command);
+		}
+	});
+
+	it("runs the rewritten node for real: it reads, and a write fails with ERR_ACCESS_DENIED", async () => {
+		const db = path.join(tmp(), "team.sqlite");
+		const cwd = tmp();
+		const owner = await member(db, cwd);
+		const peer = await member(db, cwd);
+		await owner.lock(["src/a.ts"]);
+		writeFileSync(path.join(cwd, "in.txt"), "hello");
+		const run = async (command: string) => {
+			const { verdict, command: confined } = await peer.call(command);
+			expect(verdict, command).toBeUndefined();
+			expect(confined).not.toBe(command);
+			return spawnSync("bash", ["-c", confined], { cwd, encoding: "utf8" });
+		};
+		const read = await run(`node -p 'require("fs").readFileSync("in.txt", "utf8")'`);
+		expect(read.status, read.stderr).toBe(0);
+		expect(read.stdout.trim()).toBe("hello");
+		const write = await run(`{ node -e 'require("fs").writeFileSync("out.txt", "x")'; }`);
+		expect(write.status).not.toBe(0);
+		expect(write.stderr).toContain("ERR_ACCESS_DENIED");
+		expect(existsSync(path.join(cwd, "out.txt"))).toBe(false);
 	});
 
 	it("lets the allowed forms run while a peer holds a reservation", async () => {

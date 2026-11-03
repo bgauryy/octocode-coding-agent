@@ -20,7 +20,7 @@ const allowed = (): string[] => {
 describe("the user's roots reach the launch only through the host port", () => {
 	it("a standalone host without the port keeps the automatic roots", () => {
 		withRoots(undefined);
-		expect(allowed()).toEqual(["/work/app", original.sessionsRoot({}), "/skills/one"]);
+		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app", {}), "/skills/one"]);
 	});
 
 	it("appends the port's roots after the automatic ones and passes the process environment", () => {
@@ -29,7 +29,7 @@ describe("the user's roots reach the launch only through the host port", () => {
 			seen.push(env);
 			return { roots: ["/user/a", "/skills/one"], warnings: [] };
 		});
-		expect(allowed()).toEqual(["/work/app", original.sessionsRoot({}), "/skills/one", "/user/a"]);
+		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app", {}), "/skills/one", "/user/a"]);
 		expect(seen).toEqual([{}]);
 	});
 

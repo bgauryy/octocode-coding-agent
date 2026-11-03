@@ -140,11 +140,14 @@ describe("user research roots: rejection list", () => {
 		]);
 	});
 
-	it("allows a folder inside the sessions root, which the host already adds", () => {
+	it("rejects a folder inside the private global state root", () => {
 		const u = user();
 		const session = folder(u.octo, "agent", "sessions", "abc");
 		u.settings([session]);
-		expect(userResearchRoots(u.env, u.home, u.octo)).toEqual({ roots: [session], warnings: [] });
+		expect(userResearchRoots(u.env, u.home, u.octo)).toEqual({
+			roots: [],
+			warnings: [expect.stringContaining("Octocode home")],
+		});
 	});
 });
 
@@ -162,7 +165,10 @@ describe("launch environment with user roots", () => {
 	});
 	afterEach(() => vi.unstubAllEnvs());
 
-	const sessions = () => path.join(u.octo, "agent", "sessions");
+	const sessions = () => [
+		path.join(cwd, ".octa", "code", "session-data"),
+		path.join(cwd, ".octa", "code", "temp", "sessions"),
+	];
 	const defaultServer = (skills: string[] = []): string[] => {
 		const preset = octocodePreset(() => skills, process.env);
 		const prepared = preset.prepareLaunch!(presetEntries([preset])[0], cwd, true);
@@ -179,7 +185,7 @@ describe("launch environment with user roots", () => {
 		const value = (prepared.config as { env?: Record<string, string> }).env?.ALLOWED_PATHS;
 		return value === undefined ? undefined : resolveConfigValueOrThrow(value, "ALLOWED_PATHS").split(",");
 	};
-	const automatic = (skills: string[] = []) => [cwd, sessions(), ...skills];
+	const automatic = (skills: string[] = []) => [cwd, ...sessions(), ...skills];
 
 	it.each([
 		["default server", (skills?: string[]) => defaultServer(skills)],

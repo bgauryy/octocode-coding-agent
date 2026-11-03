@@ -76,7 +76,7 @@ async function postForm(url: string, fields: Record<string, string>, signal: Abo
 		});
 	} catch (error) {
 		if (signal.aborted) {
-			throw new Error("Login cancelled");
+			throw new Error("Login cancelled", { cause: error });
 		}
 		throw error;
 	}

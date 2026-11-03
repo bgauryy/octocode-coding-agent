@@ -70,7 +70,8 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			});
 		if (wait) return { ...prior.accepted, ...(await host.receipts.wait(prior, timeout)) };
 		await prior.ready;
-		if (prior.phase === "uncertain") throw prior.failure;
+		// `fail` records the failure whenever it marks a receipt uncertain.
+		if (prior.phase === "uncertain") throw prior.failure!;
 		return prior.accepted;
 	}
 	const busy = !ctx.isIdle() || ctx.hasPendingMessages() || host.receipts.busy;

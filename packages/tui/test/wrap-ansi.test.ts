@@ -181,6 +181,11 @@ describe("wrapTextWithAnsi", () => {
 			assert.ok(visibleWidth(twoSpacesWrappedToWidth1[0]) <= 1);
 		});
 
+		it("preserves runs of printable ASCII spaces through a width change", () => {
+			assert.deepStrictEqual(wrapTextWithAnsi("  alpha   beta gamma  ", 10), ["  alpha", "beta gamma"]);
+			assert.deepStrictEqual(wrapTextWithAnsi("  alpha   beta gamma  ", 24), ["  alpha   beta gamma  "]);
+		});
+
 		it("should preserve color codes across wraps", () => {
 			const red = "\x1b[31m";
 			const reset = "\x1b[0m";

@@ -112,7 +112,7 @@ async function createAbortableCompactionHarness(): Promise<{
 		builtinCompactionFactories: [
 			(api) => {
 				api.on("session_before_compact", async (event) => {
-					return await new Promise<{ cancel: true }>((resolve) => {
+					return new Promise<{ cancel: true }>((resolve) => {
 						event.signal.addEventListener("abort", () => resolve({ cancel: true }), { once: true });
 						markCompactionStarted();
 					});

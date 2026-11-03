@@ -2,15 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { getAgentDir } from "../../config.ts";
+import { transcripts } from "../../../../db/src/api.ts";
 import { cleanTitle } from "../../core/session-manager/title.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { sharedAgentDb } from "../agentdb/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
+import { reportSweep } from "./sweep-report.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { currentSessionId } from "../shared/home.ts";
-import { repoKey } from "../shared/home/repo.ts";
+import { registeredWorkspace } from "../../config/workspace-database.ts";
 import { expandKey, plural } from "../shared/render/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CLAIM_MARKER, pendingReportsDir } from "../subagents/handoff/pending.ts";
@@ -24,9 +25,20 @@ import {
 	spendOf,
 	unpricedModel,
 } from "../shared/util.ts";
-import { type BriefInput, latestRequest, ongoingBrief, openTasksBrief, resumeBrief } from "./brief.ts";
+import { summaryMethodOf } from "../shared/summary-method.ts";
+import {
+	type BriefInput,
+	latestRequest,
+	ongoingBrief,
+	openTasksBrief,
+	RESUME_TAG,
+	resumeBrief,
+	type TeamNotes,
+	teamBrief,
+} from "./brief.ts";
 import { recordSession, recordTitle } from "./catalog.ts";
 import { registerSessionsCommand } from "./command.ts";
+import { registerPurgeCommand } from "./purge-command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
 import { type CompleteTitle, createAutoTitler } from "./title.ts";
 import { sweepSessions } from "./sweep.ts";
@@ -45,6 +57,8 @@ interface SessionsOptions {
 	filesChanged?: () => number;
 	/** A subagent's goal: it names the child's session (`session_info` with source `goal`). */
 	goal?: string;
+	/** This agent's reservations and unanswered questions in its team, named in the note after a compaction. */
+	team?: TeamNotes;
 	/** The model call that writes an auto title, and how long it may take (tests replace both). */
 	titleCall?: { complete?: CompleteTitle; timeoutMs?: number };
 }
@@ -96,29 +110,37 @@ const branchOf = (ctx: ExtensionContext): readonly unknown[] =>
 /**
  * After a compaction, a non-waking reorient brief: the work still running (background bash jobs and subagents started
  * since this session started in this process, without a report yet), this session's ongoing backlog items with their
- * goal, why, paths, links and last notes, its open tasks, and the latest user request. The summary may have dropped them, and the
- * running work's reports will arrive later as messages. Every part is capped (see brief.ts).
+ * goal, why, paths, links and last notes, its open tasks, its path reservations and the questions waiting for its reply,
+ * and the latest user request (left out after Octocode's own summary, which keeps the user's messages word for word).
+ * The summary may have dropped them, and the running work's reports will arrive later as messages. Every part is capped
+ * (see brief.ts).
  */
-function registerRunningWork(api: ExtensionAPI): void {
+function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 	let since = Date.now();
 	api.on("session_start", async () => {
 		since = Date.now();
 	});
-	api.on("session_compact", async (_event, ctx) => {
+	api.on("session_compact", async (event, ctx) => {
 		const branch = branchOf(ctx);
 		const running = unreportedWork(branch, since).map((work) => describeWork(work, false));
 		let ongoing: string[] = [];
 		try {
-			const [agent, repo, session] = [sharedAgentDb(), repoKey(ctx.cwd).key, ctx.sessionManager.getSessionId()];
+			const agent = sharedAgentDb();
+			const repo = registeredWorkspace(ctx.cwd, agent).id;
+			const session = ctx.sessionManager.getSessionId();
 			ongoing = [...ongoingBrief(agent, repo, session), ...openTasksBrief(agent, repo, session)];
 		} catch {
 			// The agent database is unavailable: the running work and the request alone still help.
 		}
-		const request = latestRequest(branch);
-		if (running.length === 0 && ongoing.length === 0 && !request) return;
+		const held = team ? teamBrief(team) : [];
+		// Octocode's own summary is followed by the user's messages word for word, so their latest request is already kept.
+		const kept = summaryMethodOf(event.compactionEntry?.details) !== undefined;
+		const request = kept ? undefined : latestRequest(branch);
+		if (running.length === 0 && ongoing.length === 0 && held.length === 0 && !request) return;
 		const lines = [
 			...(running.length > 0 ? [`Still running (their reports arrive as messages): ${running.join("; ")}.`] : []),
 			...ongoing,
+			...held,
 			...(request ? [`Latest user request: "${request}"`] : []),
 		];
 		const content = `[After compaction] ${lines.join("\n")}`;
@@ -181,7 +203,7 @@ const hasUserMessage = (entries: readonly Entry[]) =>
  * the event loop, so a slow repository never stalls a turn.
  */
 export function registerSessions(api: ExtensionAPI, options: SessionsOptions): void {
-	registerRunningWork(api);
+	registerRunningWork(api, options.team);
 	if (options.isSubagent) {
 		registerGoalName(api, options.goal);
 		return;
@@ -201,7 +223,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	});
 	const safely = (ctx: ExtensionContext, work: (sessions: SessionIndex) => void) => {
 		try {
-			work(index());
+			if (ctx.sessionManager.getSessionFile()) work(index());
 		} catch (error) {
 			// A background git result can arrive after the host invalidates this
 			// context. The optional warning must not turn that failure into a rejection.
@@ -224,7 +246,9 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	};
 
 	api.registerMessageRenderer(RESUME_MESSAGE_TYPE, (message, { expanded }, theme) => {
-		const [head = "", ...rest] = sanitizeTerminalText(contentText(message.content)).split("\n");
+		// The tag is for the model; the arrow already marks the brief for the person.
+		const text = contentText(message.content).replace(`${RESUME_TAG} `, "");
+		const [head = "", ...rest] = sanitizeTerminalText(text).split("\n");
 		// Collapsed, the hidden lines get resultBlock's hint, so the brief reads as expandable like any tool row.
 		const tail = !rest.length
 			? ""
@@ -260,7 +284,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 					previous: recorded,
 					lastActive: at,
 					sessionId: id,
-					repoKey: repoKey(ctx.cwd).key,
+					repoKey: registeredWorkspace(ctx.cwd, sessions.agent).id,
 					...(unreported.length > 0 ? { unreported } : {}),
 					...(request ? { request } : {}),
 				};
@@ -268,15 +292,19 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			// The row keeps the dir its session runs from: the sweep keeps the session while that dir cannot be read.
 			const sessionDir = ctx.sessionManager.getSessionDir?.();
 			const dir = sessionDir ? path.resolve(sessionDir) : undefined;
-			sessions.start(id, dir);
+			// One transaction: a bind that succeeds with no start would leave a row without the pid that marks it running.
+			const workspaceId = registeredWorkspace(ctx.cwd, sessions.agent).id;
+			sessions.agent.transaction(() => {
+				transcripts.bind(sessions.agent.db, id, workspaceId);
+				sessions.start(id, dir);
+			});
 			recordSession(sessions, ctx.sessionManager);
-			// Octocode's default listing misses sessions kept under --session-dir: the sweep must list that dir too, or it removes their folders.
-			// Octocode's own listing covers every folder of `<agent dir>/sessions`; any other dir is recorded.
-			if (dir && path.dirname(dir) !== path.join(getAgentDir(), "sessions")) sessions.addSessionDir(dir);
+			// Keep unreadable checkout and custom directories registered so retention never mistakes them for deletions.
+			if (dir) sessions.addSessionDir(dir);
 			// Off the start path; at most once per 6 h across all sessions.
 			const env = { ...process.env };
 			setImmediate(() => {
-				void sweepSessions(sessions, currentSessionId(), { env });
+				void sweepSessions(sessions, currentSessionId(), { env, report: (line) => reportSweep(ctx, line) });
 				return undefined;
 			});
 		});
@@ -358,4 +386,5 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	});
 
 	registerSessionsCommand(api, options.commands, { index, current: currentSessionId });
+	registerPurgeCommand(api, options.commands, { index, current: currentSessionId });
 }

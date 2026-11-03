@@ -246,7 +246,7 @@ export function runDetails(run: Run, session?: ChildSession): RunDetails {
 	return {
 		...startDetails({ id: run.identity.id, profile: run.identity.role, goal: run.identity.goal, status: "running" }),
 		runId: randomUUID(),
-		session: { id: run.identity.id, ...(session ? { dir: session.dir } : {}) },
+		session: { id: session?.id ?? run.identity.sessionId ?? run.identity.id, ...(session ? { dir: session.dir } : {}) },
 		...(model ? { model } : {}),
 		...(fallback ? { fallback } : {}),
 		...(refusedBy ? { refusedBy } : {}),

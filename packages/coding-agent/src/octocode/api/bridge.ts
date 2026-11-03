@@ -110,7 +110,7 @@ export class OctocodeApi {
 			flushDelta();
 			const last = [...event.messages].reverse().find((message) => message.role === "assistant");
 			const text = last ? contentText(last.content, { separator: "" }) : "";
-			const stopReason = last && "stopReason" in last ? String(last.stopReason) : undefined;
+			const stopReason = last && "stopReason" in last ? last.stopReason : undefined;
 			this.lastAssistantText = text;
 			this.lastResult = { text: boundedText(text), ...(stopReason ? { stopReason } : {}) };
 			log.publish("agent.end", this.lastResult);
@@ -195,7 +195,7 @@ export class OctocodeApi {
 			writeRecord(this.dir, record);
 		} catch (error) {
 			await server.close();
-			throw new Error(`Octocode API could not start: ${errorMessage(error)}`);
+			throw new Error(`Octocode API could not start: ${errorMessage(error)}`, { cause: error });
 		}
 	}
 

@@ -20,7 +20,7 @@ import { RemotePublisher } from "./remote/publisher.ts";
 import { handleRemoteRequest } from "./remote/routes.ts";
 import { handleRepoRequest } from "./repo-routes.ts";
 import { RepoCatalog } from "./repos.ts";
-import { repoId, SessionRegistry } from "./sessions.ts";
+import { SessionRegistry } from "./sessions.ts";
 import { handleSessionRequest } from "./session-routes.ts";
 import { TabHub, type TabScope } from "./tabs.ts";
 
@@ -215,7 +215,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		if (scope.kind === "session") {
 			const session = registry.get(scope.id);
 			if (!session) return reply(404, { error: "That session is not attached. Open /web in a running session." });
-			const repo = catalog.resolve(repoId(session.record.repo.key));
+			const repo = catalog.resolve(session.record.repo.key);
 			if (!repo) return reply(404, { error: "Unknown repository" });
 			if (
 				await handleSessionRequest(
@@ -259,7 +259,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		let tabScope: TabScope | undefined;
 		if (scope.kind === "session") {
 			const session = registry.get(scope.id);
-			const repo = session && catalog.resolve(repoId(session.record.repo.key));
+			const repo = session && catalog.resolve(session.record.repo.key);
 			if (session && repo) tabScope = { repo, session: { id: scope.id, client: session.client } };
 		} else {
 			const repo = catalog.resolve(scope.id);

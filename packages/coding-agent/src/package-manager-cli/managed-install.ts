@@ -42,7 +42,7 @@ async function fetchInstallerArtifact(url: string, label: string): Promise<strin
 	if (!response.ok) {
 		throw new Error(`Could not download managed installer ${label} from ${url}: HTTP ${response.status}`);
 	}
-	return await response.text();
+	return response.text();
 }
 
 async function runManagedNpmCi(stageDir: string): Promise<void> {
@@ -152,7 +152,7 @@ export async function runManagedSelfUpdate(managedRoot: string, version: string)
 		releaseLock = await lockfile.lock(join(managedRoot, "update"), { realpath: false });
 	} catch (error: unknown) {
 		if (error instanceof Error && "code" in error && error.code === "ELOCKED") {
-			throw new Error("Another managed Octocode update is already running.");
+			throw new Error("Another managed Octocode update is already running.", { cause: error });
 		}
 		throw error;
 	}

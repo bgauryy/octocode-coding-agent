@@ -1,14 +1,13 @@
+import { fixtureBacklog, registerFixtureWorkspace } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type AgentDb, closeSharedAgentDb, openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { commands, configAudits } from "../../src/octocode/agentdb/api.ts";
+import { type AgentDb, closeSharedAgentDb, commands, configAudits, archiveHistory } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
-import { archiveHistory } from "../../src/octocode/backlog/retention.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { workspaceServerFixture } from "./workspace-server-fixture.ts";
@@ -43,6 +42,7 @@ afterEach(() => {
 
 const openDb = (file = process.env.OCTOCODE_AGENT_DB!) => {
 	const db = openAgentDb(file);
+	registerFixtureWorkspace(db, "repo");
 	open.push(db);
 	return db;
 };
@@ -51,7 +51,7 @@ const audit = (db: AgentDb, at: number, ref = "B1", repo = "repo") =>
 	Number(
 		db.db
 			.prepare(
-				"INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, after_value) VALUES (?, ?, ?, '{\"id\":\"system\"}', 'insert', 'backlog', json_object('title', ?)) RETURNING id",
+				"INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, after_value) VALUES (?, ?, ?, '{\"id\":\"system\"}', 'insert', 'backlog', json_object('title', ?)) RETURNING id",
 			)
 			.get(repo, ref, at, `at ${at}`)!.id,
 	);
@@ -59,7 +59,7 @@ const audit = (db: AgentDb, at: number, ref = "B1", repo = "repo") =>
 const ids = (db: AgentDb, table: string, repo = "repo") =>
 	(
 		db.db
-			.prepare(`SELECT id FROM ${table} WHERE ${table === "config_audits" ? "1" : "repo_key = ?"} ORDER BY at`)
+			.prepare(`SELECT id FROM ${table} WHERE ${table === "config_audits" ? "1" : "workspace_id = ?"} ORDER BY at`)
 			.all(...(table === "config_audits" ? [] : [repo])) as Array<{ id: string | number }>
 	).map((row) => String(row.id));
 const triggerSql = (db: AgentDb) =>
@@ -71,11 +71,11 @@ const readArchive = (file: string) =>
 		.split("\n")
 		.filter(Boolean)
 		.map((line) => JSON.parse(line) as { db: string; id: string; at: number; row: Record<string, unknown> })
-		.filter((record) => record.row.repo_key === undefined || record.row.repo_key === "repo");
+		.filter((record) => record.row.workspace_id === undefined || record.row.workspace_id === "repo");
 
 /** One row of each history table at each age, oldest first, plus an item created long ago. */
 function seed(db: AgentDb) {
-	const store = new BacklogStore(
+	const store = fixtureBacklog(
 		() => db,
 		"items",
 		() => NOW - 60 * DAY_MS,
@@ -122,7 +122,7 @@ describe("history archive housekeeping", () => {
 		// The 40-day-old rows are past the archive window: deleted, not kept.
 		const audits = readArchive("audits-2026-10.jsonl.gz");
 		expect(audits.map((record) => record.row.id)).toEqual([rows[20], rows[15]]);
-		expect(audits[0].row).toMatchObject({ repo_key: "repo", backlog_id: "B1", at: NOW - 20 * DAY_MS });
+		expect(audits[0].row).toMatchObject({ workspace_id: "repo", backlog_id: "B1", at: NOW - 20 * DAY_MS });
 		expect(readArchive("workspace-commands-2026-10.jsonl.gz").map((record) => record.row.id)).toEqual([
 			"cmd-20",
 			"cmd-15",
@@ -167,7 +167,7 @@ describe("history archive housekeeping", () => {
 		// Archived first, so the row is now in both the database and the archive: each row is read once.
 		expect(ids(db, "backlog_audits")).toContain(String(rows[20]));
 		expect(readArchive("audits-2026-10.jsonl.gz").map((record) => record.row.id)).toContain(rows[20]);
-		const seen = new BacklogStore(
+		const seen = fixtureBacklog(
 			() => db,
 			"repo",
 			() => NOW,
@@ -192,7 +192,7 @@ describe("history archive housekeeping", () => {
 		// Both databases share the one archive; ids may collide, so each reads its own rows only.
 		expect(first).toBe(foreign);
 		expect(readArchive("audits-2026-10.jsonl.gz")).toHaveLength(2);
-		const events = new BacklogStore(
+		const events = fixtureBacklog(
 			() => db,
 			"repo",
 			() => NOW,
@@ -200,22 +200,21 @@ describe("history archive housekeeping", () => {
 		expect(events.map((event) => event.at)).toEqual([NOW - 20 * DAY_MS]);
 	});
 
-	it("restores the guard as stored when an older build wrote it, and leaves the file current for every build", () => {
+	it("restores the exact delete guard after pruning and reopening the database", () => {
 		const db = openDb();
 		audit(db, NOW - 20 * DAY_MS);
-		// An older build's text of the guard, and a file without a newer trigger: the prune keeps both as they are.
+		// A distinguishable guard body proves that pruning restores its original semantics.
 		db.db.exec("DROP TRIGGER backlog_audits_immutable_delete");
 		db.db.exec(
-			"CREATE TRIGGER backlog_audits_immutable_delete BEFORE DELETE ON backlog_audits BEGIN SELECT RAISE(ABORT, 'Audit events are immutable (older build)'); END",
+			"CREATE TRIGGER backlog_audits_immutable_delete BEFORE DELETE ON backlog_audits BEGIN SELECT RAISE(ABORT, 'Audit events are immutable (custom guard)'); END",
 		);
-		db.db.exec("DROP TRIGGER backlog_audits_skip_noop");
 		const before = triggerSql(db);
 		archiveHistory(db, NOW);
 		expect(triggerSql(db)).toEqual(before);
 		// A row-level guard fires only for a row: keep one in the table.
 		audit(db, NOW);
-		expect(() => db.db.prepare("DELETE FROM backlog_audits").run()).toThrow(/older build/);
-		// A later open (any build) only adds what is missing; the guard is never doubled.
+		expect(() => db.db.prepare("DELETE FROM backlog_audits").run()).toThrow(/custom guard/);
+		// Reopening the same version preserves each guard.
 		const again = openDb();
 		const names = (triggerSql(again) as Array<{ name: string }>).map((row) => row.name);
 		for (const guard of GUARDS) expect(names.filter((name) => name === guard)).toHaveLength(1);
@@ -265,14 +264,14 @@ describe("archived history readers", () => {
 		const archived = [audit(db, NOW - 25 * DAY_MS), audit(db, NOW - 20 * DAY_MS, "B2"), audit(db, NOW - 15 * DAY_MS)];
 		archiveHistory(db, NOW);
 		const live = audit(db, NOW - 2 * DAY_MS);
-		const store = new BacklogStore(
+		const store = fixtureBacklog(
 			() => db,
 			"repo",
 			() => NOW,
 		);
 		expect(store.audit().map((event) => event.id)).toEqual([archived[0], archived[1], archived[2], live]);
 		// The reader applies the 30-day window too, before the next housekeeping trims the file.
-		const later = new BacklogStore(
+		const later = fixtureBacklog(
 			() => db,
 			"repo",
 			() => NOW + 6 * DAY_MS,

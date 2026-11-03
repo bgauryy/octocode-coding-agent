@@ -38,7 +38,7 @@ describe("telemetry schemas", () => {
 		const schema = defineTelemetrySchema(definition);
 		expect(schema).toBe(definition);
 		expect(() => JSON.stringify(schema)).not.toThrow();
-		expectTypeOf<TelemetrySchemaSpanStartAttributes<typeof schema, "operation">>().toMatchTypeOf<{
+		expectTypeOf<TelemetrySchemaSpanStartAttributes<typeof schema, "operation">>().toExtend<{
 			kind: "read" | "write";
 		}>();
 
@@ -107,12 +107,14 @@ describe("telemetry schemas", () => {
 
 		const syncError = { kind: "sync" };
 		const syncResult = startSpan("operation", { kind: "write" }, () => {
+			// oxlint-disable-next-line typescript/only-throw-error -- the test pins that a non-Error rejection value passes through unchanged
 			throw syncError;
 		});
 		await expect(syncResult).rejects.toBe(syncError);
 
 		const asyncError = { kind: "async" };
 		const asyncResult = startSpan("request", { provider: "example" }, async () => {
+			// oxlint-disable-next-line typescript/only-throw-error -- the test pins that a non-Error rejection value passes through unchanged
 			throw asyncError;
 		});
 		await expect(asyncResult).rejects.toBe(asyncError);
@@ -159,12 +161,14 @@ describe("NOOP_TELEMETRY_CONTEXT", () => {
 	it("preserves synchronous and asynchronous rejection values", async () => {
 		const syncError = { kind: "sync" };
 		const sync = NOOP_TELEMETRY_CONTEXT.startSpan({ name: "sync" }, () => {
+			// oxlint-disable-next-line typescript/only-throw-error -- the test pins that a non-Error rejection value passes through unchanged
 			throw syncError;
 		});
 		await expect(sync).rejects.toBe(syncError);
 
 		const asyncError = { kind: "async" };
 		const asyncResult = NOOP_TELEMETRY_CONTEXT.startSpan({ name: "async" }, async () => {
+			// oxlint-disable-next-line typescript/only-throw-error -- the test pins that a non-Error rejection value passes through unchanged
 			throw asyncError;
 		});
 		await expect(asyncResult).rejects.toBe(asyncError);

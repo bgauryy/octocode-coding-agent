@@ -92,6 +92,7 @@ function setup(
 	options: {
 		cwd?: string;
 		withModel?: boolean;
+		model?: Record<string, unknown>;
 		priorEntries?: unknown[];
 		guard?: Pick<FileGuard, "restore" | "forget">;
 	} = {},
@@ -100,7 +101,10 @@ function setup(
 	const guard = options.guard ?? { restore: vi.fn(), forget: vi.fn() };
 	registerCompaction(fake.api, guard as FileGuard);
 	const cwd = options.cwd ?? "/repo";
-	const ctx = fakeCtx({ cwd, model: options.withModel === false ? { ...model, promptCache: undefined } : model });
+	const ctx = fakeCtx({
+		cwd,
+		model: options.withModel === false ? { ...model, promptCache: undefined } : (options.model ?? model),
+	});
 	const branch = () => [
 		...messages.map((message, index) => ({ type: "message", id: `m${index}`, message })),
 		...(options.priorEntries ?? []),
@@ -181,23 +185,55 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		});
 	});
 
-	it("clears old results while the cache is warm when the request rewrites the prefix anyway and the context is past half its budget", async () => {
+	describe("while the cache is warm and the context is past half its budget", () => {
 		// 200k working context: 40 reads of 10k characters are about 133k tokens, past half.
-		const items = reads(40);
 		const head = { role: "system", content: "base prompt", timestamp: T0 - 1 };
-		const update = { role: "system", content: "", sections: { planning: "on" }, timestamp: T0 + 150 };
-		const s = setup([head, ...idleMessages(items), update]);
-		await s.start(T0 + 100 + 60_000);
-		expect(s.entries).toHaveLength(1);
-		const outcome = resultTexts(await s.context());
-		expect(outcome.slice(0, 40 - KEEP_RECENT_RESULTS).every(cleared)).toBe(true);
-		// The same request without a rewrite ahead, or under half the budget, clears nothing while warm.
-		const warm = setup(idleMessages(reads(40)));
-		await warm.start(T0 + 100 + 60_000);
-		expect(warm.entries).toEqual([]);
-		const small = setup([head, ...idleMessages(reads(12)), update]);
-		await small.start(T0 + 100 + 60_000);
-		expect(small.entries).toEqual([]);
+		const tool = { name: "extra", description: "d", parameters: { type: "object", properties: {} } };
+		const sectionUpdate = { role: "system", content: "", sections: { planning: "on" }, timestamp: T0 + 150 };
+		const toolUpdate = { role: "system", content: "", toolsAdded: [tool], timestamp: T0 + 150 };
+		const warmAt = T0 + 100 + 60_000;
+		const capable = { ...model, compat: { supportsMidConvoSystemMessages: true } };
+
+		const cleared40 = async (s: ReturnType<typeof setup>) => {
+			await s.start(warmAt);
+			return (
+				s.entries.length === 1 &&
+				resultTexts(await s.context())
+					.slice(0, 40 - KEEP_RECENT_RESULTS)
+					.every(cleared)
+			);
+		};
+
+		it("does not clear for a trailing update on a model that keeps system updates in the history", async () => {
+			for (const update of [sectionUpdate, toolUpdate]) {
+				const s = setup([head, ...idleMessages(reads(40)), update], { model: capable });
+				await s.start(warmAt);
+				expect(s.entries).toEqual([]);
+			}
+		});
+
+		it("clears for a collapsing model whose leading prompt changes, not for one whose leading prompt stays", async () => {
+			expect(await cleared40(setup([head, ...idleMessages(reads(40)), toolUpdate]))).toBe(true);
+			// A section update becomes a user message after the head: the cached prefix is untouched.
+			const kept = setup([head, ...idleMessages(reads(40)), sectionUpdate]);
+			await kept.start(warmAt);
+			expect(kept.entries).toEqual([]);
+		});
+
+		it("clears for a model switch", async () => {
+			const switched = { ...reply(T0 + 100), provider: "other", model: "m" };
+			const messages = [{ role: "user", content: "go", timestamp: T0 }, ...flat(reads(40)), switched];
+			expect(await cleared40(setup(messages, { model: capable }))).toBe(true);
+		});
+
+		it("clears nothing without a rewrite ahead or under half the budget", async () => {
+			const warm = setup(idleMessages(reads(40)));
+			await warm.start(warmAt);
+			expect(warm.entries).toEqual([]);
+			const small = setup([head, ...idleMessages(reads(12)), toolUpdate]);
+			await small.start(warmAt);
+			expect(small.entries).toEqual([]);
+		});
 	});
 
 	it("applies the decision identically on every later request, so the prompt stays byte-stable", async () => {

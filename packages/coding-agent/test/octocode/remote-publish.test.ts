@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
 import { RemoteStatusSchema } from "@octocodeai/octocode-contracts/daemon";
 import { relayPageUrl, validRelayUrl } from "../../src/octocode/web-daemon/remote/publisher.ts";
-import { repoId } from "../../src/octocode/web-daemon/sessions.ts";
 import { daemon, pageOver, publishRelay, REPO_KEY } from "./remote-page-fixture.ts";
 
 const sessions = (origin: string, token: string) =>
@@ -105,7 +104,7 @@ describe("remote publication", () => {
 		// The room is view-only: the loopback server refuses the write, and the page never held a token to try otherwise.
 		await page.send({ kind: "request", id: "r2", method: "POST", path: "/api/admin/drain" });
 		await vi.waitFor(() => expect(page.received.find((m) => m.id === "r2")?.status).toBe(403));
-		await page.send({ kind: "stream.open", stream: "s1", path: `/r/${repoId(REPO_KEY)}/api/backlogs/live` });
+		await page.send({ kind: "stream.open", stream: "s1", path: `/r/${REPO_KEY}/api/backlogs/live` });
 		await vi.waitFor(() =>
 			expect(
 				page.received.some(

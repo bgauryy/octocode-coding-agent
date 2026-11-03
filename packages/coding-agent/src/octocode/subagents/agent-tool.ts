@@ -49,7 +49,7 @@ export function agentToolSpec() {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Fit the task: small:low lookups and mechanical steps, medium scoped edits, medium:high review, your model :high root causes and design. Default: the profile's (see models), else your model at medium.",
+						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Fit the task: small:low lookups and mechanical steps, medium scoped edits, medium:high review, your model :high root causes and design. Default: the profile's (see models); no profile: medium; thinking medium.",
 				}),
 			),
 			resultSchema: Type.Optional(

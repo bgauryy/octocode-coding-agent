@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn } from "node:child_process";
 import { hasControlCharacter } from "../utils/chars.ts";
 import { toDisplayPath } from "./path-prefix.ts";
 
@@ -74,7 +74,7 @@ export async function walkDirectoryWithFd(
 		args.push(buildFdPathQuery(query));
 	}
 
-	return await new Promise((resolve) => {
+	return new Promise((resolve) => {
 		if (signal.aborted) {
 			resolve([]);
 			return;

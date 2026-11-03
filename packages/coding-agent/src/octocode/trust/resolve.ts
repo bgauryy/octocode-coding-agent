@@ -1,8 +1,8 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { type AgentDb, type FolderDecision, type FolderGrantRow, sharedAgentDb, trust } from "../agentdb/api.ts";
+import { type AgentDb, type FolderDecision, type FolderGrantRow, trust } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
 import { agentDbPath } from "../shared/home.ts";
 import {
-	birthDiffers,
 	folderChain,
 	folderEntry,
 	homeFolder,
@@ -128,12 +128,14 @@ export function resolveFolderTrust(cwd: string, options: TrustOptions = {}): Fol
 		};
 	}
 
-	// Chain position of each live row, matched by identity (the stored birth time must not contradict the current one).
+	// Chain position of each live row, matched by identity: an exact match first, else the folder seen on a remounted volume.
 	const ignoredGrants: IgnoredGrant[] = [];
 	let nearest: { depth: number; row: FolderGrantRow } | undefined;
 	for (const [depth, entry] of chain.entries()) {
-		const row = rows.find((candidate) => candidate.dev === entry.dev && candidate.ino === entry.ino);
-		if (!row || birthDiffers(row.birth, entry.birth)) continue;
+		const row =
+			rows.find((candidate) => trust.sameFolder(candidate, entry) === "exact") ??
+			rows.find((candidate) => trust.sameFolder(candidate, entry) === "remounted");
+		if (!row) continue;
 		const reason = refusedRoot(entry.path, home, row.scope);
 		if (reason) {
 			ignoredGrants.push({ id: row.id, path: entry.path, decision: row.decision, reason });
@@ -146,12 +148,13 @@ export function resolveFolderTrust(cwd: string, options: TrustOptions = {}): Fol
 	if (!nearest) return { state: "undecided", path: canonical, ignoredGrants };
 
 	const { row, depth } = nearest;
-	const root = chain[depth].path;
-	if (row.path !== root) {
+	const { path: root, dev } = chain[depth];
+	if (row.path !== root || row.dev !== dev) {
 		try {
-			trust.refreshPath(db.db, row.id, root);
+			trust.refreshSeen(db.db, row.id, root, dev);
 		} catch {
-			// A read-only or busy database keeps the old display path; the decision itself is unaffected.
+			// A read-only or busy database keeps the old path and device; this decision is unaffected, and a remounted row
+			// still matches by inode, birth time and path next time.
 		}
 	}
 	const grant: GrantInfo = {

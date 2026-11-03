@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { peerDbPath, peerRegistryDir } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
-import { loadSqlite } from "../../src/octocode/agentdb/sqlite.ts";
+import { loadSqlite } from "../../../db/src/sqlite.ts";
 import { PEER_APPLICATION_ID, PEER_SCHEMA_VERSIONS, PeerLeases } from "../../src/octocode/team/peer-leases.ts";
 import { PEER_REGISTRY_GRACE_MS, PEER_REGISTRY_VERSION, PeerRegistry } from "../../src/octocode/team/peer-registry.ts";
 import { Team } from "../../src/octocode/team/session.ts";

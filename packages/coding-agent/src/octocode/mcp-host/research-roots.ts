@@ -16,7 +16,6 @@ import { SettingsManager } from "../../core/settings-manager.ts";
 import { isUnderPath, normalizePath } from "../../../../common/src/paths.ts";
 import { stripBom } from "../../../../common/src/text.ts";
 import type { McpResearchRoots } from "../../../../mcp/src/host.ts";
-import { sessionsRoot } from "../shared/home.ts";
 
 /** Credential stores under the home folder: a root may not be, contain or lie inside one. */
 const CREDENTIAL_STORES = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcloud", ".azure", ".kube", ".docker"];
@@ -42,15 +41,14 @@ const overlaps = (a: string, b: string): boolean => isUnderPath(a, b) || isUnder
 /** Why `candidate` (an existing folder, by spelling or by realpath) may not be a root; undefined when it may. */
 function forbiddenReason(candidates: readonly string[], env: NodeJS.ProcessEnv, home: string): string | undefined {
 	const variants = (target: string): string[] => [...new Set([path.resolve(target), realOrLoose(target)])];
-	const sessions = variants(sessionsRoot(env));
+
 	const octocodeHomes = [...new Set([getOctocodeHome(env, home), sharedHome(env, home)])];
 	for (const candidate of candidates) {
 		if (path.parse(candidate).root === candidate) return "is a filesystem root";
 		if (variants(home).includes(candidate)) return "is your home folder";
-		if (!sessions.some((root) => isUnderPath(candidate, root)))
-			for (const octocodeHome of octocodeHomes.flatMap(variants))
-				if (overlaps(candidate, octocodeHome))
-					return `contains or lies inside the Octocode home (${octocodeHome}), which holds credentials and trust decisions`;
+		for (const octocodeHome of octocodeHomes.flatMap(variants))
+			if (overlaps(candidate, octocodeHome))
+				return `contains or lies inside the Octocode home (${octocodeHome}), which holds credentials and trust decisions`;
 		for (const store of CREDENTIAL_STORES.flatMap((name) => variants(path.join(home, name))))
 			if (overlaps(candidate, store)) return `contains or lies inside the credential store ${store}`;
 	}

@@ -87,6 +87,7 @@ export async function showOAuthSelector(host: ProviderManagerHost, mode: "login"
 		const selector = new OAuthSelectorComponent(
 			mode,
 			providerOptions,
+			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result
 			async (providerId: string) => {
 				done();
 

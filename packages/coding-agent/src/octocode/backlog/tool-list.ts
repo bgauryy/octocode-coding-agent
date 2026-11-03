@@ -3,7 +3,7 @@ import type { BacklogRef, ItemType } from "@octocodeai/octocode-contracts/backlo
 import { STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { Type } from "typebox";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
-import { backlog as queries } from "../agentdb/api.ts";
+import { backlog as queries } from "../../../../db/src/api.ts";
 import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { itemLine } from "./format.ts";

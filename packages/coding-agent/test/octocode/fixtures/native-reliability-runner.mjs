@@ -27,12 +27,13 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
   fs.mkdirSync(path.join(cwd, '.git'), { recursive: true });
   const bundle = path.join(root, 'extension.mjs');
   const source = (file) => path.join(packageRoot, 'src', 'octocode', file);
-  const compiled = (file) => pathToFileURL(path.join(packageRoot, 'dist', 'octocode', file)).href;
-  fs.writeFileSync(bundle, `export { ApiClient } from ${JSON.stringify(compiled('api/client.js'))};
-    export { OctocodeBackend } from ${JSON.stringify(compiled('external/octocode.js'))};
-    export { apiDir, listInstances } from ${JSON.stringify(compiled('api/registry.js'))};
-    export { TeamStore } from ${JSON.stringify(compiled('team/store.js'))};
-    export { agentDbPath } from ${JSON.stringify(compiled('shared/home.js'))};`);
+  // The package ships only a bundle, so the fixture runs these modules from source (Node strips the types).
+  const sourceUrl = (file) => pathToFileURL(source(file)).href;
+  fs.writeFileSync(bundle, `export { ApiClient } from ${JSON.stringify(sourceUrl('api/client.ts'))};
+    export { OctocodeBackend } from ${JSON.stringify(sourceUrl('external/octocode.ts'))};
+    export { apiDir, listInstances } from ${JSON.stringify(sourceUrl('api/registry.ts'))};
+    export { TeamStore } from ${JSON.stringify(sourceUrl('team/store.ts'))};
+    export { agentDbPath } from ${JSON.stringify(sourceUrl('shared/home.ts'))};`);
   // External packages resolve from the repository, while all host state stays in the private runtime.
   fs.symlinkSync(path.join(packageRoot, '../../node_modules'), path.join(root, 'node_modules'), 'dir');
   const { ApiClient, OctocodeBackend, apiDir, listInstances, TeamStore, agentDbPath } = await import(pathToFileURL(bundle).href);
@@ -57,7 +58,7 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
   }
   function start(name) {
     const child = fork(path.join(fixtureDir, 'native-reliability-worker.mjs'), [JSON.stringify({ name, root, cwd, bundle: pathToFileURL(bundle).href })], {
-      stdio: ['ignore', 'pipe', 'pipe', 'ipc'], execArgv: [], env: { PATH: process.env.PATH },
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'], execArgv: ['--import', pathToFileURL(path.join(packageRoot, 'scripts', 'source-resolver.ts')).href], env: { PATH: process.env.PATH },
     });
     const events = [];
     const pending = new Map();

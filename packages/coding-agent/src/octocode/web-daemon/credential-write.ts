@@ -16,7 +16,7 @@ import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/ke
 import { KeychainSaveError, KeychainWrite } from "../../core/auth-storage/keychain-login.ts";
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { CredentialWriteFailure, RuntimeCredentials } from "../../core/runtime-credentials.ts";
-import type { ConfigAuditEntry } from "../agentdb/api.ts";
+import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
 import { classify, referenceMatchers } from "./config-status.ts";
 import { ConfigWriteError } from "./config-write.ts";
 

@@ -1,11 +1,11 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { ApplicationAssets } from "../../src/core/application/assets.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import type { ApplicationPort, WorkspaceConnection } from "@octocodeai/octocode-contracts";
 
 const cleanup: Array<() => void | Promise<void>> = [];
@@ -19,7 +19,7 @@ async function setup() {
 	cleanup.push(() => fs.rmSync(directory, { recursive: true, force: true }));
 	const db = openAgentDb(path.join(directory, "db"));
 	cleanup.push(() => db.close());
-	const store = new BacklogStore(() => db, "repo");
+	const store = fixtureBacklog(() => db, "repo");
 	const assets = new ApplicationAssets();
 	cleanup.push(() => assets.clear());
 	const port: ApplicationPort = {

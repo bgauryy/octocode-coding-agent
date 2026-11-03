@@ -1,6 +1,8 @@
 import { ModelThinkingLevelSchema } from "@octocodeai/octocode-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
+import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
+import { McpSettingsProperties } from "./settings-schema/mcp.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import {
 	BranchSummarySettingsSchema,
@@ -95,6 +97,13 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds,
 			}),
 		),
+		externalAgents: Type.Optional(
+			Type.Boolean({
+				description:
+					"Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
+				default: SETTINGS_DEFAULTS.externalAgents,
+			}),
+		),
 		bashOutputMaxBytes: Type.Optional(
 			Type.Number({
 				description:
@@ -103,13 +112,7 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.bashOutputMaxBytes,
 			}),
 		),
-		mcpPresentation: Type.Optional(
-			Type.Union([Type.Literal("compact"), Type.Literal("json")], {
-				description:
-					'How the cached system prompt describes MCP tools: every enabled server\'s instructions and each enabled tool\'s description and schema, in one block per server. "compact" writes them as a generated TypeScript file (a tool it cannot express faithfully is described in plain form); "json" describes every tool in plain form, as the server sent it. Provider declarations are thin either way: a one-line trigger and the top-level field types, with calls validated against the server\'s own JSON Schema.',
-				default: SETTINGS_DEFAULTS.mcpPresentation,
-			}),
-		),
+		...McpSettingsProperties,
 		research: Type.Optional(
 			Type.Object(
 				{
@@ -328,6 +331,7 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.cacheWarming,
 			}),
 		),
+		retention: Type.Optional(RetentionSettingsSchema),
 		websocketConnectTimeoutMs: Type.Optional(
 			timeoutSetting({
 				description: 'WebSocket connect or open handshake timeout in milliseconds; 0 or "disabled" disables it.',

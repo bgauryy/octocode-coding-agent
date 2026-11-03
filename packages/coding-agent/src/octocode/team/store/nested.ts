@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type Db, leases } from "../../agentdb/api.ts";
+import { type Db, leases } from "../../../../../db/src/api.ts";
 import { leaseKey } from "../lease-key.ts";
 
 /** Where a request lands in another checkout: that checkout, the matching key there, and what the request covers. */

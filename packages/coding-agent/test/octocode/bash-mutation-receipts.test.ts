@@ -26,7 +26,7 @@ describe("a mutating shell command stales verification receipts", () => {
 			"yarn tsc --noEmit",
 			"ls | wc -l",
 			"echo x > /tmp/outside.txt",
-			"echo x > .octocode/tmp/notes.md",
+			"echo x > .octa/code/temp/notes.md",
 			"yarn test 2>&1 | tail -n 20",
 		])
 			expect(await changed(command), command).toBe(false);

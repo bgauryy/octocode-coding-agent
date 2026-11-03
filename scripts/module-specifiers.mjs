@@ -162,18 +162,3 @@ export function moduleSpecifiers(source, filename) {
 	visit(program);
 	return specifiers.sort((left, right) => left.start - right.start);
 }
-
-/** Replace module source strings while retaining the original quote style and surrounding syntax. */
-export function rewriteModuleSpecifiers(source, filename, rewrite) {
-	let result = source;
-	for (const specifier of moduleSpecifiers(source, filename).reverse()) {
-		const replacement = rewrite(specifier.value);
-		if (replacement === specifier.value) continue;
-		const quote = source[specifier.start];
-		let escaped = JSON.stringify(replacement).slice(1, -1);
-		if (quote === "'") escaped = escaped.replaceAll("'", "\\'");
-		if (quote === "`") escaped = escaped.replaceAll("`", "\\`").replaceAll("${", "\\${");
-		result = result.slice(0, specifier.start) + quote + escaped + quote + result.slice(specifier.end);
-	}
-	return result;
-}

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { setCurrentSession } from "../../src/config/runtime-paths.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -18,7 +19,7 @@ import { signalTree } from "../../src/utils/process-tree.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
-import { reapOrphanJobs } from "../../src/octocode/files/bash-jobs/records.ts";
+import { reapOrphanJobs, recordFile } from "../../src/octocode/files/bash-jobs/records.ts";
 
 const until = async (check: () => boolean, ms = 5_000) => {
 	const end = Date.now() + ms;
@@ -243,34 +244,43 @@ describe.runIf(posix)("background job lifecycle", () => {
 		expect(fresh.ui.notes.filter((note) => /\/reload stopped/.test(note.message))).toHaveLength(1);
 	});
 
-	it("keeps an owner record while a job runs and removes it when the job ends", async () => {
-		const dir = tmp();
-		const jobs = new BashJobs(dir);
-		let exited = false;
-		const job = await jobs.start("sleep 0.3", tmp(), undefined, () => {
-			exited = true;
-			return exited;
-		});
-		const record = job.log.replace(/\.log$/, ".job.json");
-		expect(JSON.parse(fs.readFileSync(record, "utf8"))).toMatchObject({
-			id: job.id,
-			pid: job.pid,
-			command: "sleep 0.3",
-			log: job.log,
-			owner: { pid: process.pid },
-		});
-		expect(fs.statSync(record).mode & 0o777).toBe(0o600);
-		// A live owner's jobs are never touched.
-		expect(await reapOrphanJobs([dir])).toEqual([]);
-		await until(() => exited);
-		expect(fs.existsSync(record)).toBe(false);
+	it("keeps the owner record in private state while the workspace holds the log, and removes the record at exit", async () => {
+		const home = tmp();
+		const cwd = tmp();
+		vi.stubEnv("OCTOCODE_HOME", home);
+		setCurrentSession("job-owner", cwd);
+		const jobs = new BashJobs();
+		try {
+			let exited = false;
+			const job = await jobs.start("sleep 0.3", cwd, undefined, () => {
+				exited = true;
+			});
+			const record = recordFile(job.log);
+			expect(job.log).toContain(path.join(".octa", "code", "temp", "sessions", "job-owner", "bash"));
+			expect(path.dirname(path.dirname(record))).toBe(path.join(home, "agent", "job-owners"));
+			expect(JSON.parse(fs.readFileSync(record, "utf8"))).toMatchObject({
+				id: job.id,
+				pid: job.pid,
+				command: "sleep 0.3",
+				log: job.log,
+				owner: { pid: process.pid },
+			});
+			expect(fs.statSync(record).mode & 0o777).toBe(0o600);
+			expect(await reapOrphanJobs(jobs.recordDirs())).toEqual([]);
+			await until(() => exited);
+			expect(fs.existsSync(record)).toBe(false);
+		} finally {
+			await jobs.stopAll("session end");
+			setCurrentSession(undefined);
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("stops a job whose Octocode died and tells the user which, with its log", async () => {
 		const dir = tmp();
 		const jobs = new BashJobs(dir);
 		const job = await jobs.start("sleep 30", tmp(), undefined, () => undefined);
-		const record = job.log.replace(/\.log$/, ".job.json");
+		const record = recordFile(job.log);
 		// Its Octocode crashed: the owner in the record is a process that is gone.
 		const owned = JSON.parse(fs.readFileSync(record, "utf8"));
 		fs.writeFileSync(
@@ -346,7 +356,7 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 		const dir = tmp();
 		const job = await new BashJobs(dir).start("sleep 30 >/dev/null 2>&1 & exit 0", tmp(), undefined, () => undefined);
 		await until(() => !processAlive(job.pid) && groupAlive(job.pid));
-		orphan(job.log.replace(/\.log$/, ".job.json"));
+		orphan(recordFile(job.log));
 		expect(await reapOrphanJobs([dir])).toEqual([expect.objectContaining({ id: job.id, stopped: true })]);
 		expect(groupAlive(job.pid)).toBe(false);
 	});
@@ -379,7 +389,7 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 	it("leaves a job alone and keeps its record when ps cannot tell which process the pid is", async () => {
 		const dir = tmp();
 		const job = await new BashJobs(dir).start("sleep 30", tmp(), undefined, () => undefined);
-		const record = job.log.replace(/\.log$/, ".job.json");
+		const record = recordFile(job.log);
 		orphan(record);
 		const savedPath = process.env.PATH;
 		process.env.PATH = "";
@@ -420,10 +430,10 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 		const dir = tmp();
 		const child = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
 		try {
-			await until(() => processStartTime(child.pid!) !== undefined);
 			const record = write(dir, "bash-1-1.job.json", {
 				pid: child.pid,
-				started: processStartTime(child.pid!),
+				// The foreign host supplied this time. Its clock and local process table do not identify our child.
+				started: "1",
 				host: `not-${os.hostname()}`,
 			});
 			expect(await reapOrphanJobs([dir])).toEqual([]);
@@ -440,7 +450,7 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 			process.env.TZ = "America/Los_Angeles";
 			const dir = tmp();
 			const job = await new BashJobs(dir).start("sleep 30", tmp(), undefined, () => undefined);
-			const record = job.log.replace(/\.log$/, ".job.json");
+			const record = recordFile(job.log);
 			expect(JSON.parse(fs.readFileSync(record, "utf8"))).toMatchObject({
 				started: expect.stringMatching(/^\d+$/),
 				host: os.hostname(),

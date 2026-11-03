@@ -1,7 +1,7 @@
 import type { AgentState } from "@octocodeai/octocode-agent-core";
 import { OCTOCODE_FAVICON_DATA_URI } from "@octocodeai/octocode-webview";
-import { existsSync, readFileSync } from "fs";
-import { basename, join } from "path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";

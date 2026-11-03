@@ -1,6 +1,6 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, win32 } from "node:path";
-import { type ChildProcess, spawn, spawnSync } from "child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { getBinDir } from "../config.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
 

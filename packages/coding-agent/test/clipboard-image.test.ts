@@ -1,5 +1,5 @@
 import type { NativeClipboard } from "@octocodeai/octocode-tui";
-import { writeFileSync } from "fs";
+import { writeFileSync } from "node:fs";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { readClipboardImage } from "../src/utils/clipboard-image.ts";
 

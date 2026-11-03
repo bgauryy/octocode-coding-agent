@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import path from "node:path";
-import { globalPaths, privateDir } from "../shared/home.ts";
+import { sessionFolder, privateDir } from "../shared/home.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
@@ -31,16 +32,17 @@ export function imagesOf(result: unknown): Array<{ data: string; mimeType: strin
 }
 
 export function shotsDir(env: NodeJS.ProcessEnv = process.env): string {
-	return path.join(globalPaths(env).team, "shots");
+	return path.join(sessionFolder("output", undefined, env), "shots");
 }
 
 /** Write one screenshot (owner-only) and keep only the newest few files; the session sweep also removes old ones (`OCTOCODE_CLEANUP_DAYS`). */
 export function saveShot(dir: string, agentId: string, index: number, image: { data: string; mimeType: string }): Shot {
+	if (fs.lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink())
+		throw new Error("Screenshot directory is a symlink");
 	privateDir(dir);
 	const extension = image.mimeType.includes("jpeg") ? "jpg" : "png";
 	const file = path.join(dir, `${agentId}-${index}.${extension}`);
-	fs.writeFileSync(file, Buffer.from(image.data, "base64"), { mode: PRIVATE_FILE_MODE });
-	fs.chmodSync(file, PRIVATE_FILE_MODE); // `mode` applies only when the file is created: an overwritten one is tightened too
+	atomicWriteFileSync(file, Buffer.from(image.data, "base64"), { mode: PRIVATE_FILE_MODE });
 	const files = fs
 		.readdirSync(dir)
 		// Another Octocode process may prune the shared folder meanwhile: a vanished file simply sorts last.

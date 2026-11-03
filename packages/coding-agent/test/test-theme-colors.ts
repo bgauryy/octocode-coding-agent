@@ -1,4 +1,4 @@
-import fs from "fs";
+import fs from "node:fs";
 import { initTheme, theme } from "../src/theme/theme.ts";
 
 // --- Color utilities ---

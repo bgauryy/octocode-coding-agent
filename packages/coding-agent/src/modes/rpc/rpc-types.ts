@@ -15,6 +15,8 @@ import type { ExtensionUIPermissionRequest } from "../../core/features/types.ts"
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
+import type { DeleteByIdResult } from "../../octocode/sessions/delete.ts";
+import type { PurgeResult } from "../../octocode/sessions/purge.ts";
 import type { Static } from "typebox";
 import type { RpcCommandSchema } from "./rpc-command-schema.ts";
 
@@ -24,6 +26,17 @@ import type { RpcCommandSchema } from "./rpc-command-schema.ts";
 
 /** The command union is derived from the validation schema, so the two cannot drift apart. */
 export type RpcCommand = Static<typeof RpcCommandSchema>;
+
+/** `delete_sessions`: what was removed, refused (current or running), failed, or not found. */
+type RpcDeleteSessionsResult = DeleteByIdResult;
+
+/** `purge`: with `confirm: false` or a refusal nothing is deleted and `lines` is the preview or the reason; else the outcome. */
+interface RpcPurgeResult {
+	purged: boolean;
+	lines: string[];
+	refused?: string;
+	result?: PurgeResult;
+}
 
 // ============================================================================
 // RPC Slash Command (for get_commands response)
@@ -193,6 +206,8 @@ export type RpcResponse =
 	  }
 	| { id?: string; type: "response"; command: "set_session_name"; success: true }
 	| { id?: string; type: "response"; command: "persist_session"; success: true }
+	| { id?: string; type: "response"; command: "delete_sessions"; success: true; data: RpcDeleteSessionsResult }
+	| { id?: string; type: "response"; command: "purge"; success: true; data: RpcPurgeResult }
 
 	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }

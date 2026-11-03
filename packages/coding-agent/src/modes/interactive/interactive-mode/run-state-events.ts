@@ -128,8 +128,8 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		}
 
 		case "auto_retry_start": {
-			// Set up escape to abort retry
-			host.retryEscapeHandler = host.defaultEditor.onEscape;
+			// Each attempt emits a start; save the original handler only for the first one.
+			host.retryEscapeHandler ??= host.defaultEditor.onEscape;
 			host.defaultEditor.onEscape = () => {
 				getApplicationPort(host.session).invoke("abortRetry");
 			};

@@ -1,5 +1,6 @@
 {
 	"name": "@octocodeai/octocode-telemetry",
+	"private": true,
 	"version": "1.3.0",
 	"description": "Vendor-neutral telemetry contracts and typed schema utilities for Octocode",
 	"type": "module",
@@ -27,7 +28,7 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"build": "tsc -p tsconfig.build.json",
+		"build": "shx rm -rf dist && tsc -p tsconfig.build.json",
 		"test": "vitest --run",
 		"prepublishOnly": "yarn run clean && yarn run build"
 	},

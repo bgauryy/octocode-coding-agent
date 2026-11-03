@@ -10,12 +10,12 @@ import { saveContentCopy } from "../shared/spill.ts";
  */
 export function externalModelView(data: unknown): unknown {
 	if (!isRecord(data)) return data;
-	let view = data;
+	const view = { ...data };
 	for (const key of ["reply", "partial"] as const) {
 		const reply = data[key];
 		if (!isRecord(reply) || !Array.isArray(reply.updates)) continue;
 		const { updates, ...rest } = reply;
-		view = { ...view, [key]: { ...rest, ...savedUpdates(updates) } };
+		view[key] = { ...rest, ...savedUpdates(updates) };
 	}
 	return view;
 }

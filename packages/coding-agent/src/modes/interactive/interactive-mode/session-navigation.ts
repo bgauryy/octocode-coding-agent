@@ -9,7 +9,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import type { ExtensionCommandContext } from "../../../core/features/index.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { SessionManager } from "../../../core/session-manager.ts";
-import { sessionFileRunningPid } from "../../../octocode/agentdb/api.ts";
+import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
 import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts";
@@ -80,6 +80,7 @@ export function showUserMessageSelector(host: SessionNavigationHost): void {
 	host.showSelector((done) => {
 		const selector = new UserMessageSelectorComponent(
 			userMessages.map((m) => ({ id: m.entryId, text: m.text })),
+			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; the handler reports its own failures
 			async (entryId) => {
 				done();
 				try {
@@ -141,6 +142,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 			tree,
 			realLeafId,
 			host.ui.terminal.rows,
+			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; the handler reports its own failures
 			async (entryId) => {
 				// Selecting the current leaf is a no-op (already there)
 				if (entryId === host.sessionManager.getLeafId()) {
@@ -252,6 +254,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 			initialSelectedId,
 			initialFilterMode,
 		);
+		// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; the handler reports its own failures
 		selector.onCopy = async (text) => {
 			if (!text) {
 				host.showWarning("Selected entry has no text to copy.");
@@ -277,6 +280,7 @@ export function showSessionSelector(host: SessionNavigationHost): void {
 				host.sessionManager.usesDefaultSessionDir()
 					? SessionManager.listAll(onProgress, signal)
 					: SessionManager.listAll(host.sessionManager.getSessionDir(), onProgress, signal),
+			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result
 			async (sessionPath) => {
 				done();
 				await host.handleResumeSession(sessionPath);

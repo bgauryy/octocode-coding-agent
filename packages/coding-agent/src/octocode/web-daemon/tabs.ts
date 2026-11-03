@@ -7,7 +7,7 @@ import {
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
-import { dbStamp } from "../agentdb/api.ts";
+import { dbStamp } from "../../../../db/src/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
@@ -201,7 +201,7 @@ export class TabHub {
 	}
 
 	private snapshotFor(scope: TabScope): string {
-		const store = this.catalog.store(scope.repo.key);
+		const store = this.catalog.store(scope.repo.id);
 		return JSON.stringify({
 			type: "snapshot",
 			data: backlogSnapshot(store, scope.repo.name, Date.now(), scope.session?.id),

@@ -11,6 +11,7 @@
 import type { Component, Container, SelectListTheme, TUI } from "@octocodeai/octocode-tui";
 import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { TSchema } from "typebox";
+import type { ContractUsage } from "./contract-tiers.ts";
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
 
 /** The host application's name, version and runtime. */
@@ -48,8 +49,8 @@ export interface McpPathsPort {
 	legacyConfigDirs(agentDir: string): string[];
 	contextOptimizationDir(agentDir?: string): string;
 	contextOptimizationDirs(cwd: string | undefined, agentDir?: string): McpContextOptimizationDirs;
-	/** `<agent state>/sessions`: one folder per session. Nothing is created. */
-	sessionsRoot(env?: NodeJS.ProcessEnv): string;
+	/** Workspace-local archive and output directories the model can read from a session started in a subfolder. */
+	sessionRoots(cwd: string, env?: NodeJS.ProcessEnv): string[];
 	/**
 	 * The folders the user added for the research server, read live from the host's own sources (`env` is the process
 	 * environment, whose `ALLOWED_PATHS` counts as one). A host without user-added folders omits it.
@@ -176,7 +177,16 @@ export interface McpUiPort {
 	): Promise<void>;
 }
 
+/**
+ * Recorded tool usage for contract tiers (`contract-tiers.ts`). Optional: without it every `auto` tool takes its
+ * cold-start tier. The host freezes what it returns per workspace, scope and day, so sessions of one day agree.
+ */
+export interface McpUsagePort {
+	contractUsage(cwd: string): ContractUsage | undefined;
+}
+
 export interface McpHostPorts {
+	usage?: McpUsagePort;
 	identity: McpIdentityPort;
 	paths: McpPathsPort;
 	output: McpOutputPort;
@@ -210,3 +220,4 @@ export const hostModels = (): McpModelsPort => port("models");
 export const hostBrowser = (): McpBrowserPort => port("browser");
 export const hostRender = (): McpRenderPort => port("render");
 export const hostUi = (): McpUiPort => port("ui");
+export const hostUsage = (): McpUsagePort | undefined => installed.usage;

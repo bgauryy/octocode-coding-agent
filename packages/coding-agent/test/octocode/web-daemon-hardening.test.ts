@@ -1,3 +1,5 @@
+import { workspaces } from "../../../db/src/api.ts";
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -6,8 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { ATTACH_MAX_EVENT_BYTES } from "@octocodeai/octocode-contracts/daemon";
-import { sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { configureHttpDispatcher } from "../../src/core/http-dispatcher.ts";
 import { AttachClient, STREAM_QUEUE_BYTES, STREAM_QUEUE_FRAMES } from "../../src/octocode/web-daemon/attach-client.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
@@ -17,7 +18,6 @@ import { daemonSpawnOptions } from "../../src/octocode/web-daemon/spawn-env.ts";
 import { LineReader } from "../../src/octocode/web-daemon/lines.ts";
 import { readAttachRecord, readDaemonRecord, writeAttachRecord } from "../../src/octocode/web-daemon/records.ts";
 import { attachRecordPath, webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
-import { repoId } from "../../src/octocode/web-daemon/sessions.ts";
 import { crashGuard } from "../../src/octocode/web-daemon/main.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { fakeCtx } from "./fake-host.ts";
@@ -420,9 +420,9 @@ describe("F7: unauthenticated sockets cannot crowd out or keep alive the daemon"
 	it("neither fills the tab limit nor resets the idle timer before a token is accepted", async () => {
 		const onActivity = vi.fn();
 		const { server, origin, env } = await daemonServer({ onActivity });
-		const key = "/work/f7/.git";
-		new BacklogStore(() => sharedAgentDb(env), key).add({ title: "t", goal: "g", createdBy: "t" }, { id: "t" });
-		const url = `ws://127.0.0.1:${server.port}/r/${repoId(key)}/api/backlogs/live`;
+		const key = crypto.randomUUID();
+		fixtureBacklog(() => sharedAgentDb(env), key).add({ title: "t", goal: "g", createdBy: "t" }, { id: "t" });
+		const url = `ws://127.0.0.1:${server.port}/r/${key}/api/backlogs/live`;
 		const open = () =>
 			new Promise<WebSocket>((resolve) => {
 				const socket = new WebSocket(url, { headers: { Origin: origin } });
@@ -451,8 +451,13 @@ describe("F8: long lists are truncated, not refused", () => {
 		const server = await startDaemonServer({ env, onActivity: () => {}, config: async () => ({}), onDrain: () => {} });
 		cleanup.push(() => server.close());
 		for (let index = 0; index < 230; index++) {
-			const key = `/work/${"n".repeat(index === 0 ? 300 : 1)}${index}/.git`;
-			new BacklogStore(() => sharedAgentDb(env), key).add({ title: "t", goal: "g", createdBy: "t" }, { id: "t" });
+			const name = "n".repeat(index === 0 ? 300 : 1) + index;
+			workspaces.register(sharedAgentDb(env).db, {
+				id: crypto.randomUUID(),
+				name,
+				root: "/work/" + name,
+				binding: String(index),
+			});
 		}
 		const response = await fetch(`http://127.0.0.1:${server.port}/api/repos`, {
 			headers: { Authorization: `Bearer ${server.token}` },
@@ -609,8 +614,8 @@ describe("F9: smaller items", () => {
 	it("forgets a session's remembered workspace when its last tab closes", async () => {
 		const { env } = isolatedEnv();
 		const session = fakeSession("sess-w");
-		const key = "/work/f9/.git";
-		new BacklogStore(() => sharedAgentDb(env), key).add({ title: "t", goal: "g", createdBy: "t" }, { id: "t" });
+		const key = crypto.randomUUID();
+		fixtureBacklog(() => sharedAgentDb(env), key).add({ title: "t", goal: "g", createdBy: "t" }, { id: "t" });
 		const endpoint2 = await startAttachServer(
 			{
 				sessionId: "sess-w",

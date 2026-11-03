@@ -66,6 +66,7 @@ it("retains Responses native execution logs, source URLs, and status without con
 				status: "completed",
 				action: {
 					type: "search",
+					// oxlint-disable-next-line typescript/no-deprecated -- the fixture is the wire shape providers still send
 					query: "fixture source",
 					sources: [{ type: "url", url: "https://example.invalid/source" }],
 				},

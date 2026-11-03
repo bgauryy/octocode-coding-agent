@@ -1,3 +1,4 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { fork } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -6,9 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { openAgentDb } from "../../src/config/database.ts";
 import type { Backlog, BacklogWeb } from "../../src/octocode/backlog/context.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { sharedWorkspaceWeb } from "../../src/octocode/backlog/shared-web.ts";
 import { readRecord, registryPaths } from "../../src/octocode/backlog/shared-web-registry.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
@@ -37,7 +37,10 @@ async function fakeWorkspaceServer(token: string): Promise<BacklogWeb> {
 			res.writeHead(401).end();
 		}
 	});
-	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", resolve);
+	});
 	const { port } = server.address() as AddressInfo;
 	return {
 		url: `http://127.0.0.1:${port}/#access=${token}`,
@@ -171,13 +174,18 @@ describe("sharedWorkspaceWeb controlled fakes", () => {
 	});
 
 	it("creates an owner-only registry directory", async () => {
-		const openWeb = async (): Promise<BacklogWeb> => fakeWorkspaceServer("owner-only");
+		const openWeb = async (): Promise<BacklogWeb> => ({
+			url: "http://127.0.0.1:12345/#access=owner-only",
+			close: async () => undefined,
+		});
 		const helper = sharedWorkspaceWeb(openWeb);
-		await helper({} as never, backlog, () => undefined);
-		const { dir: registryDir } = registryPathsForTest(dir, "session-test");
-		const stat = fs.statSync(registryDir);
-		// The directory is created with 0o700; on some platforms the actual mode may be masked.
-		expect(stat.mode & 0o777).toBe(0o700);
+		const web = await helper({} as never, backlog, () => undefined);
+		try {
+			const { dir: registryDir } = registryPathsForTest(dir, "session-test");
+			expect(fs.statSync(registryDir).mode & 0o777).toBe(0o700);
+		} finally {
+			await web.close();
+		}
 	});
 
 	it("shares a workspace server across processes", async () => {
@@ -249,7 +257,7 @@ describe("sharedWorkspaceWeb with startWorkspaceWeb", () => {
 	});
 
 	it("shares a real workspace web server within one process", async () => {
-		const store = new BacklogStore(() => db, "repo");
+		const store = fixtureBacklog(() => db, "repo");
 		const actor = { id: "parent" };
 		const backlog: Backlog = {
 			store,
@@ -277,7 +285,7 @@ describe("sharedWorkspaceWeb with startWorkspaceWeb", () => {
 	});
 
 	it("validates a server this process owns from local state, without a loopback request", async () => {
-		const store = new BacklogStore(() => db, "repo");
+		const store = fixtureBacklog(() => db, "repo");
 		const backlog: Backlog = { store, actor: { id: "parent" }, session: "local", repoName: "repo", repoRoot: dir };
 		const helper = sharedWorkspaceWeb(async (_ctx, current, changed) => startWorkspaceWeb(current, changed));
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -297,7 +305,7 @@ describe("sharedWorkspaceWeb with startWorkspaceWeb", () => {
 	});
 
 	it("keeps each session's live workspace separate while sharing repository entities", async () => {
-		const store = new BacklogStore(() => db, "repo");
+		const store = fixtureBacklog(() => db, "repo");
 		const backlog: Backlog = { store, actor: { id: "first" }, session: "first", repoName: "repo", repoRoot: dir };
 		const helper = sharedWorkspaceWeb(async (_ctx, current, changed) => startWorkspaceWeb(current, changed));
 		const first = await helper({} as never, backlog, () => undefined);

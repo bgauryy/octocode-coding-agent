@@ -39,7 +39,7 @@ describe("models.json through discovery", () => {
 
 	it("reads Octocode's file first: its provider wins a clash, a Pi-only provider is added", async () => {
 		write(join(sandbox.agentDir, "models.json"), provider("shared", "http://octocode.test/v1"));
-		write(join(sandbox.piAgentDir, "models.json"), `${provider("shared", "http://pi.test/v1")}`);
+		write(join(sandbox.piAgentDir, "models.json"), provider("shared", "http://pi.test/v1"));
 		write(join(sandbox.home, ".pi", "models.json"), provider("legacy-root"));
 		const config = await ModelConfig.load(join(sandbox.agentDir, "models.json"));
 		expect([...config.getProviderIds()].sort()).toEqual(["legacy-root", "shared"]);

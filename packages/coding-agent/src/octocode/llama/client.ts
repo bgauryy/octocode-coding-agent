@@ -333,7 +333,7 @@ export class LlamaClient {
 					const progress = parseDownloadProgress(entry.status.progress);
 					if (progress) onProgress(progress);
 				} else if (finished || (entry && (sawDownloading || polls >= 2))) {
-					return this.list({ reload: true, signal });
+					return await this.list({ reload: true, signal });
 				}
 				await sleep(500, signal);
 			}

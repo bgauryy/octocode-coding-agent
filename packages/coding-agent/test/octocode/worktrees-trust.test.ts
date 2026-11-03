@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { grantFolder } from "../../src/octocode/trust/grants.ts";
 import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
 import { allowWorktreeGrants, worktreeTrustTitle } from "../../src/octocode/worktrees/approval.ts";

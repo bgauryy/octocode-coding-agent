@@ -1,9 +1,6 @@
-import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { gitQuiet } from "../shared/git.ts";
-import { repoKey } from "../shared/home/repo.ts";
-import { canonical } from "./repo.ts";
+import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
 
 /** What the worktree command and footer need from the team, passed in so this domain does not depend on `team/`. */
 export interface WorktreeTeam {
@@ -36,34 +33,21 @@ export function worktreeFooterText(
 	return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-/** The folder name when `cwd` is in a linked worktree (git dir differs from the common dir), else undefined; one git call. */
-async function linkedName(cwd: string, root: string): Promise<string | undefined> {
-	const out = await gitQuiet(cwd, ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"]);
-	const [gitDir, common] = out?.split(/\r?\n/u) ?? [];
-	return gitDir && common && canonical(gitDir) !== canonical(common) ? path.basename(root) : undefined;
-}
-
 /**
- * Shows where this session works and who else is in the repository's other worktrees (`ctx.ui.setStatus`). One git call
- * at session start finds out whether this is a linked worktree; after that the text follows the team's own refresh tick
- * (`team.watch`, a cached read) and is written only when it changes.
+ * The footer reads the same checkout discovery as the workspace catalog, then updates when the team view changes.
  */
 export function registerWorktreeFooter(api: ExtensionAPI, team: Pick<WorktreeTeam, "watch" | "view">): void {
 	let stop: (() => void) | undefined;
-	let generation = 0;
 	const end = () => {
-		generation++;
 		stop?.();
 		stop = undefined;
 	};
 	api.on("session_shutdown", async () => end());
 	api.on("session_start", async (_event, ctx: ExtensionContext) => {
 		end();
-		const mine = generation;
 		// A member's checkout is its repository root; a main session (the only one with a footer) has no workspace override.
-		const root = repoKey(ctx.cwd).root;
-		const linked = await linkedName(ctx.cwd, root);
-		if (mine !== generation) return;
+		const { root, name } = repoKey(ctx.cwd);
+		const linked = workspaceGit(ctx.cwd)?.linkedWorktree ? name : undefined;
 		let shown: string | undefined;
 		stop = team.watch(() => {
 			const text = worktreeFooterText(linked, root, team.view.members);

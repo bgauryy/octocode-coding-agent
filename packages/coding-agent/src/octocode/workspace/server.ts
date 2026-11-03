@@ -19,7 +19,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, WebSocket } from "ws";
 import { Value } from "typebox/value";
-import { USER_AUTHOR } from "../agentdb/api.ts";
+import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { BacklogError, TaskError } from "../backlog/store.ts";

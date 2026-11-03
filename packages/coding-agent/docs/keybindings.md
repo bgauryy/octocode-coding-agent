@@ -146,7 +146,8 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 | `app.session.toggleSort`        | `ctrl+s`         | Toggle sort mode                       |
 | `app.session.toggleNamedFilter` | `ctrl+n`         | Toggle named-only filter               |
 | `app.session.rename`            | `ctrl+r`         | Rename session                         |
-| `app.session.delete`            | `ctrl+d`         | Delete session                         |
+| `app.session.delete`            | `ctrl+d`         | Delete the marked sessions, or this one |
+| `app.session.mark`              | `ctrl+x`         | Mark the session for deletion          |
 | `app.session.actions`           | `ctrl+o`         | Open the picker's action menu          |
 | `app.session.deleteNoninvasive` | `ctrl+backspace` | Delete session when query is empty     |
 

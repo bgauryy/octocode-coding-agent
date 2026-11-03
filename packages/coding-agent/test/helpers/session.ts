@@ -10,7 +10,7 @@ import {
 import { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import type { ResourceLoader } from "../../src/core/resource-loader/types.ts";
-import { getDefaultSessionDir, SessionManager } from "../../src/core/session-manager.ts";
+import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 
 export interface CreateTestSessionOptions extends Omit<
@@ -56,7 +56,7 @@ export async function createTestSession(options: CreateTestSessionOptions = {}):
 			agentDirOption ? { authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") } : {},
 		));
 	const settingsManager = settingsManagerOption ?? SettingsManager.create(cwd, agentDir);
-	const sessionManager = sessionManagerOption ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
+	const sessionManager = sessionManagerOption ?? SessionManager.create(cwd);
 	let resourceLoader = resourceLoaderOption;
 	if (!resourceLoader) {
 		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });

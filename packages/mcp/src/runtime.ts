@@ -261,7 +261,8 @@ export class McpServerConnection implements McpToolCaller {
 			if (signal.aborted || this.closed || (this.client && this.client !== client)) return;
 			this.clientError = error.message;
 		});
-		signal.addEventListener("abort", closeClient, { once: true });
+		const onAbort = () => void closeClient();
+		signal.addEventListener("abort", onAbort, { once: true });
 		let transport: McpTransport | undefined;
 		const listChanges = trackToolListChanges(client, {
 			isCurrent: () => this.client === client,
@@ -289,7 +290,7 @@ export class McpServerConnection implements McpToolCaller {
 			if (transport instanceof StdioTransport) this.stderrTail = stderrTail(transport);
 			throw error;
 		} finally {
-			signal.removeEventListener("abort", closeClient);
+			signal.removeEventListener("abort", onAbort);
 		}
 	}
 

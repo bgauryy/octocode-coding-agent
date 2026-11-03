@@ -14,7 +14,7 @@ export default mergeConfig(
 			environment: "node",
 			include: ["test/octocode/e2e*.test.ts"],
 			setupFiles: ["test/octocode/setup-env.ts"],
-			globalSetup: ["test/octocode/mcp-preflight.global.ts"],
+			globalSetup: ["test/home-guard.global.ts", "test/octocode/mcp-preflight.global.ts"],
 			testTimeout: 60000,
 			hookTimeout: 60000,
 			maxWorkers: 2,

@@ -1,3 +1,4 @@
+import { withSessionStorage } from "../../config/runtime-paths.ts";
 import type { Provider } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
@@ -77,7 +78,8 @@ export function createExtensionAPI(
 		// Registration methods - write to extension
 		on(event: string, handler: HandlerFn): () => void {
 			assertActive();
-			const registeredHandler: HandlerFn = (...args) => handler(...args);
+			const registeredHandler: HandlerFn = (event, context) =>
+				withSessionStorage((context as ExtensionContext | undefined)?.sessionManager, () => handler(event, context));
 			const list = extension.handlers.get(event) ?? [];
 			list.push(registeredHandler);
 			extension.handlers.set(event, list);
@@ -126,6 +128,7 @@ export function createExtensionAPI(
 				name,
 				sourceInfo: extension.sourceInfo,
 				...options,
+				handler: (args, ctx) => withSessionStorage(ctx.sessionManager, () => options.handler(args, ctx)),
 			});
 		},
 
@@ -285,6 +288,7 @@ export function createExtensionAPI(
 			return runtime.getThinkingLevel();
 		},
 
+		// oxlint-disable-next-line typescript/no-deprecated -- implements the deprecated API member, kept until it is removed from the interface
 		setThinkingLevel(level) {
 			assertActive();
 			runtime.setThinkingLevel(level);
@@ -336,6 +340,7 @@ export function createExtensionAPI(
 			applyRuntimeChange(() => runtime.registerVirtualModel(definition, extension.path));
 		},
 
+		// oxlint-disable-next-line typescript/no-deprecated -- implements the deprecated API member, kept until it is removed from the interface
 		unregisterVirtualModel(provider: string, id: string) {
 			assertActive();
 			applyRuntimeChange(() => runtime.unregisterVirtualModel(provider, id));

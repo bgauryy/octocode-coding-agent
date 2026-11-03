@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeTestCodingAgent, codingAgentName } from "./coding-agent-smoke.mjs";
 import { execNpmSync } from "./npm-command.mjs";
+import { publishedManifest } from "./publish-stage.mjs";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
 import {
 	createInstallerManifest,
@@ -105,7 +106,7 @@ try {
 			execFileSync("tar", ["-xzf", archive, "-C", extracted]);
 			const packageDirectory = join(extracted, "package");
 			const sourceManifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8"));
-			const candidate = stageRegistryManifest(sourceManifest, mapping.packages, workspaceVersions);
+			const candidate = stageRegistryManifest(publishedManifest(sourceManifest), mapping.packages, workspaceVersions);
 			if (candidate.name !== pkg.name || candidate.version !== pkg.version)
 				throw new Error(`Packed manifest changed identity: ${pkg.name}`);
 			writeFileSync(join(packageDirectory, "package.json"), `${JSON.stringify(candidate, null, "\t")}\n`);

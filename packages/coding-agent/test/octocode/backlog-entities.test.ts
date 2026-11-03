@@ -1,3 +1,4 @@
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { WebSocket } from "ws";
 import { once } from "node:events";
 import fs from "node:fs";
@@ -5,9 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backlog } from "../../src/octocode/agentdb/api.ts";
-import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { backlog, type AgentDb } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import type { BacklogWeb } from "../../src/octocode/backlog/context.ts";
@@ -34,7 +35,7 @@ const add = (title: string, fields = {}) =>
 beforeEach(() => {
 	dir = fs.mkdtempSync(path.join(os.tmpdir(), "entities-"));
 	db = openAgentDb(path.join(dir, "db"));
-	store = new BacklogStore(() => db, "repo");
+	store = fixtureBacklog(() => db, "repo");
 });
 afterEach(async () => {
 	await web?.close();
@@ -283,7 +284,7 @@ describe("live local backlog", () => {
 		const other = openAgentDb(db.file);
 		try {
 			const update = once(client, "message");
-			new BacklogStore(() => other, "repo").add({ title: "From another session", createdBy: "user" });
+			fixtureBacklog(() => other, "repo").add({ title: "From another session", createdBy: "user" });
 			expect(JSON.parse((await update)[0].toString()).data.items[0].title).toBe("From another session");
 		} finally {
 			other.close();

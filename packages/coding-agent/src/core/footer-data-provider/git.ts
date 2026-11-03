@@ -1,6 +1,6 @@
-import { type ExecFileException, execFile, spawnSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { type ExecFileException, execFile, spawnSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { gitMarkerDir } from "../../utils/git-marker.ts";
 
 export type GitPaths = {

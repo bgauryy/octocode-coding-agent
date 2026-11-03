@@ -77,6 +77,8 @@ const CASES: Record<string, Case> = {
 	memory: { check: asks(/memor/i) },
 	plugins: { check: asks(/type to filter/) },
 	rewind: { check: says(/No file changes to rewind on this branch/) },
+	// Without a scope word `/purge` only prints its usage; deleting needs a preview and a typed confirmation.
+	purge: { check: says(/Usage: \/purge workspace\|all/) },
 	worktree: { check: says(/worktree/i) },
 	// `/remote` publishes the user-level daemon; without OCTOCODE_WEB_DAEMON=1 it refuses and starts nothing.
 	remote: { check: says(/Could not publish a remote link:[\s\S]*OCTOCODE_WEB_DAEMON=1/) },

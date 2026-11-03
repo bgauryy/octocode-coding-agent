@@ -2,7 +2,7 @@
  * Output files: files Octocode writes so the model can use output it was not shown in full, such as the
  * full text of truncated tool output, binary MCP resources, and images shown by programmatic tool callers.
  * Every output file is created here, so where they are stored can change in one place. Today they
- * go to the OS temp directory.
+ * go to the active session’s private workspace output folder.
  */
 
 import { randomBytes } from "node:crypto";
@@ -20,7 +20,7 @@ import {
 	statSync,
 	type WriteStream,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { runtimeTempDir } from "../config/runtime-paths.ts";
 import { basename, join } from "node:path";
 import { finished } from "node:stream/promises";
 
@@ -86,7 +86,7 @@ export function moveOutputFile(path: string, dir: string): string {
 
 /** A new, unused path: `<dir>/<prefix>-<random hex><extension>`. `extension` includes the dot. */
 function createOutputFilePath(prefix: string, extension: string): string {
-	return join(tmpdir(), `${prefix}-${randomBytes(8).toString("hex")}${extension}`);
+	return join(runtimeTempDir(), `${prefix}-${randomBytes(8).toString("hex")}${extension}`);
 }
 
 /** Open a new output file for streamed output. */

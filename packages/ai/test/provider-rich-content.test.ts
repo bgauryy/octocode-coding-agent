@@ -78,6 +78,7 @@ describe("provider rich output", () => {
 				],
 			},
 			{ type: "image_generation_call", id: "image1", result: "aW1hZ2U=", output_format: "webp", status: "completed" },
+			// oxlint-disable-next-line typescript/no-deprecated -- the fixture is the wire shape providers still send
 			{ type: "web_search_call", id: "search1", status: "completed", action: { type: "search", query: "source" } },
 		]);
 		expect(output.content).toMatchObject([

@@ -8,6 +8,7 @@ dist/
 packages/*/dist/
 packages/*/dist-chrome/
 .octocode
+**/.octa/code/
 packages/*/dist-firefox/
 packages/ai/src/providers/data/
 packages/ai/src/providers/.model-generation-*/
@@ -47,4 +48,3 @@ collect.sh
 .pnp.*
 TMPTMP
 # Disposable host compilation trees
-packages/*/.build-sources-*/

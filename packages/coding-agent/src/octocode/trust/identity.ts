@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { FolderIdentity } from "../agentdb/api.ts";
+import type { FolderIdentity } from "../../../../db/src/api.ts";
 
 /**
  * Which folder is this? Trust attaches to a folder's file identity (device, inode, birth time), never to the path
@@ -64,11 +64,6 @@ export function refusedRoot(folder: string, home: string, scope: RefusedScope): 
 	if (folder === home) return "home";
 	if (scope === "subtree" && home.startsWith(`${folder}${path.sep}`)) return "contains-home";
 	return undefined;
-}
-
-/** Whether a stored birth time contradicts the folder's current one (an inode reused by a different folder). */
-export function birthDiffers(stored: string, current: string): boolean {
-	return stored !== "0" && stored !== current;
 }
 
 /** The name recorded as the person who decided: the operating system user. */

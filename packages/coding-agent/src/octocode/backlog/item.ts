@@ -6,7 +6,7 @@ import {
 	type WorkLink,
 } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
-import { USER_AUTHOR } from "../agentdb/api.ts";
+import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { cutText } from "../../../../common/src/text.ts";
 

@@ -1,3 +1,4 @@
+import { fixtureBacklog } from "../backlog-fixture.ts";
 import path from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
 import { createAssistantMessageEventStream, type AssistantMessage } from "@octocodeai/octocode-ai/compat";
@@ -7,8 +8,7 @@ import { getApplicationPort } from "../../../src/core/application/index.ts";
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
-import { openAgentDb } from "../../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../../src/octocode/backlog/store.ts";
+import { openAgentDb } from "../../../src/config/database.ts";
 import { sharedWorkspaceWeb } from "../../../src/octocode/backlog/shared-web.ts";
 import { WorkspaceRuntime } from "../../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../../src/octocode/workspace/server.ts";
@@ -56,7 +56,7 @@ export async function workspaceAgent(root: string, label: string) {
 	const application = getApplicationPort(session);
 	application.subscribeNative((event) => terminal.push(event));
 	const db = openAgentDb(path.join(root, "db"));
-	const store = new BacklogStore(() => db, "shared-repo");
+	const store = fixtureBacklog(() => db, "shared-repo");
 	const ctx = fakeCtx({ cwd: root });
 	ctx.sessionManager.getSessionId = () => session.sessionId;
 	const runtime = new WorkspaceRuntime(fakeHost().api, {

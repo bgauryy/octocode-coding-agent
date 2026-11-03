@@ -220,13 +220,14 @@ describe("unified MCP slash management", () => {
 		for (const server of ["fixture", "octocode"]) {
 			expect(await run({ intent: "stop", server })).toBe(`Stopped for this session. ${server}: stopped`);
 			expect(harness.session.getCallableToolNames()).not.toContain(`mcp__${server}__echo`);
-			expect(await run({ intent: "connect", server })).toMatch(/^Restarted\./);
+			expect(await run({ intent: "restart", server })).toMatch(/^Restarted\./);
 			expect(harness.session.getCallableToolNames()).toContain(`mcp__${server}__echo`);
-			await expect(run({ intent: "remove", server })).rejects.toThrow("comes from configuration");
+			// Definitions change through `/mcp` or `octocode mcp`, never through the model's tool.
+			await expect(run({ intent: "remove", server })).rejects.toThrow('The mcp intent "remove" was removed');
 		}
 	});
 
-	it("refuses a session add that configuration would silently override by namespace", async () => {
+	it("refuses an add from the model's tool without asking or registering anything", async () => {
 		const { harness, state } = await setup([
 			{ ...entry("docs-server", "global"), config: { command: "never-launch", enabled: false } },
 		]);
@@ -242,7 +243,7 @@ describe("unified MCP slash management", () => {
 				undefined,
 				ctx,
 			),
-		).rejects.toThrow('MCP server "docs-server" already exists');
+		).rejects.toThrow('The mcp intent "add" was removed');
 		expect(confirm).not.toHaveBeenCalled();
 		expect(state.api.getMcpServers()).toEqual([]);
 		expect(state.servers.map((server) => server.entry.name)).toEqual(["docs-server"]);

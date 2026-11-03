@@ -6,7 +6,8 @@ interface Dispatch {
 	owner: object;
 	controller: AbortController;
 	pending: Set<Promise<unknown>>;
-	failure?: unknown;
+	/** The first failure, boxed so a thrown `undefined` or `null` still counts. */
+	failure?: { error: unknown };
 	open: boolean;
 }
 interface Activity {
@@ -57,7 +58,7 @@ export function trackSessionDispatch<T>(
 		if (--state.count === 0) changed(false, scope.id);
 	};
 	void pending.then(finished, (error) => {
-		scope.failure ??= error;
+		scope.failure ??= { error };
 		finished();
 	});
 	return pending;
@@ -99,10 +100,10 @@ export async function completeSessionDispatch(
 		try {
 			await current.run(scope, operation);
 		} catch (error) {
-			scope.failure ??= error;
+			scope.failure ??= { error };
 		}
 		while (scope.pending.size > 0) await Promise.allSettled(scope.pending);
-		if (scope.failure !== undefined) throw scope.failure;
+		if (scope.failure) throw scope.failure.error;
 		scope.controller.signal.throwIfAborted();
 	} finally {
 		scope.open = false;

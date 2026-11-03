@@ -48,6 +48,14 @@ describe("session application assets", () => {
 		expect(() => assets.upload({ mimeType: "image/png", data: "A".repeat(28 * 1024 * 1024) })).toThrow(/20 MiB/);
 		expect(() => assets.put("a".repeat(33 * 1024 * 1024), "text/plain")).toThrow(/32 MiB/);
 	});
+	it("keeps uploaded bytes and IDs compatible with ordinary base64 assets", () => {
+		const data = Buffer.alloc(1024 * 1024, 0xab).toString("base64");
+		const uploaded = store(true);
+		const ordinary = store(true);
+		const asset = uploaded.upload({ mimeType: "image/png", data, name: "large.png" });
+		expect(asset).toEqual({ ...ordinary.put(data, "image/png", "base64"), name: "large.png" });
+		expect(uploaded.get(asset.id)?.data).toBe(data);
+	});
 	it("keeps assets isolated between sessions even when content IDs match", () => {
 		const first = store();
 		const second = store();

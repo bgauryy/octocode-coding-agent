@@ -72,8 +72,16 @@ function editedReadPaths(entries: ContextEntry[], edited: ReadonlySet<string>, c
 
 export { registerCompactTool } from "./compact-tool.ts";
 
-/** Returns the agent's compaction requests, for the `compact` tool (`registerCompactTool`). */
-export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubagent = false): CompactRequests {
+/**
+ * Returns the agent's compaction requests, for the `compact` tool (`registerCompactTool`). `parentId` is a subagent's
+ * parent: a checkpoint keeps its mail to this agent word for word.
+ */
+export function registerCompaction(
+	api: ExtensionAPI,
+	guard: FileGuard,
+	isSubagent = false,
+	parentId?: string,
+): CompactRequests {
 	// One assistant message's tool results share a text budget; the overflow is saved to a file (`shared/turn-budget.ts`).
 	registerTurnBudget(api);
 	const tooLarge = new TooLargeRecovery();
@@ -159,7 +167,7 @@ export function registerCompaction(api: ExtensionAPI, guard: FileGuard, isSubage
 		carryFileLists(event.preparation, event.branchEntries);
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
-		return writeSummary(api, event, ctx, from, continuity);
+		return writeSummary(api, event, ctx, from, continuity, parentId);
 	});
 
 	api.on("session_start", async (_event, ctx) => {

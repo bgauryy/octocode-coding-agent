@@ -1,3 +1,6 @@
+import { workspaces } from "../../../db/src/api.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { fixtureBacklog } from "./backlog-fixture.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -8,11 +11,9 @@ import { WebSocket } from "ws";
 import { DaemonHealthSchema, DaemonStatusSchema } from "@octocodeai/octocode-contracts/daemon";
 import { Value } from "typebox/value";
 import { mermaidScript } from "@octocodeai/octocode-webview";
-import { sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { sharedAgentDb } from "../../src/config/database.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
 import { daemonPage } from "../../src/octocode/web-daemon/build.ts";
-import { repoId } from "../../src/octocode/web-daemon/sessions.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { fakeSession, frame, isolatedEnv } from "./web-daemon-fixture.ts";
 
@@ -21,7 +22,7 @@ afterEach(async () => {
 	for (const fn of cleanup.splice(0).reverse()) await fn();
 });
 
-const REPO_KEY = "/work/demo/.git";
+const REPO_KEY = "ce04658b-7c62-406f-b82b-f2dbd3e8536f";
 
 async function daemon() {
 	const { env } = isolatedEnv();
@@ -58,7 +59,8 @@ function rawRequest(
 }
 
 function seedBacklog(env: NodeJS.ProcessEnv) {
-	const store = new BacklogStore(() => sharedAgentDb(env), REPO_KEY);
+	workspaces.register(sharedAgentDb(env).db, { id: REPO_KEY, name: "demo", root: "/work/demo", binding: "mock" });
+	const store = fixtureBacklog(() => sharedAgentDb(env), REPO_KEY);
 	store.add({ title: "Daemon item", goal: "Seen in the daemon", createdBy: "tester" }, { id: "tester" });
 }
 
@@ -215,10 +217,10 @@ describe("daemon with attached sessions and repositories", () => {
 		expect(server.registry.attached).toBe(1);
 		const sessions = await (await authed("/api/sessions")).json();
 		expect(sessions.sessions).toEqual([
-			expect.objectContaining({ id: "sess-1", repoName: "demo", repoId: repoId(REPO_KEY), attached: true }),
+			expect.objectContaining({ id: "sess-1", repoName: "demo", repoId: REPO_KEY, attached: true }),
 		]);
 		const repos = await (await authed("/api/repos")).json();
-		expect(repos.repos).toEqual([expect.objectContaining({ id: repoId(REPO_KEY), name: "demo", sessions: 1 })]);
+		expect(repos.repos).toEqual([expect.objectContaining({ id: REPO_KEY, name: "demo", sessions: 1 })]);
 	});
 
 	it("proxies session commands through the attach endpoint and keeps the board read-only", async () => {
@@ -260,7 +262,7 @@ describe("daemon with attached sessions and repositories", () => {
 
 	it("serves a repository's board with no session and refuses agent controls there", async () => {
 		const { authed } = await attached();
-		const base = `/r/${repoId(REPO_KEY)}`;
+		const base = `/r/${REPO_KEY}`;
 		const board = await (await authed(`${base}/api/backlogs`)).json();
 		expect(board.items).toHaveLength(1);
 		expect((await authed(`${base}/api/workspace`)).status).toBe(503);
@@ -277,9 +279,8 @@ describe("daemon with attached sessions and repositories", () => {
 		fs.mkdirSync(folder, { recursive: true });
 		fs.writeFileSync(path.join(folder, "RFC.md"), "---\nstatus: Proposed\n---\n# Demo RFC\n");
 		fs.writeFileSync(path.join(root, "secret.md"), "# not a report\n");
-		const key = path.join(root, ".git");
-		new BacklogStore(() => sharedAgentDb(ctx.env), key).add({ title: "x", goal: "y", createdBy: "t" }, { id: "t" });
-		const base = `/r/${repoId(key)}`;
+		const key = registeredWorkspace(root, sharedAgentDb(ctx.env)).id;
+		const base = `/r/${key}`;
 		const index = await (await ctx.authed(`${base}/api/reports`)).json();
 		expect(index.reports).toEqual([expect.objectContaining({ id: "2026-01-01-demo", kind: "rfc", title: "Demo RFC" })]);
 		const file = await ctx.authed(`${base}/api/reports/file?id=2026-01-01-demo&kind=rfc&name=RFC.md`);
@@ -289,6 +290,12 @@ describe("daemon with attached sessions and repositories", () => {
 				404,
 			);
 		expect((await ctx.authed(`${base}/api/reports`, { method: "POST" })).status).toBe(405);
+		// The history stays addressable when a different checkout replaces the one recorded at this path.
+		fs.rmSync(path.join(root, ".octa"), { recursive: true });
+		const replacement = registeredWorkspace(root, sharedAgentDb(ctx.env));
+		expect(replacement.id).not.toBe(key);
+		expect(await (await ctx.authed(`${base}/api/reports`)).json()).toEqual({ reports: [] });
+		expect((await ctx.authed(`/r/${replacement.id}/api/reports`)).status).toBe(200);
 	});
 
 	it("opens a tab socket only for the exact origin and host, then needs the token hello", async () => {
@@ -358,7 +365,7 @@ describe("daemon with attached sessions and repositories", () => {
 
 	it("sends the board again only after the database changed, and announces a drain to open tabs", async () => {
 		const { server, origin, env } = await attached();
-		const socket = new WebSocket(`ws://127.0.0.1:${server.port}/r/${repoId(REPO_KEY)}/api/backlogs/live`, {
+		const socket = new WebSocket(`ws://127.0.0.1:${server.port}/r/${REPO_KEY}/api/backlogs/live`, {
 			headers: { Origin: origin },
 		});
 		cleanup.push(() => socket.terminate());
@@ -369,7 +376,7 @@ describe("daemon with attached sessions and repositories", () => {
 		await vi.waitFor(() => expect(packets.filter((packet) => packet.type === "snapshot")).toHaveLength(1));
 		await new Promise((resolve) => setTimeout(resolve, 1600));
 		expect(packets.filter((packet) => packet.type === "snapshot")).toHaveLength(1);
-		new BacklogStore(() => sharedAgentDb(env), REPO_KEY).add(
+		fixtureBacklog(() => sharedAgentDb(env), REPO_KEY).add(
 			{ title: "Second", goal: "Seen later", createdBy: "t" },
 			{ id: "t" },
 		);
@@ -380,7 +387,7 @@ describe("daemon with attached sessions and repositories", () => {
 			expect(packets.some((packet) => packet.type === "daemon" && packet.data.draining)).toBe(true),
 		);
 		const late = await new Promise<number>((resolve) => {
-			const next = new WebSocket(`ws://127.0.0.1:${server.port}/r/${repoId(REPO_KEY)}/api/backlogs/live`, {
+			const next = new WebSocket(`ws://127.0.0.1:${server.port}/r/${REPO_KEY}/api/backlogs/live`, {
 				headers: { Origin: origin },
 			});
 			next.on("unexpected-response", (_request, response) => resolve(response.statusCode ?? 0));
@@ -456,6 +463,6 @@ describe("daemon with attached sessions and repositories", () => {
 		expect((await (await authed("/api/sessions")).json()).sessions).toEqual([]);
 		expect((await authed("/s/sess-1/api/workspace")).status).toBe(404);
 		// The board and repositories stay available with no session attached.
-		expect((await (await authed(`/r/${repoId(REPO_KEY)}/api/backlogs`)).json()).items).toHaveLength(1);
+		expect((await (await authed(`/r/${REPO_KEY}/api/backlogs`)).json()).items).toHaveLength(1);
 	});
 });

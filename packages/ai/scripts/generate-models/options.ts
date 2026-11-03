@@ -1,5 +1,5 @@
-import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Command-line options of the model catalog generator, and the package it writes into. */
 

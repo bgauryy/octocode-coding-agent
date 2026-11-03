@@ -1,5 +1,5 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { num, type Row } from "../agentdb/api.ts";
+import { num, type Row } from "../../../../db/src/api.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 

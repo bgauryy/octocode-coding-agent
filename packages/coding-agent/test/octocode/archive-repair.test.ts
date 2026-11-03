@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { openAgentDb, compactions } from "../../src/octocode/agentdb/api.ts";
+import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { openAgentDb } from "../../src/config/database.ts";
+import { compactions } from "../../../db/src/api.ts";
 import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import { tmp } from "./helpers.ts";
 
@@ -10,6 +12,7 @@ afterEach(() => vi.restoreAllMocks());
 it("parses shared ancestors once per recovery batch and observes new entries in a later batch", async () => {
 	const root = tmp();
 	const db = openAgentDb(path.join(root, "agent.db"));
+	registeredWorkspace(root, db);
 	const env = { OCTOCODE_HOME: path.join(root, "home") };
 	const parent = path.join(root, "parent.jsonl");
 	const header = { type: "session", version: 3, id: "parent", cwd: root, timestamp: "2026-01-01T00:00:00Z" };

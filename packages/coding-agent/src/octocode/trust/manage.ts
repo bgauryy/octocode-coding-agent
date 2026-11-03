@@ -37,16 +37,21 @@ const IGNORED_WHY = {
 	"filesystem-root": "filesystem root",
 	"contains-home": "above your home folder",
 } as const;
-const day = (at: number): string => new Date(at).toISOString().slice(0, 10);
+const pad = (value: number): string => String(value).padStart(2, "0");
+/** When a decision was made, in the user's local time: `2026-11-03 14:35`. */
+const decidedWhen = (at: number): string => {
+	const date = new Date(at);
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 const scopeText = (row: FolderGrantView): string =>
 	row.source === "worktree" ? "worktree" : row.scope === "subtree" ? "subtree" : "this folder";
 
-/** One entry as one row of text: `#4 trusted ~/code/app  this folder · prompt · you · 2026-10-02`. */
+/** One entry as one row of text: `#4 trusted ~/code/app  this folder · prompt · you · 2026-10-02 14:35`. */
 export function describeGrant(row: FolderGrantView, home?: string): string {
 	const where = shown(row.path, home);
 	if (row.ignored)
 		return `#${row.id} ignored  ${where}  ${IGNORED_WHY[row.ignoredReason ?? "home"]}: a grant here would cover every project on this computer, so it is not applied`;
-	const by = [scopeText(row), row.source, row.decidedBy, day(row.decidedAt)].join(" \u00b7 ");
+	const by = [scopeText(row), row.source, row.decidedBy, decidedWhen(row.decidedAt)].join(" \u00b7 ");
 	const from = row.fromPath ? ` (from ${shown(row.fromPath, home)})` : "";
 	return `#${row.id} ${row.decision === "refused" ? "refused" : "trusted"}  ${where}  ${by}${from}`;
 }
@@ -64,7 +69,7 @@ export function describeFolder(cwd: string, state: FolderTrust, home?: string): 
 					? " and everything under it"
 					: ""
 				: ` by ${shown(state.root, home)} and everything under it`;
-			return `${name} is ${verb}${reach} (${state.grant.source}, ${day(state.grant.decidedAt)}).`;
+			return `${name} is ${verb}${reach} (${state.grant.source}, ${decidedWhen(state.grant.decidedAt)}).`;
 		}
 		case "undecided":
 			return `${name} has no trust decision yet.`;

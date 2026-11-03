@@ -21,7 +21,6 @@ export const LAYER_RULES = [
 		baseline: [
 			"coding-agent/src/core/agent-session.ts",
 			"coding-agent/src/core/agent-session/api.ts",
-			"coding-agent/src/core/agent-session/bash.ts",
 			"coding-agent/src/core/agent-session/prompt-expansion.ts",
 			"coding-agent/src/core/agent-session/run-loop.ts",
 			"coding-agent/src/core/application/transcript.ts",

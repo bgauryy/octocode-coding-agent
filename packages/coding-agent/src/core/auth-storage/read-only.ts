@@ -5,7 +5,7 @@ import {
 	type CredentialInfo,
 	type CredentialStore,
 } from "@octocodeai/octocode-ai";
-import { join } from "path";
+import { join } from "node:path";
 import { getAgentDir } from "../../config.ts";
 import { normalizePath } from "../../../../common/src/paths.ts";
 import { isCommandConfigValue, resolveConfigValue } from "../config-value.ts";
@@ -32,7 +32,7 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 				this.data = {};
 				return this.data;
 			}
-			throw new Error(`Failed to read auth.json: ${errorMessage(error)}`);
+			throw new Error(`Failed to read auth.json: ${errorMessage(error)}`, { cause: error });
 		}
 
 		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
