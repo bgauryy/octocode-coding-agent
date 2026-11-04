@@ -2,6 +2,8 @@ import { HOUR_MS } from "../../shared/util.ts";
 
 /** An agent that has not refreshed its row for this long is hidden from `list` (a stalled process: suspended, or on a machine that slept). Only its process ending, or it leaving, drops the row and its mail. */
 export const STALE_MS = 60_000;
+/** A member that runs but has been silent this long is named as stalled by `coordinate list` (a shorter silence is a suspended laptop or a busy process: it stays hidden). */
+export const STALLED_LISTED_MS = 10 * 60_000;
 /** Leases live this long past the owner's last heartbeat, so a crashed owner frees its files quickly. */
 export const LEASE_MS = 90_000;
 export const MESSAGE_RETENTION_MS = 24 * HOUR_MS;

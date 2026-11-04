@@ -24,6 +24,8 @@ See [Hooks](hooks.md) for discovery, trust, the input each event receives and th
 | `SubagentStop` | — | `command`, `http`, `prompt`, `mcp_tool` | `command`, `mcp_tool` | Gates child completion when child hooks are enabled. |
 | `Interrupt` | — | — | `command`, `mcp_tool` (1 s default, no matcher) | Observes an explicitly interrupted main turn after cancellation; cannot continue it. |
 | `SessionEnd` | `command` (1.5 s default) | `command`, `http`, `mcp_tool` (1.5 s default) | `command` (1 s default) | Observes supported termination reasons within a separate cleanup deadline. |
+| `AgentOn` | `command` (1.5 s default) | — | — | Octocode only: observes an agent of this process joining the team (main session or child); the matcher is its role. Cannot block or add context. |
+| `AgentOff` | `command` (1.5 s default) | — | — | Octocode only: observes an agent this process retired from the team, within a separate 1.5 s deadline; the matcher is the end reason (completed, failed, stopped-user, stopped-parent, parent-gone, crashed, left). Cannot block or delay the exit. |
 | `UserPromptSubmit` | — | `command`, `http`, `prompt`, `mcp_tool` (30 s default, no matcher) | `command`, `mcp_tool` (no matcher) | Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed. |
 | `PreCompact` | `command` | `command`, `http`, `mcp_tool` | `command`, `mcp_tool` | Native is observational; supported source-profile vetoes reach the compaction owner. |
 | `PostCompact` | — | `command`, `http`, `mcp_tool` | `command`, `mcp_tool` | Claude observes; Codex can stop continuation after compaction. |

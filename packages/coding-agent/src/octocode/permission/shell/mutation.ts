@@ -29,6 +29,7 @@ import {
 } from "./program-forms.ts";
 import { runInput, type RunInput } from "./input-runners.ts";
 import { inputMayWrite, readerWritingOptions, readOnlyCommand } from "./read-only.ts";
+import { writerEffect } from "./writers.ts";
 import { sedFiles, sedInPlace, sedWrites } from "./sed-script.ts";
 import { base, wrappedCommand } from "./words.ts";
 
@@ -244,6 +245,12 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 		) {
 			take(named.writes);
 			changes("curl -o", named.areas);
+		} else if (writerEffect(name, rest)) {
+			// `gzip f` replaces its operand, `zip x.zip a` and `xxd a b` write an archive or output operand (`writers.ts`).
+			const effect = writerEffect(name, rest)!;
+			take(effect.writes);
+			if (effect.areas.length > 0) changes(name, effect.areas);
+			else if (effect.opaque) changes(effect.opaque);
 		} else if (name === "tar") {
 			// `tar -cf out.tar` names the archive it writes; `tar -x` changes the directory it extracts into.
 			take(named.writes);

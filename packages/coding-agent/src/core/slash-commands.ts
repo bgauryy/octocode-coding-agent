@@ -41,12 +41,12 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{
 		name: "btw",
-		description: "Ask a side question without tools",
+		description: "Ask a quick side question without using tools",
 		argumentHint: "[question|--cancel|--clear]",
 	},
 	{
 		name: "context",
-		description: "Inspect or set the context budget",
+		description: "Show or change how much conversation the model can see",
 		argumentHint: "[all|size|reset|full|tokens]",
 		argumentValues: ["all", "size", "reset", "full"],
 	},
@@ -82,11 +82,11 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{
 		name: "import",
-		description: "Resume a session from a JSONL file",
+		description: "Open a saved session from a file",
 		argumentHint: "<path>",
 		argumentKind: "path",
 	},
-	{ name: "share", description: "Share session as a secret GitHub gist" },
+	{ name: "share", description: "Share this session as a private GitHub gist" },
 	{
 		name: "bug",
 		description: "Report a bug to the developers",
@@ -115,12 +115,6 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "logout", description: "Remove a provider credential" },
 	{
-		name: "github",
-		description: "GitHub code-search access; AI uses /login",
-		argumentHint: "[status|login|logout]",
-		argumentValues: ["status", "login", "logout"],
-	},
-	{
 		name: "new",
 		description: "Start a new session",
 		argumentHint: "[name-for-current-session]",
@@ -144,7 +138,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "[search|list|info|enable|disable]",
 		argumentValues: ["list", "info", "enable", "disable"],
 	},
-	{ name: "debug", description: "Save diagnostics" },
+	{ name: "debug", description: "Save a diagnostics file (screen and messages, secrets redacted)" },
 	{ name: "reload", description: "Reload config, skills and themes" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },
 ];

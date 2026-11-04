@@ -1,4 +1,5 @@
 /** The forms of the programs `mutation.ts` reads: which change their operands, their destination, the tree or config. */
+import { WRITER_PROGRAMS } from "./writers.ts";
 
 /** Programs that change every file operand: `rm a b`, `mv a b` (both are changed), `touch`, `mkdir`. */
 export const ALL_OPERANDS = new Set([
@@ -96,6 +97,7 @@ export const WORD_WRITERS = new Set([
 	...OPAQUE_WRITERS,
 	...PACKAGE_MANAGERS,
 	...SHELL_PROGRAMS,
+	...WRITER_PROGRAMS,
 	"sed",
 	"perl",
 	"awk",

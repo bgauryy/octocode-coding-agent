@@ -18,6 +18,10 @@ export interface Member {
 	checkout?: string;
 	/** The tmux pane a main session runs in (`%12`, from `TMUX_PANE`); absent outside tmux, for subagents and in rows older builds wrote. */
 	tmuxPane?: string;
+	/** Where the agent works: its folder, git branch and process title, recorded when it joined (shown by `coordinate list`). */
+	cwd?: string;
+	branch?: string;
+	processTitle?: string;
 	/** The session manager ID of this agent's conversation. The team address can be reused independently of the session ID. */
 	sessionId?: string;
 	joinedAt: number;

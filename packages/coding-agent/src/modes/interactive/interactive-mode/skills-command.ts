@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
-import { getBundledSkillsDir } from "../../../config.ts";
 import { DefaultPackageManager, type PathMetadata, type ResolvedResource } from "../../../core/package-manager.ts";
 import { withTogglePattern } from "../../../core/package-manager/patterns.ts";
 import type { Skill } from "../../../core/skills.ts";
@@ -52,10 +51,10 @@ function state(entry: SkillEntry): string {
 }
 
 function category(entry: SkillEntry) {
-	return skillCategory(entry.loaded ?? { filePath: entry.path, sourceInfo: { source: entry.metadata.source } });
+	return skillCategory(entry.loaded ?? { filePath: entry.path });
 }
 
-/** `core`, `octocode`, or `external · <scope>/<source>`: where an external skill came from matters, the others ship with Octocode. */
+/** `core` or `external · <scope>/<source>`: where an external skill came from matters, core skills ship with Octocode. */
 function origin(entry: SkillEntry): string {
 	const kind = category(entry);
 	if (kind !== "external") return kind;
@@ -75,7 +74,6 @@ async function catalog(host: SkillsHost): Promise<{ entries: SkillEntry[]; resol
 		cwd,
 		agentDir,
 		settingsManager: host.session.settingsManager,
-		builtinSkillsDir: getBundledSkillsDir(),
 	});
 	const resolved = (await manager.resolve(async () => "skip")).skills;
 	const loaded = host.session.resourceLoader.getSkills().skills;
@@ -127,7 +125,7 @@ async function catalog(host: SkillsHost): Promise<{ entries: SkillEntry[]; resol
 		}
 	}
 	return {
-		// Core skills first, then the Octocode collection, then external skills; by name within each.
+		// Core skills first, then external skills; by name within each.
 		entries: [...byPath.values()].sort(
 			(a, b) =>
 				SKILL_CATEGORIES.indexOf(category(a)) - SKILL_CATEGORIES.indexOf(category(b)) ||

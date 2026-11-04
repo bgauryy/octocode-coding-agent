@@ -43,7 +43,7 @@ describe("MCP reason argument declared outside the root properties", () => {
 
 	it("still drops an invented reason for the current Octocode tools and leaves it out of the call shape", () => {
 		const catalog = JSON.parse(
-			readFileSync(new URL("fixtures/compact/octocode-catalog.json", import.meta.url), "utf8"),
+			readFileSync(new URL("fixtures/compact/catalog-research.json", import.meta.url), "utf8"),
 		) as { tools: { name: string; inputSchema: Record<string, unknown> }[] };
 		for (const { inputSchema } of catalog.tools) {
 			const tool = define(inputSchema);

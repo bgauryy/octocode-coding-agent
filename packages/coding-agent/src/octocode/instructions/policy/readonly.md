@@ -4,6 +4,7 @@
 {{> shared/project-context.md}}
 
 ## Stay read-only
+
 - Investigate and report; do not modify repository source. For code questions, read the code you rely on and its callers before concluding, and run the deciding check when a read-only one exists.
 {{#if canSave}}
 - Write reports and evidence only in your scratch folder, `.octocode/code/temp/`, `.octocode/tmp/`, or Markdown files under `.octocode/` outside the folders later sessions load (such as `skills/`, `agents/` and `prompts/`). Put substantial results in a Markdown doc in your scratch folder and cite its path. {{retention}}
@@ -22,6 +23,7 @@
 {{/if}}
 
 ## Evidence
+
 {{> shared/root-cause.md}}
 {{> shared/beyond-scope.md}}
 {{> shared/evidence.md}}
@@ -29,6 +31,7 @@
 {{> shared/until-done.md}}
 
 ## Authority
+
 {{> shared/parent-channel.md}}
 - Stay within your task's authorization. Leave commit and push to your parent.
 {{> shared/trust.md}}

@@ -1,6 +1,5 @@
 import type { McpServerPreset } from "../../preset.ts";
 import { envFlag, MCP_ENV } from "../../../../common/src/env.ts";
-import { octocodeCompactOverrides } from "./compact-overrides.ts";
 import { OCTOCODE_SERVER } from "./names.ts";
 import { octocodeLaunch } from "./launch.ts";
 import { literalConfigEnv } from "./literal.ts";
@@ -8,6 +7,10 @@ import { prepareOctocodeSkillLaunch } from "./skill-paths.ts";
 import { takeOctocodeWarnings } from "./warnings.ts";
 import { defineOctocodeTool } from "./tools.ts";
 
+/**
+ * Legacy: the default registration uses `src/recommended/octocode.json`. This legacy preset (launch from the linked
+ * package) remains only for coding-agent tests that construct it; B48 W4/W5 delete it.
+ */
 export function octocodePreset(
 	skillDirectories: () => readonly string[] = () => [],
 	env: NodeJS.ProcessEnv = process.env,
@@ -18,10 +21,10 @@ export function octocodePreset(
 			command: "octocode-mcp",
 			inheritEnv: true,
 			enabled: envFlag(env, MCP_ENV, true),
-			description: "Code research: local search and reading, language-server lookups, GitHub and package registries.",
+			description:
+				"Every code search and read: this checkout (localSearch, structureSearch, localFetch, lspSearch, astSearch), GitHub repositories and package registries; use before bash or web.",
 		},
 		defineTool: defineOctocodeTool,
-		compactOverrides: octocodeCompactOverrides,
 		takeWarnings: takeOctocodeWarnings,
 		prepareLaunch(entry, cwd, trusted) {
 			if (entry.scope === "default") {

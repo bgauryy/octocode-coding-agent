@@ -19,10 +19,10 @@ import { formatKeyText, keyHint, keyText, rawKeyHint } from "../components/keybi
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { onThemeChange, theme } from "../../../theme/theme.ts";
 import { bindFooterState } from "../state/bind-footer.ts";
-import { refreshGithubFooter } from "./github-footer.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { offerForkOfTornSession } from "./session-navigation.ts";
+import { renderInitialSessionState } from "./resume-notice.ts";
 
 /** Interactive-mode members used by startup and the main loop. */
 type StartupHost = Pick<
@@ -234,7 +234,7 @@ export async function init(host: StartupHost): Promise<void> {
 	setMirrorNoticeHandler((message) => host.showWarning(message));
 	host.setupEditorSubmitHandler();
 	host.ui.requestRender();
-	host.renderInitialMessages();
+	renderInitialSessionState(host);
 
 	// Set up theme file watcher
 	onThemeChange(() => {
@@ -243,11 +243,9 @@ export async function init(host: StartupHost): Promise<void> {
 		host.ui.requestRender();
 	});
 
-	// Footer data (branch, statuses, GitHub, providers) is a state source: each real change asks for one frame,
+	// Footer data (branch, statuses, providers) is a state source: each real change asks for one frame,
 	// so its writers never request frames themselves.
 	bindFooterState(host);
-
-	void refreshGithubFooter(host);
 
 	// Initialize available provider count for footer display
 	host.updateAvailableProviderCount();

@@ -4,10 +4,10 @@
 	"vars": {
 		"purple": "#6D28D9",
 		"purpleDeep": "#5B21B6",
-		"teal": "#0D9488",
+		"teal": "#09776D",
 		"tealDeep": "#0F766E",
 		"gold": "#92400E",
-		"coral": "#C2410C",
+		"coral": "#BE3F0B",
 		"green": "#166534",
 		"red": "#B91C1C",
 		"lav": "#4F46E5",
@@ -15,8 +15,8 @@
 		"muted": "#4B5563",
 		"dim": "#5B6472",
 		"faint": "#6E7781",
-		"line": "#D0D7DE",
-		"lineSoft": "#EAEEF2",
+		"line": "#B4BEC9",
+		"lineSoft": "#CAD4DE",
 		"ink": "#24292F"
 	},
 	"colors": {
@@ -31,7 +31,7 @@
 		"dim": "dim",
 		"text": "",
 		"thinkingText": "muted",
-		"selectedBg": "lineSoft",
+		"selectedBg": "#EAEEF2",
 		"userMessageBg": "#EFF3F6",
 		"userMessageText": "",
 		"customMessageBg": "#F3E8FF",
@@ -48,7 +48,7 @@
 		"mdLinkUrl": "dim",
 		"mdCode": "cyan",
 		"mdCodeBlock": "",
-		"mdCodeBlockBorder": "line",
+		"mdCodeBlockBorder": "faint",
 		"mdQuote": "muted",
 		"mdQuoteBorder": "faint",
 		"mdHr": "faint",
@@ -72,6 +72,6 @@
 		"thinkingHigh": "gold",
 		"thinkingXhigh": "coral",
 		"thinkingMax": "red",
-		"bashMode": "gold"
+		"bashMode": "dim"
 	}
 }

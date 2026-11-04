@@ -4,7 +4,7 @@ import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Mail } from "../mail.ts";
 import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
-import { interruptRefusal, outside, resolveTarget } from "../routing.ts";
+import { interruptRefusal, isProcessName, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
 import type { Vouches } from "./vouches.ts";
 import { spilledMessage } from "./spilled-message.ts";
@@ -197,6 +197,11 @@ export async function sendMessage(
 	if (typeof targets === "string") {
 		const finished = host.finished.has(to);
 		const parent = host.parentId();
+		// A subagent has no route to another Octocode process; its parent has (the session API), so the parent must send it.
+		if (parent !== undefined && !outside(from) && isProcessName(to))
+			return {
+				error: `${to} is an Octocode process, and subagents have no route to other processes: nothing was sent. Send to "parent" (${parent}) and ask it to message ${to}.`,
+			};
 		const relay =
 			!finished &&
 			parent !== undefined &&

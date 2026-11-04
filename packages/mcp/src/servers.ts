@@ -1,5 +1,8 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { isPluginMcpServerName, mcpNamespace } from "../../common/src/mcp-names.ts";
+import { isStringRecord, LOOPBACK_HOSTS, validateInstall, validateOAuth, validateRoles } from "./server-validation.ts";
+
+export { MCP_TOOL_ROLES } from "./server-validation.ts";
 /**
  * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
  *
@@ -32,12 +35,14 @@ export const MCP_MANAGE_TOOL_NAME = "mcp";
 export const isMcpToolName = (name: string): boolean => name.startsWith("mcp__");
 
 /**
- * - `direct`: tools are declared to the model like any other tool.
+ * - `direct`: tools are declared to the model, and the server's block describes them in full.
+ * - `deferred`: tools are declared the same way, but the block lists only each tool's name and trigger; the agent
+ *   loads the full description and schema with the `mcp` tool (`deferral.ts`).
  * - `hidden`: tools are registered but unreachable.
  */
 export const DEFAULT_MCP_EXPOSURE = "direct";
 
-export const MCP_EXPOSURES = ["direct", "hidden"] as const;
+export const MCP_EXPOSURES = ["direct", "deferred", "hidden"] as const;
 export type McpExposure = (typeof MCP_EXPOSURES)[number];
 
 interface McpServerConfigBase {
@@ -62,6 +67,29 @@ interface McpServerConfigBase {
 	enabled?: boolean;
 	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. */
 	timeout?: number;
+	/**
+	 * Bare tool names (no namespace) by role (`roles.ts`). Roles from a project-scope entry count only when the project
+	 * is trusted.
+	 */
+	roles?: McpToolRolesConfig;
+}
+
+/** The tools a server entry marks by role, as the server names them. */
+export interface McpToolRolesConfig {
+	/** Return file content. */
+	reader?: string[];
+	/** Return matched lines. */
+	search?: string[];
+	/** Never write the workspace; `reader` and `search` are implied. */
+	readOnly?: string[];
+}
+
+/** An npm package installed once into `<agentDir>/mcp/servers/<name>/` before the first launch (`install.ts`). */
+export interface McpInstallConfig {
+	npm: string;
+	version: string;
+	/** The bin to run, from the package's `bin`; default: the package's only bin, or the one named like the package. */
+	bin?: string;
 }
 
 interface McpStdioServerConfig extends McpServerConfigBase {
@@ -74,6 +102,8 @@ interface McpStdioServerConfig extends McpServerConfigBase {
 	inheritEnv?: boolean;
 	/** Relative paths resolve against the session working directory. */
 	cwd?: string;
+	/** Install this package before the first launch; the launch then runs its bin with node, followed by `args`. */
+	install?: McpInstallConfig;
 }
 
 /** OAuth client settings for servers that do not support dynamic client registration. */
@@ -115,15 +145,6 @@ export interface McpOAuthConfig {
 	authServerMetadataUrl?: string;
 }
 
-const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
-
-/** Whether a redirect URI can be served by Octocode's loopback callback server. */
-function isLoopbackRedirectUri(value: string): boolean {
-	if (!URL.canParse(value)) return false;
-	const url = new URL(value);
-	return url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname) && url.search === "" && url.hash === "";
-}
-
 export interface McpHttpServerConfig extends McpServerConfigBase {
 	type?: "http";
 	url: string;
@@ -142,76 +163,40 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
 
 const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
-function isStringRecord(value: unknown): value is Record<string, string> {
-	return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
-}
-
-function validateOAuth(value: unknown): string | undefined {
-	if (value === undefined) return undefined;
-	if (!isRecord(value)) return "oauth must be an object";
-	if (value.clientId !== undefined && typeof value.clientId !== "string") return "oauth.clientId must be a string";
-	if (value.clientSecret !== undefined && typeof value.clientSecret !== "string") {
-		return "oauth.clientSecret must be a string";
-	}
-	const port = value.callbackPort;
-	if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
-		return "oauth.callbackPort must be a port number";
-	}
-	if (value.callbackUrl !== undefined) {
-		if (typeof value.callbackUrl !== "string" || !isLoopbackRedirectUri(value.callbackUrl)) {
-			return "oauth.callbackUrl must be an http URI on localhost, 127.0.0.1, or [::1] without query or fragment";
-		}
-		const urlPort = new URL(value.callbackUrl).port;
-		if (urlPort && port !== undefined && Number(urlPort) !== port) {
-			return "oauth.callbackUrl and oauth.callbackPort name different ports";
-		}
-	}
-	if (value.scope !== undefined && typeof value.scope !== "string") return "oauth.scope must be a string";
-	if (value.clientName !== undefined && (typeof value.clientName !== "string" || !value.clientName.trim())) {
-		return "oauth.clientName must be a non-empty string";
-	}
-	if (value.clientRegistration !== undefined && value.clientRegistration !== "dcr") {
-		if (value.clientRegistration !== "cimd") return 'oauth.clientRegistration must be "dcr" or "cimd"';
-		if (value.clientId !== undefined || value.clientName !== undefined) {
-			return 'oauth.clientRegistration "cimd" cannot be combined with oauth.clientId or oauth.clientName';
-		}
-		const callback = typeof value.callbackUrl === "string" ? new URL(value.callbackUrl) : undefined;
-		if (callback && (callback.hostname === "[::1]" || callback.pathname !== "/callback")) {
-			return 'oauth.clientRegistration "cimd" requires oauth.callbackUrl on localhost or 127.0.0.1 with path /callback';
-		}
-	}
-	const metadataUrl = value.authServerMetadataUrl;
-	if (metadataUrl !== undefined) {
-		const url = typeof metadataUrl === "string" && URL.canParse(metadataUrl) ? new URL(metadataUrl) : undefined;
-		if (!url || !(url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname)))) {
-			return "oauth.authServerMetadataUrl must be an https URL, or http on localhost, 127.0.0.1, or [::1]";
-		}
-	}
-	return undefined;
-}
-
+/**
+ * A namespace (`-` read as `_`) with `__` inside or `_` at its end makes `mcp__<server>__<tool>` ambiguous: server `a`
+ * with tool `b__c` and server `a__b` with tool `c` would share a name, and `mcp__a__*` would also select `a__b`.
+ */
+const AMBIGUOUS_NAMESPACE = /__|_$/;
 export function isMcpExposure(value: unknown): value is McpExposure {
 	return MCP_EXPOSURES.some((mode) => mode === value);
 }
 
-/** Exposure of one tool: explicit tool settings, then the server's exposure. */
-export function getMcpToolExposure(config: McpServerConfig, toolName: string): McpExposure {
+/** Exposure the configuration sets for one tool: explicit tool settings, then the server's; undefined without either. */
+export function configuredMcpToolExposure(config: McpServerConfig, toolName: string): McpExposure | undefined {
 	const overrides = config.toolExposure ?? {};
 	const exact = overrides[toolName];
 	if (exact !== undefined) return exact;
 	for (const [pattern, exposure] of Object.entries(overrides)) {
 		if (pattern.includes("*") && toolPatternRegExp(pattern).test(toolName)) return exposure;
 	}
-	return config.exposure ?? DEFAULT_MCP_EXPOSURE;
+	return config.exposure;
 }
 
-/** The error for an exposure value that is not `direct` or `hidden`. */
+/** Exposure of one tool: explicit tool settings, then the server's exposure, then `direct`. */
+export function getMcpToolExposure(config: McpServerConfig, toolName: string): McpExposure {
+	return configuredMcpToolExposure(config, toolName) ?? DEFAULT_MCP_EXPOSURE;
+}
+
+/** The error for an exposure value that is not one of `MCP_EXPOSURES`. */
 const exposureError = (): string => `must be one of ${MCP_EXPOSURES.map((exposure) => `"${exposure}"`).join(", ")}`;
 
 /** Validate one server entry of the `mcpServers` shape. Returns the config, or an error message. */
 export function validateMcpServerConfig(name: string, value: unknown): McpServerConfig | string {
 	if (!SERVER_NAME.test(name) && !isPluginMcpServerName(name))
 		return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
+	if (AMBIGUOUS_NAMESPACE.test(mcpNamespace(name).slice("mcp__".length)))
+		return `invalid server name "${name}" (no "__" and no "_" or "-" at the end: tool names are mcp__<server>__<tool>)`;
 	if (!isRecord(value)) return `server "${name}" must be an object`;
 	const { type, exposure, enabled, defaultActive, timeout, toolExposure, description } = value;
 	if (exposure !== undefined && !isMcpExposure(exposure)) return `server "${name}": exposure ${exposureError()}`;
@@ -229,6 +214,11 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 	}
 	if (timeout !== undefined && (typeof timeout !== "number" || !(timeout > 0))) {
 		return `server "${name}": timeout must be a positive number of seconds`;
+	}
+	const rolesError = validateRoles(value.roles);
+	if (rolesError) return `server "${name}": ${rolesError}`;
+	if (value.install !== undefined && typeof value.command !== "string") {
+		return `server "${name}": install needs a stdio server ("command")`;
 	}
 	if (type === "sse") return `server "${name}": legacy SSE is unsupported; use a Streamable HTTP endpoint`;
 	if (typeof value.url === "string" && (type === undefined || type === "http" || type === "streamable-http")) {
@@ -265,6 +255,8 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 		if (value.inheritEnv !== undefined && typeof value.inheritEnv !== "boolean")
 			return `server "${name}": inheritEnv must be a boolean`;
 		if (value.cwd !== undefined && typeof value.cwd !== "string") return `server "${name}": cwd must be a string`;
+		const installError = validateInstall(value.install);
+		if (installError) return `server "${name}": ${installError}`;
 		return value as unknown as McpStdioServerConfig;
 	}
 	return `server "${name}" needs either "command" (stdio) or "url" (Streamable HTTP)`;
@@ -276,6 +268,8 @@ export interface RegisteredMcpServer {
 	config: McpServerConfig;
 	/** Path of the extension that registered the server. */
 	extensionPath: string;
+	/** Handed over by the parent session: a fallback that any other extension's registration of the name replaces. */
+	inherited?: true;
 }
 
 export type McpServerChange =
@@ -295,9 +289,13 @@ export class McpServerRegistry {
 				continue;
 			}
 			const { server } = change;
-			const owner = servers.get(server.name)?.extensionPath;
-			if (owner !== undefined && owner !== server.extensionPath)
-				throw new Error(`MCP server "${server.name}" is already registered by extension "${owner}"`);
+			const existing = servers.get(server.name);
+			if (existing !== undefined && existing.extensionPath !== server.extensionPath) {
+				// An inherited server yields to another owner's registration of the same name, and never displaces one.
+				if (server.inherited && !existing.inherited) continue;
+				if (!existing.inherited)
+					throw new Error(`MCP server "${server.name}" is already registered by extension "${existing.extensionPath}"`);
+			}
 			const clash = [...servers.values()].find(
 				(existing) => existing.name !== server.name && mcpNamespace(existing.name) === mcpNamespace(server.name),
 			);

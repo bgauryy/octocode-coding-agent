@@ -166,7 +166,7 @@ export class RetryStatusIndicator extends StatusIndicator {
 		super(
 			"retry",
 			ui,
-			(spinner) => theme.fg("warning", spinner),
+			(spinner) => theme.fg("muted", spinner),
 			(text) => theme.fg("muted", text),
 			retryMessage(Math.ceil(delayMs / 1000)),
 		);

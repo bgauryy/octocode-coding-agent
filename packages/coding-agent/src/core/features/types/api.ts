@@ -361,10 +361,13 @@ export interface ExtensionAPI {
 	 * registered. When no loaded extension handles MCP servers (for example because another MCP
 	 * extension replaced the built-in one), the registration is reported as an extension error.
 	 *
+	 * `options.inherited` marks a server handed over by a parent session: another extension's registration of
+	 * the same name replaces it, and it never replaces another extension's server.
+	 *
 	 * @example
 	 * api.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
 	 */
-	registerMcpServer(name: string, config: McpServerConfig): void;
+	registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
 
 	/** Remove an MCP server this extension registered and close its connection. */
 	unregisterMcpServer(name: string): void;

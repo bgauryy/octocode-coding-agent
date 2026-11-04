@@ -323,7 +323,8 @@ describe("external ACP backend over SDK stdio", () => {
 		const reply = backend
 			.prompt("work", { timeoutMs: WORK_MS, signal: controller.signal })
 			.catch((error: unknown) => error);
-		await waitForPrompt(journal);
+		// The fixture journals the prompt before it streams "first\n": wait until it has sent the chunk, so the abort tests partial-output preservation, not the race.
+		await vi.waitFor(() => expect(entries(journal).some((entry) => entry.event === "streamed")).toBe(true));
 		controller.abort(new Error("caller stopped work"));
 		const error = (await reply) as AcpError;
 		expect(error.message).toContain("caller stopped work");

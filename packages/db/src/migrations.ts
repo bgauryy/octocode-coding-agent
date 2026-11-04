@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { AGENT_RUNS_SCHEMA } from "./schema-sql.ts";
 
 /**
  * One step of the agent database's schema history. To change the schema: edit `schema-sql.ts` (a new file starts at the
@@ -26,7 +27,35 @@ export interface SchemaPlan {
 /** No earlier version exists: a file at 0 predates versioning and has no path forward. */
 export const FIRST_SCHEMA_VERSION = 1;
 
-export const SCHEMA_PLAN: SchemaPlan = { version: FIRST_SCHEMA_VERSION, migrations: [] };
+/**
+ * 2: `agents.end_hint`, why the parent is ending a child (`stopped-user`, `stopped-parent`, `failed`), written before the
+ * child dies so the one that retires the row can name the cause. A nullable column, so an Octocode that knows only
+ * version 1 keeps using the file (it never reads or writes it).
+ */
+const ADD_END_HINT: Migration = {
+	to: 2,
+	additive: true,
+	up: (db) => {
+		db.exec("ALTER TABLE agents ADD COLUMN end_hint TEXT");
+	},
+};
+
+/**
+ * 3: the agent audit (design B36 §4-§5): `agent_runs`, one row per run of an agent (the parent writes its start and
+ * outcome, whoever retires the agent row its end), and where an agent works (`agents.cwd`, `branch`, `process_title`).
+ * A new table and nullable columns, so an Octocode that knows only version 2 keeps using the file (it never reads them).
+ * The statements are the ones `schema-sql.ts` runs for a new file.
+ */
+const ADD_AGENT_RUNS: Migration = {
+	to: 3,
+	additive: true,
+	up: (db) => {
+		for (const column of ["cwd", "branch", "process_title"]) db.exec(`ALTER TABLE agents ADD COLUMN ${column} TEXT`);
+		db.exec(AGENT_RUNS_SCHEMA);
+	},
+};
+
+export const SCHEMA_PLAN: SchemaPlan = { version: 3, migrations: [ADD_END_HINT, ADD_AGENT_RUNS] };
 
 /** The oldest version that can use a file at `version`: the last step up to it that was not additive, else the first version. */
 export function readableFromFor(plan: SchemaPlan, version: number): number {

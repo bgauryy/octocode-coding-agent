@@ -24,7 +24,7 @@ function findContextFile(dir: string): string | undefined {
 	});
 }
 
-/** Skills: each root's `skills/`, then the shared `.agents/skills` folders, then the bundled skills. */
+/** Skills: each root's `skills/`, then the shared `.agents/skills` folders. */
 function skillItems(input: DiscoverInput): ConfigItem[] {
 	const items: ConfigItem[] = [];
 	const add = (root: Pick<ConfigRoot, "product" | "scope" | "origin">, dir: string, mode: "octocode" | "agents") => {
@@ -52,15 +52,6 @@ function skillItems(input: DiscoverInput): ConfigItem[] {
 	if (piProject) add(piProject, join(piProject.dir, "skills"), "octocode");
 	for (const root of roots) if (root.scope === "global") add(root, join(root.dir, "skills"), "octocode");
 	add({ product: "octocode", scope: "global", origin: "agents" }, join(input.home, ".agents", "skills"), "agents");
-	if (input.builtinSkillsDir) {
-		for (const file of collectSkillEntries(input.builtinSkillsDir, "octocode")) {
-			items.push(
-				makeItem("skill", skillName(file), { product: "octocode", scope: "builtin", origin: "bundled" }, file, input, {
-					baseDir: input.builtinSkillsDir,
-				}),
-			);
-		}
-	}
 	return items;
 }
 

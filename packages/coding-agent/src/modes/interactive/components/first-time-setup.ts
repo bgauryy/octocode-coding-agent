@@ -23,8 +23,8 @@ const THEME_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 const ANALYTICS_OPTIONS: Array<{ value: boolean; label: string }> = [
-	{ value: true, label: "Share anonymous usage data" },
-	{ value: false, label: "Don't share" },
+	{ value: false, label: "Don't share (default)" },
+	{ value: true, label: "Share anonymous usage data (stores a random ID in settings.json)" },
 ];
 
 const SETUP_LOGO_LINES = ["██████", "██  ██", "████  ██", "██    ██"];
@@ -67,7 +67,7 @@ export class FirstTimeSetupComponent extends Container {
 				this.themeIndex,
 			);
 		} else {
-			this.addChild(new Text(theme.fg("text", "Opt-in to anonymous usage data sharing?"), 1, 0));
+			this.addChild(new Text(theme.fg("text", "Share anonymous usage data?"), 1, 0));
 			this.addChild(
 				new Text(
 					theme.fg(

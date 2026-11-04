@@ -1,6 +1,10 @@
 import { resolveRetention } from "../../config/retention.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { SYSTEM_PROMPT_SECTIONS } from "../../core/system-prompt-spec.ts";
+import type { ResolvedRoles } from "../../../../mcp/src/roles.ts";
+
+/** The research server the policy routes code search to: its namespace prefix and full tool names, by role. */
+export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "prefix" | "reader" | "search">;
 
 /**
  * Octocode guidance, added to Octocode's structured system prompt as the `octocode` sections (Octocode wraps each section
@@ -14,8 +18,8 @@ import { SYSTEM_PROMPT_SECTIONS } from "../../core/system-prompt-spec.ts";
  * share a stable prefix.
  */
 interface PromptInputs {
-	/** Whether the research MCP server's tools are declared. The research section then routes code search to it. */
-	octocode: boolean;
+	/** The research MCP server, from its entry's roles, when this agent can reach it: the research section then routes code search to it and names its tools. */
+	research?: ResearchContext;
 	/** Subagent profile names and one-line descriptions. */
 	profiles: Array<{ name: string; description: string }>;
 	/** Browser specialists to use when the main session has no browser tool. */
@@ -54,13 +58,19 @@ function policyFlags(input: PromptInputs) {
 	const shell = input.canShell !== false;
 	const web = input.canWeb !== false;
 	const days = input.scratchDays ?? resolveRetention().days;
+	const research = input.research;
+	const bare = (tool: string) => `\`${research && tool.startsWith(research.prefix) ? tool.slice(research.prefix.length) : tool}\``;
+	const search = (research?.search ?? []).map(bare);
 	return {
 		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).
 		main,
 		requester: main ? "the user" : "your task",
 		readOnly,
 		// Tools this request holds.
-		octocode: input.octocode,
+		research: research !== undefined,
+		"research.prefix": research?.prefix ?? "",
+		"research.reader": research ? bare(research.reader) : "",
+		"research.search": search.length > 1 ? `${search.slice(0, -1).join(", ")} or ${search.at(-1)}` : (search[0] ?? ""),
 		shell,
 		web,
 		mcp: input.canMcp !== false,

@@ -17,6 +17,7 @@ import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts"
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../components/user-message-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { formatResumeNotice } from "./resume-notice.ts";
 import { warnRefusedSwitch } from "./trust-switch.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -370,7 +371,7 @@ export async function handleResumeSession(
 			...(cwdOverride ? { cwdOverride } : {}),
 			withSession: options?.withSession,
 		});
-		if (!result.cancelled) host.showStatus(cwdOverride ? "Resumed session in current cwd" : "Resumed session");
+		if (!result.cancelled) host.showStatus(`${formatResumeNotice(host)}${cwdOverride ? " · in current cwd" : ""}`);
 		return result;
 	};
 	// The session picker drops this promise, so the retry in a chosen folder fails the same way as the first attempt.

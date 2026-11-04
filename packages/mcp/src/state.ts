@@ -23,6 +23,8 @@ import { setMcpSessionStatus } from "./status.ts";
 import type { McpToolDetails } from "./tools.ts";
 
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
+import { expandLaunchTemplates } from "./launch-templates.ts";
+import { publishToolRoles, resolveToolRoles } from "./roles.ts";
 import { serverGeneratedDir } from "./compact/store.ts";
 import { DEFAULT_MCP_PRESENTATION, McpPresentation, type McpPresentationMode } from "./presentation/index.ts";
 
@@ -52,6 +54,8 @@ export interface McpExtensionOptions {
 	startupWaitMs?: number;
 	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `compact`. */
 	presentation?: McpPresentationMode;
+	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `direct`. */
+	exposure?: string;
 }
 
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
@@ -174,6 +178,9 @@ export class McpExtensionState {
 				...(server.entry.scope ? { scope: server.entry.scope } : {}),
 			})),
 		);
+		publishToolRoles(
+			resolveToolRoles(this.servers.filter(isEnabled).map(({ entry }) => ({ ...entry, trusted: this.projectTrusted }))),
+		);
 		for (const listener of this.listeners) listener();
 	};
 
@@ -188,13 +195,24 @@ export class McpExtensionState {
 		return findMcpPreset(this.options.presets, entry.name);
 	}
 
+	/** A tool's exposure: its configuration's, else `deferred` where the prompt's block lists it by name only. */
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure {
-		return getMcpToolExposure(entry.config, tool);
+		const configured = getMcpToolExposure(entry.config, tool);
+		return configured === "direct" && this.presentation.isDeferred(entry.name, tool) ? "deferred" : configured;
+	}
+
+	/** The `mcpExposure` setting: the option, else the session's settings. */
+	exposureSetting(): unknown {
+		return (
+			this.options.exposure ?? (typeof this.api.getSettings === "function" ? this.api.getSettings() : {})?.mcpExposure
+		);
 	}
 
 	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {
 		const prepared = this.preset(entry)?.prepareLaunch?.(entry, cwd, this.projectTrusted) ?? entry;
-		return this.options.prepareLaunch?.(prepared, cwd) ?? prepared;
+		const launched = this.options.prepareLaunch?.(prepared, cwd) ?? prepared;
+		const skillDirectories = typeof this.api.getSkillDirectories === "function" ? this.api.getSkillDirectories() : [];
+		return expandLaunchTemplates(launched, { cwd, projectTrusted: this.projectTrusted, skillDirectories });
 	};
 
 	connections(): McpServerConnection[] {

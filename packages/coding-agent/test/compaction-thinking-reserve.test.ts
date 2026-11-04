@@ -12,7 +12,7 @@ const reserve = (contextWindow: number, level: ModelThinkingLevel, model: object
 	builtInCompactionSettings({ contextWindow, ...model }, { level }).reserveTokens;
 
 describe("thinking-sized compaction reserve", () => {
-	// The RFC's table (2026-10-26-omp-adoption, S3): reserve = max(today, min(budget + 8192 + 4096, window / 6)).
+	// The rule these rows pin: reserve = max(today, min(budget + 8192 + 4096, window / 6)).
 	it.each([
 		[200_000, "off", 16_384],
 		[200_000, "low", 16_384],

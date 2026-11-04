@@ -1,8 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { BranchIndex } from "../shared/branch-index.ts";
-import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
-import { OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contextMessages, plainText, sessionCleared } from "./reads.ts";
@@ -14,8 +13,8 @@ import { contextMessages, plainText, sessionCleared } from "./reads.ts";
  * nothing is lost: the content is in the context above.
  */
 
-/** Tools whose result is the content of a file: Octocode's `localFetch`, and a `read` tool of a resumed transcript or an SDK caller (Octocode itself ships none). */
-const DEDUPED_TOOLS: ReadonlySet<string> = new Set(["read", ...LOCAL_READ_TOOLS]);
+/** Tools whose result is the content of a file: MCP reader roles, and a `read` tool of a resumed transcript or an SDK caller (Octocode itself ships none). */
+const isDeduped = (tool: string): boolean => tool === "read" || currentToolRoles().readers.has(tool);
 
 interface ReadIndex {
 	calls: Map<string, { input: Record<string, unknown>; key: string }>;
@@ -56,7 +55,7 @@ function indexMessage(state: ReadIndex, message: unknown): void {
 		message.role !== "toolResult" ||
 		message.isError === true ||
 		typeof message.toolName !== "string" ||
-		!DEDUPED_TOOLS.has(message.toolName)
+		!isDeduped(message.toolName)
 	)
 		return;
 	const text = plainText(message.content);
@@ -73,7 +72,7 @@ function indexMessage(state: ReadIndex, message: unknown): void {
 function unchangedNote(toolName: string, input: Record<string, unknown>): string {
 	if (toolName === "read" && typeof input.path === "string")
 		return `[Unchanged since your earlier read of ${input.path} (same range); that result is above in your context.]`;
-	return `[Unchanged since your earlier ${toolName.slice(OCTOCODE_TOOL_PREFIX.length) || toolName} of the same arguments; that result is above in your context.]`;
+	return `[Unchanged since your earlier ${toolName} of the same arguments; that result is above in your context.]`;
 }
 
 /**
@@ -94,7 +93,7 @@ export function registerReadDedupe(api: ExtensionAPI): void {
 		},
 	);
 	api.on("tool_result", async (event, ctx) => {
-		if (event.isError || !DEDUPED_TOOLS.has(event.toolName)) return undefined;
+		if (event.isError || !isDeduped(event.toolName)) return undefined;
 		const text = plainText(event.content);
 		if (text === undefined) return undefined;
 		const state = index.read(ctx.sessionManager);

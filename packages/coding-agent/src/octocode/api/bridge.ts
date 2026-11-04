@@ -29,6 +29,7 @@ import {
 	newToken,
 	removeRecord,
 	socketPath,
+	sweepSocketFolders,
 	writeRecord,
 } from "./registry.ts";
 import { ApiServer, type Connection } from "./server.ts";
@@ -120,6 +121,7 @@ export class OctocodeApi {
 		// `wait` answers once Octocode has settled: after agent_end it may still continue (a queued follow-up, a compaction
 		// retry), and the caller wants the final answer, not an intermediate one.
 		api.on("agent_settled", (event) => {
+			this.operations.capTurn?.(undefined); // an API-started turn is over, API running or not
 			if (!this.server) return;
 			// The recorded outcome decides failure: recovery can remove the failed attempt `agent_end` would have reported.
 			const { outcome } = event;
@@ -179,6 +181,7 @@ export class OctocodeApi {
 		ensurePrivateDir(this.dir);
 		// Every session publishes a record, and a killed one cannot remove its own: each start sweeps what the dead left.
 		listInstances(this.dir);
+		void sweepSocketFolders(this.env);
 		const id = newInstanceId();
 		const token = newToken();
 		const server = new ApiServer(

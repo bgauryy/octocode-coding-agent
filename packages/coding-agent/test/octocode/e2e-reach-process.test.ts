@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { apiDir, listInstances, type InstanceRecord } from "../../src/octocode/api/registry.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { acpClient, initialize } from "./e2e-acp-client.ts";
+import { seedTrust } from "./e2e-helpers/seed-trust.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -15,6 +16,7 @@ import {
 	script,
 	startEndpoint,
 	until,
+	writeSettings,
 } from "./e2e-real-process-harness.ts";
 
 /**
@@ -254,8 +256,7 @@ describe("selecting a process that is not there, or not one process", () => {
 describe("an ACP worker's local API", () => {
 	it("a worker is found by the ACP session id, and work sent there streams to the ACP client", async () => {
 		const box = withApi();
-		const trust = box.start(["trust", "add", box.project, "--yes"], { subcommand: true });
-		expect((await trust.exited).code).toBe(0);
+		seedTrust(box);
 		const run = box.start(["--mode", "acp"], { stdin: "pipe", trust: false });
 		const acp = acpClient(run.process);
 		await acp.request("initialize", initialize);
@@ -290,17 +291,12 @@ function octocodeExecutable(box: Sandbox): string {
 }
 
 describe("Octocode as a client of another Octocode", () => {
-	const settings = (box: Sandbox) =>
-		fs.writeFileSync(
-			path.join(box.home, ".octocode", "octocodecode", "settings.json"),
-			JSON.stringify({ externalAgents: true }),
-		);
+	const settings = (box: Sandbox) => writeSettings(box, { externalAgents: true });
 
 	it("connects over ACP to another Octocode process, gets its reply and stops it on disconnect", async () => {
 		const box = withApi();
 		settings(box);
-		const trust = box.start(["trust", "add", box.project, "--yes"], { subcommand: true });
-		expect((await trust.exited).code).toBe(0);
+		seedTrust(box);
 		const host = await runningSession(box);
 		const external = (input: Record<string, unknown>) =>
 			octocodeApi(box, ["external", "--to", host.name, JSON.stringify(input)]);
@@ -346,8 +342,7 @@ describe("Octocode as a client of another Octocode", () => {
 	it("a cancel mid-turn stops the owned peer, says what happened, and an untrusted folder is refused with the fix", async () => {
 		const box = withApi();
 		settings(box);
-		const trust = box.start(["trust", "add", box.project, "--yes"], { subcommand: true });
-		expect((await trust.exited).code).toBe(0);
+		seedTrust(box);
 		const host = await runningSession(box);
 		const external = (input: Record<string, unknown>) =>
 			octocodeApi(box, ["external", "--to", host.name, JSON.stringify(input)]);
@@ -639,8 +634,7 @@ describe("an external message", () => {
 
 	it("an ACP client reads the same facts", async () => {
 		const box = withApi();
-		const trust = box.start(["trust", "add", box.project, "--yes"], { subcommand: true });
-		expect((await trust.exited).code).toBe(0);
+		seedTrust(box);
 		const run = box.start(["--mode", "acp"], { stdin: "pipe", trust: false });
 		const acp = acpClient(run.process);
 		await acp.request("initialize", initialize);
@@ -670,8 +664,7 @@ describe("an external message", () => {
 		const tmux = spawnSync("tmux", ["-V"]).status === 0;
 		if (!tmux) return;
 		const box = withApi();
-		const trust = box.start(["trust", "add", box.project, "--yes"], { subcommand: true });
-		expect((await trust.exited).code).toBe(0);
+		seedTrust(box);
 		const socket = `octo-reach-${process.pid}`;
 		const call = (...args: string[]) => spawnSync("tmux", ["-L", socket, ...args], { encoding: "utf8" });
 		const env = Object.entries(box.env)
@@ -815,10 +808,7 @@ describe("an external message", () => {
 describe("on by default, and how it is off", () => {
 	it("the sessionApi setting turns it off, and /api on still works for that process", async () => {
 		const box = sandbox(endpoint);
-		fs.writeFileSync(
-			path.join(box.home, ".octocode", "octocodecode", "settings.json"),
-			JSON.stringify({ sessionApi: false }),
-		);
+		writeSettings(box, { sessionApi: false });
 		const run = box.start(["--mode", "rpc"], { stdin: "pipe" });
 		await until(() => records(run).some((record) => record.type === "rpc_ready"), "RPC");
 		rpcPrompt(run, "status", "/api");
@@ -956,9 +946,16 @@ describe("who can reach the socket", () => {
 			expect(fs.existsSync(socket)).toBe(true);
 			const second = start();
 			try {
-				// The next session's start sweeps the dead record and its socket, without anyone listing.
-				await until(() => !fs.existsSync(socket), "the stale socket to go", 60_000);
-				expect(fs.existsSync(path.join(api, "instances", `${instance?.id}.json`))).toBe(false);
+				// The next session's start sweeps the dead record and its socket, without anyone listing. Two background
+				// sweeps may remove them (the record sweep, and the temp socket-folder sweep that can take the socket first),
+				// so wait for both to be gone.
+				const record = path.join(api, "instances", `${instance?.id}.json`);
+				await until(
+					() => !fs.existsSync(socket) && !fs.existsSync(record),
+					"the stale record and socket to go",
+					60_000,
+				);
+				expect(fs.existsSync(record)).toBe(false);
 			} finally {
 				second.stdin?.end();
 				second.kill("SIGKILL");

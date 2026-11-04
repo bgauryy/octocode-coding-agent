@@ -600,7 +600,8 @@ describe("AgentsView", () => {
 			expect(done).toMatch(/tester-3c4d .* left +\d/);
 			expect(done).not.toContain("working");
 			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
-			vi.advanceTimersByTime(11_000);
+			// Finished rows stay FINISHED_MS (30 s) so their outcome can be read.
+			vi.advanceTimersByTime(31_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
 			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
 

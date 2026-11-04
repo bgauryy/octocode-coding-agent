@@ -46,7 +46,7 @@ Details: [the subagent model](native-features.md#the-subagent-model), [profile f
 - `/memory add <title>` opens an editor for a workspace memory; or tell the agent "remember that …" and it saves one with `archive` (`op: set`, `source: memories`). Add `keywords` you would type when the rule matters. Pin it (`/memory`, pick it, **Pin**) to inject it before every prompt.
 - It may not appear later when injection is off (`/memory auto`), the prompt shares too few words with it, or it was already injected on this branch. `/memory last` shows what the latest injection contained.
 
-Details and the full checklist: [memory](memory.md#memory).
+Details and the full checklist: [memory](memory.md).
 
 ## Run two sessions in parallel on different branches
 

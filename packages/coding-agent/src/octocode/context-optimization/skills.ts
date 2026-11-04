@@ -2,8 +2,8 @@
  * The skills listing an agent reads, after optimization: each skill's description is replaced by the rewrite stored
  * for its current source (`skills-store.ts`). Skills inside the session's repository are stored in the project's
  * folder, all others in the user folder (`contextOptimizationDirs`); a lookup reads the project's store first. A root
- * session records the skills it discovers whenever they change (startup, `/reload`, a changed `skills` setting) and
- * tells the user once which new or changed skills have no rewrite; subagents only read. The stores are read once per
+ * session records the skills it discovers whenever they change (startup, `/reload`, a changed `skills` setting);
+ * subagents only read. The stores are read once per
  * session start and per change of the discovered skills, so a rewrite applied mid-session reaches agents at the next
  * start or `/reload`, not in the middle of a cached prompt.
  */
@@ -12,7 +12,6 @@ import path from "node:path";
 import { getNativeSkillsDir } from "../../config.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import type { Skill } from "../../core/skills.ts";
-import { notify } from "../shared/commands.ts";
 import { contextOptimizationDirs, inContextProject } from "../shared/home.ts";
 import { isWithin } from "../shared/home/repo.ts";
 import {
@@ -24,25 +23,12 @@ import {
 	writeSkillsStore,
 } from "./skills-store.ts";
 
-/** The internal skill that writes the rewrites. */
-const CONTEXT_OPTIMIZATION_SKILL = "octocode-context-optimization";
-
-/** Names shown in the notice; the rest are counted. */
-const NOTICE_NAMES = 8;
-
-function unoptimizedNotice(names: readonly string[]): string {
-	const shown = names.slice(0, NOTICE_NAMES).join(", ");
-	const more = names.length > NOTICE_NAMES ? `, and ${names.length - NOTICE_NAMES} more` : "";
-	return `${names.length} new or changed skill description${names.length === 1 ? " is" : "s are"} not optimized for agent context (${shown}${more}). The ${CONTEXT_OPTIMIZATION_SKILL} skill rewrites them; \`octocode context list\` shows the rest.`;
-}
-
 /** Skills whose description reaches the model; the others are listed nowhere it reads. */
 const listed = (skill: Skill) => !skill.disableModelInvocation && skill.description.trim() !== "";
 
 /** Record `sources` in the store at `dir` and return it; a failed write only costs the record. */
-function record(dir: string, sources: readonly SkillSource[], changed: string[]): SkillsStore {
+function record(dir: string, sources: readonly SkillSource[]): SkillsStore {
 	const synced = syncSkills(readSkillsStore(dir), sources);
-	changed.push(...synced.changed);
 	if (synced.dirty) {
 		try {
 			writeSkillsStore(dir, synced.store);
@@ -77,7 +63,6 @@ export function registerSkillDescriptions(
 			if (options.isSubagent) {
 				stores = [...(project ? [readSkillsStore(project.dir)] : []), readSkillsStore(dirs.user)];
 			} else {
-				const changed: string[] = [];
 				// A bundled skill is user-level, also when Octocode runs from a checkout of its own repository.
 				const bundled = getNativeSkillsDir();
 				const inProject = (source: SkillSource) =>
@@ -85,10 +70,8 @@ export function registerSkillDescriptions(
 				const user = record(
 					dirs.user,
 					sources.filter((source) => !inProject(source)),
-					changed,
 				);
-				stores = project ? [record(project.dir, sources.filter(inProject), changed), user] : [user];
-				if (changed.length && ctx.hasUI) notify(ctx.ui, unoptimizedNotice(changed), "info");
+				stores = project ? [record(project.dir, sources.filter(inProject)), user] : [user];
 			}
 			frozen = { key, stores };
 		}

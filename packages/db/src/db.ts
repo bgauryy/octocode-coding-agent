@@ -6,6 +6,7 @@ import { loadSqlite } from "./sqlite.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
 import { prepareSchema } from "./migrate.ts";
 import { SCHEMA_PLAN, type SchemaPlan } from "./migrations.ts";
+import * as agentEvents from "./queries/agent-events.ts";
 import { AgentDbError } from "./schema.ts";
 
 /** The open SQLite handle of an agent database; features pass it to `api.ts` functions and never call it themselves. */
@@ -29,6 +30,8 @@ export interface AgentDb {
 	transaction<T>(fn: () => T): T;
 	/** Notification after a successful outer transaction; observers cannot undo the commit. */
 	onCommit(listener: () => void): () => void;
+	/** After a transaction of this connection that appended agent events: their sequences, `from` to `to` inclusive. */
+	onEvents(listener: (from: number, to: number) => void): () => void;
 	withActor<T>(actor: { id: string; kind?: string }, fn: () => T): T;
 	close(): void;
 }
@@ -64,14 +67,19 @@ export function openDatabase(
 		}
 	};
 	const committed = new Set<() => void>();
+	const appended = new Set<(from: number, to: number) => void>();
 	let depth = 0;
 	const transaction = <T>(fn: () => T): T => {
 		if (depth > 0) return fn();
 		db.exec("BEGIN IMMEDIATE");
 		depth += 1;
 		let result: T;
+		// The write lock is held from here to the commit, so the events between the two reads are this transaction's own.
+		const before = appended.size > 0 ? agentEvents.head(db) : undefined;
+		let after = before;
 		try {
 			result = fn();
+			if (before !== undefined) after = agentEvents.head(db);
 			db.exec("COMMIT");
 		} catch (error) {
 			try {
@@ -83,6 +91,14 @@ export function openDatabase(
 		} finally {
 			depth -= 1;
 		}
+		if (before !== undefined && after !== undefined && after > before)
+			for (const listener of appended) {
+				try {
+					listener(before + 1, after);
+				} catch {
+					/* An observer cannot undo a completed transaction. */
+				}
+			}
 		for (const listener of committed) {
 			try {
 				listener();
@@ -105,6 +121,12 @@ export function openDatabase(
 			fts,
 			transaction,
 			withActor,
+			onEvents: (listener) => {
+				appended.add(listener);
+				return () => {
+					appended.delete(listener);
+				};
+			},
 			onCommit: (listener) => {
 				committed.add(listener);
 				return () => {
@@ -113,6 +135,7 @@ export function openDatabase(
 			},
 			close: () => {
 				committed.clear();
+				appended.clear();
 				if (open) db.close();
 				open = false;
 			},

@@ -1,3 +1,4 @@
+import type { AgentEnd } from "../team/panel-state.ts";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
@@ -151,6 +152,8 @@ export interface AgentRuns {
 	slots: Slots;
 	/** Called when a background run starts or ends: the footer counts them while the agents panel cannot show them. */
 	changed: () => void;
+	/** Called when a background run ended, with how it ended: the agents panel shows the outcome on the finished row. */
+	ended?: (id: string, end: AgentEnd) => void;
 	/** Bumped when a session ends: a background run started under an earlier session drops its late report. */
 	session: number;
 }

@@ -1,1 +1,12 @@
-- You cannot ask the user. When you need a decision or approval, ask your parent as your run mode says (in the background, a message to `parent` that needs an answer; in the foreground, a `blocked` report) and keep working on what does not depend on it. If it blocks completion, finish with `blocked`: the answer resumes you, so always end with an outcome word. In the background, also tell your parent as soon as you find the task's premise is wrong or its scope has changed, rather than only in your report.
+- You cannot ask the user; ask whoever can settle it, never guess or loop:
+
+```mermaid
+graph TD
+  S[Stuck, missing input or access, or a retry failed twice] --> W{Who can settle it?}
+  W -->|file or fact a teammate holds| M[message the teammate]
+  W -->|anything else| R{Run mode}
+  R -->|background| B[message parent, needs a reply]
+  R -->|foreground| F[say so in your report, do not wait]
+```
+
+- Keep working on what does not depend on it; if it blocks completion, finish with a `blocked` report: its answer resumes you. In the background, message your parent at once, not only in your report, when the task's premise is wrong, its scope changed, or you confirm a severe problem (security, data loss, broken shared build). Start your final report with an outcome word.

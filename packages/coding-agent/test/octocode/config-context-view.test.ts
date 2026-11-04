@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { getBundledSkillsDir, getNativeSkillsDir } from "../../src/config.ts";
+import { getNativeSkillsDir } from "../../src/config.ts";
 import { claudeConfigDir } from "../../src/utils/host-config.ts";
 import { collectContextView } from "../../src/core/discovery/context-snapshot.ts";
 import { buildContextView, sourceInfoLabel, sourceSummary } from "../../src/core/discovery/context-view.ts";
@@ -44,7 +44,7 @@ function populate(): void {
 
 function view(projectTrusted: boolean) {
 	populate();
-	return collectContextView({ cwd: box.cwd, agentDir: box.agentDir, projectTrusted, builtinSkillsDir: "" });
+	return collectContextView({ cwd: box.cwd, agentDir: box.agentDir, projectTrusted });
 }
 
 /** The startup rows of `view` as the terminal draws them. */
@@ -177,7 +177,6 @@ describe("one message per problem", () => {
 			cwd: box.cwd,
 			agentDir: box.agentDir,
 			projectTrusted: true,
-			builtinSkillsDir: "",
 		});
 		expect(takePiNotice(found, box.agentDir)).toBeUndefined();
 	});
@@ -214,17 +213,16 @@ describe("source labels", () => {
 	it("names a path from settings or a flag, never 'path'", () => {
 		expect(sourceInfoLabel({ source: "cli", scope: "temporary" })).toBe("command line");
 		expect(sourceInfoLabel({ source: "local", scope: "temporary" })).toBe("settings path");
-		// A built-in extension shares the `builtin` source with the bundled Octocode skills, but not their folder.
+		// A built-in extension has the `builtin` source.
 		expect(sourceInfoLabel({ source: "builtin", scope: "user" })).toBe("builtin");
 		expect(sourceInfoLabel({ source: "builtin", scope: "user", path: "<builtin:llama.cpp>" })).toBe("builtin");
 		expect(sourceInfoLabel({ source: "local", scope: "user" })).toBe("octocode global");
 		expect(sourceInfoLabel({ source: "npm:kit", scope: "project" })).toBe("package npm:kit");
 	});
 
-	it("tells Octocode's core skills, its bundled collection and external skill folders apart", () => {
+	it("tells Octocode's core skills and external skill folders apart", () => {
 		const file = (dir: string) => path.join(dir, "x", "SKILL.md");
 		expect(sourceInfoLabel({ source: "local", scope: "temporary", path: file(getNativeSkillsDir()) })).toBe("core");
-		expect(sourceInfoLabel({ source: "builtin", scope: "user", path: file(getBundledSkillsDir()) })).toBe("octocode");
 		expect(
 			sourceInfoLabel({
 				source: "extension:inline:octocode",
@@ -254,7 +252,6 @@ describe("source labels", () => {
 			cwd: box.cwd,
 			agentDir: box.agentDir,
 			projectTrusted: true,
-			builtinSkillsDir: "",
 		});
 		const specs = viewRows(found, (file) => file).map((row) => row.spec);
 		const columns = () => loadedColumns(specs);
@@ -273,11 +270,30 @@ describe("source labels", () => {
 			cwd: box.cwd,
 			agentDir: box.agentDir,
 			projectTrusted: true,
-			builtinSkillsDir: "",
 			settings: { plugins: [{ path: dir, protocol: "claude" }] },
 		});
 		const plugins = found.groups.find((group) => group.id === "plugin");
 		expect(plugins?.entries.map((entry) => `${entry.name}|${entry.source}`)).toEqual(["review-kit|plugin"]);
+	});
+});
+
+describe("startup hook rows", () => {
+	it("list only files that define a hook, not settings files that merely exist", () => {
+		write(path.join(box.home, ".claude", "settings.json"), '{"theme":"dark"}');
+		write(path.join(box.home, ".codex", "config.toml"), 'model = "x"\n');
+		write(path.join(box.cwd, ".claude", "settings.json"), '{"hooks":{}}');
+		const found = () =>
+			collectContextView({
+				cwd: box.cwd,
+				agentDir: box.agentDir,
+				projectTrusted: true,
+			}).groups.find((group) => group.id === "hook");
+		expect(found()?.entries ?? []).toEqual([]);
+		write(
+			path.join(box.home, ".claude", "settings.json"),
+			JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "true" }] }] } }),
+		);
+		expect(found()?.entries.map((entry) => path.basename(entry.path ?? ""))).toEqual(["settings.json"]);
 	});
 });
 

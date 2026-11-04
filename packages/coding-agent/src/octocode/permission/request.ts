@@ -29,6 +29,8 @@ export interface PermissionRequest {
 	toolCallId?: string;
 	/** The folder the call runs in (a snapshot's repository, the card's measurements). */
 	cwd?: string;
+	/** What the model should do when no one can be asked, instead of the general advice to ask the user. */
+	nextStep?: string;
 	/** The card's lines; computed from the class when the caller does not set them. */
 	effect?: string;
 	undo?: string;

@@ -1,21 +1,21 @@
 import path from "node:path";
-
-/** The tool whose declaration means the hints below can be followed. */
-export const LOCAL_READER_TOOL = "mcp__octocode__localFetch";
+import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 
 /** Hints one session can receive: enough to reach the model, too few to become noise. */
 export const READ_HINT_LIMIT = 3;
 
-const READ_TOOL: Record<string, string> = {
-	rg: "localSearch",
-	grep: "localSearch",
-	find: "structureSearch",
-	ls: "structureSearch",
-	cat: "localFetch",
-	head: "localFetch",
-	tail: "localFetch",
-	sed: "localFetch",
-	nl: "localFetch",
+/** The research role that replaces each read command: a search role finds, the reader role prints known lines. */
+type ReadRole = "search" | "reader";
+const READ_TOOL: Record<string, ReadRole> = {
+	rg: "search",
+	grep: "search",
+	find: "search",
+	ls: "search",
+	cat: "reader",
+	head: "reader",
+	tail: "reader",
+	sed: "reader",
+	nl: "reader",
 };
 
 /** Commands that may receive a read's output through a pipe and only narrow it. */
@@ -101,8 +101,8 @@ function stepsOf(command: string): Step[] | undefined {
 	return steps;
 }
 
-/** The reader for this one read, or undefined when it is not a read that stays under `root`. */
-function readerFor(words: readonly string[], directory: string, root: string): string | undefined {
+/** The role for this one read, or undefined when it is not a read that stays under `root`. */
+function readerFor(words: readonly string[], directory: string, root: string): ReadRole | undefined {
 	const [name, ...args] = words;
 	if (!name) return undefined;
 	const reader = READ_TOOL[name];
@@ -126,16 +126,16 @@ const isNeutral = ([name, subcommand]: readonly string[]): boolean =>
 	NEUTRAL.has(name ?? "") || (name === "git" && NEUTRAL_GIT.has(subcommand ?? ""));
 
 /**
- * The research tool a command could have used, when all it does is read this workspace: at least one `rg`, `grep`,
+ * The research role a command could have used, when all it does is read this workspace: at least one `rg`, `grep`,
  * `find`, `ls`, `cat`, `head`, `tail`, `nl` or `sed -n`, whose output may be piped through filters that narrow it, joined
  * with `cd` steps that stay inside and commands that change nothing (`echo`, `wc`, `git diff` and the like). Any other
  * command, such as a build, a script or `sed -i`, means the shell is doing work those tools can't: no reader.
  */
-export function codeReadTool(command: string, cwd: string): string | undefined {
+export function codeReadTool(command: string, cwd: string): ReadRole | undefined {
 	const steps = stepsOf(command);
 	if (!steps) return undefined;
 	let directory = cwd;
-	let reader: string | undefined;
+	let reader: ReadRole | undefined;
 	for (const { words, piped } of steps) {
 		if (piped) {
 			if (!isFilter(words)) return undefined;
@@ -154,15 +154,23 @@ export function codeReadTool(command: string, cwd: string): string | undefined {
 	return reader;
 }
 
-const hintText = (tool: string): string =>
-	`Hint: for code reads like this, use \`${tool}\`; one call takes several query rows. Keep bash for builds, tests, scripts and git.`;
+/** The declared research tools of `role`, from the research server's roles; empty without one. */
+function researchTools(role: ReadRole, active: readonly string[]): string[] {
+	const research = currentToolRoles().research;
+	if (!research) return [];
+	return (role === "reader" ? [research.reader] : research.search).filter((tool) => active.includes(tool));
+}
+
+const hintText = (tools: readonly string[]): string =>
+	`Hint: for code reads like this, use ${tools.map((tool) => `\`${tool}\``).join(" or ")}. Keep bash for builds, tests, scripts and git.`;
 
 /**
  * One line for a tool result after a successful read, at most `READ_HINT_LIMIT` times per session and only while the
- * reader is declared. It lands in the conversation, never in the cached prompt, and it never blocks the read.
+ * research server's tools for that read (by their roles) are declared. It lands in the conversation, never in the cached
+ * prompt, and it never blocks the read.
  */
 export function createReadHint(
-	declared: () => boolean,
+	active: () => readonly string[],
 ): (command: string, cwd: string, session: string) => string | undefined {
 	let current = "";
 	let given = 0;
@@ -171,10 +179,11 @@ export function createReadHint(
 			current = session;
 			given = 0;
 		}
-		if (given >= READ_HINT_LIMIT || !declared()) return undefined;
-		const tool = codeReadTool(command, cwd);
-		if (!tool) return undefined;
+		if (given >= READ_HINT_LIMIT) return undefined;
+		const role = codeReadTool(command, cwd);
+		const tools = role ? researchTools(role, active()) : [];
+		if (tools.length === 0) return undefined;
 		given += 1;
-		return hintText(tool);
+		return hintText(tools);
 	};
 }

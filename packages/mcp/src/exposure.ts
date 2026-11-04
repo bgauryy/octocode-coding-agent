@@ -7,10 +7,14 @@ export function exposureOf(entry: McpServerEntry): McpExposure {
 	return entry.config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
-/** Whether some of the server's tools are declared to the model, so the first prompt waits for them. */
+/** Whether some of the server's tools are declared to the model (direct or deferred), so the first prompt waits for them. */
 export function hasDirectTools(entry: McpServerEntry): boolean {
-	return exposureOf(entry) === "direct" || Object.values(entry.config.toolExposure ?? {}).includes("direct");
+	return exposureOf(entry) !== "hidden" || Object.values(entry.config.toolExposure ?? {}).some((e) => e !== "hidden");
 }
+
+/** What a tool's definition declares: a deferred tool is declared like a direct one; only its block differs. */
+export const declaredExposure = (exposure: McpExposure): "direct" | "hidden" =>
+	exposure === "hidden" ? "hidden" : "direct";
 
 /** Whether the server's tools are in an agent's default tool selection (`defaultActive`, default true). */
 export function isDefaultActive(entry: McpServerEntry): boolean {

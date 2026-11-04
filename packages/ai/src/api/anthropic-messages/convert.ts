@@ -1,4 +1,3 @@
-import { sanitizeToolCallId } from "../tool-call-id.ts";
 import type {
 	BetaTool,
 	BetaCacheControlEphemeral as CacheControlEphemeral,
@@ -67,11 +66,6 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 	}
 
 	return blocks;
-}
-
-// Normalize tool call IDs to match Anthropic's required pattern and length
-export function normalizeToolCallId(id: string): string {
-	return sanitizeToolCallId(id);
 }
 
 function convertToolResult(msg: ToolResultMessage, content = msg.content): ContentBlockParam {

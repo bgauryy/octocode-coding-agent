@@ -67,7 +67,6 @@ export class DefaultPackageManager implements PackageManager {
 	private agentDir: string;
 	private settingsManager: SettingsManager;
 	private builtinExtensions: string[];
-	private builtinSkillsDir: string | undefined;
 	private readonly globalNpmRootCache: GlobalNpmRootCache = {};
 	private progressCallback: ProgressCallback | undefined;
 	private readonly host: PackageManagerHost;
@@ -77,13 +76,11 @@ export class DefaultPackageManager implements PackageManager {
 		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager;
 		this.builtinExtensions = options.builtinExtensions ?? [];
-		this.builtinSkillsDir = options.builtinSkillsDir;
 		this.host = {
 			cwd: this.cwd,
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
 			builtinExtensions: this.builtinExtensions,
-			builtinSkillsDir: this.builtinSkillsDir,
 			withProgress: (...args) => this.withProgress(...args),
 			installParsedSource: (...args) => this.installParsedSource(...args),
 			refreshTemporaryGitSource: (...args) => this.refreshTemporaryGitSource(...args),

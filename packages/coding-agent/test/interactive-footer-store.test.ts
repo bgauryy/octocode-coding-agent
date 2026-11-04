@@ -44,7 +44,7 @@ describe("footer state binding", () => {
 	it("stops requesting frames after unbinding", () => {
 		const { footerDataProvider, requestRender, unbind } = setup();
 		unbind();
-		footerDataProvider.setGithubStatusText("PR #1");
+		footerDataProvider.setExtensionStatus("pr", "PR #1");
 		expect(requestRender).not.toHaveBeenCalled();
 	});
 });

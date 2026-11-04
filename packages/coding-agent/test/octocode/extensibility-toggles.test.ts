@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { InventoryItem } from "../../src/core/extensibility/inventory.ts";
+import { buildInventory, type InventoryItem, renderInventory } from "../../src/core/extensibility/inventory.ts";
 import { switchItem } from "../../src/core/extensibility/switch.ts";
 import { effectivePlugins, isSwitchedOn, pluginToggleId } from "../../src/core/extensibility/toggles.ts";
+import type { Settings } from "../../src/core/settings-schema.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import { mergeScopedSettings } from "../../src/core/settings-manager/merge.ts";
@@ -405,5 +406,155 @@ describe("plugins installed by other hosts", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toContain("added to Octocode globally");
 		const settings = JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8"));
 		expect(settings.plugins).toEqual([{ path: codexKit, protocol: "claude" }]);
+	});
+});
+
+describe("plugin rows", () => {
+	it("count the skills that load, not the folders declared, and name MCP servers their hooks call that nothing provides", async () => {
+		const f = fixture();
+		const write = (file: string, value: unknown) => {
+			fs.mkdirSync(path.dirname(file), { recursive: true });
+			fs.writeFileSync(file, typeof value === "string" ? value : JSON.stringify(value));
+		};
+		const mcpHook = (server: string) => ({ type: "mcp_tool", server, tool: "turn_ended" });
+		// Like Codex's bundled browser plugin: an empty skills folder and hooks for a server only Codex runs.
+		const empty = path.join(f.home, "plugins/empty-kit");
+		fs.mkdirSync(path.join(empty, "skills"), { recursive: true });
+		write(path.join(empty, ".codex-plugin/plugin.json"), {
+			name: "empty-kit",
+			skills: "./skills/",
+			hooks: {
+				hooks: { Stop: [{ hooks: [mcpHook("node_repl"), mcpHook("octocode"), mcpHook("plugin:empty-kit:echo")] }] },
+			},
+		});
+		write(path.join(empty, ".mcp.json"), { mcpServers: { echo: { command: "node" } } });
+		const full = path.join(f.home, "plugins/full-kit");
+		write(path.join(full, ".codex-plugin/plugin.json"), { name: "full-kit", skills: "./skills/" });
+		write(path.join(full, "skills/hello/SKILL.md"), "---\nname: hello\ndescription: Says hello.\n---\nSay hello.\n");
+
+		const settings = {
+			plugins: [
+				{ path: empty, protocol: "codex" as const },
+				{ path: full, protocol: "codex" as const, enabled: false },
+			],
+		};
+		const octocode = { name: "octocode", enabled: true, state: "connected", toolCount: 1, exposure: "all", source: "" };
+		const inventory = await buildInventory({
+			cwd: f.cwd,
+			agentDir: f.agentDir,
+			settings,
+			manager: SettingsManager.inMemory(settings),
+			projectTrusted: true,
+			mcp: [octocode],
+			home: f.home,
+		});
+		const row = (name: string) =>
+			renderInventory(inventory)
+				.split("\n")
+				.find((line) => line.includes(`${name} (plugin`));
+
+		expect(row("empty-kit")).toContain("0 skills in 1 skill directory, 0 command sources");
+		// The registered `octocode` server and the plugin's own scoped server are provided; only `node_repl` is missing.
+		expect(row("empty-kit")).toContain("hooks call MCP servers no one provides: node_repl ·");
+		// A switched-off plugin still shows what it would load.
+		expect(row("full-kit")).toContain("1 skill in 1 skill directory");
+		expect(row("full-kit")).not.toContain("no one provides");
+	});
+
+	const writeJson = (file: string, value: unknown) => {
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, JSON.stringify(value));
+	};
+	async function rows(f: ReturnType<typeof fixture>, settings: Settings) {
+		vi.stubEnv("CODEX_HOME", "");
+		const inventory = await buildInventory({
+			cwd: f.cwd,
+			agentDir: f.agentDir,
+			settings,
+			manager: SettingsManager.inMemory(settings),
+			projectTrusted: true,
+			home: f.home,
+		});
+		return { inventory, text: renderInventory(inventory).split("\n") };
+	}
+
+	it("say how many of a plugin's hooks the host switches left on, while the row keeps the plugin's own switch", async () => {
+		const f = fixture();
+		const kit = path.join(f.home, "plugins/hook-kit");
+		const command = (tag: string) => ({ type: "command", command: `echo ${tag}` });
+		writeJson(path.join(kit, ".codex-plugin/plugin.json"), {
+			name: "hook-kit",
+			hooks: { hooks: { Stop: [{ hooks: [command("a"), command("b"), command("c")] }] } },
+		});
+		const plugins = [{ path: kit, protocol: "codex" as const }];
+		const row = async (toggles?: Record<string, boolean>) =>
+			(await rows(f, { plugins, ...(toggles ? { toggles } : {}) })).text.find((line) =>
+				line.includes("hook-kit (plugin"),
+			)!;
+
+		expect(await row()).toContain("hooks loads");
+		const off = await row({ "hooks:codex": false });
+		expect(off).toContain("[x] hook-kit (plugin");
+		expect(off).toContain("hooks 0 of 3 on (hooks:codex off)");
+		// One hook switched back on by its own ID (the same IDs the hook rows list).
+		const { config } = loadHooks(f.cwd, true, f.home, { plugins });
+		const group = config.Stop.find((candidate) => candidate.hooks[0].plugin)!;
+		const [hookId] = hookToggleIds("Stop", group.matcher, group.hooks[0], f.home);
+		expect(await row({ "hooks:codex": false, [hookId]: true })).toContain("hooks 1 of 3 on (hooks:codex off)");
+	});
+
+	it("name the scoped server when a plugin hook uses the bare key of the plugin's own MCP server", async () => {
+		const f = fixture();
+		const kit = path.join(f.home, "plugins/bare-kit");
+		writeJson(path.join(kit, ".codex-plugin/plugin.json"), {
+			name: "bare-kit",
+			hooks: {
+				hooks: {
+					Stop: [
+						{
+							hooks: [
+								{ type: "mcp_tool", server: "echo", tool: "t" },
+								{ type: "mcp_tool", server: "elsewhere", tool: "t" },
+								{ type: "mcp_tool", server: "plugin:bare-kit:echo", tool: "t" },
+							],
+						},
+					],
+				},
+			},
+		});
+		writeJson(path.join(kit, ".mcp.json"), { mcpServers: { echo: { command: "node" } } });
+		const { text } = await rows(f, { plugins: [{ path: kit, protocol: "codex" as const }] });
+		expect(text.find((line) => line.includes("bare-kit (plugin"))).toContain(
+			"no one provides: echo (did you mean plugin:bare-kit:echo?), elsewhere ·",
+		);
+	});
+
+	it("list the skills Claude and Codex folders supply, symlinked ones included, as read-only rows", async () => {
+		const f = fixture();
+		const store = path.join(f.home, "store");
+		const skill = (dir: string, name: string) => {
+			fs.mkdirSync(dir, { recursive: true });
+			fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: Skill ${name}.\n---\nBody.\n`);
+		};
+		skill(path.join(store, "observation-platform"), "observation-platform");
+		skill(path.join(store, "claude-linked"), "claude-linked");
+		fs.mkdirSync(path.join(f.home, ".codex/skills"), { recursive: true });
+		fs.mkdirSync(path.join(f.home, ".claude/skills"), { recursive: true });
+		fs.symlinkSync(path.join(store, "observation-platform"), path.join(f.home, ".codex/skills/observation-platform"));
+		fs.symlinkSync(path.join(store, "claude-linked"), path.join(f.home, ".claude/skills/claude-linked"));
+		skill(path.join(f.home, ".codex/skills/plain"), "plain");
+
+		const { inventory } = await rows(f, {});
+		const folders = inventory.items.filter((item) => item.id.startsWith("skills-folder:"));
+		expect(folders.map((item) => item.label)).toEqual([
+			"~/.claude/skills (1 skill, read-only)",
+			"~/.codex/skills (2 skills, read-only)",
+		]);
+		expect(folders[1].detail).toContain("observation-platform, plain");
+		expect(folders.every((item) => item.locked && item.host === "skills")).toBe(true);
+		const { api } = fakeHost();
+		const ctx = fakeCtx({ cwd: f.cwd, mode: "rpc" });
+		await harness(api).handler("list skills", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("observation-platform");
 	});
 });

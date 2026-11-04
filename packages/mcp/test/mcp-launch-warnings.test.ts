@@ -1,55 +1,104 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { hostPaths, installMcpHost, type McpPathsPort } from "../src/host.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
-import { presetEntries } from "../src/preset.ts";
-import { mcpHost } from "./mcp-host-fixture.ts";
+import type { McpServerEntry } from "../src/config.ts";
+import { expandLaunchTemplates } from "../src/launch-templates.ts";
+import { recommendedPresets } from "../src/recommended/index.ts";
+import { takeLaunchWarnings } from "../src/warnings.ts";
 
 const original = hostPaths();
 const withRoots = (researchRoots: McpPathsPort["researchRoots"]) =>
 	installMcpHost({ paths: { ...original, researchRoots } });
 afterEach(() => installMcpHost({ paths: original }));
 
+const entry = (env: Record<string, string>, args: string[] = []): McpServerEntry => ({
+	name: "research",
+	config: { command: "server", args, env },
+	source: "test",
+	scope: "global",
+});
+const envOf = (prepared: McpServerEntry) => (prepared.config as { env: Record<string, string> }).env;
+
 const allowed = (): string[] => {
-	const preset = octocodePreset(() => ["/skills/one"], {});
-	const prepared = preset.prepareLaunch!(presetEntries([preset])[0], "/work/app", true);
-	const env = (prepared.config as { env: Record<string, string> }).env;
-	return resolveConfigValueOrThrow(env.ALLOWED_PATHS, "ALLOWED_PATHS").split(",");
+	const prepared = expandLaunchTemplates(entry({ ROOTS: "${researchRoots}" }), {
+		cwd: "/work/app",
+		projectTrusted: true,
+		skillDirectories: ["/skills/one"],
+	});
+	return resolveConfigValueOrThrow(envOf(prepared).ROOTS, "ROOTS").split(",");
 };
 
-describe("the user's roots reach the launch only through the host port", () => {
-	it("a standalone host without the port keeps the automatic roots", () => {
+describe("launch templates", () => {
+	it("${researchRoots}: the automatic roots without the host's port", () => {
 		withRoots(undefined);
-		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app", {}), "/skills/one"]);
+		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app"), "/skills/one"]);
 	});
 
-	it("appends the port's roots after the automatic ones and passes the process environment", () => {
-		const seen: Array<NodeJS.ProcessEnv | undefined> = [];
-		withRoots((env) => {
-			seen.push(env);
-			return { roots: ["/user/a", "/skills/one"], warnings: [] };
-		});
-		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app", {}), "/skills/one", "/user/a"]);
-		expect(seen).toEqual([{}]);
+	it("${researchRoots}: the port's roots after the automatic ones, its warnings queued once", () => {
+		const warning = `Allowed folder "rel" ${Math.random()} is not absolute; ignored.`;
+		withRoots(() => ({ roots: ["/user/a", "/skills/one"], warnings: [warning] }));
+		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app"), "/skills/one", "/user/a"]);
+		allowed();
+		expect(takeLaunchWarnings()).toEqual([warning]);
+		expect(takeLaunchWarnings()).toEqual([]);
 	});
 
-	it("queues the port's warnings once on the preset and shows them at the next prompt", async () => {
-		const warning = `Allowed folder "rel" from the test ${Math.random()} is not an absolute path; ignored.`;
-		withRoots(() => ({ roots: [], warnings: [warning] }));
-		const preset = octocodePreset(() => [], {});
-		const entry = presetEntries([preset])[0];
-		preset.prepareLaunch!(entry, "/work/app", true);
-		preset.prepareLaunch!(entry, "/work/app", true);
-		expect(preset.takeWarnings!()).toEqual([warning]);
-		expect(preset.takeWarnings!()).toEqual([]);
+	it("expands agentDir, projectTrusted and workspace in env and args, keeping values literal", () => {
+		const prepared = expandLaunchTemplates(
+			entry({ DIR: "${agentDir}", TRUST: "${projectTrusted}", HOME_REF: "${HOME}", KEEP: "$${workspace}" }, [
+				"--root=${workspace}",
+			]),
+			{ cwd: "/no/such/$dir", projectTrusted: false },
+		);
+		const env = envOf(prepared);
+		expect(resolveConfigValueOrThrow(env.DIR, "DIR")).toBe(original.agentDir());
+		expect(env.TRUST).toBe("false");
+		expect(env.HOME_REF).toBe("${HOME}");
+		expect(env.KEEP).toBe("$${workspace}");
+		expect((prepared.config as { args: string[] }).args).toEqual(["--root=/no/such/$dir"]);
+	});
 
-		const another = `${warning} again`;
-		withRoots(() => ({ roots: [], warnings: [another] }));
-		const host = mcpHost({ servers: [], presets: [octocodePreset(() => [], {})] });
-		octocodePreset(() => [], {}).prepareLaunch!(entry, "/work/app", true);
-		await host.start();
-		await host.prompt();
-		expect(host.ctx.ui.notes).toContainEqual({ message: another, type: "warning" });
-		await host.close();
+	it("${untrusted:false}: sets the env var in an untrusted project and omits it in a trusted one", () => {
+		const lsp = entry({ TRUST_LSP: "${untrusted:false}", KEEP: "a" });
+		const untrusted = envOf(expandLaunchTemplates(lsp, { cwd: "/w", projectTrusted: false }));
+		expect(untrusted).toEqual({ TRUST_LSP: "false", KEEP: "a" });
+		const trusted = envOf(expandLaunchTemplates(lsp, { cwd: "/w", projectTrusted: true }));
+		expect(trusted).toEqual({ KEEP: "a" });
+		expect("TRUST_LSP" in trusted).toBe(false);
+	});
+
+	it("${untrusted:<value>}: drops a lone arg when trusted and expands to empty inside other text", () => {
+		const flags = entry({}, ["--sandbox=${untrusted:strict}", "${untrusted:--no-lsp}", "--x"]);
+		const argsOf = (projectTrusted: boolean) =>
+			(expandLaunchTemplates(flags, { cwd: "/w", projectTrusted }).config as { args: string[] }).args;
+		expect(argsOf(false)).toEqual(["--sandbox=strict", "--no-lsp", "--x"]);
+		expect(argsOf(true)).toEqual(["--sandbox=", "--x"]);
+	});
+
+	it("recommended servers leave project LSP trust to the user's own setting in trusted projects", () => {
+		for (const { name, config } of recommendedPresets({})) {
+			const recommended: McpServerEntry = { name, config: config!, source: "default", scope: "default" };
+			const trustOf = (projectTrusted: boolean) =>
+				envOf(expandLaunchTemplates(recommended, { cwd: "/w", projectTrusted })).OCTOCODE_TRUST_PROJECT_LSP_CONFIG;
+			expect(trustOf(true)).toBeUndefined();
+			expect(trustOf(false)).toBe("false");
+		}
+	});
+
+	it("rejects ${untrusted} without a value and a value on another template", () => {
+		const run = (text: string) => () => expandLaunchTemplates(entry({ X: text }), { cwd: "/w", projectTrusted: false });
+		expect(run("${untrusted}")).toThrow(/env "X": launch template \$\{untrusted:<value>\} needs a value/);
+		expect(run("${workspace:x}")).toThrow(/env "X": launch template \$\{workspace\} takes no value/);
+	});
+
+	it("rejects an unknown template by name", () => {
+		expect(() => expandLaunchTemplates(entry({ X: "${worksapce}" }), { cwd: "/w", projectTrusted: true })).toThrow(
+			/MCP server "research" env "X": unknown launch template \$\{worksapce\}/,
+		);
+	});
+
+	it("leaves an entry without templates as it is", () => {
+		const plain = entry({ A: "b" });
+		expect(expandLaunchTemplates(plain, { cwd: "/w", projectTrusted: true })).toBe(plain);
 	});
 });

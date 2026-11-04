@@ -140,6 +140,16 @@ export const HOOK_CATALOG = {
 			codex: { handlers: [], input: [], timeout: 1, maxTimeout: 3 },
 		},
 	},
+	AgentOn: {
+		behavior:
+			"Octocode only: observes an agent of this process joining the team (main session or child); the matcher is its role. Cannot block or add context.",
+		profiles: { octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 } },
+	},
+	AgentOff: {
+		behavior:
+			"Octocode only: observes an agent this process retired from the team, within a separate 1.5 s deadline; the matcher is the end reason (completed, failed, stopped-user, stopped-parent, parent-gone, crashed, left). Cannot block or delay the exit.",
+		profiles: { octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 } },
+	},
 	UserPromptSubmit: {
 		behavior: "Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed.",
 		gate: true,

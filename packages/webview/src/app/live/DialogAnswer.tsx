@@ -1,5 +1,5 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
-import { type SubmitEvent, useState } from "react";
+import { type SubmitEvent, useId, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
@@ -18,6 +18,7 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 	const connection = useStore(sessionStore, (state) => state.connection);
 	const connected = useStore(sessionStore, (state) => state.connection?.connected ?? false);
 	const [text, setText] = useState("");
+	const titleId = useId();
 	// The answer in flight: its command id, and the button (or "text") that sent it.
 	const [sent, setSent] = useState<{ id: string; key: string } | undefined>(undefined);
 	const [status, setStatus] = useState("");
@@ -58,7 +59,16 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 		if (text.trim()) void send({ text });
 	};
 	return (
-		<section className="dialog-answer" aria-label="Answer the agent's question">
+		<section
+			className="dialog-answer"
+			aria-label={awaiting.title ? undefined : "Answer the agent's question"}
+			aria-labelledby={awaiting.title ? titleId : undefined}
+		>
+			{awaiting.title ? (
+				<p className="dialog-answer-title" id={titleId}>
+					<span className="muted">{awaiting.kind === "approval" ? "Approval" : "Question"}</span> {awaiting.title}
+				</p>
+			) : null}
 			{awaiting.options?.length ? (
 				<div className="dialog-answer-options">
 					{awaiting.options.map((option) => (

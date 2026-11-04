@@ -104,6 +104,9 @@ export function toMember(row: Row): Member {
 	const started = optionalString(row.started);
 	const checkout = optionalString(row.checkout);
 	const tmuxPane = optionalString(row.tmux_pane);
+	const cwd = optionalString(row.cwd);
+	const branch = optionalString(row.branch);
+	const processTitle = optionalString(row.process_title);
 	const sessionId = optionalString(row.session_id);
 	return {
 		id: String(row.id),
@@ -117,6 +120,9 @@ export function toMember(row: Row): Member {
 		...(model ? { model } : {}),
 		...(checkout ? { checkout } : {}),
 		...(tmuxPane ? { tmuxPane } : {}),
+		...(cwd ? { cwd } : {}),
+		...(branch ? { branch } : {}),
+		...(processTitle ? { processTitle } : {}),
 		...(sessionId ? { sessionId } : {}),
 		joinedAt: num(row.joined_at),
 		updatedAt: num(row.seen_at),

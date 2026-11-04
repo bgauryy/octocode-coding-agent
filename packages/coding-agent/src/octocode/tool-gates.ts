@@ -14,6 +14,7 @@ import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/e
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
 import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
+import { protectedBranch } from "./worktrees/default-branch.ts";
 
 import type { registerCollab } from "./team/tools.ts";
 import type { registerActivity } from "./ui/activity.ts";
@@ -75,6 +76,7 @@ export function registerToolGates(
 					permission,
 					provenance,
 					network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
+					protectedBranch,
 					replacement: {
 						definition: (name) => api.getAllTools().find((tool) => tool.name === name),
 						refresh: (ctx) => sourcePolicy.refresh(ctx),

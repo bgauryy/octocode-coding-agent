@@ -13,7 +13,7 @@ const CACHE_WRITE_1H_MULTIPLIER = 2;
 const BASIS = {
 	source: "transcripts of the 7 days to 2026-11-04 (70 main sessions, 10,546 requests; 26 child sessions)",
 	measured: {
-		// `outputLow` and `outputHigh`: main's median and mean, then the lowest and highest role mean. Cache hit per RFC_CONTEXT_EFFICIENCY.md.
+		// `outputLow` and `outputHigh`: main's median and mean, then the lowest and highest role mean. Cache hit: from the same transcripts.
 		main: { cacheHit: 0.981, firstPrompt: 45_000, meanPrompt: 163_000, outputLow: 499, outputHigh: 757 },
 		child: { cacheHit: 0.971, firstPrompt: 22_000, meanPrompt: 124_000, outputLow: 650, outputHigh: 1_050 },
 		childRequestsHigh: { researcher: 31, implementer: 44, reviewer: 48 }, // researcher median, implementer ~44, reviewer mean.

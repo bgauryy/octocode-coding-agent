@@ -388,6 +388,9 @@ describe("cache-sharing compaction summary", () => {
 		expect(SHARED_SUMMARY_PROMPT).not.toContain("## Next Steps");
 		expect(SHARED_SUMMARY_PROMPT).not.toMatch(/EXACT format/);
 		expect(SHARED_SUMMARY_PROMPT).toMatch(/text only/i);
+		// The request is appended as a user message; the summary must not report it as the user's last ask.
+		expect(SHARED_SUMMARY_PROMPT).toMatch(/not part of the conversation/);
+		expect(SHARED_SUMMARY_PROMPT).toMatch(/request to write this summary is not one of them and not a user ask/);
 		expect(SHARED_SUMMARY_PROMPT).toMatch(/not part of the conversation/);
 	});
 

@@ -5,7 +5,6 @@ import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import type { PackageSource } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 import { addAutoDiscoveredResources } from "./auto-discovery.ts";
-import { collectSkillEntries } from "./discovery.ts";
 import { getGitInstallPath, installGit } from "./git.ts";
 import { getNpmInstallPath, installedNpmMatchesConfiguredVersion, installNpm } from "./npm.ts";
 import { applyAutoloadDisabledPatterns, getOverridePatterns, isEnabledByOverrides } from "./patterns.ts";
@@ -80,23 +79,6 @@ export async function resolvePackages(
 	}
 
 	addAutoDiscoveredResources(host, accumulator, globalSettings, projectSettings, globalBaseDir, projectBaseDir);
-
-	if (host.builtinSkillsDir) {
-		const paths = collectSkillEntries(host.builtinSkillsDir, "octocode");
-		const projectOverrides = applyAutoloadDisabledPatterns(
-			paths,
-			getOverridePatterns(projectSettings.skills ?? []),
-			host.builtinSkillsDir,
-		);
-		for (const path of paths) {
-			addResource(
-				accumulator.skills,
-				path,
-				{ source: "builtin", scope: "user", origin: "top-level", baseDir: host.builtinSkillsDir },
-				projectOverrides.get(path) ?? isEnabledByOverrides(path, globalSettings.skills ?? [], host.builtinSkillsDir),
-			);
-		}
-	}
 
 	// Built-in extensions are enabled unless the user `extensions` setting excludes them, for example
 	// with `-builtin:mcp`. A matching `+`, `-`, or `!` entry in the project setting overrides that.

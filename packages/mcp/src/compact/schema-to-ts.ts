@@ -7,6 +7,7 @@ import {
 	isNode,
 	isShapeless,
 	isSimple,
+	literal,
 	type Node,
 	oneLine,
 	shapeOnly,
@@ -22,10 +23,7 @@ export interface SchemaToTsOptions {
 	scope: string;
 	/** Replacement descriptions by dotted field path. */
 	fieldDocs?: Record<string, string>;
-	/**
-	 * Field name → doc text documented once for the server; a field whose doc equals it is rendered without one. The
-	 * renderer shares a doc only when every field of that name has it, so the name alone attributes it exactly.
-	 */
+	/** Field name → doc documented once for the server; a field with that doc renders without one. Shared only when every field of the name has it. */
 	sharedDocs?: ReadonlyMap<string, string>;
 	/** Called with each field's name and doc text ("" for none), so a first pass can find docs shared across tools. */
 	onDoc?: (field: string, doc: string) => void;
@@ -124,8 +122,8 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 		if (schema === false) return "never";
 		if (!isNode(schema)) return "unknown";
 		if (schema.$ref !== undefined) return renderRef(schema, indent, path, parent);
-		if (schema.const !== undefined) return JSON.stringify(schema.const);
-		if (Array.isArray(schema.enum)) return schema.enum.map((value) => JSON.stringify(value)).join(" | ");
+		if (schema.const !== undefined) return literal(schema.const);
+		if (Array.isArray(schema.enum)) return schema.enum.map((value) => literal(value)).join(" | ");
 		const alternatives = Array.isArray(schema.anyOf)
 			? schema.anyOf
 			: Array.isArray(schema.oneOf)

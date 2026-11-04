@@ -55,7 +55,7 @@ describe("native tools and the system prompt", () => {
 	});
 
 	it("asks for handoff notes before a handoff, not before a compaction the agent cannot time", () => {
-		const policy = readFileSync(new URL("../../src/octocode/instructions/policy/research.md", import.meta.url), "utf8");
+		const policy = readFileSync(new URL("../../src/octocode/instructions/policy/work.md", import.meta.url), "utf8");
 		expect(policy).toContain("Before a handoff, write what the receiver needs");
 		expect(policy).not.toMatch(/before a[^.\n]*compaction/i);
 	});
@@ -72,7 +72,7 @@ describe("native tools and the system prompt", () => {
 		expect(tools.find((tool) => tool.name === "ollama")).toBeUndefined();
 		// The bash line says where search and reads go, so the habit of `rg`/`cat` in bash has a counter-rule in every session.
 		expect(tools.find((tool) => tool.name === "bash")?.promptSnippet).toMatch(
-			/When search and read tools are declared, use them for code instead/,
+			/When search and read tools are declared, search and read code with them/,
 		);
 		const names = defaultToolNames([
 			{

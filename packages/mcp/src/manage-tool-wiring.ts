@@ -1,7 +1,7 @@
 /** Connects the model's `mcp` tool to this session's servers. */
 
 import { reconnect } from "./connections.ts";
-import { toolCatalog } from "./inspection.ts";
+import { serverInstructions, toolCatalog } from "./inspection.ts";
 import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
 import { describeState, isEnabled } from "./server.ts";
 import { registerMcpAddedServers } from "./session-servers.ts";
@@ -31,6 +31,7 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		defaultActive: false,
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
+			instructions: (name) => serverInstructions(state, name),
 			servers: (): ManagedMcpServer[] =>
 				state.servers.map((server) => ({
 					name: server.entry.name,

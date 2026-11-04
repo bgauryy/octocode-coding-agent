@@ -1,7 +1,6 @@
 /** The tool definition registry a session builds from built-in, SDK and extension tools. */
 
-import { mcpNamespace } from "../../../../common/src/mcp-names.ts";
-import { OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 import type { RegisteredTool, ToolDefinition } from "../features/index.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo } from "../source-info.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
@@ -110,9 +109,6 @@ const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "mcp"];
  */
 const ROLE_VARIANT_TOOLS = ["backlog", "steps", "archive", "askUser", "agent", "skill", "models", "compact"];
 
-/** The research server's namespace: every role that has MCP tools has these, so they come before other servers' tools. */
-const SHARED_MCP_NAMESPACE = mcpNamespace(OCTOCODE_SERVER);
-
 const rankIn = (list: readonly string[], name: string) => {
 	const index = list.indexOf(name);
 	return index < 0 ? undefined : index;
@@ -121,7 +117,8 @@ const rankIn = (list: readonly string[], name: string) => {
 /**
  * The order tools are declared in, so that a parent and its children declare the same bytes for as long as possible
  * (the tool declarations lead the cached prompt prefix): role-invariant tools in a fixed order, then other tools in the
- * given order, then MCP tools (namespace `mcp__<server>`) sorted by namespace, the research server first, and name, then
+ * given order, then MCP tools (namespace `mcp__<server>`) sorted by namespace, servers whose entry gives tools roles first
+ * (every agent that has MCP tools gets those), and name, then
  * role-variant tools. MCP registration and activation order follows connection timing, which would otherwise change the
  * declared tools, and so the cached prefix, between sessions of one configuration.
  */
@@ -139,7 +136,8 @@ export function orderToolNames(names: Iterable<string>, namespaceOf: (name: stri
 		else if (namespace?.startsWith("mcp__")) mcp.push({ name, namespace });
 		else others.push(name);
 	}
-	const shared = (namespace: string) => (namespace === SHARED_MCP_NAMESPACE ? 0 : 1);
+	const roled = new Set([...currentToolRoles().readOnly].map(namespaceOf));
+	const shared = (namespace: string) => (roled.has(namespace) ? 0 : 1);
 	mcp.sort(
 		(a, b) =>
 			shared(a.namespace) - shared(b.namespace) || compareText(a.namespace, b.namespace) || compareText(a.name, b.name),

@@ -347,7 +347,7 @@ describe("skills", () => {
 
 			// One intro line, the load instruction. Octocode ships no `read` tool; bash is the default loader.
 			expect(introText.trim().split("\n")[0]).toBe(
-				"Use bash to load the file of every skill whose description matches the task; several can apply.",
+				"Use bash to load the file of every skill whose description matches the task; several can apply. Load them before other work.",
 			);
 		});
 
@@ -361,11 +361,7 @@ describe("skills", () => {
 					source,
 				});
 			const result = formatSkillsForPrompt(
-				[
-					skill("mine", "/home/u/.agents/skills"),
-					skill("octocode-research", "/opt/octocode/skills", "builtin"),
-					skill("octocode-debugging", getNativeSkillsDir()),
-				],
+				[skill("mine", "/home/u/.agents/skills"), skill("octocode-debugging", getNativeSkillsDir())],
 				"skill",
 			);
 			const catalog = result.slice(result.indexOf("<available_skills>"));
@@ -374,21 +370,15 @@ describe("skills", () => {
 				"<available_skills>",
 				"<core_skills>",
 				"</core_skills>",
-				"<octocode_skills>",
-				"</octocode_skills>",
 				"<external_skills>",
 				"</external_skills>",
 				"</available_skills>",
 			]);
-			const order = ["octocode-debugging", "octocode-research", "mine"].map((name) =>
-				catalog.indexOf(`<name>${name}</name>`),
-			);
+			const order = ["octocode-debugging", "mine"].map((name) => catalog.indexOf(`<name>${name}</name>`));
 			expect(order).toEqual([...order].sort((a, b) => a - b));
 			expect(catalog).toMatch(/<core_skills>\n {2}<skill><name>octocode-debugging<\/name>/);
 			// A catalog with only external skills has only that group.
-			expect(formatSkillsForPrompt([skill("mine", "/home/u/.agents/skills")], "skill")).not.toMatch(
-				/<core_skills>|<octocode_skills>/,
-			);
+			expect(formatSkillsForPrompt([skill("mine", "/home/u/.agents/skills")], "skill")).not.toMatch(/<core_skills>/);
 		});
 
 		it("should escape XML special characters", () => {

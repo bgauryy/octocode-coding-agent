@@ -94,12 +94,12 @@ function requestUrl(target: string | undefined, origin: string): URL | undefined
 }
 
 /**
- * The daemon's loopback server. Rules enforced here for every route (R1-R9 of the RFC): the Host header must be the
- * daemon's own `127.0.0.1:<port>` (R3); a request with an Origin must carry exactly the daemon's origin, and a socket
- * upgrade always needs it (R2, R4); only `GET /`, `GET /api/health` and a one-time `GET /open/<code>` need no bearer
- * token (R5), and `/` embeds no data; the page is served with a script-hash Content-Security-Policy (R6); the token is read only from the
- * `Authorization` header or the socket hello, never from a URL (R1); no cookies, no CORS headers, no OPTIONS answer (R2);
- * every scoped route names a session or repository id the daemon itself indexed, never a path (R8).
+ * The daemon's loopback server. Rules enforced here for every route: the Host header must be the
+ * daemon's own `127.0.0.1:<port>`; a request with an Origin must carry exactly the daemon's origin, and a socket
+ * upgrade always needs it; only `GET /`, `GET /api/health` and a one-time `GET /open/<code>` need no bearer
+ * token, and `/` embeds no data; the page is served with a script-hash Content-Security-Policy; the token is read only from the
+ * `Authorization` header or the socket hello, never from a URL; no cookies, no CORS headers, no OPTIONS answer;
+ * every scoped route names a session or repository id the daemon itself indexed, never a path.
  */
 export async function startDaemonServer(options: DaemonServerOptions): Promise<DaemonServer> {
 	const page = options.page ?? daemonPage();

@@ -9,10 +9,14 @@ import { isEnabled, type McpServer } from "./server.ts";
 interface McpToolCatalogSource {
 	findServer(name: string): McpServer | undefined;
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure;
+	/** Registered tool name to the `<server>\0<tool>` it was assigned to. */
+	toolOwners?: ReadonlyMap<string, string>;
 }
 
 export type McpToolListing = Pick<Tool, "name" | "description" | "inputSchema" | "outputSchema"> & {
 	exposure: McpExposure;
+	/** The name the model calls the tool by (`mcp__<server>__<tool>`), once registered. */
+	callName?: string;
 };
 
 export function formatMcpTool(tool: McpToolListing, schema = false): string {
@@ -64,12 +68,16 @@ export function formatMcpConfigLocations(locations: ReturnType<typeof getMcpConf
 
 export function toolCatalog(state: McpToolCatalogSource, name: string): McpToolListing[] {
 	const server = state.findServer(name);
-	if (server)
-		return server.connection?.state === "connected" && isEnabled(server)
-			? server.connection.tools.map((tool) => ({
-					...tool,
-					exposure: state.toolExposure(server.entry, tool.name),
-				}))
-			: [];
-	return [];
+	if (!server || server.connection?.state !== "connected" || !isEnabled(server)) return [];
+	const calls = new Map([...(state.toolOwners ?? [])].map(([call, owner]) => [owner, call]));
+	return server.connection.tools.map((tool) => {
+		const callName = calls.get(`${server.entry.name}\0${tool.name}`);
+		return { ...tool, exposure: state.toolExposure(server.entry, tool.name), ...(callName ? { callName } : {}) };
+	});
+}
+
+/** The server's own instructions from its current connection, which the `mcp` tool resends on request. */
+export function serverInstructions(state: McpToolCatalogSource, name: string): string | undefined {
+	const server = state.findServer(name);
+	return server?.connection?.state === "connected" ? server.connection.instructions?.trim() || undefined : undefined;
 }

@@ -314,13 +314,18 @@ export function createExtensionAPI(
 			applyRuntimeChange(() => runtime.unregisterProvider(name, extension.path));
 		},
 
-		registerMcpServer(name: string, config: McpServerConfig) {
+		registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }) {
 			assertActive();
 			const validated = validateMcpServerConfig(name, config);
 			if (typeof validated === "string") {
 				throw new Error(`Invalid MCP server registered by extension "${extension.path}": ${validated}`);
 			}
-			const server = { name, config: structuredClone(validated), extensionPath: extension.path };
+			const server = {
+				name,
+				config: structuredClone(validated),
+				extensionPath: extension.path,
+				...(options?.inherited ? { inherited: true as const } : {}),
+			};
 			applyMcpChange({ type: "register", server });
 		},
 

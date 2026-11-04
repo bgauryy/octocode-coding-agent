@@ -144,14 +144,14 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 			label: "Web",
 			promptSnippet: renderInstruction("tools/web/snippet.md"),
 			description:
-				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it. Successful page fetches are cached for 15 minutes (images are not).",
+				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it.",
 			// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
 			// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
 			// on the selected tools).
-			promptGuidelines: renderInstruction("tools/web/guidelines.md").split("\n"),
+			promptGuidelines: [],
 			parameters: Type.Object({
-				url: Type.Optional(Type.String({ description: "Public http(s) page to read; give this or query, not both" })),
-				query: Type.Optional(Type.String({ description: "Search terms; give this or url, not both" })),
+				url: Type.Optional(Type.String({ description: "Public http(s) page to read" })),
+				query: Type.Optional(Type.String({ description: "Search terms" })),
 				maxResults: Type.Optional(Type.Integer({ description: "Search result limit (default 8, up to 20)" })),
 				maxChars: Type.Optional(
 					Type.Integer({

@@ -1,4 +1,4 @@
-# Plugins, hooks and extensions
+# Plugins and hooks
 
 This guide shows how to add your own behavior to Octocode Code and which Claude, Codex and native formats it reads. The linked reference pages own the full contracts; this page explains how to start and what each format supports.
 
@@ -8,31 +8,30 @@ This guide shows how to add your own behavior to Octocode Code and which Claude,
 | -------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------- |
 | Run a script when a tool is called, a prompt is sent or a session starts   | [Command hook](#add-a-command-hook)                 | A separate process that receives JSON on stdin |
 | Reuse an existing Claude Code or Codex plugin (skills, hooks, MCP servers) | [Local plugin](#add-a-claude-or-codex-plugin)       | Components loaded by their own loaders         |
-| Add tools, slash commands, event handlers, providers or terminal UI        | [Native extension](#add-a-native-extension)         | TypeScript inside the Octocode process         |
-| Share extensions, skills, prompts and themes through npm or git            | [Octocode package](#distribute-an-octocode-package) | The resources it contains                      |
+| Share skills, prompts and themes through npm or git                        | [Octocode package](#distribute-an-octocode-package) | The resources it contains                      |
 | Give the model task instructions only                                      | [Skill](packages/coding-agent/docs/skills.md)       | Instructions in `SKILL.md`                     |
 
-Hooks, plugins and extensions all run with your operating-system permissions and are not sandboxed. Project files load only after you trust the project with `/trust`.
+Hooks and plugins run with your operating-system permissions and are not sandboxed. Project files load only after you trust the project with `/trust`. User code extensions are not supported: `--extension <code path>` exits 2, and code named by a setting or a package is ignored with a warning.
 
 ## Format support at a glance
 
 **Yes** means the format loads and its documented behavior works. **Partial** means it loads with the limits listed in its section. **No** means Octocode does not read it.
 
-| Format                                                              | Support | Notes                                                                                         |
-| ------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
-| Native hooks: `<Octocode home>/hooks.json`, `.octocode/hooks.json`  | Yes     | Native profile                                                                                |
-| Claude hooks in `settings.json` and `settings.local.json`           | Partial | Claude profile; see [hook events](packages/coding-agent/docs/hook-events.md)                  |
-| Codex `hooks.json` and `[hooks]` in `config.toml`                   | Partial | Codex profile; `[features] hooks = false` turns Codex hooks off                               |
-| Claude plugin, `.claude-plugin/plugin.json`                         | Partial | Skills, plain prompt commands, hooks and MCP servers; added explicitly in settings            |
-| Codex plugin, `.codex-plugin/plugin.json`                           | Partial | Skills, hooks and MCP servers; added explicitly in settings                                   |
-| Portable root `plugin.json` (with optional `extensions.com.openai`) | Partial | Read with `"protocol": "codex"`; same components as Codex                                     |
-| Native extension (`.ts` or `.js` module exporting a factory)        | Yes     | Octocode `ExtensionAPI`                                                                       |
-| Octocode package (`package.json` with an `octocode` key)            | Yes     | Legacy `pi` key is still read                                                                 |
-| Agent Skills (`SKILL.md` directories)                               | Yes     | Also read from Claude and Codex skill folders                                                 |
-| Plugins installed by Claude Code or Codex                           | Partial | Listed in `/harness`; switching one on adds it. Marketplaces and installing are not supported |
-| Claude Mods modules                                                 | No      | Different API; not loaded through extensions                                                  |
-| Plugin agents, LSP servers, output styles, dependencies             | No      | Not activated; see [plugin limits](#plugin-component-support)                                 |
-| Hook handler `type: "agent"`                                        | No      | Reported as unsupported                                                                       |
+| Format                                                              | Support | Notes                                                                                                                     |
+| ------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Native hooks: `<Octocode home>/hooks.json`, `.octocode/hooks.json`  | Yes     | Native profile                                                                                                            |
+| Claude hooks in `settings.json` and `settings.local.json`           | Partial | Claude profile; see [hook events](packages/coding-agent/docs/hook-events.md)                                              |
+| Codex `hooks.json` and `[hooks]` in `config.toml`                   | Partial | Codex profile; `[features] hooks = false` turns Codex hooks off                                                           |
+| Claude plugin, `.claude-plugin/plugin.json`                         | Partial | Skills, plain prompt commands, hooks and MCP servers; added explicitly in settings                                        |
+| Codex plugin, `.codex-plugin/plugin.json`                           | Partial | Skills, hooks and MCP servers; added explicitly in settings                                                               |
+| Portable root `plugin.json` (with optional `extensions.com.openai`) | Partial | Read with `"protocol": "codex"`; same components as Codex                                                                 |
+| Octocode package (`package.json` with an `octocode` key)            | Yes     | Legacy `pi` key is still read                                                                                             |
+| Agent Skills (`SKILL.md` directories)                               | Yes     | Also read from Claude and Codex skill folders                                                                             |
+| Plugins installed by Claude Code or Codex                           | Partial | Listed in `/harness`; switching one on adds it                                                                            |
+| Plugins from a Claude-compatible marketplace                        | Partial | `octocode marketplace add`, `octocode plugin install`; [marketplaces](packages/coding-agent/docs/plugins.md#marketplaces) |
+| Claude Mods modules                                                 | No      | Different API; not loaded                                                                                                 |
+| Plugin LSP servers, output styles, dependencies                     | No      | Not activated; see [plugin limits](#plugin-component-support)                                                             |
+| Hook handler `type: "agent"`                                        | No      | Reported as unsupported                                                                                                   |
 
 ## Add a command hook
 
@@ -94,7 +93,7 @@ Every profile accepts `type`, `command`, `timeout`, `failClosed` and `statusMess
 
 ## Add a Claude or Codex plugin
 
-Octocode does not install plugins or read marketplaces. Plugins Claude Code or Codex already installed appear in `/harness` as "installed in Claude Code" or "installed in Codex"; switching one on adds it to your settings with the right protocol, and its hooks and MCP servers still wait for review (step 3). For any other plugin, point Octocode at its directory on disk, then approve its executable parts.
+To install from a marketplace, run `octocode marketplace add <source>` and `octocode plugin install <plugin@marketplace>` ([marketplaces](packages/coding-agent/docs/plugins.md#marketplaces)). Plugins Claude Code or Codex already installed appear in `/harness` as "installed in Claude Code" or "installed in Codex"; switching one on adds it to your settings with the right protocol, and its hooks and MCP servers still wait for review (step 3). For any other plugin, point Octocode at its directory on disk, then approve its executable parts.
 
 1. Add the plugin to the `plugins` array in `~/.octocode/octocodecode/settings.json`, or in `.octocode/settings.json` for a trusted project, as an entry with an absolute `path` and a `protocol` (the [configuration example](packages/coding-agent/docs/plugins.md#configure-a-local-plugin) shows one).
    Use `"protocol": "codex"` for a `.codex-plugin/plugin.json` or a portable root `plugin.json`. The path must be absolute.
@@ -109,55 +108,25 @@ Set `"enabled": false` and reload to remove a plugin's skills, commands, hooks a
 
 ### Plugin component support
 
-| Component                                        | Claude plugin                                                 | Codex or portable plugin                        |
-| ------------------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------- |
-| Skills                                           | Yes, as `plugin-name:skill-name`                              | Yes, also `$plugin-name:skill-name`             |
-| Commands                                         | Partial: instruction-only Markdown commands                   | No                                              |
-| Hooks                                            | Partial: `command`, `http`, `prompt`, `mcp_tool` after review | Partial: `command`, `mcp_tool` after review     |
-| MCP servers                                      | Partial: stdio and streamable HTTP after review               | Partial: stdio and streamable HTTP after review |
-| Agents, LSP servers, output styles, dependencies | No                                                            | No                                              |
+| Component                                | Claude plugin                                                                                           | Codex or portable plugin                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Skills                                   | Yes, as `plugin-name:skill-name`                                                                        | Yes, also `$plugin-name:skill-name`             |
+| Commands                                 | Partial: instruction-only Markdown commands                                                             | No                                              |
+| Hooks                                    | Partial: `command`, `http`, `prompt`, `mcp_tool` after review                                           | Partial: `command`, `mcp_tool` after review     |
+| MCP servers                              | Partial: stdio and streamable HTTP after review                                                         | Partial: stdio and streamable HTTP after review |
+| Agents                                   | Yes, as `plugin-name:agent-name` ([plugin agents](packages/coding-agent/docs/plugins.md#plugin-agents)) | No                                              |
+| LSP servers, output styles, dependencies | No                                                                                                      | No                                              |
 
 Commands that set a model, grant tools, use unsupported frontmatter or expand shell output are skipped with a diagnostic. MCP servers register as `plugin:<plugin-name>:<server-key>`. Hook commands receive `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA`; Codex hook commands also receive `PLUGIN_ROOT` and `PLUGIN_DATA`. The [plugins reference](packages/coding-agent/docs/plugins.md) has the complete rules.
 
-## Add a native extension
-
-An extension is a TypeScript or JavaScript module whose default export receives the `ExtensionAPI`. Use one when you need behavior that a hook script cannot provide, such as a new tool, a slash command or terminal UI.
-
-1. Create `~/.octocode/octocodecode/extensions/hello.ts`, or `.octocode/extensions/hello.ts` in a project:
-
-   ```typescript
-   import type { ExtensionAPI } from "@octocodeai/octocodecode";
-
-   export default function (octocode: ExtensionAPI) {
-   	octocode.registerCommand("hello", {
-   		description: "Show a greeting",
-   		handler: async (name, ctx) => {
-   			ctx.ui.notify(`Hello, ${name || "world"}!`, "info");
-   		},
-   	});
-
-   	octocode.on("tool_call", async (event) => {
-   		if (event.toolName === "bash" && String(event.input.command).includes("rm -rf /"))
-   			return { block: true, reason: "Refusing to delete the filesystem root" };
-   	});
-   }
-   ```
-
-2. Run `/reload`, then `/hello`. TypeScript loads without a build step.
-
-To try an extension without installing it, run `octocode --extension ./hello.ts`. A directory loads its top-level `.ts` and `.js` files, and each subdirectory loads through its `index.ts`, `index.js` or `package.json` `octocode.extensions` list. A directory containing `plugin.json`, `.claude-plugin`, `.codex-plugin` or `SKILL.md` is treated as a plugin or skill, not as an extension.
-
-Extensions run in the Octocode process and can read prompts, files, credentials and session history. Load them only from sources you trust.
-
 ## Distribute an Octocode package
 
-A package bundles extensions, skills, prompt templates and themes for npm or git. Declare its resources under the `octocode` key of `package.json`:
+A package bundles skills, prompt templates and themes for npm or git. Declare its resources under the `octocode` key of `package.json`:
 
 ```json
 {
 	"name": "my-octocode-package",
 	"octocode": {
-		"extensions": ["./src/extension.ts"],
 		"skills": ["./skills"],
 		"prompts": ["./prompts/*.md"],
 		"themes": ["./themes/*.json"]
@@ -166,7 +135,7 @@ A package bundles extensions, skills, prompt templates and themes for npm or git
 }
 ```
 
-Without the `octocode` key, Octocode reads the `extensions/`, `skills/`, `prompts/` and `themes/` directories. List host packages such as `@octocodeai/octocodecode` in `peerDependencies`, not `dependencies`.
+Without the `octocode` key, Octocode reads the `skills/`, `prompts/` and `themes/` directories. List host packages such as `@octocodeai/octocodecode` in `peerDependencies`, not `dependencies`.
 
 Install, list and remove packages:
 
@@ -184,8 +153,7 @@ octocode remove npm:@example/octocode-tools
 
 - **A hook does not run.** In `/harness hooks`, check that the file is listed, the project is trusted, `disableAllHooks` is not set, the event and handler type are supported by that file's profile, and the matcher matches the tool name.
 - **A plugin's hooks or MCP servers are missing.** Run `/harness`: it shows whether each plugin's hooks and MCP servers load or failed (see diagnostics). Then `/reload`.
-- **A plugin component is ignored.** `/harness` and the startup diagnostics name the components Octocode does not load yet, such as Claude agents or LSP servers.
-- **Turn one off without editing its files.** Run `/harness` and switch the plugin, extension, hook file or single hook off (Space in the terminal list, or `/harness disable <id>`), then `/reload`. Claude and Codex files are never edited.
-- **An extension does not load.** Check the load diagnostics shown at startup and after `/reload`, and that its directory does not contain a plugin or skill marker.
+- **A plugin component is ignored.** `/harness` and the startup diagnostics name the components Octocode does not load yet, such as LSP servers.
+- **Turn one off without editing its files.** Run `/harness` and switch the plugin, hook file or single hook off (Space in the terminal list, or `/harness disable <id>`), then `/reload`. Claude and Codex files are never edited.
 
-See [CONFIGURATIONS.md](CONFIGURATIONS.md) for every configuration file location and [docs/PLUGINS_MODS_HOOKS.md](docs/PLUGINS_MODS_HOOKS.md) for the compatibility matrix and remaining work.
+See [CONFIGURATIONS.md](CONFIGURATIONS.md) for every configuration file location and [docs/PLUGINS_MODS_HOOKS.md](docs/PLUGINS_MODS_HOOKS.md) for the design, what is not implemented and how compatibility is checked.

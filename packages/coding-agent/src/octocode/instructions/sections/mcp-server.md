@@ -1,5 +1,10 @@
 <mcp name="{{name}}" tools="{{tools}}">
 {{#if declared}}
+{{#if deferred}}
+{{#if purpose}}
+{{purpose}}
+{{/if}}
+{{/if}}
 {{#if contract}}
 {{contract}}
 {{/if}}

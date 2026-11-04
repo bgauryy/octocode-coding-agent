@@ -55,15 +55,16 @@ export interface Reader {
 	name: string;
 	range(from: number, to: number): string;
 }
-/** Octocode's local reader, the default whenever the Octocode MCP server is running. */
-export const LOCAL_FETCH_READER: Reader = {
-	name: "localFetch",
-	range: (from, to) => `ranges:[{startLine:${from},endLine:${to}}]`,
-};
 /**
- * The reader while Octocode's local readers are unavailable (the MCP server is off or failed to start): `bash`. Its reads
- * of a file count when they are a plain `cat`, `head`, `tail -n +N` or `sed -n 'A,Bp'` (`files/bash-reads`), as they do
- * beside `localFetch`.
+ * An MCP server's file reader (the full tool name, `mcp__<server>__<tool>`), named while the research server that holds
+ * it is connected. Its argument syntax is the server's own, so refusals name lines, not arguments.
+ */
+export function mcpReader(tool: string): Reader {
+	return { name: tool, range: (from, to) => `lines ${from}-${to}` };
+}
+/**
+ * The default reader, and the one while no MCP reader is connected: `bash`. Its reads of a file count when they are a
+ * plain `cat`, `head`, `tail -n +N` or `sed -n 'A,Bp'` (`files/bash-reads`), as they do beside an MCP reader.
  */
 export const BASH_READER: Reader = {
 	name: "bash",
@@ -107,7 +108,7 @@ function unreadRefusal(display: string, reader: Reader): string {
 	const unread = `${display} already exists and was not read in this session.`;
 	return reader === BASH_READER
 		? `${unread} Read it first: bash ${BASH_PRINT(display)} (a plain \`cat\` or \`sed -n\` print counts, alone or chained with \`;\` or \`&&\`). ${PIPE_NOTE}`
-		: `${unread} Read it first: ${reader.name} {queries:[{path:${JSON.stringify(display)}}]}. A plain \`cat\` or \`sed -n\` print in bash also counts. ${PIPE_NOTE} For an edit, \`localSearch\` content rows showing the lines count too.`;
+		: `${unread} Read it first with \`${reader.name}\`. A plain \`cat\` or \`sed -n\` print in bash also counts. ${PIPE_NOTE} For an edit, search results showing the lines count too.`;
 }
 
 /**
@@ -153,7 +154,7 @@ function rereadRefusal(display: string, reader: Reader): string {
 	const again =
 		reader === BASH_READER
 			? `bash ${BASH_PRINT(display)}`
-			: `${reader.name} {path:${JSON.stringify(display)}} or bash ${BASH_PRINT(display)}`;
+			: `\`${reader.name}\` or bash ${BASH_PRINT(display)}`;
 	return `${display}: your earlier read of it is no longer in your context (a compaction dropped it). Read it again first: ${again}.`;
 }
 
@@ -165,8 +166,8 @@ export class FileGuard {
 	readonly #changed = new Set<string>();
 	/** Set by the team layer: why another agent's reservation forbids changing `file`, if it does. */
 	reservedBy: ((file: string) => string | undefined) | undefined;
-	/** The reader refusals name: Octocode's MCP owner switches it to `BASH_READER` while its local readers are unavailable. */
-	reader: Reader = LOCAL_FETCH_READER;
+	/** The reader refusals name: the session switches it to `mcpReader(...)` while the research server's reader is connected. */
+	reader: Reader = BASH_READER;
 	/** Set by the team layer: who last changed `file` (a sentence), from the team's change log, if it can say. */
 	modifiedBy: ((file: string) => string | undefined) | undefined;
 
@@ -364,7 +365,7 @@ function statOf(file: string): Snapshot | undefined {
 }
 
 /**
- * The digest of what Octocode's read returned when that is the whole file verbatim (no offset, limit or truncation), so the
+ * The digest of what an MCP reader returned when that is the whole file verbatim (no offset, limit or truncation), so the
  * guard checks the change against what the model saw rather than what the disk holds a moment later.
  */
 export function returnedContent(

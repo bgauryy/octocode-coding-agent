@@ -54,10 +54,6 @@ export function buildSystemPrompt(
 	return blocks;
 }
 
-function normalizeToolCallId(id: string): string {
-	return sanitizeToolCallId(id);
-}
-
 function createNonBlankTextBlock(text: string): ContentBlock.TextMember | undefined {
 	const sanitized = sanitizeSurrogates(text);
 	return sanitized.trim().length === 0 ? undefined : { text: sanitized };
@@ -102,10 +98,8 @@ export function convertMessages(
 	env?: ProviderEnv,
 ): Message[] {
 	const result: Message[] = [];
-	const transformedMessages = transformMessages(
-		withoutInitialSystemMessage(context.messages),
-		model,
-		normalizeToolCallId,
+	const transformedMessages = transformMessages(withoutInitialSystemMessage(context.messages), model, (id) =>
+		sanitizeToolCallId(id),
 	);
 
 	for (let i = 0; i < transformedMessages.length; i++) {

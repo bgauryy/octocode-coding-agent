@@ -1,7 +1,7 @@
-Check-in from Octocode, not from your parent's model: you and your parent have exchanged no message in the last {{interval}}. Do you need something?
+Check-in from Octocode, not from your parent's model: you and your parent have exchanged no message in the last {{interval}}. Do you need something? Say so now if you are stuck, missing an input or access, repeating a failing approach, or holding a finding your parent should not wait for (a wrong premise, a changed scope, a severe problem).
 {{#if parentWaits}}
-Your parent waits for your report and reads messages only with your report, so it cannot answer during this run. If you need a decision, or found that a premise of your task is wrong, finish with a `blocked` report that says so. Otherwise keep working.
+{{> shared/parent-waits.md}} A teammate can still answer a message. Otherwise keep working.
 {{else}}
-If you need a decision, or found that a premise of your task is wrong, send `agent` type `message` to `parent`, with `replyRequired` when you need an answer. Otherwise keep working.
+If so, send `agent` type `message` to `parent`, or to the teammate who can settle it, with `replyRequired` when you need an answer. Otherwise keep working.
 {{/if}}
-No reply is needed.
+Do not reply to this check-in itself.

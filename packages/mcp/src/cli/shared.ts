@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { hostIdentity, hostTrust } from "../host.ts";
 import { findMcpPreset, type McpServerPreset } from "../preset.ts";
 import { createServerConnection } from "../connection-factory.ts";
+import { expandLaunchTemplates } from "../launch-templates.ts";
 import type { McpServerEntry } from "../config.ts";
 import { McpServerLog } from "../log.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
@@ -25,7 +26,7 @@ export interface McpCommandOptions {
 	error?: (line: string) => void;
 	/** The token of a model provider. Defaults to the stored `/login` credentials of the agent directory. */
 	providerToken?: (provider: string) => Promise<string | undefined>;
-	/** Defaults to the roots a session gives the local `octocode` server, without skill directories. */
+	/** Transient launch defaults, applied before the launch templates are expanded. */
 	prepareLaunch?: (entry: McpServerEntry, cwd: string) => McpServerEntry;
 }
 
@@ -48,8 +49,9 @@ export function createConnection(
 		providerToken,
 		prepareLaunch: (entry, cwd) => {
 			const preset = findMcpPreset(options.presets, entry.name);
-			const prepared = preset?.prepareLaunch?.(entry, cwd, hostTrust().folderTrusted(cwd)) ?? entry;
-			return options.prepareLaunch?.(prepared, cwd) ?? prepared;
+			const projectTrusted = hostTrust().folderTrusted(cwd);
+			const prepared = preset?.prepareLaunch?.(entry, cwd, projectTrusted) ?? entry;
+			return expandLaunchTemplates(options.prepareLaunch?.(prepared, cwd) ?? prepared, { cwd, projectTrusted });
 		},
 		log: new McpServerLog(join(options.agentDir, "mcp.log")),
 	});

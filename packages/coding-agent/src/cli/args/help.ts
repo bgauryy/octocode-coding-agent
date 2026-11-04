@@ -40,8 +40,6 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} marketplace <command>     Add, list, update or remove plugin marketplaces (path, owner/repo, git URL)
   ${APP_NAME} plugin <command>          Install, update or remove plugins from a marketplace (plugin@marketplace)
   ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
-  ${APP_NAME} research <args...>        Run the installed Octocode research CLI
-  ${APP_NAME} native <args...>          Run the installed Octocode native CLI
   ${APP_NAME} <command> --help          Show command-specific help
 
 ${chalk.bold("Options:")}

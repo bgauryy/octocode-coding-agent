@@ -2,6 +2,7 @@ import { type JsonObject, validateToolArguments, type Tool } from "@octocodeai/o
 import { rewriteClaudeBash } from "../shared/claude-bash.ts";
 import { shellTargetAccess } from "./file-access.ts";
 import { isolatedMainTree, isolatedTreeRefusal } from "./isolated-tree.ts";
+import { type FindProtectedBranch, landingRequest } from "./landing.ts";
 import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
 import { shellParserReady } from "./shell/mutation.ts";
 import { commandWriteTargets } from "./shell/write-targets.ts";
@@ -54,6 +55,8 @@ interface PermissionGateOptions {
 	 * undefined leaves the call to `classify`.
 	 */
 	network?: (toolName: string, input: Record<string, unknown>, cwd: string) => Promise<PermissionRequest | undefined>;
+	/** Says whether a `bash` git call reaches the protected branch, which then asks as `worktree.merge` (`landing.ts`); unset leaves `bash` to `classify`. */
+	protectedBranch?: FindProtectedBranch;
 	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
 	replacement?: {
@@ -107,7 +110,16 @@ export function permissionGate(options: PermissionGateOptions) {
 				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
 				(await powershell(optionalString(input.command) ?? ""));
 			const network = await options.network?.(event.toolName, input, ctx.cwd);
-			const request = network ? callRequest(network, event, ctx) : classify(event, ctx, forceDestructive);
+			const classified = network ? callRequest(network, event, ctx) : classify(event, ctx, forceDestructive);
+			const request = options.protectedBranch
+				? await landingRequest(
+						event,
+						ctx,
+						classified,
+						options.protectedBranch,
+						permission.kindGranted("worktree.merge"),
+					)
+				: classified;
 			const hit = provenance.check(event, ctx);
 			const reasons: AskReason[] = [
 				...(hit ? (["provenance"] as const) : []),

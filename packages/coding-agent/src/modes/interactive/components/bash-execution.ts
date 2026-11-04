@@ -10,7 +10,7 @@ import {
 	truncateTail,
 } from "../../../core/tools/truncate.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import { STATE_COLOR } from "../../../theme/status.ts";
+import { STATE_COLOR, stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { hintText, keyHint, keyText } from "./keybinding-hints.ts";
@@ -37,9 +37,12 @@ export class BashExecutionComponent extends Container {
 	private header?: string;
 	private expanded = false;
 	private contentContainer: Container;
-	/** `dim` marks `!!` commands, whose output is excluded from the model context. */
+	/** `dim` marks `!!` commands, whose output is excluded from the model context; both are neutral, not a state colour. */
 	private readonly colorKey: "dim" | "bashMode";
+	private readonly excludeFromContext: boolean;
 	private outputPad: number;
+	private readonly topBorder: DynamicBorder;
+	private readonly bottomBorder: DynamicBorder;
 	/** Output arrived since the last layout: rebuilt once per frame in render(), not once per streamed chunk. */
 	private layoutStale = false;
 
@@ -47,14 +50,16 @@ export class BashExecutionComponent extends Container {
 		super();
 		this.command = command;
 		this.colorKey = excludeFromContext ? "dim" : "bashMode";
+		this.excludeFromContext = excludeFromContext;
 		this.outputPad = outputPad;
-		const borderColor = (str: string) => theme.fg(this.colorKey, str);
+		const borderColor = (str: string) => theme.fg(this.frameKey(), str);
 
 		// Add spacer
 		this.addChild(new Spacer(1));
 
 		// Top border
-		this.addChild(new DynamicBorder(borderColor));
+		this.topBorder = new DynamicBorder(borderColor);
+		this.addChild(this.topBorder);
 
 		// Content container (holds dynamic content between borders)
 		this.contentContainer = new Container();
@@ -68,7 +73,8 @@ export class BashExecutionComponent extends Container {
 		);
 
 		// Bottom border
-		this.addChild(new DynamicBorder(borderColor));
+		this.bottomBorder = new DynamicBorder(borderColor);
+		this.addChild(this.bottomBorder);
 
 		this.updateDisplay();
 	}
@@ -188,8 +194,31 @@ export class BashExecutionComponent extends Container {
 		this.loader.stop();
 	}
 
+	/** The state of a finished command (undefined while it runs): the one source of its mark and outcome colour. */
+	private finishedState(): UiState | undefined {
+		switch (this.status) {
+			case "running":
+				return undefined;
+			case "complete":
+				return "done";
+			case "error":
+				return "failed";
+			case "cancelled":
+				return "stopped";
+		}
+	}
+
+	/** Neutral while running; green only once it succeeded, red once it failed. A `!!` command keeps its own neutral frame. */
+	private frameKey(): "dim" | "bashMode" | (typeof STATE_COLOR)[UiState] {
+		const state = this.finishedState();
+		return state && !this.excludeFromContext ? STATE_COLOR[state] : this.colorKey;
+	}
+
 	private updateDisplay(): void {
 		this.layoutStale = false;
+		// The borders cache their line per width; the frame colour follows the outcome.
+		this.topBorder.invalidate();
+		this.bottomBorder.invalidate();
 		// Apply truncation for LLM context limits (same limits as bash tool)
 		const fullOutput = this.getOutput();
 		const contextTruncation = truncateTail(fullOutput, {
@@ -208,25 +237,35 @@ export class BashExecutionComponent extends Container {
 		this.contentContainer.clear();
 
 		// Command header
+		// The mark carries the outcome even where the frame's tint is lost (256-colour terminals).
+		const state = this.finishedState();
+		const mark = state ? `${stateMark(theme, state)} ` : "";
+		// Without a result header, the outcome joins the command line: `✗ $ cmd · exit 1`.
+		const outcome = !this.header && state === "failed" ? theme.fg("error", ` · exit ${this.exitCode}`) : "";
+		const cancelled = !this.header && state === "stopped" ? theme.fg("muted", " · cancelled") : "";
 		const header = new Text(
-			theme.fg(this.colorKey, theme.bold(`$ ${sanitizeTerminalText(this.command)}`)),
+			mark + theme.fg(this.colorKey, theme.bold(`$ ${sanitizeTerminalText(this.command)}`)) + outcome + cancelled,
 			this.outputPad,
 			0,
 		);
 		this.contentContainer.addChild(header);
 		if (this.header && this.status !== "running") {
-			this.contentContainer.addChild(new Text(theme.fg("muted", sanitizeTerminalText(this.header)), this.outputPad, 0));
+			const headerColor = state === "failed" ? "error" : "muted";
+			this.contentContainer.addChild(
+				new Text(theme.fg(headerColor, sanitizeTerminalText(this.header)), this.outputPad, 0),
+			);
 		}
 
-		// Output
+		// A failure's output is what the reader came for: text colour, not the muted of a quiet success.
+		const outputColor = state === "failed" ? "text" : "muted";
 		if (availableLines.length > 0) {
 			if (this.expanded) {
 				// Show all lines
-				const displayText = availableLines.map((line) => theme.fg("muted", line)).join("\n");
+				const displayText = availableLines.map((line) => theme.fg(outputColor, line)).join("\n");
 				this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
 			} else {
 				// Use shared visual truncation utility with width-aware caching
-				const styledOutput = previewLogicalLines.map((line) => theme.fg("muted", line)).join("\n");
+				const styledOutput = previewLogicalLines.map((line) => theme.fg(outputColor, line)).join("\n");
 				const styledInput = `\n${styledOutput}`;
 				let cachedWidth: number | undefined;
 				let cachedLines: string[] | undefined;
@@ -266,12 +305,8 @@ export class BashExecutionComponent extends Container {
 				}
 			}
 
-			// With a header, it already says how the command ended and where the full output is.
-			if (!this.header && this.status === "cancelled") {
-				statusParts.push(theme.fg("warning", "(cancelled)"));
-			} else if (!this.header && this.status === "error") {
-				statusParts.push(theme.fg("error", `(exit ${this.exitCode})`));
-			}
+			// With a header, it already says how the command ended and where the full output is; without one, the
+			// command line above says it.
 
 			// Add truncation warning (context truncation, not preview truncation)
 			const wasTruncated = this.truncationResult?.truncated || contextTruncation.truncated;

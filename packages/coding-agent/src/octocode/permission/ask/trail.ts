@@ -24,6 +24,7 @@ export class PermissionTrail {
 	/** The secret the parent gave this subagent: what marks a header or audit entry as this module's own. Empty when there is none. */
 	readonly #nonce: string;
 	readonly #mode: () => PermissionMode;
+	readonly #chipMode: () => PermissionMode;
 	readonly #agent: () => string;
 	readonly #stderr: (text: string) => void;
 	readonly #log: AuditLog;
@@ -36,7 +37,10 @@ export class PermissionTrail {
 		api: ExtensionAPI;
 		isSubagent: boolean;
 		nonce: string;
+		/** The mode that judges calls (audit entries). */
 		mode: () => PermissionMode;
+		/** The mode the footer chip shows: the session's own, whatever a turn's cap does to calls. */
+		chipMode: () => PermissionMode;
 		agent: () => string;
 		stderr: (text: string) => void;
 	}) {
@@ -44,6 +48,7 @@ export class PermissionTrail {
 		this.#isSubagent = options.isSubagent;
 		this.#nonce = options.nonce;
 		this.#mode = options.mode;
+		this.#chipMode = options.chipMode;
 		this.#agent = options.agent;
 		this.#stderr = options.stderr;
 		this.#log = new AuditLog((entry) => {
@@ -143,7 +148,7 @@ export class PermissionTrail {
 	paint(ctx: Pick<ExtensionContext, "hasUI" | "ui" | "mode">): undefined {
 		this.#paintCtx = ctx;
 		if (!ctx.hasUI) return undefined;
-		const mode = this.#mode();
+		const mode = this.#chipMode();
 		const chip = CHIPS[mode];
 		ctx.ui.setStatus(PERMISSION_ID, chipText(mode, this.#log.count), chip.color);
 		return undefined;

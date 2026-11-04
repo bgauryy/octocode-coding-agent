@@ -280,7 +280,6 @@ export default function octocode(api: ExtensionAPI): void {
 	const turn = registerTurnSetup(api, {
 		isSubagent,
 		profiles: () => profiles,
-		processName: () => externalApi?.api.instance?.name,
 		canExternal: () => agentTool.has("external"),
 	});
 	const hooks = registerHooks(
@@ -357,6 +356,7 @@ export default function octocode(api: ExtensionAPI): void {
 				{
 					messageSend: messaging.inboundHooks,
 					admit: messaging.admit,
+					capTurn: (ceiling) => permission.turnCap.set(ceiling),
 					externalCall: (input, ctx) => {
 						if (planning.blocked()) throw new Error("External agent calls are unavailable during planning.");
 						return external!.call(input, ctx);

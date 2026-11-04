@@ -296,7 +296,7 @@ describe("subagent renderers", () => {
 		expect(failed).not.toContain("Error: Failed");
 	});
 
-	it("draws any stop as an interruption (◼ warning), never as a failure", () => {
+	it("draws any stop as an interruption (◼ muted), never as a failure", () => {
 		const colored = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` };
 		const stopped = (requested: boolean) =>
 			rendered(
@@ -314,7 +314,8 @@ describe("subagent renderers", () => {
 				) as never,
 			);
 		for (const requested of [true, false]) {
-			expect(stopped(requested)).toContain("<warning>◼");
+			// Stopped is neutral: warning is reserved for an agent that needs the user.
+			expect(stopped(requested)).toContain("<muted>◼");
 			expect(stopped(requested)).not.toContain("<error>");
 		}
 	});

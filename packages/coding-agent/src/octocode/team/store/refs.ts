@@ -1,6 +1,6 @@
-import { type Db, deliveries, num } from "../../../../../db/src/api.ts";
+import { type Db, correspondence, deliveries, num } from "../../../../../db/src/api.ts";
 import { type Message, type OpenQuestion, type SendOptions, toMessage, toOpenQuestion, WAKE } from "../model.ts";
-import { INBOX_BATCH_SIZE } from "./limits.ts";
+import { INBOX_BATCH_SIZE, MESSAGE_RETENTION_MS, STALE_MS } from "./limits.ts";
 import { insertMessage } from "./mail.ts";
 
 /**
@@ -177,6 +177,12 @@ export class MessageRefs {
 		});
 	}
 
+	/** The mail part of the prune: mail nobody can read any more becomes a dead letter its sender is told of, then messages past retention with nothing open go. */
+	prune(now: number): void {
+		deliveries.deadLetterOrphans(this.db, now - STALE_MS, now);
+		deliveries.pruneMessages(this.db, now - MESSAGE_RETENTION_MS);
+	}
+
 	/** The relay requests waiting for `parent`, oldest first (a bounded batch). */
 	relays(parent: string): RelayRequest[] {
 		return deliveries
@@ -246,6 +252,11 @@ export class MessageRefs {
 	/** When `a` and `b` last exchanged a message, in either direction; 0 when no such message is kept. */
 	lastExchange(a: string, b: string): number {
 		return deliveries.lastExchange(this.db, this.team, a, b);
+	}
+
+	/** Whether `other` is a correspondent of `me` (mail either way) and whether a question of `me` to it is unanswered. */
+	correspondence(me: string, other: string, since = 0): correspondence.Correspondence {
+		return correspondence.between(this.db, this.team, me, other, since);
 	}
 
 	/** Closes `recipient`'s open question `id` without an answer: its asker can no longer be reached. */

@@ -14,7 +14,8 @@ import type { ImageContent, JsonValue, TextContent } from "@octocodeai/octocode-
 import { type CallToolResult, type McpRequestOptions, toLlmContent } from "./client/index.ts";
 import type { TSchema } from "typebox";
 import { hostOutput } from "./host.ts";
-import { visibleContent } from "./sanitize.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { sanitizeJson, visibleContent } from "./sanitize.ts";
 
 export interface McpToolDetails {
 	server: string;
@@ -188,6 +189,21 @@ function limitMcpContent(
 	};
 }
 
+/**
+ * The JSON object of a result whose only content is one text block holding it, as servers without `structuredContent`
+ * often answer; undefined for other text or text longer than `maxChars`.
+ */
+export function jsonText(result: CallToolResult, maxChars: number): Record<string, unknown> | undefined {
+	const [part, ...rest] = result.content;
+	if (rest.length || part?.type !== "text" || part.text.length > maxChars) return undefined;
+	try {
+		const value: unknown = JSON.parse(part.text);
+		return isRecord(value) ? value : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 interface ConvertMcpResultOptions {
 	saveOutput?: McpOutputSaver;
 }
@@ -206,10 +222,14 @@ export async function convertMcpResult(
 	}
 	const { content, fullOutputPath } = limitMcpContent(converted, `${server}/${tool}`, options.saveOutput);
 	const { _meta: _ignored, ...structuredResult } = result;
+	// A server that sends its JSON result as one text block gets it as `structuredContent` too, for programmatic readers.
+	const parsed = result.structuredContent === undefined ? jsonText(result, hostOutput().textMaxChars) : undefined;
 	return {
 		content,
 		details: { server, tool, ...(fullOutputPath ? { fullOutputPath } : {}) },
-		structuredContent: structuredResult as unknown as JsonValue,
+		structuredContent: (parsed
+			? { ...structuredResult, structuredContent: sanitizeJson(parsed) }
+			: structuredResult) as unknown as JsonValue,
 		...(result.isError ? { isError: true } : {}),
 	};
 }

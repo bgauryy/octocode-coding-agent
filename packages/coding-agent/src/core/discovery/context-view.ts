@@ -97,7 +97,7 @@ const GROUPS: ReadonlyArray<{ id: string; title: string; noun: readonly [string,
 export const PI_CODE_HINT = "convert to hooks.json or a plugin";
 const UNTRUSTED_NOTE = "folder not trusted";
 
-/** `octocode global`, `pi project`, `claude global`, `plugin <name>` (origin `plugin:<name>`), `octocode` (the bundled collection). */
+/** `octocode global`, `pi project`, `claude global`, `plugin <name>` (origin `plugin:<name>`), `octocode` (a role bundled with this build). */
 function sourceLabel(provenance: Pick<Provenance, "scope" | "origin">): string {
 	if (provenance.scope === "builtin") return "octocode";
 	if (provenance.origin.startsWith("plugin")) return provenance.origin.replace(":", " ");
@@ -105,9 +105,8 @@ function sourceLabel(provenance: Pick<Provenance, "scope" | "origin">): string {
 }
 
 /**
- * The label for a loaded file that discovery does not list: Octocode's core skills (`core`), the bundled Octocode
- * collection (`octocode`), a package, the user or project folder, the Claude or Codex skill folder, a flag (`--skill`,
- * `--prompt-template`) or a path that the `skills`/`prompts` settings name. The skill labels follow `skillCategory`.
+ * The label for a loaded file that discovery does not list: Octocode's core skills (`core`), a package, the user or project folder, the Claude or Codex skill folder, a flag (`--skill`,
+ * `--prompt-template`) or a path that the `skills`/`prompts` settings name. The core label follows `skillCategory`.
  */
 export function sourceInfoLabel(info: { source: string; scope: string; path?: string } | undefined): string {
 	if (!info) return "other";
@@ -115,8 +114,7 @@ export function sourceInfoLabel(info: { source: string; scope: string; path?: st
 	const category = info.path ? skillCategory({ filePath: info.path }) : "external";
 	if (category === "core") return "core";
 	if (info.source.startsWith("npm:") || info.source.startsWith("git:")) return `package ${info.source}`;
-	// Built-in extensions share the `builtin` source with the bundled skill collection.
-	if (info.source === "builtin") return category === "octocode" ? "octocode" : "builtin";
+	if (info.source === "builtin") return "builtin";
 	// The native extension adds the other hosts' user skill folders as extra paths too.
 	if (info.path && isUnderPath(info.path, join(claudeConfigDir(), "skills"))) return "claude global";
 	if (info.path && isUnderPath(info.path, join(codexConfigDir(), "skills"))) return "codex global";

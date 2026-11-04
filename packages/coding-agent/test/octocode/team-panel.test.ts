@@ -4,7 +4,7 @@ import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AgentsView, trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
-import { collapsedRows, shownWorking } from "../../src/octocode/team/panel-compact.ts";
+import { collapsedRows, FINISHED_MS, shownWorking } from "../../src/octocode/team/panel-compact.ts";
 import { FinishedTracker } from "../../src/octocode/team/panel-finished.ts";
 import { describeMembers } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -92,21 +92,35 @@ describe("agents panel", () => {
 		);
 		expect(rows[1]).toContain("research-a");
 		expect(rows[1]).toContain("working");
-		// One head row (tree, name, state, elapsed; the model only when it fits whole) and one detail row; no labels.
-		expect(rows).toHaveLength(3);
+		// One head row (tree, name, state, elapsed; the model only when it fits whole): the detail row gave way at this width.
+		expect(rows).toHaveLength(2);
 		expect(rows[1]).toMatch(/^ └ ⠋ research-a · working · 1m$/);
 		expect(rows.join("\n")).not.toMatch(/\b(age|model)\b/);
 		expect(rows.every((row) => visibleWidth(row) <= 48)).toBe(true);
 	});
 
-	it("narrow layout: elapsed time follows the member's join time and an idle agent's second row is its goal", () => {
+	it("narrow layout: elapsed time follows the member's join time, and the detail row gives way to the state at 32 columns", () => {
 		const agents = [member("research-a", { parentId: "main", goal: "Inspect ".repeat(20) })];
 		const before = widgetLines(agents, "main", NOW, theme, 32);
 		const after = widgetLines(agents, "main", NOW + 5_000, theme, 32);
 		expect(before[1]).toBe(" └ ○ research-a · idle · 1m");
 		expect(after[1]).toBe(" └ ○ research-a · idle · 1m05s");
-		expect(before[2]).toMatch(/^ {5}Inspect Inspect/);
-		expect(before).toHaveLength(3);
+		expect(before).toHaveLength(2);
+	});
+
+	it("narrow layout: the detail row shows the goal of an idle agent, and its activity while it works, from 64 columns", () => {
+		const id = "researcher-with-a-really-long-name-0001";
+		const idle = widgetLines([member(id, { parentId: "main", goal: "Inspect ".repeat(20) })], "main", NOW, theme, 60);
+		expect(idle[2]).toMatch(/^ {5}Inspect Inspect/);
+		const busy = member(id, {
+			parentId: "main",
+			status: "working",
+			goal: "Inspect things",
+			activity: "localFetch x.ts",
+		});
+		expect(widgetLines([busy], "main", NOW, theme, 60)[2]).toContain("Inspect things");
+		expect(widgetLines([busy], "main", NOW, theme, 60)[2]).not.toContain("localFetch");
+		expect(widgetLines([busy], "main", NOW, theme, 70)[2]).toContain("localFetch x.ts");
 	});
 
 	const team = [
@@ -216,23 +230,31 @@ describe("agents panel", () => {
 		);
 	});
 
-	it("keeps a departed agent as a neutral row for ten seconds, after the live ones", () => {
+	it("keeps a departed agent as a neutral row for FINISHED_MS, after the live ones", () => {
 		const gone = member("sly-crab", { parentId: "main-aaaaaa", status: "working", joinedAt: NOW - 24_000 });
 		const finished = [{ member: gone, at: NOW - 9_000 }];
 		const main = member("main-aaaaaa");
 		const live = member("wobbly-siphon", { parentId: "main-aaaaaa", status: "working" });
+		// The last moment its row shows, and the next one; the live agents keep their heartbeat.
+		const lastShown = NOW - 9_000 + FINISHED_MS;
+		const beat = (at: number) => [
+			{ ...main, updatedAt: at },
+			{ ...live, updatedAt: at },
+		];
 		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
 		expect(lines[0]).toBe(" ● main-aaaaaa  main  1 working · 1 left");
 		expect(lines[1]).toContain("wobbly-siphon");
 		expect(lines[2]).toMatch(/^ └ ○ sly-crab +left +15s/);
 		expect(lines[2]).not.toContain("working");
-		// The elapsed time stays the run's length while the row is shown (ten seconds after it left, inclusive).
-		const later = widgetLines([main, live], "main-aaaaaa", NOW + 1_000, theme, 120, [], undefined, finished);
+		// The elapsed time stays the run's length while the row is shown (`FINISHED_MS` after it left, inclusive).
+		const later = widgetLines(beat(lastShown), "main-aaaaaa", lastShown, theme, 120, [], undefined, finished);
 		expect(later[2]).toMatch(/left +15s/);
-		// Then the row is gone; a lone departed agent keeps the panel for those ten seconds only.
-		expect(widgetLines([main, live], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toHaveLength(2);
+		// Then the row is gone; a lone departed agent keeps the panel for that long only.
+		expect(
+			widgetLines(beat(lastShown + 1), "main-aaaaaa", lastShown + 1, theme, 120, [], undefined, finished),
+		).toHaveLength(2);
 		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(2);
-		expect(widgetLines([main], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toEqual([]);
+		expect(widgetLines([main], "main-aaaaaa", lastShown + 1, theme, 120, [], undefined, finished)).toEqual([]);
 		// Collapsed to one row per agent (few terminal rows) it still reads left.
 		const [row] = collapsedRows([{ member: gone, depth: 0, doneAt: NOW - 9_000 }], NOW, theme, 120);
 		expect(row).toBe(" ○ sly-crab · left · 15s");
@@ -372,10 +394,13 @@ describe("panel traffic", () => {
 			traffic,
 		);
 		expect(lines.join("\n")).toContain(`#${mine}`);
+		// The message sits on its sender's row, not in a block of its own.
+		const at = lines.findIndex((line) => line.includes(`#${mine}`));
+		expect(lines[at - 1]).toContain("researcher-bbbbbb");
 		expect(lines.join("\n")).not.toContain("theirs");
 	});
 
-	it("shows at most three messages and cuts long rows with a single-character ellipsis", () => {
+	it("shows one latest message per sender and cuts long rows with a single-character ellipsis", () => {
 		const now = Date.now();
 		const panel = [live("main-aaaaaa"), live("researcher-bbbbbb", { parentId: "main-aaaaaa", goal: "x".repeat(300) })];
 		const traffic = [1, 2, 3, 4, 5].map((id) => ({
@@ -387,7 +412,7 @@ describe("panel traffic", () => {
 			state: "delivered" as const,
 		}));
 		const lines = widgetLines(panel, "main-aaaaaa", now, theme, 60, traffic);
-		expect(lines.filter((line) => line.includes("✉"))).toHaveLength(3);
+		expect(lines.filter((line) => line.includes("↳"))).toHaveLength(1);
 		const cut = lines.filter((line) => line.includes("…"));
 		expect(cut.length).toBeGreaterThan(0);
 		expect(lines.join("\n")).not.toContain("...");

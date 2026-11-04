@@ -19,6 +19,13 @@ describe("stateMark", () => {
 		expect(states.map((state) => markMoves(state))).toEqual(states.map(() => false));
 	});
 
+	it("gives waiting (needs you) a warning tone no other state shares, and stopped a neutral one", () => {
+		expect(STATE_COLOR.waiting).toBe("warning");
+		expect(STATE_COLOR.stopped).not.toBe(STATE_COLOR.waiting);
+		expect(STATE_COLOR.stopped).not.toBe(STATE_COLOR.pending);
+		expect(states.filter((state) => STATE_COLOR[state] === "warning")).toEqual(["waiting"]);
+	});
+
 	it("spins while running, breathes while waiting, and glows only right after done", () => {
 		expect(stateMark(tagged, "running", { now: 0 })).toBe(`<accent>${SPINNER.braille[0]}`);
 		expect(stateMark(tagged, "running", { now: MOTION.spinnerMs * 3 })).toBe(`<accent>${SPINNER.braille[3]}`);

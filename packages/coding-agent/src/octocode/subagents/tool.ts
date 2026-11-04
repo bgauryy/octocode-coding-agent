@@ -94,6 +94,7 @@ export function registerAgentTool(
 		slots: new Slots(),
 		session: 0,
 		changed: () => panel.setBackground(runs.background.size),
+		ended: (id, end) => panel.noteEnd(id, end),
 	};
 	const { background } = runs;
 	api.on("tool_result", async (event, ctx) => {

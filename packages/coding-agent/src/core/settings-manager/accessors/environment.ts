@@ -81,6 +81,10 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 		return this.settings.sessionApi !== false;
 	}
 
+	getSessionApiTurnPermission(): "workspace" | "session" {
+		return this.settings.sessionApiTurnPermission === "session" ? "session" : "workspace";
+	}
+
 	getBashOutputMaxBytes(): number {
 		const bytes = this.settings.bashOutputMaxBytes;
 		return typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 1024

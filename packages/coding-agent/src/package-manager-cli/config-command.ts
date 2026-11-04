@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { selectConfig } from "../cli/config-selector.ts";
-import { APP_NAME, getAgentDir, getBundledSkillsDir } from "../config.ts";
+import { APP_NAME, getAgentDir } from "../config.ts";
 import { DefaultPackageManager } from "../core/package-manager.ts";
 import { BUILTIN_FEATURE_IDS } from "../core/features/builtin-ids.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
@@ -59,13 +59,11 @@ export async function handleConfigCommand(args: string[]): Promise<boolean> {
 	reportSettingsErrors(settingsManager, "config command");
 	const builtinExtensions = [...BUILTIN_FEATURE_IDS];
 	const globalSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
-	const builtinSkillsDir = getBundledSkillsDir();
 	const globalResolvedPaths = await new DefaultPackageManager({
 		cwd,
 		agentDir,
 		settingsManager: globalSettingsManager,
 		builtinExtensions,
-		builtinSkillsDir,
 	}).resolve();
 	const projectResolvedPaths = settingsManager.isProjectTrusted()
 		? await new DefaultPackageManager({
@@ -73,7 +71,6 @@ export async function handleConfigCommand(args: string[]): Promise<boolean> {
 				agentDir,
 				settingsManager,
 				builtinExtensions,
-				builtinSkillsDir,
 			}).resolve()
 		: globalResolvedPaths;
 

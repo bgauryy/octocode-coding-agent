@@ -3,14 +3,13 @@ import type { Skill } from "../core/skills.ts";
 import { currentEnvironment } from "../core/system-prompt.ts";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
-import { LOCAL_READER_TOOL } from "./files/read-hint.ts";
-import { octocodePromptSections } from "./instructions/policy.ts";
+import { octocodePromptSections, type ResearchContext } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { isOctocodeTool, OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
 import { browserMcpTool } from "../../../common/src/browser-mcp.ts";
 import { type AgentProfile, profileSelectsBrowser } from "./subagents/profiles.ts";
@@ -21,8 +20,6 @@ export function registerTurnSetup(
 	options: {
 		isSubagent: boolean;
 		profiles: () => Map<string, AgentProfile>;
-		/** The name other processes reach this session by, while its API serves. */
-		processName?: () => string | undefined;
 		/** Whether the `agent` tool declares its `external` type here. */
 		canExternal?: () => boolean;
 	},
@@ -43,7 +40,8 @@ export function registerTurnSetup(
 		hasUI ??= ctx.hasUI;
 		const selected = event.systemPromptOptions.selectedTools ?? api.getActiveTools();
 		const servers = getMcpSessionStatus(api.events);
-		const server = servers.find((server) => server.name === OCTOCODE_SERVER);
+		const roles = currentToolRoles().research;
+		const server = roles && servers.find((server) => server.name === roles.server);
 		// The built-in browser server selected for this agent, declared or still connecting, means this agent can browse
 		// itself, so the delegation text names no browser specialist. Only enablement and selection count, not connection
 		// state or the declared tools, so that text is the same before and after the server connects. By default only the
@@ -56,16 +54,19 @@ export function registerTurnSetup(
 		// failed or stopped later, keeps the same policy bytes and the cached prefix. The `mcp_status` section carries the
 		// state. The native `mcp` tool is always selected where MCP is allowed, so the answer does not change when the
 		// server's own tools appear.
-		const octocode =
-			selected.some(isOctocodeTool) ||
-			(server?.enabled === true && server.state !== "unselected" && canReachMcp(selected));
+		const research: ResearchContext | undefined =
+			roles &&
+			(selected.some((name) => name.startsWith(roles.prefix)) ||
+				(server?.enabled === true && server.state !== "unselected" && canReachMcp(selected)))
+				? { prefix: roles.prefix, reader: roles.reader, search: roles.search }
+				: undefined;
 		const profiles = [...options.profiles().values()];
 		// A child whose profile declares `browser.control` and that holds the browser server drives its own isolated
 		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
 		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
 		const browserControl = browserMcp && ownProfile?.permissions?.includes("browser.control") === true;
 		const inputs = {
-			octocode,
+			research,
 			profiles: profiles.map(({ name, description }) => ({ name, description })),
 			browserProfiles:
 				!options.isSubagent && selected.includes("agent") && !browserMcp
@@ -80,7 +81,8 @@ export function registerTurnSetup(
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
 			// What the selection allows, never what has connected: a server coming up must not change these bytes.
-			canReadLocal: typeof api.selectsTools !== "function" || api.selectsTools(LOCAL_READER_TOOL, true),
+			canReadLocal:
+				research !== undefined && (typeof api.selectsTools !== "function" || api.selectsTools(research.reader, true)),
 			canAsk: selected.includes("askUser") && hasUI,
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: canReachMcp(selected),
@@ -99,7 +101,7 @@ export function registerTurnSetup(
 		Object.assign(event.systemPromptOptions.sections, prompt);
 		if (role !== undefined) event.systemPromptOptions.sections.role = role;
 		// Checked at every prompt: a new day changes only this section.
-		event.systemPromptOptions.environment = currentEnvironment(new Date(), process.env, options.processName?.());
+		event.systemPromptOptions.environment = currentEnvironment();
 		if (promptRoots) {
 			// An isolated child's prompt names the main checkout, so siblings share the cached prefix. Tools and
 			// permissions keep the real worktree cwd; the task text names it.

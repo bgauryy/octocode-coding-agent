@@ -211,7 +211,7 @@ export function registerSendMessageTool(
 						: "";
 				if (result.relayed)
 					return textResult(
-						`${result.sent.join(", ")} is not running: message #${result.id} goes through your parent ${result.relayed}, which resumes it with the message if it can. If not, you get a notice saying why.`,
+						`${result.sent.join(", ")} is not a live agent in your team: message #${result.id} goes through your parent ${result.relayed}, which resumes it with the message if it is a finished subagent it can resume. If not, you get a notice saying why.`,
 						{ ...details, relayed: result.relayed },
 					);
 				if (params.interrupt)

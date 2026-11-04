@@ -11,6 +11,7 @@ import { ItemQuickAction } from "./ItemImplementation.tsx";
 import { ItemActions, ItemActivity } from "./ItemPanels.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { RfcView, ResearchView } from "./ReportsView.tsx";
+import { NeedsYouAnswer, useNeedsYou } from "./NeedsYou.tsx";
 import { ConnectionStatus, LiveProvider } from "./session.tsx";
 
 export const live: LiveExtension | null = {
@@ -25,6 +26,8 @@ export const live: LiveExtension | null = {
 	],
 	Provider: LiveProvider,
 	ConnectionStatus,
+	useNeedsYou,
+	NeedsYouAnswer,
 	ItemActions,
 	controls: hierarchyControls,
 	ItemQuickAction,

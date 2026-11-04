@@ -4,7 +4,8 @@ import { createMcpToolName } from "../../tool-names.ts";
 import { createMcpToolDefinition, type McpToolDefinitionOptions } from "../../tool-definition.ts";
 import { OCTOCODE_SERVER, LOCAL_READ_TOOLS } from "./names.ts";
 import { hostOutput, hostRender } from "../../host.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { sanitizeJson } from "../../sanitize.ts";
+import { jsonText } from "../../tools.ts";
 import { clip, queryTarget } from "../../../../common/src/clip.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ImageLimits, imageLimits } from "@octocodeai/octocode-ai/utils/vision";
@@ -83,39 +84,8 @@ export async function toToolResult(
 	};
 }
 
-/**
- * The JSON object of a result whose only content is one text block holding it, as the Octocode server answers (it sends
- * no separate `structuredContent`); undefined for other text or text longer than `maxChars`.
- */
-function jsonText(result: CallToolResult, maxChars: number): unknown {
-	const [part, ...rest] = result.content;
-	if (rest.length || part?.type !== "text" || part.text.length > maxChars) return undefined;
-	try {
-		const value: unknown = JSON.parse(part.text);
-		return isRecord(value) ? value : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-/** Every string in a JSON value with its control and invisible characters made visible; the same object when nothing changed. */
-export function sanitizeJson(value: unknown): unknown {
-	if (typeof value === "string") return visibleControls(value);
-	if (Array.isArray(value)) {
-		const next = value.map(sanitizeJson);
-		return next.some((item, i) => item !== value[i]) ? next : value;
-	}
-	if (value && typeof value === "object") {
-		let changed = false;
-		const next: Record<string, unknown> = {};
-		for (const [key, item] of Object.entries(value)) {
-			next[key] = sanitizeJson(item);
-			if (next[key] !== item) changed = true;
-		}
-		return changed ? next : value;
-	}
-	return value;
-}
+/** Legacy: moved to `src/sanitize.ts`; kept until coding-agent's last importer moves (B48 W3/W4). */
+export { sanitizeJson };
 
 /** The call's header: the tool name, then what its first query looks for; a batch adds one line per query. */
 function callSummary(args: unknown): { summary: string; queries: string[] } {

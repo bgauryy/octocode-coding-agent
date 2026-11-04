@@ -1,5 +1,5 @@
 import { BASH_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
-import { isOctocodeReader, isOctocodeSearch, routesSearchToOctocode } from "../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { isMcpToolName } from "../../../mcp/src/servers.ts";
 /**
  * System prompt construction and project context loading
@@ -97,13 +97,9 @@ export type SystemPromptSections = Record<string, string>;
 /**
  * The `environment` section (`octocode/instructions/system/environment.md`): platform and shell, today's local date and,
  * for a session other processes can reach, its process name. The last default section (custom sections follow it); a
- * new day changes only this section, and a session's name holds until `/new` or `/resume` starts another conversation.
+ * new day changes only this section
  */
-export function currentEnvironment(
-	now = new Date(),
-	env: NodeJS.ProcessEnv = process.env,
-	processName?: string,
-): string {
+export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = process.env): string {
 	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	const shell = env.SHELL?.split(/[\\/]/).pop() || (process.platform === "win32" ? "cmd" : "sh");
 	return renderInstruction("system/environment.md", {
@@ -111,7 +107,6 @@ export function currentEnvironment(
 		arch: process.arch,
 		shell,
 		date,
-		processName,
 	});
 }
 /** Normalize prompt input into the mutable, collection-complete shape exposed to extensions. */
@@ -173,13 +168,25 @@ function buildRules(
 	return rules.map((rule) => `- ${rule}`).join("\n");
 }
 
-/** The skill hint's file reader: the skill tool, then Octocode, then bash; `indirect` when only reachable through another tool. */
+/**
+ * Whether the policy's `research` section routes code search to the research MCP server (the first server whose entry
+ * gives tools a reader and a search role): it names that server's tools by their namespace. The base prompt leaves its
+ * own bash search rule out while it does, so only one of the two shows, whether or not the server's tools are declared yet.
+ */
+function routesSearchToResearch(sections: Record<string, string | undefined>): boolean {
+	const research = currentToolRoles().research;
+	return research !== undefined && sections.research?.includes(`\`${research.prefix}*\``) === true;
+}
+
+/** The skill hint's file reader: the skill tool, then bash; `indirect` when only an MCP reader or another tool reaches files. */
 function skillReader(selectedTools: string[], declaredTools: string[]): Parameters<typeof formatSkillsForPrompt>[1] {
-	// The skill tool loads a skill by name and needs no file reader, so it comes first. Octocode ships no `read` tool.
+	// The skill tool loads a skill by name and needs no file reader, so it comes first. A reader role's tool takes the
+	// server's own arguments, so the hint names no tool for it.
+	const { readers } = currentToolRoles();
 	if (declaredTools.includes(SKILL_TOOL)) return SKILL_TOOL;
-	if (declaredTools.some(isOctocodeReader)) return "octocode";
+	if (declaredTools.some((name) => readers.has(name))) return "indirect";
 	if (declaredTools.includes(BASH_TOOL)) return "bash";
-	return selectedTools.includes(BASH_TOOL) || selectedTools.some(isOctocodeReader) ? "indirect" : undefined;
+	return selectedTools.includes(BASH_TOOL) || selectedTools.some((name) => readers.has(name)) ? "indirect" : undefined;
 }
 
 /**
@@ -225,15 +232,16 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 			.map(([namespace, purpose]) => `- ${namespace}__*: ${purpose}`),
 	].join("\n");
-	// One predicate decides who owns code search: Octocode, when one of its search tools is declared or the policy's
-	// research section already routes search to it (a server still connecting); otherwise bash, when it is declared.
-	const octocodeSearch = declaredTools.some(isOctocodeSearch) || routesSearchToOctocode(customSections);
+	// One predicate decides who owns code search: an MCP server, when a tool with a search role is declared or the
+	// policy's research section already routes search to it (a server still connecting); otherwise bash, when declared.
+	const { searches } = currentToolRoles();
+	const researchSearch = declaredTools.some((name) => searches.has(name)) || routesSearchToResearch(customSections);
 	contents.rules = buildRules(
 		declaredTools,
 		toolGuidelines,
 		promptGuidelines,
 		!customPrompt && !customSections.communication,
-		!customPrompt && declaredTools.includes(BASH_TOOL) && !octocodeSearch,
+		!customPrompt && declaredTools.includes(BASH_TOOL) && !researchSearch,
 	);
 	contents.docs = renderInstruction("system/docs.md", { root: dirname(getReadmePath()) });
 	// A custom prompt stands in for the default docs (and the default rule lines above); every other section stays.

@@ -18,7 +18,6 @@ export type { StatusEntry, StatusTone } from "./footer-data-provider/status.ts";
 export interface FooterData {
 	readonly branch: string | null;
 	readonly statuses: ReadonlyMap<string, StatusEntry>;
-	readonly githubStatus: StatusEntry | undefined;
 	readonly providerCount: number;
 }
 
@@ -30,7 +29,6 @@ export class FooterDataProvider {
 	private cwd: string;
 	private static readonly WATCH_DEBOUNCE_MS = 500;
 
-	private githubStatus: StatusEntry | undefined;
 	private extensionStatuses = new Map<string, StatusEntry>();
 	/** The statuses' texts, as extensions read them; derived once per change. */
 	private statusTexts: ReadonlyMap<string, string> | undefined;
@@ -70,23 +68,11 @@ export class FooterDataProvider {
 		return this.cachedBranch;
 	}
 
-	getGithubStatusText(): string | undefined {
-		return this.githubStatus?.text;
-	}
-
-	setGithubStatusText(text: string, tone?: StatusTone): void {
-		const next = statusEntry(text, tone);
-		if (this.disposed || sameStatus(this.githubStatus, next)) return;
-		this.githubStatus = next;
-		this.changed();
-	}
-
 	/** The current snapshot (the `StateSource` read side). */
 	getState(): FooterData {
 		this.snapshot ??= {
 			branch: this.getGitBranch(),
 			statuses: this.extensionStatuses,
-			githubStatus: this.githubStatus,
 			providerCount: this.availableProviderCount,
 		};
 		return this.snapshot;
@@ -393,4 +379,4 @@ export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
 	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
 > &
-	Partial<Pick<FooterDataProvider, "getGithubStatusText" | "getState" | "subscribe">>;
+	Partial<Pick<FooterDataProvider, "getState" | "subscribe">>;

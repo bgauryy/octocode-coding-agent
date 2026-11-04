@@ -15,14 +15,7 @@ import { sameProcess } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
 import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptions } from "./model.ts";
-import {
-	BUSY_MS,
-	INBOX_BATCH_SIZE,
-	LEASE_MS,
-	MESSAGE_RETENTION_MS,
-	PRUNE_INTERVAL_MS,
-	QUICK_BUSY_MS,
-} from "./store/limits.ts";
+import { BUSY_MS, INBOX_BATCH_SIZE, LEASE_MS, PRUNE_INTERVAL_MS, QUICK_BUSY_MS } from "./store/limits.ts";
 import {
 	claimMember,
 	listMembers,
@@ -43,7 +36,9 @@ import {
 	resumeLeases,
 	writeLeases,
 } from "./store/leasing.ts";
+import { Presence } from "./store/presence.ts";
 import { MessageRefs } from "./store/refs.ts";
+import { memberWorkspace, Place } from "./store/place.ts";
 import { pathKey, teamScope, teamWorkspace } from "./store/workspace.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 
@@ -54,6 +49,8 @@ export class TeamStore {
 	readonly edits: EditLog;
 	/** Stored messages used by reference: read by id, forward, resume rows and relays (`store/refs.ts`). */
 	readonly refs: MessageRefs;
+	/** The event cursor, this connection's own writes and the parent's end hint (`store/presence.ts`). */
+	readonly presence: Presence;
 	private prunedAt = -Infinity;
 	/** Nested `quick` calls: only the outermost restores the long busy wait. */
 	private quickDepth = 0;
@@ -78,11 +75,11 @@ export class TeamStore {
 		ownsConnection: boolean,
 	) {
 		this.agent = agent;
+		this.presence = new Presence(agent);
 		const origin = registeredWorkspace(cwd, agent);
 		const leaseRoot = teamWorkspace(cwd, env);
 		const leaseWorkspace = leaseRoot === origin.root ? origin : registeredWorkspace(leaseRoot, agent);
-		this.memberWorkspace =
-			origin.id === leaseWorkspace.id ? { id: origin.id } : { id: origin.id, leaseWorkspaceId: leaseWorkspace.id };
+		this.memberWorkspace = memberWorkspace(origin.id, leaseWorkspace.id, new Place(cwd));
 		this.team = teamScope(cwd, env);
 		this.ownsConnection = ownsConnection;
 
@@ -155,10 +152,11 @@ export class TeamStore {
 
 	private prune(now = Date.now()): void {
 		if (now - this.prunedAt < PRUNE_INTERVAL_MS) return;
-		deliveries.pruneMessages(this.db, now - MESSAGE_RETENTION_MS);
+		this.refs.prune(now);
 		leases.pruneExpired(this.db, now);
 		this.edits.prune(now);
 		this.sweep(now);
+		this.presence.noteStalled(this.list(now, true), now);
 		this.prunedAt = now;
 	}
 
@@ -187,8 +185,8 @@ export class TeamStore {
 	 * Leave: the agent and its reservations go; the messages it never read become dead letters the sender can see. With
 	 * `owner` (a process leaving its own row) nothing is removed when the row now names another process.
 	 */
-	remove(id: string, now = Date.now(), owner?: ProcessIdentity): boolean {
-		return this.transaction(() => retireOwned(this.db, id, now, owner));
+	remove(id: string, now = Date.now(), owner?: ProcessIdentity, reason?: agentEvents.EndReason): boolean {
+		return this.transaction(() => retireOwned(this.db, id, now, owner, reason));
 	}
 
 	/**

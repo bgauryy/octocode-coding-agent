@@ -102,7 +102,7 @@ function resolveMessage(ref: string, id: number, ctx: ReferenceContext): Resolve
 		return `${ref}: message exceeds the ${MAX_MESSAGE_CHARS}-character inline limit; cite a smaller message or ask its sender for a summary containing the required instructions`;
 	const who =
 		found.from === USER_SENDER
-			? renderInstruction("notices/mail/reference-unverified-user.md")
+			? renderInstruction("notices/mail/unverified-user.md")
 			: found.from === EXTERNAL_SENDER
 				? apiClientLabel()
 				: `agent ${headerText(found.from, 64)}`;

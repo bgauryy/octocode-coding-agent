@@ -105,9 +105,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 					: "Remove a saved AI provider credential:";
 		this.addChild(new TruncatedText(theme.fg("accent", theme.bold(title)), 1, 0));
 		if (mode === "manage") {
-			this.addChild(
-				new TruncatedText(theme.fg("muted", "/model chooses a model · /github connects GitHub code search"), 1, 0),
-			);
+			this.addChild(new TruncatedText(theme.fg("muted", "/model chooses a model"), 1, 0));
 			this.addChild(
 				new TruncatedText(
 					theme.fg("muted", "Configured means credentials are present; provider access is not verified."),

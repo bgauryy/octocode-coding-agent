@@ -45,6 +45,8 @@ interface McpRuntimeOptions {
 	entry: McpServerEntry;
 	cwd: string;
 	createTransport: McpTransportFactory;
+	/** Resolves the entry each launch uses (prepared, installed) before its transport is created. */
+	prepareEntry?: (entry: McpServerEntry, signal: AbortSignal) => Promise<McpServerEntry>;
 	credentials: McpOAuthCredentialStore;
 	providerToken?: (provider: string) => Promise<string | undefined>;
 	onTools: (connection: McpServerConnection) => void;
@@ -79,6 +81,7 @@ export class McpServerConnection implements McpToolCaller {
 	private stderrTail: string | undefined;
 	private readonly cwd: string;
 	private readonly createTransport: McpTransportFactory;
+	private readonly prepareEntry: McpRuntimeOptions["prepareEntry"];
 	/** Stopped by `stop()` until `reconnect()`: calls do not start the server again. */
 	private stopped = false;
 	private readonly authProvider: McpAuthProvider | undefined;
@@ -90,6 +93,7 @@ export class McpServerConnection implements McpToolCaller {
 		this.entry = options.entry;
 		this.cwd = options.cwd;
 		this.createTransport = options.createTransport;
+		this.prepareEntry = options.prepareEntry;
 		this.onTools = options.onTools;
 		this.onChange = options.onChange;
 		this.log = options.log;
@@ -288,7 +292,9 @@ export class McpServerConnection implements McpToolCaller {
 			refresh: () => void this.refreshTools(client),
 		});
 		try {
-			transport = this.createTransport(this.entry, this.cwd, this.authProvider);
+			const prepared = this.prepareEntry?.(this.entry, signal);
+			const entry = prepared ? await raceWithAbortSignal(prepared, signal) : this.entry;
+			transport = this.createTransport(entry, this.cwd, this.authProvider);
 			await raceWithAbortSignal(client.connect(transport), signal);
 			const stdio = transport instanceof StdioTransport ? transport : undefined;
 			client.onClose(() => this.handleClientClose(client, stdio));

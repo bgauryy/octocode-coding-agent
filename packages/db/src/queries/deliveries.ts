@@ -272,6 +272,14 @@ export function deadLetterOf(db: DatabaseSync, id: string, now: number): void {
 	).run(now, id);
 }
 
+/** Dead-letters unread deliveries (completed or not) of messages made before `before` whose recipient has no agent row: nothing will read them. */
+export function deadLetterOrphans(db: DatabaseSync, before: number, now: number): void {
+	db.prepare(
+		`UPDATE deliveries SET dead_at = ? WHERE delivered_at IS NULL AND dead_at IS NULL
+       AND recipient NOT IN (SELECT id FROM agents) AND message IN (SELECT id FROM messages WHERE created_at < ?)`,
+	).run(now, before);
+}
+
 /** Dead deliveries of `sender`'s messages not yet reported to it, oldest first. */
 export function deadLetters(db: DatabaseSync, team: string, sender: string, limit: number): Row[] {
 	return db

@@ -146,9 +146,8 @@ describe("context optimization", () => {
 			const hidden = skill("hidden", "H", "/h/SKILL.md", { disableModelInvocation: true });
 			const skills = [userSkill(), projectSkill(), hidden];
 			expect(await main.prompt(skills)).toEqual(["Global source", "Local source", "H"]);
-			expect(main.notices).toHaveLength(1);
-			expect(main.notices[0]).toContain("2 new or changed skill descriptions are not optimized");
-			expect(main.notices[0]).toContain("The octocode-context-optimization skill rewrites them");
+			// Contract: a skill's own description is never flagged for rewriting (user decision, 2026-11-04).
+			expect(main.notices).toEqual([]);
 			expect(Object.keys(readSkillsStore(userDir).skills)).toEqual(["global"]);
 			expect(Object.keys(readSkillsStore(projectDir).skills)).toEqual(["local"]);
 
@@ -158,7 +157,7 @@ describe("context optimization", () => {
 			expect(await main.prompt(skills)).toEqual(["Global source", "Local source", "H"]);
 			await main.start();
 			expect(await main.prompt(skills)).toEqual(["Global short", "Local short", "H"]);
-			expect(main.notices).toHaveLength(1);
+			expect(main.notices).toEqual([]);
 		});
 
 		it("keeps bundled skills user-level", async () => {

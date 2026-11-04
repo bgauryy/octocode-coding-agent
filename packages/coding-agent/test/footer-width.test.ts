@@ -108,7 +108,7 @@ function createFooterData(providerCount: number): ReadonlyFooterDataProvider {
 }
 
 describe("footer statuses as data", () => {
-	it("paints each status and the GitHub line in its tone with the live theme", () => {
+	it("paints each status in its tone with the live theme", () => {
 		initTheme("dark");
 		const footer = new FooterComponent(createSession({ sessionName: "test" }), {
 			...createFooterData(1),
@@ -119,13 +119,11 @@ describe("footer statuses as data", () => {
 					["a-jobs", { text: "2 bash jobs", tone: "accent" as const }],
 					["b-lint", { text: "lint ok" }],
 				]),
-				githubStatus: { text: "GitHub ✓ @octo", tone: "success" as const },
 			}),
 			subscribe: () => () => {},
 		});
 		const out = footer.render(120).join("\n");
 		expect(out).toContain(theme.fg("accent", "2 bash jobs"));
-		expect(out).toContain(theme.fg("success", "GitHub ✓ @octo"));
 		expect(stripAnsi(out)).toContain("2 bash jobs lint ok");
 	});
 
@@ -140,7 +138,6 @@ describe("footer statuses as data", () => {
 					["a-routine", { text: "routine background status", tone: "muted" as const }],
 					["z-error", { text: "team unavailable", tone: "error" as const }],
 				]),
-				githubStatus: undefined,
 			}),
 			subscribe: () => () => {},
 		});
@@ -388,19 +385,5 @@ describe("footer text conventions", () => {
 
 		expect(paint(80)).toBe(mid);
 		expect(new Set([low, mid, high]).size).toBe(3);
-	});
-});
-
-describe("GitHub footer status", () => {
-	it("renders the account and keeps narrow terminals within their width", () => {
-		initTheme("dark");
-		const footer = new FooterComponent(createSession({ sessionName: "test" }), {
-			...createFooterData(1),
-			getGithubStatusText: () => "GitHub ✓ @octo · /github status",
-		});
-		expect(footer.render(80).map(stripAnsi).join("\n")).toContain("GitHub ✓ @octo · /github status");
-		for (const width of [10, 20, 40]) {
-			for (const line of footer.render(width)) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-		}
 	});
 });

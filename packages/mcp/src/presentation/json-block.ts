@@ -1,4 +1,5 @@
 import type { Tool as McpTool } from "../client/index.ts";
+import { literal } from "../compact/schema-nodes.ts";
 
 /**
  * One tool in plain form: the name the model calls it by, the server's own description, and the server's input (and
@@ -11,8 +12,8 @@ export function jsonToolBlock(call: string, tool: McpTool): string {
 	return [
 		`// ${call}`,
 		...(description ? [description] : []),
-		`Input schema (JSON Schema): ${JSON.stringify(tool.inputSchema)}`,
-		...(tool.outputSchema ? [`Output schema (JSON Schema): ${JSON.stringify(tool.outputSchema)}`] : []),
+		`Input schema (JSON Schema): ${literal(tool.inputSchema)}`,
+		...(tool.outputSchema ? [`Output schema (JSON Schema): ${literal(tool.outputSchema)}`] : []),
 	].join("\n");
 }
 

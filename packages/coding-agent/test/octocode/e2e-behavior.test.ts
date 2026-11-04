@@ -88,7 +88,8 @@ describe("file tool: read before change", () => {
 			write("app.ts", "clobbered"),
 			nativeCall("file", {
 				reason: "edit",
-				queries: [{ reason: "edit", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] }],
+				// A guess at text the file does not hold: an unread file takes an edit only on an exact match of what it holds.
+				queries: [{ reason: "edit", type: "edit", path: "app.ts", edits: [{ oldText: "99", newText: "42" }] }],
 			}),
 			nativeCall("file", {
 				reason: "batch",
@@ -105,6 +106,18 @@ describe("file tool: read before change", () => {
 		expect(results[2].text).toMatch(/1\. FAILED delete missing\.ts[\s\S]*2\. OK write new\.txt/);
 		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 41;\n");
 		expect(fs.readFileSync(path.join(cwd, "new.txt"), "utf8")).toBe("fresh");
+	}, 60_000);
+
+	it("takes an edit of an unread file when its text matches exactly, since the match shows the content is known", async () => {
+		const { cwd, run } = await start("full");
+		const results = await oneTurn(run, [
+			nativeCall("file", {
+				reason: "edit",
+				queries: [{ reason: "edit", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] }],
+			}),
+		]);
+		expect(results[0].isError).toBeFalsy();
+		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 42;\n");
 	}, 60_000);
 
 	it("after a bash read, applies an edit; after an outside change, refuses a whole write but re-validates an edit", async () => {

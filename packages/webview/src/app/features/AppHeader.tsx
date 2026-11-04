@@ -6,12 +6,14 @@ import { span, stamp } from "../model/format.ts";
 import { hashFor, type Params } from "../model/route.ts";
 import { SearchIcon } from "../ui/icons.tsx";
 import { cx, Kbd } from "../ui/primitives.tsx";
+import { StateMark } from "../ui/StateMark.tsx";
 
 export function AppHeader({
 	index,
 	loaded = true,
 	live,
 	status,
+	needsYou,
 	actions,
 	onOpenPalette,
 }: {
@@ -19,6 +21,8 @@ export function AppHeader({
 	loaded?: boolean;
 	live: boolean;
 	status?: ReactNode;
+	/** Something waits on the user: the pill opens or focuses the dialog from any view. */
+	needsYou?: { count: number; open: boolean; controls: string; onToggle: () => void };
 	actions?: ReactNode;
 	onOpenPalette: () => void;
 }) {
@@ -36,6 +40,19 @@ export function AppHeader({
 					<span className="muted">Workspace</span>
 				</div>
 				<div className="header-actions">
+					{needsYou && (
+						<button
+							type="button"
+							id="needs-you-pill"
+							className="needs-pill"
+							aria-expanded={needsYou.open}
+							aria-controls={needsYou.open ? needsYou.controls : undefined}
+							onClick={needsYou.onToggle}
+						>
+							<StateMark state="waiting" size={12} />
+							{needsYou.count} needs you
+						</button>
+					)}
 					{status}
 					<button
 						type="button"

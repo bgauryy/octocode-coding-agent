@@ -5,7 +5,7 @@ import {
 	type State,
 	deriveEpicState,
 } from "@octocodeai/octocode-contracts/snapshot";
-import { type AgentDb, backlog, dbStamp, archivedAudits } from "../../../../db/src/api.ts";
+import { type AgentDb, type AgentRun, agentRuns, backlog, dbStamp, archivedAudits } from "../../../../db/src/api.ts";
 import { historyWindows } from "../../config/retention.ts";
 import { TaskStore } from "./tasks/store.ts";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
@@ -81,6 +81,11 @@ export class BacklogStore {
 
 	get(ref: string | number): Item | undefined {
 		return getItem(this.db, this.repo, ref);
+	}
+
+	/** The runs of agents started for `item` (`agent_runs`, newest first). */
+	runs(item: Item): AgentRun[] {
+		return agentRuns.forItem(this.db, this.repo, item.seq);
 	}
 
 	/** The items that came from `item`, in board order. */

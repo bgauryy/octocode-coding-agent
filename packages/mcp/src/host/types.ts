@@ -165,9 +165,9 @@ export interface McpExtensionApi {
 	getAllTools(): McpToolInfo[];
 	setActiveTools(toolNames: string[]): void;
 	selectsTools?(prefix: string, activeByDefault: boolean): boolean;
-	getSettings?(): { mcpPresentation?: McpPresentationMode };
+	getSettings?(): { mcpPresentation?: McpPresentationMode; mcpExposure?: string };
 	getSkillDirectories(): string[];
-	registerMcpServer(name: string, config: McpServerConfig): void;
+	registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
 	unregisterMcpServer(name: string): void;
 	getMcpServers(): RegisteredMcpServer[];
 	events: EventBus;

@@ -1,7 +1,6 @@
 ---
 name: reviewer
 description: Use when a specified change needs review; finds actionable bugs, regressions and test gaps without source edits, with failing scenarios and coverage limits.
-skills: octocode-research
 readOnly: true
 model: medium:medium
 ---

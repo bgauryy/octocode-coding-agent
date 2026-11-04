@@ -25,6 +25,7 @@ import {
 } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
 import { type CheckHost, checkPermission, selectedFileQueries } from "./ask/check.ts";
+import { TurnCap } from "./ask/cap.ts";
 import { modeSummary, revertedNotice, selectAnswer } from "./ask/text.ts";
 import { PermissionTrail } from "./ask/trail.ts";
 import type { ActionEvent, Asker, Dialog, PermissionResolver, PrepareReplacement, Verdict } from "./ask/types.ts";
@@ -55,6 +56,7 @@ export class Permission {
 	readonly #seenProfiles = new Set<string>();
 	readonly #trail: PermissionTrail;
 	#mode: PermissionMode = "manual";
+	readonly turnCap = new TurnCap();
 	#started = false;
 	#warned = false;
 	#answeredSourceAsks = new WeakSet<ToolInvocation>();
@@ -134,12 +136,13 @@ export class Permission {
 			api: this.#api,
 			isSubagent: this.#isSubagent,
 			nonce: this.#nonce,
-			mode: () => this.#mode,
+			mode: () => this.mode,
+			chipMode: () => this.#mode,
 			agent: this.#agent,
 			stderr: this.#stderr,
 		});
 		this.#host = {
-			mode: () => this.#mode,
+			mode: () => this.mode,
 			policy: () => this.#policy,
 			answeredSourceAsks: () => this.#answeredSourceAsks,
 			resolver: () => this.#resolver,
@@ -157,7 +160,7 @@ export class Permission {
 	}
 
 	get mode(): PermissionMode {
-		return this.#mode;
+		return this.turnCap.apply(this.#mode);
 	}
 
 	/** What full mode ran this session (the footer counter). */
@@ -266,6 +269,11 @@ export class Permission {
 		];
 	}
 
+	/** Whether the user allowed all of `action` for this session. */
+	kindGranted(action: ActionClass): boolean {
+		return this.#kinds.has(action);
+	}
+
 	/** The kinds a subagent of this session runs without asking (it cannot ask anyone): those allowed for the session. */
 	childGrants(): ActionClass[] {
 		return [...this.#kinds];
@@ -365,13 +373,13 @@ export class Permission {
 	}
 
 	/** The default dialog: allow once, allow exactly this for the session (when it can be named), deny, deny with a note. */
-	readonly #select: Dialog = async (ctx, request) => selectAnswer(ctx, request, this.#mode, this.#relay, this.#nonce);
+	readonly #select: Dialog = async (ctx, request) => selectAnswer(ctx, request, this.mode, this.#relay, this.#nonce);
 
 	/** Whether this session's own mode allows every class of a subagent's prompt and no reason on it asks: the parent may answer it itself. */
 	allows(classes: readonly ActionClass[], reasons: readonly AskReason[]): boolean {
 		return (
-			classes.every((each) => decide(this.#mode, each) === "allow") &&
-			!reasons.some((reason) => reasonAsks(this.#mode, reason))
+			classes.every((each) => decide(this.mode, each) === "allow") &&
+			!reasons.some((reason) => reasonAsks(this.mode, reason))
 		);
 	}
 

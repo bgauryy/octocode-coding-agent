@@ -1,4 +1,5 @@
 import type { AgentDb } from "./db.ts";
+import * as agentRuns from "./queries/agent-runs.ts";
 import * as history from "./queries/history.ts";
 import type { HistoryTable } from "./queries/history.ts";
 import { num, type Row } from "./rows.ts";
@@ -17,7 +18,7 @@ import {
 /**
  * History housekeeping: rows of the history tables older than `archiveAfterDays` (default 14) move from the agent
  * database into gzip monthly JSONL files under the Octocode home (`AgentDb.archiveDir`), and archived rows older than
- * `keepDays` (default 30, 0 = never) are dropped. Backlog items, notes and comments are never deleted by age. The caller
+ * `keepDays` (default 30, 0 = never) are dropped; agent runs (`agent_runs`) are dropped at `keepDays` without an archive. Backlog items, notes and comments are never deleted by age. The caller
  * passes the windows (`HistoryWindows`): one database and one archive serve every repository and process, so the value
  * must be the user's global one, never a per-project setting that could prune another project's history.
  */
@@ -85,6 +86,8 @@ export function archiveHistory(
 					if (rows.length < BATCH) break;
 				}
 			}
+			// Agent runs are the audit of who ran what: they stay for the keep window and are not archived.
+			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => agentRuns.purgeBefore(db, now - keepMs));
 		});
 	} catch (error) {
 		if (history.isBusy(error)) return { ...result, skipped: "busy" };

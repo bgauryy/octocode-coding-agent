@@ -3,6 +3,7 @@ import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snap
 import type { ComponentType, ReactNode } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { BacklogIndex } from "./model/backlog.ts";
+import type { NeedsYou } from "./model/needs-you.ts";
 import type { Params } from "./model/route.ts";
 import type { IconProps } from "./ui/icons.tsx";
 
@@ -71,6 +72,10 @@ export interface LiveExtension {
 	views: readonly ViewDefinition[];
 	Provider: ComponentType<{ access: string; backlog: BacklogStore; children: ReactNode }>;
 	ConnectionStatus: ComponentType;
+	/** What waits on the user in the session; a hook, called inside `Provider`. */
+	useNeedsYou: () => NeedsYou | undefined;
+	/** The waiting dialog, answerable inline from any view. */
+	NeedsYouAnswer: ComponentType<{ needs: NeedsYou; onClose: () => void }>;
 	ItemActions: ComponentType<{ item: SnapshotItem }>;
 	/** Tree, board and detail edit controls for items and tasks. */
 	controls: HierarchyControls;

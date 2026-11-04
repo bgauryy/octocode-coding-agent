@@ -1,5 +1,6 @@
 /**
- * Provider cache contract (RFC_CONTEXT_EFFICIENCY.md, section a, item 1).
+ * Provider cache contract: a cached prefix is only reused when every adapter sends the bytes and breakpoints the
+ * retention settings promise, so this holds all adapters to one table.
  *
  * One fixture runs through every adapter that sends cache controls, and through the implicit ones for contrast. For
  * each row it asserts, with the retention table of packages/coding-agent/docs/prompt-caching.md as the oracle:

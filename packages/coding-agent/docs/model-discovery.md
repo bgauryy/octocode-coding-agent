@@ -39,4 +39,4 @@ const result = await discoverProviderModels(models, "openai", {
 });
 ```
 
-See the [provider audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md) for the documentation review, repairs and live-validation limits.
+A successful public model list does not establish account access. Live inference and account entitlements need their own checks.

@@ -287,8 +287,12 @@ describe("AgentSession MCP integration", () => {
 		expect(nestedToolNames(harness)).not.toContain("mcp__docs__search");
 		await harness.session.prompt("/mcp exposure docs direct");
 		expect(nestedToolNames(harness)).toContain("mcp__docs__search");
+		await harness.session.prompt("/mcp exposure docs deferred");
+		expect(saved.at(-1)).toEqual({ exposure: "deferred" });
+		expect(nestedToolNames(harness)).toContain("mcp__docs__search");
+		await harness.session.prompt("/mcp exposure docs direct");
 		const count = saved.length;
-		for (const removed of ["deferred", "auto", "nonsense"]) {
+		for (const removed of ["auto", "codemode", "nonsense"]) {
 			await harness.session.prompt(`/mcp exposure docs ${removed}`);
 			expect(saved).toHaveLength(count);
 			expect(notifications.at(-1)).toContain("Usage:");

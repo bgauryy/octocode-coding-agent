@@ -8,7 +8,13 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { type Model, type RetryCallbacks, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { formatNoModelSelectedMessage } from "../auth-guidance.ts";
 import type { CacheWarmer } from "../cache-warmer.ts";
-import { type CompactionPreparation, type CompactionResult, compact, prepareCompaction } from "../compaction/index.ts";
+import {
+	type CompactionPreparation,
+	type CompactionResult,
+	compact,
+	explainNothingToCompact,
+	prepareCompaction,
+} from "../compaction/index.ts";
 import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type CompactionHost, type CompactionReason, runCompaction } from "../session-compaction.ts";
 import { createSessionUsageRecorder } from "../usage-totals.ts";
@@ -178,9 +184,11 @@ export class SessionCompaction {
 		const pathEntries = session.sessionManager.getBranch();
 		const preparation = settings && prepareCompaction(pathEntries, settings);
 		if (settings && !preparation) {
-			throw pathEntries[pathEntries.length - 1]?.type === "compaction"
-				? new NothingToCompactError("Already compacted", "Already compacted")
-				: new NothingToCompactError("Nothing to compact (session too small)", "Nothing to compact yet");
+			if (pathEntries[pathEntries.length - 1]?.type === "compaction") {
+				throw new NothingToCompactError("Already compacted", "Already compacted");
+			}
+			const why = explainNothingToCompact(pathEntries, settings.keepRecentTokens);
+			throw new NothingToCompactError(why.message, why.notice);
 		}
 		// A local reference: a later clear (or a listener error) must not leave the catch without its signal.
 		const controller = new AbortController();

@@ -128,10 +128,11 @@ describe("resuming a session rejoins the team", () => {
 		expect(sessionOf("zesty-eel")).toBe("child-session");
 	});
 
-	it("a session with no recorded name still joins only on its first team action", () => {
+	it("a session with no recorded name joins under a new one when it starts and records it", () => {
+		// O6b (design B36): a main session joins the team at session_start, not on its first team action.
 		const fresh = team({ OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 		fresh.team.start(ctx());
-		expect(fresh.team.id).toBeUndefined();
-		expect(fresh.entries).toEqual([]);
+		expect(fresh.team.id).toBeDefined();
+		expect(fresh.entries).toEqual([{ customType: "octocode-team", data: { version: 1, id: fresh.team.id } }]);
 	});
 });

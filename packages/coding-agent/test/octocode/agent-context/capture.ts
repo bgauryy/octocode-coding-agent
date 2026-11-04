@@ -239,8 +239,7 @@ function normalizer(fx: Fixture) {
 		return result
 			.replace(/^Platform: .*$/gm, "Platform: <platform> <arch>")
 			.replace(/^Shell: .*$/gm, "Shell: <shell>")
-			.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>")
-			.replace(/^Process name: .*$/gm, "Process name: <process name>");
+			.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>");
 	};
 }
 

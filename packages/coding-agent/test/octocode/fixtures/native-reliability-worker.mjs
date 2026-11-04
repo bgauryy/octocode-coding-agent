@@ -9,8 +9,9 @@ const { name, root, cwd, bundle } = JSON.parse(process.argv[2]);
 const privateHome = path.join(root, name, 'home');
 const agentDir = path.join(root, name, 'agent');
 for (const dir of [privateHome, agentDir]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-// The agent tool declares its external type only with this opt-in setting.
-fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ externalAgents: true }));
+// The agent tool declares its external type only with this opt-in setting. The fixture measures request identity,
+// not the session API's turn gate (e2e-api-turn-permission covers it), so API-started turns keep the session's mode.
+fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ externalAgents: true, sessionApiTurnPermission: 'session' }));
 os.homedir = () => privateHome;
 syncBuiltinESMExports();
 Object.assign(process.env, {

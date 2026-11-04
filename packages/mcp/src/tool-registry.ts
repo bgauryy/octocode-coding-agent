@@ -2,7 +2,7 @@
 
 import { isDeepStrictEqual } from "node:util";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import { isDefaultActive, isSelected } from "./exposure.ts";
+import { declaredExposure, isDefaultActive, isSelected } from "./exposure.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { isEnabled } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
@@ -60,7 +60,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		const name = names.get(tool.name) ?? createMcpToolName(server, tool.name);
 		toolOwners.set(name, owner(tool.name));
 		current.add(name);
-		const exposure = state.toolExposure(entry, tool.name);
+		const exposure = declaredExposure(state.toolExposure(entry, tool.name));
 		const thin = presentation.isThin(server, tool);
 		// A thin declaration depends on the tool's own block of the generated file, not on the rest of the catalog.
 		const metadata = {

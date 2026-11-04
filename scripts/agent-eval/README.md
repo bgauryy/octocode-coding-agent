@@ -1,6 +1,6 @@
 # Agent eval
 
-Decides whether an agent change ships. Both builds answer the same tasks over the same pinned tree, and the gate is **correctness no worse AND cost per task lower**. Octocode share is reported and decides nothing. This is step 2 of the plan in [RFC_CONTEXT_EFFICIENCY.md](../../docs/RFC_CONTEXT_EFFICIENCY.md#audit-and-revised-plan-2026-11-04).
+Decides whether an agent change ships. Both builds answer the same tasks over the same pinned tree, and the gate is **correctness no worse AND cost per task lower**. Octocode share is reported and decides nothing.
 
 Two live runs have happened (2026-11-04, on Opus 5.5: 4 development tasks, then all 12, one run per arm). Every task passed on both builds, so the graders have not yet been seen to fail a real answer, and repeatability is still open (see [What only a live run can prove](#what-only-a-live-run-can-prove)).
 
@@ -60,9 +60,9 @@ The limit applies to each run, so two arms can spend twice `<n>`. Credentials re
 | `Invalid`      | 3    | Different suite, harness, ref or model; an incomplete run; infrastructure or grader errors; a leak |
 | usage error    | 64   | Wrong arguments                                                                                    |
 
-Failed trials stay in the denominator and their cost counts. Cost per task is the mean over tasks of each task's mean cost, including children. The interval is a seeded paired bootstrap over tasks, since repeats of one task are not independent. Numeric thresholds are not set yet: the RFC sets them from the baseline's repeat runs.
+Failed trials stay in the denominator and their cost counts. Cost per task is the mean over tasks of each task's mean cost, including children. The interval is a seeded paired bootstrap over tasks, since repeats of one task are not independent. Numeric thresholds are not set yet: they come from the baseline's repeat runs.
 
-The release also needs a soak on the user's own sessions, which this kit does not measure.
+Passing here does not release a change. The release also needs a soak: a few days of the user's own sessions in which the cache hit rate per role and session (`/agents stats`, `get_session_stats`) and the calls wasted on refusals (`archive` with `errors: true`) hold steady. This kit does not measure that, the baseline's repeat runs also set its length, and scripted tests alone do not pass the gate.
 
 ## What it costs and why
 
@@ -127,6 +127,18 @@ Each row has the pass or fail with grader evidence, cost, turns (assistant messa
 - **Credentials in an isolated home.** A credential that runs a command (`!security ...`) may behave differently with `HOME` changed.
 - **Prompt cache between trials.** The provider's cache outlives a trial, so the first trial of an arm pays for cache writes that later trials read. Arm order, and time between arms, can move cost. Both arms use the same task order; run them back to back, and swap their order on repeats if the difference is small.
 - **Dependencies shared by both arms.** Both builds link the sibling `octocode` checkout, so `octocode-mcp` is the same in each arm unless it changes between builds. The kit does not record its version.
+
+## Do agents understand their instructions?
+
+[understand.mjs](understand.mjs) is a separate, cheaper check. It decides no release: a wrong answer points at an instruction to improve. It sends a small model each agent's exact system prompt, tools and first message from `.octocode/tmp/agent-prompts/` (written by every `build:offline`, or by `yarn workspace @octocodeai/octocodecode run generate:prompts`), tools off, with a question about how that agent would work, and grades the answer with the `expect` and `forbid` patterns in [understanding.json](understanding.json). Each agent is also asked what in its instructions is unclear, which is reported and not graded.
+
+Without `--live`, `--max-usd` and `--provider` it prints the number of questions and exits 2, so it spends nothing. Agree a live run with the user first.
+
+```sh
+node scripts/agent-eval/understand.mjs --live --max-usd <n> --provider <name>
+```
+
+`--provider` names an entry of `--models-file` (default `~/.pi/agent/models.json`) with a `baseUrl` that answers `/v1/messages` in Anthropic's format and an `apiKey`. `--model` is a model of that provider (default `claude-haiku-5-5`), `--agents` a comma-separated subset and `--concurrency` the parallel requests (default 4). It stops starting questions at the limit. The report goes to `--out` (default `.octocode/tmp/prompt-understanding/`) as `report.md` and `results.json`. The exit code does not depend on how many answers were right.
 
 ## Develop
 

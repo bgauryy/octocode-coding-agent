@@ -13,7 +13,6 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import { getBundledSkillsDir } from "../../src/config.ts";
 import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
@@ -72,11 +71,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				"---\nname: discovered-skill\ndescription: Discovered fixture\n---\nDISCOVERED_SKILL_EVIDENCE\n",
 			);
 			if (owner !== "native") {
-				const { command, args, env } = octocodeLaunch(cwd, process.env, undefined, [
-					getBundledSkillsDir(),
-					externalSkill,
-					discoveredSkill,
-				]);
+				const { command, args, env } = octocodeLaunch(cwd, process.env, undefined, [externalSkill, discoveredSkill]);
 				fs.writeFileSync(
 					path.join(agentDir, "mcp.json"),
 					JSON.stringify({
@@ -156,7 +151,7 @@ describe("installed MCP and skills through the native SDK", () => {
 			try {
 				await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
 				await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
-				const research = resourceLoader.getSkills().skills.find((skill) => skill.name === "octocode-research")!;
+				const research = resourceLoader.getSkills().skills.find((skill) => skill.name === "integration-skill")!;
 				expect(research).toBeDefined();
 				faux.setResponses([
 					(context) => {
@@ -173,7 +168,7 @@ describe("installed MCP and skills through the native SDK", () => {
 							reader!.endsWith("localFetch")
 								? { path: file, ranges: [{ startLine: 1, endLine: end }] }
 								: { path: file, startLine: 1, endLine: end, minify: "none" };
-						expect(getCurrentSystemPrompt(context.messages)).toContain("<name>octocode-research</name>");
+						expect(getCurrentSystemPrompt(context.messages)).toContain("<name>integration-skill</name>");
 						expect(getCurrentSystemPrompt(context.messages)).toContain(
 							"Use the skill tool, one call per name, to load every skill",
 						);
@@ -182,7 +177,6 @@ describe("installed MCP and skills through the native SDK", () => {
 								fauxToolCall(reader!, {
 									queries: [
 										read(research.filePath, 30),
-										read(path.join(research.baseDir, "references", "octocode-usage.md"), 10),
 										read(path.join(externalSkill, "reference.md"), 10),
 										read(path.join(discoveredSkill, "SKILL.md"), 10),
 										read(evidence, 10),
@@ -216,7 +210,7 @@ describe("installed MCP and skills through the native SDK", () => {
 						return fauxAssistantMessage("Done");
 					},
 				]);
-				await session.prompt("Load the research skill and its references.");
+				await session.prompt("Load the debugging skill and its references.");
 				const servers = getMcpSessionStatus(resourceLoader.getEventBus());
 				const octocode = servers.find((server) => server.name === "octocode")!;
 				expect(octocode).toEqual(expect.objectContaining({ state: "connected", enabled: true }));
@@ -237,7 +231,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				expect(results).toHaveLength(1);
 				expect(JSON.stringify(results)).not.toMatch(/Access denied|outside.*allowed|not allowed|isError":true/i);
 				expect(JSON.stringify(results)).toContain("SKILL_REFERENCE_EVIDENCE");
-				expect(JSON.stringify(results)).toContain("Octocode Research");
+				expect(JSON.stringify(results)).toContain("Use the companion");
 				expect(JSON.stringify(results)).toContain("DISCOVERED_SKILL_EVIDENCE");
 				expect(
 					fs.readFileSync(evidence, "utf8"),

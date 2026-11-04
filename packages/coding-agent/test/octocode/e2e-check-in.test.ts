@@ -118,7 +118,7 @@ describe("the subagent check-in", () => {
 		expect(firstPing, "a child request with the ping").toBeDefined();
 		const text = firstPing!.messages.findLast((message) => message.text.includes(PING))!.text;
 		expect(text).toContain("`blocked`");
-		expect(text).toContain("only with your report");
+		expect(text).toContain("only with it");
 		// Its own message says the same in its result, and reaches the parent along with the report.
 		expect(requestsOf(child).at(-1)!.toolResults.at(-1)).toContain("do not wait for an answer");
 		expect(requestsOf(parent)).toHaveLength(2);

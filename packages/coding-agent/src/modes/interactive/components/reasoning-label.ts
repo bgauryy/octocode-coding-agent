@@ -61,6 +61,11 @@ export function durationSuffix(ms: number | undefined): string {
 	return ms === undefined ? "" : ` · ${formatDuration(ms)}`;
 }
 
+/** ` for 4s`, or nothing when the time is unknown: the end of "Thought for 4s". */
+export function thoughtDuration(ms: number | undefined): string {
+	return ms === undefined ? "" : ` for ${formatDuration(ms)}`;
+}
+
 /** The affordance of a hidden block: the bound key, and a click only where the terminal reports the mouse. */
 export function revealHint(mouse: boolean): string {
 	const key = keyText("app.thinking.toggle");

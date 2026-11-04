@@ -4,6 +4,7 @@ import { BashSettingsProperties } from "./settings-schema/bash.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
+import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
@@ -107,6 +108,7 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.sessionApi,
 			}),
 		),
+		sessionApiTurnPermission: Type.Optional(SessionApiTurnPermissionSchema),
 		...McpSettingsProperties,
 		research: Type.Optional(
 			Type.Object(

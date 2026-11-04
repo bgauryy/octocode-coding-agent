@@ -51,8 +51,14 @@ export function createDispatcher(
 		const result = await run();
 		const ms = Date.now() - started;
 		const key = `${event}\0${hookIdentity(hook)}`;
-		const timing = timings.get(key) ?? { runs: 0, totalMs: 0, maxMs: 0 };
-		timings.set(key, { runs: timing.runs + 1, totalMs: timing.totalMs + ms, maxMs: Math.max(timing.maxMs, ms) });
+		const timing = timings.get(key) ?? { runs: 0, totalMs: 0, maxMs: 0, failed: 0 };
+		const failed = failureOf(hook, claudeJsonRun(hook, result), ctx.signal?.aborted === true) !== undefined;
+		timings.set(key, {
+			runs: timing.runs + 1,
+			totalMs: timing.totalMs + ms,
+			maxMs: Math.max(timing.maxMs, ms),
+			failed: timing.failed + (failed ? 1 : 0),
+		});
 		if (
 			ms >= SLOW_HOOK_MS &&
 			!slowWarned.has(key) &&

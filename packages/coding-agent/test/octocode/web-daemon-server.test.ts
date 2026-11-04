@@ -65,7 +65,7 @@ function seedBacklog(env: NodeJS.ProcessEnv) {
 	store.add({ title: "Daemon item", goal: "Seen in the daemon", createdBy: "tester" }, { id: "tester" });
 }
 
-describe("daemon HTTP rules (R1-R9)", () => {
+describe("daemon HTTP rules", () => {
 	it("serves the page without a token and with a script-hash CSP, and nothing else without one", async () => {
 		const { get, server } = await daemon();
 		const page = await get("/");

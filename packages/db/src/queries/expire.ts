@@ -39,8 +39,3 @@ export function orphans(db: DatabaseSync, sessionIds: readonly string[], before:
 	});
 	return counts;
 }
-
-/** Deletes every `agent_events` row written before `before` (ms since epoch), whatever its session; returns how many. */
-export function events(db: DatabaseSync, before: number): number {
-	return Number(db.prepare("DELETE FROM agent_events WHERE time < ?").run(new Date(before).toISOString()).changes);
-}

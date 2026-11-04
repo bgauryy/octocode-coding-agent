@@ -7,7 +7,7 @@ import { runMcpCommand } from "../src/cli.ts";
 import { octocodePreset } from "../src/presets/octocode/index.ts";
 
 const STDIO_FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
-const OCTOCODE_CATALOG = resolve(import.meta.dirname, "./fixtures/compact/octocode-catalog.json");
+const OCTOCODE_CATALOG = resolve(import.meta.dirname, "./fixtures/compact/catalog-research.json");
 
 describe("octocode mcp compact", () => {
 	const dirs: string[] = [];
@@ -54,11 +54,11 @@ describe("octocode mcp compact", () => {
 		const { run, store } = setup();
 		const first = await run(["compact", "show", "octocode", "--catalog", OCTOCODE_CATALOG]);
 		expect(first.exitCode).toBe(0);
-		expect(first.output).not.toContain("<when>");
 		const stored = readGenerated(store, "octocode");
 		const catalog = JSON.parse(readFileSync(OCTOCODE_CATALOG, "utf8"));
 		expect(stored?.meta.hash).toBe(catalogHash(catalog));
-		expect(stored?.meta.overrides?.tools?.lspSearch).toContain("workspaceSymbol");
+		// Contract: the stored overrides are exactly what the preset offers for that catalog.
+		expect(stored?.meta.overrides).toEqual(octocodePreset().compactOverrides?.(catalog));
 		const again = await run(["compact", "show", "octocode"]);
 		expect(again.output).toBe(first.output);
 	});

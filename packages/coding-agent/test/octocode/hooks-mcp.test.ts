@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
 import { expect, it, vi } from "vitest";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
@@ -211,4 +215,23 @@ it("isolates typed Codex placeholder objects from the original event payload", a
 		return { content: [] };
 	});
 	expect(payload.tool_input.nested.permitted).toBe(false);
+});
+
+it("counts a run whose MCP server is missing as failed in the hooks report", async () => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".claude"));
+	fs.writeFileSync(
+		path.join(home, ".claude/settings.json"),
+		JSON.stringify({
+			hooks: { PreToolUse: [{ hooks: [{ type: "mcp_tool", server: "missing", tool: "check", timeout: 1 }] }] },
+		}),
+	);
+	const fake = fakeHost();
+	const hooks = registerHooks(fake.api, {}, home);
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	await hooks.preToolUse({ toolName: "bash", toolCallId: "m", input: { command: "true" } } as never, ctx);
+	expect(hooks.report(ctx.cwd)).toMatch(/ · 1 run, 1 failed, avg /);
+	vi.unstubAllEnvs();
 });

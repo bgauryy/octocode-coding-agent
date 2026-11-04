@@ -26,6 +26,7 @@ export interface McpServer {
 export const EXPOSURE_DESCRIPTIONS: Record<McpExposure, string> = {
 	hidden: "not callable",
 	direct: "declared to the model like built-in tools",
+	deferred: "declared to the model; the prompt lists names and triggers, and the agent loads the full text with mcp",
 };
 
 export function isEnabled(server: Pick<McpServer, "entry">): boolean {

@@ -44,7 +44,7 @@ export function optionValues(words: Word[], letters: string, long: string[] = []
 }
 
 /** The repository directory `git -C a -C b` runs in (`a/b`), or `""` for where it was started. */
-function gitLocation(globals: Word[]): Word {
+export function gitLocation(globals: Word[]): Word {
 	let location: Word = "";
 	for (let at = 0; at < globals.length; at++)
 		if (globals[at] === "-C") {

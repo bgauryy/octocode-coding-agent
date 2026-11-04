@@ -198,7 +198,8 @@ export class FeatureSetLoader {
 		for (const feature of this.injectedFeatures()) await register(feature);
 		const pluginMcp = loadConfiguredPluginMcp(effectivePlugins(this.config.settingsManager.getSettings(), cwd), cwd);
 		for (const error of pluginMcp.errors) result.errors.push({ path: "settings.plugins", error });
-		if (pluginMcp.servers.length) {
+		// With MCP switched off (`--no-mcp`) nothing connects servers, so plugin servers are skipped quietly.
+		if (pluginMcp.servers.length && !disabledFeatures.has("mcp")) {
 			await register({
 				id: "plugin-mcp",
 				owner: "builtin",

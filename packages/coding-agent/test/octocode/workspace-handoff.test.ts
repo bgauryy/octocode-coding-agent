@@ -88,7 +88,7 @@ describe("backlog implementation handoff", () => {
 			derived.ref,
 			"Related follow-up",
 			"follow every Next page",
-			"Follow existing permissions",
+			"grant no authority",
 		])
 			expect(message).toContain(text);
 		expect(app.sent[0].options).toEqual({ deliverAs: "followUp" });

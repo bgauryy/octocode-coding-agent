@@ -27,6 +27,7 @@ import {
 } from "./application-content.ts";
 import {
 	durationSuffix,
+	thoughtDuration,
 	interruptedText,
 	isAbortWording,
 	LiveThinkingLabel,
@@ -69,7 +70,7 @@ export class AssistantMessageComponent extends Container {
 
 	constructor(
 		message?: AssistantMessage,
-		hideThinkingBlock = false,
+		hideThinkingBlock = true,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		hiddenThinkingLabel = "Thinking…",
 		outputPad = 1,
@@ -302,8 +303,10 @@ export class AssistantMessageComponent extends Container {
 				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
 				const active = this.isStreaming && i === blocks.length - 1;
 				const interrupted = !this.isStreaming && ["aborted", "error", "length"].includes(message.stopReason ?? "");
-				const label = interrupted ? "Reasoning interrupted" : "Reasoning";
-				const time = durationSuffix(thinkingMs(spanIds));
+				const elapsed = thinkingMs(spanIds);
+				// A collapsed, finished block reads as a past event ("Thought for 4s"); an open one titles its text.
+				const label = interrupted ? "Reasoning interrupted" : hidden ? "Thought" : "Reasoning";
+				const time = hidden && !interrupted ? thoughtDuration(elapsed) : durationSuffix(elapsed);
 				const hint = hidden ? revealHint(this.mouseHint) : "";
 				const thinkingComponent = new Container();
 				if (active) {

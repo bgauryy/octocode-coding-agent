@@ -178,6 +178,20 @@ describe("status indicators", () => {
 		}
 	});
 
+	it("paints an automatic retry neutral: warning is reserved for what needs the user", () => {
+		initTheme("dark");
+		vi.useFakeTimers();
+		const indicator = new RetryStatusIndicator({ requestRender: vi.fn() } as unknown as TUI, 1, 3, 3000);
+		try {
+			const row = indicator.render(80).join("\n");
+			const tone = (token: "warning" | "muted") => theme.fg(token, "x").split("x")[0];
+			expect(row).toContain(tone("muted"));
+			expect(row).not.toContain(tone("warning"));
+		} finally {
+			indicator.dispose();
+		}
+	});
+
 	it("disposes retry countdown updates", () => {
 		initTheme("dark");
 		vi.useFakeTimers();

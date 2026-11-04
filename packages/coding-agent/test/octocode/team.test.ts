@@ -447,7 +447,8 @@ describe("Team", () => {
 		try {
 			const main = new Team(fakeHost(mainLog), env);
 			main.start(ctx);
-			expect(main.members()).toEqual([]);
+			// O6b (design B36): a main session joins at session_start, so it is the one member before it names its goal.
+			expect(main.members().map((each) => each.id)).toEqual([main.id]);
 			const parent = main.join("coordinating");
 			// A real child reads the secret its parent gave it, which is what makes `from` the parent's word.
 			const childEnv: NodeJS.ProcessEnv = {
@@ -564,7 +565,8 @@ describe("team database schema", () => {
 		const other = open(cwd, file);
 		other.save(member("a-0001"));
 		other.close();
-		exec(file, "PRAGMA user_version=99;");
+		// A newer, breaking writer also raises the floor an older Octocode may still read (`schema_readable_from`).
+		exec(file, "PRAGMA user_version=99; UPDATE meta SET value = '99' WHERE key = 'schema_readable_from';");
 		expect(() => open(cwd, file)).toThrow(/unsupported Octocode schema/);
 		const db = new DatabaseSync(file);
 		expect((db.prepare("SELECT id FROM agents").all() as Array<{ id: string }>).map((row) => row.id)).toEqual([
@@ -861,6 +863,8 @@ describe("Team safety", () => {
 			sessionManager: { getSessionId: () => "sess-team", getSessionFile: () => undefined },
 			isIdle: () => true,
 		} as never);
+		// O6b: a session now joins at start; this one is the session that is not in the team (it left), whose edits no team database gates.
+		lone.leave();
 		try {
 			const peer = TeamStore.open(cwd, env.OCTOCODE_AGENT_DB);
 			peer.save(member("peer-0002"));

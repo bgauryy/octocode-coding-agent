@@ -1,5 +1,6 @@
 import { type Static, Type } from "typebox";
 import type { McpContext, McpToolDefinition } from "./host/types.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { MCP_MANAGE_TOOL_NAME } from "./servers.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 
@@ -33,6 +34,8 @@ export interface McpManageOperations {
 	servers(): ManagedMcpServer[];
 	/** Read the current catalog without connecting or executing a server. */
 	tools?(name: string): McpToolListing[];
+	/** The server's own instructions from its current connection, shown before its catalog. */
+	instructions?(name: string): string | undefined;
 	/** Start a stopped or failed server, or restart a running one. Resolves with an error message on failure. */
 	restart(name: string, ctx: McpContext): Promise<string | undefined>;
 	/** Stop a server for this session. Resolves with an error message when it cannot be stopped. */
@@ -99,19 +102,25 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 					const server = find(params.server);
 					const tools = server.connected ? (operations.tools?.(server.name) ?? []) : [];
 					if (params.tool) {
-						const tool = tools.find((candidate) => candidate.name === params.tool);
+						// The server's tool name, or the name the model calls it by, whole or after the block's `tools` prefix.
+						const tool =
+							tools.find((candidate) => candidate.name === params.tool) ??
+							tools.find(
+								(candidate) =>
+									candidate.callName === params.tool ||
+									candidate.callName === `${mcpNamespace(server.name)}__${params.tool}`,
+							);
 						if (!tool) throw new Error(`No available tool named "${params.tool}" on MCP server "${server.name}".`);
 						return reply(formatMcpTool(tool, true), { server: server.name, tool });
 					}
-					return reply(
-						tools.length
-							? tools.map((tool) => formatMcpTool(tool)).join("\n")
-							: "No tools available in the current connection.",
-						{
-							server: server.name,
-							tools: tools.map(({ name, exposure }) => ({ name, exposure })),
-						},
-					);
+					const instructions = server.connected ? operations.instructions?.(server.name) : undefined;
+					const catalog = tools.length
+						? tools.map((tool) => formatMcpTool(tool)).join("\n")
+						: "No tools available in the current connection.";
+					return reply(instructions ? `Instructions:\n${instructions}\n\nTools:\n${catalog}` : catalog, {
+						server: server.name,
+						tools: tools.map(({ name, exposure }) => ({ name, exposure })),
+					});
 				}
 				case "restart": {
 					const server = find(params.server);

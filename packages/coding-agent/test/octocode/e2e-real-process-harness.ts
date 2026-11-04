@@ -191,6 +191,16 @@ export interface Sandbox {
 const sandboxes: Sandbox[] = [];
 const started: Run[] = [];
 
+/**
+ * Merges `patch` into the sandbox's global settings file, which `sandbox` starts with `sessionApiTurnPermission: "session"`:
+ * these suites exercise the API transport, not the gate that holds a turn an API client starts to `workspace` mode.
+ */
+export function writeSettings(box: Pick<Sandbox, "home">, patch: Record<string, unknown>): void {
+	const file = path.join(box.home, ".octocode", "octocodecode", "settings.json");
+	const current = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>) : {};
+	fs.writeFileSync(file, JSON.stringify({ ...current, ...patch }));
+}
+
 /** A fresh `HOME` with a git repository, `models.json` pointing at the endpoint, and no credentials. */
 export function sandbox(endpoint: Endpoint): Sandbox {
 	const root = fs.realpathSync(tmp("octocode-real-process-"));
@@ -222,6 +232,7 @@ export function sandbox(endpoint: Endpoint): Sandbox {
 			},
 		}),
 	);
+	writeSettings({ home }, { sessionApiTurnPermission: "session" });
 	const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
 	git("init", "-q");
 	git("config", "user.email", "test@example.invalid");

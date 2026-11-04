@@ -15,6 +15,7 @@ import { HistoryPanel } from "./HistoryPanel.tsx";
 import { ResultCard } from "./ResultCard.tsx";
 import { SessionComposer } from "./SessionComposer.tsx";
 import { SessionUnavailable } from "./SessionUnavailable.tsx";
+import { useAnswerNote } from "./NeedsYou.tsx";
 import { useLive } from "./session.tsx";
 import { TerminalTranscript } from "./TerminalView.tsx";
 
@@ -142,6 +143,7 @@ function feedStatus(paused: boolean, tone: ConnectionTone): string {
 }
 
 function Overview({ ongoing }: { ongoing: number }) {
+	const note = useAnswerNote();
 	const { working, pending } = useStore(
 		useLive().workspace,
 		useShallow((state) => ({
@@ -163,7 +165,7 @@ function Overview({ ongoing }: { ongoing: number }) {
 				<strong>{ongoing}</strong>
 				<span>Items in progress</span>
 			</a>
-			<p className="muted">Approvals appear in the terminal.</p>
+			{note && <p className="muted">{note}</p>}
 		</section>
 	);
 }

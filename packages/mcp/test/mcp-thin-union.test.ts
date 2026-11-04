@@ -146,7 +146,7 @@ describe("thin MCP declarations of union inputs", () => {
 	});
 
 	it("leaves the current Octocode catalogs byte-identical: each root field with only its declared type", () => {
-		for (const file of ["octocode-catalog.json", "octocode-catalog-nokey.json"]) {
+		for (const file of ["catalog-research.json", "catalog-research-nokey.json"]) {
 			const catalog = JSON.parse(readFileSync(new URL(`fixtures/compact/${file}`, import.meta.url), "utf8")) as {
 				tools: { name: string; inputSchema: { properties: Record<string, { type: string }> } }[];
 			};

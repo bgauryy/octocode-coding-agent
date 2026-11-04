@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { PeerNotices, type PeerNoticeHost } from "./peer-left.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
 import type { DeadLetter, MailDetails, Message } from "./model.ts";
 import { parentProofValid, userProofValid } from "./proof.ts";
@@ -79,6 +80,23 @@ export class Mail {
 			{ triggerTurn: false, deliverAs: "steer" },
 			onRejected,
 			onAccepted,
+		);
+	}
+
+	private peers: PeerNotices | undefined;
+
+	/** Starts telling this agent when a peer it corresponded with ends (`peer-left.ts`); `reset` stops it. */
+	followPeers(bus: PeerNoticeHost["bus"], self: PeerNoticeHost["self"], db: PeerNoticeHost["db"]): void {
+		this.peers ??= new PeerNotices({ bus, self, db, mail: this });
+		this.peers.watch();
+	}
+
+	/** One line that a peer ended: an FYI read at the next step, or, with `wake`, one that starts a turn of an idle agent (a question of this agent's is left open). */
+	peerLeft(text: string, wake: boolean): boolean {
+		return this.inject(
+			text,
+			{ messages: [{ from: "team", text, at: Date.now() }] },
+			{ triggerTurn: wake, deliverAs: "steer" },
 		);
 	}
 
@@ -163,6 +181,7 @@ export class Mail {
 		this.forUser.clear();
 		this.lastProvenancePrune = 0;
 		this.releaseInterrupt();
+		this.peers?.stop();
 	}
 
 	private releaseInterrupt(): void {

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { getBundledSkillsDir, getNativeSkillsDir } from "../../src/config.ts";
+import { getNativeSkillsDir } from "../../src/config.ts";
 
 const rolesDir = fileURLToPath(new URL("../../src/octocode/instructions/roles/", import.meta.url));
 
@@ -22,20 +22,14 @@ describe("skills named by bundled roles", () => {
 
 	it.each(roles)("%s names only skills the application ships", (file) => {
 		for (const name of roleSkills(file)) {
-			const shipped = [getNativeSkillsDir(), getBundledSkillsDir()].some((dir) =>
-				fs.existsSync(path.join(dir, name, "SKILL.md")),
-			);
 			expect(
-				shipped,
-				`${file} names skill ${name}, which is neither a core native skill nor in the bundled collection`,
+				fs.existsSync(path.join(getNativeSkillsDir(), name, "SKILL.md")),
+				`${file} names skill ${name}, which is not a core native skill`,
 			).toBe(true);
 		}
 	});
 
-	it("gives the implementer the debugging skill and the research roles the research skill", () => {
-		expect(roleSkills("implementer.md")).toEqual(["octocode-debugging"]);
-		expect(roleSkills("researcher.md")).toEqual(["octocode-research"]);
-		expect(roleSkills("reviewer.md")).toEqual(["octocode-research"]);
+	it("gives the browser role the chrome devtools skill", () => {
 		expect(roleSkills("browser.md")).toEqual(["octocode-chrome-devtools"]);
 	});
 });

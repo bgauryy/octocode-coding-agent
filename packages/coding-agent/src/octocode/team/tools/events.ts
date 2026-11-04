@@ -26,7 +26,7 @@ export function registerTeamEvents(
 		}
 	});
 	api.on("agent_start", async () => team.onAgentStart());
-	api.on("agent_settled", async () => team.onAgentSettled());
+	api.on("agent_settled", async (event) => team.onAgentSettled(event.outcome?.status));
 	// The loop reads queued steering right after `turn_end`: mail that arrived while the tools ran joins the next request
 	// instead of waiting for the tick. A final turn (no tools) is left to the tick, so waiting mail adds no model call.
 	api.on("turn_end", async (event) => {

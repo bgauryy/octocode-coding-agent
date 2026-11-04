@@ -198,7 +198,7 @@
     },
     "hideThinkingBlock": {
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "showCacheMissNotices": {
       "type": "boolean",
@@ -269,6 +269,20 @@
       "description": "Start the local session API on an owner-only Unix socket, so other processes of this user can find and message a running session. On by default; on Windows, which has no such socket here, it starts only with `/api on` or `OCTOCODE_API_HTTP`. Read from the global settings file; a project file cannot change it. `/api on` and `/api off` override it for the running process. Takes effect for new sessions.",
       "default": true
     },
+    "sessionApiTurnPermission": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "workspace"
+        },
+        {
+          "type": "string",
+          "const": "session"
+        }
+      ],
+      "description": "The permission mode a turn the local session API starts on an idle session runs under. `workspace` (default) holds it to workspace mode even when the session is in full: its user is asked about the message, and a tool call workspace asks about asks or, with nobody to ask, is refused. `session` restores the session's own mode (full takes the message unasked and runs the turn in full). A message to a session that is already working follows the session's mode either way. Read from the global settings file; a project file cannot change it. Applies to the next message.",
+      "default": "workspace"
+    },
     "mcpPresentation": {
       "anyOf": [
         {
@@ -282,6 +296,24 @@
       ],
       "description": "How the cached system prompt describes MCP tools: every enabled server's instructions and each enabled tool's description and schema, in one block per server. \"compact\" writes them as a generated TypeScript file (a tool it cannot express faithfully is described in plain form); \"json\" describes every tool in plain form, as the server sent it. Provider declarations are thin either way: a one-line trigger and the top-level field types, with calls validated against the server's own JSON Schema.",
       "default": "compact"
+    },
+    "mcpExposure": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "direct"
+        },
+        {
+          "type": "string",
+          "const": "deferred"
+        },
+        {
+          "type": "string",
+          "pattern": "^auto:[0-9]+$"
+        }
+      ],
+      "description": "How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server's or tool's own `exposure` wins). \"direct\": the full description and schema. \"deferred\": the server's purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. \"auto:<bytes>\": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server's full schema either way, and nothing is deferred for an agent without the `mcp` tool.",
+      "default": "direct"
     },
     "research": {
       "type": "object",

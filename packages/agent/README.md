@@ -63,12 +63,12 @@ AgentMessage[] → transformContext() → AgentMessage[] → convertToLlm() → 
 
 ## Documentation
 
-| Page | Covers |
-| --- | --- |
-| [Event flow](docs/events.md) | `prompt()` and tool-call event sequences, request preparation, turn finalization, `continue()`, queued input, event types |
-| [Options, state and methods](docs/options-and-state.md) | Agent options, agent state, prompting, state management, budgets, control, event subscription |
-| [Steering, messages and tools](docs/messages-and-tools.md) | Steering and follow-up input, custom message types, tools, tool errors, MCP tools |
-| [Proxy and low-level API](docs/proxy-and-low-level.md) | Proxy usage and the low-level agent loop |
+| Page                                                       | Covers                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [Event flow](docs/events.md)                               | `prompt()` and tool-call event sequences, request preparation, turn finalization, `continue()`, queued input, event types |
+| [Options, state and methods](docs/options-and-state.md)    | Agent options, agent state, prompting, state management, budgets, control, event subscription                             |
+| [Steering, messages and tools](docs/messages-and-tools.md) | Steering and follow-up input, custom message types, tools, tool errors, MCP tools                                         |
+| [Proxy and low-level API](docs/proxy-and-low-level.md)     | Proxy usage and the low-level agent loop                                                                                  |
 
 ## License
 

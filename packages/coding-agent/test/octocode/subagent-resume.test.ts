@@ -204,7 +204,7 @@ describe("a fork of a session whose subagents were still running", () => {
 		);
 		const resumed = setup(cwd, entries);
 		await resumed.f.emit("session_start", { reason: "resume" }, resumed.ctx);
-		// A resume names it too, in its own words: the child ended with the session (RFC B-F8).
+		// A resume names it too, in its own words: the child ended with the session.
 		expect(resumed.f.sent.map((entry) => String(entry.message.content))).toEqual([
 			expect.stringMatching(/^\[Resume\].*general-inflight \(/s),
 		]);

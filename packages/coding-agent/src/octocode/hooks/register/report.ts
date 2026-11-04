@@ -12,7 +12,8 @@ export const hookCount = (config: HookConfig): number =>
 
 function timingText(timing: HookTiming | undefined): string {
 	if (!timing) return "";
-	return ` · ${timing.runs} run${timing.runs === 1 ? "" : "s"}, avg ${formatDuration(timing.totalMs / timing.runs)}, max ${formatDuration(timing.maxMs)}`;
+	const failed = timing.failed ? `, ${timing.failed} failed` : "";
+	return ` · ${timing.runs} run${timing.runs === 1 ? "" : "s"}${failed}, avg ${formatDuration(timing.totalMs / timing.runs)}, max ${formatDuration(timing.maxMs)}`;
 }
 
 export function hooksReport(

@@ -78,6 +78,10 @@ header.top { position: sticky; top: 0; z-index: 5; padding: 14px 28px 0; backgro
 .palette-trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 220px; min-height: 32px; padding: 4px 8px 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-3); font: inherit; font-size: 13px; cursor: pointer; }
 .palette-trigger span:not(.kbd) { flex: 1; text-align: left; }
 .palette-trigger:hover { border-color: var(--text-3); color: var(--text-2); }
+.needs-pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: 999px; background: color-mix(in srgb, var(--warning) 10%, var(--surface)); color: var(--warning); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.needs-pill:hover, .needs-pill[aria-expanded=true] { background: color-mix(in srgb, var(--warning) 18%, var(--surface)); }
+.needs-you-panel { margin: 10px 0 12px; padding: 12px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--warning) 6%, var(--surface)); }
+.needs-you-panel .dialog-answer { border: 0; padding: 0; }
 .connection { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; height: 26px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--tone); background: color-mix(in srgb, var(--tone) 10%, transparent); }
 .connection.tone-live { --tone: var(--success); } .connection.tone-connecting { --tone: var(--warning); } .connection.tone-error { --tone: var(--danger); }
 .connection.tone-error .live-dot { animation: none; }

@@ -147,3 +147,31 @@ export function acceptStale(
 		...(Object.keys(tools).length ? { tools } : {}),
 	};
 }
+
+/**
+ * `preset` without the `stale` entries, so the server's own text applies there: the response to drift that rewrites
+ * nothing. A stale description drops the tool's trigger with it (it is keyed on that description); a tool keeps its
+ * still-valid fields.
+ */
+export function dropStale(preset: PresetOverrides, stale: readonly StalePresetEntry[]): PresetOverrides {
+	const labels = new Set(stale.map((entry) => entry.label));
+	const tools: Record<string, PresetToolOverrides> = {};
+	for (const [name, tool] of Object.entries(preset.tools ?? {})) {
+		const next: PresetToolOverrides = { ...tool };
+		if (labels.has(`${name}.description`)) {
+			delete next.descriptionHash;
+			delete next.description;
+			delete next.trigger;
+		}
+		const fields = Object.fromEntries(
+			Object.entries(tool.fields ?? {}).filter(([path]) => !labels.has(`${name}.${path}`)),
+		);
+		if (Object.keys(fields).length) next.fields = fields;
+		else delete next.fields;
+		if (next.description !== undefined || next.trigger !== undefined || next.fields) tools[name] = next;
+	}
+	return {
+		...(preset.server && !labels.has("server") ? { server: preset.server } : {}),
+		...(Object.keys(tools).length ? { tools } : {}),
+	};
+}

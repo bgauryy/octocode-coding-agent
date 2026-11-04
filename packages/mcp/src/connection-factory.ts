@@ -3,6 +3,7 @@
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
 import type { McpOAuthCredentialStore } from "./oauth.ts";
+import { type McpInstallOptions, resolveInstalledLaunch } from "./install.ts";
 import { McpServerConnection } from "./runtime.ts";
 import { createDefaultTransport, type McpTransportFactory } from "./runtime/transport.ts";
 
@@ -21,18 +22,21 @@ export interface McpConnectionOptions {
 	createTransport?: McpTransportFactory;
 	onTools?: (connection: McpServerConnection) => void;
 	onChange?: (connection: McpServerConnection) => void;
+	/** Installs an entry's `install` package before its launch (`install.ts`); tests inject npm here. */
+	install?: Omit<McpInstallOptions, "signal">;
 }
 
 export function createServerConnection(options: McpConnectionOptions): McpServerConnection {
-	const { prepareLaunch, onLaunch, createTransport = createDefaultTransport, onTools, ...rest } = options;
+	const { prepareLaunch, onLaunch, createTransport = createDefaultTransport, onTools, install, ...rest } = options;
 	const connection: McpServerConnection = new McpServerConnection({
 		...rest,
 		onTools: onTools ?? (() => {}),
-		createTransport: (entry, cwd, auth) => {
-			const launched = prepareLaunch?.(entry, cwd) ?? entry;
+		prepareEntry: async (entry, signal) => {
+			const launched = prepareLaunch?.(entry, options.cwd) ?? entry;
 			onLaunch?.(connection, structuredClone(launched));
-			return createTransport(launched, cwd, auth);
+			return resolveInstalledLaunch(launched, { ...install, signal });
 		},
+		createTransport,
 	});
 	return connection;
 }

@@ -88,12 +88,13 @@ export class ApiServer {
 		fs.rmSync(file, { force: true });
 		const server = net.createServer((socket) => this.accept(socket));
 		this.unix = server;
+		// Set before the bind: a bind that fails still leaves the private folder `socketPath` made for `close` to remove.
+		this.socketFile = file;
 		return new Promise((resolve, reject) => {
 			server.once("error", reject);
 			const umask = process.platform === "win32" ? undefined : process.umask(0o177);
 			try {
 				server.listen(file, () => {
-					this.socketFile = file;
 					server.off("error", reject);
 					// On by default in every session: it must never be what keeps a finished process alive.
 					server.unref();

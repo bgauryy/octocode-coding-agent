@@ -1,5 +1,6 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts";
-import { memo, useState } from "react";
+import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
+import { memo, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { stamp } from "../model/format.ts";
 import type { UiState } from "../model/ui-state.ts";
@@ -7,6 +8,7 @@ import { AgentIcon, StopIcon } from "../ui/icons.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, type BadgeTone, cx, EmptyState } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
+import { type AgentNode, buildRoster, describeLast } from "./agent-roster.ts";
 import { CommandButton, ConnectionNotice, MessageForm } from "./controls.tsx";
 import { SessionUnavailable } from "./SessionUnavailable.tsx";
 import { useLive } from "./session.tsx";
@@ -37,6 +39,11 @@ export function AgentsView() {
 				<SessionUnavailable hint="Open /backlog from a running Octocode session to use agent controls." />
 			</div>
 		);
+	return <Roster snapshot={snapshot} />;
+}
+
+function Roster({ snapshot }: { snapshot: WorkspaceSnapshot }) {
+	const roster = useMemo(() => buildRoster(snapshot.agents, snapshot.traffic), [snapshot.agents, snapshot.traffic]);
 	const working = snapshot.agents.filter((agent) => agent.status === "working").length;
 	return (
 		<div className="view agents-view">
@@ -48,11 +55,7 @@ export function AgentsView() {
 				</p>
 			</div>
 			{snapshot.agents.length ? (
-				<div className="agent-grid">
-					{snapshot.agents.map((agent) => (
-						<AgentCard key={agent.id} agent={agent} />
-					))}
-				</div>
+				<AgentTree nodes={roster} root />
 			) : (
 				<EmptyState icon={<AgentIcon size={20} />} title="No agents in this session yet" />
 			)}
@@ -84,12 +87,34 @@ export function AgentsView() {
 	);
 }
 
-const AgentCard = memo(function AgentCard({ agent }: { agent: Member }) {
+/** Sub-agents nest under the agent that started them; the ones that need an answer come first. */
+function AgentTree({ nodes, root = false }: { nodes: readonly AgentNode[]; root?: boolean }) {
+	return (
+		<ul className={root ? "agent-grid" : "agent-tree"} aria-label={root ? "Agents" : undefined}>
+			{nodes.map((node) => (
+				<li key={node.agent.id}>
+					<AgentCard agent={node.agent} attention={node.attention} last={node.last} />
+					{node.children.length > 0 && <AgentTree nodes={node.children} />}
+				</li>
+			))}
+		</ul>
+	);
+}
+
+const AgentCard = memo(function AgentCard({
+	agent,
+	attention,
+	last,
+}: {
+	agent: Member;
+	attention: boolean;
+	last: Traffic | undefined;
+}) {
 	const working = agent.status === "working";
 	const [stopCycle, setStopCycle] = useState({ working, generation: 0 });
 	if (stopCycle.working !== working) setStopCycle({ working, generation: stopCycle.generation + (working ? 1 : 0) });
 	return (
-		<article className={cx("agent-card", working && "is-working")}>
+		<article className={cx("agent-card", working && "is-working", attention && "needs-attention")}>
 			<header className="agent-card-header">
 				<span className="agent-avatar" aria-hidden="true">
 					<AgentIcon />
@@ -107,6 +132,11 @@ const AgentCard = memo(function AgentCard({ agent }: { agent: Member }) {
 				>
 					{agent.status}
 				</Badge>
+				{attention && (
+					<Badge tone="warning" icon={<StateMark state="waiting" size={12} />}>
+						{agent.pending ? `${agent.pending} awaiting reply` : "needs reply"}
+					</Badge>
+				)}
 			</header>
 			<p className="agent-goal">{agent.goal || "No active task"}</p>
 			{agent.activity && (
@@ -114,6 +144,13 @@ const AgentCard = memo(function AgentCard({ agent }: { agent: Member }) {
 					<span className="muted">Now:</span> <code>{agent.activity}</code>
 				</p>
 			)}
+			{last && <p className="agent-last muted">{describeLast(agent.id, last)}</p>}
+			{agent.locks?.length ? (
+				<p className="agent-locks muted">
+					Locks: <code>{agent.locks.slice(0, 3).join(", ")}</code>
+					{agent.locks.length > 3 ? ` +${agent.locks.length - 3} more` : ""}
+				</p>
+			) : null}
 			<p className="agent-usage muted">
 				{agent.toolCalls} tool calls · {agent.input + agent.output} tokens
 				{agent.unpriced ? "" : ` · $${agent.cost.toFixed(2)}`}

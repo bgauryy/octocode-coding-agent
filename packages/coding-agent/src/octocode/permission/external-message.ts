@@ -1,6 +1,8 @@
 import { PERMISSION_ENV } from "../../../../common/src/env.ts";
 import type { Permission } from "./ask.ts";
+import { stricterMode } from "./ask/cap.ts";
 import type { Asker } from "./ask/types.ts";
+import type { PermissionMode } from "./mode.ts";
 
 /** Who a message says it is from and what it asks, as the API bridge read it. */
 interface ExternalClaim {
@@ -15,15 +17,21 @@ interface ExternalClaim {
 
 /**
  * Whether an external message reaches this session: the `message.external` class of the mode table, so `full` takes it
- * unasked and records it, the other modes ask, and with nobody to ask it is refused like any other ask. Admission says
- * nothing about what the turn may do: its tools follow the session's mode. Refuses by throwing what the sender reads.
+ * unasked and records it, the other modes ask, and with nobody to ask it is refused like any other ask. A message that
+ * starts a turn carries a `ceiling`: it is judged in the stricter of the session's mode and that one, so a session in
+ * `full` asks about it too. Admission says nothing about what the turn may do: the caller holds the turn's tools to the
+ * same ceiling (`Permission.turnCap`). Refuses by throwing what the sender reads.
  */
 export async function admitExternalMessage(
 	permission: Permission,
 	ctx: Asker,
 	claim: ExternalClaim,
-	options: { self: string; planning: boolean; onAsk?: () => void; signal?: AbortSignal },
+	options: { self: string; planning: boolean; ceiling?: PermissionMode; onAsk?: () => void; signal?: AbortSignal },
 ): Promise<void> {
+	const capped = options.ceiling ? stricterMode(permission.mode, options.ceiling) : undefined;
+	// True when the ceiling, not the session's mode, makes this ask: the usual advice (a wider mode) would not help.
+	const held = !options.planning && capped !== undefined && capped !== permission.mode;
+	const judged = options.planning ? "manual" : capped;
 	const verdict = await permission.check(ctx, {
 		action: "message.external",
 		title: "Let this external message reach the agent?",
@@ -31,7 +39,7 @@ export async function admitExternalMessage(
 		// No agent is involved in this ask, so the card shows no purpose line.
 		purpose: "",
 		...(claim.process ? { grant: { key: claim.process, label: `messages from ${claim.process}` } } : {}),
-		...(options.planning ? { asMode: "manual" as const } : {}),
+		...(judged ? { asMode: judged } : {}),
 		...(options.onAsk ? { onAsk: options.onAsk } : {}),
 		...(options.signal ? { signal: options.signal } : {}),
 	});
@@ -39,11 +47,11 @@ export async function admitExternalMessage(
 	const note = /^User's note: (.*)$/m.exec(verdict.message)?.[1];
 	if (verdict.via === "user")
 		throw new Error(
-			`The user of ${options.self} denied this message${note ? `, saying: ${note}` : ""}. Nothing reached its agent. Its user can allow it when asked again, or set /permissions full there.`,
+			`The user of ${options.self} denied this message${note ? `, saying: ${note}` : ""}. Nothing reached its agent. Its user can allow it when asked again, ${held ? `or set sessionApiTurnPermission to "session" in the global settings` : "or set /permissions full there"}.`,
 		);
 	if (verdict.via === "headless")
 		throw new Error(
-			`${options.self} runs in ${permission.mode} mode with nobody to ask, so this message reached no agent. Its user can start it with ${PERMISSION_ENV}=full, or run it where it can ask.`,
+			`${options.self} runs in ${held ? `${permission.mode} mode, and a message that starts a turn through the session API is held to ${capped} mode,` : `${permission.mode} mode`} with nobody to ask, so this message reached no agent. Its user can ${held ? `set sessionApiTurnPermission to "session" in the global settings` : `start it with ${PERMISSION_ENV}=full`}, or run it where it can ask.`,
 		);
 	throw new Error(`The approval dialog in ${options.self} closed unanswered. Nothing reached its agent.`);
 }

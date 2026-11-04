@@ -75,6 +75,7 @@ export function messagePolicy({
 			admitExternalMessage(permission, ctx, claim, {
 				self: claim.self,
 				planning: planning.blocked(),
+				...(claim.ceiling ? { ceiling: claim.ceiling } : {}),
 				...(onAsk ? { onAsk } : {}),
 				...(signal ? { signal } : {}),
 			}),

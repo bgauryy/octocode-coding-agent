@@ -71,8 +71,6 @@ export interface DiscoverInput {
 	 * Pi's project folder.
 	 */
 	piRoots: readonly string[];
-	/** The skills bundled with this build. */
-	builtinSkillsDir?: string;
 	/** The environment the host kinds read their global folders from (`OCTOCODE_HOME`, `CODEX_HOME`). Default `process.env`. */
 	env?: NodeJS.ProcessEnv;
 	/** The `plugins` entries in effect, for the `plugin` kind; without them no plugin is listed. */

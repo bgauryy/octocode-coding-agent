@@ -1,7 +1,12 @@
 /** Sending user and custom messages to a session: start a run, queue into the current one, or append. */
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
-import { AuthRequiredError, formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "../auth-guidance.ts";
+import {
+	AuthRequiredError,
+	formatAuthExpiredMessage,
+	formatNoApiKeyFoundMessage,
+	formatNoModelSelectedMessage,
+} from "../auth-guidance.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionCompaction } from "./compaction-control.ts";
 import type { SessionInternals } from "./host.ts";
@@ -114,11 +119,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	if (!hasConfiguredAuth) {
 		const isOAuth = session.modelRuntime.isUsingOAuth(session.model.provider);
 		if (isOAuth) {
-			throw new AuthRequiredError(
-				`Authentication failed for "${session.model.provider}". ` +
-					`Credentials may have expired or network is unavailable. ` +
-					`Run '/login ${session.model.provider}' to re-authenticate.`,
-			);
+			throw new AuthRequiredError(formatAuthExpiredMessage(session.model.provider));
 		}
 		throw new AuthRequiredError(formatNoApiKeyFoundMessage(session.model.provider));
 	}

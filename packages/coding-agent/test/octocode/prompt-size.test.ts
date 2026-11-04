@@ -142,7 +142,7 @@ const BACKLOG_ENTITIES_CEILING = 2_250;
 // tool names, MCP server index, context notices) is not in this fake host: it is measured with the real assembled prompt.
 // 21_400 (measured 21_163 after trimming the new descriptions): +193 file for line+sha anchored edits, +153 bash for the
 // opt-in verification receipt (`verify`), +268 agent for bash-write reservations in coordinate and the subagent stop and
-// overlap contract (agent lifecycle signals RFC). All three were requested features; their descriptions were shortened.
+// overlap contract. All three were requested features; their descriptions were shortened.
 // 22_000 (measured 21_808): +~650 user-requested editing and protocol policy: repository conventions, clean-code and
 // parallel/script rules, one worked example, a task-contract brief, and BLUF, 5W2H and SBAR defined once in
 // Communication at the time (role files name them instead of restating their slots; the policy now defines only the
@@ -171,7 +171,7 @@ const BACKLOG_ENTITIES_CEILING = 2_250;
 // scratch retention from OCTOCODE_CLEANUP_DAYS (+16), the message `forward` field and the external `refs` field.
 // 43_600 (2026-10-29, measured 43_526 without entity fields; user-approved B213): the main-session `compact` tool (449
 // with its reason property and prompt snippet); subagents do not get it, so the specialist ceiling is unchanged.
-// 43_000 (2026-10-29, measured 42_794 without entity fields; policy block 7_184, from 7_935): RFC D7/S1 cuts. The policy no longer repeats
+// 43_000 (2026-10-29, measured 42_794 without entity fields; policy block 7_184, from 7_935): cuts to what repeated elsewhere. The policy no longer repeats
 // seven tool mechanics (polling, references, model choice, headless, the contract file and locks, message fields,
 // closing backlog items), the report contract (now once, in the child's task), or the skill-loading rule (the skills
 // section), and its three universal templates became conditions. The agent `isolate` text names `refs/octocode/<id>`.
@@ -220,13 +220,23 @@ const BACKLOG_ENTITIES_CEILING = 2_250;
 // 33_950 (2026-11-04, measured 33_830 without entity fields, 33_289 at the previous commit; B6, user-approved): the restored
 // research rule (+541 in the policy: Octocode MCP first, `localFetch` for reads, fallback when a tool fails). Tool sizes
 // are unchanged.
-// 34_450 (2026-11-04, measured 34_363 without entity fields; user-approved plan in RFC_CONTEXT_EFFICIENCY.md): the `task`
+// 34_450 (2026-11-04, measured 34_363 without entity fields; user-approved): the `task`
 // `paths` field and its delegation sentence, the batch limit and example in the localFetch and localSearch triggers, and
 // the sensitive-task rule on the `model` field. The `mcps` block shrank by about 8,000 chars after the override refresh,
 // which this count does not include.
-// 36_400 (2026-11-04, measured 36_322; user-requested): titled sections in the work and delegation policy, active management
-// of children, bringing the user in early, separating backlog work and answering a budget request (+1,370 in the policy).
-const MAIN_CEILING = 36_400;
+// 37_400 (2026-11-04, measured 37_325; user-requested): titled sections in the work and delegation policy, active management
+// of children, bringing the user in early, separating backlog work, answering a budget request, and the one-protocol
+// communication section (+1,996 in the policy).
+// 36_650 (2026-11-04, measured 36_553 without entity fields; user-approved): exact duplicates cut from tool text (the
+// `model` fit-the-task sentence, the bash timeout restatement, archive's data-not-instructions sentence, the web
+// cache note and "not both" clauses, the goal example, the models snippet), about 800 chars in all.
+// 37_350 (2026-11-04, measured 37_251 without entity fields, 36_559 before; B47, user-requested): the orchestration flow
+// line, hard limits and binding memories in each task, shared-resource owners, defect owners, the `Noticed` line and fresh
+// review, and telling the user unasked (+692 net after trimming the delegation text it joined).
+// 37_086 (2026-11-04, measured 36_986 without entity fields, 37_249 before; B47 prompt audit): the delegate-or-not tree and
+// the stuck-child routing became Mermaid, the backlog bullets merged, and the agent tool's own message routing left
+// communication (-263 in the policy).
+const MAIN_CEILING = 37_086;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -274,7 +284,11 @@ const MAIN_CEILING = 36_400;
 // 22_640 (2026-11-04, measured 22_515 without entity fields, 21_974 at the previous commit; B6, user-approved): the same
 // +541 research rule; tool sizes are unchanged.
 // 23_000 (2026-11-04, measured 22_926; user-requested): titled sections and how a child reaches its parent.
-const SPECIALIST_CEILING = 23_000;
+// 23_250 (2026-11-04, measured 23_155; B47, user-requested): whom a stuck child asks (a teammate or its parent), telling
+// the parent at once about a severe problem, keeping a shared tree building and backing off a busy lock.
+// 23_163 (2026-11-04, measured 23_063 without entity fields, 23_155 before; B47 prompt audit): the stuck-child routing is a
+// Mermaid diagram and the main-only close-out rule left the child's work section (-92 in the policy).
+const SPECIALIST_CEILING = 23_163;
 
 describe("prompt size", () => {
 	it("main session", async () => {

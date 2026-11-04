@@ -21,6 +21,7 @@ import {
 	registerPromptHook,
 	registerSessionEndHook,
 } from "./register/events.ts";
+import { registerAgentHooks } from "./register/agents.ts";
 import { notificationHook, registerMessageHooks } from "./register/messages.ts";
 import { registerPostToolUseHook } from "./register/post-tool-use.ts";
 import { preToolUseGate } from "./register/pre-tool-use.ts";
@@ -224,6 +225,7 @@ export function registerHooks(
 	registerPromptHook(api, runner.dispatch);
 	registerPostCompactHook(api, runner.dispatch);
 	registerPostToolBatchHook(api, runner.dispatch);
+	registerAgentHooks(api, session, runner);
 	registerSessionEndHook(api, session, runner.dispatch, env);
 	return view;
 }

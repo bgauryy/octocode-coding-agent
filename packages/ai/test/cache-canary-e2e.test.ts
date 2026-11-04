@@ -1,6 +1,6 @@
 /**
- * Opt-in live cache canary (S0.2 of the tool-search cache RFC). Per provider family: two turns, a tool addition, two
- * more turns, recording `cacheRead` and `cacheWrite` per request and asserting that each request reads the previous
+ * Opt-in live cache canary: only a real provider shows whether a prefix is read back. Per provider family: two turns, a
+ * tool addition, two more turns, recording `cacheRead` and `cacheWrite` per request and asserting that each request reads the previous
  * prefix from the provider's cache.
  *
  * Runs only with `OCTOCODE_LIVE_CACHE_CANARY=1` and the family's API key; it spends real tokens. Narrow it with

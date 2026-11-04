@@ -132,6 +132,7 @@ export function headlessMessage(request: PermissionRequest, mode: PermissionMode
 	const noun = request.action ? actionNoun(request.action) : "this call";
 	const head = `${NEEDS_APPROVAL} ${noun} (${shown(request.what[0] ?? "", 120)}) needs the user's approval (${mode} mode) and no one can be asked here.${reason} Do not retry;`;
 	if (isSubagent) return `${head} report to your parent what is blocked, why, and what you need.`;
+	if (request.nextStep) return `${head} ${request.nextStep}`;
 	const forcing = forcingReasons(mode, request);
 	const allowing =
 		forcing.length > 0 ? modeAllowingReasons(forcing) : request.action ? modeAllowing(request.action) : undefined;

@@ -1,8 +1,8 @@
 # Octocode Packages
 
-Octocode packages install and distribute extensions, skills, prompt templates, and themes as one unit. Use a package when a customization should be shared through npm or git, or when several resources belong together.
+Octocode packages install and distribute skills, prompt templates, and themes as one unit. Use a package when a customization should be shared through npm or git, or when several resources belong together.
 
-These native packages are not Claude/OpenAI plugin manifests. Their `hooks/hooks.json` files and Claude Mods modules are not automatically loaded. See [plugins](plugins.md) for explicit local plugin configuration, [hooks](hooks.md) for event execution, and the [compatibility matrix](../../../docs/PLUGINS_MODS_HOOKS.md) for supported contracts.
+These native packages are not Claude/OpenAI plugin manifests. Their `hooks/hooks.json` files and Claude Mods modules are not automatically loaded. See [plugins](plugins.md) for explicit local plugin configuration, [hooks](hooks.md) for event execution, and the [design](../../../docs/PLUGINS_MODS_HOOKS.md) for how the formats relate.
 
 A package is an ordinary directory or npm package. It can expose conventional resource directories, declare explicit paths under the `octocode` key in `package.json`, and carry its own runtime dependencies.
 
@@ -39,7 +39,7 @@ octocode -e builtin:mcp
 
 Versioned npm specifications are pinned. Git tags and commits are also pinned; package updates reconcile the checkout but do not move a configured ref.
 
-Relative local paths resolve from the settings file that contains them. A file path loads one extension. A directory follows normal package discovery rules.
+Relative local paths resolve from the settings file that contains them. A directory follows normal package discovery rules.
 
 ## Create a package
 
@@ -48,13 +48,12 @@ The simplest package uses conventional directories:
 ```text
 my-octocode-package/
 ├── package.json
-├── extensions/
 ├── skills/
 ├── prompts/
 └── themes/
 ```
 
-Without an `octocode` manifest, Octocode discovers TypeScript and JavaScript extensions, skill directories, Markdown prompts, and JSON themes from those directories.
+Without an `octocode` manifest, Octocode discovers skill directories, Markdown prompts, and JSON themes from those directories.
 
 Use an explicit manifest when resources live elsewhere or need filtering:
 
@@ -62,7 +61,6 @@ Use an explicit manifest when resources live elsewhere or need filtering:
 {
 	"name": "my-octocode-package",
 	"octocode": {
-		"extensions": ["./src/extension.ts"],
 		"skills": ["./resources/skills"],
 		"prompts": ["./resources/prompts/*.md"],
 		"themes": ["./resources/themes/*.json"]
@@ -76,22 +74,9 @@ Octocode does not operate a package gallery; install packages by their npm or Gi
 
 ## Declare dependencies
 
-Put runtime packages imported by extensions in `dependencies`. Octocode installs package dependencies when it installs an npm or git source.
+Octocode installs a package's `dependencies` when it installs an npm or Git source. Local packages are not installed or modified, so their dependency tree remains the package author's responsibility.
 
-Octocode supplies these packages to extensions and skills:
-
-- `@octocodeai/octocode-ai`
-- `@octocodeai/octocode-agent-core`
-- `@octocodeai/octocodecode`
-- `@octocodeai/octocode-tui`
-- `typebox`
-- `@sinclair/typebox`
-
-Declare the host-provided packages listed above in `peerDependencies` with a `"*"` range and do not bundle them. Octocode suppresses automatic peer installation for managed npm packages and git packages installed with npm, pnpm, or Bun. Local packages are not installed or modified, so their dependency tree remains the package author's responsibility.
-
-Do not list host-provided packages in `dependencies`. A physical copy can bypass Octocode's extension module mapping in compiled ESM and create duplicate classes, registries, and initialization work. Octocode reports an extension warning when it detects this manifest configuration. Other Octocode packages used as dependencies must be included in the published tarball and referenced through their `node_modules` resource paths.
-
-Installed packages load with separate module roots. Do not rely on two packages sharing one dependency instance or one package resolving another package’s undeclared dependency.
+Installed packages load with separate module roots. Do not rely on two packages sharing one dependency instance or one package resolving another package's undeclared dependency.
 
 ## Select package resources
 
@@ -102,8 +87,7 @@ The object form in settings narrows which resources load from a package:
 	"packages": [
 		{
 			"source": "npm:@example/octocode-tools",
-			"extensions": ["extensions/*.ts", "!extensions/legacy.ts"],
-			"skills": [],
+			"skills": ["skills/*", "!skills/legacy"],
 			"prompts": ["prompts/review.md"]
 		}
 	]
@@ -120,7 +104,7 @@ For each resource type:
 
 Filters narrow the package manifest. They do not expose resources that the package itself did not declare.
 
-Run `octocode config` to enable or disable discovered resources and octocode's built-in extensions. It starts with personal configuration; press Tab to switch scope, or run `octocode config --local` to start with project overrides.
+Run `octocode config` to enable or disable discovered resources and Octocode's built-in features. It starts with personal configuration; press Tab to switch scope, or run `octocode config --local` to start with project overrides.
 
 ## Understand scope and identity
 

@@ -56,12 +56,12 @@ tui.start();
 
 ## Documentation
 
-| Page | Covers |
-| --- | --- |
-| [Core API](docs/core-api.md) | The `TUI` interface and renderers, colors and styles, alternate-screen layouts, overlays, the component interface, mouse input, focus and IME support |
-| [Built-in components](docs/components.md) | Container, Box, Text, TruncatedText, Input, Editor, Markdown, loaders, SelectList, SettingsList, Spacer, Image |
-| [Input, rendering and terminals](docs/input-and-terminal.md) | Autocomplete, key detection, rendering modes and pacing, the terminal interface, multiplexers, utilities |
-| [Custom components](docs/custom-components.md) | Handling input, line width, ANSI codes, caching, and the chat example |
+| Page                                                         | Covers                                                                                                                                                |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Core API](docs/core-api.md)                                 | The `TUI` interface and renderers, colors and styles, alternate-screen layouts, overlays, the component interface, mouse input, focus and IME support |
+| [Built-in components](docs/components.md)                    | Container, Box, Text, TruncatedText, Input, Editor, Markdown, loaders, SelectList, SettingsList, Spacer, Image                                        |
+| [Input, rendering and terminals](docs/input-and-terminal.md) | Autocomplete, key detection, rendering modes and pacing, the terminal interface, multiplexers, utilities                                              |
+| [Custom components](docs/custom-components.md)               | Handling input, line width, ANSI codes, caching, and the chat example                                                                                 |
 
 ## Development
 

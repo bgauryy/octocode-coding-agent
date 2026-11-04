@@ -187,7 +187,7 @@ describe("profile permissions", () => {
 describe("subagents", () => {
 	it("collaborate mode: lists teammates in the task", () => {
 		expect(teamTask("Fix A", "main-1", [["researcher-2", "Trace B"]])).toBe(
-			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B\nTo pass on a teammate's message, forward it instead of retyping it.",
+			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B",
 		);
 		expect(teamTask("Fix A", "main-1", [])).toMatch(
 			/none yet; `agent` type `coordinate` shows teammates that start later/,
@@ -227,7 +227,7 @@ describe("subagents", () => {
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
 		// Parent/child and teammate communication share one policy: a child messages its parent for a decision.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user\. When you need a decision or approval, ask your parent as your run mode says/,
+			/You cannot ask the user; ask whoever can settle it, never guess or loop:\n\n```mermaid/,
 		);
 	});
 
@@ -360,7 +360,7 @@ describe("subagents", () => {
 		expect(profiles.get("researcher")?.skills).toEqual(["octocode-research"]);
 		expect(profiles.get("reviewer")?.skills).toEqual(["octocode-research"]);
 		expect(profiles.get("browser")?.skills).toEqual(["octocode-chrome-devtools"]);
-		expect(profiles.get("implementer")?.skills).toEqual(["octocode-debugging"]);
+		expect(profiles.get("implementer")?.skills).toEqual(["octocode-research"]);
 		// An empty list is a choice (no skills), not an absent key (the whole catalog).
 		expect(parseProfile("none", "---\nskills: []\n---\nTask").skills).toEqual([]);
 		// A task's own `skills` replaces the role's: taskSkillPlan prefers it.
@@ -533,7 +533,7 @@ describe("subagents", () => {
 			/Adds teammate context.*does not enable messaging or grant authority/,
 		);
 		expect(agent.parameters.properties.model?.description).toMatch(
-			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Fit the task: small:low.*Default: the profile's.*no profile: medium; thinking medium/,
+			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Default: the profile's.*no profile: medium; thinking medium/,
 		);
 		expect([...commands.keys()]).toEqual(["agents"]);
 		const notes: string[] = [];

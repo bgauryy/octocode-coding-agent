@@ -18,7 +18,7 @@ const open = (file: string, plan?: SchemaPlan): AgentDb =>
 /** A database as this Octocode creates it today, with a row that must survive, closed. */
 function versionOne(): string {
 	const file = path.join(tmp(), "workspaces.db");
-	const agent = open(file);
+	const agent = open(file, { version: 1, migrations: [] });
 	agent.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 	agent.close();
 	return file;
@@ -256,7 +256,7 @@ describe("an older Octocode opening a newer agent database", () => {
 		open(strict, { version: 2, migrations: [addTable(2, false)] }).close();
 		expect(() => open(strict, older)).toThrow(/supports schema version 2 or newer/);
 		const first = path.join(tmp(), "first.db");
-		open(first).close();
+		open(first, { version: 1, migrations: [] }).close();
 		expect(metaValue(first, "schema_readable_from")).toBeUndefined();
 	});
 

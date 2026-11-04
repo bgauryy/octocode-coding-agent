@@ -122,15 +122,6 @@ describe("built-in slash commands", () => {
 		expect(instance.showError).not.toHaveBeenCalled();
 	});
 
-	it("passes the /github action to its handler", async () => {
-		const instance = mode();
-		instance.handleGithubCommand = vi.fn();
-		await instance.defaultEditor.onSubmit("/github");
-		await instance.defaultEditor.onSubmit("/github login");
-		expect(instance.handleGithubCommand.mock.calls).toEqual([[""], ["login"]]);
-		expect(getBuiltinCommand("github")?.argumentValues).toEqual(["status", "login", "logout"]);
-	});
-
 	it("quits through the cleanup path, but refuses unexpected arguments", async () => {
 		const instance = mode();
 		instance.shutdown = vi.fn();

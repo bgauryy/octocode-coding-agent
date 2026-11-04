@@ -86,4 +86,4 @@ Update this package's documentation:
 
 ## Shared stream framing
 
-Provider SSE framing for Anthropic, OpenAI Responses, Codex SSE and Mistral is shared in `src/utils/server-sent-events.ts`. Adapters retain their own event schemas, completion validation and errors. Mistral initial HTTP requests use the shared retry policy; a stream that has emitted content is never replayed automatically. See the [dated protocol and library audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md#streaming-cache-and-library-follow-up-2026-10-29).
+Provider SSE framing for Anthropic, OpenAI Responses, Codex SSE and Mistral is shared in `src/utils/server-sent-events.ts`. Adapters retain their own event schemas, completion validation and errors. Mistral initial HTTP requests use the shared retry policy; a stream that has emitted content is never replayed automatically.

@@ -6,6 +6,7 @@ import { normalizeApplicationContent } from "../../../../core/application/normal
 import { formatToolCallWithArgs } from "../../../../core/tools/render-utils.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
+import { formatDuration } from "../../../../octocode/shared/format.ts";
 import { keyHint } from "../keybinding-hints.ts";
 import { reasonRow } from "./reason.ts";
 import type { ToolExecutionResult } from "./types.ts";
@@ -22,6 +23,10 @@ interface GenericToolDisplay {
 	imageWidthCells: number;
 	outputPad: number;
 	background: (text: string) => string;
+	/** The finished result failed: its output reads in text colour, not muted. */
+	isError?: boolean;
+	/** How long the finished call took; shown after the title. */
+	durationMs?: number;
 }
 
 /** Ordered generic output, including image fallbacks. Custom tool renderers keep ownership of their own layout. */
@@ -41,7 +46,9 @@ export class GenericToolContent extends Container {
 		this.assets.clear();
 		this.addChild(
 			new Text(
-				`${display.mark} ${formatToolCallWithArgs(sanitizeTerminalText(display.toolName), display.args, theme, display.expanded)}`,
+				`${display.mark} ${formatToolCallWithArgs(sanitizeTerminalText(display.toolName), display.args, theme, display.expanded)}${
+					display.durationMs === undefined ? "" : theme.fg("muted", ` · ${formatDuration(display.durationMs)}`)
+				}`,
 				display.outputPad,
 				1,
 				display.background,
@@ -93,7 +100,7 @@ export class GenericToolContent extends Container {
 			if (visible.length)
 				this.addChild(
 					new Text(
-						visible.map((line) => theme.fg("toolOutput", line)).join("\n"),
+						visible.map((line) => theme.fg(display.isError ? "text" : "toolOutput", line)).join("\n"),
 						display.outputPad,
 						0,
 						display.background,

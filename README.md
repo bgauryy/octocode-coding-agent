@@ -25,7 +25,7 @@ yarn start research --help
 yarn start native --help
 ```
 
-Local dependencies make this a development checkout. `@octocodeai/octocodecode` is the only package published to npm; everything else compiles into its one bundle file. `yarn run publish:dry` rehearses a release and `yarn run publish` runs it: both write the published manifest into the tarball with the exact npm versions in `octocodeRelease`, add this repository's `docs/` as `docs/project/` without its dated reviews and RFCs, install that tarball from npm and run a real session against a scripted model, and refuse to publish if anything fails. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
+Local dependencies make this a development checkout. `@octocodeai/octocodecode` is the only package published to npm; everything else compiles into its one bundle file. `yarn run publish:dry` rehearses a release and `yarn run publish` runs it: both write the published manifest into the tarball with the exact npm versions in `octocodeRelease`, add this repository's `docs/` as `docs/project/` without internal reviews and audits, install that tarball from npm and run a real session against a scripted model, and refuse to publish if anything fails. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
 
 ## Validate a registry release candidate
 
@@ -46,18 +46,18 @@ node scripts/stage-registry-release.mjs \
   --out /tmp/octocode-registry-candidate
 ```
 
-Preparation saves tarballs, their checksums and the mapping digest in `candidate.json`. Verification preserves these bytes on failure, checks registry metadata and resolved integrities, creates a dedicated npm installer lock under the output directory, then installs the **single** staged coding-agent tarball in a clean consumer without workspace overrides. It checks both CLI entries, SDK imports, roles, research skills, hydrated model data and native/research `--help` paths with isolated configuration. A candidate validated against a disposable registry is not a production installer lock; rerun `--verify` with `--registry https://registry.npmjs.org/` on the **same prepared tarballs** after the identical dependency tarballs are published. Verification discards any prior fixture lock and resolves afresh. Before promoting the coding-agent package, the verified production installer lock must be reviewed and copied through the release process; this command does not publish or alter the development install-lock directory. The generator refuses to write a fixture lock to the production installer-lock directory. Validate supported OS/CPU/libc variants separately so their optional native binaries are actually loaded. The existing `yarn run check:package-install` exercises the local multi-tarball development graph instead.
+Preparation saves tarballs, their checksums and the mapping digest in `candidate.json`. Verification preserves these bytes on failure, checks registry metadata and resolved integrities, creates a dedicated npm installer lock under the output directory, then installs the **single** staged coding-agent tarball in a clean consumer without workspace overrides. It checks both CLI entries, every public entry's imports, roles, research skills, hydrated model data and native/research `--help` paths with isolated configuration. A candidate validated against a disposable registry is not a production installer lock; rerun `--verify` with `--registry https://registry.npmjs.org/` on the **same prepared tarballs** after the identical dependency tarballs are published. Verification discards any prior fixture lock and resolves afresh. Before promoting the coding-agent package, the verified production installer lock must be reviewed and copied through the release process; this command does not publish or alter the development install-lock directory. The generator refuses to write a fixture lock to the production installer-lock directory. Validate supported OS/CPU/libc variants separately so their optional native binaries are actually loaded. The existing `yarn run check:package-install` exercises the local multi-tarball development graph instead.
 
 ## Documentation
 
-- [Feature architecture and flows](docs/FEATURES.md)
-- [Documentation index](packages/coding-agent/docs/index.md)
+- [Every feature, with its owner and documentation](docs/FEATURES.md)
+- [User documentation index](packages/coding-agent/docs/index.md)
 - [Agent guide and runtime references](packages/coding-agent/README.md)
 - [How to: short recipes for common tasks](packages/coding-agent/docs/how-to.md)
 - [Native features and extension migration](packages/coding-agent/docs/native-features.md)
 - [Configuration locations and controls](CONFIGURATIONS.md)
 - [Running Octocode inside tmux](packages/coding-agent/docs/tmux.md)
-- [Add hooks, plugins and extensions](PLUGINS.md)
+- [Add hooks and plugins](PLUGINS.md)
 - [Configuration and Pi compatibility](packages/coding-agent/docs/configuration.md)
 - [Agent instructions](packages/coding-agent/docs/instructions.md)
 - [Development guidance](AGENTS.md)
@@ -67,16 +67,16 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 
 | Directory                                       | Responsibility                                                       |
 | ----------------------------------------------- | -------------------------------------------------------------------- |
-| [coding-agent](packages/coding-agent/README.md) | CLI, sessions and native Octocode features; RPC                  |
+| [coding-agent](packages/coding-agent/README.md) | CLI, sessions and native Octocode features; RPC                      |
 | [acp](packages/acp/README.md)                   | Private inbound/outbound ACP integration, compiled into coding-agent |
 | [mcp](packages/mcp/README.md)                   | Private MCP client and host integration, compiled into coding-agent  |
 | [agent](packages/agent/README.md)               | Agent loop and tool execution                                        |
 | [ai](packages/ai/README.md)                     | Provider APIs and model catalog                                      |
 | [tui](packages/tui/README.md)                   | Terminal UI                                                          |
 | [webview](packages/webview/README.md)           | Browser workspace, board, Markdown/code rendering and UI state       |
-| [contracts](packages/contracts/README.md)         | Shared entity contracts, schemas and workspace protocols             |
+| [contracts](packages/contracts/README.md)       | Shared entity contracts, schemas and workspace protocols             |
 | [telemetry](packages/telemetry/README.md)       | Telemetry contracts and adapters                                     |
-| [db](packages/db/README.md)                     | Private agent database: schema, connections, queries and retention  |
+| [db](packages/db/README.md)                     | Private agent database: schema, connections, queries and retention   |
 | [common](packages/common/README.md)             | Private host-free utilities, compiled into coding-agent              |
 
 ## Development
@@ -86,7 +86,7 @@ yarn run check
 ./test.sh
 ```
 
-`check` runs TypeScript, Oxlint, the format check, browser imports, workspace bundle and favicon freshness, and the package and database boundary checks without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files, [scripts/README.md](scripts/README.md) for what each repository script does, and the [coding-agent suite rules](packages/coding-agent/test/suite/README.md) for harness-based session tests. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
+`check` runs TypeScript, Oxlint, the format check, browser imports, workspace bundle and favicon freshness, the package and database boundary checks and Knip, without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files, [scripts/README.md](scripts/README.md) for what each repository script does, and the [coding-agent suite rules](packages/coding-agent/test/suite/README.md) for harness-based session tests. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
 
 Run `yarn run check:unused` (Knip) from the root to inspect unused files, exports and dependencies across all workspaces. [knip.jsonc](knip.jsonc) identifies public APIs, dynamically loaded entrypoints, copied vendor assets and external system commands. Verify findings against those consumers before removing code; the package root exports only the CLI and RPC surface.
 

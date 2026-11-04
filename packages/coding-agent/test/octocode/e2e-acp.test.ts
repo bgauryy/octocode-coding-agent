@@ -11,6 +11,7 @@ import {
 	script,
 	startEndpoint,
 } from "./e2e-real-process-harness.ts";
+import { seedTrust } from "./e2e-helpers/seed-trust.ts";
 
 /**
  * An ACP client talking to Octocode as an editor would: a real process, newline-delimited JSON-RPC on stdin and stdout,
@@ -86,8 +87,7 @@ describe.each(agents)("an ACP client and $name", ({ cli }) => {
 	it("initializes, opens a session, runs a tool and answers across two prompts, then exits when the client leaves", async () => {
 		const box = sandbox(endpoint);
 		// ACP refuses `--trust`: a session's folder must already be trusted.
-		const trusted = box.start(["trust", "add", box.project, "--yes"], { cli, subcommand: true });
-		expect((await trusted.exited).code).toBe(0);
+		seedTrust(box);
 		const run = box.start(["--mode", "acp"], { stdin: "pipe", cli, trust: false });
 		const { request, updates } = client(run);
 

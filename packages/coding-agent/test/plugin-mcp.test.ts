@@ -114,6 +114,17 @@ it("registers enabled plugin servers through the existing resource runtime and r
 	expect(loader.getExtensions().runtime.mcpServers.list()).toEqual([]);
 });
 
+it("skips plugin servers quietly when MCP is disabled", async () => {
+	const f = fixture();
+	const agentDir = path.join(f.root, "agent");
+	fs.mkdirSync(agentDir);
+	fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ plugins: [f.entry] }));
+	const loader = new DefaultResourceLoader({ cwd: f.root, agentDir, nativeFeatures: false, disabledFeatures: ["mcp"] });
+	await loader.reload();
+	expect(loader.getExtensions().errors).toEqual([]);
+	expect(loader.getExtensions().runtime.mcpServers.list()).toEqual([]);
+});
+
 it("connects an enabled plugin server through the MCP owner and makes it callable by hooks", async () => {
 	const f = fixture();
 	const agentDir = path.join(f.root, "agent");

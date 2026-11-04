@@ -123,10 +123,10 @@ describe("the check-in", () => {
 		expect(background).toContain("Do you need something?");
 		expect(background).toContain("in the last 5m");
 		expect(background).toContain("`agent` type `message` to `parent`");
-		expect(background).toContain("No reply is needed.");
+		expect(background).toContain("Do not reply to this check-in itself.");
 		ping.due(store, "c-1", "p-1", { ...ON, parentWaits: true }, start + 10 * MIN);
 		const foreground = notice.mock.calls[1][0];
-		expect(foreground).toContain("reads messages only with your report");
+		expect(foreground).toContain("reads messages only with it");
 		expect(foreground).toContain("`blocked`");
 		expect(foreground).not.toContain("type `message`");
 	});

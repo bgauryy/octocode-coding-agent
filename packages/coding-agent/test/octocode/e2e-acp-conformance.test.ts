@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { acpClient, initialize } from "./e2e-acp-client.ts";
+import { seedTrust } from "./e2e-helpers/seed-trust.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -38,8 +39,7 @@ afterEach((context) => {
 async function trusted(env: Record<string, string> = {}): Promise<Sandbox> {
 	const box = sandbox(endpoint);
 	Object.assign(box.env, env);
-	const trust = box.start(["trust", "add", box.project, "--yes"], { subcommand: true });
-	expect((await trust.exited).code).toBe(0);
+	seedTrust(box);
 	return box;
 }
 

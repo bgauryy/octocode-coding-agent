@@ -882,7 +882,7 @@ describe("/backlog", () => {
 		expect(sent.message).toContain("from: B1");
 		expect(sent.message).toContain("Mark it done only after verifying its goal");
 		expect(sent.message).toContain("If blocked, record what is blocked, why, and what you need from whom instead.");
-		expect(sent.message).toContain("Follow existing permissions");
+		expect(sent.message).toContain("grant no authority");
 		expect(workspaceStore(t.cwd).get("B1")).toMatchObject({
 			state: "ongoing",
 			assignee: "session-test",

@@ -18,15 +18,15 @@ This adapter targets **ACP v1 over stdio**. The official [protocol index](https:
 
 Both adapters use the official [TypeScript SDK](https://agentclientprotocol.com/libraries/typescript), pinned to `@agentclientprotocol/sdk` **2.0.2**, with typed `agent()`/`client()` handlers, `methods` and `ndJsonStream`. The default import supplies stable v1 schemas and validation. SDK 2 does not switch the wire protocol to ACP v2; see its [migration guide](https://github.com/agentclientprotocol/typescript-sdk/blob/v2.0.2/MIGRATION_STABLE_UNSTABLE.md). The integration does not use legacy connection classes or the unstable/v2 entry points.
 
-| Surface                                                    | Advertised and implemented behavior                                                                               |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Surface                                                    | Advertised and implemented behavior                                                                                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Base protocol                                              | Initialize, new session, text/resource-link prompts, ordered updates, permission requests, prompt cancellation (`session/cancel` or `$/cancel_request` on the prompt) |
-| Session capabilities                                       | `loadSession: true`; `sessionCapabilities` includes `list`, `resume` and `close`                                  |
-| Prompt capabilities                                        | `image` and `embeddedContext`; supported formats and bounds are listed below                                      |
-| MCP capabilities                                           | Stdio and `http` for client-supplied MCP servers; legacy `sse` is refused                                         |
-| Authentication                                             | Host-configured credentials; `authMethods: []`, no protocol authentication/logout flow                            |
-| Client filesystem, terminals and elicitation               | Not requested by the agent; native host tools and permission policy own execution                                 |
-| Optional mode/configuration, deletion, fork and remote ACP | Not exposed; see current limits below                                                                             |
+| Session capabilities                                       | `loadSession: true`; `sessionCapabilities` includes `list`, `resume` and `close`                                                                                      |
+| Prompt capabilities                                        | `image` and `embeddedContext`; supported formats and bounds are listed below                                                                                          |
+| MCP capabilities                                           | Stdio and `http` for client-supplied MCP servers; legacy `sse` is refused                                                                                             |
+| Authentication                                             | Host-configured credentials; `authMethods: []`, no protocol authentication/logout flow                                                                                |
+| Client filesystem, terminals and elicitation               | Not requested by the agent; native host tools and permission policy own execution                                                                                     |
+| Optional mode/configuration, deletion, fork and remote ACP | Not exposed; see current limits below                                                                                                                                 |
 
 Capability negotiation is part of compatibility: clients must check the response before using optional methods. Missing capabilities do not mean support. Octocode's outbound client advertises no optional client filesystem, terminal or elicitation capabilities and checks `loadSession` before restoring a peer. The [initialization specification](https://agentclientprotocol.com/protocol/v1/initialization) owns these rules.
 
@@ -42,19 +42,19 @@ Prompts and session selection arrive over the protocol. Positional prompt text, 
 
 ## Supported behavior
 
-| Operation                               | Behavior                                                                                                                |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `initialize`                            | Reports supported ACP v1 through the pinned TypeScript SDK; a client that cannot use v1 must disconnect                 |
-| `session/new`                           | New conversation in an isolated native worker; up to eight sessions per connection, including pending creations         |
-| `session/list`                          | Lists stored conversations using their native persistent IDs, optionally filtered by cwd and paginated in groups of 50  |
-| `session/load`                          | Restores a stored conversation in its original cwd and replays supported history before replying                        |
-| `session/resume`                        | Restores the same context without replay; an idle session may be resumed on the same connection                         |
-| `session/prompt`                        | One active prompt per session; different sessions can run independently; response waits for the accepted turn to settle |
-| `session/update`                        | Assistant text and tool lifecycle updates with bounded textual tool results                                             |
-| `session/request_permission`            | Explicit native permission dialogs with single-use allow/reject choices                                                 |
+| Operation                               | Behavior                                                                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `initialize`                            | Reports supported ACP v1 through the pinned TypeScript SDK; a client that cannot use v1 must disconnect                                                                  |
+| `session/new`                           | New conversation in an isolated native worker; up to eight sessions per connection, including pending creations                                                          |
+| `session/list`                          | Lists stored conversations using their native persistent IDs, optionally filtered by cwd and paginated in groups of 50                                                   |
+| `session/load`                          | Restores a stored conversation in its original cwd and replays supported history before replying                                                                         |
+| `session/resume`                        | Restores the same context without replay; an idle session may be resumed on the same connection                                                                          |
+| `session/prompt`                        | One active prompt per session; different sessions can run independently; response waits for the accepted turn to settle                                                  |
+| `session/update`                        | Assistant text and tool lifecycle updates with bounded textual tool results                                                                                              |
+| `session/request_permission`            | Explicit native permission dialogs with single-use allow/reject choices                                                                                                  |
 | `session/cancel`                        | Cancels the turn and pending permission waits, and the prompt answers `cancelled`; an unknown session is ignored; an unresponsive worker is stopped after a bounded wait |
-| `session/close`                         | Cancels ongoing work, stops that session's worker and frees its slot; other sessions continue; closing an unknown session succeeds |
-| Disconnect / stdin EOF / output failure | Stops the connection's workers and releases owned resources before the broker exits                                     |
+| `session/close`                         | Cancels ongoing work, stops that session's worker and frees its slot; other sessions continue; closing an unknown session succeeds                                       |
+| Disconnect / stdin EOF / output failure | Stops the connection's workers and releases owned resources before the broker exits                                                                                      |
 
 The adapter does not replay a prompt after worker failure or timeout. Already streamed output can be partial; a failure does not imply that no tools ran. ACP owns disposable worker process trees. Shutdown allows ten seconds for native cleanup before forced termination; the existing tree helper also bounds its post-kill wait. Detached descendant discovery depends on platform process enumeration. Native transcript IDs identify sessions across connections; only active worker handles belong to the current connection. Load and resume require the transcript's original cwd and use the current client MCP definitions. Load replay includes user/assistant text, stored images, visible extension messages (including external API input), and bounded textual tool results. A compaction replays as one completed tool call (`Context compacted`) whose text is the summary a person reads: the tokens summarized, the summary body, where the archive and transcript are, and the kept user messages, without the tags and recovery instructions written for the model. Hidden extension context, reasoning and binary tool results are not projected.
 
@@ -120,11 +120,11 @@ The adapter does not expose session fork/delete, additional workspace roots, cli
 
 Generic UI dialogs and terminal custom components are not supported. A native feature that requires one of those interactions may be unavailable through ACP even though its tool is registered. Existing native application policy is not an operating-system sandbox.
 
-The [design RFC](../../../docs/RFC_ACP_EXPOSURE.md) tracks architecture and [dated validation](../../../docs/FEATURE_VALIDATION.md) separates source/fixture checks from live provider checks. A passing fixture suite does not establish interoperability with every editor, provider or operating system.
+A passing fixture suite does not establish interoperability with every editor, provider or operating system.
 
 ## Talk to an already running session
 
-ACP cannot do this: its [one transport](https://agentclientprotocol.com/protocol/v1/transports) has the client launch the agent and own its stdio, so it starts a process rather than reaching one. The [agent-to-agent RFC](../../../docs/RFC_AGENT_TO_AGENT.md) has the comparison.
+ACP cannot do this: its [one transport](https://agentclientprotocol.com/protocol/v1/transports) has the client launch the agent and own its stdio, so it starts a process rather than reaching one.
 
 A terminal session and an ACP worker both serve the [local session API](session-api.md) by default, on an owner-only socket. Use `octocode-api list`, `status`, `send`, `watch` and `abort` to discover one and exchange messages; `--to` takes its instance ID, process name (`octocode-rpc-c0ea9f3e`), session ID or pid, so an ACP session ID works as it is. The ACP client retains the broker's stdin and stdout. A broker names itself `octocode-acp-<pid>`; its workers are the sessions.
 
@@ -178,7 +178,7 @@ Use the separately installed [Codex ACP adapter](https://github.com/agentclientp
 
 Send subsequent `externalAction: "prompt"` calls to `codex-peer`, then `disconnect` when finished. The adapter normally uses its bundled Codex binary. A launcher can set `CODEX_PATH` to a selected binary and `CODEX_HOME` to its configured home before starting the adapter. Adapter-specific settings belong to that launcher or Codex configuration; they are not Octocode `connect` fields.
 
-The [2026-10-25 live check](../../../docs/FEATURE_VALIDATION.md#real-codex-and-octocodecode-exchange--2026-10-25) verified real model replies and retained context with adapter **2.0.0** and Codex **0.163.0-alpha.11.2**. It also verified a return message through a test-only MCP callback into Octocode's local API. That callback was explicitly configured for one session and message; it is not a built-in Octocode MCP server or unsolicited ACP delivery.
+A live check on 2026-10-25 verified real model replies and retained context with adapter **2.0.0** and Codex **0.163.0-alpha.11.2**. It also verified a return message through a test-only MCP callback into Octocode's local API. That callback was explicitly configured for one session and message; it is not a built-in Octocode MCP server or unsolicited ACP delivery.
 
 Codex's read-only shell sandbox refused direct access to the local API socket in that check. A configured API endpoint does not grant a sandboxed peer access to it. Use the peer host's supported scoped authorization or an explicitly configured callback integration; do not treat full filesystem access as a communication requirement. When waiting for a parent's reply, ensure that parent is idle: a parent waiting on the child cannot also settle a queued callback turn. The successful check prompted Codex through `external.call` after the parent turn had settled, and the callback used `expectedSessionId`, a unique key, `requireIdle` and a bounded wait.
 
@@ -204,7 +204,7 @@ yarn node test/octocode/scripts/check-acp-compatibility.mjs \
 
 The runner invokes the checkout's locked Python dependencies, launches the real source CLI with an offline fixture provider, isolates user configuration and credentials, and removes its temporary user directories afterward. The report stays at the requested path. The TCK version used on 2026-10-25 requires Python 3.14 or newer; `uv` manages that runtime. This checks protocol behavior without testing model quality or provider authentication.
 
-`--match <pytest-expression>` narrows a diagnostic run, but omitted mandatory checks produce a non-conformant verdict and nonzero exit even if selected tests pass. Use the full run for the TCK's verdict. The upstream kit is experimental and incomplete; its result is not official certification. See [upstream testing guidance](https://agentclientprotocol.com/libraries/testing) and the [dated local results](../../../docs/FEATURE_VALIDATION.md).
+`--match <pytest-expression>` narrows a diagnostic run, but omitted mandatory checks produce a non-conformant verdict and nonzero exit even if selected tests pass. Use the full run for the TCK's verdict. The upstream kit is experimental and incomplete; its result is not official certification. See [upstream testing guidance](https://agentclientprotocol.com/libraries/testing).
 
 For a separate SDK implementation, install the official [Python SDK](https://agentclientprotocol.com/libraries/python) in a disposable environment, then run the bidirectional check from `packages/coding-agent`:
 

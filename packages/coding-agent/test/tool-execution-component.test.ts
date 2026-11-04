@@ -15,7 +15,7 @@ import type { ToolDefinition } from "../src/core/features/types.ts";
 import { type BashOperations, createBashTool, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
-import { initTheme } from "../src/theme/theme.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 function createBaseToolDefinition(name = "custom_tool"): ToolDefinition {
@@ -576,5 +576,27 @@ describe("ToolExecutionComponent parity", () => {
 		};
 		expect(component.handleMouse(event)?.handled).toBe(true);
 		expect(stripAnsi(component.render(width).join("\n"))).toContain("line-15");
+	});
+
+	test("a finished tool without a renderer shows its mark and duration, and reads a failure in text colour", () => {
+		const finished = (isError: boolean) => {
+			const component = new ToolExecutionComponent(
+				"plain_tool",
+				"id-1",
+				{},
+				{},
+				undefined,
+				createFakeTui(),
+				process.cwd(),
+			);
+			component.updateResult({ content: [{ type: "text", text: "kaboom" }], isError, durationMs: 1200 });
+			return component.render(80).join("\n");
+		};
+		const failed = finished(true);
+		expect(stripAnsi(failed)).toMatch(/✗ plain_tool.*(?: · 1s)/);
+		expect(failed).toContain(theme.fg("text", "kaboom"));
+		const passed = finished(false);
+		expect(stripAnsi(passed)).toMatch(/✓ plain_tool.*(?: · 1s)/);
+		expect(passed).toContain(theme.fg("toolOutput", "kaboom"));
 	});
 });

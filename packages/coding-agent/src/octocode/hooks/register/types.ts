@@ -22,6 +22,8 @@ export interface HookTiming {
 	runs: number;
 	totalMs: number;
 	maxMs: number;
+	/** Runs that gave no answer: timed out, crashed, could not run, or an MCP tool that errored or was missing. */
+	failed: number;
 }
 
 /** What a Notification hook receives besides the common fields (Claude Code's shape). */

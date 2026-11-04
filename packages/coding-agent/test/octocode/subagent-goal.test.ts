@@ -73,7 +73,7 @@ describe("the agent tool's goal", () => {
 		expect(agent.parameters.required).toContain("goal");
 		expect(goal).toEqual({ type: "string", description: expect.any(String) });
 		expect(goal.description).toMatch(/about 48 characters fit/);
-		expect(goal.description).toContain("audit auth token refresh");
+		expect(goal.description).not.toContain("audit auth token refresh");
 		expect(agent.parameters.properties.task).not.toHaveProperty("minLength");
 	});
 
@@ -81,7 +81,8 @@ describe("the agent tool's goal", () => {
 		const s = setup();
 		await expect(s.run({ task: "report" })).rejects.toThrow(/goal/i);
 		await expect(s.run({ task: "report", goal: "  " })).rejects.toThrow(/A goal is required/);
-		expect(s.team.members()).toEqual([]);
+		// O6b (design B36): the main session is a member from its start; no child may be.
+		expect(s.team.members().filter((member) => member.parentId !== undefined || member.role !== "main")).toEqual([]);
 		const long = "audit the auth token refresh flow end to end across every service we run in production";
 		const result = await s.run({ task: "report", goal: long });
 		expect(reportOf(result.content[0].text as string).goal).toBe(long);

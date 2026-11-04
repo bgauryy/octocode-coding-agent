@@ -93,7 +93,7 @@ export function registerInheritedMcpServers(api: McpExtensionApi, env: NodeJS.Pr
 		if (fs.statSync(file).size > MAX_FILE_BYTES) throw new Error("file too large");
 		const { servers, stopped, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
 		for (const message of errors) process.stderr.write(`Ignored inherited MCP server: ${message}\n`);
-		for (const [name, config] of Object.entries(servers)) api.registerMcpServer(name, config);
+		for (const [name, config] of Object.entries(servers)) api.registerMcpServer(name, config, { inherited: true });
 		return stopped;
 	} catch (error) {
 		process.stderr.write(

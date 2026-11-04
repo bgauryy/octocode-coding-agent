@@ -12,6 +12,7 @@ import { Badge, Button, Section } from "../ui/primitives.tsx";
 import { CommandButton, MessageForm, StatusLine } from "./controls.tsx";
 import { ItemImplementation } from "./ItemImplementation.tsx";
 import { record } from "./model.ts";
+import { useAnswerNote } from "./NeedsYou.tsx";
 import { useLive } from "./session.tsx";
 
 export function ItemActions({ item }: { item: SnapshotItem }) {
@@ -163,11 +164,12 @@ function CommentForm({ item }: { item: SnapshotItem }) {
 }
 
 function AgentControls({ item }: { item: SnapshotItem }) {
+	const note = useAnswerNote();
 	const receipts = useStore(useLive().workspace, (state) => state.snapshot?.receipts);
 	const mine = (receipts ?? []).filter((receipt) => receipt.backlogId === item.ref).slice(-5);
 	return (
 		<Section title="Agents">
-			<p className="muted">Delegate this item or send a follow-up to an agent. Approvals appear in the terminal.</p>
+			<p className="muted">Delegate this item or send a follow-up to an agent. {note}</p>
 			<div className="command-grid">
 				<CommandButton label="Request new agent" action="delegate" item={item} icon={<PlusIcon />} />
 			</div>

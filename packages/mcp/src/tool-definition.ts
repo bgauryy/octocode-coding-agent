@@ -7,6 +7,7 @@ import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers 
 import { hostRender, hostUi } from "./host.ts";
 import type { McpExposure } from "./config.ts";
 import { mcpArgumentNormalizer } from "./arguments.ts";
+import { declaredExposure } from "./exposure.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
 import {
@@ -99,7 +100,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 				? { outputSchema: options.presentation.outputSchema }
 				: {}
 			: { outputSchema: createMcpResultSchema(tool.outputSchema) }),
-		exposure: options.exposure,
+		exposure: declaredExposure(options.exposure),
 		...(options.defaultActive === false ? { defaultActive: false } : {}),
 		namespace: options.namespace,
 		...(({ renderCall, renderResult }) => ({ renderCall, renderResult }))(

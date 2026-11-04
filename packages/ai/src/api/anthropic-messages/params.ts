@@ -14,7 +14,8 @@ import { transformMessages } from "../transform-messages.ts";
 import { getAnthropicCompat, getLayeredCacheControl, shouldUseServerSideFallbackBeta } from "./compat.ts";
 import { addHistoryLookbackBreakpoint, countCacheBreakpoints } from "./cache-breakpoints.ts";
 import { buildCacheDiagnosticsParam } from "./cache-diagnostics.ts";
-import { convertMessages, insertThinkingLevelMessages, normalizeToolCallId } from "./convert.ts";
+import { convertMessages, insertThinkingLevelMessages } from "./convert.ts";
+import { sanitizeToolCallId } from "../tool-call-id.ts";
 import { convertTools, DEFERRED_TOOL_PLACEHOLDER } from "./tools.ts";
 import type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from "./types.ts";
 
@@ -88,7 +89,7 @@ export function buildParams(
 	const compat = getAnthropicCompat(model);
 	const initialSystemMessage = getInitialSystemMessage(context.messages);
 	const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+	const transformedMessages = transformMessages(context.messages, model, (id) => sanitizeToolCallId(id));
 	const conversationMessages = initialSystemMessage ? transformedMessages.slice(1) : transformedMessages;
 	// Native tool changes keep the request-level tool list fixed and define every later tool
 	// by value in a `tool_addition` block, which also expresses same-name redefinitions.

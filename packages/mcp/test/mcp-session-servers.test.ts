@@ -48,7 +48,8 @@ describe("session MCP servers handed to children", () => {
 		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1" });
 		expect(api.registerMcpServer).not.toHaveBeenCalled();
 		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file });
-		expect(api.registerMcpServer).toHaveBeenCalledWith("echo", stdio);
+		// Marked inherited, so the child's own registration of the same name replaces it.
+		expect(api.registerMcpServer).toHaveBeenCalledWith("echo", stdio, { inherited: true });
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 

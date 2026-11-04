@@ -78,8 +78,11 @@ export class Peers {
 
 	/** The other sessions on this machine: name, busy state, folder, and which one is this repository's coordinator. */
 	async list(cwd: string): Promise<string> {
-		const others = (await probeInstances(this.instances())).filter(({ instance }) => instance.pid !== process.pid);
-		if (others.length === 0) return "No other Octocode session is running.";
+		const probed = await probeInstances(this.instances());
+		const own = probed.find(({ instance }) => instance.pid === process.pid)?.instance;
+		const you = own ? `You are ${own.name ?? own.id}. ` : "";
+		const others = probed.filter(({ instance }) => instance.pid !== process.pid);
+		if (others.length === 0) return `${you}No other Octocode session is running.`;
 		const coordinators = await placeInRepository(
 			cwd,
 			others.map(({ instance }) => instance),
@@ -89,6 +92,7 @@ export class Peers {
 		);
 		return visibleControls(
 			[
+				...(own ? [`You are ${own.name ?? own.id}.`] : []),
 				"Other Octocode sessions, reached by `agent` type `message` to the name:",
 				...others.map(
 					({ instance, state }) =>

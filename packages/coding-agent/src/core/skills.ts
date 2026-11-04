@@ -54,8 +54,7 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
  * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
  * returns its directory, so its entries omit `<location>` paths; `indirect` names none, for a reader that is reachable only through another tool.
  *
- * Entries are grouped by {@link skillCategory} in `<core_skills>`, `<octocode_skills>` and `<external_skills>`, in that
- * order. Every visible skill is listed with its full description.
+ * Entries are grouped by {@link skillCategory} in `<core_skills>` and `<external_skills>`, in that order. Every visible skill is listed with its full description.
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],

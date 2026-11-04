@@ -18,7 +18,7 @@ import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { shortPath } from "../shared/format.ts";
 import { readPaths } from "../shared/home.ts";
-import { isOctocodeTool } from "../../../../mcp/src/presets/octocode/names.ts";
+import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 import { saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
 
@@ -45,8 +45,9 @@ export const KEEP_RECENT_RESULTS = 5;
 export const CLEAR_AT_LEAST_TOKENS = 20_000;
 
 /**
- * Octocode's read-only tools and `web` (and every Octocode MCP tool, `isOctocodeTool`): a result is fetched again by repeating
- * the call. Never `file` or `agent`; `bash` only for a read-only command whose output was spilled to a file (`spilledBash`).
+ * `web` and every MCP tool result (`isMcpToolName`): its whole text is saved to a file before it is cleared, and the
+ * placeholder names that file. Never `file` or `agent`; `bash` only for a read-only command whose output was spilled to a
+ * file (`spilledBash`).
  * `read`, `grep`, `find` and `ls` are no longer Octocode tools; they stay for resumed transcripts of other hosts that
  * hold their results, and for custom tools that still use those names.
  */
@@ -107,7 +108,7 @@ function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 		const tool = String(message.toolName);
 		const saved = tool === "bash" ? spilledBash(message, calls) : undefined;
 		const text =
-			CLEARABLE_TOOLS.has(tool) || isOctocodeTool(tool) || saved !== undefined ? plainText(message.content) : undefined;
+			CLEARABLE_TOOLS.has(tool) || isMcpToolName(tool) || saved !== undefined ? plainText(message.content) : undefined;
 		return text !== undefined && !text.startsWith(PLACEHOLDER_START)
 			? [{ id: message.toolCallId, tool, text, ...(saved === undefined ? {} : { saved }) }]
 			: [];

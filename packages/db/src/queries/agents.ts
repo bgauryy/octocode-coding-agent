@@ -2,6 +2,7 @@ import * as events from "./agent-events.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../rows.ts";
+import * as runs from "./agent-runs.ts";
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export interface ProcessIdentity {
@@ -18,6 +19,15 @@ export interface MemberProcess extends ProcessIdentity {
 export interface MemberWorkspace {
 	id: string;
 	leaseWorkspaceId?: string;
+	/** Where the process works now; it is written at the join and with each heartbeat, and never makes an event. */
+	place?: MemberPlace;
+}
+
+/** The directory, git branch and process name of an agent's process. */
+export interface MemberPlace {
+	cwd?: string | undefined;
+	branch?: string | undefined;
+	processTitle?: string | undefined;
 }
 
 const CHECKOUT = "JOIN workspaces w ON w.id = COALESCE(a.lease_workspace_id, a.workspace_id)";
@@ -38,7 +48,7 @@ export function refresh(
 	const before = events.member(db, member.id);
 	const { changes } = db
 		.prepare(
-			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
+			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
          WHERE id = ? AND pid = ? AND started IS ?`,
 		)
 		.run(
@@ -49,6 +59,9 @@ export function refresh(
 			workspace.leaseWorkspaceId ?? null,
 			workspace.id,
 			member.sessionId ?? null,
+			workspace.place?.cwd ?? null,
+			workspace.place?.branch ?? null,
+			workspace.place?.processTitle ?? null,
 			member.updatedAt,
 			member.toolCalls,
 			member.input,
@@ -92,8 +105,8 @@ export function insert(
 ): boolean {
 	const row = db
 		.prepare(
-			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced, session_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced, session_id, cwd, branch, process_title)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO NOTHING RETURNING id`,
 		)
 		.get(
@@ -119,16 +132,54 @@ export function insert(
 			member.cost,
 			member.unpriced ? 1 : 0,
 			member.sessionId ?? null,
+			workspace.place?.cwd ?? null,
+			workspace.place?.branch ?? null,
+			workspace.place?.processTitle ?? null,
 		);
 	if (row) events.registerMember(db, member.id, context, member.updatedAt);
 	return row !== undefined;
 }
 
-/** Deletes the row of `id`. */
-export function remove(db: DatabaseSync, id: string, reason = "removed", now = Date.now()): void {
+/** What the retiring writer adds to an end: the `reason` it does not know falls back, and a free-text `detail`. */
+export interface EndInfo {
+	fallback?: string;
+	detail?: string;
+}
+
+/**
+ * Deletes the row of `id` and records why in its `delete` event, with the row's final numbers. The reason is the one given,
+ * else the cause the parent left on the row (`setEndHint`), else `end.fallback`.
+ */
+export function remove(db: DatabaseSync, id: string, reason?: string, now = Date.now(), end: EndInfo = {}): void {
 	const row = events.member(db, id);
-	if (row) events.recordMember(db, row, "delete", { reason }, now);
+	if (row) {
+		const why = reason ?? hintOf(row) ?? end.fallback ?? "removed";
+		const run = runs.ended(db, row, why, end.detail, now);
+		events.recordMember(db, row, "delete", events.endData(db, row, why, end.detail, run), now);
+	}
 	db.prepare("DELETE FROM agents WHERE id = ?").run(id);
+}
+
+const hintOf = (row: Row): string | undefined => (typeof row.end_hint === "string" ? row.end_hint : undefined);
+
+/**
+ * Records on the row of `id` why its parent is ending it, for whoever retires the row. The first hint stays: a stop the
+ * parent asked for is not turned into a failure by the exit it causes. No row, no write; whether one was written.
+ */
+export function setEndHint(db: DatabaseSync, id: string, hint: string): boolean {
+	return db.prepare("UPDATE agents SET end_hint = ? WHERE id = ? AND end_hint IS NULL").run(hint, id).changes > 0;
+}
+
+/**
+ * Records that agent `id` entered `state` (`stalled`) as an `update` event, once per episode: the key names the registration
+ * and the heartbeat the silence began at, so every process that notices writes the same key and the second write is ignored.
+ * Whether a row exists to describe; a heartbeat since moves `seen_at` and starts a new episode.
+ */
+export function noteState(db: DatabaseSync, id: string, state: string, now = Date.now()): boolean {
+	const row = events.member(db, id);
+	if (!row || typeof row.registration_id !== "string") return false;
+	events.recordMember(db, row, "update", { state }, now, `${row.registration_id}:${state}:${String(row.seen_at)}`);
+	return true;
 }
 
 /** The process the row of `id` names; undefined when it has no row. */

@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { octocodeCompactOverrides } from "../src/presets/octocode/compact-overrides.ts";
 import {
 	catalogHash,
 	checkFidelity,
@@ -23,7 +22,7 @@ const render = (schema: unknown) => {
 };
 
 const octocode = JSON.parse(
-	readFileSync(new URL("./fixtures/compact/octocode-catalog.json", import.meta.url), "utf8"),
+	readFileSync(new URL("./fixtures/compact/catalog-research.json", import.meta.url), "utf8"),
 ) as CompactServerInput;
 
 describe("schemaToTs: zod v4 toJSONSchema output", () => {
@@ -257,13 +256,10 @@ describe("server-level compaction", () => {
 		expect(lsp).toMatch(/operation\?: "documentSymbols" \| "diagnostic";\n\t+path: string;\n\t+\} \|/);
 		expect(lsp).toMatch(/operation\?: "workspaceSymbol";\n\t+(\/\*\*[^\n]*\*\/ )?symbolQuery: string;/);
 		// The server refuses these on the other operations, so no shared optional field offers them there. Its schema says
-		// so for `symbolQuery`, `number` and the like; the shipped overrides say it for `symbolName` and `line`.
+		// so for `symbolQuery`, `number` and the like.
 		expect(lsp).not.toContain("symbolQuery?: string;");
-		const shipped = toolBlock(renderServer(octocode, octocodeCompactOverrides(octocode)), "lspSearch") ?? "";
-		expect(shipped).not.toContain("symbolName?: string;");
-		expect(shipped).not.toContain("line?: number;");
-		expect(shipped).not.toContain("Not with operation");
-		expect(shipped).toMatch(/operation\?: "documentSymbols" \| "diagnostic";\n\t+path: string;\n\t+\} \|/);
+		expect(lsp).not.toContain("Not with operation");
+		expect(lsp).toMatch(/operation\?: "documentSymbols" \| "diagnostic";\n\t+path: string;\n\t+\} \|/);
 		const history = toolBlock(text, "ghGetHistoryItem") ?? "";
 		for (const field of ["number?: number;", "ref?: string;", "baseRef?: string;", "headRef?: string;"])
 			expect(history, field).not.toContain(field);

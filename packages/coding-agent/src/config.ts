@@ -1,7 +1,6 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
 import { normalizePath } from "../../common/src/paths.ts";
@@ -99,12 +98,6 @@ export function getNativeSkillsDir(): string {
 	return join(getSourceOrDistDir(), "octocode", "native-skills");
 }
 
-/** Public skills come from the installed research CLI; standalone releases stage the same payload. */
-export function getBundledSkillsDir(): string {
-	if (isBunBinary) return join(getPackageDir(), "skills");
-	return join(dirname(createRequire(getPackageJsonPath()).resolve("octocode/package.json")), "skills");
-}
-
 /** The entry file this process was started with, symlinks resolved (an installed `bin` links to the bundle). */
 function loadedEntry(): string | undefined {
 	const entry = process.argv[1];
@@ -135,31 +128,6 @@ export function getCliInvocation(): { command: string; prefix: string[] } {
 		};
 	}
 	return { command: process.execPath, prefix: [bundleCli] };
-}
-
-/** The installed platform binary of `@octocodeai/octocode-native`, through the package's own resolver (it ships no `bin`). */
-export function getNativeBinaryPath(): string {
-	const resolver = createRequire(getPackageJsonPath())("@octocodeai/octocode-native/bin/resolve-binary.cjs") as {
-		resolveNativeBinaryPath(): string;
-	};
-	return resolver.resolveNativeBinaryPath();
-}
-
-export function getResearchCliInvocation(kind: "research" | "native"): { command: string; prefix: string[] } {
-	if (kind === "native") {
-		const binary = getNativeBinaryPath();
-		if (!existsSync(binary)) throw new Error(`Octocode native CLI is missing: ${binary}`);
-		return { command: binary, prefix: [] };
-	}
-	const manifestPath = createRequire(getPackageJsonPath()).resolve("octocode/package.json");
-	const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-		bin?: string | Record<string, string>;
-	};
-	const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.octocode;
-	if (!bin) throw new Error("The installed octocode research package has no CLI entry");
-	const entry = resolve(dirname(manifestPath), bin);
-	if (!existsSync(entry)) throw new Error(`Octocode ${kind} CLI is missing: ${entry}`);
-	return { command: isBunBinary ? "node" : process.execPath, prefix: [entry] };
 }
 
 /** Get path to CHANGELOG.md */

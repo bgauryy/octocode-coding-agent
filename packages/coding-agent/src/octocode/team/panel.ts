@@ -1,84 +1,23 @@
-import { type Component, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import type { ExtensionContext } from "../../core/features/index.ts";
-import type { Theme } from "../../theme/theme.ts";
-import { formatCost, formatTokens } from "../shared/format.ts";
-import { plural } from "../shared/render/text.ts";
-import type { StatusTone } from "../../core/footer-data-provider.ts";
-import { STATUS } from "../shared/status.ts";
+import type { Component } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { collapsedRows, FINISHED_MS, type Finished, panelBudget, safe } from "./panel-compact.ts";
-import { FinishedTracker } from "./panel-finished.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
+import type { StatusTone } from "../../core/footer-data-provider.ts";
+import { plural } from "../shared/render/text.ts";
+import { STATUS } from "../shared/status.ts";
+import { needsYou } from "./panel-attention.ts";
+import { FINISHED_MS, safe } from "./panel-compact.ts";
+import { type AgentEnd, FinishedTracker } from "./panel-finished.ts";
+import { widgetLines } from "./panel-layout.ts";
 import { PanelMotion } from "./panel-motion.ts";
 import { descendants, liveMembers, roster } from "./panel-roster.ts";
-import { memberRows, rootRow, totalTokens } from "./panel-rows.ts";
 import { panelState } from "./panel-state.ts";
-import { ownTraffic, trafficRow } from "./panel-traffic.ts";
+import { trafficRow } from "./panel-traffic.ts";
 import type { Team } from "./session.ts";
 
-export { trafficRow };
+export { trafficRow, widgetLines };
 
 /** The panel widget's key. The widget is static text only: its rows are pure in (members, width, now), so repainting never moves the transcript. */
 const WIDGET_KEY = "octocode-agents";
-const MAX_ROWS = 6;
-/** Recent messages shown under the agents, picked after filtering out other sessions' traffic. */
-const TRAFFIC_ROWS = 3;
-
-/** Rows for the widget under the editor; empty when this session has no live subagents. Recent messages follow the agents. */
-export function widgetLines(
-	members: Member[],
-	selfId: string | undefined,
-	now: number,
-	theme: Theme,
-	width: number,
-	traffic: Traffic[] = [],
-	/** Terminal height: when the full layout would take more than `panelBudget(rows)` rows, agents collapse to one row each. */
-	rows?: number,
-	/** Agents that left the team less than `FINISHED_MS` ago: shown as neutral `left` rows, last. */
-	finished: Finished[] = [],
-): string[] {
-	const { others, tree, doneAt } = roster(members, selfId, now, finished);
-	if (others.length === 0 || !selfId) return [];
-	const shown = tree.slice(0, MAX_ROWS);
-	const over = others.filter((member) => doneAt.has(member.id)).length;
-	const busy = tree.filter((entry) => panelState(entry, now).state === "running").length;
-	const cost = formatCost({
-		cost: others.reduce((total, member) => total + member.cost, 0),
-		unpriced: others.some((member) => member.unpriced),
-	});
-	const idle = others.length - busy - over;
-	const tokens = others.reduce((total, member) => total + totalTokens(member), 0);
-	const summary = [
-		...(busy ? [`${busy} working`] : []),
-		...(idle ? [`${idle} idle`] : []),
-		...(over ? [`${over} left`] : []),
-		...(tokens ? [`${formatTokens(tokens)} tok`] : []),
-		...(cost ? [cost] : []),
-	].join(SEPARATOR);
-	const agentRows = memberRows(shown, now, theme, width);
-	const alignTo = Math.max(0, ...agentRows.map((line) => visibleWidth(line)));
-	const head = rootRow(
-		members.find((member) => member.id === selfId),
-		selfId,
-		summary,
-		theme,
-		width,
-		alignTo,
-	);
-	const recent = ownTraffic(traffic, others, selfId).slice(0, TRAFFIC_ROWS);
-	const moreRow = (count: number) => truncateToWidth(theme.fg("muted", ` +${count} more`), Math.max(1, width), "…");
-	const build = (agents: typeof shown, lines: string[]) => {
-		const hidden = tree.length - agents.length;
-		return [head, ...lines, ...(hidden > 0 ? [moreRow(hidden)] : [])];
-	};
-	const full = [...build(shown, agentRows), ...recent.map((m) => trafficRow(m, now, theme, width))];
-	const budget = rows === undefined ? undefined : panelBudget(rows);
-	if (budget === undefined || full.length <= budget) return full;
-	// Few terminal rows: one row per agent, as many as fit beside the header and a "+N more" row, then traffic if room is left.
-	const fits = tree.length + 1 <= budget ? tree : tree.slice(0, Math.max(1, budget - 2));
-	const lines = build(fits, collapsedRows(fits, now, theme, width));
-	const room = budget - lines.length;
-	return [...lines, ...recent.slice(0, Math.max(0, room)).map((m) => trafficRow(m, now, theme, width))];
-}
 
 /**
  * Keeps the below-editor widget in step with the team while there is something to show. The footer segment names this
@@ -97,7 +36,16 @@ export class AgentsView {
 	/** Repaints on the animation clock while an agent works or just finished, and not otherwise. */
 	private readonly motion = new PanelMotion(
 		(now) =>
-			roster(this.members, this.team.id, now, this.finished.finished).tree.map((entry) => panelState(entry, now)),
+			roster(
+				this.members,
+				this.team.id,
+				now,
+				this.finished.finished,
+				needsYou(this.members, this.traffic, this.team.id),
+			).tree.map((entry) => ({
+				...panelState(entry, now),
+				...(entry.doneAt === undefined ? {} : { since: entry.doneAt }),
+			})),
 		() => this.render?.(),
 	);
 	/** Background subagents this session runs, and the footer text last sent for them. */
@@ -118,6 +66,13 @@ export class AgentsView {
 		// A terminal widget: RPC clients ignore component factories, so the 1 s ticker would feed nothing there.
 		if (ctx.mode !== "tui") return;
 		this.unwatch = this.team.watch(() => this.paint(ctx));
+	}
+
+	/** The host learned how subagent `id`'s run ended: its row shows the outcome and headline instead of a neutral `left`. */
+	noteEnd(id: string, end: AgentEnd): void {
+		this.finished.noteEnd(id, end, Date.now());
+		this.render?.();
+		this.motion.sync();
 	}
 
 	/** How many background subagents run now: counted in the footer while the panel does not show them. */

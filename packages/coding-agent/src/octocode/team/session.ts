@@ -1,6 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../common/src/env.ts";
-import { peerDbPath, peerRegistryDir } from "../shared/home.ts";
 import { interactive } from "../shared/interactive.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import type { Ask } from "./asks.ts";
@@ -10,13 +9,15 @@ import type { EditLog } from "./edits.ts";
 import { HeldLeases } from "./held.ts";
 import { agentName, LINE_MAX, modelRoute } from "./identity.ts";
 import { Mail } from "./mail.ts";
+import { RunAudit } from "./run-audit.ts";
 import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
-import { PeerLeases } from "./peer-leases.ts";
 import { Relays } from "./relay.ts";
 import { Activity, HEARTBEAT_MS } from "./session/activity.ts";
 import { ChildLeases } from "./session/child-leases.ts";
 import { TeamDatabase } from "./session/database.ts";
-import { claimName } from "./session/membership.ts";
+import { type EndReason, settleReason } from "./session/end-reason.ts";
+import { PeerHolder } from "./session/peer-holder.ts";
+import { claimName, joinAtStart } from "./session/membership.ts";
 import { SessionTeamName } from "./session/rejoin.ts";
 import { endWithParent, watchParentProcess } from "./session/parent.ts";
 import { lockPaths, type ReservationHost, reservationText, unlockPaths } from "./session/reservations.ts";
@@ -33,7 +34,11 @@ export class Team {
 	private me: Member | undefined;
 	private ctx: ExtensionContext | undefined;
 	/** The team database, opened on first use (`session/database.ts`). */
-	private readonly database = new TeamDatabase({ ctx: () => this.ctx, env: () => this.env });
+	private readonly database = new TeamDatabase({ ctx: () => this.ctx, env: () => this.env }, () => this.ticker.sync());
+	/** Every agent's join, state change and end (`lifecycle-bus.ts`): subscribe with `team.lifecycle.on`. */
+	readonly lifecycle = this.database.lifecycle;
+	/** What this agent records about the runs it starts, and where anyone finds an agent again (`run-audit.ts`). */
+	readonly audit = new RunAudit(this.database);
 	/** The one ticker: delivery and heartbeats while joined, a cached view for watchers (the panel). */
 	private readonly ticker = new TeamTicker({
 		joined: () => this.me !== undefined,
@@ -41,13 +46,18 @@ export class Team {
 		dbFile: () => this.database.watchedFile(),
 		read: () => this.database.read(),
 		resumed: (since, now) => this.database.resumed(since, now),
+		following: () => this.lifecycle.following,
+		changed: () => this.lifecycle.poll(),
 		maxAgeMs: HEARTBEAT_MS,
 	});
 	private readonly held = new HeldLeases();
 	/** What this agent reserves for the children it starts (`paths` on a task). */
 	readonly childLeases = new ChildLeases(() => this.reservationHost());
 	/** The agents-communication package's path leases (read-only), opened on the first guarded write. */
-	private peers: PeerLeases | undefined;
+	private readonly peers = new PeerHolder({
+		self: () => this.ctx?.sessionManager.getSessionId(),
+		warn: (text) => this.mail.notice(text),
+	});
 	private readonly mail: Mail;
 	private readonly delivery: Delivery;
 	/** This agent's status, tool counts and usage, written with the heartbeat (`session/activity.ts`). */
@@ -74,7 +84,6 @@ export class Team {
 		started: (id) => this.finished.has(id) || this.vouches.has(id),
 		resumer: () => this.resumer,
 	});
-
 	/** Recent completion receipts; active-agent limits cannot bound a long session's history. */
 	rememberFinished(id: string, receipt: string): void {
 		this.finished.delete(id);
@@ -85,6 +94,7 @@ export class Team {
 	private readonly name: SessionTeamName;
 	constructor(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env) {
 		this.env = env;
+		this.database.forwardTo(api.events);
 		this.name = new SessionTeamName(api, env);
 		this.mail = new Mail(api, () => ownNonce(this.env));
 		this.activity = new Activity({
@@ -129,7 +139,7 @@ export class Team {
 		return this.env[PARENT_ID_ENV];
 	}
 
-	/** Bind to the session; join straight away in a subagent (the parent chose the id) or under the name a resumed session recorded. */
+	/** Bind to the session and join the team: a subagent under the id its parent chose, a main session under the name a resumed session recorded or a new one. */
 	start(ctx: ExtensionContext, resumeAs?: string): void {
 		try {
 			this.stop();
@@ -140,7 +150,8 @@ export class Team {
 		this.database.clearProblem();
 		this.activity.resetEarly();
 		this.watchParent();
-		if (this.name.start(resumeAs) || this.env[AGENT_ID_ENV]) this.join();
+		this.name.start(resumeAs);
+		joinAtStart(this.env, () => this.join());
 	}
 
 	/**
@@ -151,7 +162,7 @@ export class Team {
 		this.stopParentWatch ??= watchParentProcess(this.env, () => {
 			this.stopParentWatch?.();
 			this.stopParentWatch = undefined;
-			endWithParent(() => this.leave());
+			endWithParent((reason) => this.leave(reason));
 		});
 	}
 
@@ -179,6 +190,7 @@ export class Team {
 			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost), this.name);
 			db.edits.adoptUnjoined(this.me.id);
 			this.activity.joined(this.me);
+			this.mail.followPeers(this.lifecycle, () => this.me?.id, () => this.database.current?.refs);
 			this.ticker.sync();
 		} else if (goal !== undefined) {
 			this.me.goal = storedText(goal, LINE_MAX);
@@ -188,7 +200,7 @@ export class Team {
 	}
 
 	/** Leave the team and release everything held; the database stays open for the next join. State clears first: a refused removal still throws, but leaves nothing stale (the row ages out). */
-	leave(): void {
+	leave(reason?: EndReason): void {
 		const me = this.me;
 		this.me = undefined;
 		this.ticker.sync();
@@ -197,7 +209,7 @@ export class Team {
 		this.delivery.reset(db, me?.id);
 		this.mail.reset();
 		// Only a row that still names this process: a name another process holds now is not ours to remove.
-		if (me && db) db.remove(me.id, Date.now(), me);
+		if (me && db) db.remove(me.id, Date.now(), me, reason);
 	}
 
 	/** Leave and let go of the database (session end; the process connection stays open for the next session). */
@@ -209,8 +221,7 @@ export class Team {
 			this.stopParentWatch?.();
 			this.stopParentWatch = undefined;
 			this.database.release();
-			this.peers?.close();
-			this.peers = undefined;
+			this.peers.close();
 			this.ticker.reset();
 			this.relays.reset();
 			this.finished.clear();
@@ -235,6 +246,7 @@ export class Team {
 		return this.snapshot().members;
 	}
 
+	stalled = (): Member[] => this.database.stalled(); // running, but silent for over a minute: shown by `coordinate list`
 	/** Live agents and the latest messages between them, from one read. */
 	snapshot(): TeamView {
 		return this.approvals.overlay(this.database.snapshot());
@@ -326,18 +338,8 @@ export class Team {
 			held: this.held,
 			// Whether this agent takes part in the team: it joined, or still tracks reservations.
 			collaborating: () => this.me !== undefined || this.held.any,
-			peerLeases: () => this.peerLeases(),
+			peerLeases: () => this.peers.get(),
 		};
-	}
-
-	/** The package reads its home from the process environment, so this does too (not the team's injected `env`, which only carries a subagent's identity). */
-	private peerLeases(): PeerLeases {
-		this.peers ??= new PeerLeases(peerDbPath(), {
-			registry: peerRegistryDir(),
-			self: () => this.ctx?.sessionManager.getSessionId(),
-			warn: (text) => this.mail.notice(text),
-		});
-		return this.peers;
 	}
 
 	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined; with no file, any reservation another agent holds. */
@@ -355,12 +357,12 @@ export class Team {
 		this.activity.started();
 	}
 
-	/** Delivers held interrupts first; a headless child then leaves because its parent closes its input. */
-	onAgentSettled(): void {
+	/** Delivers held interrupts first; a headless child then leaves, saying how its run ended, because its parent closes its input. */
+	onAgentSettled(status?: string): void {
 		if (this.mail.settled()) return; // An interrupt stopped the run: its message starts the next turn.
 		if (this.me && this.headless()) {
 			this.activity.flush();
-			this.leave();
+			this.leave(settleReason(status));
 			return;
 		}
 		// The activity line was cleared by src/ui/activity.ts, which owns it.
@@ -385,7 +387,6 @@ export class Team {
 	onToolStart(): void {
 		this.activity.toolStarted();
 	}
-
 	setActivity(line: string | undefined): void {
 		this.activity.setLine(line);
 	}

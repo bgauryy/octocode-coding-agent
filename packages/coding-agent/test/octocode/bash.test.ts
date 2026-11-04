@@ -82,8 +82,8 @@ describe("bash tool", () => {
 		expect(guideline).toContain("`set -o pipefail;` before an explicit pipe");
 		expect(tool.promptGuidelines.join("\n")).not.toContain("tail -n 50");
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
-		expect(tool.parameters.properties.timeout.description).toContain("moves to the background");
-		expect(tool.parameters.properties.timeout.description).toContain("Separately, a foreground call still running");
+		expect(tool.description).toContain("moves to the background");
+		expect(tool.parameters.properties.timeout.description).not.toContain("Separately");
 		// When to background is stated once, in the tool description; the parameter says only what it does.
 		expect(tool.description).toContain("servers");
 		expect(tool.parameters.properties.background.description).toContain("return at once");
@@ -1011,7 +1011,7 @@ describe("bash rendering", () => {
 				colored,
 			),
 		);
-		expect(killed).toContain("<warning>◼");
+		expect(killed).toContain("<muted>◼");
 		expect(killed).not.toContain("<error>");
 	});
 });

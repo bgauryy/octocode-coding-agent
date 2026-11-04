@@ -595,7 +595,7 @@ describe("interrupted rows and expandable prefaces", () => {
 		expect(body).not.toContain("Error:");
 		await Promise.resolve();
 		expect(invalidate).toHaveBeenCalledTimes(1);
-		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<warning>◼");
+		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<muted>◼");
 		// A real failure keeps its Error prefix and ✗.
 		const failed = rendered(
 			resultBlock(colored, { isPartial: false, isError: true, state: {} }, { summary: "exit 1" }),
@@ -610,7 +610,7 @@ describe("interrupted rows and expandable prefaces", () => {
 		expect(body).toContain("<warning>Not run: the model response failed");
 		expect(body).not.toContain("Error:");
 		await Promise.resolve();
-		expect(rendered(toolHeader(colored, context, "Bash", "ls") as never)).toContain("<warning>◼");
+		expect(rendered(toolHeader(colored, context, "Bash", "ls") as never)).toContain("<muted>◼");
 	});
 
 	it("counts a preface apart from hidden body lines and shows it only when expanded", () => {

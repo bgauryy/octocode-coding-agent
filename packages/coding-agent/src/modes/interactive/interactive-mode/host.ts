@@ -134,7 +134,6 @@ export interface InteractiveModeMethods {
 	handleFatalRuntimeError(prefix: string, error: unknown): Promise<never>;
 	handleFollowUp(): Promise<void>;
 	handleHotkeysCommand(): void;
-	handleGithubCommand(args: string): Promise<void>;
 	handleImportCommand(text: string): Promise<void>;
 	handleLoginCommand(providerRef?: string): Promise<void>;
 	handleModelCommand(searchTerm?: string): Promise<void>;

@@ -100,18 +100,16 @@ describe.each(AGENTS)("$name context", (agent) => {
 		}
 	});
 
-	it("has the protocol and its own name only where it can use them", () => {
+	it("has the protocol only where it can use it", () => {
 		const text = systemText(context());
 		const agentTool = JSON.stringify(context().tools.find((tool) => tool.name === "agent") ?? {});
 		if (agent.kind === "main") {
 			expect(text).toContain("One protocol reaches every agent");
-			expect(text).toMatch(/^Process name: <process name>$/m);
 			expect(agentTool).toContain("Also another Octocode process by its name");
 			expect(agentTool).toContain("a linked worktree's branch");
 			return;
 		}
 		expect(text).not.toContain("One protocol reaches every agent");
-		expect(text).not.toContain("Process name:");
 		expect(agentTool).not.toContain("Also another Octocode process by its name");
 		expect(agentTool).not.toContain("a linked worktree's branch");
 	});
@@ -135,17 +133,28 @@ describe.each(AGENTS)("$name context", (agent) => {
 });
 
 describe("the real assembled prefix of a main session", () => {
-	// What a main session in this repository sends before the user's first word: the captured prompt and declarations, plus
-	// this repository's AGENTS.md, for which the capture uses a stand-in. The tools and `mcps` block are declared up front
-	// by decision, so this does not ask for a cut: it makes growth a decision too.
-	// Measured 107,209 bytes on 2026-11-04 (system 58,758, tools 34,372, AGENTS.md 14,079), plus 7.3% for what lands with it.
-	const REAL_PREFIX_CEILING = 115_000;
+	// What a main session in this repository sends before the user's first word: the captured system text, each tool's name,
+	// description and compact parameter JSON (what the provider receives, not the pretty-printed Markdown of the prompt
+	// files), plus this repository's AGENTS.md, for which the capture uses a stand-in. The tools and `mcps` block are
+	// declared up front by decision, so this does not ask for a cut: it makes growth a decision too.
+	// Measured 111,408 bytes on 2026-11-04 from the baseline capture (.octocode/tmp/agent-prompts-baseline/main: system
+	// 70,237, tools 27,092, AGENTS.md 14,079), plus 7.3% for what lands with it. The earlier metric (renderSystem + renderTools
+	// + AGENTS.md, with schemas pretty-printed inside fences) read 121,193 for that same capture, so this count is stricter
+	// by construction: it drops about 9.7 KB of formatting nobody receives and the ceiling is set from the new reading.
+	const REAL_PREFIX_CEILING = 119_541;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");
 		const parts = {
-			system: Buffer.byteLength(renderSystem(main)),
-			tools: Buffer.byteLength(renderTools(main)),
+			system: Buffer.byteLength(systemText(main)),
+			tools: main.tools.reduce(
+				(sum, tool) =>
+					sum +
+					Buffer.byteLength(tool.name) +
+					Buffer.byteLength(tool.description) +
+					Buffer.byteLength(JSON.stringify(tool.parameters)),
+				0,
+			),
 			agents: fs.statSync(fileURLToPath(new URL("../../../../AGENTS.md", import.meta.url))).size,
 		};
 		const total = parts.system + parts.tools + parts.agents;

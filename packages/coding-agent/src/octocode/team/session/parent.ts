@@ -29,9 +29,9 @@ export function namedParent(env: NodeJS.ProcessEnv): ProcessIdentity | undefined
 }
 
 /** The parent is gone: where a signal ends the process outright (Windows) nothing runs after it, so the row and reservations go now, not when a peer's sweep finds the pid dead. */
-export function endWithParent(leave: () => void): void {
+export function endWithParent(leave: (reason: "parent-gone") => void): void {
 	try {
-		leave();
+		leave("parent-gone");
 	} catch {
 		/* locked database: the sweep reaps the row */
 	}

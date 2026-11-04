@@ -27,6 +27,10 @@ interface TickerSource {
 	maxAgeMs: number;
 	/** The machine slept (or this process stalled) from `since` to `now`; called before that tick's beat. */
 	resumed(since: number, now: number): void;
+	/** Whether something follows the database for changes (the lifecycle bus): the ticker then runs even with no watcher. */
+	following?(): boolean;
+	/** The database file changed since the last tick that followed it; called at most once per change. */
+	changed?(): void;
 }
 
 /**
@@ -39,6 +43,8 @@ export class TeamTicker {
 	private readonly watchers = new Set<() => void>();
 	private cached: TeamView = { members: [], traffic: [] };
 	private stamp = "";
+	/** The file stamp the follower last saw: `changed` runs when it moves. */
+	private followed: string | undefined;
 	private readAt = 0;
 	/** Wall time of the previous tick while the timer runs; 0 when it is stopped. */
 	private tickedAt = 0;
@@ -66,7 +72,7 @@ export class TeamTicker {
 
 	/** Start or stop the timer to match whether there is any work. */
 	sync(): void {
-		const needed = this.source.joined() || this.watchers.size > 0;
+		const needed = this.source.joined() || this.watchers.size > 0 || this.source.following?.() === true;
 		if (needed && !this.stopClock) {
 			this.tickedAt = Date.now();
 			this.stopClock = onSecond(() => this.tick());
@@ -88,9 +94,23 @@ export class TeamTicker {
 		if (this.tickedAt > 0 && now - this.tickedAt > SUSPEND_GAP_MS) this.source.resumed(this.tickedAt, now);
 		this.tickedAt = now;
 		this.source.beat();
+		this.follow();
 		if (this.watchers.size === 0) return;
 		this.refresh();
 		for (const listener of this.watchers) listener();
+	}
+
+	/** One file stat per tick: the follower reads the database only when another write moved the stamp. */
+	private follow(): void {
+		if (this.source.following?.() !== true) {
+			this.followed = undefined;
+			return;
+		}
+		const file = this.source.dbFile();
+		const stamp = file ? dbStamp(file) : "";
+		if (stamp === this.followed) return;
+		this.followed = stamp;
+		this.source.changed?.();
 	}
 
 	private refresh(force = false): void {

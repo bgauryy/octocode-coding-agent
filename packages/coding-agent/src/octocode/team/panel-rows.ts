@@ -13,6 +13,9 @@ type Color = Parameters<Theme["fg"]>[0];
 type Cell = { text: string; color: Color; right?: boolean; painted?: string };
 
 const GAP = "  ";
+/** In the narrow layout the detail row shows the activity from this width, only the goal from the next, and nothing below it. */
+const DETAIL_ACTIVITY_WIDTH = 64;
+const DETAIL_GOAL_WIDTH = 52;
 const MODEL_MAX = 28;
 /** The goal keeps at least this many columns before the row falls back to two lines. */
 const GOAL_MIN = 12;
@@ -49,7 +52,7 @@ function cachedShare(usage: Usage): string {
 }
 
 /** Tree connectors for each entry: `├ ` with later siblings, `└ ` for the last, `│ ` beside a deeper row. */
-function treePrefixes(tree: PanelEntry[]): string[] {
+export function treePrefixes(tree: PanelEntry[]): string[] {
 	const laterSibling = (index: number) => {
 		const depth = tree[index].depth;
 		for (const entry of tree.slice(index + 1)) if (entry.depth <= depth) return entry.depth === depth;
@@ -81,6 +84,8 @@ function row(entry: PanelEntry, now: number, theme: Theme): Row {
 	const { member } = entry;
 	const state = panelState(entry, now);
 	const working = state.state === "running";
+	// An agent that waits for the user reads as live as one that works.
+	const lively = working || state.state === "waiting";
 	const pending = member.pending ? `${GLYPH.message} ${member.pending}` : "";
 	const locks = member.locks?.length ? plural(member.locks.length, "lock") : "";
 	const flags = [pending, locks].filter(Boolean);
@@ -88,7 +93,7 @@ function row(entry: PanelEntry, now: number, theme: Theme): Row {
 	return {
 		entry,
 		mark: panelMark(theme, state, now),
-		working,
+		working: lively,
 		name: safe(member.id, 64),
 		// An id that starts with its role (`researcher-3fa9`) already says it.
 		role: member.role && !member.id.startsWith(member.role) ? safe(member.role, 24) : "",
@@ -129,8 +134,9 @@ const widest = (texts: string[]) => Math.max(0, ...texts.map((text) => visibleWi
  * One row per agent, under this session's row: tree, state mark, name, role, goal and what it does now (`›`), then aligned
  * columns: messages waiting for an answer and held locks, model, state, elapsed time, tokens with the cached share, and
  * tool calls and cost when wide. Too narrow even for that: a head row (who, state, time, tokens) and a detail row.
+ * Returns each agent's rows together, so a line can follow its own agent.
  */
-export function memberRows(tree: PanelEntry[], now: number, theme: Theme, width: number): string[] {
+export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, width: number): string[][] {
 	const rows = tree.map((entry) => row(entry, now, theme));
 	const prefixes = treePrefixes(tree);
 	const goalText = (r: Row) => (r.activity ? `${r.goal}${r.goal ? " › " : ""}${r.activity}` : r.goal);
@@ -158,7 +164,7 @@ export function memberRows(tree: PanelEntry[], now: number, theme: Theme, width:
 		const space = " ".repeat(Math.max(0, cells - visibleWidth(text)));
 		return alignRight ? space + painted : painted + space;
 	};
-	return rows.map((r, index) => {
+	return rows.map((r, index): string[] => {
 		const nameColor = r.working ? "text" : "muted";
 		// Cut the plain text, then paint the goal and the dim activity parts of what is left.
 		const [goalPart, activityPart] = splitGoal(r.goal, r.activity, goalShown);
@@ -177,19 +183,28 @@ export function memberRows(tree: PanelEntry[], now: number, theme: Theme, width:
 			const cell = r.right[column];
 			parts.push(GAP, pad(cell.text, cell.painted ?? theme.fg(cell.color, cell.text), columnWidth(column), cell.right));
 		}
-		return truncateToWidth(parts.join("").trimEnd(), Math.max(1, width), "…");
+		return [truncateToWidth(parts.join("").trimEnd(), Math.max(1, width), "…")];
 	});
 }
 
-/** Narrow: a head row (who, state, elapsed, tokens, messages) and one detail row (activity when working, otherwise the goal). */
-function narrowRows(rows: Row[], prefixes: string[], theme: Theme, width: number): string[] {
-	return rows.flatMap((r, index) => {
+/**
+ * Narrow: a head row (who, state, messages, and while they fit elapsed time and tokens) and a detail row. As the width
+ * shrinks the detail gives way first (activity, then the goal), then tokens and the elapsed time; the state word, the
+ * `✉` count and the mark stay down to the narrowest terminal.
+ */
+function narrowRows(rows: Row[], prefixes: string[], theme: Theme, width: number): string[][] {
+	const detailTier = width >= DETAIL_ACTIVITY_WIDTH ? 2 : width >= DETAIL_GOAL_WIDTH ? 1 : 0;
+	return rows.map((r, index) => {
 		const { right } = r;
-		const state = [right.state.text, right.age.text, right.tokens.text, right.flags.text]
-			.filter(Boolean)
-			.join(SEPARATOR);
 		const prefix = prefixes[index];
-		const nameRoom = Math.max(NAME_MIN, width - visibleWidth(state) - visibleWidth(prefix) - 7);
+		const variants = [
+			[right.state.text, right.age.text, right.tokens.text, right.flags.text],
+			[right.state.text, right.age.text, right.flags.text],
+			[right.state.text, right.flags.text],
+		].map((cells) => cells.filter(Boolean).join(SEPARATOR));
+		const room = (state: string) => width - visibleWidth(state) - visibleWidth(prefix) - 7;
+		const state = variants.find((text) => room(text) >= NAME_MIN) ?? variants[variants.length - 1];
+		const nameRoom = Math.max(NAME_MIN, room(state));
 		const stateColor = right.flags.text.includes(GLYPH.message) ? "warning" : right.state.color;
 		const bare = ` ${theme.fg("dim", prefix)}${r.mark} ${theme.fg(r.working ? "text" : "muted", fitName(r.name, nameRoom))}${theme.fg("dim", SEPARATOR)}${theme.fg(stateColor, state)}`;
 		// The model only when it fits whole: a cut model name is a guess.
@@ -197,7 +212,7 @@ function narrowRows(rows: Row[], prefixes: string[], theme: Theme, width: number
 		const head = model && visibleWidth(bare) + visibleWidth(model) <= width ? bare + model : bare;
 		// The detail sits under the name, with the tree line continuing beside it.
 		const under = ` ${theme.fg("dim", prefix.replace("├", "│").replace("└", " "))}  `;
-		const detail = r.activity || r.goal;
+		const detail = detailTier === 2 ? r.activity || r.goal : detailTier === 1 ? r.goal : "";
 		return [
 			truncateToWidth(head, Math.max(1, width), "…"),
 			...(detail ? [truncateToWidth(`${under}${theme.fg("muted", detail)}`, Math.max(1, width), "…")] : []),
@@ -216,12 +231,20 @@ export function rootRow(
 	theme: Theme,
 	width: number,
 	alignTo: number,
+	/** What needs the user (`◇ 1 needs you`), drawn in the warning colour right after the name so a cut keeps it. */
+	attention = "",
 ): string {
 	const role = self?.role ?? "main";
 	const roleText = role === selfId ? "" : `${GAP}${theme.fg("dim", safe(role, 24))}`;
 	const model = modelLabel(self?.model);
 	const modelText = model ? `${GAP}${theme.fg("muted", model)}` : "";
-	const lead = ` ${theme.fg(STATE_COLOR.done, GLYPH.live)} ${theme.fg("text", safe(selfId, 64))}${roleText}${modelText}`;
+	const attentionText = attention ? `${GAP}${theme.fg("warning", attention)}` : "";
+	const front = ` ${theme.fg(STATE_COLOR.done, GLYPH.live)} ${theme.fg("text", safe(selfId, 64))}${roleText}${attentionText}`;
+	// The model gives way before the team's counts do.
+	const lead =
+		visibleWidth(front) + visibleWidth(modelText) + GAP.length + visibleWidth(summary) <= width
+			? front + modelText
+			: front;
 	const gap = Math.max(GAP.length, Math.min(alignTo, width) - visibleWidth(lead) - visibleWidth(summary));
 	return truncateToWidth(`${lead}${" ".repeat(gap)}${theme.fg("muted", summary)}`, Math.max(1, width), "…");
 }

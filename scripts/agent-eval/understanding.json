@@ -332,6 +332,72 @@
 			"agents": ["general", "implementer"],
 			"question": "Your result is long. How do you deliver it to your parent?",
 			"expect": ["doc|file|scratch", "path|report"]
+		},
+		{
+			"id": "first-calls-failure",
+			"agents": ["research-tools"],
+			"question": "Your task: a test fails with \"TypeError: cannot read 'port' of undefined in parseConfig\". List your first three tool calls, each as the exact tool name you call and its main input.",
+			"expect": ["localSearch|localFetch|lspSearch|structureSearch"],
+			"forbid": ["bash[^\\n]{0,60}\\b(grep|rg|cat|sed -n|find)\\b"]
+		},
+		{
+			"id": "first-call-package-version",
+			"agents": ["research-tools"],
+			"question": "Your task: package.json pins zod 3.22; find the latest release and where its source for that release lives. What is your first tool call, with its main input?",
+			"expect": ["artifactSearch"],
+			"forbid": ["bash[^\\n]{0,60}\\b(npm view|curl|npm info)\\b"]
+		},
+		{
+			"id": "first-call-public-docs",
+			"agents": ["research-tools"],
+			"question": "Your task depends on a rate-limit rule stated only in a vendor's public documentation page, not in any repository or package. Which tool do you call first?",
+			"expect": ["\\bweb\\b"],
+			"forbid": ["bash[^\\n]{0,60}\\bcurl\\b"]
+		},
+		{
+			"id": "first-call-judge-logs",
+			"agents": ["research-tools"],
+			"question": "Your task: find which of 25 long CI logs show a flaky network timeout. The wording differs in each log, so no fixed search term matches them all. Which tool do you use?",
+			"expect": ["clasify"]
+		},
+		{
+			"id": "mcp-tool-parameters",
+			"agents": ["research-tools"],
+			"question": "Before calling mcp__octocode__lspSearch, where do you find its exact parameters, and how do you get them if your prompt does not show them?",
+			"expect": ["mcps|<mcp|section|block|intent|\\bmcp\\b[^\\n]{0,40}tools"]
+		},
+		{
+			"id": "first-call-architecture-task",
+			"agents": ["main", "general", "implementer", "reviewer"],
+			"question": "Your task: review a package's module layering and remove its dead code. What is your first tool call, and why?",
+			"expect": ["skill", "octocode-architect|octocode-clean-agentic-code"]
+		},
+		{
+			"id": "delegate-with-skill",
+			"agents": ["main"],
+			"question": "You start a subagent whose work must follow the octocode-architect skill. How do you make sure it uses that skill?",
+			"expect": ["skills"]
+		},
+		{
+			"id": "close-after-edits",
+			"agents": ["main"],
+			"question": "You finished a task that changed three files and ran the tests. How do you end your reply, and how long is that ending?",
+			"expect": ["TL;DR|summary|close", "(2|two)\\s*(to|-|–)\\s*(4|four)|short|brief"],
+			"forbid": ["every file[^\\n]{0,40}(paragraph|section)"]
+		},
+		{
+			"id": "relay-child-result",
+			"agents": ["main"],
+			"question": "A background subagent sends you its long report. How do you pass its result to the user?",
+			"expect": ["own words|summar", "check|verif"],
+			"forbid": ["(paste|forward|copy)[^\\n]{0,30}(whole|full|entire) report"]
+		},
+		{
+			"id": "update-after-update",
+			"agents": ["main"],
+			"question": "Ten minutes ago you gave the user a table of your four running subagents and a plan. Now one subagent reports. What goes in your next message to the user?",
+			"expect": ["only what (is new|changed)|what changed|new (result|information)|delta"],
+			"forbid": ["(repeat|re-?list|include)[^\\n]{0,30}(full |whole |entire )?(table|roster|plan)[^\\n]{0,20}again"]
 		}
 	]
 }

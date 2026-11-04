@@ -18,6 +18,7 @@ import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { childStagger } from "../../src/octocode/subagents/stagger.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { createWorktree, worktreesDir } from "../../src/octocode/subagents/worktree.ts";
+import { itemDetail } from "../../src/octocode/backlog/format.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -1928,6 +1929,32 @@ describe("a child bound to a backlog item", () => {
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 		expect(String(s.sent[0].message.content)).toMatch(/reported done[\s\S]*>>>\n[\s\S]*Noted on B1\./);
 		expect(notes().at(-1)!.text).toBe(`Report from ${id}: done. B1 is ongoing without a passed completion.`);
+	});
+
+	it("records a run for the item whose outcome and agent agree with the note its report left (B38)", async () => {
+		const s = setup();
+		const backlog = openBacklog(s.ctx, { isSubagent: false });
+		backlog.store.add({ ...READY, title: "work", state: "todo", createdBy: "user" });
+		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
+		const foreground = reportOf((await s.run({ task: "report back", item: "B1" })).content[0].text as string);
+		const started = await s.run({ task: "item report", item: "B1", background: true });
+		const id = started.details.id as string;
+		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+		const item = backlog.store.get("B1")!;
+		const notes = backlog.store.notes(item, -1).filter((note) => note.kind === "note");
+		const runs = backlog.store.runs(item);
+		// Both runs are filed under the item, newest first, with the agent the note names.
+		expect(runs.map((run) => run.agentId)).toEqual([id, foreground.id]);
+		expect(notes.map((note) => note.text.split(":")[0])).toEqual([`Report from ${foreground.id}`, `Report from ${id}`]);
+		expect(runs[1]).toMatchObject({ kind: "child", backlog: { seq: 1 }, startedBy: "agent", outcome: undefined });
+		expect(notes[0].text).toContain("no outcome word");
+		expect(runs[0].outcome).toBe("done");
+		expect(notes[1].text).toContain(`${runs[0].outcome}.`);
+		expect(runs.every((run) => run.endedAt !== undefined)).toBe(true);
+		// `backlog get` shows them, and the team resolves the agent from the item.
+		expect(itemDetail(item, [], 0, Date.now(), { runs })).toContain(`- ${id} `);
+		expect(s.team.audit.resolve("B1")?.agentId).toBe(id);
+		await s.fire("session_shutdown", { type: "session_shutdown" }, s.ctx);
 	});
 
 	it("links an isolated child's saved ref on its item as unmerged, and /agents merge notes the merge", async () => {

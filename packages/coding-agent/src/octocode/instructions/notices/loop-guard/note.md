@@ -1,1 +1,1 @@
-[Loop guard: this {{tool}} call has {{#if failed}}failed the same way{{else}}returned the same result{{/if}} {{count}} times in a row. Repeating it will not change the outcome: change the arguments, use a different tool, or tell the user what blocks you.]
+[Loop guard: this {{tool}} call has {{#if failed}}failed the same way{{else}}returned the same result{{/if}} {{count}} times in a row. Repeating it will not change the outcome: change the arguments, use a different tool, or report what blocks you.]

@@ -13,12 +13,12 @@ const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
 /**
  * Deletes the row, releases the leases and dead-letters the unread mail of `id`, its read but unanswered
  * `replyRequired` questions, and the relay requests it took but never settled, so their senders are told; the one
- * place a member is dropped.
+ * place a member is dropped. `reason` is the writer's own; without one the row's `end_hint` or `end.fallback` decides.
  */
-function retire(db: Db, id: string, now: number, reason: string): void {
+function retire(db: Db, id: string, now: number, reason: string | undefined, end: agents.EndInfo): void {
 	// Its open questions close too, unless a live parent may still resume it with the answer (a lingering subagent).
 	deliveries.closeAsksOf(db, id, now);
-	agents.remove(db, id, reason, now);
+	agents.remove(db, id, reason, now, end);
 	leases.releaseByOwner(db, id);
 	deliveries.deadLetterOf(db, id, now);
 }
@@ -44,7 +44,7 @@ export function claimMember(
 		return agents.refresh(db, member, workspace, context);
 	}
 	if (holder && sameProcess(holder.pid, holder.started)) return false;
-	retire(db, member.id, Date.now(), "replaced dead registration");
+	retire(db, member.id, Date.now(), undefined, { fallback: "crashed", detail: "replaced dead registration" });
 	return agents.insert(db, team, workspace, member, context);
 }
 
@@ -59,13 +59,19 @@ export function saveMember(
 	return agents.refresh(db, member, workspace, context) || agents.insert(db, team, workspace, member, context);
 }
 
-/** Retires `id` unless its row now names another process than `owner` (`TeamStore.remove`); whether it did. */
-export function retireOwned(db: Db, id: string, now: number, owner: ProcessIdentity | undefined): boolean {
+/** Retires `id` unless its row now names another process than `owner` (`TeamStore.remove`), with the leaver's `reason` when it knows one; whether it did. */
+export function retireOwned(
+	db: Db,
+	id: string,
+	now: number,
+	owner: ProcessIdentity | undefined,
+	reason?: agentEvents.EndReason,
+): boolean {
 	if (owner) {
 		const row = agents.processOf(db, id);
 		if (row && !sameIdentity(row, owner)) return false;
 	}
-	retire(db, id, now, "left");
+	retire(db, id, now, reason, { fallback: "left" });
 	return true;
 }
 
@@ -73,7 +79,7 @@ export function retireOwned(db: Db, id: string, now: number, owner: ProcessIdent
 export function reapMember(db: Db, id: string, judged: ProcessIdentity | undefined, now: number): boolean {
 	const row = agents.processOf(db, id);
 	if (row && (judged === undefined || !sameIdentity(row, judged))) return false;
-	retire(db, id, now, "reaped");
+	retire(db, id, now, undefined, { fallback: "crashed" });
 	return true;
 }
 

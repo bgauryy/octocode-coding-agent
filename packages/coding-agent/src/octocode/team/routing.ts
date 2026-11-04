@@ -10,6 +10,7 @@ import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
+import { STALLED_LISTED_MS } from "./store/limits.ts";
 import type { BudgetStanding, DeadLetter, Lease, LeaseConflict, Message, OpenQuestion } from "./model.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -141,6 +142,9 @@ export function interruptRefusal(
 		: `An interrupt stops only a subagent of this session; ${target.id} is not one. Nothing was sent.`;
 }
 
+/** Whether `name` is an Octocode process title (`octocode-main-<id>`, `octocode-rpc-<id>`; see `processes/title.ts`), not an agent id. */
+export const isProcessName = (name: string): boolean => /^octocode-(main|rpc)-/.test(name);
+
 /** A path to lock as the file tools resolve it: relative from the session's cwd (not the repository root), `~` from home. */
 export function resolveLockPath(cwd: string | undefined, entry: string): string {
 	return resolveToolPath(cwd ?? process.cwd(), entry);
@@ -217,13 +221,19 @@ export function describeMembers(
 	asks?: ReadonlyMap<string, readonly Ask[]>,
 	questions?: readonly OpenQuestion[],
 	standing?: (id: string) => BudgetStanding | undefined,
+	stalled: readonly Member[] = [],
 ): string {
-	if (members.length === 0) return "No agents have joined in this repository.";
+	const gone = stalled.filter((member) => now - member.updatedAt > STALLED_LISTED_MS);
+	if (members.length === 0 && gone.length === 0) return "No agents have joined in this repository.";
 	const here = members.find((member) => member.id === selfId)?.checkout;
 	// Goals, activity and paths come from other processes' rows: untrusted text the model reads.
+	const silent = gone.map(
+		(member) =>
+			`${member.id} · ${member.role} · stalled${member.parentId ? ` · parent ${member.parentId}` : ""}\n  pid ${member.pid} runs, but it has not been seen for ${formatAgo(now - member.updatedAt)} (last status ${member.status}): suspended or hung. It keeps its mail and its name still reaches it; it is not stopped.`,
+	);
 	return visibleControls(
-		members
-			.map((member) => {
+		[
+			...members.map((member) => {
 				const you = member.id === selfId ? " (you)" : "";
 				const parent = member.parentId ? ` · parent ${member.parentId}` : "";
 				const model = member.model ? ` · ${member.model}` : "";
@@ -240,7 +250,8 @@ export function describeMembers(
 				return [
 					`${member.id}${you} · ${member.role} · ${member.status}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
-					`  pid ${member.pid}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
+					...(member.cwd ? [`  in ${member.cwd}${member.branch ? ` @ ${member.branch}` : ""}`] : []),
+					`  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
 					`  ${firstLine(doing)}${output}`,
 					...awaiting(member, now, questions),
 					...(asked ? [`  ${asked} to its parent`] : []),
@@ -254,8 +265,9 @@ export function describeMembers(
 							]
 						: []),
 				].join("\n");
-			})
-			.join("\n"),
+			}),
+			...silent,
+		].join("\n"),
 	);
 }
 

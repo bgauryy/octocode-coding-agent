@@ -99,7 +99,7 @@ const CASES: Record<string, Case> = {
 		check: (run) => expect(run.opened).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/#access=/)]),
 	},
 	// Terminal commands that open a picker or menu.
-	help: { check: asks(/\/btw\s+Ask a side question/) },
+	help: { check: asks(/\/btw\s+Ask a quick side question/) },
 	settings: { check: asks(/Skill commands/) },
 	model: { check: asks(/Models from configured providers/) },
 	effort: { check: asks(/Thinking Level/) },

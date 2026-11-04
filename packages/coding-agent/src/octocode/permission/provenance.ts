@@ -4,7 +4,7 @@ import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
+import { isWorkspaceReader, readerLocations } from "../shared/local-reads.ts";
 import { secretProblem } from "../../../../common/src/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
@@ -30,7 +30,7 @@ const SHELL_HINT = "; to save quoted material, write it as data with the `file` 
  * whose arguments repeat them is flagged. `untrusted` output (web, browser, MCP, network commands, a subagent's report) reaching a
  * consequential argument (a shell command, file content, an MCP call, a memory, a subagent's task) and `private` output (reads
  * outside the workspace, secret-looking lines) reaching an egress argument (a URL, a network command) are hits.
- * Workspace reads, by Octocode's local readers and searches as by the legacy `read` and `grep`, are trusted.
+ * Workspace reads, by the reader and search roles of trusted MCP entries as by the legacy `read` and `grep`, are trusted.
  *
  * It is substring matching, so paraphrase, encoding or splitting across calls defeat it by design: a tripwire, not
  * a sandbox. The index holds 53-bit hashes only, never the text, lives in memory per session and is never written.
@@ -107,8 +107,6 @@ function leaves(value: unknown, out: string[] = []): string[] {
 const isNetworkCommand = (command: string): boolean =>
 	commandNames(command).some((name) => NETWORK.has(name.toLowerCase()));
 
-/** Octocode's local readers and searches, the native `read` and `grep`: known by the host's own names, not server hints. */
-const LOCAL_TOOLS = new Set(LOCAL_RESEARCH_TOOLS);
 
 class Provenance {
 	/** Hash → its slot in the ring below. */
@@ -139,7 +137,7 @@ class Provenance {
 		const text = capBytes(contentText(event.content), this.maxBytes);
 		if (!text) return;
 		const origin = this.origin(event, ctx.cwd);
-		if (LOCAL_TOOLS.has(event.toolName))
+		if (isWorkspaceReader(event.toolName))
 			for (const [, cursor] of text.matchAll(CURSOR)) {
 				this.cursors.delete(cursor);
 				this.cursors.set(cursor, origin ?? null);
@@ -227,23 +225,19 @@ class Provenance {
 			const child = isRecord(event.details) ? str(event.details.id) : undefined;
 			return { kind: "untrusted", label: `agent ${child ?? str(input.profile) ?? ""}`.trim() };
 		}
-		// The native readers and searches, classified as `read` and `grep` were: a batch reaching any path outside the
-		// workspace is private, a batch whose every query names a workspace path is trusted. Every path a query names counts
-		// (`path` and an LSP `workspaceRoot`). A cursor page has the origin of the page that returned its cursor; a query
-		// naming no path, or a cursor this session did not see, leaves the result an ordinary MCP one.
-		if (LOCAL_TOOLS.has(toolName)) {
+		// Reader and search roles, classified as `read` and `grep` were: input naming any location outside the workspace is
+		// private; input whose every request names a workspace location is trusted. A cursor page has the origin of the page
+		// that returned its cursor; input naming no location, or a cursor this session did not see, leaves the result an
+		// ordinary MCP one.
+		if (isWorkspaceReader(toolName)) {
 			const cursor = str(input.cursor);
 			const inherited = cursor === undefined ? undefined : this.cursors.get(cursor);
 			if (inherited !== undefined) return inherited ?? undefined;
-			const queries: unknown[] = Array.isArray(input.queries) ? input.queries : [];
-			const named = queries.map((query) =>
-				(isRecord(query) ? [str(query.path), str(query.workspaceRoot)] : [])
-					.filter((file): file is string => file !== undefined)
-					.map((file) => resolveToolPath(cwd, file)),
-			);
-			const outside = named.flat().find((file) => !this.inWorkspace(file, cwd));
+			const { files, unnamed } = readerLocations(input);
+			const named = files.map((file) => resolveToolPath(cwd, file));
+			const outside = named.find((file) => !this.inWorkspace(file, cwd));
 			if (outside !== undefined) return { kind: "private", label: `${toolName} ${tildePath(outside)}` };
-			if (named.length > 0 && named.every((files) => files.length > 0)) return undefined;
+			if (named.length > 0 && !unnamed) return undefined;
 		}
 		if (isMcpToolName(toolName)) return { kind: "untrusted", label: toolName };
 		if (SHELL_TOOLS.has(toolName)) {

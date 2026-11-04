@@ -426,7 +426,7 @@ describe("a long session under trouble (scripted model)", () => {
 		expect(records).toHaveLength(1);
 	});
 
-	it("rides out a provider outage longer than the default retry count (RFC D1)", () => {
+	it("rides out a provider outage longer than the default retry count", () => {
 		expect(seen.outageRetries).toBe(OUTAGE_REQUESTS);
 		expect(seen.outageOutcome).toBe("completed");
 		expect(seen.outageLeaks).toBe(0);
@@ -441,7 +441,7 @@ describe("a long session under trouble (scripted model)", () => {
 		expect(onDisk).toContain(`Turn ${TURN.databaseLock}: keep going.`);
 	});
 
-	it("keeps a reply when a peer holds the session lock past the wait, and the run stays truthful (RFC A-F4)", () => {
+	it("keeps a reply when a peer holds the session lock past the wait, and the run stays truthful", () => {
 		expect(fs.readFileSync(seen.file, "utf8")).toContain(LOCKED_REPLY.long);
 		expect(seen.failedRuns).toEqual([]);
 	});
@@ -462,7 +462,7 @@ describe("a long session under trouble (scripted model)", () => {
 		expect(seen.fileBytes).toBeLessThan(seen.producedChars * 1.5 + seen.entries.length * 4_000);
 	});
 
-	it("keeps each checkpoint's size independent of how long the session ran (RFC A-F3)", () => {
+	it("keeps each checkpoint's size independent of how long the session ran", () => {
 		// What a checkpoint must remember moves to a file instead of growing the summary with the session.
 		const [first] = seen.compactionSizes;
 		expect(Math.max(...seen.compactionSizes)).toBeLessThan(first * 1.5 + 4_000);

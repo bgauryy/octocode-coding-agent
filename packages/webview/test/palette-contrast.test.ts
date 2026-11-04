@@ -79,9 +79,19 @@ for (const [name, theme] of [
 			expect(ratio(c(token), mix(c(token), 0.12, c("--surface"))), `diff ${token}`).toBeGreaterThanOrEqual(4.5);
 	});
 
-	it(`${name}: state icons reach 3:1 on cards and board columns`, () => {
+	it(`${name}: state tokens reach 4.5:1 on cards, the page and board columns, so they can carry text`, () => {
 		for (const token of STATE_ICONS)
-			for (const surface of [c("--surface"), c("--surface-2"), column])
-				expect(ratio(c(token), surface), `${token} on ${surface}`).toBeGreaterThanOrEqual(3);
+			for (const surface of [c("--surface"), c("--surface-2"), c("--bg"), column])
+				expect(ratio(c(token), surface), `${token} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+	});
+
+	it(`${name}: one semantic state set, with waiting distinct from stopped`, () => {
+		expect(c("--state-ongoing")).toBe(c("--state-running"));
+		expect(c("--state-running")).toBe(c("--accent"));
+		expect(c("--state-backlog")).toBe(c("--state-pending"));
+		expect(c("--state-waiting")).toBe(c("--warning"));
+		expect(c("--state-done")).toBe(c("--success"));
+		expect(c("--state-failed")).toBe(c("--danger"));
+		expect(c("--state-stopped")).not.toBe(c("--state-waiting"));
 	});
 }

@@ -29,7 +29,7 @@ const RULES: Record<ConfigKind, KindRule> = {
 
 const SCOPE_RANK: Record<ConfigScope, number> = { project: 0, global: 1, builtin: 2 };
 const PRODUCT_RANK: Record<Product, number> = { octocode: 0, pi: 1 };
-/** A user copy another tool installed (`~/.agents`, Pi's folders) ranks below the skills bundled with this build, and a plugin's agent (origin `plugin:<name>`) below every profile. */
+/** A user copy another tool installed (`~/.agents`, Pi's folders) ranks below every other scope, and a plugin's agent (origin `plugin:<name>`) below every profile. */
 const REPLACEABLE_RANK = 3;
 
 function scopeRank(item: ConfigItem): number {

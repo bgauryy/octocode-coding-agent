@@ -224,6 +224,8 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 	// Notification hooks are side effects only: they cannot block or add context.
 	if (
 		event === "SessionEnd" ||
+		event === "AgentOn" ||
+		event === "AgentOff" ||
 		event === "StopFailure" ||
 		(protocol === "claude" && event === "PostCompact") ||
 		run.timedOut ||

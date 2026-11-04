@@ -1,7 +1,8 @@
 import { archiveRead } from "../shared/archive-operation.ts";
 import type { ToolCallEvent, ToolInfo } from "../../core/features/index.ts";
-import { LOCAL_RESEARCH_TOOLS, OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
+import { createMcpToolName } from "../../../../mcp/src/tool-names.ts";
 import type { McpServerStatus } from "../../../../mcp/src/status.ts";
 
 const reads = new Set(["askUser", "skill", "web"]);
@@ -22,7 +23,11 @@ function readOnlyShell(input: Record<string, unknown>, reader: ShellReader | und
 	return reader?.(command) === true;
 }
 
-/** Deliberately closed: shell interpreters, delegation and arbitrary MCP annotations are not read guarantees. */
+/**
+ * Deliberately closed: shell interpreters, delegation and arbitrary MCP annotations are not read guarantees. An MCP tool
+ * runs only when a server entry declares it read-only (`roles`, which count from a project entry only in a trusted
+ * project) and that server is enabled and connected.
+ */
 export function planningRefusal(
 	event: Pick<ToolCallEvent, "toolName" | "input">,
 	definition?: ToolInfo,
@@ -40,10 +45,12 @@ export function planningRefusal(
 	if (mcpFeature && event.toolName === MCP_MANAGE_TOOL_NAME && mcpRead(event.input)) return undefined;
 	if (
 		mcpFeature &&
-		LOCAL_RESEARCH_TOOLS.includes(event.toolName) &&
+		currentToolRoles().readOnly.has(event.toolName) &&
 		servers.some(
 			(server) =>
-				server.name === OCTOCODE_SERVER && server.scope === "default" && server.enabled && server.state === "connected",
+				server.enabled &&
+				server.state === "connected" &&
+				event.toolName.startsWith(createMcpToolName(server.name, "")),
 		)
 	)
 		return undefined;

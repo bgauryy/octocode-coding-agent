@@ -1,5 +1,4 @@
 import path from "node:path";
-import { getBundledSkillsDir } from "../../config.ts";
 import { HOOK_CATALOG, HOOK_EVENTS } from "../../octocode/hooks/catalog.ts";
 import { hookFiles, hookLabel, loadHooks } from "../../octocode/hooks/config.ts";
 import { hookSwitchedOn, hookToggleIds } from "../../octocode/hooks/config/toggles.ts";
@@ -7,68 +6,26 @@ import { tildePath } from "../../octocode/shared/home.ts";
 import { repoKey } from "../../octocode/shared/home/repo.ts";
 import { clipText } from "../../octocode/shared/util.ts";
 import { DefaultPackageManager } from "../package-manager.ts";
-import { buildGroups, type ResourceItem } from "../package-manager/resource-groups.ts";
-import { discoverPluginComponents } from "../plugin-components.ts";
-import { inspectPluginHooks } from "../plugin-hooks.ts";
-import { resolveConfiguredPlugin } from "../plugin-manifest.ts";
-import { inspectPluginMcp } from "../plugin-mcp.ts";
-import { configuredPlugins } from "../plugin-settings.ts";
+import { buildGroups } from "../package-manager/resource-groups.ts";
 import { BUILTIN_FEATURE_IDS } from "../features/builtin-ids.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import { hostInstalledPlugins } from "./host-plugins.ts";
+import { hostSkillItems } from "../../octocode/harness/host-skills.ts";
+import { EMPTY_INVENTORY, type Inventory, type InventoryHost, type InventoryItem } from "./inventory-types.ts";
+import { count, pluginItems } from "../../octocode/harness/plugin-items.ts";
+
 import {
 	effectivePlugins,
 	hookHostToggleId,
 	hookSourceToggleId,
 	insideProject,
 	isSwitchedOn,
-	pluginToggleId,
 	PROJECT_TOGGLE_PREFIX,
 	type ToggleHost,
 } from "./toggles.ts";
 
-/** The heading a row lists under: the host whose format defines it, packages, or the MCP and skill sections. */
-export type InventoryHost = ToggleHost | "packages" | "mcp" | "skills";
-
-/** One row of `/harness`: something the user can switch, with what decides it and why it is in its state. */
-export interface InventoryItem {
-	id: string;
-	/** A short name `/harness enable|disable` also accepts: plugin, skill or MCP server name. */
-	name?: string;
-	host: InventoryHost;
-	kind: "plugin" | "extension" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";
-	label: string;
-	/** 0 host-level, 1 a file or container, 2 one handler. */
-	depth: 0 | 1 | 2;
-	on: boolean;
-	/** Short state beside the switch: review state, unsupported parts, scope. */
-	detail: string;
-	/** Supplied by the repository: project switches reach it. */
-	project?: true;
-	/** A hook that denies when it fails: switching it off needs confirmation. */
-	gate?: true;
-	/** Why the row cannot be switched (an untrusted project file). */
-	locked?: string;
-	/** The broader toggle keys that decide this item when its own key is unset, most specific first. */
-	parents?: string[];
-	/** For extensions and skills: the resource the existing `extensions` and `skills` patterns switch. */
-	resource?: ResourceItem;
-	/** For a plugin another host installed: the `plugins` entry switching it on adds. */
-	install?: { path: string; protocol: "claude" | "codex" };
-}
-
-export interface Inventory {
-	items: InventoryItem[];
-	/** Toggle keys that match no item (an edited hook or a removed plugin). */
-	stale: string[];
-	/** Project keys ignored because they target items outside the repository. */
-	ignored: string[];
-	notes: string[];
-}
-
-export const EMPTY_INVENTORY =
-	'Nothing configured yet. Add plugins under "plugins" in settings.json, hooks in a hook file, skills in skills/, or MCP servers in mcp.json.';
+export { EMPTY_INVENTORY, type Inventory, type InventoryHost, type InventoryItem } from "./inventory-types.ts";
 
 /** Headings in display order. */
 export const HOST_TITLES: Record<InventoryHost, string> = {
@@ -79,54 +36,6 @@ export const HOST_TITLES: Record<InventoryHost, string> = {
 	mcp: "MCP servers",
 	skills: "Skills",
 };
-const count = (items: readonly unknown[], noun: string) => `${items.length} ${noun}${items.length === 1 ? "" : "s"}`;
-
-/** State of one executable component: none declared, unloadable, or loads. */
-function componentState(declared: boolean, errors: readonly string[]) {
-	if (!declared) return "none";
-	return errors.length ? "not loaded (see diagnostics)" : "loads";
-}
-
-function pluginItems(settings: Settings, cwd: string, notes: string[]): InventoryItem[] {
-	const on = new Map(
-		(effectivePlugins(settings, cwd) ?? []).map((entry) => [entry.path, entry.enabled !== false] as const),
-	);
-	return configuredPlugins(settings.plugins, (message) => notes.push(message)).map((entry) => {
-		const item = {
-			id: pluginToggleId(entry.path),
-			kind: "plugin" as const,
-			depth: 0 as const,
-			on: !!on.get(entry.path),
-			...(insideProject(entry.path, cwd) ? { project: true as const } : {}),
-		};
-		const { manifest, failure, errors } = resolveConfiguredPlugin(entry);
-		if (!manifest)
-			return {
-				...item,
-				host: entry.protocol,
-				label: entry.path,
-				detail: [failure, ...errors].filter(Boolean).join("; "),
-			};
-		const components = discoverPluginComponents(manifest);
-		const hooks = inspectPluginHooks(entry);
-		const mcp = inspectPluginMcp(entry);
-		notes.push(...new Set([...errors, ...components.errors, ...hooks.errors, ...mcp.errors]));
-		return {
-			...item,
-			name: manifest.name,
-			host: manifest.protocol,
-			label: `${manifest.name} (plugin, ${manifest.format} manifest)`,
-			detail: [
-				`${count(components.skills, "skill directory")}, ${count(components.commands, "command source")}`,
-				`hooks ${componentState(hooks.definitions.length > 0, hooks.errors)}`,
-				`MCP ${mcp.servers.map((server) => server.name).join(", ") || "none"}: ${componentState(mcp.servers.length > 0, mcp.errors)}`,
-				...(components.unsupported.length ? [`not loaded: ${components.unsupported.join(", ")}`] : []),
-				entry.path,
-			].join(" · "),
-		};
-	});
-}
-
 function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, home?: string): InventoryItem[] {
 	const toggles = settings.toggles;
 	const { config } = loadHooks(cwd, projectTrusted, home, { plugins: effectivePlugins(settings, cwd) });
@@ -216,7 +125,6 @@ async function resourceItems(manager: SettingsManager, cwd: string, agentDir: st
 		agentDir,
 		settingsManager: manager,
 		builtinExtensions,
-		builtinSkillsDir: getBundledSkillsDir(),
 	}).resolve(async () => "skip");
 	const groups = buildGroups(resolved, agentDir);
 	const rows = (type: "extensions" | "skills") =>
@@ -305,7 +213,14 @@ export async function buildInventory(options: {
 	const notes: string[] = [];
 	const configured = new Set((options.settings.plugins ?? []).map((entry) => path.resolve(entry.path)));
 	const items = [
-		...pluginItems(options.settings, options.cwd, notes),
+		...pluginItems(
+			options.settings,
+			options.cwd,
+			notes,
+			(options.mcp ?? []).map(({ name }) => name),
+			options.projectTrusted,
+			options.home,
+		),
 		...hostInstalledPlugins(options.home)
 			.filter((plugin) => !configured.has(plugin.path))
 			.map((plugin): InventoryItem => ({
@@ -320,6 +235,7 @@ export async function buildInventory(options: {
 			})),
 		...hookItems(options.settings, options.cwd, options.projectTrusted, options.home),
 		...(await resourceItems(options.manager, options.cwd, options.agentDir)),
+		...hostSkillItems(options.cwd, options.agentDir, options.projectTrusted, options.home),
 		...mcpItems(options.mcp ?? [], options.home),
 	];
 	const ids = new Set(items.map((item) => item.id));

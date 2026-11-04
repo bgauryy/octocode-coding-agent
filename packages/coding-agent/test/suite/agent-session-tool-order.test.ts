@@ -1,9 +1,10 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { orderToolNames } from "../../src/core/agent-session/tool-definitions.ts";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
 import { createHarness, type Harness } from "./harness.ts";
+import { clearResearch, FAKE_READER, FAKE_SEARCHES, publishFakeResearch } from "../octocode/fake-research.ts";
 
 const register = (api: ExtensionAPI, name: string, namespace?: string) =>
 	api.registerTool({
@@ -52,14 +53,18 @@ describe("declared tool order", () => {
 });
 
 describe("orderToolNames", () => {
+	beforeAll(() => publishFakeResearch());
+	afterAll(() => clearResearch());
+	// The server with roles sorts after `mcp__a` by name, so its place first comes from its roles.
 	const namespaces: Record<string, string> = {
 		mcp__b__x: "mcp__b",
 		mcp__a__y: "mcp__a",
 		mcp__a__x: "mcp__a",
-		mcp__octocode__lspSearch: "mcp__octocode",
-		mcp__octocode__localFetch: "mcp__octocode",
+		[FAKE_READER]: "mcp__codesearch",
+		[FAKE_SEARCHES[0]]: "mcp__codesearch",
 	};
 	const namespaceOf = (name: string) => namespaces[name];
+	const research = [FAKE_SEARCHES[0], FAKE_READER].toSorted();
 
 	it("keeps other tools in order, then MCP tools by namespace and name, without duplicates", () => {
 		expect(orderToolNames(["read", "mcp__b__x", "bash", "mcp__a__y", "mcp__a__x", "read"], namespaceOf)).toEqual([
@@ -74,7 +79,7 @@ describe("orderToolNames", () => {
 	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
 		const invariant = ["bash", "file", "web", "mcp"];
 		const variant = ["backlog", "steps", "archive", "askUser", "agent", "skill", "models", "compact"];
-		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
+		const octocode = research;
 		const arrivals = [
 			[...variant, ...invariant, ...octocode, "mcp__a__x"],
 			[...octocode, "mcp__a__x", ...invariant.slice().reverse(), ...variant.slice().reverse()],
@@ -85,7 +90,7 @@ describe("orderToolNames", () => {
 
 	it("gives a child and its parent the same declaration prefix up to the first role-variant tool", () => {
 		const shared = ["bash", "file", "web", "mcp"];
-		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
+		const octocode = research;
 		// The parent also has the browser server, askUser and a skill tool; a read-only child has none of them.
 		const parent = orderToolNames(
 			["skill", "askUser", "agent", "archive", "backlog", ...octocode, "mcp__a__x", ...shared],

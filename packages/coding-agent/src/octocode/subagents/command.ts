@@ -1,4 +1,5 @@
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import { agentDetailText, recentRunsText } from "./run-text.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -206,10 +207,15 @@ export function agentsCommand(
 				const children = sessionChildren(ctx.sessionManager.getEntries());
 				return say(ctx, children.length > 0 ? children.map(describeChild).join("\n") : "No subagents in this session.");
 			}
-			if (sub) return say(ctx, AGENTS_USAGE, "warning");
+			if (sub) {
+				// Any other word names an agent, live or past: its name, session, registration, process, pid or backlog item.
+				const found = team.audit.resolve(line);
+				return found ? say(ctx, agentDetailText(found)) : say(ctx, AGENTS_USAGE, "warning");
+			}
 			const { members, error } = team.snapshot();
 			const listing = describeMembers(members, team.id, Date.now(), asksOf(members), team.openQuestions());
-			say(ctx, error ? `${error}\n${listing}` : listing, error ? "warning" : "info");
+			const recent = recentRunsText(team.audit.recent());
+			say(ctx, error ? `${error}\n${listing}` : `${listing}${recent}`, error ? "warning" : "info");
 		},
 	};
 }

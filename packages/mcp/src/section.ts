@@ -20,6 +20,10 @@ export interface McpServerListing {
 	pending?: boolean;
 	/** Tools the block describes that are not declared now (hidden, or no longer offered). */
 	undeclared?: readonly string[];
+	/** Every tool the block describes is deferred: it lists names and triggers, and states the server's purpose. */
+	deferred?: boolean;
+	/** Some tools the block describes are deferred (listed by name and trigger after the direct ones). */
+	defers?: boolean;
 }
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -52,9 +56,11 @@ export function renderMcpsSection(servers: readonly McpServerListing[]): string 
 			contract: server.contract,
 			purpose: oneLine(server.entry.config.description),
 			pending: server.pending === true,
+			deferred: server.deferred === true,
 		}),
 	);
-	return blocks.length > 0 ? instruction("sections/mcps.md", { blocks: blocks.join("\n") }) : undefined;
+	const deferred = servers.some((server) => server.deferred || server.defers);
+	return blocks.length > 0 ? instruction("sections/mcps.md", { blocks: blocks.join("\n"), deferred }) : undefined;
 }
 
 /**
@@ -66,7 +72,7 @@ export function mcpServerPurposes(servers: readonly McpServerListing[]): Record<
 	return Object.fromEntries(
 		listedServers(servers).flatMap((server) => {
 			const purpose = oneLine(server.entry.config.description);
-			return server.declared && purpose ? [[mcpNamespace(server.entry.name), purpose]] : [];
+			return server.declared && !server.deferred && purpose ? [[mcpNamespace(server.entry.name), purpose]] : [];
 		}),
 	);
 }

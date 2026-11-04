@@ -311,7 +311,8 @@ describe("purge", () => {
 				.all() as Array<{ name: string }>
 		).map((row) => row.name);
 		const left = Object.fromEntries(tables.map((name) => [name, count(name)]).filter(([, n]) => n !== 0));
-		expect(left).toEqual({ meta: 1, trusted_folders: 1 });
+		// `meta` keeps the schema version and the oldest version that may read the file.
+		expect(left).toEqual({ meta: 2, trusted_folders: 1 });
 		expect(objects()).toEqual(schema);
 		agent.close();
 		agent = openAgentDb(file);
@@ -386,8 +387,6 @@ describe("expire", () => {
 		expect(count("agent_events", "id IN ('new-ev','ev-present')")).toBe(2);
 		expect(count("sessions")).toBe(3);
 		expect(expire.orphans(agent.db, [], cutoff)).toEqual({ transcripts: 0, entries: 0, events: 0 });
-		expect(expire.events(agent.db, cutoff)).toBe(1);
-		expect(count("agent_events")).toBe(1);
 	});
 });
 

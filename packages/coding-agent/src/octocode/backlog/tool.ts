@@ -255,6 +255,7 @@ export function registerBacklogTool(
 				children,
 				marks: store.marks([item, ...(origin ? [origin] : []), ...derived, ...children], actor.id, actor.owners),
 				tasks: store.tasks.list({ item: item.ref }),
+				runs: store.runs(item),
 				epicState: store.epicState(item),
 			});
 			const next =

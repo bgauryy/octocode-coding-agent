@@ -174,9 +174,9 @@ describe("a /reload between prompts", () => {
 
 /**
  * The cached prefix is the tool array plus the base and session instruction blocks. A new process of the same
- * configuration must send the same bytes, whatever its clock, process id or the order in which its MCP servers connect
- * (RFC_CONTEXT_EFFICIENCY.md, section a, item 3). The one allowed difference is the volatile `environment` section,
- * which carries the date and sits last in the session block.
+ * configuration must send the same bytes, whatever its clock, process id or the order in which its MCP servers connect,
+ * or it pays to write the whole prefix again. The one allowed difference is the volatile `environment` section, which
+ * carries the date and sits last in the session block.
  */
 describe("the prefix of one configuration does not depend on the process", () => {
 	const WRAPPER = (delay: number) =>
@@ -293,9 +293,7 @@ describe("the prefix of one configuration does not depend on the process", () =>
 
 /**
  * Siblings of one profile must share their cached prefix: the task, goal and identity ride in the first user message,
- * so the system prompt and the tool array may not depend on them. RFC item U3 moves the fixed report and run-mode
- * rules out of the task and into the system prompt; until it lands the prefix is still task-independent, and these
- * cases hold it so.
+ * so the system prompt and the tool array may not depend on them. These cases hold the prefix task-independent.
  */
 describe("two children of one profile with different tasks", () => {
 	const tasks = [

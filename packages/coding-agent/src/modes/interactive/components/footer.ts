@@ -200,9 +200,6 @@ export class FooterComponent implements Component {
 		];
 		// Statuses are data (text and tone); the live theme paints them. A provider without state gives plain text.
 		const data = this.footerData.getState?.();
-		const githubText = this.footerData.getGithubStatusText?.();
-		const githubStatus = data ? data.githubStatus : githubText ? { text: githubText } : undefined;
-		if (githubStatus) lines.push(truncateToWidth(paintStatus(githubStatus, theme), width, ELLIPSIS));
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses: ReadonlyMap<string, StatusEntry> =

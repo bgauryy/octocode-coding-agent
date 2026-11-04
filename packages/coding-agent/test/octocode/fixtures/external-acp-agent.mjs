@@ -41,6 +41,7 @@ const app = agent({ name: 'external-acp-fixture' })
     await chunk('wrong-session-output', 'unrelated-session');
     await chunk('private-thought', sessionId, 'agent_thought_chunk');
     await chunk('first\n');
+    record({ event: 'streamed', text: 'first\n' });
     if (mode.startsWith('overflow')) {
       await client.notify(methods.client.session.update, {
         sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'large', title: 'Read', rawOutput: 'evidence'.repeat(200_000) },

@@ -11,7 +11,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Memory: notes that later sessions reuse](memory.md)
 - [Remote access: `/remote`, links, transports and the `octocode remote` CLI](remote.md)
 - [Configuration locations and controls](../../../CONFIGURATIONS.md)
-- [Add hooks, plugins and extensions](../../../PLUGINS.md)
+- [Add hooks and plugins](../../../PLUGINS.md)
 - [Configuration and Pi compatibility](configuration.md)
 - [Permissions and source-rule compatibility](permissions.md)
 - [Agent instructions and subagent roles](instructions.md)
@@ -31,12 +31,11 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 ## Tools and customization
 
-- [MCP](mcp.md)
+- [MCP](mcp.md) and its [reference](mcp-reference.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
 - [Hook events: what each source profile accepts](hook-events.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
-- [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md), with its [rollout](../../../docs/PLUGINS_MODS_HOOKS_ROLLOUT.md) and [conformance evidence](../../../docs/PLUGINS_MODS_HOOKS_CONFORMANCE.md)
-- [RFC: align hooks, plugins and extensions under one source model](../../../docs/RFC_HOOKS_PLUGINS_EXTENSIONS.md)
+- [Plugins, skills, packages and hooks: design and compatibility checks](../../../docs/PLUGINS_MODS_HOOKS.md)
 - [Packages](packages.md)
 - [Skills](skills.md)
 - [Prompt templates](prompt-templates.md)
@@ -50,23 +49,24 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 ## Architecture
 
+- [Every feature, with its owner and documentation](../../../docs/FEATURES.md)
 - [Application and interface boundaries](../../../docs/INTERFACE_ARCHITECTURE.md)
 - [Agent communication and worker lifecycle](../../../docs/AGENT_COMMUNICATION.md)
-- [Native feature architecture and flows](../../../docs/FEATURES.md)
+- [Execution, permissions and prompts](../../../docs/EXECUTION_AND_PERMISSIONS.md)
+- [Editing, verification and debugging](../../../docs/EDITING_AND_DEBUGGING.md)
 - [Shared entities and contracts](../../../docs/ENTITIES.md)
 - [Context management: request contents, caching and compaction](../../../docs/CONTEXT.md)
-- [Browser workspace review](../../../docs/WEBVIEW_REVIEW.md)
-- [Provider protocol and authentication audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md)
+- [Agent eval: whether a change ships](../../../scripts/agent-eval/README.md)
 
 ## Package references
 
-| Package        | Reference                                                             |
-| -------------- | --------------------------------------------------------------------- |
-| coding-agent   | [CLI, sessions and native features](../README.md)                     |
-| agent          | [Agent loop, events and tool execution](../../agent/README.md)        |
-| ai             | [Provider APIs, authentication and model catalog](../../ai/README.md) |
-| tui            | [Terminal components and rendering](../../tui/README.md)              |
-| webview        | [Browser state, transport and rendering](../../webview/README.md)     |
+| Package        | Reference                                                              |
+| -------------- | ---------------------------------------------------------------------- |
+| coding-agent   | [CLI, sessions and native features](../README.md)                      |
+| agent          | [Agent loop, events and tool execution](../../agent/README.md)         |
+| ai             | [Provider APIs, authentication and model catalog](../../ai/README.md)  |
+| tui            | [Terminal components and rendering](../../tui/README.md)               |
+| webview        | [Browser state, transport and rendering](../../webview/README.md)      |
 | contracts      | [Shared serializable contracts and schemas](../../contracts/README.md) |
-| MCP client API | [Private MCP workspace and public client API](../../mcp/README.md)    |
-| telemetry      | [Telemetry contracts and schemas](../../telemetry/README.md)          |
+| MCP client API | [Private MCP workspace and public client API](../../mcp/README.md)     |
+| telemetry      | [Telemetry contracts and schemas](../../telemetry/README.md)           |

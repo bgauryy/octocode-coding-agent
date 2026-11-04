@@ -33,6 +33,7 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .session-panel-header h3 { font-size: 14px; font-weight: 600; }
 .composer { display: grid; gap: 10px; min-width: 0; }
 .dialog-answer { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--warning, #d97706); border-radius: var(--radius-sm); }
+.dialog-answer-title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .dialog-answer-options { display: flex; flex-wrap: wrap; gap: 8px; }
 .dialog-answer-text { display: flex; gap: 8px; }
 .dialog-answer-text input { flex: 1; min-width: 0; }
@@ -72,6 +73,11 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tool-group-list { display: grid; gap: 6px; padding: 0 10px 10px; }
 .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.agent-grid, .agent-tree { list-style: none; margin: 0; padding: 0; }
+.agent-grid > li { display: grid; gap: 10px; align-content: start; }
+.agent-tree { display: grid; gap: 10px; margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--border); }
+.agent-card.needs-attention { border-color: color-mix(in srgb, var(--warning) 50%, var(--border)); }
+.agent-last, .agent-locks { font-size: 12px; overflow-wrap: anywhere; }
 .agent-card { display: grid; gap: 10px; align-content: start; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .agent-card.is-working { border-color: var(--accent-line); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent); }
 .agent-card-header { display: flex; align-items: flex-start; gap: 10px; }

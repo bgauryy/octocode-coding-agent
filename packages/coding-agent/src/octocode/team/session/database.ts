@@ -1,11 +1,14 @@
 import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/features/index.ts";
-import { AgentDbError } from "../../../../../db/src/api.ts";
+import { type agentEvents, AgentDbError } from "../../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";
 import type { Ask } from "../asks.ts";
 import type { OpenQuestion } from "../model.ts";
+import { AGENT_LIFECYCLE_CHANNEL } from "../../shared/agent-lifecycle.ts";
+import { AgentLifecycleBus } from "../lifecycle-bus.ts";
 import { TeamStore } from "../store.ts";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TeamView } from "../ticker.ts";
 
 /** What the database access reads of the team (`Team`, `session.ts`): the current values each time. */
@@ -18,11 +21,27 @@ interface DatabaseHost {
 export class TeamDatabase {
 	private readonly host: DatabaseHost;
 	private db: TeamStore | undefined;
+	private stopWrites: (() => void) | undefined;
+	private stopForward: (() => void) | undefined;
+	private events: { emit(channel: string, data: unknown): void } | undefined;
+	/** Every agent's join, state change and end, whichever process wrote it (`lifecycle-bus.ts`); the ticker feeds it when the database changes. */
+	readonly lifecycle: AgentLifecycleBus;
 	/** Why the database cannot be used at all (a foreign file); shown in /agents and the footer. */
 	private schemaProblem: string | undefined;
 
-	constructor(host: DatabaseHost) {
+	/** `sync`: the lifecycle bus gained or lost its last listener, so the ticker starts or stops following the database. */
+	constructor(host: DatabaseHost, sync: () => void) {
 		this.host = host;
+		this.lifecycle = new AgentLifecycleBus({
+			head: () => this.eventsHead(),
+			since: (after) => this.eventsSince(after),
+			sync,
+		});
+	}
+
+	/** Announces what this process writes (agents joining and ending) on the session's event channel, for the AgentOn and AgentOff hooks. */
+	forwardTo(events: { emit(channel: string, data: unknown): void }): void {
+		this.events = events;
 	}
 
 	/** The database this session opened, if it used one yet. */
@@ -42,6 +61,9 @@ export class TeamDatabase {
 
 	/** Lets go of the database (session end; the process connection stays open for the next session). */
 	release(): void {
+		this.stopWrites?.();
+		this.stopForward?.();
+		this.stopWrites = this.stopForward = undefined;
 		this.db = undefined;
 	}
 
@@ -51,7 +73,20 @@ export class TeamDatabase {
 		if (!ctx) throw new Error("The team is not available before the session starts.");
 		if (this.schemaProblem) throw new Error(this.schemaProblem);
 		try {
-			this.db ??= TeamStore.shared(ctx.cwd, this.host.env());
+			if (!this.db) {
+				this.db = TeamStore.shared(ctx.cwd, this.host.env());
+				// A write of this connection is announced at once: an agent that leaves and exits has no later tick.
+				this.stopWrites = this.db.presence.onWrite((from, to) => {
+					this.lifecycle.wrote(from, to);
+					this.lifecycle.poll();
+				});
+				const { events } = this;
+				if (events)
+					this.stopForward = this.lifecycle.on(
+						(event) => event.kind !== "state" && events.emit(AGENT_LIFECYCLE_CHANNEL, event),
+						{ others: false },
+					);
+			}
 			return this.db;
 		} catch (error) {
 			const problem = `Team database unavailable: ${errorMessage(error)}`;
@@ -84,6 +119,15 @@ export class TeamDatabase {
 		}
 	}
 
+	/** Agents whose process runs but who have not been seen for `STALE_MS` (hidden from `snapshot`); none when the database cannot be read. */
+	stalled(): Member[] {
+		try {
+			return this.existing()?.list(Date.now(), true) ?? [];
+		} catch {
+			return [];
+		}
+	}
+
 	/** The file the ticker watches: only once the session started and the database is open or exists. */
 	watchedFile(): string | undefined {
 		const file = agentDbPath(this.host.env());
@@ -102,6 +146,24 @@ export class TeamDatabase {
 			this.existing()?.resume(since, now);
 		} catch {
 			// Unusable database: the snapshot says why; nothing to repair.
+		}
+	}
+
+	/** The newest presence event now: 0 when there is no database or it cannot be read. */
+	eventsHead(): number {
+		try {
+			return this.existing()?.presence.head() ?? 0;
+		} catch {
+			return 0;
+		}
+	}
+
+	/** Presence events after `after`; none when the database cannot be read (the next change retries). */
+	eventsSince(after: number): agentEvents.EventRow[] {
+		try {
+			return this.existing()?.presence.since(after) ?? [];
+		} catch {
+			return [];
 		}
 	}
 

@@ -31,7 +31,6 @@ type CommandDispatchHost = Pick<
 	| "handleCopyCommand"
 	| "handleDebugCommand"
 	| "handleExportCommand"
-	| "handleGithubCommand"
 	| "handleHotkeysCommand"
 	| "handleImportCommand"
 	| "handleLoginCommand"
@@ -203,9 +202,6 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "logout":
 			await host.showOAuthSelector("logout");
-			return;
-		case "github":
-			await host.handleGithubCommand(args);
 			return;
 		case "permissions":
 		case "agents":

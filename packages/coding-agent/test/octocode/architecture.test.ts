@@ -52,7 +52,7 @@ const ALLOWED: Record<string, string[]> = {
 	hooks: ["shared", "discovery"],
 	plugins: ["shared", "hooks", "discovery"],
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
-	harness: ["shared", "plugins", "hooks", "discovery"],
+	harness: ["shared", "plugins", "hooks", "discovery", "skill"],
 	web: ["shared", "permission"],
 	compaction: ["shared", "files", "permission", "archive"],
 	archive: ["shared", "memory", "permission"],

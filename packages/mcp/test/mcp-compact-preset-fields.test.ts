@@ -1,14 +1,13 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
 	acceptStale,
 	type CompactServerInput,
 	type CompactToolInput,
+	dropStale,
 	presetOverridesFor,
 	presetStatus,
 	toPresetOverrides,
 } from "../src/compact/index.ts";
-import { octocodeCompactOverrides, octocodeOverrideStatus } from "../src/presets/octocode/compact-overrides.ts";
 
 const search = (extra: Record<string, unknown> = {}, description = "Search things."): CompactToolInput => ({
 	name: "search",
@@ -133,6 +132,24 @@ describe("preset overrides keyed on the upstream text", () => {
 		expect(dropped.tools?.search?.description).toBe("Search.");
 	});
 
+	// Contract: dropping stale entries removes them (the description takes its trigger along), rewrites nothing, keeps the rest.
+	it("drop stale overrides without re-pointing or rewriting the valid ones", () => {
+		const rebuilt = catalog(
+			search({ limit: { type: "number", description: "Rows per page, newest first." } }, "Changed."),
+		);
+		const stale = presetStatus(preset, [rebuilt]);
+		const labels = stale.map((entry) => entry.label);
+		expect(labels).toEqual(["search.description", "search.queries.limit"]);
+		const dropped = dropStale(preset, stale);
+		expect(presetStatus(dropped, [rebuilt])).toEqual([]);
+		expect(dropped.tools?.search?.description).toBeUndefined();
+		expect(dropped.tools?.search?.trigger).toBeUndefined();
+		expect(dropped.tools?.search?.fields?.["queries.limit"]).toBeUndefined();
+		expect(dropStale(preset, [])).toEqual(preset);
+		const kept = presetStatus(preset, [catalog(search())]);
+		expect(dropStale(preset, kept)).toEqual(preset);
+	});
+
 	it("judge a field against every catalog a server sends", () => {
 		const keyed = catalog(search({ classification: { type: "string", description: "Judge." } }));
 		const both = toPresetOverrides(
@@ -143,58 +160,5 @@ describe("preset overrides keyed on the upstream text", () => {
 		expect(presetOverridesFor(both, input)?.fields).toEqual({ search: { "queries.path": "Dir." } });
 		const changed = catalog(search({ classification: { type: "string", description: "Judge others." } }));
 		expect(presetStatus(both, [input, changed]).map((entry) => entry.label)).toEqual(["search.queries.classification"]);
-	});
-});
-
-describe("the Octocode preset across a sibling rebuild", () => {
-	const keyless = JSON.parse(
-		readFileSync(new URL("./fixtures/compact/octocode-catalog-nokey.json", import.meta.url), "utf8"),
-	) as CompactServerInput;
-
-	it("has no stale override against the fixture catalog", () => {
-		// The classification field's overrides belong to the keyed catalog, so only a changed text counts here.
-		expect(octocodeOverrideStatus([keyless]).filter((entry) => entry.reason === "changed")).toEqual([]);
-	});
-
-	it("keeps every override when a rebuild only documents fields, adds a definition and reorders keys", () => {
-		const rebuilt: CompactServerInput = {
-			...keyless,
-			tools: keyless.tools.map((tool) => {
-				const schema = JSON.parse(JSON.stringify(tool.inputSchema)) as Record<string, any>;
-				const item = schema.properties?.queries?.items;
-				if (item?.properties) item.properties.mainGoal = { type: "string", description: "A goal added upstream." };
-				schema.properties.cursor = { type: "string", description: "Copied from a next call." };
-				schema.$defs = { ...schema.$defs, added: { type: "string" } };
-				return {
-					...tool,
-					inputSchema: Object.fromEntries(Object.entries(schema).reverse()),
-				};
-			}),
-		};
-		expect(octocodeCompactOverrides(rebuilt)).toEqual(octocodeCompactOverrides(keyless));
-	});
-
-	it("drops one field's override when its text changes and keeps the tool's other overrides", () => {
-		const before = octocodeCompactOverrides(keyless);
-		const rebuilt: CompactServerInput = {
-			...keyless,
-			tools: keyless.tools.map((tool) => {
-				if (tool.name !== "localFetch") return tool;
-				const schema = JSON.parse(JSON.stringify(tool.inputSchema)) as Record<string, any>;
-				schema.properties.queries.items.properties.limit.description = "Lines per page, changed.";
-				return { ...tool, inputSchema: schema };
-			}),
-		};
-		const after = octocodeCompactOverrides(rebuilt);
-		expect(
-			octocodeOverrideStatus([rebuilt])
-				.filter((entry) => entry.reason === "changed")
-				.map((entry) => entry.label),
-		).toEqual(["localFetch.queries.limit"]);
-		expect(after?.fields?.localFetch?.["queries.limit"]).toBeUndefined();
-		expect(Object.keys(after?.fields?.localFetch ?? {})).toEqual(
-			Object.keys(before?.fields?.localFetch ?? {}).filter((path) => path !== "queries.limit"),
-		);
-		expect(after?.tools).toEqual(before?.tools);
 	});
 });

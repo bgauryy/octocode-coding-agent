@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { globalPaths } from "../shared/home.ts";
@@ -115,19 +116,28 @@ export function selectInstance(instances: readonly InstanceRecord[], selector: s
 	return found[0];
 }
 
-/** A fallback socket's private folder in the temp directory: `octocode-<uid>-XXXXXX`, made by `mkdtemp`. */
-const SOCKET_DIR = /^octocode-\d+-[A-Za-z0-9]{6}$/;
+/**
+ * A fallback socket's private folder in the temp directory: `octocode-<uid>-<owner pid>-XXXXXX`, made by `mkdtemp`.
+ * Folders from earlier versions have no pid.
+ */
+const SOCKET_DIR = /^octocode-(\d+)-(?:(\d+)-)?[A-Za-z0-9]{6}$/;
+/** The one file such a folder holds: `newInstanceId`'s socket. */
+const SOCKET_FILE = /^oc-[0-9a-f]{6}\.sock$/;
+
+/** The temp directories a fallback folder can be in: `TMPDIR`, then `/tmp`. */
+const socketRoots = (env: NodeJS.ProcessEnv): Set<string> => new Set([env.TMPDIR ?? "/tmp", "/tmp"]);
 
 /**
  * Unix socket paths are limited to ~104 bytes on macOS, so a deep OCTOCODE_HOME would fail to bind. The socket sits
  * next to the record when that fits and otherwise in a folder `mkdtemp` makes in the temp directory (mode 0700, and
- * its name is unguessable): a fixed name there could be taken by another local user before this process binds it.
+ * its name is unguessable): a fixed name there could be taken by another local user before this process binds it. The
+ * name carries this process's pid, for `sweepSocketFolders`.
  */
 export function socketPath(dir: string, id: string, env: NodeJS.ProcessEnv = process.env): string {
 	const preferred = path.join(dir, `${id}.sock`);
 	if (Buffer.byteLength(preferred) <= 100) return preferred;
-	const prefix = `octocode-${process.getuid?.() ?? 0}-`;
-	for (const root of new Set([env.TMPDIR ?? "/tmp", "/tmp"])) {
+	const prefix = `octocode-${process.getuid?.() ?? 0}-${process.pid}-`;
+	for (const root of socketRoots(env)) {
 		const base = fs.realpathSync(root);
 		if (Buffer.byteLength(path.join(base, `${prefix}XXXXXX`, `${id}.sock`)) > 100) continue;
 		const folder = fs.mkdtempSync(path.join(base, prefix));
@@ -141,4 +151,70 @@ export function removeSocket(file: string): void {
 	fs.rmSync(file, { force: true });
 	const folder = path.dirname(file);
 	if (SOCKET_DIR.test(path.basename(folder))) fs.rmSync(folder, { recursive: true, force: true });
+}
+
+/** Whether nothing listens on this socket: only a refused connection says so, any other failure says nothing. */
+const refusesConnection = (file: string): Promise<boolean> =>
+	new Promise((resolve) => {
+		const probe = net.connect(file);
+		probe.unref();
+		probe.once("connect", () => {
+			probe.destroy();
+			resolve(false);
+		});
+		probe.once("error", (error: NodeJS.ErrnoException) => resolve(error.code === "ECONNREFUSED"));
+	});
+
+/**
+ * Whether `folder` was left by a session that is gone, and removes it if so. It must be this user's owner-only folder
+ * holding nothing but one API socket, and neither a live owner pid nor a listener may answer for it: the pid covers a
+ * session between its bind and its listen or too busy to accept, and the connection a session in another pid namespace
+ * sharing this temp directory. An empty folder (a kill between `mkdtemp` and the bind, or between the unlink and the
+ * removal) is proved by its pid alone; from an earlier version it has none, so it stays. Pid 1 is always alive, so as an
+ * owner it proves nothing (a container's main process) and counts as none.
+ */
+async function removeDeadSocketFolder(folder: string, named: string | undefined): Promise<boolean> {
+	const ownerPid = named === "1" ? undefined : named;
+	if (ownerPid !== undefined && processAlive(Number(ownerPid))) return false;
+	const stat = fs.lstatSync(folder);
+	if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o700) return false;
+	const entries = fs.readdirSync(folder);
+	if (entries.length === 0 && ownerPid === undefined) return false;
+	if (entries.length > 1 || (entries.length === 1 && !SOCKET_FILE.test(entries[0]))) return false;
+	if (entries.length === 1) {
+		const socket = path.join(folder, entries[0]);
+		if (!fs.lstatSync(socket).isSocket() || !(await refusesConnection(socket))) return false;
+		fs.rmSync(socket, { force: true });
+	}
+	fs.rmdirSync(folder);
+	return true;
+}
+
+/**
+ * Removes the fallback folders of sessions that are gone. `listInstances` sweeps through a record, so it never reaches
+ * a folder whose home was deleted or is not started again. Runs in the background of a session's start: it never fails
+ * the start, and a folder it cannot prove dead stays. Returns how many went.
+ */
+export async function sweepSocketFolders(
+	env: NodeJS.ProcessEnv = process.env,
+	roots: Iterable<string> = socketRoots(env),
+): Promise<number> {
+	if (process.platform === "win32") return 0;
+	let removed = 0;
+	for (const root of roots) {
+		let base: string;
+		let names: string[];
+		try {
+			base = fs.realpathSync(root);
+			names = fs.readdirSync(base);
+		} catch {
+			continue;
+		}
+		for (const name of names) {
+			const folder = SOCKET_DIR.exec(name);
+			if (!folder || Number(folder[1]) !== process.getuid?.()) continue;
+			if (await removeDeadSocketFolder(path.join(base, name), folder[2]).catch(() => false)) removed++;
+		}
+	}
+	return removed;
 }

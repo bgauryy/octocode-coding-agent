@@ -249,8 +249,6 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 // Summary Generation
 // ============================================================================
 
-const BRANCH_SUMMARY_PREAMBLE = `${renderInstruction("workflows/compaction/branch-preamble.md")}\n\n`;
-
 const BRANCH_SUMMARY_PROMPT = renderInstruction("workflows/compaction/branch-summary.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
 });
@@ -334,9 +332,6 @@ export async function generateBranchSummary(
 	}
 
 	let summary = contentText(response.content);
-
-	// Prepend preamble to provide context about the branch summary
-	summary = BRANCH_SUMMARY_PREAMBLE + summary;
 
 	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);

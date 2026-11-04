@@ -2,7 +2,7 @@
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { type AuthResult, type Model, type ProviderHeaders, streamSimple } from "@octocodeai/octocode-ai/compat";
-import { formatNoApiKeyFoundMessage } from "../auth-guidance.ts";
+import { formatAuthExpiredMessage, formatNoApiKeyFoundMessage } from "../auth-guidance.ts";
 import { convertToLlm } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import { isVirtualModel } from "../virtual-models.ts";
@@ -48,11 +48,7 @@ async function getRequiredRequestAuth(
 
 	const isOAuth = modelRuntime.isUsingOAuth(model.provider);
 	if (isOAuth) {
-		throw new Error(
-			`Authentication failed for "${model.provider}". ` +
-				`Credentials may have expired or network is unavailable. ` +
-				`Run '/login ${model.provider}' to re-authenticate.`,
-		);
+		throw new Error(formatAuthExpiredMessage(model.provider));
 	}
 	throw new Error(formatNoApiKeyFoundMessage(model.provider));
 }

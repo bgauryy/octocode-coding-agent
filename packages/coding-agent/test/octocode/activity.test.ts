@@ -94,7 +94,7 @@ describe("Activity: consequential calls", () => {
 });
 
 describe("Activity: the working-line vocabulary", () => {
-	/** Each state of a run and the words the working line shows for it (docs: RFC naming, one verb per state). */
+	/** Each state of a run and the words the working line shows for it: one verb per state. */
 	const states: ReadonlyArray<readonly [string, (activity: Activity) => void, string]> = [
 		["model streaming reasoning", (a) => a.stream("thinking_delta", 1), "Thinking"],
 		["model streaming text", (a) => a.stream("text_delta", 1), "Writing"],

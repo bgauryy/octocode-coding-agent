@@ -1,6 +1,7 @@
 import { conditionallyRequired } from "./applicability.ts";
 import { toolBlock } from "./file.ts";
 import { functionNames, OUTPUT_FIELD_PREFIX, renderServer } from "./render.ts";
+import { identifier, inert, literal } from "./schema-nodes.ts";
 import { isShapeless, schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides, JsonSchema } from "./types.ts";
 
@@ -50,9 +51,9 @@ function requiredTokens(schema: JsonSchema | undefined, out: Set<string>, seen =
 		return;
 	}
 	if (schema.properties && typeof schema.properties === "object")
-		for (const key of Object.keys(schema.properties)) out.add(key);
-	if (schema.const !== undefined) out.add(JSON.stringify(schema.const));
-	if (Array.isArray(schema.enum)) for (const value of schema.enum) out.add(JSON.stringify(value));
+		for (const key of Object.keys(schema.properties)) out.add(identifier(key));
+	if (schema.const !== undefined) out.add(literal(schema.const));
+	if (Array.isArray(schema.enum)) for (const value of schema.enum) out.add(literal(value));
 	for (const value of Object.values(schema))
 		if (value && typeof value === "object") requiredTokens(value as JsonSchema, out, seen);
 }
@@ -87,7 +88,7 @@ export function checkToolBlock(tool: CompactToolInput, block: string): string[] 
 		if (optional && !mandatory) problems.push(`${tool.name}: shows required ${key} as optional`);
 	}
 	for (const keys of conditional)
-		if (keys.length && !block.includes(`${keys.join(" + ")} required`))
+		if (keys.length && !block.includes(`${inert(keys.join(" + "))} required`))
 			problems.push(`${tool.name}: loses the alternative requiring ${keys.join(" + ")}`);
 	for (const { field, note } of conditionallyRequired(tool.inputSchema)) {
 		const mandatory = new RegExp(`(^|[\\s{;/])"?${escapeRegExp(field)}"?:`, "m").test(block);

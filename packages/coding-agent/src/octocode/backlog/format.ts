@@ -8,6 +8,7 @@ import { taskBlock, taskLine } from "./task-format.ts";
 import { refuseExportSecrets } from "./export-secrets.ts";
 import { type BacklogCounts, openEpics } from "./counts.ts";
 import type { ItemMarks } from "./marks.ts";
+import type { AgentRun } from "../../../../db/src/api.ts";
 
 export const STATE_TITLE: Record<State, string> = {
 	ongoing: "Ongoing",
@@ -139,12 +140,29 @@ interface DetailOptions {
 	epicState?: State;
 	/** An epic's child items (any depth), listed with their state and a done count. */
 	children?: readonly Item[];
+	/** The agent runs started for the item: shown as a `Runs` block (agent, how it ended, outcome, cost). */
+	runs?: readonly AgentRun[];
 	/** Marks by item ref for the item and the items listed with it. */
 	marks?: ReadonlyMap<string, ItemMarks>;
 }
 
 /** Child lines shown before the rest is summarised. */
 const CHILD_LINES = 40;
+
+const RUN_LINES = 10;
+
+/** The runs of agents started for the item, newest first: who, how it ended, what it reported and what it cost. */
+function runsBlock(runs: readonly AgentRun[], now: number): string[] {
+	if (runs.length === 0) return [];
+	const lines = runs.slice(0, RUN_LINES).map((run) => {
+		const ended = run.endedAt === undefined ? "running" : `${run.endReason ?? "ended"} ${formatAgo(now - run.endedAt)}`;
+		const outcome = run.outcome ? ` · ${run.outcome}` : "";
+		const cost = `$${run.cost.toFixed(run.cost < 1 ? 3 : 2)}${run.unpriced ? "+" : ""}`;
+		return `- ${run.agentId} (${run.profile ?? run.kind}) ${ended}${outcome} · ${cost}`;
+	});
+	if (runs.length > RUN_LINES) lines.push(`- … and ${runs.length - RUN_LINES} more`);
+	return ["", `Runs (${runs.length}):`, ...lines];
+}
 
 /** The whole item: header, goal, where, why, evidence, plan, times, origin, body, derived items and its notes. */
 export function itemDetail(
@@ -179,6 +197,7 @@ export function itemDetail(
 	if (options.derived?.length)
 		lines.push("", `Derived items (${options.derived.length}):`, ...options.derived.map((child) => `- ${line(child)}`));
 	lines.push(...taskBlock(options.tasks ?? []));
+	lines.push(...runsBlock(options.runs ?? [], now));
 	if (notes.length > 0) {
 		const offset = options.noteOffset ?? 0;
 		const label =

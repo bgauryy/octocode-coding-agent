@@ -19,7 +19,6 @@ import * as loadedResources from "../src/modes/interactive/interactive-mode/load
 import * as resourceGroups from "../src/modes/interactive/interactive-mode/resource-groups.ts";
 import * as resourcePaths from "../src/modes/interactive/interactive-mode/resource-paths.ts";
 import * as statusIndicators from "../src/modes/interactive/interactive-mode/status-indicators.ts";
-import { handleGithubCommand } from "../src/modes/interactive/interactive-mode/github-command.ts";
 import * as viewState from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import type { ToolStatus } from "../src/utils/tools-manager.ts";
@@ -177,22 +176,13 @@ describe("InteractiveMode.showStatus", () => {
 	const CONTROLS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
 	const withoutColors = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
-	test("strips terminal controls from status text, such as a GitHub host name", async () => {
-		const fakeThis: any = {
-			chatContainer: new Container(),
-			ui: { requestRender: vi.fn() },
-			footerDataProvider: { setGithubStatusText: vi.fn() },
-			showExtensionConfirm: async () => true,
-		};
-		fakeThis.showStatus = (message: string) => statusIndicators.showStatus(createFakeHost(fakeThis), message);
-		const run = vi.fn(async (action: string) =>
-			action === "logout" ? { hostname: "github.com\u001b]0;pwned\u0007\u001b[2J" } : { authenticated: false },
-		);
+	test("strips terminal controls from status text, such as a host name", () => {
+		const fakeThis: any = { chatContainer: new Container(), ui: { requestRender: vi.fn() } };
 
-		await handleGithubCommand(createFakeHost(fakeThis), "logout", run as never);
+		statusIndicators.showStatus(createFakeHost(fakeThis), "Signed out on github.com\u001b]0;pwned\u0007\u001b[2J.");
 
 		const line = withoutColors(renderLastLine(fakeThis.chatContainer));
-		expect(line).toContain("Signed out of GitHub on github.com.");
+		expect(line).toContain("Signed out on github.com");
 		expect(line).not.toMatch(CONTROLS);
 	});
 

@@ -5,7 +5,7 @@
  * Credentials come from `ReadOnlyAuthStorage`, which never creates or writes `auth.json`. `list()` gives the provider
  * IDs and credential types; `readRaw()` (not `read()`) gives the stored entry so its shape can be classified. `read()`
  * would run a `!` reference, which is a shell command. A raw entry stays inside `classify` and only a source kind
- * leaves it. Precedence between `auth.json` and environment variables is not verified (RFC N3), so the snapshot lists
+ * leaves it. Precedence between `auth.json` and environment variables is not verified, so the snapshot lists
  * the sources that are present and never names an effective one.
  */
 

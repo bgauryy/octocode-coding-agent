@@ -95,14 +95,12 @@ describe("ConfigDiscovery agrees with the resource loader", () => {
 		expect(items[1].provenance.shadowedBy).toMatchObject({ scope: "project", product: "octocode" });
 	});
 
-	it("ranks a bundled skill above a user copy another tool installed, and below the agent directory", () => {
-		const bundled = join(sandbox.home, "bundled");
-		skillFile(bundled, "dup");
+	it("ranks the agent directory above a user copy another tool installed", () => {
 		skillFile(join(sandbox.home, ".agents", "skills"), "dup");
-		const withAgents = configDiscovery.discover("skill", input(false, { builtinSkillsDir: bundled }));
-		expect(withAgents.find((item) => item.loaded)?.provenance.scope).toBe("builtin");
+		const withAgents = configDiscovery.discover("skill", input(false));
+		expect(withAgents.find((item) => item.loaded)?.provenance).toMatchObject({ scope: "global", origin: "agents" });
 		skillFile(join(sandbox.agentDir, "skills"), "dup");
-		const deliberate = configDiscovery.discover("skill", input(false, { builtinSkillsDir: bundled }));
+		const deliberate = configDiscovery.discover("skill", input(false));
 		expect(deliberate.find((item) => item.loaded)?.provenance).toMatchObject({ scope: "global", origin: "octocode" });
 	});
 

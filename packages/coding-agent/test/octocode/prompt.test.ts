@@ -111,7 +111,7 @@ describe("prompt", () => {
 
 	it("hands results back without polling, choosing report, message or doc", () => {
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
-		expect(root).toContain("name a Markdown output path under `.octocode/<topic>/`");
+		expect(root).toContain("name a Markdown path under `.octocode/<topic>/`");
 		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
 		// The report contract rides in the child's task (`instructions/report.ts`), not in the policy.
 		expect(writer).not.toContain("reaches your parent by itself");
@@ -121,7 +121,7 @@ describe("prompt", () => {
 			writer,
 			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canSave: false, readOnly: true }),
 		]) {
-			expect(prompt.match(/ask your parent as your run mode says/g)).toHaveLength(1);
+			expect(prompt.match(/R -->\|background\| B\[message parent, needs a reply\]/g)).toHaveLength(1);
 			expect(prompt).not.toContain("replyTo");
 			expect(prompt).not.toContain("replyRequired");
 			expect(prompt).not.toContain("poll");
@@ -219,7 +219,7 @@ describe("prompt", () => {
 	it("states the report contract once, in the child's task, and nowhere in the policy, lean prompt or roles", () => {
 		const contract = reportContract();
 		expect(contract).toMatch(
-			/^Your final answer is your report and reaches your parent by itself\. Start it with the outcome word itself and a period, colon or dash, not a heading or a sentence: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\); then the answer or changes, verification, and the decisions or questions left for your parent\./,
+			/^Your final answer is your report and reaches your parent by itself\. Start it with the outcome word itself and a period, colon or dash, not a heading or a sentence: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\); then the answer or changes, verification, a `Noticed:` line \(anything surprising, risky or wrong you saw, even outside your task, or `none`\), and the decisions or questions left for your parent\./,
 		);
 		// The machine-consumed outcome words and the preview size the parent keeps.
 		expect(contract).toContain("`blocked` report");
@@ -319,9 +319,15 @@ describe("prompt", () => {
 		expect(reader).not.toContain("after editing");
 		const child = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
-		expect(child).toContain(
-			"ask your parent as your run mode says (in the background, a message to `parent` that needs an answer; in the foreground, a `blocked` report) and keep working on what does not depend on it",
-		);
+		// A stuck child asks whoever can settle it; the run mode decides how it reaches its parent.
+		for (const edge of [
+			"W -->|file or fact a teammate holds| M[message the teammate]",
+			"W -->|anything else| R{Run mode}",
+			"R -->|background| B[message parent, needs a reply]",
+			"R -->|foreground| F[say so in your report, do not wait]",
+			"Keep working on what does not depend on it; if it blocks completion, finish with a `blocked` report: its answer resumes you.",
+		])
+			expect(child).toContain(edge);
 		expect(child).toContain("checkpoint long tasks there");
 		for (const prompt of [child, root]) {
 			// The main session leads with the result; the report contract owns a child's status word, so a child has no opening rule.
@@ -346,7 +352,7 @@ describe("prompt", () => {
 		expect(child).not.toContain("keep going instead of ending the turn");
 		// The summary goes to the user; a child's report contract already asks for verification.
 		expect(root).toContain(
-			'- When you finish work that changed files, ran checks or left items open, and whenever the user asks for status ("done?", "continue"), end with a short TL;DR: what was done; files changed and what changed in each; checks run and results; what is left (open backlog items, running jobs and agents). Omit parts that do not apply; skip it only when the whole reply is a few lines.',
+			"- Close multi-step work, or a status request, with a TL;DR of 2 to 4 short lines: what changed, checks and results, what is left (items, jobs, agents). Later updates, a child's checked result included, say only what changed, in your words; never repeat what the user saw.",
 		);
 		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
@@ -368,7 +374,7 @@ describe("prompt", () => {
 			// The delegate clause is the delegator's instruction to itself about writing a brief, not a task it receives.
 			expect(root).toContain("Treat facts the user supplied and relevant skill instructions " + scope("the user"));
 			expect(root).toContain(
-				"how (settled facts, what to verify, constraints), when to stop (Definition of Done as evidence)",
+				"how (settled facts, what to verify, constraints), when to stop (Definition of Done as evidence, a pass/fail command when one exists)",
 			);
 			expect(root).not.toContain("In a delegated task");
 			const child = octocodePrompt({ octocode, profiles: [], canDelegate: false });
@@ -460,9 +466,7 @@ describe("prompt", () => {
 			octocodePrompt({ octocode: false, profiles: [], canDelegate: false }),
 			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canSave: false, readOnly: true }),
 		]) {
-			expect(child).toContain(
-				"If it blocks completion, finish with `blocked`: the answer resumes you, so always end with an outcome word.",
-			);
+			expect(child).toContain("Start your final report with an outcome word.");
 			// The report contract owns the question a blocked report ends with.
 			expect(child).not.toContain("and the question");
 			// B141: what each outcome does to the conversation is the report contract's, stated in the task.
@@ -501,8 +505,9 @@ describe("prompt", () => {
 			expect(prompt).toMatch(
 				/[Aa] deeper file wins within its directory, (and )?direct user instructions win over both/,
 			);
-		expect(root).toContain("Scale delegation: none for a lookup or small change");
-		expect(root).toContain("Delegate output-heavy triage so only the answer enters your context");
+		expect(root).toContain("Scale delegation:\n\n```mermaid");
+		expect(root).toContain("T{Task} -->|lookup or small change a few calls finish| N[do it yourself]");
+		expect(root).toContain("output-heavy triage so only its answer reaches you");
 		expect(writer).not.toContain("Scale delegation");
 	});
 

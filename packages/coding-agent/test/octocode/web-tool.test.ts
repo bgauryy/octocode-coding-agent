@@ -354,8 +354,8 @@ describe("web tool", () => {
 		);
 		// The schema is one flat object (a root union is refused or flattened by some providers): each field names its partner.
 		const { properties } = tool.parameters;
-		expect(properties.url.description).toContain("or query, not both");
-		expect(properties.query.description).toContain("or url, not both");
+		expect(properties.url.description).not.toContain("not both");
+		expect(properties.query.description).not.toContain("not both");
 		expect(fetch).not.toHaveBeenCalled();
 	});
 	beforeEach(() => {
@@ -857,7 +857,6 @@ describe("web images", () => {
 			fakePermission("full"),
 		);
 		expect(description).toMatch(/PNG, JPEG, GIF or WebP URL returns the image itself/);
-		expect(description).toContain("images are not");
 	});
 
 	it("leaves browser routing to the policy, which knows whether the session holds a browser", () => {
@@ -876,7 +875,7 @@ describe("web images", () => {
 		expect(guidelines.join(" ")).not.toMatch(/browser/i);
 		// The policy's evidence rule owns citing; this line is only how to use a fetched result.
 		expect(guidelines.join(" ")).not.toContain("Cite source URLs.");
-		expect(guidelines.join(" ")).toContain("Read the source behind a search snippet");
+		expect(guidelines).toEqual([]);
 		// Reading a saved page by range is stated beside maxChars, where the file appears, not as a second rule.
 		expect(guidelines.join(" ")).not.toContain("Read saved output");
 	});

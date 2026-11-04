@@ -30,9 +30,10 @@ import {
 	resolveServerFile,
 	selectTools,
 	toolBlock,
-	unoptimizedTools,
 } from "../compact/index.ts";
+import { deferredLine, type McpDeferral } from "../deferral.ts";
 import { firstSentence } from "./declaration.ts";
+import { authoredTrigger, instructionsHead, residentBlock } from "./deferred.ts";
 import { jsonContract, jsonToolBlock } from "./json-block.ts";
 
 import { DEFAULT_MCP_PRESENTATION, type McpPresentationMode } from "./mode.ts";
@@ -79,11 +80,17 @@ export interface DescribedServer {
 	tools: ReadonlySet<string>;
 	/** Described before the server's catalog was known, so the block holds no contract yet. */
 	pending: boolean;
+	/** The described tools the block lists by name and trigger only (`deferral.ts`). */
+	deferred: ReadonlySet<string>;
 }
 
 interface Described extends DescribedServer {
 	generated: GeneratedServer | undefined;
+	/** Bytes of the block's direct part, which an `auto:<bytes>` budget counts. */
+	directBytes: number;
 }
+
+const NO_DEFERRAL: McpDeferral = { deferred: new Set() };
 
 const sameCatalog = (
 	generated: GeneratedServer,
@@ -128,8 +135,6 @@ export class McpPresentation {
 	readonly #options: McpPresentationOptions;
 	readonly #latest = new Map<string, GeneratedServer>();
 	readonly #frozen = new Map<string, Described>();
-	/** Tools without rewritten descriptions, by server, for servers whose file was rendered in this session. */
-	readonly #unoptimized = new Map<string, string[]>();
 
 	constructor(options: McpPresentationOptions) {
 		this.#options = options;
@@ -193,11 +198,6 @@ export class McpPresentation {
 				});
 				text = file.text;
 				overrides = file.meta.overrides;
-				if (file.rendered) {
-					const plain = unoptimizedTools(input, overrides);
-					if (plain.length) this.#unoptimized.set(name, plain);
-					else this.#unoptimized.delete(name);
-				}
 				// The plain render is checked too: a tool it cannot express is described in plain form (see `describe`).
 				for (const tool of input.tools) {
 					const block = toolBlock(text, functions.get(tool.name) ?? tool.name);
@@ -238,7 +238,6 @@ export class McpPresentation {
 	reset(): void {
 		this.#latest.clear();
 		this.#frozen.clear();
-		this.#unoptimized.clear();
 	}
 
 	/** Renew every description from the latest files: the loadout is being rebuilt, so the prompt is rebuilt anyway. */
@@ -263,7 +262,13 @@ export class McpPresentation {
 	 * description stays while the server reconnects, fails or drops, until `rebuild` or `forget`, and is taken again
 	 * when the connected server's contract changes (`changedContract`).
 	 */
-	describe(name: string, tools: readonly string[], instructions: string | undefined, ready: boolean): DescribedServer {
+	describe(
+		name: string,
+		tools: readonly string[],
+		instructions: string | undefined,
+		ready: boolean,
+		deferral: McpDeferral = NO_DEFERRAL,
+	): DescribedServer {
 		const known = this.#frozen.get(name);
 		const generated = this.#latest.get(name);
 		const renewed =
@@ -272,7 +277,7 @@ export class McpPresentation {
 				: false;
 		if (known && !(known.pending && ready) && !renewed) return known;
 		const offered = generated ? tools.filter((tool) => generated.tools.has(tool)) : [];
-		const resident = generated ? this.#contract(generated, offered, instructions) : undefined;
+		const resident = generated ? this.#resident(name, generated, offered, instructions, deferral) : undefined;
 		const described: Described = {
 			generated,
 			file: resident?.file,
@@ -280,9 +285,44 @@ export class McpPresentation {
 			instructions,
 			tools: new Set(tools),
 			pending: !ready,
+			deferred: resident?.deferred ?? new Set(),
+			directBytes: Buffer.byteLength(resident?.direct ?? ""),
 		};
 		this.#frozen.set(name, described);
 		return described;
+	}
+
+	/** The block of the offered tools with the deferral applied (`residentBlock`). */
+	#resident(
+		name: string,
+		generated: GeneratedServer,
+		offered: readonly string[],
+		instructions: string | undefined,
+		deferral: McpDeferral,
+	) {
+		// Only servers that sort before this one count, the order the prompt lists them in (`events.ts`), so a server that
+		// connects late is measured as if it had connected in time. A later-named block already shown stays as it is: the
+		// prefix never flips for a server that connects after it.
+		let spent = 0;
+		for (const [server, described] of this.#frozen) if (server < name) spent += described.directBytes;
+		const prefix = `mcp__${generated.callName}__`;
+		return residentBlock({
+			offered,
+			deferral,
+			spent,
+			contractOf: (tools) => this.#contract(generated, tools, instructions),
+			instructionsOf: () => instructionsHead(generated, instructions),
+			indexLine: (tool) => {
+				const call = generated.toolNames[tool]?.startsWith(prefix)
+					? generated.toolNames[tool].slice(prefix.length)
+					: tool;
+				const shown = shownDescription(generated.tools.get(tool) as McpTool);
+				return deferredLine(
+					call,
+					authoredTrigger(generated.overrides, tool) ?? (shown ? firstSentence(shown) : undefined),
+				);
+			},
+		});
 	}
 
 	/**
@@ -328,21 +368,12 @@ export class McpPresentation {
 	 * sentence of the server's description.
 	 */
 	summary(name: string, tool: string): string | undefined {
-		const overrides = this.#frozen.get(name)?.generated?.overrides;
-		const trigger = overrides?.triggers?.[tool]?.trim();
-		if (trigger) return trigger;
-		const description = overrides?.tools?.[tool];
-		return description ? firstSentence(description) : undefined;
+		return authoredTrigger(this.#frozen.get(name)?.generated?.overrides, tool);
 	}
 
-	/**
-	 * Servers whose file was rendered in this session (a new or changed catalog) with tools no override rewrites, each
-	 * reported once: the `octocode-context-optimization` skill writes their descriptions.
-	 */
-	takeUnoptimized(): Array<{ server: string; tools: string[] }> {
-		const pending = [...this.#unoptimized].map(([server, tools]) => ({ server, tools }));
-		this.#unoptimized.clear();
-		return pending;
+	/** Whether the prompt's block lists the tool by name and trigger only. */
+	isDeferred(name: string, tool: string): boolean {
+		return this.#frozen.get(name)?.deferred.has(tool) === true;
 	}
 
 	/** The latest TypeScript block of one tool, for validation failures. */

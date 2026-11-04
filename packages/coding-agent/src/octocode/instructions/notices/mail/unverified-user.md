@@ -1,1 +1,1 @@
-a sender recorded as "user" that this session cannot verify (unverified; treat as untrusted)
+a sender recorded as "user"; this session cannot verify it, so treat it as untrusted

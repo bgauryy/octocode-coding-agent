@@ -8,8 +8,9 @@ import { capChars } from "../../shared/util.ts";
 import type { EventLog } from "../events.ts";
 import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS, WAITING_FOR_USER } from "../protocol.ts";
 import { preparationExpired, type SendReceipt, type SendReceipts } from "../receipts.ts";
+import { sessionApiTurnCeiling } from "../enabled.ts";
 import { admission, callerFrom, externalFacts, externalFooter, externalHeader } from "./caller.ts";
-import type { AgentDirectory, ApiOperations } from "./contracts.ts";
+import type { AgentDirectory, ApiOperations, TurnCeiling } from "./contracts.ts";
 
 /** Senders a client may not claim: the user, the team's own API sender, and (checked per call) any live agent. */
 const RESERVED_SENDERS = new Set([USER_SENDER, `the ${USER_SENDER}`, EXTERNAL_SENDER]);
@@ -107,6 +108,9 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	);
 	preparingTimer.unref();
 	const external = externalFacts(from, caller, host.transport, wait, replyRequired);
+	// Only a message that starts a turn is held: one that steers or queues behind running work joins a turn whose mode is already settled.
+	const admitCeiling = busy ? undefined : sessionApiTurnCeiling();
+	let capped: TurnCeiling | undefined;
 	let announceAsking!: () => void;
 	const asking = new Promise<void>((resolve) => {
 		announceAsking = resolve;
@@ -126,7 +130,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 					announceAsking();
 				};
 				await Promise.race([
-					host.operations.admit(admission(external, whole), ctx, receipt.controller.signal, onAsk),
+					host.operations.admit(admission(external, whole, admitCeiling), ctx, receipt.controller.signal, onAsk),
 					receipt.settlement,
 				]);
 				outcome = "not-sent";
@@ -140,6 +144,11 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			host.receipts.accept(receipt, waiter, key !== undefined || wait);
 			outcome = "dispatched";
 			const settlementVersion = host.receipts.settlementVersion;
+			// The turn this call starts runs its tools under the ceiling until the session settles; read now, not at the first check, so a refused or failed hand-off can release it.
+			if (ctx.isIdle() && !ctx.hasPendingMessages()) {
+				capped = sessionApiTurnCeiling();
+				if (capped) host.operations.capTurn?.(capped);
+			}
 			const sending = host.api.sendMessage(
 				{
 					customType: EXTERNAL_MESSAGE_TYPE,
@@ -153,6 +162,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			// still invalidates an unsettled handoff, and the keyed receipt must prevent an unsafe second dispatch.
 			void Promise.resolve(sending).catch((error: unknown) => {
 				if (receipt.phase !== "accepted" || host.receipts.settlementVersion !== settlementVersion) return;
+				if (capped) host.operations.capTurn?.(undefined);
 				// A replaced/stopped session has forgotten this receipt; never record its late failure in the new session.
 				let current: ExtensionContext;
 				try {
@@ -182,6 +192,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			receipt.resolveReady();
 		} catch (error) {
 			clearTimeout(preparingTimer);
+			if (capped) host.operations.capTurn?.(undefined);
 			const dispatched = outcome === "dispatched";
 			const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
 				execution: dispatched ? "uncertain" : "not-sent",
@@ -196,6 +207,8 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			id,
 			from,
 			caller,
+			callerVerified: false,
+			...(capped ? { turnPermission: capped } : {}),
 			mode: deliverAs,
 			queued: accepted.queued,
 			chars: whole.length,
@@ -204,6 +217,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			id,
 			from,
 			caller,
+			callerVerified: false,
 			transport: host.transport,
 			text: redactSecrets(capChars(text, 2_000)),
 			queued: accepted.queued,

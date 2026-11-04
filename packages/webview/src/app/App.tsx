@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import type { BacklogStore, LiveExtension, ViewDefinition } from "./extension.ts";
 import { AppHeader, Tabs } from "./features/AppHeader.tsx";
@@ -13,11 +13,13 @@ import { BoardSkeleton } from "./features/ViewSkeleton.tsx";
 import { hasOpenModal, navigate, replaceHash, useHashRoute, useHotkeys } from "./hooks.ts";
 import { attention, indexBacklog } from "./model/backlog.ts";
 import { reportLinkHref } from "./model/reports.ts";
+import { NEEDS_YOU_PANEL_ID, type NeedsYou, titleWithCount } from "./model/needs-you.ts";
 import { hashFor, type Params, resolveRoute } from "./model/route.ts";
 import { AlertIcon, BoardIcon, PlusIcon, TableIcon, TerminalIcon, TreeIcon } from "./ui/icons.tsx";
 import { RichTextContext } from "./ui/LongText.tsx";
 import { Button, Skeleton, SkeletonLine } from "./ui/primitives.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
+import { StateMark } from "./ui/StateMark.tsx";
 
 const BASE_VIEWS: readonly ViewDefinition[] = [
 	{ name: "board", label: "Board", Icon: BoardIcon, Component: BoardView },
@@ -47,6 +49,28 @@ export function App({
 	live: LiveExtension | null;
 	access?: string;
 }) {
+	// The shell sits inside the live provider so it can read the session (what waits on the user).
+	return live ? (
+		<live.Provider access={access} backlog={backlog}>
+			<Shell backlog={backlog} live={live} />
+		</live.Provider>
+	) : (
+		<Shell backlog={backlog} live={null} />
+	);
+}
+
+const noNeedsYou = (): NeedsYou | undefined => undefined;
+
+/** Moves to the dialog the composer already shows (Activity), else opens the inline one; false when nothing waits. */
+function focusInlineAnswer(): boolean {
+	const inline = document.querySelector<HTMLElement>(".session-panel .dialog-answer");
+	if (!inline) return false;
+	inline.scrollIntoView?.({ block: "center" });
+	inline.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)")?.focus();
+	return true;
+}
+
+function Shell({ backlog, live }: { backlog: BacklogStore; live: LiveExtension | null }) {
 	const snapshot = useStore(backlog, (state) => state.snapshot);
 	const loaded = useStore(backlog, (state) => state.loaded);
 	const index = useMemo(() => indexBacklog(snapshot), [snapshot]);
@@ -82,6 +106,24 @@ export function App({
 	);
 	const backToView = () => navigate(hashFor(viewName, nav.params[viewName]));
 
+	const needs = (live?.useNeedsYou ?? noNeedsYou)();
+	const [needsOpen, setNeedsOpen] = useState(false);
+	if (!needs && needsOpen) setNeedsOpen(false);
+	const needsCount = needs?.count ?? 0;
+	useEffect(() => {
+		document.title = titleWithCount(document.title, needsCount);
+		return () => {
+			document.title = titleWithCount(document.title, 0);
+		};
+	}, [needsCount]);
+	const answerWaiting = useCallback(() => {
+		if (!focusInlineAnswer()) setNeedsOpen(true);
+	}, []);
+	const closeNeeds = useCallback(() => {
+		setNeedsOpen(false);
+		document.getElementById("needs-you-pill")?.focus();
+	}, []);
+
 	const [paletteOpen, setPaletteOpen] = useState(false);
 	const closePalette = useCallback(() => setPaletteOpen(false), []);
 	useHotkeys([
@@ -93,6 +135,16 @@ export function App({
 
 	const commands = useMemo(() => {
 		const actions: PaletteCommand[] = [];
+		if (needs) {
+			actions.push({
+				id: "action:answer",
+				label: "Answer waiting question",
+				group: "Actions",
+				keywords: `approval approve deny dialog needs you ${needs.title}`,
+				icon: <StateMark state="waiting" />,
+				run: answerWaiting,
+			});
+		}
 		if (editable) {
 			actions.push({
 				id: "action:new",
@@ -115,7 +167,7 @@ export function App({
 			});
 		}
 		return buildCommands(index, views, navigate, actions);
-	}, [index, views, live, editable]);
+	}, [index, views, live, editable, needs, answerWaiting]);
 
 	const badges = useMemo(() => {
 		const { claims, idle } = attention(index);
@@ -137,6 +189,16 @@ export function App({
 						loaded={loaded}
 						live={live !== null}
 						status={live ? <live.ConnectionStatus /> : undefined}
+						needsYou={
+							needs
+								? {
+										count: needs.count,
+										open: needsOpen,
+										controls: NEEDS_YOU_PANEL_ID,
+										onToggle: needsOpen ? closeNeeds : answerWaiting,
+									}
+								: undefined
+						}
 						actions={
 							live ? (
 								<>
@@ -164,6 +226,7 @@ export function App({
 						onOpenPalette={() => setPaletteOpen(true)}
 					/>
 					<Tabs views={views} current={current.name} saved={nav.params} badges={badges} />
+					{live && needs && needsOpen && <live.NeedsYouAnswer needs={needs} onClose={closeNeeds} />}
 				</header>
 				<main id="main">
 					{!loaded && BASE_VIEWS.includes(current) ? (
@@ -193,13 +256,7 @@ export function App({
 			{paletteOpen && <CommandPalette commands={commands} onClose={closePalette} />}
 		</RichTextContext.Provider>
 	);
-	return live ? (
-		<live.Provider access={access} backlog={backlog}>
-			{app}
-		</live.Provider>
-	) : (
-		app
-	);
+	return app;
 }
 
 function ItemSheet({

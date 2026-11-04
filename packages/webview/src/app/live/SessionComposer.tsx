@@ -3,6 +3,7 @@ import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { choice, plural } from "../model/format.ts";
+import { answerNote, canAnswer } from "../model/needs-you.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Field, Select } from "../ui/fields.tsx";
 import { SendIcon, StopIcon } from "../ui/icons.tsx";
@@ -91,7 +92,7 @@ function SessionComposerForSession() {
 	if (!session || !connection) return null;
 
 	const badge = sessionBadge(session);
-	const answerable = session.capabilities.includes("answer");
+	const answerable = canAnswer(session);
 	const choices = session.capabilities.filter(
 		(action): action is SessionAction => action === "prompt" || action === "steer" || action === "followUp",
 	);
@@ -235,10 +236,7 @@ function SessionComposerForSession() {
 				) : (
 					<>
 						Messages go to the terminal session that opened this page: <code>{session.sessionId}</code>. Replies appear
-						in Activity below.{" "}
-						{answerable
-							? "Approvals and questions can be answered here or in that terminal."
-							: "Approvals appear in that terminal."}
+						in Activity below. {answerNote(answerable)}
 					</>
 				)}
 			</p>

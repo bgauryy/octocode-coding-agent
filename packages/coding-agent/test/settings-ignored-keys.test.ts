@@ -24,7 +24,7 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("settings keys Octocode ignores", () => {
-	it("reports a removed compaction block as an unknown key, with no replacement text", () => {
+	it("reports a removed compaction block as removed, saying what controls it now", () => {
 		writeFileSync(
 			globalPath,
 			JSON.stringify({
@@ -40,7 +40,7 @@ describe("settings keys Octocode ignores", () => {
 		expect(diagnostics[0]?.type).toBe("warning");
 		expect(diagnostics[0]?.message).toContain(`Settings file ${globalPath}:`);
 		expect(diagnostics[0]?.message).toBe(
-			`Settings file ${globalPath}: Setting "compaction" is not a known setting, so it does nothing. Check the spelling, or delete it from the file.`,
+			`Settings file ${globalPath}: Setting "compaction" was removed, so it does nothing. Compaction is built in and its thresholds are fixed by the model's context window and thinking setup; no setting changes them. Delete it from the file.`,
 		);
 		// Loading stays permissive: the known keys still apply and the unknown one is kept in the file.
 		expect(manager.getTheme()).toBe("dark");
@@ -54,6 +54,25 @@ describe("settings keys Octocode ignores", () => {
 		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
 
 		expect(warning?.message).toContain('Setting "defaultModle" is not a known setting, so it does nothing.');
+	});
+
+	it("warns about an unknown key inside a known object setting, by dotted path", () => {
+		writeFileSync(globalPath, JSON.stringify({ thinkingBudgets: { high: 1, xhigh: 2 }, bash: { nope: 1 } }));
+
+		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
+
+		expect(messages).toHaveLength(2);
+		expect(messages.join("\n")).toContain('Setting "thinkingBudgets.xhigh" is not a known setting');
+		expect(messages.join("\n")).toContain('Setting "bash.nope" is not a known setting');
+		expect(messages.join("\n")).not.toContain("thinkingBudgets.high");
+	});
+
+	it("does not treat an inherited property name as a removed key", () => {
+		writeFileSync(globalPath, JSON.stringify({ constructor: 1 }));
+
+		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
+
+		expect(warning?.message).toContain('Setting "constructor" is not a known setting');
 	});
 
 	it("reports the removed codemode keys as unknown keys", () => {
@@ -120,7 +139,7 @@ describe("settings keys Octocode ignores", () => {
 		untrusted.setProjectTrusted(true);
 		const [warning] = collectSettingsDiagnostics(untrusted);
 		expect(warning?.message).toContain(`Settings file ${projectPath}:`);
-		expect(warning?.message).toContain('Setting "compaction" is not a known setting');
+		expect(warning?.message).toContain('Setting "compaction" was removed');
 
 		expect(collectSettingsDiagnostics(SettingsManager.createForStartup(cwd, agentDir, true))).toHaveLength(1);
 	});

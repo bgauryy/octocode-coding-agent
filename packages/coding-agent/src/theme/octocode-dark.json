@@ -16,8 +16,8 @@
 		"muted": "#A7B0BC",
 		"dim": "#8B949E",
 		"faint": "#6E7681",
-		"line": "#30363D",
-		"lineSoft": "#21262D"
+		"line": "#434B55",
+		"lineSoft": "#373E48"
 	},
 	"colors": {
 		"accent": "purple",
@@ -48,7 +48,7 @@
 		"mdLinkUrl": "dim",
 		"mdCode": "cyan",
 		"mdCodeBlock": "",
-		"mdCodeBlockBorder": "line",
+		"mdCodeBlockBorder": "faint",
 		"mdQuote": "muted",
 		"mdQuoteBorder": "faint",
 		"mdHr": "faint",
@@ -72,6 +72,6 @@
 		"thinkingHigh": "gold",
 		"thinkingXhigh": "coral",
 		"thinkingMax": "red",
-		"bashMode": "gold"
+		"bashMode": "dim"
 	}
 }

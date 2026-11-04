@@ -27,9 +27,10 @@ describe("manual compaction with nothing to compact", () => {
 
 		expect(error).toBeInstanceOf(NothingToCompactError);
 		expect(error).toMatchObject({
-			message: "Nothing to compact (session too small)",
-			notice: "Nothing to compact yet",
+			message: expect.stringMatching(/recent history is about 0 tokens, below the [\d,]+-token budget/),
+			notice: expect.stringMatching(/^Nothing to compact yet: .*below the [\d,]+-token budget/),
 		});
+		expect((error as Error).message).not.toMatch(/too small/);
 		expect(harness.eventsOfType("compaction_start")).toEqual([]);
 		expect(harness.eventsOfType("compaction_end")).toEqual([]);
 		expect(failed).toEqual([]);

@@ -12,7 +12,6 @@ import {
 	getLegacyConfigDirs,
 	getOctocodeHome,
 	getPackageDir,
-	getResearchCliInvocation,
 	isBunBinary,
 	VERSION,
 } from "../../config.ts";
@@ -40,7 +39,6 @@ const identity: McpHostPorts["identity"] = {
 	version: VERSION,
 	isBunBinary: () => isBunBinary,
 	packageDir: () => getPackageDir(),
-	researchCliInvocation: getResearchCliInvocation,
 };
 
 const paths: McpHostPorts["paths"] = {

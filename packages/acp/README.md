@@ -43,4 +43,4 @@ yarn run build:offline
 
 `test/server/` and `test/client/` cover the relocated broker, history, input, approvals, startup ownership, process lifecycle, output bounds and redaction. Real coding-agent CLI/RPC/API integration tests and the Python SDK, TCK and reliability runners remain in `packages/coding-agent/test/`; their commands are in the [ACP guide](../coding-agent/docs/acp.md#verify-the-transports).
 
-The package ownership test rejects a second source owner or a private runtime dependency and verifies staging of the inbound entry point, outbound manager and MCP handoff. Installed-package smoke tests import both shipped ACP entry points. See [dated validation](../../docs/FEATURE_VALIDATION.md) for actual run results and unverified platforms.
+The package ownership test rejects a second source owner or a private runtime dependency and verifies staging of the inbound entry point, outbound manager and MCP handoff. Installed-package smoke tests import both shipped ACP entry points.

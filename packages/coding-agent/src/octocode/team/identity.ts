@@ -109,7 +109,7 @@ export function agentName(taken: Iterable<string> = [], random: () => number = M
  */
 export const GOAL_SHOWN_CHARS = 48;
 const GOAL_EXAMPLE = "audit auth token refresh";
-export const GOAL_DESCRIPTION = `Verb phrase for the panel; about ${GOAL_SHOWN_CHARS} characters fit, e.g. "${GOAL_EXAMPLE}"`;
+export const GOAL_DESCRIPTION = `Verb phrase for the panel; about ${GOAL_SHOWN_CHARS} characters fit`;
 
 /** The goal as it is stored and shown: terminal escapes removed and whitespace collapsed. Only a missing goal is refused. */
 export function checkGoal(input: unknown): string {

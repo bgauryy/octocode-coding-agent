@@ -26,10 +26,8 @@ describe("FooterDataProvider as a state source", () => {
 		data.setAvailableProviderCount(0);
 		data.clearExtensionStatuses();
 		data.clearExtensionStatuses();
-		data.setGithubStatusText("GitHub");
-		data.setGithubStatusText("GitHub");
 		data.setAvailableProviderCount(3);
-		expect(listener).toHaveBeenCalledTimes(4);
+		expect(listener).toHaveBeenCalledTimes(3);
 		data.dispose();
 	});
 
@@ -54,16 +52,12 @@ describe("FooterDataProvider as a state source", () => {
 		const listener = vi.fn();
 		data.subscribe(listener);
 		data.setExtensionStatus("jobs", "2 bash jobs", "accent");
-		data.setGithubStatusText("GitHub ✓ @octo", "success");
 		expect(data.getState().statuses.get("jobs")).toEqual({ text: "2 bash jobs", tone: "accent" });
-		expect(data.getState().githubStatus).toEqual({ text: "GitHub ✓ @octo", tone: "success" });
 		expect(data.getExtensionStatuses().get("jobs")).toBe("2 bash jobs");
-		expect(data.getGithubStatusText()).toBe("GitHub ✓ @octo");
 		// The same text in another tone is a change; the same text and tone is not.
 		data.setExtensionStatus("jobs", "2 bash jobs", "warning");
 		data.setExtensionStatus("jobs", "2 bash jobs", "warning");
-		data.setGithubStatusText("GitHub ✓ @octo", "warning");
-		expect(listener).toHaveBeenCalledTimes(4);
+		expect(listener).toHaveBeenCalledTimes(2);
 		expect(data.getState().statuses.get("jobs")?.tone).toBe("warning");
 		data.dispose();
 	});

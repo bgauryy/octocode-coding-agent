@@ -28,11 +28,18 @@ export interface ExternalAdmission {
 	text: string;
 	/** This process's own name, for what the sender reads back. */
 	self: string;
+	/** Set when the message starts a turn on an idle session: it is judged in at most this mode, whatever the session's. */
+	ceiling?: TurnCeiling;
 }
+
+/** The mode a turn an API client starts is held to (`sessionApiTurnPermission`); the session's own mode applies when it is stricter. */
+export type TurnCeiling = "workspace";
 
 export interface ApiOperations {
 	messageSend?(message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal): Promise<void>;
 	/** Whether this message may reach the session (a permission check); throws what the sender reads. `onAsk`: it waits for the user. */
 	admit?(claim: ExternalAdmission, ctx: ExtensionContext, signal?: AbortSignal, onAsk?: () => void): Promise<void>;
+	/** Holds the session's tool calls to `ceiling` until it is called with `undefined`: the turn an API client started. */
+	capTurn?(ceiling: TurnCeiling | undefined): void;
 	externalCall?(params: unknown, ctx: ExtensionContext): Promise<unknown>;
 }

@@ -1,14 +1,15 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrusted } from "./fence.ts";
+import { isWorkspaceReader } from "./local-reads.ts";
 
 /**
  * Web pages, search snippets and the results of MCP servers (GitHub content, browser pages, third-party servers) are text
  * written by someone other than the user, so a request shows each of them inside a fence that says it is data (OWASP
- * LLM01, Microsoft Spotlighting). Local reads and searches of the user's own workspace (`LOCAL_RESEARCH_TOOLS`) are not
- * fenced: they are the repository the user asked about, and a fence would only cost tokens on every read.
+ * LLM01, Microsoft Spotlighting). Reads and searches of the user's own workspace (the reader and search roles of trusted
+ * MCP entries, `isWorkspaceReader`) are not fenced: they are the repository the user asked about, and a fence would only
+ * cost tokens on every read. A project entry's roles count only in a trusted project, so an untrusted server stays fenced.
  *
  * The fence is added when the request is built (`requestMessages`), never to the stored result, so:
  * - the session, the terminal, the API and ACP show and keep the text as the tool returned it;
@@ -18,11 +19,9 @@ import { fenceUntrusted } from "./fence.ts";
  *   close its fence early.
  */
 
-const LOCAL_TOOLS: ReadonlySet<string> = new Set(LOCAL_RESEARCH_TOOLS);
-
 /** Whether the result of `toolName` carries text from outside the user's workspace. */
 const isUntrustedSource = (toolName: string): boolean =>
-	toolName === "web" || (toolName.startsWith("mcp__") && !LOCAL_TOOLS.has(toolName));
+	toolName === "web" || (toolName.startsWith("mcp__") && !isWorkspaceReader(toolName));
 
 const fenceText = (toolName: string, text: string): string =>
 	fenceUntrusted(`Result of ${toolName}`, text, {

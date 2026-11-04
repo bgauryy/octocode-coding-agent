@@ -4,8 +4,19 @@ import { resolveToolPath } from "./home.ts";
 import { canonicalPath } from "./home/repo.ts";
 import { sha256, sha256File } from "../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { LOCAL_READ_TOOLS, OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
-export { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+
+/**
+ * The reader contract: any MCP tool an entry declares as a `reader` or `search` role (`currentToolRoles`, trusted entries
+ * only) can credit reads of workspace files to the file guard. Nothing here knows a server's result shape: a result is
+ * credited only where its text equals the file on disk, unchanged since the call began.
+ * - Before the call, every string under a key named `path` in the input (depth 6 or less) is snapshotted; a search role
+ *   also snapshots directories, as the time its search began.
+ * - After it, the result's structured content (or its one JSON text block) is walked. A string whose non-empty lines
+ *   are all `N<TAB>text` (`--` separates groups) shows lines of the nearest enclosing object's `path` (resolved against
+ *   the nearest absolute `root` or `base`, else cwd; with no such object, the input's only path). A line counts when its
+ *   text is line N of the file. A string whose SHA-256 is the file's is a whole read.
+ */
 
 interface LocalRead {
 	file: string;
@@ -35,9 +46,67 @@ export function appendReadDigests<T extends { type: string }>(
 /** A file's identity before retrieval; a searched directory has no file identity, only `searchedAt`, when the search began. */
 type Snapshot = { sha256: string; size: number; mtimeMs: number; ctimeMs: number; searchedAt?: number };
 
-const SEARCH_TOOL = `${OCTOCODE_TOOL_PREFIX}localSearch`;
-/** A search row's lines are checked against the whole file; a larger file is not credited (read it with localFetch). */
-const SEARCH_CREDIT_MAX_BYTES = 2 * 1024 * 1024;
+/** Every credit is checked against the whole file; a larger file is not credited. */
+const CREDIT_MAX_BYTES = 2 * 1024 * 1024;
+/** How deep in the input `path` keys are looked for. */
+const INPUT_PATH_DEPTH = 6;
+/** How deep a result is walked; deeper values are not credited. */
+const RESULT_DEPTH = 64;
+const NUMBERED = /^(\d+)\t([\s\S]*)$/;
+
+/**
+ * Whether a tool is a reader or search role of the session's MCP entries (`roles` in their config, never server hints):
+ * a project entry's roles count only in a trusted project, so an untrusted server cannot make its output a workspace read.
+ */
+export function isWorkspaceReader(tool: string): boolean {
+	const roles = currentToolRoles();
+	return roles.readers.has(tool) || roles.searches.has(tool);
+}
+
+/** Keys that name where a reader looks: `path`, `root`, `cwd`, `dir`, `directory`, or a name ending in one (`workspaceRoot`). */
+const LOCATION_KEY = /^(?:path|root|cwd|dir|directory)$|(?:Path|Root|Cwd|Dir|Directory)$/;
+/** Keys that explain a call rather than act. */
+const EXPLANATION_KEYS = new Set(["reason", "reasoning", "mainGoal"]);
+
+function locations(value: unknown, depth = 0, out: string[] = []): string[] {
+	if (depth > INPUT_PATH_DEPTH) return out;
+	if (Array.isArray(value)) for (const item of value) locations(item, depth + 1, out);
+	else if (isRecord(value))
+		for (const [key, item] of Object.entries(value)) {
+			if (LOCATION_KEY.test(key) && typeof item === "string" && item !== "") out.push(item);
+			else if (!EXPLANATION_KEYS.has(key)) locations(item, depth + 1, out);
+		}
+	return out;
+}
+
+/**
+ * Every location a reader's input names (for read trust), and whether a request in it names none. Input naming no
+ * location at its top level is a batch: each object in its top-level arrays is a request, and one naming no location may
+ * read wherever the server chooses.
+ */
+export function readerLocations(input: Record<string, unknown>): { files: string[]; unnamed: boolean } {
+	const named = (value: unknown, key: string) => LOCATION_KEY.test(key) && typeof value === "string" && value !== "";
+	const topLevel = Object.entries(input).some(([key, value]) => named(value, key));
+	const unnamed =
+		!topLevel &&
+		Object.values(input).some(
+			(value) => Array.isArray(value) && value.some((item) => isRecord(item) && locations(item).length === 0),
+		);
+	return { files: locations(input), unnamed };
+}
+
+/** Every non-empty string under a key named `path`, at depth `INPUT_PATH_DEPTH` or less. */
+function inputPaths(value: unknown, depth = 0, out: string[] = []): string[] {
+	if (depth > INPUT_PATH_DEPTH) return out;
+	if (Array.isArray(value)) for (const item of value) inputPaths(item, depth + 1, out);
+	else if (isRecord(value))
+		for (const [key, item] of Object.entries(value)) {
+			if (key === "path" && typeof item === "string") {
+				if (item !== "") out.push(item);
+			} else inputPaths(item, depth + 1, out);
+		}
+	return out;
+}
 
 /** Capture requested files before retrieval so a changed file cannot be credited as the returned version. */
 export async function snapshotLocalReads(
@@ -46,18 +115,19 @@ export async function snapshotLocalReads(
 	cwd: string,
 ): Promise<Map<string, Snapshot>> {
 	const snapshots = new Map<string, Snapshot>();
-	if (!LOCAL_READ_TOOLS.has(tool) && tool !== SEARCH_TOOL) return snapshots;
-	for (const query of Array.isArray(input.queries) ? input.queries : []) {
-		if (!isRecord(query) || typeof query.path !== "string") continue;
-		const file = canonicalPath(resolveToolPath(cwd, query.path));
+	const search = currentToolRoles().searches.has(tool);
+	if (!isWorkspaceReader(tool)) return snapshots;
+	for (const raw of new Set(inputPaths(input))) {
+		const file = canonicalPath(resolveToolPath(cwd, raw));
 		try {
 			const stat = fs.statSync(file);
-			if (stat.isDirectory() && tool === SEARCH_TOOL) {
-				snapshots.set(file, { sha256: "", size: 0, mtimeMs: 0, ctimeMs: 0, searchedAt: Date.now() });
+			if (stat.isDirectory()) {
+				if (search) snapshots.set(file, { sha256: "", size: 0, mtimeMs: 0, ctimeMs: 0, searchedAt: Date.now() });
 				continue;
 			}
-			const sha256 = stat.isFile() ? await sha256File(file) : undefined;
-			if (sha256) snapshots.set(file, { sha256, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
+			if (!stat.isFile() || stat.size > CREDIT_MAX_BYTES) continue;
+			const digest = await sha256File(file);
+			snapshots.set(file, { sha256: digest, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
 		} catch {
 			/* Retrieval reports unreadable paths. */
 		}
@@ -65,154 +135,111 @@ export async function snapshotLocalReads(
 	return snapshots;
 }
 
-/**
- * Credit only successful, untransformed source windows from files unchanged throughout retrieval. The server leaves a
- * row's `path` out when it repeats the request's, so such a row names the file of `input.queries[row.index]`.
- */
+/** A result's data: its structured content, else its one text block parsed as JSON; nothing for an error. */
+function resultData(output: unknown): unknown {
+	if (!isRecord(output) || output.isError === true) return undefined;
+	if (output.structuredContent !== undefined) return output.structuredContent;
+	const blocks = output.content;
+	if (!Array.isArray(blocks) || blocks.length !== 1) return undefined;
+	const [block] = blocks as unknown[];
+	if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") return undefined;
+	try {
+		return JSON.parse(block.text) as unknown;
+	} catch {
+		return undefined;
+	}
+}
+
+/** `[n, text]` of each line of a numbered string, or undefined when any non-empty, non-`--` line is not numbered. */
+function numberedLines(value: string): Array<[number, string]> | undefined {
+	const shown: Array<[number, string]> = [];
+	for (const line of value.split("\n")) {
+		if (line === "" || line === "--") continue;
+		const match = NUMBERED.exec(line);
+		if (!match) return undefined;
+		shown.push([Number(match[1]), match[2]]);
+	}
+	return shown.length ? shown : undefined;
+}
+
+interface Shown {
+	lines: Map<string, Array<[number, string]>>;
+	texts: Map<string, string[]>;
+}
+
+function entries<T>(map: Map<string, T[]>, file: string): T[] {
+	let list = map.get(file);
+	if (!list) map.set(file, (list = []));
+	return list;
+}
+
+/** Collects, by the file each belongs to, the numbered lines and the strings a result shows. */
+function collect(value: unknown, file: string | undefined, base: string, depth: number, shown: Shown): void {
+	if (depth > RESULT_DEPTH) return;
+	if (typeof value === "string") {
+		if (file === undefined) return;
+		const numbered = numberedLines(value);
+		if (numbered) entries(shown.lines, file).push(...numbered);
+		else entries(shown.texts, file).push(value);
+		return;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) collect(item, file, base, depth + 1, shown);
+		return;
+	}
+	if (!isRecord(value)) return;
+	const root = [value.root, value.base].find((item) => typeof item === "string" && path.isAbsolute(item));
+	const nextBase = typeof root === "string" ? root : base;
+	const named = typeof value.path === "string" && value.path !== "" ? value.path : undefined;
+	const nextFile =
+		named === undefined
+			? file
+			: canonicalPath(path.isAbsolute(named) ? named : resolveToolPath(nextBase, named));
+	for (const [key, item] of Object.entries(value))
+		if (key !== "path" && key !== "root" && key !== "base") collect(item, nextFile, nextBase, depth + 1, shown);
+}
+
+/** Credit only text that equals the file on disk, from files unchanged throughout retrieval. */
 export async function completedLocalReads(
 	snapshots: Map<string, Snapshot>,
 	output: unknown,
 	cwd: string,
 	input?: unknown,
 ): Promise<LocalRead[]> {
-	// MCP results may expose server data directly or wrap it in CallToolResult.
-	if (isRecord(output) && isRecord(output.structuredContent)) {
-		if (output.isError === true) return [];
-		output = output.structuredContent;
-	}
-	if (!isRecord(output) || !Array.isArray(output.results)) return [];
-	const queries = isRecord(input) && Array.isArray(input.queries) ? input.queries : [];
+	if (!snapshots.size) return [];
+	const data = resultData(output);
+	if (data === undefined) return [];
+	const requested = [...new Set(inputPaths(input))];
+	const only = requested.length === 1 ? canonicalPath(resolveToolPath(cwd, requested[0])) : undefined;
+	const shown: Shown = { lines: new Map(), texts: new Map() };
+	collect(data, only, cwd, 0, shown);
 	const reads: LocalRead[] = [];
-	for (const [position, row] of output.results.entries()) {
-		if (!isRecord(row) || row.status === "error" || !isRecord(row.data)) continue;
-		const data = row.data;
-		const query: unknown = queries[nonnegative(row.index) ? row.index : position];
-		if (Array.isArray(data.files)) {
-			const root = output.root ?? output.base;
-			const baseDir = typeof root === "string" && path.isAbsolute(root) ? root : cwd;
-			reads.push(...searchReads(snapshots, data, baseDir));
-			continue;
-		}
-		if (
-			data.error ||
-			(data.contentView && data.contentView !== "none") ||
-			data.selection ||
-			data.isSkeleton ||
-			data.matchNotFound ||
-			typeof data.content !== "string"
-		)
-			continue;
-		let file: string;
-		if (typeof data.path === "string") {
-			const root = output.root ?? output.base;
-			const baseDir = typeof root === "string" && path.isAbsolute(root) ? root : cwd;
-			file = canonicalPath(path.isAbsolute(data.path) ? data.path : resolveToolPath(baseDir, data.path));
-		} else if (isRecord(query) && typeof query.path === "string") {
-			// The request's own path, resolved as `snapshotLocalReads` resolved it.
-			file = canonicalPath(resolveToolPath(cwd, query.path));
-		} else continue;
-		const before = snapshots.get(file);
-		if (!before) continue;
-		try {
-			const stat = fs.statSync(file);
-			if (
-				stat.size !== before.size ||
-				stat.mtimeMs !== before.mtimeMs ||
-				stat.ctimeMs !== before.ctimeMs ||
-				(await sha256File(file)) !== before.sha256
-			)
-				continue;
-		} catch {
-			continue;
-		}
-		const base = { file, sha256: before.sha256, size: before.size };
-		if (data.contentView === "none") {
-			if (
-				data.isPartial ||
-				(isRecord(data.pagination) && (data.pagination.hasMore || data.pagination.charOffset !== 0))
-			)
-				continue;
-			if (sha256(Buffer.from(data.content)) === before.sha256) reads.push({ ...base, whole: true });
-			else if (positive(data.startLine) && positive(data.endLine) && data.endLine >= data.startLine)
-				reads.push({ ...base, whole: false, lines: [data.startLine, data.endLine] });
-			continue;
-		}
-		if (isRecord(data.pagination) && data.pagination.unit !== "lines") continue;
-		// Separated ranges come joined by a `--` line, as grep joins context groups; every source line carries its number.
-		const lines = data.content.split("\n").filter((line) => line !== "--");
-		if (lines.at(-1) === "") lines.pop();
-		if (!lines.length && data.totalLines === 0) {
+	for (const file of new Set([...shown.lines.keys(), ...shown.texts.keys()])) {
+		const source = unchangedSource(file, snapshots);
+		if (!source) continue;
+		const base = { file, sha256: source.sha256, size: source.size };
+		const texts = (shown.texts.get(file) ?? []).filter((text) => Buffer.byteLength(text) === source.size);
+		if (texts.some((text) => sha256(Buffer.from(text)) === source.sha256)) {
 			reads.push({ ...base, whole: true });
 			continue;
 		}
-		const numbered = lines.map((line) => /^(\d+)\t/.exec(line)?.[1]).map(Number);
-		if (!numbered.length || numbered.some((line) => !positive(line))) continue;
+		const count = source.lines.at(-1) === "" ? source.lines.length - 1 : source.lines.length;
+		const credited = new Set<number>();
+		for (const [number, text] of shown.lines.get(file) ?? [])
+			if (number >= 1 && number <= count && source.lines[number - 1] === text) credited.add(number);
 		const spans: Array<[number, number]> = [];
-		for (const line of [...new Set(numbered)].sort((a, b) => a - b)) {
+		for (const line of [...credited].sort((a, b) => a - b)) {
 			const last = spans.at(-1);
 			if (last && line === last[1] + 1) last[1] = line;
 			else spans.push([line, line]);
 		}
-		const whole =
-			data.isPartial !== true &&
-			data.terminalLimit !== true &&
-			spans.length === 1 &&
-			spans[0][0] === 1 &&
-			spans[0][1] === data.totalLines;
-		if (whole) reads.push({ ...base, whole: true });
+		if (spans.length === 1 && spans[0][0] === 1 && spans[0][1] === count) reads.push({ ...base, whole: true });
 		else for (const lines of spans) reads.push({ ...base, whole: false, lines });
 	}
 	return reads;
 }
 
-/**
- * The source lines a `localSearch` content row showed, as partial reads. A line counts only when its shown text is
- * exactly that line of the file as it was before the search began, so a sanitized, shortened or stale line, and a
- * `matchOnly` match (which carries a `column`), never count. A searched directory's files count when they were last
- * modified before the search began.
- */
-function searchReads(snapshots: Map<string, Snapshot>, data: Record<string, unknown>, baseDir: string): LocalRead[] {
-	if (data.error) return [];
-	const reads: LocalRead[] = [];
-	for (const entry of data.files as unknown[]) {
-		if (
-			!isRecord(entry) ||
-			typeof entry.path !== "string" ||
-			!Array.isArray(entry.matches) ||
-			entry.clipped ||
-			entry.truncated
-		)
-			continue;
-		const file = canonicalPath(path.isAbsolute(entry.path) ? entry.path : resolveToolPath(baseDir, entry.path));
-		const source = unchangedSource(file, snapshots);
-		if (!source) continue;
-		const shown = new Set<number>();
-		for (const match of entry.matches as unknown[]) {
-			if (!isRecord(match) || typeof match.value !== "string" || match.clipped || match.truncated || "column" in match)
-				continue;
-			for (const [number, text] of shownLines(match)) if (source.lines[number - 1] === text) shown.add(number);
-		}
-		const spans: Array<[number, number]> = [];
-		for (const line of [...shown].sort((a, b) => a - b)) {
-			const last = spans.at(-1);
-			if (last && line === last[1] + 1) last[1] = line;
-			else spans.push([line, line]);
-		}
-		for (const lines of spans) reads.push({ file, sha256: source.sha256, size: source.size, whole: false, lines });
-	}
-	return reads;
-}
-
-/** `[line number, text]` of each line a match row shows: numbered when it has context, else its one `line`. */
-function shownLines(match: Record<string, unknown>): Array<[number, string]> {
-	const value = String(match.value);
-	const numbered = value.split("\n").map((line) => /^(\d+)\t([\s\S]*)$/.exec(line));
-	if (numbered.every((line) => line !== null))
-		return numbered.map((line) => [Number(line[1]), line[2]] as [number, string]);
-	return positive(match.line) && !value.includes("\n") ? [[match.line, value]] : [];
-}
-
-/** The file's lines when it is unchanged since the snapshot of its search (or since before it began, for a directory). */
+/** The file's lines when it is unchanged since its snapshot (or, in a searched directory, since before the search began). */
 function unchangedSource(
 	file: string,
 	snapshots: Map<string, Snapshot>,
@@ -226,7 +253,7 @@ function unchangedSource(
 	if (!before?.sha256 && searchedAt === undefined) return undefined;
 	try {
 		const stat = fs.statSync(file);
-		if (stat.size > SEARCH_CREDIT_MAX_BYTES) return undefined;
+		if (!stat.isFile() || stat.size > CREDIT_MAX_BYTES) return undefined;
 		const data = fs.readFileSync(file);
 		const digest = sha256(data);
 		if (before?.sha256) {

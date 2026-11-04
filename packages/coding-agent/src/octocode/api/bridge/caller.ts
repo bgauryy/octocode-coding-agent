@@ -3,7 +3,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { formatClock } from "../../shared/format.ts";
 import { headerText } from "../../shared/fence.ts";
 import { apiDir, listInstances } from "../registry.ts";
-import type { ExternalAdmission } from "./contracts.ts";
+import type { ExternalAdmission, TurnCeiling } from "./contracts.ts";
 
 /**
  * Who a caller of `message.send` says it is. A Unix socket does not say who is on its other end (Node exposes no peer
@@ -69,8 +69,9 @@ export function externalFacts(
 }
 
 /** What the session's permission layer decides on: the sender, the running process it named if any, and the rest of its claim. */
-export function admission(facts: ExternalFacts, text: string): ExternalAdmission {
+export function admission(facts: ExternalFacts, text: string, ceiling?: TurnCeiling): ExternalAdmission {
 	return {
+		...(ceiling ? { ceiling } : {}),
 		from: facts.from,
 		...(facts.replyTo ? { process: facts.replyTo } : {}),
 		details: [

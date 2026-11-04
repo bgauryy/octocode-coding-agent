@@ -20,12 +20,12 @@ Applications can use the in-memory reference or provide an adapter for OpenTelem
 
 This README covers installation, the concepts and the core context API. Further pages:
 
-| Page | Covers |
-| --- | --- |
-| [Adapters](docs/adapters.md) | The adapter contract, the no-op context, the in-memory reference adapter, stored telemetry, adapter conformance |
-| [Propagation and metrics](docs/propagation-and-metrics.md) | Cross-process propagation, span links, counters, histograms, typed metric schemas |
-| [Typed schemas](docs/schemas.md) | Span schemas, start and completion attributes, schema metadata |
-| [API reference](docs/api-reference.md) | Exported types, values, schema helpers and the testing subpath |
+| Page                                                       | Covers                                                                                                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [Adapters](docs/adapters.md)                               | The adapter contract, the no-op context, the in-memory reference adapter, stored telemetry, adapter conformance |
+| [Propagation and metrics](docs/propagation-and-metrics.md) | Cross-process propagation, span links, counters, histograms, typed metric schemas                               |
+| [Typed schemas](docs/schemas.md)                           | Span schemas, start and completion attributes, schema metadata                                                  |
+| [API reference](docs/api-reference.md)                     | Exported types, values, schema helpers and the testing subpath                                                  |
 
 ## Installation
 

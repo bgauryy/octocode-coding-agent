@@ -70,11 +70,10 @@ describe("two sessions", () => {
 		expect(answered).toContain(`It says it is ${JSON.stringify(b.name)}`);
 		expect(answered).toContain("Checked it.");
 
-		// Each knows its own name from the prompt, and the section is there.
+		// The section is there, and no name enters the prompt: a process name in the cached block would rewrite it per process.
 		const system = requestsOf(endpoint, aStarts)[0]?.system ?? "";
-		expect(system).toContain(`Process name: ${a.name}`);
 		expect(system).toContain("One protocol reaches every agent");
-		expect(requestsOf(endpoint, bHears)[0]?.system).toContain(`Process name: ${b.name}`);
+		expect(system).not.toContain(a.name);
 		// No shell call in either direction: `agent` `message` carried both.
 		for (const steps of [aStarts, bHears])
 			expect(
@@ -124,6 +123,8 @@ describe("two sessions", () => {
 		expect(results).toContain(`${main.name} · idle · ${main.instance.cwd} · coordinator of this repository`);
 		expect(results).toContain(`${other.name} · busy · ${other.instance.cwd}`);
 		expect(results).not.toContain(`${worktree.name} ·`);
+		// A session learns its own name here, not from its prompt.
+		expect(results).toContain(`You are ${worktree.name}.`);
 		other.run.process.kill("SIGKILL");
 		await close(main, worktree);
 	});
@@ -352,13 +353,11 @@ describe("the paths the protocol keeps", () => {
 		await reachedStep(endpoint, child, 2, "the child's attempts");
 		const results = resultsOf(endpoint, child);
 		expect(results).toContain("Queued message");
-		// To a child that name is no teammate: its only route is to ask its parent, and no session of that name hears.
-		expect(results).toContain("goes through your parent");
-		expect(endpoint.requests.some((request) => request.system.includes(`Process name: ${other.name}`))).toBe(false);
+		// A process name is refused outright: a child has no route to another process and must ask its parent; nothing is queued.
+		expect(results).toContain("subagents have no route to other processes: nothing was sent");
 		// Its `to` field names no process address: a child gets only what it can use.
 		const declared = JSON.stringify(requestsOf(endpoint, child)[0]?.declarations.agent ?? "");
 		expect(declared).not.toContain("coordinator");
-		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("Process name:");
 		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("One protocol reaches every agent");
 		await until(
 			() => endpoint.requests.some((request) => JSON.stringify(request.messages).includes("hello from the child")),

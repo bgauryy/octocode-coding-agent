@@ -287,7 +287,7 @@ function registerCoordinateTool(
 				const working = members.filter((member) => member.status === "working").length;
 				const asks = childAsks(members, team.id, (child, parent, since) => team.asks(child, parent, since));
 				const standing = (id: string) => budgets?.usage(id);
-				const agents = describeMembers(members, team.id, now, asks, team.openQuestions(), standing);
+				const agents = describeMembers(members, team.id, now, asks, team.openQuestions(), standing, team.stalled());
 				const others = peers ? `\n\n${await peers.list(ctx.cwd)}` : "";
 				return textResult(`${agents}${others}`, {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",

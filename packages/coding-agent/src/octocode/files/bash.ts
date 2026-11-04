@@ -12,7 +12,7 @@ import { toolHeader } from "../shared/render.ts";
 import { STATUS } from "../shared/status.ts";
 import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
-import { createReadHint, LOCAL_READER_TOOL } from "./read-hint.ts";
+import { createReadHint } from "./read-hint.ts";
 import { BASH_ABORT_GRACE_MS, foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
 import { foregroundPlan } from "./bash/auto.ts";
 import { LONG_COMMAND_AFTER_SECONDS, sleepHint } from "./bash/long-commands.ts";
@@ -73,7 +73,7 @@ export function registerBashTool(
 ): BashJobs {
 	// Octocode's bash, for its output schema; each call builds its own with that call's settings and process handling.
 	const builtin = createBashToolDefinition(process.cwd());
-	const readHint = createReadHint(() => api.getActiveTools?.().includes(LOCAL_READER_TOOL) ?? false);
+	const readHint = createReadHint(() => api.getActiveTools?.() ?? []);
 	let current: ExtensionContext | undefined;
 	// Set from session_shutdown: a job that ends meanwhile reports without waking anyone.
 	let closing = false;
@@ -203,14 +203,13 @@ export function registerBashTool(
 				command: Type.String({ description: "Command in the selected syntax" }),
 				timeout: Type.Optional(
 					Type.Number({
-						description: `Seconds before the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s. Separately, a foreground call still running after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s moves to the background unless background is false. A background job has none unless given`,
+						description: `Seconds before the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s. A background job has none unless given`,
 					}),
 				),
 				maxOutputTokens: maxOutputTokensParameter,
 				background: Type.Optional(
 					Type.Boolean({
-						description:
-							"true: return at once with a job id; false with a timeout: wait in the foreground and stop at the timeout",
+						description: "true: return at once; false with a timeout: wait in the foreground and stop at the timeout",
 					}),
 				),
 				verify: Type.Optional(

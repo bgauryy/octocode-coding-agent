@@ -15,7 +15,14 @@ export function isValidationOnly(key: string, value: unknown): boolean {
 
 export const isNode = (value: unknown): value is Node =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
-export const identifier = (key: string) => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key));
+/**
+ * Server text the renderers write into a block outside a description: `<` as `\u003c`, so a value, key or note cannot
+ * spell a tag that ends or forges the `<mcp>` block. Inside a JSON string or a quoted key it is the same value.
+ */
+export const inert = (text: string) => text.replace(/</g, "\\u003c");
+/** A JSON literal of a schema value (enum, const, default, example) that cannot spell a tag. */
+export const literal = (value: unknown) => inert(JSON.stringify(value) ?? "null");
+export const identifier = (key: string) => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : literal(key));
 export const oneLine = (text: unknown) =>
 	(typeof text === "string" ? text : "")
 		.trim()

@@ -135,6 +135,16 @@ export function start(db: DatabaseSync, id: string, pid: number, pidStarted: str
 	).run(id, pid, pidStarted, dir);
 }
 
+/**
+ * Where session `id` runs (its working directory and session folder), creating a bare row when it has none and keeping
+ * what is recorded. `file` is not written: it marks an indexed session (`catalog`), which a subagent's session is not.
+ */
+export function locate(db: DatabaseSync, id: string, cwd: string | null, dir: string | null): void {
+	db.prepare(
+		"INSERT INTO sessions (id, cwd, dir) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET cwd = COALESCE(sessions.cwd, excluded.cwd), dir = COALESCE(sessions.dir, excluded.dir)",
+	).run(id, cwd, dir);
+}
+
 export interface StatsRow {
 	cost: number;
 	tokens: number;

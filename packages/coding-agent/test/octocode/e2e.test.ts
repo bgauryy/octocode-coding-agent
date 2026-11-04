@@ -221,9 +221,23 @@ describe("with Octocode MCP (default)", () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
 		// Real Octocode + the local MCP, before provider-specific encoding. Project context and user skills are disabled here.
 		// The separate prompt-size test guards only extension-owned prose/schemas, not this complete fixture prefix.
-		const fixedChars = turn.systemPrompt.length + JSON.stringify(turn.toolContracts).length;
+		// Two parts: Octocode's own text (system prompt without the server-provided text inside each `<mcp>` block, plus
+		// the non-MCP tool contracts; the section's wrapper and the `<mcp>` tags stay ours) is capped. The MCP servers'
+		// text (block contents plus `mcp__` tool contracts) is external: it is reported and never capped or trimmed.
+		const serverBlock = /(<mcp name="[^"]*" tools="[^"]*">\n)[\s\S]*?(\n<\/mcp>)/g;
+		const blocks = [...turn.systemPrompt.matchAll(serverBlock)];
+		// Every server header must close: an unmatched block would move server text into our count, or the reverse.
+		expect(blocks).toHaveLength(turn.systemPrompt.match(/<mcp name="/g)?.length ?? 0);
+		const serverPromptChars = blocks.reduce(
+			(sum, match) => sum + match[0].length - match[1].length - match[2].length,
+			0,
+		);
+		const contractChars = (mcp: boolean) =>
+			JSON.stringify(turn.toolContracts.filter((tool) => tool.name.startsWith("mcp__") === mcp)).length;
+		const ownChars = turn.systemPrompt.length - serverPromptChars + contractChars(false);
+		const mcpChars = serverPromptChars + contractChars(true);
 		console.log(
-			`default Octocode + Octocode prefix: ${fixedChars} chars (prompt ${turn.systemPrompt.length}, ${turn.tools.length} tools)`,
+			`default Octocode prefix: own ${ownChars} chars, MCP server text ${mcpChars} chars (prompt ${turn.systemPrompt.length}, ${turn.tools.length} tools)`,
 		);
 		// 75_300 (2026-10-31, measured 74,790; B338/B340/B343/B344): native tool text re-authored, `<tools>`/`<mcps>` from one
 		// section registry, the flat `agent` tool and the `models` tool. 79_500 (2026-10-31, measured 78,252; B327): down from 88_300 (measured 88,140) after re-authoring the stale
@@ -235,7 +249,13 @@ describe("with Octocode MCP (default)", () => {
 		// 75_000 (2026-10-31, measured 74,765; B366): the sibling server's catalog had changed, so every preset override was stale
 		// and the raw contract made 82,523. The overrides were rewritten (prose -46%), and `agent` shows one line per type.
 		// 88_000 (2026-11-03, measured 86,642; B6): every Octocode tool contract is resident (no cold-start index), by decision.
-		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(88_000);
+		// 88_000 (2026-11-03) was the cap on the whole prefix. 92,668 on 2026-11-04 came from the external Octocode MCP text
+		// growing (M14: never trim it to fit a ceiling), so the cap now covers only our own text.
+		// 43_100 (2026-11-04, own 42,457 of 92,668; MCP server text 50,212, uncapped and logged): the 88_000 headroom over
+		// 86,642 (about 1.6%), applied to our own text.
+		expect(ownChars, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
+			43_100,
+		);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
 		expect(turn.tools).toContain("mcp__octocode__localFetch");
@@ -272,7 +292,7 @@ describe("with Octocode MCP (default)", () => {
 		expect(toolLines.length).toBeGreaterThan(0);
 		expect(toolLines.every((line) => /^- [\w-]+(?:__\*)?: \S/.test(line))).toBe(true);
 		expect(toolLines).toContain(
-			"- mcp__octocode__*: Code research: local search and reading, language-server lookups, GitHub and package registries.",
+			"- mcp__octocode__*: Every code search and read: this checkout (localSearch, structureSearch, localFetch, lspSearch, astSearch), GitHub repositories and package registries; use before bash or web.",
 		);
 		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
 			expect(

@@ -13,6 +13,7 @@ import { say } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isSelected } from "./exposure.ts";
+import { deferralOf } from "./deferral.ts";
 import { isParentStopped } from "./session-servers.ts";
 import {
 	MCP_STATUS_SECTION,
@@ -26,6 +27,16 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { hideTools, registerTools } from "./tool-registry.ts";
+import { takeLaunchWarnings } from "./warnings.ts";
+
+/** Whether the launch the server would get now differs from the one it got; a launch that cannot be prepared does not count. */
+function launchChanged(state: McpExtensionState, server: McpServer, launched: McpServerEntry): boolean {
+	try {
+		return !isDeepStrictEqual(launched, state.prepareLaunch(server.entry, state.sessionCwd));
+	} catch {
+		return false;
+	}
+}
 
 /**
  * The servers the prompt describes: enabled servers this session's selection reaches. Each block's content is what
@@ -33,8 +44,12 @@ import { hideTools, registerTools } from "./tool-registry.ts";
  * a dropped connection changes only the state, which `mcp_status` carries.
  */
 function serverListings(state: McpExtensionState): McpServerListing[] {
-	const active = new Set(state.api.getActiveTools());
-	const listed = state.servers.filter((server) => isEnabled(server) && !server.unselected);
+	const activeTools = state.api.getActiveTools();
+	const active = new Set(activeTools);
+	// Name order, so an `auto:<bytes>` budget fills the same way whichever server connected first.
+	const listed = state.servers
+		.filter((server) => isEnabled(server) && !server.unselected)
+		.sort((a, b) => (a.entry.name < b.entry.name ? -1 : a.entry.name > b.entry.name ? 1 : 0));
 	// A server that leaves the list gets a fresh description if it comes back.
 	state.presentation.retainDescribed(new Set(listed.map((server) => server.entry.name)));
 	return listed.flatMap((server) => {
@@ -47,8 +62,10 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 			declared,
 			server.connection?.instructions,
 			connectionState === "connected",
+			deferralOf(server.entry, declared, state.exposureSetting(), activeTools),
 		);
 		const undeclared = [...described.tools].filter((tool) => !declared.includes(tool));
+		const deferred = described.deferred.size;
 		return [
 			{
 				entry: server.entry,
@@ -57,6 +74,7 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 				...(described.contract ? { contract: described.contract } : {}),
 				pending: described.pending,
 				...(undeclared.length > 0 ? { undeclared } : {}),
+				...(deferred > 0 ? { defers: true, deferred: deferred === described.tools.size } : {}),
 			},
 		];
 	});
@@ -199,7 +217,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 					server.connection?.idle &&
 					!server.connection.isStopped &&
 					launched &&
-					!isDeepStrictEqual(launched, state.prepareLaunch(server.entry, state.sessionCwd))
+					launchChanged(state, server, launched)
 				);
 			});
 			for (const server of changed) void state.track(reconnect(server));
@@ -207,14 +225,11 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		}
 		await waitForDirectServers(state, ctx);
 		// Launch warnings (an allowed folder that was refused, say): tell the user, never the model.
-		for (const preset of state.options.presets ?? [])
-			for (const warning of preset.takeWarnings?.() ?? []) say(ctx, warning, "warning");
-		// A new or changed catalog whose tools keep the server's own wording: tell the user, never the model.
-		for (const { server, tools } of state.presentation.takeUnoptimized())
-			ctx.ui.notify(
-				`MCP server "${server}": ${tools.length} tool description${tools.length === 1 ? "" : "s"} not yet rewritten for its compact file (${tools.join(", ")}). The octocode-context-optimization skill rewrites them.`,
-				"info",
-			);
+		const warnings = [
+			...takeLaunchWarnings(),
+			...(state.options.presets ?? []).flatMap((preset) => preset.takeWarnings?.() ?? []),
+		];
+		for (const warning of warnings) say(ctx, warning, "warning");
 		describeServers(state, event.systemPromptOptions);
 	});
 

@@ -8,7 +8,9 @@
 
 import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
 import { keyHint } from "../../../theme/theme-tui-helpers.ts";
+import { stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
+import { formatDuration } from "../../../utils/duration.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../features/types.ts";
 import type { BashToolDetails } from "../bash/outcome.ts";
 import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
@@ -24,6 +26,47 @@ function formatShellCall(args: { command?: string; timeout?: number } | undefine
 	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
 	return theme.fg("toolTitle", theme.bold(`${prompt} ${commandDisplay}`)) + timeoutSuffix;
 }
+/** How a finished run ended: a nonzero exit or timeout failed, an abort or kill was stopped. */
+function endState(details: BashToolDetails | undefined, header: string | undefined, isError: boolean): UiState {
+	if (
+		details?.termination === "aborted" ||
+		details?.termination === "terminated" ||
+		/^\[(?:aborted|terminated)/.test(header ?? "")
+	)
+		return "stopped";
+	if (
+		isError ||
+		details?.termination === "timeout" ||
+		(details?.exitCode !== undefined && details.exitCode !== 0 && details.exitCode !== null)
+	)
+		return "failed";
+	return "done";
+}
+
+/** The mark and words that end a run, so its outcome does not rest on band tint: `✗ exit 1 · 0.4s`. */
+function outcomeLine(
+	state: UiState,
+	header: string | undefined,
+	details: BashToolDetails | undefined,
+	durationMs: number | undefined,
+): string {
+	const words =
+		header ??
+		[
+			state === "stopped"
+				? "cancelled"
+				: details?.termination === "timeout"
+					? "timed out"
+					: typeof details?.exitCode === "number"
+						? `exit ${details.exitCode}`
+						: undefined,
+			durationMs === undefined ? undefined : formatDuration(durationMs, true),
+		]
+			.filter(Boolean)
+			.join(" · ");
+	return `${stateMark(theme, state)} ${theme.fg(state === "done" ? "muted" : "text", words)}`.trimEnd();
+}
+
 function rebuildBashResultRenderComponent(
 	component: Container,
 	result: {
@@ -33,6 +76,7 @@ function rebuildBashResultRenderComponent(
 	options: ToolRenderResultOptions,
 	showImages: boolean,
 	timerText: string | undefined,
+	finish: { isError: boolean; durationMs: number | undefined },
 ): void {
 	component.clear();
 
@@ -41,9 +85,11 @@ function rebuildBashResultRenderComponent(
 	const header = options.isPartial
 		? undefined
 		: /^\[(?:exit|timed out|aborted|terminated)[^\n]*\](?:\n|$)/.exec(output)?.[0];
-	if (header) {
-		output = output.slice(header.length).trim();
-		component.addChild(new Text(`\n${theme.fg("muted", header.trim())}`, 0, 0));
+	if (header) output = output.slice(header.length).trim();
+	const state = options.isPartial ? undefined : endState(result.details, header, finish.isError);
+	if (state) {
+		const line = outcomeLine(state, header?.trim(), result.details, finish.durationMs);
+		if (line) component.addChild(new Text(`\n${line}`, 0, 0));
 	}
 	const truncation = result.details?.truncation;
 	const fullOutputPath = result.details?.fullOutputPath;
@@ -57,7 +103,7 @@ function rebuildBashResultRenderComponent(
 	if (output) {
 		const styledOutput = output
 			.split("\n")
-			.map((line) => theme.fg("toolOutput", line))
+			.map((line) => theme.fg(state === "failed" ? "text" : "toolOutput", line))
 			.join("\n");
 
 		if (options.expanded) {
@@ -107,7 +153,10 @@ export function createShellRenderers(prompt: string): Pick<ToolDefinition<any, a
 		renderResult(result, options, _theme, context) {
 			const timerText = toolTimerText(context, options.isPartial);
 			const component = (context.lastComponent as Container | undefined) ?? new Container();
-			rebuildBashResultRenderComponent(component, result, options, context.showImages, timerText);
+			rebuildBashResultRenderComponent(component, result, options, context.showImages, timerText, {
+				isError: context.isError,
+				durationMs: context.durationMs,
+			});
 			component.invalidate();
 			return component;
 		},

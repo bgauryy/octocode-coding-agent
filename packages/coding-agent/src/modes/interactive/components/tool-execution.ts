@@ -337,6 +337,7 @@ export class ToolExecutionComponent extends Container {
 				imageWidthCells: this.imageWidthCells,
 				outputPad: this.outputPad,
 				background: bgFn,
+				...(this.result && !this.isPartial ? { isError: this.result.isError, durationMs: this.result.durationMs } : {}),
 			});
 			return;
 		}

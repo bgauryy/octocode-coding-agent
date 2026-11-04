@@ -1,8 +1,22 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { Row } from "../rows.ts";
+import { type AgentRun, opened } from "./agent-runs.ts";
+import { itemRef } from "./agent-resolve.ts";
+import { locate } from "./sessions.ts";
 
 export const EVENT_TYPES = ["init", "create", "update", "delete", "compaction"] as const;
+/** Why an agent row was retired: a `delete` event's `data.reason`. */
+export const END_REASONS = [
+	"completed",
+	"failed",
+	"stopped-user",
+	"stopped-parent",
+	"parent-gone",
+	"crashed",
+	"left",
+] as const;
+export type EndReason = (typeof END_REASONS)[number];
 type EventType = (typeof EVENT_TYPES)[number];
 export interface AgentEvent {
 	time: string;
@@ -21,6 +35,9 @@ export interface EventRow extends AgentEvent {
 export interface LifecycleContext {
 	activationId: string;
 	sessionId: string;
+	/** The session's working directory and session folder: recorded on its `sessions` row so an agent id reaches its transcript. */
+	cwd?: string;
+	dir?: string;
 }
 
 export function append(db: DatabaseSync, workspace: string, event: AgentEvent, key?: string): void {
@@ -39,6 +56,17 @@ export function append(db: DatabaseSync, workspace: string, event: AgentEvent, k
 	);
 }
 
+/** Reasons older Octocode versions stored: `reaped` named the detector, the others the code path. All mean the process died without leaving. */
+const LEGACY_CRASH = new Set(["removed", "replaced dead registration"]);
+
+/** A stored `delete` payload as readers see it: a legacy reason becomes `crashed` (the old text stays as `detail`, except `reaped`, which only named the detector). */
+function readable(type: string, data: Record<string, unknown>): Record<string, unknown> {
+	if (type !== "delete" || typeof data.reason !== "string") return data;
+	if (data.reason === "reaped") return { ...data, reason: "crashed" };
+	if (LEGACY_CRASH.has(data.reason)) return { ...data, reason: "crashed", detail: data.detail ?? data.reason };
+	return data;
+}
+
 function decode(row: Row): EventRow {
 	return {
 		seq: Number(row.seq),
@@ -49,7 +77,7 @@ function decode(row: Row): EventRow {
 		parentId: row.parent_id as string | null,
 		sessionId: row.session_id as string | null,
 		type: row.type as EventType,
-		data: JSON.parse(String(row.data)) as Record<string, unknown>,
+		data: readable(String(row.type), JSON.parse(String(row.data)) as Record<string, unknown>),
 		version: 1,
 	};
 }
@@ -93,6 +121,23 @@ export function latestSequence(db: DatabaseSync, workspace: string): number {
 	return Number(db.prepare("SELECT MAX(seq) AS seq FROM agent_events WHERE workspace_id = ?").get(workspace)?.seq ?? 0);
 }
 
+/** The newest event sequence of any workspace: the cursor a follower starts from to see only what happens next. */
+export function head(db: DatabaseSync): number {
+	return Number(db.prepare("SELECT MAX(seq) AS seq FROM agent_events").get()?.seq ?? 0);
+}
+
+/**
+ * Presence events (`create`, `update`, `delete`) of every workspace after sequence `after`, oldest first, at most `limit`:
+ * the lifecycle bus's cursor read. `seq` is the primary key, so this is one range scan.
+ */
+export function since(db: DatabaseSync, after: number, limit = 200): EventRow[] {
+	return (
+		db
+			.prepare("SELECT * FROM agent_events WHERE seq > ? AND type IN ('create','update','delete') ORDER BY seq LIMIT ?")
+			.all(after, limit) as Row[]
+	).map(decode);
+}
+
 export function get(db: DatabaseSync, workspace: string, id: string): EventRow | undefined {
 	const row = db.prepare("SELECT * FROM agent_events WHERE workspace_id = ? AND id = ?").get(workspace, id) as
 		| Row
@@ -104,6 +149,55 @@ export function member(db: DatabaseSync, id: string): Row | undefined {
 	return db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
 }
 
+/**
+ * What a `delete` event records of the row it ends, read before the `DELETE`: why, and the last heartbeat's numbers
+ * (additive keys on a `version: 1` event; readers ignore keys they do not know). `startedAt` is the process start time
+ * the row names, as stored.
+ */
+export function endData(
+	db: DatabaseSync,
+	row: Row,
+	reason: string,
+	detail?: string,
+	run?: AgentRun,
+): Record<string, unknown> {
+	return {
+		reason,
+		...(detail ? { detail } : {}),
+		startedAt: row.started ?? null,
+		joinedAt: row.joined_at,
+		seenAt: row.seen_at,
+		status: row.status,
+		toolCalls: row.tool_calls,
+		input: row.input,
+		cacheRead: row.cache_read,
+		output: row.output,
+		cost: row.cost,
+		unpriced: row.unpriced === 1,
+		pid: row.pid,
+		...runData(db, row, run),
+		...(run?.outcome ? { outcome: run.outcome } : {}),
+		...(run?.filesChanged ? { filesChanged: run.filesChanged } : {}),
+	};
+}
+
+/**
+ * What a `create` and a `delete` event record of the run beside the agent (additive keys): its id, where it works, the
+ * session that started it and the backlog item it is for, written as the workspace of the event reads it (`B36`).
+ */
+function runData(db: DatabaseSync, row: Row, run: AgentRun | undefined): Record<string, unknown> {
+	return {
+		...(run ? { runId: run.runId } : {}),
+		...(run?.parentSessionId ? { parentSessionId: run.parentSessionId } : {}),
+		...(row.cwd ? { cwd: row.cwd } : {}),
+		...(row.branch ? { branch: row.branch } : {}),
+		...(row.process_title ? { processTitle: row.process_title } : {}),
+		...(run?.backlog
+			? { backlogItem: itemRef(db, run.backlog.workspaceId, run.backlog.seq, String(row.workspace_id)) }
+			: {}),
+	};
+}
+
 /** Called in the presence mutation's transaction. A null registration marks nonpersistent/legacy presence. */
 export function recordMember(
 	db: DatabaseSync,
@@ -111,39 +205,49 @@ export function recordMember(
 	type: "create" | "update" | "delete",
 	data: Record<string, unknown>,
 	now: number,
+	key?: string,
 ): void {
 	if (typeof row.registration_id !== "string" || !row.persist_events) return;
 	const registrationId = row.registration_id;
-	append(db, String(row.workspace_id), {
-		id: type === "create" ? registrationId : randomUUID(),
-		time: new Date(now).toISOString(),
-		name: String(row.id),
-		parentId: (row.parent_id as string | null) ?? null,
-		sessionId: (row.lifecycle_session_id as string | null) ?? null,
-		type,
-		version: 1,
-		data: {
-			agentId: row.id,
-			role: row.role,
-			model: row.model,
-			goal: row.task,
-			registrationId,
-			activationId: row.activation_id,
-			parentRegistrationId: row.parent_registration_id ?? null,
-			...data,
+	append(
+		db,
+		String(row.workspace_id),
+		{
+			id: type === "create" ? registrationId : randomUUID(),
+			time: new Date(now).toISOString(),
+			name: String(row.id),
+			parentId: (row.parent_id as string | null) ?? null,
+			sessionId: (row.lifecycle_session_id as string | null) ?? null,
+			type,
+			version: 1,
+			data: {
+				agentId: row.id,
+				role: row.role,
+				model: row.model,
+				goal: row.task,
+				registrationId,
+				activationId: row.activation_id,
+				parentRegistrationId: row.parent_registration_id ?? null,
+				...data,
+			},
 		},
-	});
+		key,
+	);
 }
 
 export function registerMember(db: DatabaseSync, id: string, context: LifecycleContext | undefined, now: number): void {
 	if (!context) return;
+	if (context.cwd || context.dir) locate(db, context.sessionId, context.cwd ?? null, context.dir ?? null);
 	const row = member(db, id);
 	const parent = typeof row?.parent_id === "string" ? member(db, row.parent_id) : undefined;
 	const changed = db
 		.prepare(`UPDATE agents SET registration_id = ?, persist_events = 1, activation_id = ?, lifecycle_session_id = ?, parent_registration_id = ?
 		WHERE id = ? AND registration_id IS NULL`)
 		.run(randomUUID(), context.activationId, context.sessionId, (parent?.registration_id as string | null) ?? null, id);
-	if (changed.changes) recordMember(db, member(db, id)!, "create", {}, now);
+	if (changed.changes) {
+		const created = member(db, id)!;
+		recordMember(db, created, "create", runData(db, created, opened(db, created, now)), now);
+	}
 	else
 		db.prepare("UPDATE agents SET activation_id=?, lifecycle_session_id=? WHERE id=? AND persist_events=1").run(
 			context.activationId,

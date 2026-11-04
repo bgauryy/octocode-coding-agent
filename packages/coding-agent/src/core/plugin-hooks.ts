@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { stripBom } from "../../../common/src/text.ts";
 import { discoverPluginComponents } from "./plugin-components.ts";
 import { resolveConfiguredPlugin, type PluginManifest } from "./plugin-manifest.ts";
@@ -42,4 +43,15 @@ export function inspectPluginHooks(entry: NonNullable<Settings["plugins"]>[numbe
 		result.errors.push(String(error));
 	}
 	return result;
+}
+
+/** The MCP servers the `mcp_tool` hooks of these declarations call, each once, in declaration order. */
+export function pluginHookMcpServers(definitions: PluginHookInspection["definitions"]): string[] {
+	const servers = new Set<string>();
+	for (const { value } of definitions)
+		for (const groups of Object.values(isRecord(value.hooks) ? value.hooks : {}))
+			for (const group of Array.isArray(groups) ? groups : [])
+				for (const hook of isRecord(group) && Array.isArray(group.hooks) ? group.hooks : [])
+					if (isRecord(hook) && hook.type === "mcp_tool" && typeof hook.server === "string") servers.add(hook.server);
+	return [...servers];
 }

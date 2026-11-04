@@ -284,7 +284,7 @@ describe("/worktree completions and hint", () => {
 
 	it("lists open and switch among the operations", () => {
 		const values = command.complete?.("")?.map((item) => item.value);
-		expect(values).toEqual(["list", "new", "open", "switch", "remove"]);
+		expect(values).toEqual(["list", "new", "open", "switch", "merge", "remove"]);
 		expect(command.complete?.("sw")?.map((item) => item.value)).toEqual(["switch"]);
 		expect(command.argumentHint).toContain("open <name> [pane [right|down]|window]");
 		expect(command.argumentHint).toContain("switch <name|main>");

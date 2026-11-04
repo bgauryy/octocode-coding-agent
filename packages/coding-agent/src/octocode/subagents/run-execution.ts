@@ -1,3 +1,4 @@
+import type { AgentEnd } from "../team/panel-state.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -8,6 +9,7 @@ import { firstLine } from "../shared/util.ts";
 import type { AgentRuns, Run } from "./claim.ts";
 import type { BackgroundRun } from "./command.ts";
 import { withStopFacts } from "./budget.ts";
+import { hintEnd, hintOnStop, stopReason } from "./end-hint.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
 import type { AwaitedReply } from "./linger.ts";
 import { providerHealth } from "./provider-health.ts";
@@ -17,6 +19,7 @@ import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } fr
 import { failedNext, foregroundExtras, PERMISSION_STOP, ranOn, reportMessage, stoppedError } from "./report-text.ts";
 import { unavailableResult } from "./result-schema.ts";
 import type { RunDetails } from "./run-types.ts";
+import { beginRun, finishRun, type RunEnd } from "./run-audit.ts";
 import { stopFacts } from "./stop-facts.ts";
 import { reportFacts, runFooter, withShot } from "./tracking.ts";
 
@@ -83,16 +86,21 @@ export function startBackground(
 	const controller = new AbortController();
 	const entry: BackgroundRun = { controller, done: Promise.resolve() };
 	background.set(identity.id, entry);
+	hintOnStop(runs, identity.id, entry);
+	beginRun(runs, run);
 	runs.changed();
 	read.track(identity.id, identity.scratch);
 	// The parent may have many runs going: every report names the agent, its role and its goal.
 	const who = `${identity.id} (${identity.role}: ${identity.goal})`;
 	// For the renderer: the expanded report shows the whole prompt.
 	const shown = { task, goal: identity.goal ?? "", profile: identity.role ?? "" };
+	let end: AgentEnd | undefined;
+	let audit: RunEnd | undefined;
 	entry.done = (async () => {
 		try {
 			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
 			providerHealth.noteRun(run.route.model, outcome.error);
+			if (outcome.error) hintEnd(runs, identity.id, "failed");
 			const note = await finish(outcome);
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
@@ -101,6 +109,13 @@ export function startBackground(
 			if (source) details.outcomeSource = source;
 			if (outcome.structured) details.structured = outcome.structured;
 			if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
+			audit = {
+				reason: outcome.error ? "failed" : "completed",
+				error: outcome.error,
+				outcome: reported,
+				outcomeSource: source,
+				reportPath: outcome.reportArtifact?.path,
+			};
 			const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
 			const stats = [
 				formatDuration(Date.now() - details.startedAt),
@@ -118,6 +133,10 @@ export function startBackground(
 			}${citable(identity.id)}`;
 			const durationMs = Date.now() - details.startedAt;
 			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details, durationMs);
+			end = {
+				outcome: outcome.error ? "failed" : (reported ?? "done"),
+				headline: firstLine(outcome.error ?? outcome.text),
+			};
 			const alreadyRead = read.consume(identity.id, outcome.reportArtifact);
 			const next = outcome.error ? failedNext(run.route, outcome.error, Boolean(outcome.text)) : "";
 			const notices = noticeLines(details).join("\n");
@@ -156,9 +175,12 @@ export function startBackground(
 			const note = await finish();
 			read.consume(identity.id);
 			const by = entry.stoppedBy;
+			if (!by) hintEnd(runs, identity.id, "failed");
+			audit = { reason: by ? stopReason(by) : "failed", error: by ? undefined : errorMessage(error), outcome: by ? undefined : "failed" };
 			const reason =
 				by === USER_SENDER ? "cancelled by the user" : by ? `stopped by ${by}` : `stopped: ${errorMessage(error)}`;
 			const reachable = by === PERMISSION_STOP ? (linger?.() ?? "") : "";
+			end = { outcome: by ? "stopped" : "failed", headline: reason };
 			reports.add({
 				// A stop someone asked for is the parent's own word; any other cause (a crash, a stall) quotes the child's output.
 				content: by
@@ -181,6 +203,8 @@ export function startBackground(
 			});
 		} finally {
 			background.delete(identity.id);
+			if (audit) finishRun(runs, identity.id, audit);
+			if (end) runs.ended?.(identity.id, end);
 			runs.changed();
 		}
 	})().catch((error: unknown) => {
@@ -229,13 +253,23 @@ export async function runForeground(
 	if (signal?.aborted) abort();
 	signal?.addEventListener("abort", abort, { once: true });
 	runs.foreground.set(identity.id, entry);
+	hintOnStop(runs, identity.id, entry);
+	beginRun(runs, run);
 	let outcome: Outcome;
 	try {
 		outcome = withStopFacts(await launch(controller.signal), details, runs.team);
 		providerHealth.noteRun(run.route.model, outcome.error);
+		if (outcome.error) hintEnd(runs, identity.id, "failed");
 	} catch (error) {
+		// An Esc aborts the controller without `stoppedBy`: that stop already left its hint.
+		if (!entry.stoppedBy && !controller.signal.aborted) hintEnd(runs, identity.id, "failed");
 		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
+		finishRun(runs, identity.id, {
+			reason: entry.stoppedBy || controller.signal.aborted ? stopReason(entry.stoppedBy) : "failed",
+			error: entry.stoppedBy ? undefined : errorMessage(error),
+			outcome: entry.stoppedBy ? undefined : "failed",
+		});
 		const text = `${errorMessage(reason)}${note}`;
 		// The result keeps the run's details, so the session records the child (its folder, a startup failure) for `resume`.
 		details.status = "failed";
@@ -249,6 +283,13 @@ export async function runForeground(
 	if (!outcome.error) closeAnswered(runs, identity.id);
 	if (outcome.structured) details.structured = outcome.structured;
 	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
+	finishRun(runs, identity.id, {
+		reason: outcome.error ? "failed" : "completed",
+		error: outcome.error,
+		outcome: outcome.error ? "failed" : outcome.outcome,
+		outcomeSource: outcome.error ? undefined : outcome.outcomeSource,
+		reportPath: outcome.reportArtifact?.path,
+	});
 	if (outcome.error) {
 		// An error result rather than a throw, so the child's spent tokens still reach this session's totals.
 		details.status = "failed";

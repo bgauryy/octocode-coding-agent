@@ -17,7 +17,8 @@ export function agentToolSpec() {
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Skill names included in the task; omit for profile skills or the loaded catalog; [] for none.",
+					description:
+						"Skills the child needs: one named only in the task text is rarely loaded. Omit for profile skills or the loaded catalog; [] for none.",
 				}),
 			),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
@@ -49,7 +50,7 @@ export function agentToolSpec() {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Fit the task: small:low lookups and mechanical steps, medium scoped edits and review, your model root causes and design. Pass :high only for a child that coordinates others or a sensitive task: security, permissions, credentials, data loss or migration, releases. Default: the profile's (see models); no profile: medium; thinking medium.",
+						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Pass :high only for a child that coordinates others or a sensitive task: security, permissions, credentials, data loss or migration, releases. Default: the profile's (see models); no profile: medium; thinking medium.",
 				}),
 			),
 			resultSchema: Type.Optional(

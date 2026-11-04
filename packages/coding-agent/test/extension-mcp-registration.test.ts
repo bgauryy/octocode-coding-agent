@@ -29,6 +29,22 @@ describe("extension MCP registration transactions", () => {
 		expect(runtime.pendingProviderRegistrations).toEqual([]);
 	});
 
+	it("lets another extension's registration replace an inherited server, whatever the load order", async () => {
+		const { runtime, load } = setup();
+		await load("builtin:mcp", (api) => api.registerMcpServer("shared", { command: "parent" }, { inherited: true }));
+		await load("<plugin>", (api) => api.registerMcpServer("shared", { command: "own" }));
+		expect(runtime.mcpServers.list()).toEqual([
+			{ name: "shared", config: { command: "own" }, extensionPath: "<plugin>" },
+		]);
+
+		await load("<late>", (api) => api.registerMcpServer("shared2", { command: "own" }));
+		await load("builtin:mcp", (api) => api.registerMcpServer("shared2", { command: "parent" }, { inherited: true }));
+		expect(runtime.mcpServers.get("shared2")?.extensionPath).toBe("<late>");
+		await expect(load("<other>", (api) => api.registerMcpServer("shared2", { command: "x" }))).rejects.toThrow(
+			'MCP server "shared2" is already registered by extension "<late>"',
+		);
+	});
+
 	it("revalidates every change before committing when another factory claimed a name", async () => {
 		const { runtime, load } = setup();
 		let resume!: () => void;

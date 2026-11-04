@@ -23,7 +23,7 @@ Write these sections, in this order, with the headings as given:
 - [Each error or failed approach: the exact error text, its cause, and the fix, or "unresolved". The user's corrections of the approach belong here.]
 
 ## Where We Stopped
-- [The work under way in the last messages, with its exact file paths, and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
+- [The work under way in the last messages of the conversation (the request to write this summary is not one of them and not a user ask), with its exact file paths, and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
 
 ## Critical Context
 - [Data, examples or references needed to continue, or "(none)"]

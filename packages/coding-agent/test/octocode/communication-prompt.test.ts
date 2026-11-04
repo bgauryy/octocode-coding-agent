@@ -47,8 +47,7 @@ describe("communication prompt contracts", () => {
 		const prompt = octocodePrompt(main);
 		for (const line of [
 			"One protocol reaches every agent: `agent` type `message`, `to` a name.",
-			"Your subagents: id or role.",
-			"Another Octocode process: its process name",
+			"Another Octocode process: its name, which `coordinate` `list` shows",
 			"In a linked worktree with finished work: `to` `coordinator`",
 			"Never merge into the main checkout yourself.",
 			"A merge request in the main checkout: review it, `coordinate` `merge` its `branch`",

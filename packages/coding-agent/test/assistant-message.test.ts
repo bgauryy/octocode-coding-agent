@@ -47,7 +47,7 @@ describe("AssistantMessageComponent", () => {
 	test("ends the thinking indicator when answer text arrives and preserves reasoning", () => {
 		initTheme("dark");
 		const message = createAssistantMessage([{ type: "thinking", thinking: "Inspect the test results." }]);
-		const component = new AssistantMessageComponent();
+		const component = new AssistantMessageComponent(undefined, false);
 		component.updateContent(message, true);
 		expect(stripAnsi(component.render(60).join("\n"))).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking…/);
 		expect(stripAnsi(component.render(60).join("\n"))).not.toContain("▾ Thinking…");
@@ -61,7 +61,7 @@ describe("AssistantMessageComponent", () => {
 		component.updateContent(answer, false);
 		component.setHideThinkingBlock(true);
 		const hidden = stripAnsi(component.render(60).join("\n"));
-		expect(hidden).toContain("▸ Reasoning (ctrl+t)");
+		expect(hidden).toContain("▸ Thought (ctrl+t)");
 		expect(hidden).not.toContain("click");
 		expect(hidden).not.toContain("Toggle reasoning");
 	});
@@ -137,9 +137,9 @@ describe("AssistantMessageComponent", () => {
 		afterEach(() => vi.useRealTimers());
 
 		/** Reasoning that streams for `durationMs`; the answer starts `gapMs` after its last token. */
-		function streamedReasoning(durationMs: number, gapMs = 0): AssistantMessageComponent {
+		function streamedReasoning(durationMs: number, gapMs = 0, expanded = true): AssistantMessageComponent {
 			vi.useFakeTimers({ now: 1_000 });
-			const component = new AssistantMessageComponent();
+			const component = new AssistantMessageComponent(undefined, !expanded);
 			const message = createAssistantMessage([{ type: "thinking", thinking: "First thought." }]);
 			component.updateContent(message, true);
 			vi.setSystemTime(1_000 + durationMs);
@@ -160,8 +160,8 @@ describe("AssistantMessageComponent", () => {
 			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Reasoning · 4s");
 			component.setHideThinkingBlock(true);
 			const lines = stripAnsi(component.render(80).join("\n")).split("\n");
-			expect(lines.filter((line) => line.includes("Reasoning"))).toEqual([
-				expect.stringContaining("▸ Reasoning · 4s (ctrl+t)"),
+			expect(lines.filter((line) => line.includes("Thought"))).toEqual([
+				expect.stringContaining("▸ Thought for 4s (ctrl+t)"),
 			]);
 			expect(lines.join("\n")).not.toContain("Toggle reasoning");
 			expect(lines.join("\n")).not.toContain("click");
@@ -183,6 +183,7 @@ describe("AssistantMessageComponent", () => {
 					{ type: "thinking", thinking: "First thought. Second thought." },
 					{ type: "text", text: "Done." },
 				]),
+				false,
 			);
 			expect(stripAnsi(rebuilt.render(80).join("\n"))).toContain("▾ Reasoning · 4s");
 		});
@@ -194,6 +195,7 @@ describe("AssistantMessageComponent", () => {
 					{ type: "thinking", thinking: "Old thought." },
 					{ type: "text", text: "Done." },
 				]),
+				false,
 			);
 			expect(stripAnsi(resumed.render(80).join("\n"))).toMatch(/▾ Reasoning\s*\n/);
 			const brief = streamedReasoning(100);
@@ -205,9 +207,23 @@ describe("AssistantMessageComponent", () => {
 			const component = streamedReasoning(4_000);
 			component.setHideThinkingBlock(true);
 			component.setMouseHint(true);
-			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Reasoning · 4s (ctrl+t or click)");
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t or click)");
 			component.setMouseHint(false);
-			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Reasoning · 4s (ctrl+t)");
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t)");
+		});
+
+		test("collapses a finished block to one line by default and keeps an explicit false expanded", () => {
+			initTheme("dark");
+			const message = createAssistantMessage([
+				{ type: "thinking", thinking: "Hidden reasoning." },
+				{ type: "text", text: "Done." },
+			]);
+			const byDefault = stripAnsi(new AssistantMessageComponent(message).render(80).join("\n"));
+			expect(byDefault).toContain("▸ Thought");
+			expect(byDefault).not.toContain("Hidden reasoning.");
+			const explicit = stripAnsi(new AssistantMessageComponent(message, false).render(80).join("\n"));
+			expect(explicit).toContain("▾ Reasoning");
+			expect(explicit).toContain("Hidden reasoning.");
 		});
 	});
 
@@ -315,7 +331,7 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered.match(/Reasoning/g)).toHaveLength(1);
+		expect(rendered.match(/Thought/g)).toHaveLength(1);
 		expect(rendered).toContain("answer");
 	});
 
@@ -327,6 +343,7 @@ describe("AssistantMessageComponent", () => {
 				{ type: "text", text: "answer" },
 				{ type: "thinking", thinking: "second reasoning" },
 			]),
+			false,
 		);
 		const width = 80;
 		const lines = component.render(width);
@@ -350,7 +367,7 @@ describe("AssistantMessageComponent", () => {
 
 		const collapsed = stripAnsi(component.render(width).join("\n"));
 		expect(collapsed).not.toContain("first reasoning");
-		expect(collapsed).toContain("Reasoning");
+		expect(collapsed).toContain("Thought");
 		expect(collapsed).toContain("second reasoning");
 	});
 

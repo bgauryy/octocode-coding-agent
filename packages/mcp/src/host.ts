@@ -23,8 +23,6 @@ export interface McpIdentityPort {
 	isBunBinary(): boolean;
 	/** The folder the host package is installed in. */
 	packageDir(): string;
-	/** The command line that runs the bundled research CLI. */
-	researchCliInvocation(kind: "research" | "native"): { command: string; prefix: string[] };
 }
 
 /** Where optimized skill descriptions and MCP files live, by the scope of what they describe. */

@@ -106,7 +106,13 @@ export async function checkPermission(
 	if (targetClasses.size)
 		request = {
 			...request,
-			also: [...new Set([...(request.also ?? []), ...targetClasses])],
+			// Only a class that asks in this mode joins the dialog: one that is allowed anyway must not take its session answer away.
+			also: [
+				...new Set([
+					...(request.also ?? []),
+					...[...targetClasses].filter((each) => decide(request.asMode ?? host.mode(), each) === "ask"),
+				]),
+			],
 			what: [...request.what, ...shellTargets.map((target) => `${target.kind} ${target.raw}`)],
 		};
 	const signal = request.signal ? AbortSignal.any([request.signal, host.policy().signal]) : host.policy().signal;
@@ -199,7 +205,7 @@ export async function checkPermission(
 			return { allowed: true, via: "hook", lasts: "call" };
 		const sourceAllows =
 			source?.decision === "allow" &&
-			!classes.some((each) => ["net.private", "upload.outside", "agent.spawn"].includes(each));
+			!classes.some((each) => ["net.private", "upload.outside", "agent.spawn", "worktree.merge"].includes(each));
 		if (sourceAllows && [...targetClasses].every((each) => rule(each) === "allow"))
 			return { allowed: true, via: "policy", lasts: "call" };
 		if (classes.every((each) => rule(each) === "allow")) return { allowed: true, via: "mode", lasts: "call" };

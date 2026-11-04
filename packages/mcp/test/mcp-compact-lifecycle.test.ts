@@ -249,8 +249,6 @@ describe("triggers", () => {
 		expect(presentation.summary("s", "a")).toBe("Use for a.");
 		expect(presentation.summary("s", "b")).toBe("Rewritten b.");
 		expect(presentation.summary("s", "c")).toBeUndefined();
-		expect(presentation.takeUnoptimized()).toEqual([{ server: "s", tools: ["c"] }]);
-		expect(presentation.takeUnoptimized()).toEqual([]);
 		const definition = createMcpToolDefinition({
 			server: "s",
 			tool: { name: "a", description: "Source a.", inputSchema: { type: "object" } },
